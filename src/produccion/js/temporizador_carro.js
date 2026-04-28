@@ -268,7 +268,7 @@ export async function stopEtapa3(carroId, uid){
  // 🔹 Oculta todo y corta intervalos cuando no hay carro seleccionado
 export function clearTimersForNoCar() {
   try {
-    const cid = window.carroIdGlobal || localStorage.getItem('carroActivo');
+    const cid = sessionStorage.getItem('carroActivo');
     if (cid && etapas.has(cid)) {
       const st = etapas.get(cid);
       [1, 2, 3].forEach(n => {
@@ -449,7 +449,7 @@ export function initTemporizadores() {
       document.querySelectorAll('.btn-temporizador-articulo')
         .forEach(b => b.style.display = 'inline-block');
 
-      const carroId = localStorage.getItem('carroActivo');
+      const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
       _showEtapa1(!!carroId);
 
       if (carroId) {
@@ -504,7 +504,7 @@ export function initTemporizadores() {
     if (btn.disabled || btn.classList.contains('finished')) return; // ⛔ ya finalizado
 
     const numero  = btn.dataset.numero;
-    const carroId = window.carroIdGlobal;
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     if (!carroId || !numero) return;
 
     // usa la misma lógica de “terminado” que en etapas, pero para artículos
@@ -574,7 +574,7 @@ export function initTemporizadores() {
   document.addEventListener('click', async (e)=>{
     if (!(e.target && e.target.id === 'btn-etapa1')) return;
 
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const colabStr = localStorage.getItem('colaboradorActivo');
     const uid = colabStr ? JSON.parse(colabStr).id : null;
     if (!carroId || !uid) return;
@@ -593,7 +593,7 @@ export function initTemporizadores() {
   document.addEventListener('click', async (e)=>{
     if (!(e.target && e.target.id === 'btn-etapa3')) return;
 
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const colabStr = localStorage.getItem('colaboradorActivo');
     const uid = colabStr ? JSON.parse(colabStr).id : null;
     if (!carroId || !uid) return;
@@ -622,7 +622,7 @@ export function initTemporizadores() {
   document.querySelectorAll('.btn-temporizador-articulo')
     .forEach(b => b.style.display = 'inline-block');
 
-  const carroId = localStorage.getItem('carroActivo');
+  const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
   _showEtapa1(!!carroId);
 
   // Etapa 2 visible si está corriendo o si quedó finalizada (clase 'finished')
@@ -656,7 +656,7 @@ export function syncTimerButtonsVisibility() {
 
   // Si Modo medición está activo PERO NO hay carro seleccionado → ocultar todo
   // ⚠️ Modo activo pero SIN carro seleccionado → ocultar todo
-  const carroId = (window.carroIdGlobal && String(window.carroIdGlobal)) || localStorage.getItem('carroActivo');
+  const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
   if (!carroId) {
     _hideAllTimers();
     return;

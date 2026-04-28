@@ -1,6 +1,6 @@
 // Función para imprimir orden de producción
 export async function imprimirOrdenProduccion() {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     if (!carroId) {
         console.error('No hay carro activo');
         return;

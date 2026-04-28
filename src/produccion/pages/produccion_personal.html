@@ -247,7 +247,7 @@
                     <div class="seccion-carros">
                         <div class="workspace-actions">
                             <button id="carro-preparado" class="btn btn-success" style="display: none;"
-                                onclick="marcarCarroPreparado(localStorage.getItem('carroActivo'))">
+                                onclick="marcarCarroPreparado()">
                                 Carro listo para producir
                             </button>
 
@@ -291,17 +291,19 @@
                                     producida. El sistema convertirá automáticamente.</small>
                             </div>
 
-                            <button id="finalizar-produccion" class="btn btn-warning" style="display: none;"
-                                onclick="asentarProduccion(localStorage.getItem('carroActivo'))">
+                            <button id="finalizar-produccion" class="btn btn-primary btn-accion btn-brillar"
+                                style="display: none; box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4); border: 2px solid #0056b3;"
+                                onclick="asentarProduccion()">
+                                <i class="fas fa-check-circle" style="margin-right: 8px; font-size: 1.1em;"></i>
                                 Asentar producción
                             </button>
 
-                            <button id="imprimir-etiquetas" class="btn btn-info" style="display: none;"
-                                onclick="imprimirEtiquetasCarro(localStorage.getItem('carroActivo'))">Imprimir
+                            <button id="imprimir-etiquetas" class="btn btn-secondary" style="display: none;"
+                                onclick="imprimirEtiquetasCarro()">Imprimir
                                 etiquetas</button>
 
                             <button id="guardado-ingredientes" class="btn btn-success" style="display: none;"
-                                onclick="abrirModalGuardadoIngredientes(localStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦
+                                onclick="abrirModalGuardadoIngredientes(sessionStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦
                                 Guardado de ingredientes</button>
                         </div>
                         <div id="carro-actual" class="carro-info">

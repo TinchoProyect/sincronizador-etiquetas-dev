@@ -30,7 +30,7 @@ export async function abrirModalSustitucion(ingredienteDestinoId, cantidadFaltan
         });
 
         // Obtener carro y usuario activos
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
 
         if (!carroId || !colaboradorData) {
@@ -439,7 +439,7 @@ async function confirmarSustitucion() {
         console.log('🔄 Actualizando resumen de ingredientes en segundo plano...');
 
         // 🔧 CORRECCIÓN: Llamar directamente a las funciones SIN debounce
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
 
         if (carroId && colaboradorData) {

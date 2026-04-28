@@ -284,9 +284,9 @@ export async function eliminarCarroConConfirmacion(carroId, onSuccess = null) {
  * @param {number} carroIdEliminado - ID del carro que fue eliminado
  */
 export function limpiarCarroActivoSiEliminado(carroIdEliminado) {
-    const carroActivo = localStorage.getItem('carroActivo');
+    const carroActivo = sessionStorage.getItem('carroActivo');
     if (carroActivo === carroIdEliminado.toString()) {
-        localStorage.removeItem('carroActivo');
+        sessionStorage.removeItem('carroActivo');
         
         // Limpiar interfaz
         const listaArticulos = document.getElementById('lista-articulos');

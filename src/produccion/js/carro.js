@@ -35,7 +35,7 @@ window.editarIngredienteCompuesto = async (mixId) => {
 
         // Hacer disponible la función de actualización para el modal
         window.actualizarResumenIngredientes = async () => {
-            const carroId = localStorage.getItem('carroActivo');
+            const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             const colaboradorData = localStorage.getItem('colaboradorActivo');
 
             if (carroId && colaboradorData) {
@@ -59,7 +59,12 @@ window.editarIngredienteCompuesto = async (mixId) => {
 
 // Función para actualizar la información visual del carro activo
 export async function actualizarEstadoCarro() {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+    const wsContainer = document.getElementById('workspace-container');
+    if (wsContainer) {
+        if (carroId) wsContainer.dataset.carroId = carroId;
+        else delete wsContainer.dataset.carroId;
+    }
     const carroInfo = document.getElementById('carro-actual');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
@@ -324,7 +329,7 @@ document.addEventListener('change', (e) => {
 
 // Función para actualizar el resumen de ingredientes con debounce
 const debouncedActualizarResumen = debounce(async () => {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
     if (carroId && colaboradorData) {
@@ -345,7 +350,7 @@ export async function actualizarResumenIngredientes() {
 
 // Función para actualizar el resumen de artículos vinculados (carros externos)
 export async function actualizarResumenArticulos() {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
     if (!carroId || !colaboradorData) {
@@ -362,7 +367,7 @@ export async function actualizarResumenArticulos() {
 }
 
 async function eliminarArticuloDelCarro(numeroArticulo) {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
     if (!carroId || !colaboradorData) {
@@ -519,7 +524,7 @@ function mostrarNotificacionEliminacion(numeroArticulo) {
 // Función para modificar la cantidad de un artículo
 async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
 
         if (!carroId || !colaboradorData) {
@@ -632,7 +637,7 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
 
 // Función para validar el carro activo
 export async function validarCarroActivo(usuarioId) {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     if (!carroId) return;
 
     try {
@@ -642,12 +647,16 @@ export async function validarCarroActivo(usuarioId) {
         if (!response.ok) {
             // Si hay error, probablemente el carro no pertenece al usuario
             console.log('El carro no pertenece al usuario actual');
-            localStorage.removeItem('carroActivo');
+            sessionStorage.removeItem('carroActivo');
+            const wsContainer = document.getElementById('workspace-container');
+            if (wsContainer) delete wsContainer.dataset.carroId;
             actualizarEstadoCarro();
         }
     } catch (error) {
         console.error('Error al validar carro:', error);
-        localStorage.removeItem('carroActivo');
+        sessionStorage.removeItem('carroActivo');
+        const wsContainer = document.getElementById('workspace-container');
+        if (wsContainer) delete wsContainer.dataset.carroId;
         actualizarEstadoCarro();
     }
 }
@@ -658,7 +667,7 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         console.log(`Iniciando creación de carro tipo: ${tipoCarro}`);
 
         // Verificar si ya existe un carro activo
-        const carroActivo = localStorage.getItem('carroActivo');
+        const carroActivo = sessionStorage.getItem('carroActivo');
         if (carroActivo) {
             throw new Error(`Ya hay un carro activo (ID: ${carroActivo})`);
         }
@@ -691,8 +700,9 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
         console.log(`✅ Carro de producción ${tipoCarro} creado con ID:`, data.id);
 
         // Guardar el ID del carro en localStorage y variable global
-        localStorage.setItem('carroActivo', data.id);
-        window.carroIdGlobal = data.id;
+        sessionStorage.setItem('carroActivo', data.id);
+        const wsContainer = document.getElementById('workspace-container');
+        if (wsContainer) wsContainer.dataset.carroId = data.id;
 
         console.log('Actualizando interfaz...');
 
@@ -803,10 +813,12 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
         // Acciones
         let botonesAccion = '';
         if (!carroFinalizado && estadoCarro === 'en_preparacion') {
-            const deshabilitado = (window.carroIdGlobal == null);
+            const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+            const deshabilitado = !carroIdActivo;
+            
             const botonAjusteRapido = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero" style="padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
-                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockOriginal}, window.carroIdGlobal)" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
+                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockOriginal}, ${carroIdActivo})" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
             
             const botonAbastecer = `<button onclick="window.abrirModalAbastecimientoExterno(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #28a745; border-radius: 4px; background: #e8f5e9; color: #2e7d32; cursor: pointer; margin-left: 8px;">🚚 Abastecer</button>`;
             
@@ -923,8 +935,9 @@ export async function seleccionarCarro(carroId) {
         }
 
         // --- Establecer carro activo ---
-        localStorage.setItem('carroActivo', String(carroId));
-        window.carroIdGlobal = carroId;
+        sessionStorage.setItem('carroActivo', String(carroId));
+        const wsContainer = document.getElementById('workspace-container');
+        if (wsContainer) wsContainer.dataset.carroId = carroId;
 
         // 🧹 LIMPIEZA AGRESIVA: Limpiar TODAS las secciones antes de cargar nuevo carro
         console.log('🧹 [LIMPIEZA] Limpiando UI completa antes de cargar nuevo carro...');
@@ -1105,8 +1118,8 @@ export async function seleccionarCarro(carroId) {
 export async function deseleccionarCarro() {
     console.log('Deseleccionando carro activo...');
 
-    localStorage.removeItem('carroActivo');
-    window.carroIdGlobal = null;
+    sessionStorage.removeItem('carroActivo');
+    
 
     await actualizarEstadoCarro();
     document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
@@ -1195,13 +1208,14 @@ export async function eliminarCarro(carroId) {
         }
 
         // Si el carro eliminado era el activo, limpiarlo COMPLETAMENTE
-        const carroActivo = localStorage.getItem('carroActivo');
+        const carroActivo = sessionStorage.getItem('carroActivo');
         if (carroActivo === String(carroId)) {
             console.log('🧹 Limpiando UI completa del carro eliminado...');
 
             // Limpiar localStorage
-            localStorage.removeItem('carroActivo');
-            window.carroIdGlobal = null;
+            sessionStorage.removeItem('carroActivo');
+            const wsContainer = document.getElementById('workspace-container');
+            if (wsContainer) delete wsContainer.dataset.carroId;
 
             // Limpiar lista de artículos
             const listaArticulos = document.getElementById('lista-articulos');
@@ -1428,7 +1442,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
     }
 
     // 🔧 OBTENER ESTADO Y TIPO DE CARRO para lógica de permisos
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     let estadoCarro = 'en_preparacion';
     let tipoCarro = 'interna';
 
@@ -1620,7 +1634,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
             let btnSalvavidas = '';
             if (estadoCarro === 'preparado') {
-                btnSalvavidas = `<button onclick="window.abrirModalSalvavidas(${ing.id}, '${(ing.nombre || '').replace(/'/g, "\\'")}', window.carroIdGlobal, '${ing.unidad_medida || ''}')" class="btn-salvavidas" title="Declarar stock fantasma y reponer" style="background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🛟 Salvavidas</button>`;
+                btnSalvavidas = `<button onclick="window.abrirModalSalvavidas(${ing.id}, '${(ing.nombre || '').replace(/'/g, "\\'")}', ${document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo')}, '${ing.unidad_medida || ''}')" class="btn-salvavidas" title="Declarar stock fantasma y reponer" style="background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🛟 Salvavidas</button>`;
             } else {
                 btnSalvavidas = `<span style="color: #6c757d; font-size: 0.9em;">-</span>`;
             }
@@ -1675,17 +1689,18 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
             }
 
-            const deshabilitado = (window.carroIdGlobal == null);
+            const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+            const deshabilitado = !carroIdActivo;
             const botonIngresoManual = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                : `<button onclick="abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>`;
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})">Ingreso manual</button>`;
 
             let botonesAccion = '';
 
             if (mostrarBotones) {
                 const botonAjusteRapido = deshabilitado
                     ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
-                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, window.carroIdGlobal)" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, ${carroIdActivo})" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
 
                 if (tipoCarro === 'externa' && estadoCarro === 'preparado') {
                     // Pantalla de cierre (externa): solo "Ingreso manual" para inyectar ingredientes (DRY)
@@ -1784,10 +1799,11 @@ export function mostrarResumenMixes(mixes) {
     `;
 
     mixes.forEach(mix => {
-        const deshabilitado = (window.carroIdGlobal == null);
+        const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+        const deshabilitado = !carroIdActivo;
         const boton = deshabilitado
             ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-            : `<button onclick="abrirModalIngresoManual(${mix.id}, window.carroIdGlobal, true)">Ingreso manual</button>`;
+            : `<button onclick="abrirModalIngresoManual(${mix.id}, ${carroIdActivo}, true)">Ingreso manual</button>`;
 
         // Calcular estado del stock con tolerancia para diferencias decimales
         const stockActual = mix.stock_actual || 0;
@@ -2019,7 +2035,7 @@ async function obtenerIngredientesExpandidos(numeroArticulo) {
 
 export async function mostrarArticulosDelCarro() {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
             return;
@@ -3605,7 +3621,7 @@ window.abrirModalAjusteDesdeCarro = async function (ingredienteId, nombreIngredi
     // 🔧 Configurar función de actualización ANTES de abrir el modal
     window.actualizarResumenIngredientes = async () => {
         console.log('🔄 [CARRO-AJUSTE] Actualizando resumen después del ajuste...');
-        const carroIdActual = localStorage.getItem('carroActivo');
+        const carroIdActual = sessionStorage.getItem('carroActivo');
         const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
 
         if (carroIdActual && colaboradorDataActual) {
@@ -3650,7 +3666,7 @@ document.addEventListener('recetaActualizada', async (event) => {
         await mostrarArticulosDelCarro();
         
         // Refrescar los resúmenes consolidados de la derecha (Ingredientes, Mixes, Faltantes)
-        const carroIdActual = localStorage.getItem('carroActivo');
+        const carroIdActual = sessionStorage.getItem('carroActivo');
         const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
         
         if (carroIdActual && colaboradorDataActual) {

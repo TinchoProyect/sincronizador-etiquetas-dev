@@ -24,7 +24,7 @@ import {
 
 import { abrirModalIngresoManual } from './ingresoManual.js';
 import { actualizarVisibilidadBotones } from './carroPreparado.js';
-window.carroIdGlobal = null;
+
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
 // Envolver las funciones originales para agregar la actualización de botones
@@ -69,7 +69,7 @@ async function inicializarEspacioTrabajo() {
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
         
-        window.carroIdGlobal = localStorage.getItem('carroActivo');
+        
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
         
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Finalmente mostrar los artículos
             await mostrarArticulosDelCarro();
 
-            window.carroIdGlobal = localStorage.getItem('carroActivo');
+            
             // Cargar y mostrar resumen de ingredientes y mixes
             await cargarResumenIngredientes();
         });
@@ -249,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Función para cargar y mostrar el resumen de ingredientes del carro activo
 async function cargarResumenIngredientes() {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             // Limpiar la sección de resumen si no hay carro activo
             const contenedor = document.getElementById('tabla-resumen-ingredientes');

@@ -69,7 +69,7 @@ export async function abrirModalArticulos() {
         }
 
         let tipoCarro = 'interna';
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
 
         if (carroId) {
             try {
@@ -251,7 +251,7 @@ export async function actualizarTablaArticulos(articulos) {
     try {
         // 🔍 [FASE 2] Detectar tipo de carro para habilitar selección múltiple
         let tipoCarro = 'interna';
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
 
         if (carroId) {
             try {
@@ -691,7 +691,7 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     }
 
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             throw new Error('No hay un carro de producción activo');
         }
@@ -986,7 +986,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
             document.getElementById('articulo_descripcion').value = articulo_nombre;
 
             // Detectar tipo de carro para mostrar/ocultar sección de artículos
-            const carroId = localStorage.getItem('carroActivo');
+            const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             let tipoCarro = 'interna';
 
             if (carroId) {
@@ -1280,7 +1280,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Detectar si es un carro de producción externa para permitir recetas sin ingredientes
-                const carroId = localStorage.getItem('carroActivo');
+                const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
                 let esProduccionExternaConArticuloPrincipal = false;
 
                 if (carroId) {
@@ -1612,7 +1612,7 @@ export async function agregarMultiplesAlCarroInterno() {
         console.log('🔍 [FASE 2] Iniciando agregado múltiple...');
 
         // Verificar que es un carro de producción interna
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             throw new Error('No hay un carro de producción activo');
         }
@@ -1926,7 +1926,7 @@ function manejarCambioEnCantidad(event) {
 function preservarSeleccionesActuales() {
     try {
         // Solo para producción interna
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) return;
 
         // Obtener todos los checkboxes seleccionados
@@ -2363,7 +2363,7 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
  */
 async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnElement) {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             throw new Error('No hay un carro de producción activo');
         }
@@ -2496,7 +2496,7 @@ document.addEventListener('recetaActualizada', async (event) => {
         }
 
         // Verificar si es un carro externo
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             console.log('🔔 [AUTO-REFRESH] No hay carro activo, omitiendo actualización');
             return;

@@ -30,7 +30,7 @@ import { imprimirOrdenProduccion } from './ordenProduccion.js';
 import { abrirModalGuardadoIngredientes } from './guardadoIngredientes.js';
 import { abrirModalSalvavidas } from './salvavidasProduccion.js';
 
-window.carroIdGlobal = null;
+
 
 // Hacer funciones disponibles globalmente para los event handlers en el HTML
 // NO envolver - dejar que carro.js maneje todo el flujo internamente
@@ -59,7 +59,7 @@ window.ejecutarCreacionCarro = async function(tipoCarro) {
         // Finalmente mostrar los artículos
         await mostrarArticulosDelCarro();
 
-        window.carroIdGlobal = localStorage.getItem('carroActivo');
+        
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
     } catch (error) {
@@ -176,7 +176,7 @@ async function inicializarEspacioTrabajo() {
         // Solo después de validar el carro, mostrar los artículos
         await mostrarArticulosDelCarro();
 
-        window.carroIdGlobal = localStorage.getItem('carroActivo');
+        
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
 
@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function cargarResumenIngredientes() {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             // Limpiar la sección de resumen si no hay carro activo
             const contenedor = document.getElementById('tabla-resumen-ingredientes');

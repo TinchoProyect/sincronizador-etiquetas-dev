@@ -1,6 +1,6 @@
 // Función para actualizar la visibilidad de los botones según el estado del carro
 export async function actualizarVisibilidadBotones() {
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const btnCarroPreparado = document.getElementById('carro-preparado');
     const btnFinalizarProduccion = document.getElementById('finalizar-produccion');
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
@@ -421,7 +421,7 @@ async function activarModoArticulosSecundarios() {
  */
 async function mostrarArticulosSecundariosEditables() {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
 
         if (!carroId || !colaboradorData) {
@@ -543,7 +543,7 @@ async function mostrarArticulosSecundariosEditables() {
  */
 async function mostrarInformesIngredientesVinculados() {
     try {
-        const carroId = localStorage.getItem('carroActivo');
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorData = localStorage.getItem('colaboradorActivo');
 
         if (!carroId || !colaboradorData) {
@@ -638,7 +638,7 @@ async function mostrarInformesIngredientesVinculados() {
                         <td>${ing.unidad_medida || ''}</td>
                         <td>
                             <div style="display: flex; gap: 8px; justify-content: center;">
-                                <button onclick="window.abrirModalIngresoManual(${ing.id}, window.carroIdGlobal)">Ingreso manual</button>
+                                <button onclick="window.abrirModalIngresoManual(${ing.id}, ${document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo')})">Ingreso manual</button>
                             </div>
                         </td>
                     </tr>
@@ -720,11 +720,11 @@ async function mostrarInformesIngredientesVinculados() {
 }
 
 // Función para marcar un carro como preparado
-export async function marcarCarroPreparado(carroId) {
+export async function marcarCarroPreparado(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
 
-
-    if (!carroId) {
-        console.error('No hay carro seleccionado');
+    if (!carroId || carroId === 'null' || carroId === 'undefined') {
+        console.error('No hay carro seleccionado (Dual-State)');
         return;
     }
 
@@ -816,10 +816,11 @@ export async function marcarCarroPreparado(carroId) {
 }
 
 // Función para finalizar la producción de un carro
-export async function finalizarProduccion(carroId) {
+export async function finalizarProduccion(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
 
-    if (!carroId) {
-        console.error('No hay carro seleccionado');
+    if (!carroId || carroId === 'null' || carroId === 'undefined') {
+        console.error('No hay carro seleccionado (Dual-State)');
         return;
     }
 
@@ -976,9 +977,11 @@ window.marcarCarroPreparado = marcarCarroPreparado;
 window.finalizarProduccion = finalizarProduccion;
 
 // Función para imprimir etiquetas del carro
-export async function imprimirEtiquetasCarro(carroId) {
-    if (!carroId) {
-        console.error('No hay carro seleccionado');
+export async function imprimirEtiquetasCarro(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+
+    if (!carroId || carroId === 'null' || carroId === 'undefined') {
+        console.error('No hay carro seleccionado (Dual-State)');
         return;
     }
 

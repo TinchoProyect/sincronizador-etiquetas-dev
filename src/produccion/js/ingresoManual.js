@@ -1276,7 +1276,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     }
 
     // Obtener el carro activo
-    const carroId = localStorage.getItem('carroActivo');
+    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     if (!carroId) {
       // 🎯 MEJORA UX: Mensaje más amigable mientras se carga el carro
       contenedor.innerHTML = '<p style="color: #6c757d; font-style: italic;">⏳ Esperando selección de carro...</p>';
@@ -1487,7 +1487,7 @@ async function eliminarIngresoManual(ingresoId) {
       console.log('🗑️ Eliminando ingreso de base de datos físicamente');
 
       // Obtener información del ingreso para determinar el tipo de eliminación
-      const carroId = localStorage.getItem('carroActivo');
+      const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
       const ingresoIdReal = id;
 
       // Primero obtener los datos del ingreso para saber el tipo
@@ -1601,7 +1601,7 @@ async function eliminarIngresoManual(ingresoId) {
     console.log(`🗑️ Ingreso eliminado: ${ingresoId}`);
 
     try {
-      const carroId = localStorage.getItem('carroActivo');
+      const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
       const colaboradorData = localStorage.getItem('colaboradorActivo');
 
       if (!carroId || !colaboradorData) {
@@ -1696,7 +1696,7 @@ async function eliminarIngresoManual(ingresoId) {
 
 // Función para limpiar ingresos manuales al cambiar de carro
 export function limpiarIngresosManualesDelCarro() {
-  const carroId = localStorage.getItem('carroActivo');
+  const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
   if (!carroId) {
     // Si no hay carro activo, limpiar todo
     ingresosManualesDelCarro = [];

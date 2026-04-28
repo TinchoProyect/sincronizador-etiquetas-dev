@@ -719,7 +719,7 @@
             };
 
             localStorage.setItem('colaboradorActivo', JSON.stringify(colaboradorData));
-            localStorage.setItem('carroActivo', String(carroId));
+            sessionStorage.setItem('carroActivo', String(carroId));
 
             console.log('[PROD-FLUJO] Abriendo ventana con datos:', {
                 carroId: carroId,

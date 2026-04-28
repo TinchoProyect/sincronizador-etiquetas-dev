@@ -61,7 +61,7 @@ export function cargarDatosColaborador(validarCarroActivo) {
 // Función para limpiar datos de sesión
 export function limpiarDatosSesion() {
     localStorage.removeItem('colaboradorActivo');
-    localStorage.removeItem('carroActivo');
+    sessionStorage.removeItem('carroActivo');
     window.location.href = '/produccion/pages/produccion.html';
 }
 
