@@ -1,4 +1,4 @@
-import {
+﻿import {
   registrarMovimientoIngrediente,
   registrarMovimientoStockVentas
 } from './apiMovimientos.js';
@@ -40,7 +40,7 @@ async function imprimirEtiquetaIngrediente(ingredienteId, nombre, cantidad, codi
 // Función para verificar si un ingrediente es compuesto (mix)
 async function verificarSiEsIngredienteCompuesto(ingredienteId) {
   try {
-    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/es-compuesto`);
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/es-compuesto`);
     if (!response.ok) {
       throw new Error('Error al verificar el tipo de ingrediente');
     }
@@ -55,7 +55,7 @@ async function verificarSiEsIngredienteCompuesto(ingredienteId) {
 // Función para obtener la composición de un ingrediente
 async function obtenerComposicionIngrediente(ingredienteId) {
   try {
-    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/composicion`);
     if (!response.ok) {
       throw new Error('Error al obtener la composición del ingrediente');
     }
@@ -262,10 +262,27 @@ function inicializarModal() {
       btnConfirmar.addEventListener('click', confirmarIngreso);
     }
 
+    // 🛡️ TICKET #015: Reparación del binding de cierre de modal
+    function cerrarModal() {
+      // Limpiar UI y vaciar la memoria de edición actual UUID para no dejar "residuos"
+      if (typeof window.cerrarModalIngresoManual === 'function') {
+        window.cerrarModalIngresoManual();
+      } else {
+        if (modal) modal.style.display = 'none';
+        window.edicionUUIDActual = null;
+        if (typeof limpiarCamposModal === 'function') limpiarCamposModal();
+      }
+    }
+
     // Agregar listener al botón X de cierre en el header
     const btnCloseHeader = modal.querySelector('.modal-header .close-modal');
     if (btnCloseHeader) {
       btnCloseHeader.addEventListener('click', cerrarModal);
+    }
+
+    // Agregar listener al botón de cancelar/cerrar inferior
+    if (btnCancelar) {
+      btnCancelar.addEventListener('click', cerrarModal);
     }
 
     // ✅ NUEVO: Hacer el modal DRAGGABLE desde el header
@@ -496,7 +513,7 @@ async function consultarKilosUnidad(articuloNumero) {
   try {
     console.log('🔍 [KILOS_UNIDAD] Consultando kilos_unidad para artículo:', articuloNumero);
 
-    const response = await fetch(`http://localhost:3002/api/produccion/articulos`);
+    const response = await fetch(`/api/produccion/articulos`);
     if (!response.ok) {
       throw new Error('Error al consultar artículos');
     }
@@ -534,7 +551,7 @@ async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
       nuevoValor: nuevoValor
     });
 
-    const response = await fetch(`http://localhost:3002/api/produccion/articulos/${articuloNumero}/kilos-unidad`, {
+    const response = await fetch(`/api/produccion/articulos/${articuloNumero}/kilos-unidad`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -645,7 +662,7 @@ function manejarBusqueda() {
       return;
     }
 
-    fetch('http://localhost:3002/api/produccion/articulos')
+    fetch('/api/produccion/articulos')
       .then(response => {
         if (!response.ok) throw new Error('Error al buscar artículos');
         return response.json();
@@ -871,7 +888,7 @@ async function confirmarIngreso() {
 
   try {
     // Obtener información del carro para determinar su tipo
-    const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/estado`);
+    const carroResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/estado`);
     if (!carroResponse.ok) {
       throw new Error('Error al obtener información del carro');
     }
@@ -937,7 +954,7 @@ async function confirmarIngreso() {
           console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
           console.log('=======================================================\n');
 
-          const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
+          const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -959,13 +976,13 @@ async function confirmarIngreso() {
         // Buscar si este ingrediente proviene de algún mix en el carro
         let origenMixId = null;
         try {
-          const mixesResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
+          const mixesResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/mixes?usuarioId=${usuarioId}`);
           if (mixesResponse.ok) {
             const mixes = await mixesResponse.json();
 
             // Por cada mix, verificar si contiene este ingrediente
             for (const mix of mixes) {
-              const composicionResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mix.id}/composicion`);
+              const composicionResponse = await fetch(`/api/produccion/ingredientes/${mix.id}/composicion`);
               if (composicionResponse.ok) {
                 const composicionData = await composicionResponse.json();
 
@@ -1063,7 +1080,7 @@ async function confirmarIngreso() {
         stockUsuario: window.tempStockUsuarioPayload || null
       };
 
-      const putResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/ingreso-manual-editar/${window.edicionUUIDActual}`, {
+      const putResponse = await fetch(`/api/produccion/carro/${carroIdGlobal}/ingreso-manual-editar/${window.edicionUUIDActual}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadEdicion)
@@ -1084,7 +1101,7 @@ async function confirmarIngreso() {
     } else {
       // Flujo tradicional de CREACIÓN (múltiples requests)
       if (window.tempStockUsuarioPayload) {
-        const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
+        const stockResponse = await fetch('/api/produccion/ingredientes-stock-usuarios', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(window.tempStockUsuarioPayload)
@@ -1164,7 +1181,7 @@ async function confirmarIngreso() {
 }
 
 function obtenerIngrediente(id) {
-  return fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`)
+  return fetch(`/api/produccion/ingredientes/${id}`)
     .then(res => {
       if (!res.ok) throw new Error('No se pudo obtener el ingrediente');
       return res.json();
@@ -1341,7 +1358,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     console.log('📡 PASO 2: Obteniendo datos del backend...');
     let ingresosDelBackend = [];
     try {
-      const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`, {
+      const response = await fetch(`/api/produccion/carro/${carroId}/ingresos-manuales`, {
         method: 'GET',
         headers: {
           'Cache-Control': 'no-cache',
@@ -1445,10 +1462,13 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
           '<td colspan="2" class="mix-info">Artículo compuesto</td>' :
           '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
 
+        // TICKET #013: Escapado seguro y atributos de datos para evitar fallos por comillas y XSS
+        const nombreSeguro = nombreArticulo.replace(/"/g, '&quot;');
+        
         html += `
           <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}" data-ingreso-uuid="${uuid}">
             <td>
-              ${icono} ${nombreArticulo} 
+              ${icono} ${nombreSeguro} 
               <span class="tipo-badge tipo-${tipoArticulo}">${tipoBadge}</span>
             </td>
             <td>1</td>
@@ -1457,15 +1477,24 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
             <td>${fecha}</td>
             <td style="white-space: nowrap;">
               ${uuid && !esMix && !esSustitucion ? `
-              <button class="btn-editar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" onclick="iniciarEdicionIngresoManual('${uuid}', '${ingreso.articulo_numero}', ${kilos}, '${nombreArticulo.replace(/'/g, "\\'")}')" title="Editar ingreso">
+              <button class="btn-editar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" 
+                data-uuid="${uuid}" 
+                data-numero="${ingreso.articulo_numero}" 
+                data-kilos="${kilos}" 
+                data-nombre="${nombreSeguro}" 
+                title="Editar ingreso">
                 ✏️
               </button>
               ` : ''}
-              <button class="btn-eliminar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" onclick="eliminarIngresoManual('${uuid ? 'uuid_' + uuid : ingresoId}')" title="Eliminar ingreso">
+              <button class="btn-eliminar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" 
+                data-id="${uuid ? 'uuid_' + uuid : ingresoId}" 
+                title="Eliminar ingreso">
                 🗑️
               </button>
               <button class="btn-imprimir-etiqueta-ingrediente" style="cursor:pointer; background:none; border:none; font-size:1.2rem;"
-                      onclick="imprimirEtiquetaIngredienteDesdeIngreso('${ingreso.ingrediente_id}', '${(ingreso.ingrediente_nombre || nombreArticulo).replace(/'/g, "\\'")}', '${ingreso.articulo_numero}')"
+                      data-ingrediente-id="${ingreso.ingrediente_id}"
+                      data-ingrediente-nombre="${(ingreso.ingrediente_nombre || nombreSeguro)}"
+                      data-articulo-numero="${ingreso.articulo_numero}"
                       title="Imprimir etiqueta del ingrediente">
                 🏷️
               </button>
@@ -1487,6 +1516,46 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     // PASO 5: Actualizar DOM
     console.log('🖥️ PASO 5: Actualizando DOM...');
     contenedor.innerHTML = html;
+
+    // TICKET #013: Delegación de eventos segura (después de hidratar DOM)
+    contenedor.querySelectorAll('.btn-editar-ingreso').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const uuid = this.getAttribute('data-uuid');
+        const num = this.getAttribute('data-numero');
+        const kls = parseFloat(this.getAttribute('data-kilos'));
+        const nom = this.getAttribute('data-nombre');
+        
+        if(window.iniciarEdicionIngresoManual) {
+           window.iniciarEdicionIngresoManual(uuid, num, kls, nom);
+        } else {
+           console.error('❌ La función iniciarEdicionIngresoManual no está disponible globalmente.');
+        }
+      });
+    });
+
+    contenedor.querySelectorAll('.btn-eliminar-ingreso').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        if(window.eliminarIngresoManual) {
+           window.eliminarIngresoManual(id);
+        } else {
+           eliminarIngresoManual(id); // Intento local
+        }
+      });
+    });
+
+    contenedor.querySelectorAll('.btn-imprimir-etiqueta-ingrediente').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const iId = this.getAttribute('data-ingrediente-id');
+        const iNom = this.getAttribute('data-ingrediente-nombre');
+        const aNum = this.getAttribute('data-articulo-numero');
+        if(window.imprimirEtiquetaIngredienteDesdeIngreso) {
+           window.imprimirEtiquetaIngredienteDesdeIngreso(iId, iNom, aNum);
+        } else {
+           imprimirEtiquetaIngredienteDesdeIngreso(iId, iNom, aNum); // Intento local
+        }
+      });
+    });
 
     console.log('✅ INFORME DE INGRESOS MANUALES ACTUALIZADO EXITOSAMENTE');
     console.log(`📊 Total de filas mostradas: ${ingresosFiltrados.length}`);
@@ -1540,7 +1609,7 @@ async function eliminarIngresoManual(ingresoId) {
       console.log('🗑️ Eliminando ingreso de base de datos físicamente por UUID');
       const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
       
-      const deleteResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual-uuid/${id}`, {
+      const deleteResponse = await fetch(`/api/produccion/carro/${carroId}/ingreso-manual-uuid/${id}`, {
         method: 'DELETE'
       });
       
@@ -1557,7 +1626,7 @@ async function eliminarIngresoManual(ingresoId) {
       const ingresoIdReal = id;
 
       // Primero obtener los datos del ingreso para saber el tipo
-      const ingresosResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingresos-manuales`);
+      const ingresosResponse = await fetch(`/api/produccion/carro/${carroId}/ingresos-manuales`);
       if (!ingresosResponse.ok) {
         throw new Error('Error al obtener información del ingreso');
       }
@@ -1577,7 +1646,7 @@ async function eliminarIngresoManual(ingresoId) {
         console.log('🌾 Eliminando sustitución de ingredientes...');
 
         // Eliminar los movimientos de sustitución (egreso e ingreso)
-        const response = await fetch(`http://localhost:3002/api/produccion/sustitucion/${ingresoIdReal}`, {
+        const response = await fetch(`/api/produccion/sustitucion/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -1599,7 +1668,7 @@ async function eliminarIngresoManual(ingresoId) {
         console.log('🧪 Eliminando artículo MIX y registros relacionados...');
 
         // Eliminar registros de ingredientes_stock_usuarios relacionados
-        const deleteStockUsuariosQuery = await fetch(`http://localhost:3002/api/produccion/ingredientes-stock-usuarios/eliminar-por-mix`, {
+        const deleteStockUsuariosQuery = await fetch(`/api/produccion/ingredientes-stock-usuarios/eliminar-por-mix`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -1616,7 +1685,7 @@ async function eliminarIngresoManual(ingresoId) {
         }
 
         // Eliminar de stock_ventas_movimientos
-        const deleteStockVentasQuery = await fetch(`http://localhost:3002/api/produccion/stock-ventas-movimientos/${ingresoIdReal}`, {
+        const deleteStockVentasQuery = await fetch(`/api/produccion/stock-ventas-movimientos/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -1631,7 +1700,7 @@ async function eliminarIngresoManual(ingresoId) {
         // 📦 SIMPLE: usar el endpoint existente
         console.log('📦 Eliminando ingrediente simple...');
 
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
+        const response = await fetch(`/api/produccion/carro/${carroId}/ingreso-manual/${ingresoIdReal}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -1683,7 +1752,7 @@ async function eliminarIngresoManual(ingresoId) {
       const { obtenerResumenIngredientesCarro, mostrarResumenIngredientes } = await import('./carro.js');
 
       // Forzar recarga completa con parámetros de cache
-      const ingredientesActualizados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}&_t=${Date.now()}`, {
+      const ingredientesActualizados = await fetch(`/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}&_t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -1825,9 +1894,9 @@ async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredient
 
     // ✅ USAR DATOS CORRECTOS DEL INGREDIENTE (no del artículo)
     const nombreIngredienteCorrect = ingredienteData.nombre;
-    // CORRECCIÓN: Usar el código del artículo pasado como parámetro, NO el del ingrediente
-    // El usuario pidió: "Origen del código: Asegúrate de enviar el articuloSeleccionado.numero"
-    const codigoIngredienteCorrect = articuloNumero || ingredienteData.codigo || ingredienteId.toString();
+    // CORRECCIÓN: TICKET #013 - Usar estrictamente el código numérico del ingrediente
+    // La directiva anterior de usar el articuloNumero rompía el sistema de etiquetado
+    const codigoIngredienteCorrect = ingredienteData.codigo || ingredienteId.toString();
 
     console.log('🔍 [ETIQUETA-DEBUG] Comparación de datos:');
     console.log('❌ DATOS INCORRECTOS (artículo):');
@@ -1895,7 +1964,7 @@ async function cargarArticulosSugeridos(nombreIngrediente) {
     }
 
     // ✅ CORRECCIÓN: Consultar el endpoint de historial real
-    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteSeleccionado}/articulos-sugeridos`);
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteSeleccionado}/articulos-sugeridos`);
 
     if (!response.ok) {
       throw new Error('Error al obtener artículos sugeridos del historial');
@@ -2061,6 +2130,29 @@ window.iniciarEdicionIngresoManual = function(uuid, articuloNumero, kilos, nombr
   inputKilos.value = kilos;
   inputCantidad.value = 1;
   
+  // Función para buscar artículo asincrónicamente
+  async function buscarArticuloBackend(query) {
+    try {
+      const response = await fetch('/api/produccion/articulos');
+      if (!response.ok) throw new Error('Error al buscar artículos');
+      const responseData = await response.json();
+      const data = responseData.data || responseData;
+      
+      const norm = (str) => {
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      };
+      
+      const tokens = norm(query).split(' ').filter(t => t.length > 0);
+      return data.filter(art => {
+        const nombreNormalizado = norm(art.nombre);
+        return tokens.every(token => nombreNormalizado.includes(token));
+      });
+    } catch(e) {
+      console.error(e);
+      return [];
+    }
+  }
+
   // Buscar en el backend para pre-seleccionar
   buscarArticuloBackend(nombreArticulo).then(resultados => {
     if (resultados && resultados.length > 0) {
