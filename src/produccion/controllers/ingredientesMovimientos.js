@@ -36,9 +36,7 @@ async function registrarMovimientoIngrediente(movimiento, db) {
     }
 
     // 📝 Construcción final de observaciones
-    const textoObservacion = articuloNumero
-      ? articuloNumero
-      : (observaciones || null);
+    const textoObservacion = observaciones ? observaciones : (articuloNumero || null);
 
     const query = `
       INSERT INTO ingredientes_movimientos 

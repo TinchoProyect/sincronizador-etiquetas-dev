@@ -854,6 +854,10 @@ async function confirmarIngreso() {
 
   console.log('🔍 Artículo seleccionado:', articuloSeleccionado);
 
+  // Generar UUID Transaccional para anclar movimientos
+  const transaccionUUID = crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+
   // Obtener el stock actual del ingrediente desde el resumen
   let stockAnteriorIngrediente = 0;
   try {
@@ -1001,18 +1005,8 @@ async function confirmarIngreso() {
         console.log('📤 JSON que se enviará:', JSON.stringify(stockUsuarioPayload, null, 2));
         console.log('=======================================================\n');
 
-        const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(stockUsuarioPayload)
-        });
-
-        if (!stockResponse.ok) {
-          const errorData = await stockResponse.json();
-          throw new Error(errorData.error || 'Error al registrar stock de usuario');
-        }
+        // Asignarlo a una variable global al bloque del if/else para enviarlo después
+        window.tempStockUsuarioPayload = stockUsuarioPayload;
       }
 
       // Registrar el movimiento de stock de ventas para el artículo (siempre se hace)
@@ -1024,22 +1018,23 @@ async function confirmarIngreso() {
         usuarioId: parseInt(usuarioId),
         cantidad: cantidad,
         tipo: 'ingreso a producción',
-        origenIngreso: esIngredienteCompuesto ? 'mix' : 'simple'
+        origenIngreso: esIngredienteCompuesto ? 'mix' : 'simple',
+        observaciones: `Ingreso manual [UUID: ${transaccionUUID}]`
       };
 
-      await registrarMovimientoStockVentas(movimientoStock);
+      // Guardarlo temporalmente
+      window.tempMovimientoStock = movimientoStock;
 
     } else {
       console.log(`🏭 PROCESANDO INGRESO MANUAL EN CARRO ${esCierreExterna ? 'EXTERNO (FASE 3 - CIERRE)' : 'INTERNO'}`);
 
       // 🔧 CORRECCIÓN CRÍTICA: NO duplicar la multiplicación
-      // El backend ya maneja la multiplicación por cantidad en el endpoint /ingredientes_movimientos
-
       const movimientoIngrediente = {
         ingredienteId: ingredienteSeleccionado,
         articuloNumero: articuloSeleccionado.numero,
         kilos: kilos * cantidad, // Kilos totales para el ingrediente
-        carroId: parseInt(carroIdGlobal)
+        carroId: parseInt(carroIdGlobal),
+        observaciones: `Ingreso manual [UUID: ${transaccionUUID}]`
       };
 
       const movimientoStock = {
@@ -1049,20 +1044,68 @@ async function confirmarIngreso() {
         carroId: parseInt(carroIdGlobal),
         usuarioId: parseInt(usuarioId),
         cantidad: cantidad, // La cantidad se maneja por separado
-        tipo: 'ingreso a producción'
+        tipo: 'ingreso a producción',
+        observaciones: `Ingreso manual [UUID: ${transaccionUUID}]`
       };
 
-      console.log('📦 Guardando ingreso manual CORREGIDO:', {
-        movimientoIngrediente,
-        movimientoStock,
-        kilosUnitarios: kilos,
-        cantidad: cantidad,
-        kilosTotales: kilos * cantidad
+      window.tempMovimientoIngrediente = movimientoIngrediente;
+      window.tempMovimientoStock = movimientoStock;
+    }
+
+    // ==========================================
+    // 🚀 ENVÍO DE DATOS (NUEVO o EDICIÓN)
+    // ==========================================
+    if (window.edicionUUIDActual) {
+      console.log('🔄 Ejecutando EDICIÓN ATÓMICA de Ingreso Manual', window.edicionUUIDActual);
+      const payloadEdicion = {
+        movimientoIngrediente: window.tempMovimientoIngrediente || null,
+        movimientoStock: window.tempMovimientoStock || null,
+        stockUsuario: window.tempStockUsuarioPayload || null
+      };
+
+      const putResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/ingreso-manual-editar/${window.edicionUUIDActual}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadEdicion)
       });
 
-      await registrarMovimientoIngrediente(movimientoIngrediente);
-      await registrarMovimientoStockVentas(movimientoStock);
+      if (!putResponse.ok) {
+        const errorData = await putResponse.json();
+        throw new Error(errorData.error || 'Error al editar ingreso manual');
+      }
+
+      // Limpiar estado de edición
+      window.edicionUUIDActual = null;
+      const btn = document.getElementById('btnConfirmarIngreso');
+      if (btn) {
+        btn.innerText = 'Confirmar';
+        btn.style.backgroundColor = '';
+      }
+    } else {
+      // Flujo tradicional de CREACIÓN (múltiples requests)
+      if (window.tempStockUsuarioPayload) {
+        const stockResponse = await fetch('http://localhost:3002/api/produccion/ingredientes-stock-usuarios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(window.tempStockUsuarioPayload)
+        });
+        if (!stockResponse.ok) throw new Error('Error al registrar stock de usuario');
+      }
+
+      if (window.tempMovimientoIngrediente) {
+        await registrarMovimientoIngrediente(window.tempMovimientoIngrediente);
+      }
+      
+      if (window.tempMovimientoStock) {
+        await registrarMovimientoStockVentas(window.tempMovimientoStock);
+      }
     }
+
+    // Limpiar variables temporales
+    delete window.tempStockUsuarioPayload;
+    delete window.tempMovimientoIngrediente;
+    delete window.tempMovimientoStock;
+
 
     // Asegurar que los valores numéricos sean números
     const stockAnteriorNum = parseFloat(stockAnteriorIngrediente) || 0;
@@ -1090,7 +1133,8 @@ async function confirmarIngreso() {
       usuarioId: parseInt(usuarioId),
       articuloNumero: articuloSeleccionado.numero,
       codigoBarras: articuloSeleccionado.codigo_barras || '',
-      ingredienteId: ingredienteSeleccionado // Guardar el ID del ingrediente
+      ingredienteId: ingredienteSeleccionado, // Guardar el ID del ingrediente
+      uuid: transaccionUUID // Guardar el UUID transaccional para poder editarlo
     });
 
     console.log('🔍 DEBUG - ingresosManualesDelCarro después de registrar:', ingresosManualesDelCarro);
@@ -1375,6 +1419,10 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
         const ingresoId = `db_${ingreso.id}`;
         const tipoArticulo = ingreso.tipo_articulo || 'simple';
 
+        // 🔧 CORRECCIÓN: Extraer UUID de observaciones si existe
+        const uuidMatch = ingreso.observaciones ? ingreso.observaciones.match(/\[UUID: (.*?)\]/) : null;
+        const uuid = uuidMatch ? uuidMatch[1] : '';
+
         // Determinar iconografía y texto según el tipo de artículo
         const esMix = tipoArticulo === 'mix';
         const esSustitucion = tipoArticulo === 'sustitucion';
@@ -1398,7 +1446,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
           '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
 
         html += `
-          <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}">
+          <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}" data-ingreso-uuid="${uuid}">
             <td>
               ${icono} ${nombreArticulo} 
               <span class="tipo-badge tipo-${tipoArticulo}">${tipoBadge}</span>
@@ -1407,14 +1455,19 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
             <td>${kilos.toFixed(2)}</td>
             ${columnasStock}
             <td>${fecha}</td>
-            <td>
-              <button class="btn-eliminar-ingreso" onclick="eliminarIngresoManual('${ingresoId}')">
-                Eliminar
+            <td style="white-space: nowrap;">
+              ${uuid && !esMix && !esSustitucion ? `
+              <button class="btn-editar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" onclick="iniciarEdicionIngresoManual('${uuid}', '${ingreso.articulo_numero}', ${kilos}, '${nombreArticulo.replace(/'/g, "\\'")}')" title="Editar ingreso">
+                ✏️
               </button>
-              <button class="btn-imprimir-etiqueta-ingrediente" 
+              ` : ''}
+              <button class="btn-eliminar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" onclick="eliminarIngresoManual('${uuid ? 'uuid_' + uuid : ingresoId}')" title="Eliminar ingreso">
+                🗑️
+              </button>
+              <button class="btn-imprimir-etiqueta-ingrediente" style="cursor:pointer; background:none; border:none; font-size:1.2rem;"
                       onclick="imprimirEtiquetaIngredienteDesdeIngreso('${ingreso.ingrediente_id}', '${(ingreso.ingrediente_nombre || nombreArticulo).replace(/'/g, "\\'")}', '${ingreso.articulo_numero}')"
                       title="Imprimir etiqueta del ingrediente">
-                🏷️ Etiqueta
+                🏷️
               </button>
             </td>
           </tr>
@@ -1483,8 +1536,21 @@ async function eliminarIngresoManual(ingresoId) {
       sincronizarArrayGlobal();
 
       console.log('✅ Ingreso en memoria eliminado correctamente');
+    } else if (tipo === 'uuid') {
+      console.log('🗑️ Eliminando ingreso de base de datos físicamente por UUID');
+      const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+      
+      const deleteResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingreso-manual-uuid/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!deleteResponse.ok) {
+        throw new Error('Error al eliminar información del ingreso por UUID');
+      }
+      
+      console.log('✅ Ingreso eliminado correctamente por UUID');
     } else if (tipo === 'db') {
-      console.log('🗑️ Eliminando ingreso de base de datos físicamente');
+      console.log('🗑️ Eliminando ingreso de base de datos físicamente por ID original');
 
       // Obtener información del ingreso para determinar el tipo de eliminación
       const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -1658,6 +1724,11 @@ async function eliminarIngresoManual(ingresoId) {
 
       console.log('✅ RECÁLCULO COMPLETO FINALIZADO EXITOSAMENTE');
       console.log('================================================================');
+
+      // 🚀 TICKET #009: Emitir evento para refrescar componentes dinámicos
+      window.dispatchEvent(new CustomEvent('carroEstadoCambiado', { 
+        detail: { carroId: carroId, accion: 'ingresoManualEliminado' } 
+      }));
 
     } catch (resumenError) {
       console.error('❌ ERROR CRÍTICO al recalcular resumen de ingredientes:', resumenError);
@@ -1963,6 +2034,69 @@ function hacerModalDraggable() {
 
   console.log('✅ [DRAGGABLE] Modal configurado como draggable');
 }
+
+// ==========================================
+// EDICION DE INGRESO MANUAL (TICKET #011)
+// ==========================================
+window.edicionUUIDActual = null;
+
+window.iniciarEdicionIngresoManual = function(uuid, articuloNumero, kilos, nombreArticulo) {
+  console.log('✏️ Iniciando edición de ingreso manual para UUID:', uuid);
+  
+  // Guardar estado
+  window.edicionUUIDActual = uuid;
+  
+  // Reset UI del modal
+  const modal = document.getElementById('modalIngresoManual');
+  const inputKilos = document.getElementById('inputKilos');
+  const inputCantidad = document.getElementById('inputCantidad');
+  const busqueda = document.getElementById('busquedaArticulo');
+  const btnConfirmar = document.getElementById('btnConfirmarIngreso');
+  
+  // Limpiar seleccion
+  articuloSeleccionado = null;
+  ingredienteSeleccionado = null;
+
+  busqueda.value = nombreArticulo;
+  inputKilos.value = kilos;
+  inputCantidad.value = 1;
+  
+  // Buscar en el backend para pre-seleccionar
+  buscarArticuloBackend(nombreArticulo).then(resultados => {
+    if (resultados && resultados.length > 0) {
+      // Intentar coincidir por número
+      const art = resultados.find(r => r.numero == articuloNumero) || resultados[0];
+      seleccionarArticulo(art);
+      
+      // Ajustar botón
+      btnConfirmar.innerText = '💾 Guardar Edición';
+      btnConfirmar.style.backgroundColor = '#28a745'; // Verde para edición
+      btnConfirmar.disabled = false;
+      modal.style.display = 'block';
+    } else {
+      alert('No se pudo encontrar el artículo original para editar.');
+    }
+  }).catch(err => {
+    console.error('Error pre-cargando artículo:', err);
+    alert('Error al intentar cargar la edición.');
+  });
+};
+
+// Función nativa para limpiar la edición actual al cerrar modal
+const origCerrarModal = window.cerrarModalIngresoManual;
+window.cerrarModalIngresoManual = function() {
+  window.edicionUUIDActual = null;
+  const btnConfirmar = document.getElementById('btnConfirmarIngreso');
+  if (btnConfirmar) {
+    btnConfirmar.innerText = 'Confirmar';
+    btnConfirmar.style.backgroundColor = '';
+  }
+  if (typeof origCerrarModal === 'function') origCerrarModal();
+  else {
+    const modal = document.getElementById('modalIngresoManual');
+    if (modal) modal.style.display = 'none';
+  }
+};
 
 // Hacer funciones disponibles globalmente
 window.eliminarIngresoManual = eliminarIngresoManual;

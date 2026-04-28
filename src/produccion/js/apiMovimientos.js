@@ -2,13 +2,13 @@
  * Registra un movimiento manual de ingredientes en producción.
  * Espera los campos en snake_case porque así los requiere el backend.
  */
-export async function registrarMovimientoIngrediente({ ingredienteId, articuloNumero, kilos, carroId }) {
+export async function registrarMovimientoIngrediente({ ingredienteId, articuloNumero, kilos, carroId, observaciones }) {
   const payload = {
     ingrediente_id: ingredienteId,
     kilos,
     tipo: 'ingreso',
     carro_id: carroId,
-    observaciones: articuloNumero
+    observaciones: observaciones || articuloNumero
   };
 
   console.log('📤 Enviando payload a /api/produccion/ingredientes_movimientos:', payload);
@@ -32,7 +32,7 @@ export async function registrarMovimientoIngrediente({ ingredienteId, articuloNu
 /**
  * Registra un movimiento de stock vinculado a ventas.
  */
-export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId, cantidad, tipo, origenIngreso }) {
+export async function registrarMovimientoStockVentas({ articuloNumero, codigoBarras, kilos, carroId, usuarioId, cantidad, tipo, origenIngreso, observaciones }) {
   const payload = {
     articulo_numero: articuloNumero,
     codigo_barras: codigoBarras,
@@ -42,7 +42,8 @@ export async function registrarMovimientoStockVentas({ articuloNumero, codigoBar
     cantidad: cantidad || 1, // Si no viene cantidad, usar 1 como valor por defecto
     tipo, // Campo para identificar el origen del movimiento
     origen_ingreso: origenIngreso || 'simple', // Fallback a 'simple' si no se especifica
-    fecha: new Date().toISOString()
+    fecha: new Date().toISOString(),
+    observaciones: observaciones || ''
   };
 
   console.log('📤 Enviando payload a /api/produccion/stock_ventas_movimientos:', payload);

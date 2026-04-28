@@ -252,6 +252,70 @@ async function eliminarIngresoManual(req, res) {
     }
 }
 
+async function eliminarIngresoManualPorUUID(req, res) {
+    const client = await pool.connect();
+    
+    try {
+        const { carroId, uuid } = req.params;
+        
+        console.log(`🗑️ ELIMINANDO INGRESO MANUAL UUID ${uuid} DEL CARRO ${carroId}`);
+        console.log('================================================================');
+        
+        await client.query('BEGIN');
+
+        // Borrar de ingredientes_movimientos
+        const deleteIngresoQuery = `
+            DELETE FROM ingredientes_movimientos 
+            WHERE carro_id = $1 AND observaciones LIKE $2
+            RETURNING ingrediente_id
+        `;
+        const uuidPattern = `%[UUID: ${uuid}]%`;
+        await client.query(deleteIngresoQuery, [carroId, uuidPattern]);
+        
+        // Borrar de stock_ventas_movimientos (para revertir)
+        const selectStockQuery = `
+            SELECT articulo_numero, cantidad, kilos
+            FROM stock_ventas_movimientos 
+            WHERE carro_id = $1 AND observaciones LIKE $2
+        `;
+        const stockViejoRows = await client.query(selectStockQuery, [carroId, uuidPattern]);
+
+        if (stockViejoRows.rows.length > 0) {
+            for (const stockViejo of stockViejoRows.rows) {
+                const cantidadUnidadesARevertir = Math.abs(parseFloat(stockViejo.cantidad) || 1);
+                
+                const revertirStockMovimientosQuery = `
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `;
+                await client.query(revertirStockMovimientosQuery, [cantidadUnidadesARevertir, stockViejo.articulo_numero]);
+                
+                await client.query(`DELETE FROM stock_ventas_movimientos WHERE carro_id = $1 AND observaciones LIKE $2`, [carroId, uuidPattern]);
+                
+                const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+                await recalcularStockConsolidado(client, stockViejo.articulo_numero);
+            }
+        }
+        
+        await client.query('COMMIT');
+        
+        res.json({
+            message: 'Ingreso manual eliminado por UUID correctamente'
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ ERROR AL ELIMINAR INGRESO MANUAL POR UUID:', error);
+        res.status(500).json({ error: 'Error al eliminar ingreso manual' });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
-    eliminarIngresoManual
+    eliminarIngresoManual,
+    eliminarIngresoManualPorUUID
 };

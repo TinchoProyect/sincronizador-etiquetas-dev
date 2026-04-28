@@ -1142,6 +1142,10 @@ router.put('/carro/:carroId/articulo/:articuloId', async (req, res) => {
 const { registrarMovimientoStockVentas } = require('../controllers/stockVentasMovimientos');
 router.post('/stock-ventas-movimientos', registrarMovimientoStockVentas);
 
+// ✅ Ruta para editar un ingreso manual atómicamente
+const { editarIngresoManual } = require('../controllers/editarIngresoManual');
+router.put('/carro/:carroId/ingreso-manual-editar/:uuid', editarIngresoManual);
+
 // ==========================================
 // RUTAS PARA ABRIR CAJA
 // ==========================================
@@ -1328,13 +1332,16 @@ router.put('/articulos/:articuloId/toggle-produccion', async (req, res) => {
 });
 
 // Importar el controlador de eliminación de ingresos manuales
-const { eliminarIngresoManual } = require('../controllers/eliminarIngresoManual');
+const { eliminarIngresoManual, eliminarIngresoManualPorUUID } = require('../controllers/eliminarIngresoManual');
 
 // Importar el controlador de guardado de ingredientes
 const { obtenerIngredientesConsolidadosCarro, ajustarStockIngrediente } = require('../controllers/guardadoIngredientes');
 
-// Ruta para eliminar físicamente un ingreso manual
+// Ruta para eliminar físicamente un ingreso manual (antigua)
 router.delete('/carro/:carroId/ingreso-manual/:ingresoId', eliminarIngresoManual);
+
+// Ruta para eliminar físicamente un ingreso manual por UUID
+router.delete('/carro/:carroId/ingreso-manual-uuid/:uuid', eliminarIngresoManualPorUUID);
 
 // ==========================================
 // RUTAS PARA GUARDADO DE INGREDIENTES
@@ -2180,12 +2187,12 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     COALESCE(i.nombre, a.nombre) as ingrediente_nombre,
                     COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
                     'stock_ventas_movimientos' as fuente_datos,
-                    NULL as observaciones,
+                    svm.observaciones,
                     NULL as ingrediente_destino_nombre
                 FROM stock_ventas_movimientos svm
                 LEFT JOIN articulos a ON a.numero = svm.articulo_numero
                 LEFT JOIN ingredientes_movimientos im ON im.carro_id = svm.carro_id 
-                    AND im.observaciones = svm.articulo_numero 
+                    AND (im.observaciones = svm.articulo_numero OR (im.observaciones LIKE '%[UUID:%' AND im.observaciones = svm.observaciones))
                     AND im.tipo = 'ingreso'
                     AND ABS(im.kilos - ABS(svm.kilos)) < 0.01
                 LEFT JOIN ingredientes i ON i.id = im.ingrediente_id
@@ -2228,15 +2235,16 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     im.kilos,
                     im.carro_id,
                     im.ingrediente_id,
-                    im.observaciones as articulo_numero,
+                    SPLIT_PART(im.observaciones, ' ', 1) as articulo_numero,
                     a.nombre as articulo_nombre,
                     a.codigo_barras,
                     i.nombre as ingrediente_nombre,
                     'simple' as tipo_articulo,
-                    'ingredientes_movimientos' as fuente_datos
+                    'ingredientes_movimientos' as fuente_datos,
+                    im.observaciones
                 FROM ingredientes_movimientos im
                 JOIN ingredientes i ON i.id = im.ingrediente_id
-                LEFT JOIN articulos a ON a.numero = im.observaciones
+                LEFT JOIN articulos a ON a.numero = SPLIT_PART(im.observaciones, ' ', 1)
                 WHERE im.carro_id = $1 AND im.tipo = 'ingreso'
 
                 UNION ALL
@@ -2252,7 +2260,9 @@ router.get('/carro/:id/ingresos-manuales', async (req, res) => {
                     svm.codigo_barras,
                     a.nombre as ingrediente_nombre,
                     COALESCE(svm.origen_ingreso, 'simple') as tipo_articulo,
-                    'stock_ventas_movimientos' as fuente_datos
+                    'stock_ventas_movimientos' as fuente_datos,
+                    svm.observaciones
+
                 FROM stock_ventas_movimientos svm
                 LEFT JOIN articulos a ON a.numero = svm.articulo_numero
                 WHERE svm.carro_id = $1 
