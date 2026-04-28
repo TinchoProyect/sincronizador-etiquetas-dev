@@ -1701,6 +1701,7 @@ router.post('/stock-ventas-movimientos/batch', async (req, res) => {
 // =========================
 
 const { marcarCarroPreparado } = require('../controllers/marcarCarroPreparado');
+const { revertirCarroPreparado } = require('../controllers/revertirCarroPreparado');
 const { finalizarProduccion } = require('../controllers/finalizarProduccion');
 const { registrarMovimientoIngrediente } = require('../controllers/ingredientesMovimientos');
 const { obtenerArticulosParaEtiquetas } = require('../controllers/obtenerArticulosParaEtiquetas');
@@ -1928,6 +1929,25 @@ router.post('/carro/:id/preparado', async (req, res, next) => {
         console.error('Error en ruta /carro/:id/preparado:', error);
         res.status(500).json({
             error: 'Error al marcar el carro como preparado',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Ruta: POST /api/produccion/carro/:id/revertir-preparado
+ * Descripción: Revierte la fase de preparación, eliminando egresos y devolviendo a fase de edición.
+ */
+router.post('/carro/:id/revertir-preparado', async (req, res, next) => {
+    try {
+        if (!req.db) {
+            throw new Error('No hay conexión a la base de datos disponible');
+        }
+        await revertirCarroPreparado(req, res);
+    } catch (error) {
+        console.error('Error en ruta /carro/:id/revertir-preparado:', error);
+        res.status(500).json({
+            error: 'Error al revertir la preparación del carro',
             detalle: error.message
         });
     }

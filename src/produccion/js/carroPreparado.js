@@ -2,6 +2,7 @@
 export async function actualizarVisibilidadBotones() {
     const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const btnCarroPreparado = document.getElementById('carro-preparado');
+    const btnRevertirPreparado = document.getElementById('revertir-preparado');
     const btnFinalizarProduccion = document.getElementById('finalizar-produccion');
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
     const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
@@ -11,6 +12,7 @@ export async function actualizarVisibilidadBotones() {
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
         if (btnCarroPreparado) btnCarroPreparado.style.display = 'none';
+        if (btnRevertirPreparado) btnRevertirPreparado.style.display = 'none';
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'none';
@@ -39,6 +41,9 @@ export async function actualizarVisibilidadBotones() {
                     btnCarroPreparado.textContent = 'Carro listo para producir';
                     btnCarroPreparado.classList.remove('procesando');
                 }
+                if (btnRevertirPreparado) {
+                    btnRevertirPreparado.style.display = 'none';
+                }
                 if (btnFinalizarProduccion) {
                     btnFinalizarProduccion.style.display = 'none';
                 }
@@ -57,6 +62,10 @@ export async function actualizarVisibilidadBotones() {
                 // Carro preparado - mostrar botón de finalizar y orden de producción, ocultar agregar artículos
                 if (btnCarroPreparado) {
                     btnCarroPreparado.style.display = 'none';
+                }
+                if (btnRevertirPreparado) {
+                    btnRevertirPreparado.style.display = 'inline-block';
+                    btnRevertirPreparado.disabled = false;
                 }
                 if (btnFinalizarProduccion) {
                     btnFinalizarProduccion.style.display = 'inline-block';
@@ -815,6 +824,95 @@ export async function marcarCarroPreparado(carroIdParam) {
     }
 }
 
+// Función para revertir la preparación de un carro
+export async function revertirCarroPreparado(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+
+    if (!carroId || carroId === 'null' || carroId === 'undefined') {
+        console.error('No hay carro seleccionado (Dual-State)');
+        return;
+    }
+
+    // Confirmación del usuario
+    if (!confirm('¿Estás seguro de que deseas revertir este carro a estado de edición?\n\nLos insumos descontados serán devueltos temporalmente al inventario.')) {
+        return;
+    }
+
+    const btnRevertir = document.getElementById('revertir-preparado');
+    if (btnRevertir) {
+        btnRevertir.disabled = true;
+        btnRevertir.classList.add('procesando');
+        btnRevertir.textContent = 'Revirtiendo...';
+    }
+
+    try {
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+
+        if (!colaborador) {
+            throw new Error('No hay colaborador activo');
+        }
+
+        const response = await fetch(`/api/produccion/carro/${carroId}/revertir-preparado`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                usuarioId: colaborador.id
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Error HTTP ${response.status}`);
+        }
+
+        mostrarNotificacion('Preparación revertida exitosamente. El carro vuelve a estar en edición.', false);
+
+        // Actualizar UI y paneles de resumen
+        await actualizarVisibilidadBotones();
+        
+        if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+            const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            await window.mostrarResumenIngredientes(ingredientes);
+            console.log('✅ [REVERSIÓN] Resumen de ingredientes actualizado');
+        }
+
+        if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
+            const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+            window.mostrarResumenMixes(mixes);
+            console.log('✅ [REVERSIÓN] Resumen de mixes actualizado');
+        }
+
+        if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
+            const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
+            if (articulos && articulos.length > 0) {
+                window.mostrarResumenArticulos(articulos);
+                const seccionArticulos = document.getElementById('resumen-articulos');
+                if (seccionArticulos) {
+                    seccionArticulos.style.display = 'block';
+                }
+                console.log('✅ [REVERSIÓN] Resumen de artículos externos actualizado');
+            }
+        }
+
+        // Disparar evento personalizado para que carro.js actualice la vista (artículos e ingresos manuales)
+        const event = new CustomEvent('carroEstadoCambiado', { detail: { carroId } });
+        document.dispatchEvent(event);
+
+    } catch (error) {
+        console.error('Error al revertir la preparación del carro:', error);
+        mostrarNotificacion(`Error: ${error.message}`, true);
+    } finally {
+        if (btnRevertir) {
+            btnRevertir.disabled = false;
+            btnRevertir.classList.remove('procesando');
+            btnRevertir.innerHTML = '<i class="fas fa-undo"></i>';
+        }
+    }
+}
+
 // Función para finalizar la producción de un carro
 export async function finalizarProduccion(carroIdParam) {
     const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -1278,3 +1376,4 @@ async function calcularMermaProduccion(carroId) {
 
 // Hacer la función disponible globalmente
 window.calcularMermaProduccion = calcularMermaProduccion;
+window.revertirCarroPreparado = revertirCarroPreparado;
