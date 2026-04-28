@@ -147,6 +147,7 @@ class RutasModel {
                 p.estado_logistico,
                 p.bloqueo_entrega,
                 p.fecha_asignacion_ruta,
+                p.fecha_entrega_real,
                 p.comprobante_lomasoft,
                 p.id_factura_lomasoft,
                 COALESCE(

@@ -136,8 +136,104 @@ class AuditoriasController {
                 for (let i = 0; i < paradas.length; i++) {
                     const cliente = paradas[i];
                     // Buscar PARADA semántica posterior al cursor
-                    const clienteEvt = paradasSemanticas.find(p => p.inicio >= cursorTimestamp && GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, p.lat, p.lng) <= 150);
+                    let clienteEvt = paradasSemanticas.find(p => p.inicio >= cursorTimestamp && GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, p.lat, p.lng) <= 150);
                     
+                    if (clienteEvt) {
+                        clienteEvt.metodo_conciliacion = 'Semántico (visit)';
+                    } else {
+                        // TICKET #077: Nivel 2 (Anclaje Heurístico)
+                        if (cliente.fecha_entrega_real) {
+                            const tsEntrega = new Date(cliente.fecha_entrega_real).getTime();
+                            if (tsEntrega >= msInicio && tsEntrega <= msFin) {
+                                // Ventana de +/- 1 hr (3,600,000 ms)
+                                const pVentana = puntosDb.filter(p => p.timestamp >= (tsEntrega - 3600000) && p.timestamp <= (tsEntrega + 3600000));
+                                const pCerca = pVentana.filter(p => GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, p.lat, p.lng) <= 150);
+                                if (pCerca.length > 0) {
+                                    clienteEvt = {
+                                        inicio: pCerca[0].timestamp,
+                                        fin: pCerca[pCerca.length - 1].timestamp,
+                                        lat: pCerca[Math.floor(pCerca.length / 2)].lat,
+                                        lng: pCerca[Math.floor(pCerca.length / 2)].lng,
+                                        metodo_conciliacion: 'Heurístico (Timestamp App)'
+                                    };
+                                }
+                            }
+                        }
+                    }
+
+                    if (!clienteEvt) {
+                        // TICKET #077: Nivel 3 (Clustering Geofísico - Búsqueda Ciega)
+                        const pPosteriores = puntosDb.filter(p => p.timestamp >= cursorTimestamp);
+                        let inicioGeofisico = null;
+                        let finGeofisico = null;
+                        let puntosGeofisicos = [];
+
+                        for (const p of pPosteriores) {
+                            const d = GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, p.lat, p.lng);
+                            if (d <= 50) { // Radio ampliado a 50 metros
+                                if (!inicioGeofisico) inicioGeofisico = p.timestamp;
+                                finGeofisico = p.timestamp;
+                                puntosGeofisicos.push(p);
+                            } else if (inicioGeofisico && (p.timestamp - finGeofisico > 60000)) {
+                                // Cortar el cluster si sale y no vuelve en 1 minuto
+                                break;
+                            }
+                        }
+
+                        if (inicioGeofisico && finGeofisico && (finGeofisico - inicioGeofisico >= 120000)) { // Delta T > 2 min
+                            clienteEvt = {
+                                inicio: inicioGeofisico,
+                                fin: finGeofisico,
+                                lat: puntosGeofisicos[Math.floor(puntosGeofisicos.length / 2)].lat,
+                                lng: puntosGeofisicos[Math.floor(puntosGeofisicos.length / 2)].lng,
+                                metodo_conciliacion: 'Calculado (Geofísico)'
+                            };
+                        }
+                    }
+
+                    if (!clienteEvt) {
+                        // TICKET #077: Nivel 4 (Rastreo Geográfico Total - Prioridad Coordenada sobre Tiempo)
+                        let inicioTotal = null;
+                        let finTotal = null;
+                        let puntosTotal = [];
+
+                        for (const p of puntosDb) {
+                            const d = GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, p.lat, p.lng);
+                            if (d <= 100) {
+                                if (!inicioTotal) inicioTotal = p.timestamp;
+                                finTotal = p.timestamp;
+                                puntosTotal.push(p);
+                            } else if (inicioTotal && (p.timestamp - finTotal > 60000)) {
+                                break;
+                            }
+                        }
+
+                        if (puntosTotal.length > 0) {
+                            clienteEvt = {
+                                inicio: inicioTotal,
+                                fin: finTotal,
+                                lat: puntosTotal[Math.floor(puntosTotal.length / 2)].lat,
+                                lng: puntosTotal[Math.floor(puntosTotal.length / 2)].lng,
+                                metodo_conciliacion: 'Calculado (Geofísico Total)'
+                            };
+                            
+                            debugLog.paso4_misses.push({
+                                cliente: cliente.cliente_nombre,
+                                estado: 'Forzado Nivel 4',
+                                razon_miss_nivel3: `Delta T era ${Math.round((finTotal - inicioTotal)/1000)}s (menor a 120s) o Radio era mayor a 50m`,
+                                puntos_radio_100m: puntosTotal.length,
+                                inicio: GoogleTimelineParser.formatearFecha(new Date(inicioTotal)),
+                                fin: GoogleTimelineParser.formatearFecha(new Date(finTotal))
+                            });
+                        } else {
+                            debugLog.paso4_misses.push({
+                                cliente: cliente.cliente_nombre,
+                                estado: 'MISS DEFINITIVO',
+                                razon: '0 puntos en radio de 100m en todo el día'
+                            });
+                        }
+                    }
+
                     if (clienteEvt) {
                         const trasladoEvt = trasladosSemanticos.find(t => t.inicio >= cursorTimestamp && t.fin <= clienteEvt.inicio + 60000);
                         const inicioTraslado = trasladoEvt ? trasladoEvt.inicio : cursorTimestamp;
@@ -167,11 +263,11 @@ class AuditoriasController {
                             distancia_geocerca_metros: Math.round(GoogleTimelineParser.calcularDistanciaMetros(cliente.latitud, cliente.longitud, clienteEvt.lat, clienteEvt.lng)),
                             hora_inicio: clienteEvt.inicio,
                             hora_fin: clienteEvt.fin,
-                            metodo_conciliacion: 'Semántico (visit)'
+                            metodo_conciliacion: clienteEvt.metodo_conciliacion || 'Semántico (visit)'
                         });
                         cursorTimestamp = clienteEvt.fin;
                     } else {
-                        console.log(`[FASE 3] Cliente no detectado semánticamente: ${cliente.cliente_nombre}`);
+                        console.log(`[FASE 3] Cliente no detectado en ningún nivel: ${cliente.cliente_nombre}`);
                     }
                 }
 
