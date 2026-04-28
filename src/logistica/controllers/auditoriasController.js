@@ -239,6 +239,31 @@ class AuditoriasController {
                         const inicioTraslado = trasladoEvt ? trasladoEvt.inicio : cursorTimestamp;
                         const finTraslado = trasladoEvt ? trasladoEvt.fin : clienteEvt.inicio;
                         
+                        let puntosEmpiricosTramo = puntosDb.filter(p => p.timestamp >= inicioTraslado && p.timestamp <= finTraslado);
+
+                        // TICKET #078: Cierre Geométrico del Tramo Inicial
+                        if (i === 0 && nodoInicio) {
+                            const puntosPrevios = puntosDb.filter(p => p.timestamp < inicioTraslado).reverse();
+                            let puntosSuavizado = [];
+                            for (const pp of puntosPrevios) {
+                                const d = GoogleTimelineParser.calcularDistanciaMetros(nodoInicio.latitud, nodoInicio.longitud, pp.lat, pp.lng);
+                                if (d <= 200) {
+                                    puntosSuavizado.unshift(pp);
+                                } else if (puntosSuavizado.length > 0) {
+                                    break;
+                                }
+                            }
+                            
+                            const anclajeDeposito = {
+                                timestamp: inicioTraslado - 1,
+                                lat: parseFloat(nodoInicio.latitud),
+                                lng: parseFloat(nodoInicio.longitud),
+                                isForzado: true
+                            };
+                            
+                            puntosEmpiricosTramo = [anclajeDeposito, ...puntosSuavizado, ...puntosEmpiricosTramo];
+                        }
+
                         tramosExtraidos.push({
                             tipo_tramo: 'TRASLADO',
                             nombre_ref: `Hacia ${cliente.cliente_nombre}`,
@@ -250,7 +275,7 @@ class AuditoriasController {
                             hora_inicio: inicioTraslado,
                             hora_fin: finTraslado,
                             metodo_conciliacion: 'Híbrido (Anclaje Semántico + Trazas Crudas)',
-                            trace_empirico: puntosDb.filter(p => p.timestamp >= inicioTraslado && p.timestamp <= finTraslado) // PASO B: Puntos Crudos Saneados
+                            trace_empirico: puntosEmpiricosTramo
                         });
 
                         tramosExtraidos.push({
@@ -393,6 +418,18 @@ class AuditoriasController {
                     
                     if (entradaCliente && salidaCliente) {
                         const puntosTraslado = puntosDb.filter(p => p.timestamp >= cursorTimestamp && p.timestamp <= entradaCliente.timestamp);
+                        
+                        // TICKET #078: Cierre Geométrico del Tramo Inicial (Fase 2)
+                        if (i === 0 && nodoInicio) {
+                            const anclajeDeposito = {
+                                timestamp: cursorTimestamp - 1,
+                                lat: parseFloat(nodoInicio.latitud),
+                                lng: parseFloat(nodoInicio.longitud),
+                                isForzado: true
+                            };
+                            puntosTraslado.unshift(anclajeDeposito);
+                        }
+
                         if (puntosTraslado.length > 0) {
                             tramosExtraidos.push({
                                 tipo_tramo: 'TRASLADO',
