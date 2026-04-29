@@ -22,7 +22,7 @@ async function autoAsignarDomicilios(pool) {
                 INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
                 WHERE 
                     p.secuencia = 'Pedido_Listo'
-                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento')
+                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro')
                     AND p.activo = true
                     AND p.id_domicilio_entrega IS NULL
             ),
@@ -142,7 +142,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.secuencia = 'Pedido_Listo'
             
             -- Filtro 2: Estado exacto (Whitelisting de estados válidos para reparto)
-            AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento')
+            AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro')
             
             -- Filtro 3: Solo activos
             AND p.activo = true

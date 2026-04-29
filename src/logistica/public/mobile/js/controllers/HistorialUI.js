@@ -75,7 +75,7 @@ async function abrirDetalleRutaHistorial(idRuta) {
             
             let html = '';
             ruta.entregas.forEach(e => {
-                const esRetiro = e.estado === 'Orden de Tratamiento';
+                const esRetiro = e.estado === 'Orden de Tratamiento' || e.estado === 'Orden de Retiro';
                 const color = esRetiro ? '#dc2626' : '#2563eb';
                 
                 let articulosHtml = '<ul style="margin: 0.5rem 0 0.5rem 1.5rem; font-size: 0.85rem; color: #475569; padding-left:0;">';
@@ -93,7 +93,7 @@ async function abrirDetalleRutaHistorial(idRuta) {
                 html += `
                 <div style="border-left: 3px solid ${color}; margin-bottom: 1rem; background: #fff; padding: 12px; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                     <div style="font-weight: bold; margin-bottom: 4px; color:#1e293b; display: flex; justify-content: space-between; align-items: center;">
-                        <span>${esRetiro ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${e.id} ${badge}</span>
+                        <span>${esRetiro ? (e.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${e.id} ${badge}</span>
                         <span style="color:#0f172a; font-size:1.1rem;">${totalFormateado}</span>
                     </div>
                     <div style="font-size: 0.95rem; color: #334155; margin-bottom: 4px;">👤 ${e.cliente_nombre}</div>

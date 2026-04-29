@@ -315,8 +315,8 @@ function renderizarPedidos() {
 
     // ORDENAMIENTO: Retiros primero, luego por fecha/id (implícito)
     const pedidosOrdenados = [...state.pedidos].sort((a, b) => {
-        const aEsRetiro = a.estado === 'Orden de Tratamiento';
-        const bEsRetiro = b.estado === 'Orden de Tratamiento';
+        const aEsRetiro = a.estado === 'Orden de Tratamiento' || a.estado === 'Orden de Retiro';
+        const bEsRetiro = b.estado === 'Orden de Tratamiento' || b.estado === 'Orden de Retiro';
         if (aEsRetiro && !bEsRetiro) return -1;
         if (!aEsRetiro && bEsRetiro) return 1;
         return 0;
@@ -326,8 +326,9 @@ function renderizarPedidos() {
         const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
         const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
         const esTratamiento = pedido.estado === 'Orden de Tratamiento';
+        const esOrdenRetiro = pedido.estado === 'Orden de Retiro';
         const esDevolucion = esTratamiento && pedido.estado_tratamiento === 'COMPLETADO';
-        const esRetiro = esTratamiento && !esDevolucion;
+        const esRetiro = (esTratamiento && !esDevolucion) || esOrdenRetiro;
 
         // Estilos específicos para Tratamientos
         let estiloCard = '';
@@ -357,7 +358,7 @@ function renderizarPedidos() {
                      title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}">
                 </div>
                 ` : `
-                <div class="pedido-domicilio-indicator" style="background-color: #f59e0b;" title="Orden de Tratamiento (Sujeto a verificación en check-in)">
+                <div class="pedido-domicilio-indicator" style="background-color: #f59e0b;" title="Operación de Retiro">
                 </div>
                 `}
                 
@@ -367,14 +368,15 @@ function renderizarPedidos() {
                         ${iconoCliente} ${esRetiro ? 'RETIRO' : (esDevolucion ? 'ENTREGA MANT.' : 'Cliente')} #${clienteId}
                     </span>
                     <div style="display:flex; gap:0.25rem; align-items:center;">
-                        ${!esTratamiento ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`) : (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`)}
+                        ${!esTratamiento && !esOrdenRetiro ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`) : ''}
+                        ${esTratamiento ? (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`) : ''}
                         <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
                             ${pedido.estado_logistico || 'PENDIENTE'}
                         </span>
                     </div>
                 </div>
 
-                ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 Orden de Tratamiento</div>` : ''}
+                ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ${esOrdenRetiro ? 'ORDEN DE RETIRO' : 'Orden de Tratamiento'}</div>` : ''}
                 ${esDevolucion ? `<div class="badge-retiro-visual" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🚚 Entrega Mantenimiento</div>` : ''}
 
                 <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
@@ -389,10 +391,10 @@ function renderizarPedidos() {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
                     ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
                     <div style="display:flex; gap:0.25rem;">
-                        ${!pedido.comprobante_lomasoft && !esTratamiento ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
-                        ${esRetiro ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
-                        ${esRetiro && pedido.tiene_checkin ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
-                        ${esRetiro ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
+                        ${!pedido.comprobante_lomasoft && !esTratamiento && !esOrdenRetiro ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
+                        ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
+                        ${esTratamiento && pedido.tiene_checkin && !esDevolucion ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
+                        ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
                         <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                     </div>
                 </div>
@@ -762,8 +764,9 @@ function renderizarTarjetaRuta(ruta) {
             // DETECTAR SI ES RETIRO (O SI EL GRUPO CONTIENE UN RETIRO)
             // Asumimos que si agrupa por parada, todos son del mismo tipo o al menos mostramos estilo si el primero lo es.
             const esTratamiento = primerPedido.estado === 'Orden de Tratamiento';
+            const esOrdenRetiro = primerPedido.estado === 'Orden de Retiro';
             const esDevolucion = esTratamiento && primerPedido.estado_tratamiento === 'COMPLETADO';
-            const esRetiro = esTratamiento && !esDevolucion;
+            const esRetiro = (esTratamiento && !esDevolucion) || esOrdenRetiro;
 
             // Estilos Austeros para Retiro/Devolucion en Ruta
             let estiloItem = 'background-color: white;';

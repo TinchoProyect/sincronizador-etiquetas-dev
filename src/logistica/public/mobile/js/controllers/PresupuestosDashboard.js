@@ -70,7 +70,7 @@ const DashboardComercial = {
             if (data.success && data.data) {
                 const isRetiro = this.estadoActual === 'retiros';
                 let filtrados = data.data.filter(p => {
-                    const esCategoriaRetiro = p.categoria === 'Orden de Tratamiento';
+                    const esCategoriaRetiro = p.categoria === 'Orden de Tratamiento' || p.categoria === 'Orden de Retiro';
                     return isRetiro ? esCategoriaRetiro : !esCategoriaRetiro;
                 });
 
@@ -122,7 +122,7 @@ const DashboardComercial = {
         contenedor.innerHTML = '';
 
         this.listaMemoria.forEach(p => {
-            const esRetiro = p.categoria === 'Orden de Tratamiento';
+            const esRetiro = p.categoria === 'Orden de Tratamiento' || p.categoria === 'Orden de Retiro';
             const card = document.createElement('div');
             card.className = 'ticket-card compact-card'; // Clase ultra-compacta
             card.style.borderLeft = `3px solid ${esRetiro ? '#ef4444' : '#10b981'}`;

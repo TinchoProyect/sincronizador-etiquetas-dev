@@ -91,8 +91,9 @@ function renderizarEntregas() {
         const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
         const primerEntrega = parada.entregas[0];
         const esOrdenTratamiento = primerEntrega.estado === 'Orden de Tratamiento';
+        const esOrdenRetiro = primerEntrega.estado === 'Orden de Retiro';
         const esEntregaTratamientoParada = esOrdenTratamiento && primerEntrega.estado_tratamiento === 'COMPLETADO';
-        const esRetiro = esOrdenTratamiento && !esEntregaTratamientoParada;
+        const esRetiro = (esOrdenTratamiento && !esEntregaTratamientoParada) || esOrdenRetiro;
 
         const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
         const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
@@ -119,14 +120,14 @@ function renderizarEntregas() {
 
         const pedidosListHTML = parada.entregas.map(entrega => {
             const esOrdenTratamiento = entrega.estado === 'Orden de Tratamiento';
+            const esOrdenRetiro = entrega.estado === 'Orden de Retiro';
             const esEntregaTratamiento = esOrdenTratamiento && entrega.estado_tratamiento === 'COMPLETADO';
-            const esItemRetiro = esOrdenTratamiento && !esEntregaTratamiento;
+            const esItemRetiro = (esOrdenTratamiento && !esEntregaTratamiento) || esOrdenRetiro;
             const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
             
-            const isReconciled = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
-            const badgeLomasoft = isReconciled
-                ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Lomasoft', 'Comprobante: ${entrega.comprobante_lomasoft || entrega.id_factura_lomasoft}', 'info')">✅ Lomasoft</span>`
-                : (!esOrdenTratamiento ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
+            const lomasoft = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
+            const labelPteFac = (!esOrdenTratamiento && !esOrdenRetiro ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
+            const badgeLomasoft = lomasoft ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Lomasoft: ${lomasoft}</span>` : labelPteFac;
 
             let textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
             let backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');
@@ -188,7 +189,7 @@ function renderizarEntregas() {
                 <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
                     <div style="flex: 1; min-width: 140px;">
                         <div style="font-weight: 600; color: #475569; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
-                            <span>${esOrdenTratamiento ? (esEntregaTratamiento ? '📦 Entrega de Tratamiento #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${entrega.id_presupuesto.toString().replace('RT-', '')}</span>
+                            <span>${esOrdenTratamiento ? (esEntregaTratamiento ? '📦 Entrega de Tratamiento #' : '↩️ Orden de Tratamiento #') : (esOrdenRetiro ? '↩️ ORDEN DE RETIRO #' : '📦 Pedido #')}${entrega.id_presupuesto.toString().replace('RT-', '')}</span>
                             ${badgeLomasoft}
                         </div>
                         ${entrega.total ? `<div style="font-size: 0.85rem; color: #059669; margin-top: 4px;">💰 $${parseFloat(entrega.total).toFixed(2)}</div>` : ''}
@@ -202,7 +203,7 @@ function renderizarEntregas() {
                             ❌ Quitar
                         </button>
                         <button class="btn-confirmar-sm" 
-                                onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esOrdenTratamiento ? (esItemRetiro ? 'retiro' : 'entrega_tratamiento') : 'entrega'}')" 
+                                onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esOrdenTratamiento && !esItemRetiro ? 'entrega_tratamiento' : (esItemRetiro ? 'retiro' : 'entrega')}')" 
                                 ${disableMainBtn ? 'disabled' : ''}
                                 style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${backgroundBoton}; color: ${colorTextoBoton}; border: none; min-width: 100px;">
                             ${textoBoton}
@@ -497,13 +498,13 @@ window.abrirModalAgregarPedidos = async () => {
             }
 
             listaContainer.innerHTML = disponibles.map(p => {
-                const esIngreso = p.estado === 'Orden de Tratamiento';
+                const esIngreso = p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro';
                 const iconColor = esIngreso ? '#dc2626' : '#2563eb';
                 return `
                 <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f1f5f9;">
                     <input type="checkbox" class="chk-agregar-pedido" value="${p.id}" onchange="window.actualizarBtnAgregar()" style="width: 22px; height: 22px; accent-color: #8b5cf6; flex-shrink: 0;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${p.id}</div>
+                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? (p.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${p.id}</div>
                         <div style="font-size: 0.9rem; color: #334155; margin-top: 2px;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
                         <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">📍 ${p.domicilio_direccion || 'Sin domicilio'}</div>
                     </div>

@@ -1,6 +1,8 @@
 {
-  "numero": "GDF5X500G",
-  "nombre": "Grana de Flor 5 x 500 g",
-  "codigo_barras": "76328500",
-  "cantidad": 2
+  "articulo": {
+    "numero": "TSEx3",
+    "nombre": "Tom/Sec/Esp x 3 kg",
+    "codigo_barras": "1568753151"
+  },
+  "cantidad": "1.00"
 }

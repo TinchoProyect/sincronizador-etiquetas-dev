@@ -19,7 +19,7 @@ async function cargarPendientes() {
                     <button onclick="asignarSeleccionados()" id="btn-asignar-sel" style="background:#10b981; color:white; padding:0.75rem 0.5rem; border:none; border-radius:0.5rem; font-weight:bold; flex:1; opacity:0.5; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);" disabled>📌 Asignar (0)</button>
                 </div>
                 ${result.data.map(p => {
-                    const esIngreso = p.estado === 'Orden de Tratamiento';
+                    const esIngreso = p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro';
                     const iconColor = esIngreso ? '#dc2626' : '#2563eb';
                     const borderColor = esIngreso ? '#fca5a5' : '#bfdbfe';
                     
@@ -29,7 +29,7 @@ async function cargarPendientes() {
                         badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #10b981; border-radius: 4px; display: inline-block;">✅ Lomasoft: ${p.comprobante_lomasoft}</div>`;
                     } else if (p.id_factura_lomasoft) {
                         badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #10b981; border-radius: 4px; display: inline-block;">✅ Lomasoft: ${p.id_factura_lomasoft}</div>`;
-                    } else {
+                    } else if (!esIngreso) {
                         badgeLomasoft = `<div style="font-size: 0.75rem; color: white; font-weight: bold; margin-top: 6px; padding: 4px 8px; background: #475569; border-radius: 4px; display: inline-block;">⏳ Pte. Facturación</div>`;
                     }
                     
@@ -40,7 +40,7 @@ async function cargarPendientes() {
                         </div>
                         <div style="flex: 1;">
                             <div class="entrega-header" style="margin-bottom: 0.5rem;">
-                                <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso ? '↩️ Orden de Tratamiento #' : '📦 Pedido #'}${p.id}</div>
+                                <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso ? (p.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${p.id}</div>
                                 <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor};">${p.estado_logistico || 'Pendiente'}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
