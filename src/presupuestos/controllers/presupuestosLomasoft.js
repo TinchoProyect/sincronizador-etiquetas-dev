@@ -13,7 +13,10 @@ const buscarCandidatasLomasoft = async (req, res) => {
                 SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - COALESCE(p.descuento, 0)) AS monto_total,
                 json_agg(
                     COALESCE(a.numero, pd.articulo)
-                ) FILTER (WHERE pd.articulo IS NOT NULL) as codigos_articulos
+                ) FILTER (WHERE pd.articulo IS NOT NULL) as codigos_articulos,
+                json_agg(
+                    COALESCE(a.numero, pd.articulo) || ' - ' || COALESCE(a.nombre, 'Sin descripción')
+                ) FILTER (WHERE pd.articulo IS NOT NULL) as detalles_articulos
             FROM presupuestos p
             LEFT JOIN presupuestos_detalles pd ON pd.id_presupuesto = p.id
             LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
@@ -229,34 +232,44 @@ const buscarCandidatasLomasoft = async (req, res) => {
             totalCandidatas = lomasoftData.total || candidatasArray.length;
         }
 
-        // Fase 3: Interceptor de facturas ya conciliadas (Bloqueo 1-a-1)
-        if (candidatasArray.length > 0) {
-            const comprobantes = candidatasArray.map(c => c.comprobante_formateado).filter(Boolean);
-            if (comprobantes.length > 0) {
-                const checkSql = `
-                    SELECT id, comprobante_lomasoft 
-                    FROM presupuestos 
-                    WHERE comprobante_lomasoft = ANY($1::text[]) 
-                      AND comprobante_lomasoft IS NOT NULL
-                      AND activo = true
-                      AND estado != 'Anulado'
-                `;
-                const checkRes = await req.db.query(checkSql, [comprobantes]);
-
-                const vinculados = {};
-                checkRes.rows.forEach(row => {
-                    vinculados[row.comprobante_lomasoft] = row.id;
-                });
-
-                candidatasArray.forEach(c => {
-                    if (vinculados[c.comprobante_formateado]) {
-                        c.ya_conciliada = true;
-                        c.id_presupuesto_local = vinculados[c.comprobante_formateado];
-                    } else {
-                        c.ya_conciliada = false;
-                    }
-                });
+        // Función auxiliar para normalizar formatos de comprobante (ej: 0007-00000147 -> 7-147)
+        const extractNumbers = (str) => {
+            if (!str) return '';
+            const match = str.match(/(\d+)\D+(\d+)/);
+            if (match) {
+                return `${parseInt(match[1], 10)}-${parseInt(match[2], 10)}`;
             }
+            const singleMatch = str.match(/(\d+)/);
+            if (singleMatch) return parseInt(singleMatch[1], 10).toString();
+            return str;
+        };
+
+        // Fase 3: Interceptor de facturas ya conciliadas (Bloqueo Global)
+        if (candidatasArray.length > 0) {
+            const checkSql = `
+                SELECT id, comprobante_lomasoft 
+                FROM presupuestos 
+                WHERE comprobante_lomasoft IS NOT NULL
+                  AND activo = true
+                  AND estado != 'Anulado'
+            `;
+            const checkRes = await req.db.query(checkSql);
+
+            const vinculados = {};
+            checkRes.rows.forEach(row => {
+                const norm = extractNumbers(row.comprobante_lomasoft);
+                if (norm) vinculados[norm] = row.id;
+            });
+
+            candidatasArray.forEach(c => {
+                const normCand = extractNumbers(c.comprobante_formateado);
+                if (normCand && vinculados[normCand]) {
+                    c.ya_conciliada = true;
+                    c.id_presupuesto_local = vinculados[normCand];
+                } else {
+                    c.ya_conciliada = false;
+                }
+            });
         }
 
         // 5. Devolver resultados limpios al Frontend
@@ -264,7 +277,8 @@ const buscarCandidatasLomasoft = async (req, res) => {
             success: true,
             data: candidatasArray,
             total: totalCandidatas,
-            vigia
+            vigia,
+            localData: localData
         });
 
     } catch (error) {

@@ -2703,15 +2703,32 @@
                 // Guardar en variable global temporal para la selección posterior
                 window.MANTENIMIENTO_CANDIDATAS = candidatas;
 
+                const localData = json.localData || {};
+                const montoEsperado = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(localData.monto_total || 0);
+                const fechaEsperada = localData.fecha ? new Date(localData.fecha).toLocaleDateString('es-AR') : 'N/A';
+
                 let tablaHtml = `
-                    <div style="max-height: 400px; overflow-y: auto;">
-                        <table class="table" style="width:100%; text-align:left; border-collapse: collapse; font-size: 0.9em;">
-                            <thead>
-                                <tr style="border-bottom: 2px solid #ccc;">
-                                    <th>Comprobante</th>
-                                    <th>Fecha</th>
-                                    <th>Total</th>
-                                    <th>Acción</th>
+                    <div style="display: flex; gap: 15px; text-align: left; margin-bottom: 15px;">
+                        <!-- SECCIÓN A: LOCAL LAMDA -->
+                        <div style="flex: 1; background: #f8f9fa; border: 1px solid #ced4da; border-radius: 6px; padding: 15px;">
+                            <h5 style="color: #495057; border-bottom: 2px solid #6c757d; padding-bottom: 5px; margin-top: 0; font-size: 1.1em;">A. Origen LAMDA (Nota de crédito local sin conciliar)</h5>
+                            <p style="margin: 5px 0; font-size: 0.9em;"><strong>Comprobante:</strong> ${localData.tipo_comprobante || 'Orden de Retiro'} ${localData.origen_numero_factura ? `(F.Vta Origen: ${localData.origen_numero_factura})` : ''}</p>
+                            <p style="margin: 5px 0; font-size: 0.9em;"><strong>Fecha Base:</strong> <span style="background: #e9ecef; padding: 2px 5px; border-radius: 3px;">${fechaEsperada}</span></p>
+                            <p style="margin: 5px 0; font-size: 0.9em;"><strong>Monto Esperado:</strong> <span style="background: #e9ecef; padding: 2px 5px; border-radius: 3px; font-weight: bold;">${montoEsperado}</span></p>
+                            <p style="margin: 5px 0; font-size: 0.9em;"><strong>Artículos Clave:</strong> ${(localData.detalles_articulos || localData.codigos_articulos || []).join(', ') || articulo}</p>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN B: LOMASOFT -->
+                    <h5 style="text-align: left; margin-bottom: 10px; color: #495057; font-size: 1.1em;">B. Resultados Lomasoft (Notas de Crédito)</h5>
+                    <div style="max-height: 350px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px;">
+                        <table class="table" style="width:100%; text-align:left; border-collapse: collapse; font-size: 0.9em; margin-bottom: 0;">
+                            <thead style="background: #f1f3f5; position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6;">Comprobante ERP</th>
+                                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6;">Fecha NC</th>
+                                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6;">Total NC</th>
+                                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6;">Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2747,9 +2764,9 @@
                 tablaHtml += '<p style="font-size: 0.85em; color: #666; margin-top: 10px; text-align: center;">⚠️ Al confirmar, el stock quedará conciliado y el vínculo será inamovible.</p>';
 
                 Swal.fire({
-                    title: 'Facturas Candidatas (Lomasoft)',
+                    title: 'Conciliación de Comprobantes',
                     html: tablaHtml,
-                    width: '600px',
+                    width: '850px',
                     showConfirmButton: false,
                     showCloseButton: true
                 });

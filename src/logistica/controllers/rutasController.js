@@ -401,7 +401,7 @@ async function cambiarEstado(req, res) {
                         )
                         SELECT 
                             ot.id,
-                            COALESCE((SELECT SUM(kilos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
+                            COALESCE((SELECT SUM(bultos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
                             ot.chofer_nombre,
                             'RETIRO_TRATAMIENTO',
                             (SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
