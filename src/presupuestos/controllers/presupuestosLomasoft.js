@@ -130,15 +130,16 @@ const buscarCandidatasLomasoft = async (req, res) => {
                         const compFormat = `${ptoStr}-${numStr}`;
 
                         const montoPresupuesto = Math.abs(parseFloat(localData.monto_total || 0));
+                        let alerta_monto = false;
                         if (montoPresupuesto > 100) {
                             const diferencia = Math.abs(montoCandidato - montoPresupuesto);
                             if (diferencia > 500) {
-                                vigia.logica_match.push(`[${compFormat}] Descartado por monto: NC tiene $${montoCandidato} vs Presupuesto esperado $${montoPresupuesto}`);
-                                return;
+                                vigia.logica_match.push(`[${compFormat}] Diferencia de monto detectada: NC tiene $${montoCandidato} vs Presupuesto esperado $${montoPresupuesto}`);
+                                alerta_monto = true;
                             }
                         }
                         
-                        vigia.logica_match.push(`[${compFormat}] ¡Aprobado! (Monto: $${montoCandidato}, Fecha: ${r.fecha || r.fecha_emision})`);
+                        vigia.logica_match.push(`[${compFormat}] ${alerta_monto ? '¡Aprobado con alerta!' : '¡Aprobado!'} (Monto: $${montoCandidato}, Fecha: ${r.fecha || r.fecha_emision})`);
 
                         const existe = candidatasArray.find(c => c.comprobante_formateado === compFormat);
                         if (!existe) {
@@ -148,6 +149,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
                                 numero_comprobante: r.numero_comprobante || 0,
                                 comprobante_formateado: compFormat,
                                 tipo_comprobante: r.tipo_comprobante || 'N/C',
+                                alerta_monto: alerta_monto,
                                 fecha: r.fecha || r.fecha_emision,
                                 importe_total: montoCandidato,
                                 articulos: [{

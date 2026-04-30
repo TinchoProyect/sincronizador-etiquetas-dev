@@ -2731,9 +2731,11 @@
                         botonHtml = `<button class="btn btn-sm btn-primary" style="background-color: #007bff; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: pointer;" onclick="seleccionarCandidataMantenimiento(${index}, '${articulo}', '${clienteId}', '${cantidad}', '${idFacturaVenta}')">Asignar</button>`;
                     }
 
+                    let badgeMonto = candidata.alerta_monto ? `<br><span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; display: inline-block; margin-top: 4px;">⚠️ Dif. de Precio Detectada</span>` : '';
+
                     tablaHtml += `
                         <tr style="border-bottom: 1px solid #eee;">
-                            <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small></td>
+                            <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small>${badgeMonto}</td>
                             <td>${new Date(candidata.fecha).toLocaleDateString('es-AR')}</td>
                             <td>${importe}</td>
                             <td style="padding: 8px 0;">${botonHtml}</td>
