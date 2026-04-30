@@ -2025,6 +2025,14 @@
                     }
                 }
 
+                if (item.id_presupuesto_origen) {
+                    subtitulo += `<br><span style="color:#17a2b8; font-weight:bold; font-size:0.85em;">📄 Doc. Origen: #${item.id_presupuesto_origen}</span>`;
+                }
+
+                if (item.observaciones && item.tipo_movimiento !== 'RETIRO_TRATAMIENTO') {
+                    subtitulo += `<br><span style="color:#6c757d; font-style:italic; font-size:0.85em;">📝 Obs: ${item.observaciones}</span>`;
+                }
+
                 const rowId = item.id || '';
                 // QA Bugfix: All items should be selectable for physical treatments/tents, UNLESS they belong to an active tent.
                 let disabled = '';
@@ -2625,12 +2633,29 @@
                     didOpen: () => Swal.showLoading()
                 });
 
+                // [VIGÍA TICKET 028] Inyección solicitada por la Dirección
+                console.log(`\n[VIGÍA TICKET 028] 🛡️ INICIANDO SALTO RELACIONAL...`);
+                const urlPeticion = `/api/produccion/mantenimiento/buscar-orden-retiro/${idFacturaVenta}/${articulo}`;
+                console.log(`[VIGÍA TICKET 028] 📡 Endpoint: ${urlPeticion}`);
+                console.log(`[VIGÍA TICKET 028] 📦 Payload Teórico a agrupar:`, {
+                    cliente_id: clienteId,
+                    articulos_solicitados: [articulo],
+                    doc_origen: idFacturaVenta
+                });
+
                 // [TICKET 29] Salto Relacional: Buscar la Orden de Retiro
-                const resRetiro = await fetch(`/api/produccion/mantenimiento/buscar-orden-retiro/${idFacturaVenta}/${articulo}`);
+                const resRetiro = await fetch(urlPeticion);
                 const retiroData = await resRetiro.json();
 
                 if (!resRetiro.ok || !retiroData.success) {
-                    throw new Error(retiroData.message || retiroData.error || 'No se encontró la Orden de Retiro generada para este bulto.');
+                    const errMsg = retiroData.message || retiroData.error || 'No se encontró la Orden de Retiro generada para este bulto.';
+                    console.error(`\n[VIGÍA TICKET 028] ❌ CRASH EN TÚNEL DE CONCILIACIÓN`);
+                    console.error(`Motivo del rechazo de la API: ${errMsg}`);
+                    console.error(`Data recibida del backend:`, retiroData);
+                    const errorObj = new Error(errMsg);
+                    console.error(`Stack Trace:`, errorObj.stack);
+                    console.error(`=========================================================\n`);
+                    throw errorObj;
                 }
 
                 const idDocumentoAConciliar = retiroData.id_orden_retiro;
@@ -2657,6 +2682,15 @@
                 }
 
                 const candidatas = json.data || [];
+
+                if (json.vigia) {
+                    console.log('\n================ VIGÍA DEPURADOR TÚNEL LOMASOFT (TICKET #021) ================');
+                    console.log('📦 Payload Enviado:', json.vigia.payload);
+                    console.log('📥 Respuesta Cruda LomaSoft:', json.vigia.respuestas_crudas);
+                    console.log('🧠 Lógica de Match (Filtros):');
+                    (json.vigia.logica_match || []).forEach(log => console.log(`   -> ${log}`));
+                    console.log('==============================================================================\n');
+                }
 
                 if (candidatas.length === 0) {
                     return Swal.fire({

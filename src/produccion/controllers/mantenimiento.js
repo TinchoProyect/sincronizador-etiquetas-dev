@@ -31,7 +31,8 @@ async function getStockMantenimiento(req, res) {
                     mm.id_presupuesto_origen,
                     CASE 
                         WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 'LOMASOFT'
-                        ELSE p.origen_facturacion
+                        WHEN p_padre.comprobante_lomasoft IS NOT NULL AND TRIM(p_padre.comprobante_lomasoft) != '' THEN 'LOMASOFT'
+                        ELSE COALESCE(p.origen_facturacion, p_padre.origen_facturacion)
                     END as origen_facturacion,
                     mm.articulo_numero,
                     mm.ingrediente_id,
@@ -39,7 +40,7 @@ async function getStockMantenimiento(req, res) {
                     COALESCE(p.id_cliente::text, ot.id_cliente::text) AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
                     p.id_ruta AS origen_ruta_id,
-                    p.comprobante_lomasoft AS presup_comprobante_lomasoft,
+                    COALESCE(p.comprobante_lomasoft, p_padre.comprobante_lomasoft) AS presup_comprobante_lomasoft,
                     p.fecha AS presup_fecha,
                     p.estado AS estado_presupuesto,
                     mm.cantidad AS stock_mantenimiento,
@@ -52,6 +53,7 @@ async function getStockMantenimiento(req, res) {
                     ot.codigo_qr_hash as hash
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                LEFT JOIN public.presupuestos p_padre ON p.tipo_comprobante = 'Orden de Retiro' AND p.origen_numero_factura = p_padre.id::text
                 LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
                 LEFT JOIN public.clientes c ON COALESCE(p.id_cliente::text, ot.id_cliente::text) = c.cliente_id::text
                 WHERE mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
@@ -497,9 +499,9 @@ async function diagnosticoVigiaAuditor(req, res) {
             };
         });
 
-        // FILTRADO DE SEGURIDAD (Ignorar devoluciones con más de 45 días de antigüedad respecto al retiro)
+        // FILTRADO DE SEGURIDAD (Ignorar devoluciones con más de 30 días de antigüedad respecto al retiro)
         const candidatosConDiagnostico = candidatosBrutos
-            .filter(c => !isNaN(c.diagnostico._score_dias) && c.diagnostico._score_dias <= 45)
+            .filter(c => !isNaN(c.diagnostico._score_dias) && c.diagnostico._score_dias <= 30)
             // ORDENAR: Los matches más cercanos en cantidad primero, luego en fecha
             .sort((a, b) => {
                 if (a.diagnostico._score_diferencia !== b.diagnostico._score_diferencia) {
@@ -508,7 +510,7 @@ async function diagnosticoVigiaAuditor(req, res) {
                 return a.diagnostico._score_dias - b.diagnostico._score_dias;
             });
 
-        debugLog.push(`Candidatos post-filtro (<45 días): ${candidatosConDiagnostico.length}`);
+        debugLog.push(`Candidatos post-filtro (<30 días): ${candidatosConDiagnostico.length}`);
 
         // Diagnóstico global
         let diagnosticoGlobal = 'Comprobante Físico Encontrado';
@@ -2902,6 +2904,19 @@ const desvincularPresupuesto = async (req, res) => {
 const buscarOrdenRetiro = async (req, res) => {
     try {
         const { idFactura, articulo } = req.params;
+
+        // [TICKET 028] Bugfix: Si el idFactura YA ES una Orden de Retiro, devolverlo directamente
+        const checkSelf = await pool.query(`
+            SELECT id as id_orden_retiro
+            FROM public.presupuestos
+            WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
+            LIMIT 1
+        `, [idFactura]);
+
+        if (checkSelf.rows.length > 0) {
+            return res.json({ success: true, id_orden_retiro: checkSelf.rows[0].id_orden_retiro });
+        }
+
         
         const result = await pool.query(`
             SELECT p.id as id_orden_retiro

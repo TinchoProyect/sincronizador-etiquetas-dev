@@ -1,104 +1,24 @@
 const fs = require('fs');
-const path = 'src/logistica/public/mobile/js/controllers/RutaActivaUI.js';
-let content = fs.readFileSync(path, 'utf8');
-const lines = content.split('\n');
-const fixedLines = lines.slice(0, 748);
-content = fixedLines.join('\n') + `
-// --- Carga Contingente Dinámica (Check-in Chofer) ---
+let content = fs.readFileSync('src/produccion/controllers/mantenimiento.js', 'utf8');
 
-window.abrirModalContingencia = async (hash, esEdicion) => {
+const regex = /const buscarOrdenRetiro = async \(req, res\) => \{\r?\n\s*try \{\r?\n\s*const \{ idFactura, articulo \} = req\.params;/;
+const replacement = `const buscarOrdenRetiro = async (req, res) => {
     try {
-        const modal = document.getElementById('modal-contingencia-checkin');
-        const form = document.getElementById('form-contingencia-checkin');
-        const hashInput = document.getElementById('checkin-hash');
-        
-        // Reset form
-        form.reset();
-        hashInput.value = hash;
+        const { idFactura, articulo } = req.params;
 
-        if (esEdicion) {
-            Swal.fire({ title: 'Cargando datos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-            
-            const response = await fetch(\`\${API_BASE_URL}/api/logistica/tratamientos/sesion/\${hash}\`);
-            const data = await response.json();
-            
-            Swal.close();
-            
-            if (data.success && data.data && data.data.detalles) {
-                const det = data.data.detalles;
-                document.getElementById('checkin-descripcion').value = det.descripcion_externa || '';
-                document.getElementById('checkin-kilos').value = det.kilos || '';
-                document.getElementById('checkin-bultos').value = det.bultos || '';
-                document.getElementById('checkin-motivo').value = det.motivo || '';
-            }
+        // [TICKET 028] Bugfix: Si el idFactura YA ES una Orden de Retiro, devolverlo directamente
+        const checkSelf = await pool.query(\`
+            SELECT id as id_orden_retiro
+            FROM public.presupuestos
+            WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
+            LIMIT 1
+        \`, [idFactura]);
+
+        if (checkSelf.rows.length > 0) {
+            return res.json({ success: true, id_orden_retiro: checkSelf.rows[0].id_orden_retiro });
         }
-        
-        modal.style.display = 'flex';
-    } catch (error) {
-        Swal.fire('Error', 'Fallo al inicializar el modal de contingencia', 'error');
-    }
-};
-
-window.cerrarModalContingencia = () => {
-    document.getElementById('modal-contingencia-checkin').style.display = 'none';
-};
-
-window.guardarCheckinContingencia = async (event) => {
-    event.preventDefault();
-    const btnSubmit = document.getElementById('btn-submit-contingencia');
-    btnSubmit.disabled = true;
-    btnSubmit.textContent = 'Guardando...';
-
-    const hash = document.getElementById('checkin-hash').value;
-    
-    // Captura y Sanitización
-    const kilosRaw = document.getElementById('checkin-kilos').value.trim();
-    const kilosVal = parseFloat(kilosRaw.replace(',', '.'));
-    const bultosVal = parseInt(document.getElementById('checkin-bultos').value);
-
-    if (isNaN(kilosVal) || kilosVal <= 0) {
-        Swal.fire('Atención', 'Los Kilos deben ser expresados en valores numéricos mayores a 0', 'warning');
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = 'Confirmar Check-in';
-        return;
-    }
-
-    const payload = {
-        descripcion_externa: document.getElementById('checkin-descripcion').value.trim(),
-        kilos: kilosVal,
-        bultos: bultosVal,
-        motivo: document.getElementById('checkin-motivo').value.trim()
-    };
-
-    try {
-        const response = await fetch(\`\${API_BASE_URL}/api/logistica/tratamientos/chofer/checkin/\${hash}\`, {
-            method: 'PUT',
-            headers: { 
-                'Authorization': \`Bearer \${state.sesion.token}\`,
-                'Content-Type': 'application/json' 
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            window.cerrarModalContingencia();
-            Swal.fire('¡Carga Completada!', 'El check-in se ha guardado exitosamente.', 'success');
-            
-            // Recargar Ruta Activa para refrescar visualmente las tarjetas y el estado de los botones
-            cargarRutaActiva();
-        } else {
-            throw new Error(data.error || 'Error al persistir contingencia');
-        }
-
-    } catch (error) {
-        Swal.fire('Falla de Red', error.message, 'error');
-    } finally {
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = 'Confirmar Check-in';
-    }
-};
 `;
-fs.writeFileSync(path, content);
-console.log('Done!');
+
+content = content.replace(regex, replacement);
+fs.writeFileSync('src/produccion/controllers/mantenimiento.js', content, 'utf8');
+console.log('REPLACED');

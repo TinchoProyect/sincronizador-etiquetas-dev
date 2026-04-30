@@ -931,6 +931,43 @@ router.post('/rutas/finalizar', async (req, res) => {
                 `, [ids]);
             }
 
+            // [TICKET #024] 2c. Procesar Órdenes de Retiro Comerciales (Presupuestos)
+            // Cuando una devolución comercial llega en el camión, debe inyectarse en cuarentena (Mantenimiento).
+            const updatedRetiros = await client.query(`
+                UPDATE presupuestos
+                SET estado_logistico = 'INGRESADO_LOCAL'
+                WHERE id_ruta = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro' OR estado = 'Administrativa NC')
+                AND estado_logistico = 'RETIRADO'
+                RETURNING id, id_cliente
+            `, [ruta.id]);
+
+            if (updatedRetiros.rows.length > 0) {
+                const presupuestosIds = updatedRetiros.rows.map(r => r.id);
+                // Extraer detalles e inyectarlos
+                const retirosDetalles = await client.query(`
+                    SELECT 
+                        pd.id_presupuesto, 
+                        pd.cantidad, 
+                        COALESCE(a.numero, pd.articulo) as articulo_numero 
+                    FROM presupuestos_detalles pd
+                    LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                    WHERE pd.id_presupuesto = ANY($1::int[]) AND pd.articulo IS NOT NULL
+                `, [presupuestosIds]);
+
+                for (const det of retirosDetalles.rows) {
+                    await client.query(`
+                        INSERT INTO mantenimiento_movimientos
+                        (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                        VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
+                    `, [
+                        det.articulo_numero,
+                        det.cantidad,
+                        det.id_presupuesto,
+                        'Logística Movil (Chofer)',
+                        'Ingreso por Hoja de Ruta - Chofer'
+                    ]);
+                }
+            }
 
             // 3. Actualizar estado de ruta y calcular duración neta
             await client.query(

@@ -34,126 +34,145 @@ const buscarCandidatasLomasoft = async (req, res) => {
         let candidatasArray = [];
         let totalCandidatas = 0;
 
+        const vigia = {
+            payload: {
+                cliente_id: String(localData.id_cliente),
+                monto_esperado: parseFloat(localData.monto_total || 0),
+                articulos_buscados: []
+            },
+            respuestas_crudas: [],
+            logica_match: []
+        };
+
+
         if (esDevolucion) {
-            console.log(`🚀 [LOMASOFT] Presupuesto es Devolución (NC / Retiro). Buscando Notas de Crédito en /devoluciones`);
-            const articulos = localData.codigos_articulos ? localData.codigos_articulos.filter(a => a && a.toString().trim() !== '') : [];
-            
-            // Si no hay artículos específicos (ej. es un texto genérico de devolución), forzamos una búsqueda general para el cliente
-            const busquedas = articulos.length > 0 ? articulos : ['TODOS'];
-            
-            // Buscar facturas/NC por cada artículo devuelto (o una vez general si no hay artículos)
-            for (const articulo of busquedas) {
-                const urlLomasoft = new URL(`${baseUrl}/devoluciones`);
-                urlLomasoft.searchParams.append('cliente', localData.id_cliente);
-                if (articulo !== 'TODOS') {
-                    urlLomasoft.searchParams.append('articulo', articulo);
+            console.log(`🚀 [LOMASOFT] Presupuesto es Devolución (NC / Retiro). Buscando Notas de Crédito homologadas en /devoluciones`);
+            const urlLomasoft = new URL(`${baseUrl}/devoluciones`);
+            urlLomasoft.searchParams.append('cliente', localData.id_cliente);
+
+            const requestParams = {
+                cliente: localData.id_cliente,
+                articulos_buscados: localData.codigos_articulos || []
+            };
+            vigia.payload = requestParams; // Adaptado para Vigía sin usar POST JSON
+
+            let resultadosRaw = [];
+
+            try {
+                console.log('\n================ VIGÍA DEPURADOR TICKET 33: HOMOLOGACIÓN (DEVOLUCIÓN) ================');
+                console.log(`URL y Endpoint exacto: GET ${urlLomasoft.toString()}`);
+                console.log(`Headers: { 'Accept': 'application/json' }`);
+                console.log(`Datos Locales de Contexto: ID=${id}, Cliente=${localData.id_cliente}`);
+                console.log(`Monto Esperado (monto_total del Presupuesto): ${localData.monto_total}`);
+                console.log('=================================================================================\n');
+
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 10000);
+
+                const lomaRes = await fetch(urlLomasoft.toString(), {
+                    signal: controller.signal,
+                    headers: { 'Accept': 'application/json' }
+                });
+                clearTimeout(timeout);
+
+                const jsonText = await lomaRes.text();
+                vigia.respuestas_crudas.push({
+                    endpoint_utilizado: urlLomasoft.toString(),
+                    http_status: lomaRes.status,
+                    body_crudo: jsonText
+                });
+
+                if (lomaRes.ok) {
+                    let lomaData = [];
+                    try {
+                        lomaData = JSON.parse(jsonText);
+                    } catch (e) {
+                        console.error(`[LOMASOFT] ❌ Error parseando respuesta (HTTP 200). Texto: ${jsonText.substring(0,200)}`);
+                    }
+
+                    if (Array.isArray(lomaData)) {
+                        resultadosRaw.push(...lomaData);
+                    } else if (lomaData && Array.isArray(lomaData.data)) {
+                        resultadosRaw.push(...lomaData.data);
+                    }
+                } else {
+                    console.error(`[LOMASOFT] ❌ Error Lomasoft HTTP ${lomaRes.status}: ${jsonText.substring(0, 200)}`);
+                    vigia.logica_match.push(`[FALLO HTTP] Lomasoft devolvió un status ${lomaRes.status} para la URL ${urlLomasoft.toString()}`);
                 }
 
-                try {
-                    console.log('\n================ VIGÍA DEPURADOR TICKET 26: REQUEST (DEVOLUCIÓN) ================');
-                    console.log(`URL y Endpoint exacto: GET ${urlLomasoft.toString()}`);
-                    console.log(`Headers: { 'Accept': 'application/json' }`);
-                    console.log(`Datos Locales de Contexto: ID=${id}, Cliente=${localData.id_cliente}, Articulo=${articulo}`);
-                    console.log(`Monto Esperado (monto_total del Presupuesto): ${localData.monto_total}`);
-                    console.log('=================================================================================\n');
-
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 10000);
-
-                    const lomaRes = await fetch(urlLomasoft.toString(), {
-                        signal: controller.signal,
-                        headers: { 'Accept': 'application/json' }
+                const fechaRef = new Date(localData.fecha);
+                    
+                    const resultados = resultadosRaw.filter(r => {
+                        const compKey = `${String(r.punto_venta || 0).padStart(4, '0')}-${String(r.numero_comprobante || 0).padStart(8, '0')}`;
+                        const tipo = (r.tipo_comprobante || '').toUpperCase();
+                        if (!tipo.includes('N/C') && !tipo.includes('CREDITO') && !tipo.includes('CRÉDITO')) {
+                            return false;
+                        }
+                        const fCandidato = r.fecha || r.fecha_emision;
+                        if (!fCandidato) return false;
+                        const f2 = new Date(fCandidato);
+                        const difDias = Math.abs(Math.round((f2 - fechaRef) / (1000 * 60 * 60 * 24)));
+                        if (difDias > 45) return false;
+                        return true;
                     });
-                    clearTimeout(timeout);
 
-                    if (lomaRes.ok) {
-                        const jsonText = await lomaRes.text();
+                    resultados.forEach(r => {
+                        let montoCandidato = Math.abs(parseFloat(r.importe_total || 0));
+                        let neto = Math.abs(parseFloat(r.importe_neto || r.imp_neto || 0));
                         
-                        console.log('\n================ VIGÍA DEPURADOR TICKET 26: RESPONSE (DEVOLUCIÓN) ================');
-                        console.log(`Status HTTP de Lomasoft: ${lomaRes.status}`);
-                        console.log(`Body JSON literal:`);
-                        console.log(jsonText);
-                        console.log('==================================================================================\n');
-
-                        let lomaData = [];
-                        try {
-                            lomaData = JSON.parse(jsonText);
-                        } catch (e) {
-                            console.error(`[LOMASOFT] Error parseando respuesta de /devoluciones para art ${articulo}`);
+                        // Si Lomasoft no envió importe_total, le sumamos el 21% de IVA al neto para igualar el Total del Presupuesto
+                        if (montoCandidato === 0 && neto > 0) {
+                            montoCandidato = neto * 1.21;
                         }
 
-                        // Lomasoft (/devoluciones) puede devolver un array directo o un objeto con data
-                        const resultadosRaw = Array.isArray(lomaData) ? lomaData : (lomaData.data || []);
-                        
-                        // Fecha base del presupuesto (Límite temporal)
-                        const fechaRef = new Date(localData.fecha);
-                        
-                        // Remover resultados muy antiguos (Más de 45 días de diferencia)
-                        const resultados = resultadosRaw.filter(r => {
-                            const fCandidato = r.fecha || r.fecha_emision;
-                            if (!fCandidato) return false;
-                            
-                            const f2 = new Date(fCandidato);
-                            const difDias = Math.abs(Math.round((f2 - fechaRef) / (1000 * 60 * 60 * 24)));
-                            return difDias <= 45;
-                        });
-                        
-                        // Mapear al formato que espera el Frontend de Presupuestos
-                        resultados.forEach(r => {
-                            let montoCandidato = Math.abs(parseFloat(r.importe_total || r.importe_neto || r.imp_neto || 0));
-                            const isTipoA = (r.tipo_comprobante || '').toUpperCase().includes(' A');
-                            if (isTipoA && !r.importe_total) {
-                                montoCandidato = montoCandidato * 1.21; // Sumar IVA 21% a Facturas/NC A si Lomasoft solo dio neto
-                            }
+                        const ptoStr = String(r.punto_venta || 0).padStart(4, '0');
+                        const numStr = String(r.numero_comprobante || 0).padStart(8, '0');
+                        const compFormat = `${ptoStr}-${numStr}`;
 
-                            // Validar coincidencia estricta de montos (Tolerancia $500) para limpiar la tabla
-                            const montoPresupuesto = Math.abs(parseFloat(localData.monto_total || 0));
-                            if (montoPresupuesto > 100) {
-                                const diferencia = Math.abs(montoCandidato - montoPresupuesto);
-                                if (diferencia > 500) {
-                                    return; // Ignorar candidata
-                                }
+                        const montoPresupuesto = Math.abs(parseFloat(localData.monto_total || 0));
+                        if (montoPresupuesto > 100) {
+                            const diferencia = Math.abs(montoCandidato - montoPresupuesto);
+                            if (diferencia > 500) {
+                                vigia.logica_match.push(`[${compFormat}] Descartado por monto: NC tiene $${montoCandidato} vs Presupuesto esperado $${montoPresupuesto}`);
+                                return;
                             }
+                        }
+                        
+                        vigia.logica_match.push(`[${compFormat}] ¡Aprobado! (Monto: $${montoCandidato}, Fecha: ${r.fecha || r.fecha_emision})`);
 
-                            // Validar que no hayamos agregado ya esta NC (evitar duplicados si trae la misma para distintos artículos)
-                            const ptoStr = String(r.punto_venta || 0).padStart(4, '0');
-                            const numStr = String(r.numero_comprobante || 0).padStart(8, '0');
-                            const compFormat = `${ptoStr}-${numStr}`;
-                            
-                            const existe = candidatasArray.find(c => c.comprobante_formateado === compFormat);
-                            
-                            if (!existe) {
-                                candidatasArray.push({
-                                    codigo: r.codigo || 0, // Ajustar según respuesta real
-                                    punto_venta: r.punto_venta || 0,
-                                    numero_comprobante: r.numero_comprobante || 0,
-                                    comprobante_formateado: compFormat,
-                                    tipo_comprobante: r.tipo_comprobante || 'N/C',
-                                    fecha: r.fecha || r.fecha_emision, // Presupuestos espera 'fecha'
-                                    importe_total: montoCandidato,
-                                    articulos: [{
-                                        nombre: r.articulo || r.item_descripcion,
-                                        cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
-                                    }]
+                        const existe = candidatasArray.find(c => c.comprobante_formateado === compFormat);
+                        if (!existe) {
+                            candidatasArray.push({
+                                codigo: r.codigo || 0,
+                                punto_venta: r.punto_venta || 0,
+                                numero_comprobante: r.numero_comprobante || 0,
+                                comprobante_formateado: compFormat,
+                                tipo_comprobante: r.tipo_comprobante || 'N/C',
+                                fecha: r.fecha || r.fecha_emision,
+                                importe_total: montoCandidato,
+                                articulos: [{
+                                    nombre: r.articulo || r.item_descripcion,
+                                    cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
+                                }]
+                            });
+                        } else {
+                            const artNombre = r.articulo || r.item_descripcion;
+                            const artExiste = existe.articulos.find(a => a.nombre === artNombre);
+                            if (!artExiste) {
+                                existe.articulos.push({
+                                    nombre: artNombre,
+                                    cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
                                 });
-                            } else {
-                                // Si ya existe el comprobante, agregarle el artículo al detalle
-                                const artNombre = r.articulo || r.item_descripcion;
-                                if (!existe.articulos.find(a => a.nombre === artNombre)) {
-                                    existe.articulos.push({
-                                        nombre: artNombre,
-                                        cantidad: Math.abs(parseFloat(r.cantidad || r.item_cantidad || 0))
-                                    });
-                                }
                             }
-                        });
-                    }
-                } catch (e) {
-                    console.error(`[LOMASOFT] Error buscando NCs para articulo ${articulo}:`, e);
-                }
+                        }
+                    });
+            } catch (e) {
+                console.error(`[LOMASOFT] Error consultando Lomasoft en GET /devoluciones:`, e);
+                vigia.logica_match.push(`[CRASH HTTP] Fallo al intentar conectar con el endpoint: ${e.message}`);
             }
             totalCandidatas = candidatasArray.length;
             console.log(`✅ [LOMASOFT] Encontradas ${totalCandidatas} NCs filtradas.`);
+
 
         } else {
             // FLUJO ORIGINAL PARA VENTAS (Buscando Facturas)
@@ -242,7 +261,8 @@ const buscarCandidatasLomasoft = async (req, res) => {
         return res.json({
             success: true,
             data: candidatasArray,
-            total: totalCandidatas
+            total: totalCandidatas,
+            vigia
         });
 
     } catch (error) {
