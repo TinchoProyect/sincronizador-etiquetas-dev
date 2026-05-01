@@ -62,9 +62,10 @@
                 </button>
             </div>
 
-            <div class="search-bar-wrapper" style="margin-top: 1rem;">
+            <div class="search-bar-wrapper" style="margin-top: 1rem; position: relative;">
                 <span class="search-icon">🔍</span>
-                <input type="text" id="buscar-articulo-input" class="wizard-input" placeholder="Buscar producto...">
+                <input type="text" id="buscar-articulo-input" class="wizard-input" placeholder="Buscar producto..." style="padding-right: 40px; width: 100%;">
+                <button type="button" id="btn-clear-articulo" class="btn-clear-articulo" onclick="limpiarInputArticulo()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; display: none; padding: 5px; z-index: 10;" title="Limpiar búsqueda">&times;</button>
             </div>
 
             <div class="resultados-lista articulos-lista" id="resultados-articulo">

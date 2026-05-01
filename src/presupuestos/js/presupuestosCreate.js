@@ -15,6 +15,8 @@ window.seleccionarArticulo = seleccionarArticulo;
 window.seleccionarClientePorClick = seleccionarClientePorClick;
 window.toggleModoBusqueda = toggleModoBusqueda;
 window.toggleSinStock = toggleSinStock;
+window.toggleClearButton = toggleClearButton;
+window.limpiarInputArticulo = limpiarInputArticulo;
 
 /**
  * Toggle entre modo descripción y modo código de barras
@@ -289,9 +291,16 @@ function agregarDetalle() {
 
     row.innerHTML = `
                 <td>
-                    <input type="text" name="detalles[${detalleCounter}][articulo]"
-                        placeholder="Código o descripción del artículo"
-                        autocomplete="off">
+                    <div class="articulo-input-container" style="position: relative; display: flex; align-items: center;">
+                        <input type="text" name="detalles[${detalleCounter}][articulo]"
+                            placeholder="Código o descripción del artículo"
+                            autocomplete="off" style="padding-right: 30px; width: 100%;"
+                            oninput="toggleClearButton(this)">
+                        <button type="button" class="btn-clear-articulo" 
+                            onclick="limpiarInputArticulo(this)"
+                            style="position: absolute; right: 5px; background: none; border: none; font-size: 18px; cursor: pointer; color: #999; display: none;"
+                            title="Limpiar campo">&times;</button>
+                    </div>
                 </td>
                 <td>
                     <input type="number" name="detalles[${detalleCounter}][cantidad]"
@@ -1524,13 +1533,76 @@ function setupArticuloAutocomplete() {
 }
 
 /**
+ * Mostrar u ocultar el botón "X" de limpieza
+ */
+function toggleClearButton(input) {
+    const container = input.closest('.articulo-input-container');
+    if (container) {
+        const btn = container.querySelector('.btn-clear-articulo');
+        if (btn) {
+            btn.style.display = input.value.length > 0 ? 'inline-block' : 'none';
+        }
+    }
+}
+
+/**
+ * Limpiar el input de artículo completamente
+ */
+function limpiarInputArticulo(btn) {
+    const container = btn.closest('.articulo-input-container');
+    if (!container) return;
+    
+    // Cancelar cualquier request en vuelo para que no reabra el menú de sugerencias
+    if (window.__articulosCurrentRequest) {
+        window.__articulosCurrentRequest.abort();
+        window.__articulosCurrentRequest = null;
+    }
+    
+    const input = container.querySelector('input[name*="[articulo]"]');
+    if (input) {
+        input.value = '';
+        delete input.dataset.codigoBarras;
+        delete input.dataset.articuloNumero;
+        delete input.dataset.origenValidado;
+        delete input.dataset.descripcionVisible;
+        input.focus();
+        toggleClearButton(input);
+        
+        if (typeof ocultarSugerenciasArticulo === 'function') {
+            ocultarSugerenciasArticulo();
+        }
+    }
+}
+
+/**
  * Manejar input de artículo con debounce
  */
+window.__articulosCurrentRequest = window.__articulosCurrentRequest || null;
+window.__articulosSearchCache = window.__articulosSearchCache || {};
+
 const handleArticuloInput = debounce(async function (event) {
     const input = event.target;
-    const query = (input.value || '').trim();
+    const rawValue = input.value || '';
+    
+    // REQUERIMIENTO ESTRICTO #026: La búsqueda solo debe gatillarse cuando se presiona la tecla espacio.
+    if (!rawValue.includes(' ') && modoBusqueda !== 'codigo') {
+        if (window.__articulosCurrentRequest) {
+            window.__articulosCurrentRequest.abort();
+            window.__articulosCurrentRequest = null;
+        }
+        ocultarSugerenciasArticulo();
+        return;
+    }
+
+    const query = rawValue.trim();
 
     console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
+
+    // Cancelar request anterior si existe
+    if (window.__articulosCurrentRequest) {
+        window.__articulosCurrentRequest.abort();
+        window.__articulosCurrentRequest = null;
+    }
 
     if (query.length < 1) {
         ocultarSugerenciasArticulo();
@@ -1560,17 +1632,30 @@ const handleArticuloInput = debounce(async function (event) {
                 // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
                 // y luego filtrar localmente con AND estricto
                 const primerTermino = query.split(/\s+/)[0] || query;
-                const queryParaServidor = primerTermino;
+                const queryParaServidor = primerTermino.toLowerCase();
 
-                console.log(`[ARTICULOS] Query para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
+                if (window.__articulosSearchCache[queryParaServidor]) {
+                    console.log(`[ARTICULOS] Caché local encontrada para raíz "${queryParaServidor}". Filtrando sin fetch.`);
+                    items = filtrarArticulosLocal(query, window.__articulosSearchCache[queryParaServidor]);
+                } else {
+                    console.log(`[ARTICULOS] Fetch para servidor: "${queryParaServidor}" (filtrado local aplicará AND completo)`);
 
-                const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`);
-                if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
-                const body = await response.json();
-                const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+                    const controller = new AbortController();
+                    window.__articulosCurrentRequest = controller;
 
-                // Aplicar filtro local con TODOS los términos del query original
-                items = filtrarArticulosLocal(query, arr);
+                    const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`, {
+                        signal: controller.signal
+                    });
+                    
+                    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    const body = await response.json();
+                    const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+
+                    window.__articulosSearchCache[queryParaServidor] = arr;
+
+                    // Aplicar filtro local con TODOS los términos del query original
+                    items = filtrarArticulosLocal(query, arr);
+                }
             }
         }
 
@@ -1578,8 +1663,16 @@ const handleArticuloInput = debounce(async function (event) {
         mostrarSugerenciasArticulo(input, items);
 
     } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('🔄 [ARTICULOS] Request cancelado para evitar superposición');
+            return;
+        }
         console.error('Error al buscar artículos:', error);
         mostrarErrorArticulo(input, 'Error al buscar artículos');
+    } finally {
+        if (window.__articulosCurrentRequest && !window.__articulosCurrentRequest.signal.aborted) {
+             window.__articulosCurrentRequest = null;
+        }
     }
 }, 300);
 

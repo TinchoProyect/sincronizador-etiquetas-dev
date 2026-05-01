@@ -149,12 +149,57 @@ const WizardController = {
         const inputArticulo = document.getElementById('buscar-articulo-input');
         if(inputArticulo) {
             inputArticulo.addEventListener('input', (e) => {
-                clearTimeout(this.timerBusquedaArticulo);
                 const query = e.target.value;
-                if(query.length >= 2) {
-                    this.timerBusquedaArticulo = setTimeout(() => this.buscarArticulosAPI(query), 350);
+                console.log(`[VIGÍA] Evento input de artículo detectado. Valor: "${query}"`);
+                
+                // Mostrar/Ocultar botón X
+                const btnClear = document.getElementById('btn-clear-articulo');
+                if (btnClear) {
+                    btnClear.style.display = query.length > 0 ? 'flex' : 'none';
                 }
+
+                clearTimeout(this.timerBusquedaArticulo);
+                
+                // REQUERIMIENTO ESTRICTO: Solo disparar si contiene un espacio
+                if(!query.includes(' ')) {
+                    console.log(`[VIGÍA] Búsqueda bloqueada: No se detectó ESPACIO en el input "${query}"`);
+                    if (this.abortControllerArticulos) {
+                        this.abortControllerArticulos.abort();
+                        this.abortControllerArticulos = null;
+                        console.log(`[VIGÍA] Petición asíncrona abortada por regla de espaciador.`);
+                    }
+                    const contenedor = document.getElementById('resultados-articulo');
+                    if(contenedor) {
+                        contenedor.innerHTML = '<div class="placeholder-msg">Escriba y presione ESPACIO para buscar...</div>';
+                    }
+                    return;
+                }
+
+                console.log(`[VIGÍA] Espaciador detectado. Iniciando timer de debounce (350ms) para "${query}"`);
+                this.timerBusquedaArticulo = setTimeout(() => this.buscarArticulosAPI(query), 350);
             });
+        }
+    },
+
+    limpiarInputArticulo() {
+        console.log(`[VIGÍA] Ejecutando comando cero absoluto (limpiarInputArticulo)`);
+        const input = document.getElementById('buscar-articulo-input');
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        const btnClear = document.getElementById('btn-clear-articulo');
+        if (btnClear) {
+            btnClear.style.display = 'none';
+        }
+        if (this.abortControllerArticulos) {
+            this.abortControllerArticulos.abort();
+            this.abortControllerArticulos = null;
+            console.log(`[VIGÍA] Operaciones en red canceladas post-limpieza.`);
+        }
+        const contenedor = document.getElementById('resultados-articulo');
+        if (contenedor) {
+            contenedor.innerHTML = '<div class="placeholder-msg">Escriba y presione ESPACIO para buscar...</div>';
         }
     },
 
@@ -197,7 +242,11 @@ const WizardController = {
         if(numero === 2) {
             document.getElementById('label-cliente-seleccionado').innerText = this.cart.cliente.nombre;
             if(Object.keys(this.cart.items).length === 0) {
-                this.buscarArticulosAPI(''); // Carga inicial sugerida
+                console.log(`[VIGÍA] Previniendo Anomalía 1: Se bloquea la búsqueda fantasma automática al cargar el Paso 2.`);
+                const contenedor = document.getElementById('resultados-articulo');
+                if (contenedor) {
+                    contenedor.innerHTML = '<div class="placeholder-msg">Escriba un producto y presione ESPACIO para buscar.</div>';
+                }
             }
         }
         if(numero === 3) {
@@ -265,93 +314,122 @@ const WizardController = {
     // API & DATOS: ARTÍCULOS
     // ============================
     async buscarArticulosAPI(query) {
+        console.log(`[VIGÍA] INICIO buscarArticulosAPI. Query ingresado: "${query}"`);
         if (this.abortControllerArticulos) {
+            console.log(`[VIGÍA] Petición anterior en curso abortada para dar prioridad a la nueva.`);
             this.abortControllerArticulos.abort(); // Cancelar la cascada paralela anterior
         }
         this.abortControllerArticulos = new AbortController();
         const signal = this.abortControllerArticulos.signal;
 
         const contenedor = document.getElementById('resultados-articulo');
-        contenedor.innerHTML = '<div class="loader-spinner" style="margin:2rem auto"></div><p style="text-align:center; color:#64748b">Buscando en catálogo...</p>';
         const qRaw = (query || '').trim();
+        
+        // --- INICIO LÓGICA DE CACHÉ EN RAM PARA EVITAR LATENCIA MÓVIL ---
+        window.__articulosSearchCache = window.__articulosSearchCache || {};
+        
+        // Función portearada desde presupuestosCreate.js para Parity de Filtrado Inteligente
+        const normalizarTexto = (texto) => {
+            return (texto || '').toString().toLowerCase()
+                .replace(/[áäâà]/g, 'a')
+                .replace(/[éëêè]/g, 'e')
+                .replace(/[íïîì]/g, 'i')
+                .replace(/[óöôò]/g, 'o')
+                .replace(/[úüûù]/g, 'u')
+                .replace(/ñ/g, 'n');
+        };
 
-        try {
-            const offset = qRaw.length === 0 ? 15 : 150; 
-            
-            const res = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(qRaw)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`, { signal });
-            const data = await res.json();
-            
-            if(data.success && data.data) {
-                // Función portearada desde presupuestosCreate.js para Parity de Filtrado Inteligente
-                const normalizarTexto = (texto) => {
-                    return (texto || '').toString().toLowerCase()
-                        .replace(/[áäâà]/g, 'a')
-                        .replace(/[éëêè]/g, 'e')
-                        .replace(/[íïîì]/g, 'i')
-                        .replace(/[óöôò]/g, 'o')
-                        .replace(/[úüûù]/g, 'u')
-                        .replace(/ñ/g, 'n');
-                };
+        const terms = normalizarTexto(qRaw).split(/\s+/).filter(Boolean);
+        const queryParaServidor = terms[0] || ''; // El primer término es el que se envió al servidor
+        const queryLower = qRaw.toLowerCase();
+        
+        let dataServidor = null;
+        let vieneDeCache = false;
 
-                const terms = normalizarTexto(qRaw).split(/\s+/).filter(Boolean);
-                const queryLower = qRaw.toLowerCase();
+        // 1. EVALUAR CACHÉ (Evitamos Spinner DOM y FETCH)
+        if (queryParaServidor && window.__articulosSearchCache[queryParaServidor]) {
+            console.log(`[VIGÍA] RAM HIT: El término base "${queryParaServidor}" ya está en caché. Sub-filtrado local instantáneo.`);
+            dataServidor = window.__articulosSearchCache[queryParaServidor];
+            vieneDeCache = true;
+        } else {
+            // 2. FETCH AL SERVIDOR (Solo para el primer término antes del espacio)
+            contenedor.innerHTML = '<div class="loader-spinner" style="margin:2rem auto"></div><p style="text-align:center; color:#64748b">Buscando en catálogo...</p>';
+            try {
+                const offset = qRaw.length === 0 ? 15 : 150; 
                 
-                let articulosFiltrados = data.data;
-
-                // Doble chequeo en RAM (opcional pero hace que el tecleo sea instantáneo)
-                if (terms.length > 0) {
-                    articulosFiltrados = data.data.filter(a => {
-                        const descNormalizada = normalizarTexto(a.descripcion || a.nombre || '');
-                        // Búsqueda de sufijos espaciados estricta
-                        const cumpleDescripcion = terms.every(t => descNormalizada.includes(t));
-                        
-                        // O bien match directo de ID/Barcode corto
-                        const codigo = (a.numero || a.codigo_barras || '').toString().toLowerCase();
-                        const cumpleCodigo = codigo.includes(queryLower);
-                        
-                        return cumpleDescripcion || cumpleCodigo;
-                    });
+                console.log(`[VIGÍA] Lanzando petición FETCH al servidor backend con base "${queryParaServidor}" (limit=${offset})...`);
+                const res = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=${offset}&cliente_id=${this.cart.cliente.id}`, { signal });
+                const data = await res.json();
+                console.log(`[VIGÍA] Respuesta del servidor recibida. Éxito: ${data.success}, Elementos: ${data.data ? data.data.length : 0}`);
+                
+                if (data.success && data.data) {
+                    dataServidor = data.data;
+                    // Guardar en caché el resultado base
+                    if (queryParaServidor) {
+                        window.__articulosSearchCache[queryParaServidor] = dataServidor;
+                    }
                 }
-
-                if(articulosFiltrados.length > 0) {
-                    contenedor.innerHTML = '';
-                    // Limitamos el render a top 40 para no saturar DOM móvil, de todos modos el Typeahead se achica
-                    const renders = articulosFiltrados.slice(0, 40);
-
-                    renders.forEach(a => {
-                        const fallBckId = a.codigo_articulo || a.numero || a.codigo_barras;
-                        const qtyActual = this.cart.items[fallBckId] ? this.cart.items[fallBckId].cantidad : 0;
-                        
-                        const card = document.createElement('div');
-                        card.className = 'card-articulo';
-                        card.onclick = () => WizardController.actualizarCantidad(a, 1);
-                        const jsonSafe = JSON.stringify(a).replace(/"/g, '&quot;');
-                        
-                        card.innerHTML = `
-                            <div class="articulo-info">
-                                <span class="articulo-nombre">${a.descripcion || a.nombre} <br><small style="color:#94a3b8; font-weight:normal;">Cod: ${fallBckId} &nbsp;|&nbsp; <strong>Stock: ${Math.floor(a.stock_actual || 0)}</strong></small></span>
-                                <span class="articulo-precio">$${parseFloat(a.precio_venta || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
-                            </div>
-                            <div class="articulo-actions">
-                                <button class="stepper-btn btn-minus" onclick='event.stopPropagation(); WizardController.actualizarCantidad(${jsonSafe}, -1)'>-</button>
-                                <span class="stepper-qty" id="qty-${fallBckId}">${qtyActual}</span>
-                            </div>
-                        `;
-                        contenedor.appendChild(card);
-                    });
-                } else {
-                    contenedor.innerHTML = '<div class="placeholder-msg">El artículo no se encuentra en el inventario activo.</div>';
+            } catch(e) {
+                if (e.name === 'AbortError') {
+                    console.log('Búsqueda de artículos abortada: Fast-Typing detectado');
+                    return;
                 }
-            } else {
-                contenedor.innerHTML = '<div class="placeholder-msg">Sin resultados.</div>';
-            }
-        } catch(e) {
-            if (e.name === 'AbortError') {
-                console.log('Búsqueda de artículos abortada: Fast-Typing detectado');
+                console.error(e);
+                contenedor.innerHTML = '<div class="placeholder-msg" style="color:red">Error consultando catálogo.</div>';
                 return;
             }
-            console.error(e);
-            contenedor.innerHTML = '<div class="placeholder-msg" style="color:red">Error consultando catálogo.</div>';
+        }
+
+        // 3. SUB-FILTRADO LOCAL EN RAM Y RENDERIZADO
+        if (dataServidor) {
+            let articulosFiltrados = dataServidor;
+
+            // Doble chequeo en RAM (opcional pero hace que el tecleo sea instantáneo)
+            if (terms.length > 0) {
+                articulosFiltrados = dataServidor.filter(a => {
+                    const descNormalizada = normalizarTexto(a.descripcion || a.nombre || '');
+                    // Búsqueda de sufijos espaciados estricta
+                    const cumpleDescripcion = terms.every(t => descNormalizada.includes(t));
+                    
+                    // O bien match directo de ID/Barcode corto
+                    const codigo = (a.numero || a.codigo_barras || '').toString().toLowerCase();
+                    const cumpleCodigo = codigo.includes(queryLower);
+                    
+                    return cumpleDescripcion || cumpleCodigo;
+                });
+            }
+
+            if(articulosFiltrados.length > 0) {
+                contenedor.innerHTML = '';
+                // Limitamos el render a top 40 para no saturar DOM móvil, de todos modos el Typeahead se achica
+                const renders = articulosFiltrados.slice(0, 40);
+
+                renders.forEach(a => {
+                    const fallBckId = a.codigo_articulo || a.numero || a.codigo_barras;
+                    const qtyActual = this.cart.items[fallBckId] ? this.cart.items[fallBckId].cantidad : 0;
+                    
+                    const card = document.createElement('div');
+                    card.className = 'card-articulo';
+                    card.onclick = () => WizardController.actualizarCantidad(a, 1);
+                    const jsonSafe = JSON.stringify(a).replace(/"/g, '&quot;');
+                    
+                    card.innerHTML = `
+                        <div class="articulo-info">
+                            <span class="articulo-nombre">${a.descripcion || a.nombre} <br><small style="color:#94a3b8; font-weight:normal;">Cod: ${fallBckId} &nbsp;|&nbsp; <strong>Stock: ${Math.floor(a.stock_actual || 0)}</strong></small></span>
+                            <span class="articulo-precio">$${parseFloat(a.precio_venta || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
+                        </div>
+                        <div class="articulo-actions">
+                            <button class="stepper-btn btn-minus" onclick='event.stopPropagation(); WizardController.actualizarCantidad(${jsonSafe}, -1)'>-</button>
+                            <span class="stepper-qty" id="qty-${fallBckId}">${qtyActual}</span>
+                        </div>
+                    `;
+                    contenedor.appendChild(card);
+                });
+            } else {
+                contenedor.innerHTML = '<div class="placeholder-msg">El artículo no se encuentra en el inventario activo.</div>';
+            }
+        } else {
+            contenedor.innerHTML = '<div class="placeholder-msg">Sin resultados.</div>';
         }
     },
 
@@ -643,3 +721,4 @@ window.avanzarPaso = (n) => WizardController.avanzarPaso(n);
 window.wizardBack = () => WizardController.wizardBack();
 window.cancelarWizard = () => WizardController.cancelarWizard();
 window.confirmarVenta = () => WizardController.confirmarVenta();
+window.limpiarInputArticulo = () => WizardController.limpiarInputArticulo();
