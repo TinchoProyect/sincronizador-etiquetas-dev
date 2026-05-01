@@ -625,6 +625,20 @@ const WizardController = {
     },
 
     async confirmarVenta() {
+        if (this.isSubmitting) {
+            console.warn('[VIGÍA] Intento de múltiple sumisión bloqueado.');
+            return;
+        }
+        
+        const btnConfirm = document.getElementById('btn-confirmar-venta');
+        if (btnConfirm) {
+            btnConfirm.disabled = true;
+            btnConfirm.style.opacity = '0.5';
+            btnConfirm.innerText = '⏳ PROCESANDO...';
+        }
+        
+        this.isSubmitting = true;
+
         const isOrdenRetiro = false; // Parche Arquitectura: Este wizard ya es exclusivamente de Venta
         const obs = document.getElementById('observaciones-input').value.trim();
         const estadoSeleccionado = document.getElementById('estado-input').value;
@@ -694,23 +708,46 @@ const WizardController = {
                 const titleSuccess = isEdit ? 'Edición Exitosa' : 'Operación Exitosa';
                 const idGenerado = data.presupuestoId || (data.data && data.data.id) || this.cart.editId || 'Desconocido';
                 
+                if (btnConfirm) {
+                    btnConfirm.innerText = '✅ GUARDADO';
+                }
+
                 Swal.fire({
                     icon: 'success',
                     title: titleSuccess,
                     text: `El documento fiscal guardado bajo el N° ${idGenerado}`,
                     confirmButtonText: 'Aceptar',
-                    confirmButtonColor: '#2563eb'
+                    confirmButtonColor: '#2563eb',
+                    allowOutsideClick: false, // Prevención de doble click accidental
+                    allowEscapeKey: false
                 }).then(() => {
                     window.location.href = 'presupuestos.html';
                 });
             } else {
+                this.isSubmitting = false;
+                if (btnConfirm) {
+                    btnConfirm.disabled = false;
+                    btnConfirm.style.opacity = '1';
+                    btnConfirm.innerText = '🚀 REINTENTAR';
+                }
                 Swal.fire('Error del Servidor', "Ocurrió un defecto al guardar: " + (data.error || "Desconocido"), 'error');
             }
 
         } catch(e) {
+            this.isSubmitting = false;
             document.getElementById('full-loader').classList.add('hidden');
+            if (btnConfirm) {
+                btnConfirm.disabled = false;
+                btnConfirm.style.opacity = '1';
+                btnConfirm.innerText = '🚀 REINTENTAR VENTA';
+            }
             console.error(e);
-            Swal.fire('Fallo de Red', "No se pudo alcanzar el servidor central. Verificá tus datos móviles.", 'error');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Fallo de Conexión',
+                text: "No se pudo recibir respuesta del servidor. Si sufriste un microcorte, EL PRESUPUESTO PODRÍA ESTAR GUARDADO. Por favor, verifica en la lista principal antes de volver a enviarlo para evitar duplicados.",
+                confirmButtonText: 'Entendido'
+            });
         }
     }
 };
