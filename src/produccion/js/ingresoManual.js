@@ -1,4 +1,4 @@
-﻿import {
+import {
   registrarMovimientoIngrediente,
   registrarMovimientoStockVentas
 } from './apiMovimientos.js';
@@ -894,8 +894,9 @@ async function confirmarIngreso() {
     }
     const carroData = await carroResponse.json();
     const tipoCarro = carroData.tipo_carro;
+    const estadoCarro = carroData.estado;
 
-    console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'}`);
+    console.log(`🔍 Tipo de carro detectado: ${tipoCarro || 'interna'} - Estado: ${estadoCarro || 'desconocido'}`);
 
     const esCierreExterna = (tipoCarro === 'externa' && estadoCarro === 'preparado');
 

@@ -1,6 +1,8 @@
 {
-  "numero": "DADNSCX5",
-  "nombre": "Datil/Algerian/Nour/SCarozo x 5",
-  "codigo_barras": "4645854634",
-  "cantidad": "1"
+  "articulo": {
+    "numero": "ARBX5",
+    "nombre": "Azucar Rubia x 5",
+    "codigo_barras": "2115668873"
+  },
+  "cantidad": "4.00"
 }
