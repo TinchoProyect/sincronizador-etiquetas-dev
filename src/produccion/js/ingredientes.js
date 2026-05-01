@@ -1,5 +1,5 @@
 import { esMix } from './mix.js';
-import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria } from './components/modalIngrediente.js';
+import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria, cargarSectores } from './components/modalIngrediente.js';
 
 // Variables globales
 let ingredienteEditando = null;
@@ -1506,7 +1506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Botón para abrir modal de nuevo ingrediente
     document.getElementById('btn-nuevo-ingrediente').addEventListener('click', () => {
-        abrirModal();
+        abrirModalNuevoIngrediente();
     });
 
     // Hacer los modales arrastrables
