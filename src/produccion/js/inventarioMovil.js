@@ -894,31 +894,30 @@ window.solicitarFinalizarInventario = () => {
     // Items que tienen stock en sistema > 0 pero NO fueron contados
     const itemsAZero = listaIngredientes.filter(i => !i.contado && (i.stock_sistema || i.stock_actual) > 0);
 
-    let mensaje = "⚠️ ¿Finalizar Inventario?\n\n";
-
+    // Instancia de confirmación ÚNICA y solo en caso de justificada seguridad (ítems que irán a cero)
     if (itemsAZero.length > 0) {
-        mensaje += `📉 SE PONDRÁN A CERO (${itemsAZero.length}) ARTÍCULOS:\n`;
+        let mensaje = `⚠️ ATENCIÓN: ${itemsAZero.length} ARTÍCULOS SE PONDRÁN A CERO\n\n`;
         // Mostrar los primeros 5 como ejemplo
         itemsAZero.slice(0, 5).forEach(i => {
             mensaje += ` - ${i.nombre} (Sys: ${i.stock_sistema || i.stock_actual})\n`;
         });
         if (itemsAZero.length > 5) mensaje += `... y ${itemsAZero.length - 5} más.\n`;
-    } else {
-        mensaje += "✅ Todo parece en orden. No hay items con stock que queden sin contar.\n";
+        
+        mensaje += "\nEsta acción es irreversible. ¿Desea finalizar el inventario?";
+
+        if (!confirm(mensaje)) return;
     }
 
-    mensaje += "\nEsta acción es irreversible. Se generará el informe y cerrará la sesión.";
+    // Ocultar modal si estuviera abierto
+    const modalResumen = document.getElementById('modal-resumen');
+    if (modalResumen) modalResumen.style.display = 'none';
 
-    // 2. Confirmación Nativa
-    if (confirm(mensaje)) {
-        if (confirm("¿Estás 100% seguro?")) {
-            socket.emit('finalizar_inventario', {
-                sessionId,
-                confirmado: true
-            });
-            mostrarToast("🏁 Finalizando...");
-        }
-    }
+    // Ejecución directa
+    socket.emit('finalizar_inventario', {
+        sessionId,
+        confirmado: true
+    });
+    mostrarToast("🏁 Finalizando...");
 };
 
 window.solicitarImpresion = () => {

@@ -474,19 +474,30 @@ function mostrarCheckboxesSectores() {
 
     todosLosSectores.forEach(sector => {
         let claveGrupo = "Sin inventario previo";
+        let responsableGrupo = null;
         let timestamp = 0;
         
         if (sector.fecha_ultimo_inventario) {
             const fecha = new Date(sector.fecha_ultimo_inventario);
             timestamp = fecha.getTime();
-            // Formatear: "lunes 15 de marzo" (removiendo comas que pueda meter Intl)
-            claveGrupo = formateador.format(fecha).replace(/,/g, '');
+            // Formatear nativo
+            const formateado = formateador.format(fecha).replace(/,/g, '');
+            // Capitalizar ("sábado 2 de mayo" -> "Sábado 2 de Mayo")
+            const palabras = formateado.split(' ').map(p => {
+                if(p.toLowerCase() === 'de' || p.toLowerCase() === 'el' || p.toLowerCase() === 'la') return p.toLowerCase();
+                return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+            });
+            const fechaCapitalizada = palabras.join(' ');
+            responsableGrupo = sector.usuario_ultimo_inventario || "Desconocido";
+            claveGrupo = `${fechaCapitalizada}|${responsableGrupo}`;
         }
 
         if (!grupos[claveGrupo]) {
             grupos[claveGrupo] = {
                 sectores: [],
-                timestamp: timestamp
+                timestamp: timestamp,
+                fechaFormateada: claveGrupo.split('|')[0],
+                responsable: responsableGrupo
             };
         }
         grupos[claveGrupo].sectores.push(sector);
@@ -506,17 +517,19 @@ function mostrarCheckboxesSectores() {
         // Encabezado de grupo
         const headerGrupo = document.createElement("h5");
         headerGrupo.style.cssText = "margin-top: 15px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; color: #444; font-size: 14px;";
-        headerGrupo.innerHTML = clave === "Sin inventario previo" ? "⚠️ " + clave : "📅 Último inventario: " + clave;
+        
+        if (clave === "Sin inventario previo") {
+            headerGrupo.innerHTML = "⚠️ " + clave;
+        } else {
+            headerGrupo.innerHTML = `📅 Último inventario: ${grupo.fechaFormateada} - <span style="color: #666; font-size: 0.9em;">👤 Responsable: ${grupo.responsable}</span>`;
+        }
         contenedor.appendChild(headerGrupo);
 
         // Crear checkboxes para cada sector del grupo
         grupo.sectores.forEach(sector => {
             const checkboxDiv = document.createElement("div");
             checkboxDiv.className = "sector-checkbox-item";
-            checkboxDiv.style.cssText = "margin-bottom: 12px; display: flex; flex-direction: column;";
-
-            const topRow = document.createElement("div");
-            topRow.style.cssText = "display: flex; align-items: center;";
+            checkboxDiv.style.cssText = "margin-bottom: 8px; display: flex; align-items: center;";
 
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
@@ -538,19 +551,10 @@ function mostrarCheckboxesSectores() {
                 label.appendChild(descripcion);
             }
 
-            topRow.appendChild(checkbox);
-            topRow.appendChild(label);
-            checkboxDiv.appendChild(topRow);
-
-            // Agregar responsable si existe
-            if (sector.usuario_ultimo_inventario) {
-                const bottomRow = document.createElement("small");
-                bottomRow.style.cssText = "display: block; color: #888; font-size: 0.85em; margin-left: 22px; margin-top: 2px;";
-                bottomRow.innerHTML = "👤 Responsable: " + sector.usuario_ultimo_inventario;
-                checkboxDiv.appendChild(bottomRow);
-            }
-
+            checkboxDiv.appendChild(checkbox);
+            checkboxDiv.appendChild(label);
             contenedor.appendChild(checkboxDiv);
+            
             console.log("📋 [SECTORES] Checkbox creado: " + sector.nombre + " (ID: " + sector.id + ")");
         });
     });
