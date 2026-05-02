@@ -116,6 +116,10 @@ export function getCategoriasCatalogo() {
     return categoriasCatalogo;
 }
 
+export function getSectoresDisponibles() {
+    return sectoresDisponibles;
+}
+
 export async function cargarSectores() {
     try {
         const response = await fetch('/api/produccion/sectores');

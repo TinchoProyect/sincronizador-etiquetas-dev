@@ -1,5 +1,5 @@
 import { esMix } from './mix.js';
-import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria, cargarSectores } from './components/modalIngrediente.js';
+import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria, cargarSectores, getSectoresDisponibles } from './components/modalIngrediente.js';
 
 // Variables globales
 let ingredienteEditando = null;
@@ -1322,27 +1322,10 @@ window.abrirModalImpresionGeneral = async function(ingredienteId) {
 
         const codigo = ingrediente.codigo || 'S/C';
         const nombre = ingrediente.nombre_ingrediente || ingrediente.nombre;
-        const sectorId = ingrediente.sector_id;
-
-        // Replicación estricta de la lógica de extracción de Letra-Sector conectando modal y ui externa.
-        let sectorLetra = '';
-        if (sectorId && sectoresDisponibles.length > 0) {
-            const sectorObj = sectoresDisponibles.find(s => s.id == sectorId);
-            if (sectorObj) {
-                const extraerLetra = (desc, nombreSect) => {
-                    if (desc) {
-                        const match = desc.match(/["']([^"']+)["']/);
-                        if (match && match[1]) return match[1].toUpperCase();
-                    }
-                    if (nombreSect) {
-                        const matchNombre = nombreSect.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
-                        if (matchNombre && matchNombre[1]) return matchNombre[1].toUpperCase();
-                    }
-                    return null;
-                };
-                sectorLetra = extraerLetra(sectorObj.descripcion, sectorObj.nombre) || sectorObj.nombre;
-            }
-        }
+        // El dato puro ya viene procesado estructuralmente desde el backend a través de la relación de tablas.
+        // Solo conservamos el carácter aislado antes del guión para no romper el layout de Zebra
+        const sectorLetraCompleta = ingrediente.sector_letra || '';
+        const sectorLetra = sectorLetraCompleta.split('-')[0].trim();
 
         await imprimirEtiqueta({ codigo, nombre, sector: sectorLetra });
 
@@ -1463,26 +1446,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             const nombre = document.getElementById('nombre').value;
             const sectorId = document.getElementById('sector').value;
 
-            // Lógica de extracción de letra (replicada de mantenimiento.js y guardadoIngredientes.js)
+            // Lógica de extracción de letra AISLADA (réplica estricta de GuardadoIngredientes)
             let sectorLetra = '';
 
-            if (sectorId && sectoresDisponibles.length > 0) {
-                const sectorObj = sectoresDisponibles.find(s => s.id == sectorId);
+            const listaSectores = getSectoresDisponibles();
+            if (sectorId && listaSectores.length > 0) {
+                const sectorObj = listaSectores.find(s => s.id == sectorId);
                 if (sectorObj) {
-                    // 1. Intentar extrar de descripción ("Sector K") o comillas
-                    const extraerLetra = (desc, nombre) => {
-                        if (desc) {
-                            const match = desc.match(/["']([^"']+)["']/);
-                            if (match && match[1]) return match[1].toUpperCase();
+                    if (sectorObj.descripcion) {
+                        const match = sectorObj.descripcion.match(/"([^"]+)"/);
+                        if (match && match[1]) {
+                            sectorLetra = match[1].toUpperCase();
                         }
-                        if (nombre) {
-                            const matchNombre = nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
-                            if (matchNombre && matchNombre[1]) return matchNombre[1].toUpperCase();
+                    }
+                    if (!sectorLetra && sectorObj.nombre) {
+                        const matchNombre = sectorObj.nombre.match(/Sector\s*["']?([A-Z0-9]{1,2})["']?/i);
+                        if (matchNombre && matchNombre[1]) {
+                            sectorLetra = matchNombre[1].toUpperCase();
+                        } else {
+                            const clean = sectorObj.nombre.replace(/Sector\s*/i, '').replace(/["']/g, '').trim();
+                            if (clean.length <= 2) {
+                                sectorLetra = clean.toUpperCase();
+                            }
                         }
-                        return null;
-                    };
-
-                    sectorLetra = extraerLetra(sectorObj.descripcion, sectorObj.nombre) || sectorObj.nombre;
+                    }
                 }
             }
 
