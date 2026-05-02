@@ -39,9 +39,12 @@ async function cargarPendientes() {
                             <input type="checkbox" class="chk-pedido" value="${p.id}" onchange="actualizarBotonAsignar()" style="width: 24px; height: 24px; accent-color: #2563eb;">
                         </div>
                         <div style="flex: 1;">
-                            <div class="entrega-header" style="margin-bottom: 0.5rem;">
+                            <div class="entrega-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                 <div style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">${esIngreso ? (p.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${p.id}</div>
-                                <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor};">${p.estado_logistico || 'Pendiente'}</div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    ${!esIngreso ? `<span style="font-weight: 900; color: #15803d; font-size: 0.95rem; background: #dcfce7; padding: 0.15rem 0.4rem; border-radius: 0.375rem;">$ ${parseFloat(p.total || 0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>` : ''}
+                                    <div class="entrega-badge badge-pendiente" style="background:${borderColor}; color:${iconColor}; margin: 0;">${p.estado_logistico || 'Pendiente'}</div>
+                                </div>
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
                                 <div class="entrega-cliente" style="font-size: 0.95rem;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>

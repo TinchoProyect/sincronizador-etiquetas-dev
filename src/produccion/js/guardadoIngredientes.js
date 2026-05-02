@@ -294,8 +294,9 @@ async function imprimirEtiqueta(ingredienteId, nombre) {
     // Usamos toString() para asegurar coincidencia de tipos
     const ingredienteData = ingredientes.ingredientes?.find(ing => ing.id.toString() === ingredienteId.toString());
 
-    // 1. Definir CÓDIGO (Debe ser estrictamente numérico: el ID de la tabla de ingredientes)
-    let codigoBarras = ingredienteId.toString();
+    // 1. Definir CÓDIGO (Debe extraer el código numérico del artículo alojado en la tabla de ingredientes)
+    // Se usa el ID de la tabla solo como fallback en caso de error extremo.
+    let codigoBarras = ingredienteData && ingredienteData.codigo ? ingredienteData.codigo.toString() : ingredienteId.toString();
 
     // 2. Definir NOMBRE (Prioridad: ingredienteData.nombre > parámetro nombre)
     let nombreFinal = nombre;
