@@ -817,18 +817,31 @@ function inicializarWebSocketIngredientes() {
             console.log("🔍 [DEBUG SYNC] window.listaMaestraPC:", window.listaMaestraPC ? window.listaMaestraPC.length + " items" : "UNDEFINED");
             console.log("🔍 [DEBUG SYNC] todosLosIngredientes:", typeof todosLosIngredientes !== 'undefined' ? todosLosIngredientes.length + " items" : "UNDEFINED");
 
-            // AUTOMÁTICO: Enviar lista maestra de ingredientes al móvil
-            // FIX: Enviar la lista FILTRADA (window.listaMaestraPC) no la global (todosLosIngredientes)
-            const listaParaEnviar = window.listaMaestraPC || todosLosIngredientes;
+            // REFACTOR (Fase 2): Cruzar la lista maestra con el progreso actual de la PC
+            const listaBase = window.listaMaestraPC || todosLosIngredientes;
 
-            if (listaParaEnviar && listaParaEnviar.length > 0) {
-                console.log("📤 [SYNC] Enviando lista maestra al móvil (" + listaParaEnviar.length + " items)");
+            if (listaBase && listaBase.length > 0) {
+                // Clonar y mapear inyectando el estado real de la sesión (PC como Master)
+                const listaParaEnviar = listaBase.map(ing => {
+                    const ingCopia = { ...ing };
+                    if (ingredientesInventario.has(ingCopia.id.toString())) {
+                        const itemContado = ingredientesInventario.get(ingCopia.id.toString());
+                        ingCopia.contado = true;
+                        ingCopia.stock_contado = itemContado.stock_contado;
+                    } else {
+                        ingCopia.contado = false;
+                        ingCopia.stock_contado = 0;
+                    }
+                    return ingCopia;
+                });
+
+                console.log("📤 [SYNC] Enviando estado consolidado al móvil (" + listaParaEnviar.length + " items)");
                 socket.emit("sincronizar_datos_inventario", {
                     sessionId: sessionId,
                     ingredientes: listaParaEnviar
                 });
             } else {
-                console.error("❌ [DEBUG SYNC] No hay lista para enviar. listaParaEnviar es empty/null");
+                console.error("❌ [DEBUG SYNC] No hay lista base para procesar y enviar");
             }
         });
 
