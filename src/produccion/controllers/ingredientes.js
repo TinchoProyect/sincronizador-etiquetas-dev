@@ -490,18 +490,33 @@ async function obtenerStockPorUsuario(usuarioId) {
 }
 
 /**
- * Obtiene todos los sectores disponibles
+ * Obtiene todos los sectores disponibles, incluyendo la información de su último inventario
  * @returns {Promise<Array>} Lista de sectores
  */
 async function obtenerSectores() {
     try {
         const query = `
             SELECT 
-                id,
-                nombre,
-                descripcion
-            FROM sectores_ingredientes
-            ORDER BY nombre ASC;
+                s.id,
+                s.nombre,
+                s.descripcion,
+                (
+                    SELECT MAX(ia.fecha)
+                    FROM ingredientes_ajustes ia
+                    JOIN ingredientes i ON ia.ingrediente_id = i.id
+                    WHERE i.sector_id = s.id AND ia.tipo_ajuste = 'inventario'
+                ) as fecha_ultimo_inventario,
+                (
+                    SELECT u.nombre_completo
+                    FROM ingredientes_ajustes ia
+                    JOIN ingredientes i ON ia.ingrediente_id = i.id
+                    JOIN usuarios u ON ia.usuario_id = u.id
+                    WHERE i.sector_id = s.id AND ia.tipo_ajuste = 'inventario'
+                    ORDER BY ia.fecha DESC
+                    LIMIT 1
+                ) as usuario_ultimo_inventario
+            FROM sectores_ingredientes s
+            ORDER BY s.nombre ASC;
         `;
 
         const result = await pool.query(query);

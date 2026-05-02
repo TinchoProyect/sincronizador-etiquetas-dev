@@ -465,39 +465,94 @@ function mostrarCheckboxesSectores() {
         return;
     }
 
-    console.log("✅ [SECTORES] Renderizando sectores:", todosLosSectores.map(s => s.nombre));
+    console.log("✅ [SECTORES] Renderizando sectores agrupados");
 
-    // Crear checkboxes para cada sector
+    // Agrupar sectores por fecha de ultimo inventario
+    const grupos = {};
+    const opcionesFecha = { weekday: 'long', day: 'numeric', month: 'long' };
+    const formateador = new Intl.DateTimeFormat('es-AR', opcionesFecha);
+
     todosLosSectores.forEach(sector => {
-        const checkboxDiv = document.createElement("div");
-        checkboxDiv.className = "sector-checkbox-item";
-        checkboxDiv.style.cssText = "margin-bottom: 8px; display: flex; align-items: center;";
-
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.id = "sector-" + sector.id;
-        checkbox.className = "sector-checkbox";
-        checkbox.setAttribute("data-sector-id", sector.id);
-        checkbox.style.cssText = "margin-right: 8px;";
-
-        const label = document.createElement("label");
-        label.htmlFor = "sector-" + sector.id;
-        label.textContent = sector.nombre;
-        label.style.cssText = "cursor: pointer; user-select: none;";
-
-        // Agregar descripcion si existe
-        if (sector.descripcion && sector.descripcion.trim() !== "") {
-            const descripcion = document.createElement("small");
-            descripcion.textContent = " (" + sector.descripcion + ")";
-            descripcion.style.cssText = "color: #666; margin-left: 4px;";
-            label.appendChild(descripcion);
+        let claveGrupo = "Sin inventario previo";
+        let timestamp = 0;
+        
+        if (sector.fecha_ultimo_inventario) {
+            const fecha = new Date(sector.fecha_ultimo_inventario);
+            timestamp = fecha.getTime();
+            // Formatear: "lunes 15 de marzo" (removiendo comas que pueda meter Intl)
+            claveGrupo = formateador.format(fecha).replace(/,/g, '');
         }
 
-        checkboxDiv.appendChild(checkbox);
-        checkboxDiv.appendChild(label);
-        contenedor.appendChild(checkboxDiv);
+        if (!grupos[claveGrupo]) {
+            grupos[claveGrupo] = {
+                sectores: [],
+                timestamp: timestamp
+            };
+        }
+        grupos[claveGrupo].sectores.push(sector);
+    });
 
-        console.log("📋 [SECTORES] Checkbox creado: " + sector.nombre + " (ID: " + sector.id + ")");
+    // Ordenar grupos por fecha descendente (los más recientes primero) y "Sin inventario" al final
+    const clavesOrdenadas = Object.keys(grupos).sort((a, b) => {
+        if (a === "Sin inventario previo") return 1;
+        if (b === "Sin inventario previo") return -1;
+        return grupos[b].timestamp - grupos[a].timestamp;
+    });
+
+    // Renderizar grupos
+    clavesOrdenadas.forEach(clave => {
+        const grupo = grupos[clave];
+        
+        // Encabezado de grupo
+        const headerGrupo = document.createElement("h5");
+        headerGrupo.style.cssText = "margin-top: 15px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; color: #444; font-size: 14px;";
+        headerGrupo.innerHTML = clave === "Sin inventario previo" ? "⚠️ " + clave : "📅 Último inventario: " + clave;
+        contenedor.appendChild(headerGrupo);
+
+        // Crear checkboxes para cada sector del grupo
+        grupo.sectores.forEach(sector => {
+            const checkboxDiv = document.createElement("div");
+            checkboxDiv.className = "sector-checkbox-item";
+            checkboxDiv.style.cssText = "margin-bottom: 12px; display: flex; flex-direction: column;";
+
+            const topRow = document.createElement("div");
+            topRow.style.cssText = "display: flex; align-items: center;";
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.id = "sector-" + sector.id;
+            checkbox.className = "sector-checkbox";
+            checkbox.setAttribute("data-sector-id", sector.id);
+            checkbox.style.cssText = "margin-right: 8px;";
+
+            const label = document.createElement("label");
+            label.htmlFor = "sector-" + sector.id;
+            label.textContent = sector.nombre;
+            label.style.cssText = "cursor: pointer; user-select: none; font-weight: 500;";
+
+            // Agregar descripcion si existe
+            if (sector.descripcion && sector.descripcion.trim() !== "") {
+                const descripcion = document.createElement("small");
+                descripcion.textContent = " (" + sector.descripcion + ")";
+                descripcion.style.cssText = "color: #666; margin-left: 4px; font-weight: normal;";
+                label.appendChild(descripcion);
+            }
+
+            topRow.appendChild(checkbox);
+            topRow.appendChild(label);
+            checkboxDiv.appendChild(topRow);
+
+            // Agregar responsable si existe
+            if (sector.usuario_ultimo_inventario) {
+                const bottomRow = document.createElement("small");
+                bottomRow.style.cssText = "display: block; color: #888; font-size: 0.85em; margin-left: 22px; margin-top: 2px;";
+                bottomRow.innerHTML = "👤 Responsable: " + sector.usuario_ultimo_inventario;
+                checkboxDiv.appendChild(bottomRow);
+            }
+
+            contenedor.appendChild(checkboxDiv);
+            console.log("📋 [SECTORES] Checkbox creado: " + sector.nombre + " (ID: " + sector.id + ")");
+        });
     });
 
     // Agregar event listener para el checkbox "Todos los sectores"
