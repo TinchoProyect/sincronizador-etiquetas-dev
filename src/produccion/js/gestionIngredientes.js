@@ -469,7 +469,7 @@ function mostrarCheckboxesSectores() {
 
     // Agrupar sectores por fecha de ultimo inventario
     const grupos = {};
-    const opcionesFecha = { weekday: 'long', day: 'numeric', month: 'long' };
+    const opcionesFecha = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
     const formateador = new Intl.DateTimeFormat('es-AR', opcionesFecha);
 
     todosLosSectores.forEach(sector => {
