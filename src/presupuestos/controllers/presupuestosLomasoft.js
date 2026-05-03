@@ -212,6 +212,19 @@ const buscarCandidatasLomasoft = async (req, res) => {
 
             // Parseamos la respuesta de Lomasoft
             const jsonText = await lomaRes.text();
+            
+            // 🔍 LLENAR VIGÍA DEPURADOR PARA FLUJO VENTAS
+            vigia.payload = payloadLomasoft;
+            vigia.respuestas_crudas.push({
+                endpoint_utilizado: urlLomasoft,
+                http_status: lomaRes.status,
+                body_crudo: jsonText
+            });
+            vigia.logica_match.push({
+                fase: "Túnel Cloudflare",
+                detalle: "El endpoint remoto /api/facturas/candidatas evaluó las candidatas internamente y retornó resultados pre-filtrados."
+            });
+
             let lomasoftData;
             try {
                 lomasoftData = JSON.parse(jsonText);
@@ -232,40 +245,87 @@ const buscarCandidatasLomasoft = async (req, res) => {
             totalCandidatas = lomasoftData.total || candidatasArray.length;
         }
 
-        // Función auxiliar para normalizar formatos de comprobante (ej: 0007-00000147 -> 7-147)
-        const extractNumbers = (str) => {
+        // Función auxiliar para normalizar formatos de comprobante (ej: B0007-00000147 -> B7-147)
+        // CRÍTICO: Debe conservar las letras para evitar falsos positivos entre Factura A y Factura B
+        const normalizeComprobante = (str) => {
             if (!str) return '';
+            // Extraemos solo la primera letra significativa para el tipo de comprobante (A, B, C, M)
+            // Lomasoft suele enviar formatos como 'B0007-00000147'
+            const typeMatch = str.toUpperCase().match(/([A-Z])/);
+            const letter = typeMatch ? typeMatch[1] : '';
+            
             const match = str.match(/(\d+)\D+(\d+)/);
             if (match) {
-                return `${parseInt(match[1], 10)}-${parseInt(match[2], 10)}`;
+                return `${letter}${parseInt(match[1], 10)}-${parseInt(match[2], 10)}`;
             }
             const singleMatch = str.match(/(\d+)/);
-            if (singleMatch) return parseInt(singleMatch[1], 10).toString();
+            if (singleMatch) return `${letter}${parseInt(singleMatch[1], 10)}`;
             return str;
         };
 
         // Fase 3: Interceptor de facturas ya conciliadas (Bloqueo Global)
         if (candidatasArray.length > 0) {
             const checkSql = `
-                SELECT id, comprobante_lomasoft 
-                FROM presupuestos 
-                WHERE comprobante_lomasoft IS NOT NULL
-                  AND activo = true
-                  AND estado != 'Anulado'
+                SELECT 
+                    p.id, 
+                    p.id_cliente,
+                    p.id_presupuesto_ext, 
+                    p.comprobante_lomasoft,
+                    p.fecha,
+                    COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as cliente_nombre,
+                    COALESCE((
+                        SELECT SUM(d.cantidad * d.precio1) 
+                        FROM public.presupuestos_detalles d 
+                        WHERE d.id_presupuesto = p.id
+                    ), 0) * (1 - COALESCE(p.descuento, 0)) as total_final
+                FROM presupuestos p
+                LEFT JOIN clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+                WHERE p.comprobante_lomasoft IS NOT NULL
+                  AND p.activo = true
+                  AND p.estado != 'Anulado'
             `;
             const checkRes = await req.db.query(checkSql);
 
             const vinculados = {};
             checkRes.rows.forEach(row => {
-                const norm = extractNumbers(row.comprobante_lomasoft);
-                if (norm) vinculados[norm] = row.id;
+                const norm = normalizeComprobante(row.comprobante_lomasoft);
+                if (norm) {
+                    // Si ya existe y pertenece a otro cliente, podríamos estar ante una colisión de IDs legados,
+                    // pero guardamos el array de todos los vínculos que compartan este 'norm'
+                    if (!vinculados[norm]) vinculados[norm] = [];
+                    vinculados[norm].push({ 
+                        id: row.id, 
+                        hash: row.id_presupuesto_ext,
+                        id_cliente: row.id_cliente,
+                        fecha: row.fecha,
+                        cliente: row.cliente_nombre,
+                        total: row.total_final
+                    });
+                }
             });
 
             candidatasArray.forEach(c => {
-                const normCand = extractNumbers(c.comprobante_formateado);
+                const normCand = normalizeComprobante(c.comprobante_formateado);
                 if (normCand && vinculados[normCand]) {
-                    c.ya_conciliada = true;
-                    c.id_presupuesto_local = vinculados[normCand];
+                    // Encontrar el vínculo que realmente corresponda a este cliente o monto (Filtro Anti Falsos Positivos)
+                    const candidataTotal = Math.abs(parseFloat(c.importe_total || c.monto_total || c.total || c.importe_neto || 0));
+                    
+                    const vinculoReal = vinculados[normCand].find(vinc => {
+                        const isSameClient = String(vinc.id_cliente).trim() === String(localData.id_cliente).trim();
+                        const isSameMonto = Math.abs(parseFloat(vinc.total || 0) - candidataTotal) < 100;
+                        return isSameClient || isSameMonto;
+                    });
+
+                    if (vinculoReal) {
+                        c.ya_conciliada = true;
+                        c.id_presupuesto_local = vinculoReal.id;
+                        c.hash_presupuesto_local = vinculoReal.hash;
+                        c.fecha_presupuesto_local = vinculoReal.fecha;
+                        c.cliente_presupuesto_local = vinculoReal.cliente;
+                        c.total_presupuesto_local = vinculoReal.total;
+                    } else {
+                        c.ya_conciliada = false;
+                    }
                 } else {
                     c.ya_conciliada = false;
                 }

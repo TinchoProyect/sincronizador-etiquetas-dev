@@ -440,6 +440,8 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
             }
             if (appState.filtros.clienteId) {
                 queryParams.append('clienteId', appState.filtros.clienteId);
+            } else if (appState.filtros.presupuestoId) {
+                queryParams.append('presupuestoId', appState.filtros.presupuestoId);
             } else if (appState.filtros.clienteName) {
                 queryParams.append('clienteName', appState.filtros.clienteName);
             } else if (appState.filtros.concepto) {
@@ -953,10 +955,11 @@ function handleBuscarCliente(event) {
     const query = event.target.value;
     console.log(`🔍 [PRESUPUESTOS-JS] Buscando cliente: ${query}`);
 
-    // Limpiar filtros de cliente anteriores
+    // Limpiar filtros de cliente/presupuesto anteriores
     appState.filtros.clienteId = '';
     appState.filtros.clienteName = '';
     appState.filtros.concepto = '';
+    appState.filtros.presupuestoId = '';
 
     if (query.trim() === '') {
         hideSugerenciasClientes();
@@ -965,13 +968,21 @@ function handleBuscarCliente(event) {
         return;
     }
 
-    // Si el texto cumple /^\d{1,3}$/ → filtrar por cliente_id exacto
+    // Si el texto cumple /^\d{1,3}$/ → filtrar por cliente_id exacto (1 a 3 dígitos)
     if (/^\d{1,3}$/.test(query.trim())) {
         appState.filtros.clienteId = query.trim();
         hideSugerenciasClientes();
         saveFiltersToStorage();
         applyFilters();
-    } else {
+    } 
+    // Si el texto cumple /^\d{4,8}$/ → filtrar por ID Numérico de Presupuesto (Primary Key)
+    else if (/^\d{4,8}$/.test(query.trim())) {
+        appState.filtros.presupuestoId = query.trim();
+        hideSugerenciasClientes();
+        saveFiltersToStorage();
+        applyFilters();
+    } 
+    else {
         // Si es texto → filtrar por nombre y mostrar sugerencias
         appState.filtros.clienteName = query.trim();
         showSugerenciasClientes(query.trim());
@@ -1044,6 +1055,7 @@ function renderSugerenciasClientes(sugerencias) {
             }
 
             appState.filtros.clienteId = clienteId;
+            appState.filtros.presupuestoId = '';
             appState.filtros.clienteName = '';
             appState.filtros.concepto = '';
 
@@ -1072,6 +1084,7 @@ function handleBuscarConcepto(event) {
 
     // Limpiar filtros de cliente
     appState.filtros.clienteId = '';
+    appState.filtros.presupuestoId = '';
     appState.filtros.clienteName = '';
     appState.filtros.concepto = concepto;
     applyFilters();
@@ -1709,7 +1722,7 @@ function renderDetallesArticulos(data) {
         return `
         <div class="detalles-content">
             <div class="detalles-header">
-                <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
+                <h4>📋 Detalles del Presupuesto #${presupuesto.id} (${presupuesto.id_presupuesto_ext})</h4>
                 <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
             </div>
             <div class="no-articulos">
@@ -1849,7 +1862,7 @@ function renderDetallesArticulos(data) {
     return `
         <div class="detalles-content">
             <div class="detalles-header">
-                <h4>📋 Detalles del Presupuesto ${presupuesto.id_presupuesto}</h4>
+                <h4>📋 Detalles del Presupuesto #${presupuesto.id} (${presupuesto.id_presupuesto_ext})</h4>
                 <div class="detalles-info">
                     <span class="tipo-comprobante">${presupuesto.tipo_comprobante}</span>
                     <span class="total-articulos">${total_articulos} artículo${total_articulos !== 1 ? 's' : ''}</span>
@@ -2349,6 +2362,7 @@ function saveFiltersToStorage() {
         const filtrosParaGuardar = {
             categoria: appState.filtros.categoria || '',
             clienteId: appState.filtros.clienteId || '',
+            presupuestoId: appState.filtros.presupuestoId || '',
             clienteName: appState.filtros.clienteName || '',
             concepto: appState.filtros.concepto || '',
             estado: appState.filtros.estado || [],
@@ -2381,6 +2395,7 @@ function restoreFiltersFromStorage() {
         // Restaurar en appState
         appState.filtros.categoria = filtros.categoria || '';
         appState.filtros.clienteId = filtros.clienteId || '';
+        appState.filtros.presupuestoId = filtros.presupuestoId || '';
         appState.filtros.clienteName = filtros.clienteName || '';
         appState.filtros.concepto = filtros.concepto || '';
         appState.filtros.estado = filtros.estado || [];
@@ -2760,6 +2775,38 @@ async function buscarCandidatasLomasoft(presupuestoId) {
             throw new Error(json.message || 'Error en la consulta al túnel');
         }
 
+        // ==========================================
+        // VIGÍA DEPURADOR TICKET #037 (PARCHE #039)
+        // ==========================================
+        console.group('%c[VIGÍA DEPURADOR LOMASOFT] TELEMETRÍA DE CONCILIACIÓN', 'color: white; background: #e74c3c; padding: 4px; font-weight: bold;');
+        
+        if (json.vigia) {
+            console.log('%c1. LA CARNADA (Payload Enviado)', 'color: #3498db; font-weight: bold;');
+            console.log(JSON.parse(JSON.stringify(json.vigia.payload)));
+            
+            console.log('%c2. LA PESCA (Respuesta Cruda)', 'color: #2ecc71; font-weight: bold;');
+            console.log(JSON.parse(JSON.stringify(json.vigia.respuestas_crudas)));
+
+            console.log('%c3. LÓGICA DE BLOQUEO INTERNO Y MATCH', 'color: #f39c12; font-weight: bold;');
+            console.table(JSON.parse(JSON.stringify(json.vigia.logica_match)));
+        }
+
+        console.log('%c4. LÓGICA DE ESTADO "YA VINCULADO" (Evaluación Final)', 'color: #9b59b6; font-weight: bold;');
+        if (json.data && json.data.length > 0) {
+            json.data.forEach(c => {
+                if (c.ya_conciliada) {
+                    console.log(`%c[EVALUACIÓN] Factura LomaSoft ID ${c.comprobante_formateado} tiene asignado el presupuesto interno ${c.id_presupuesto_local} (ID Interfaz: ${c.hash_presupuesto_local}). Se marca como YA VINCULADO.`, 'color: #e74c3c; font-weight: bold;');
+                } else {
+                    console.log(`[EVALUACIÓN] Factura LomaSoft ID ${c.comprobante_formateado} está libre para conciliación.`);
+                }
+            });
+        } else {
+            console.log("No hay candidatas para evaluar el bloqueo.");
+        }
+        
+        console.groupEnd();
+        // ==========================================
+
         LOMASOFT_CANDIDATAS = json.data;
 
         if (!LOMASOFT_CANDIDATAS || LOMASOFT_CANDIDATAS.length === 0) {
@@ -2783,7 +2830,10 @@ async function buscarCandidatasLomasoft(presupuestoId) {
 
         LOMASOFT_CANDIDATAS.forEach((candidata, index) => {
             const numeroFormateado = candidata.comprobante_formateado || 'S/N';
-            const importe = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(candidata.importe_total);
+            const montoCand = candidata.importe_total || candidata.monto_total || candidata.total || candidata.importe_neto || 0;
+            const importe = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(montoCand);
+            const fechaRaw = candidata.fecha || candidata.fecha_emision || candidata.fecha_registro;
+            const fechaCand = fechaRaw ? new Date(fechaRaw).toLocaleDateString('es-AR') : 'Sin Fecha';
 
             // Tooltip básico para mostrar artículos (CORREGIDO)
             const artsResumen = (candidata.articulos || []).map(a => `${a.cantidad}x ${a.nombre}`).join(' | ');
@@ -2791,10 +2841,29 @@ async function buscarCandidatasLomasoft(presupuestoId) {
             let botonHtml = '';
             if (candidata.ya_conciliada) {
                 const titleText = candidata.id_presupuesto_local ? `Usado en Presup. #${candidata.id_presupuesto_local}` : 'Ya vinculado';
+                
+                let detallesVinculo = '';
+                if (candidata.id_presupuesto_local) {
+                    const localTotal = candidata.total_presupuesto_local ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(candidata.total_presupuesto_local) : 'S/D';
+                    const localFecha = candidata.fecha_presupuesto_local ? new Date(candidata.fecha_presupuesto_local).toLocaleDateString('es-AR') : 'S/D';
+                    const localCliente = candidata.cliente_presupuesto_local || 'Cliente Desconocido';
+                    
+                    detallesVinculo = `
+                        <div style="font-size: 0.8em; color: #e74c3c; margin-top: 6px; font-weight: 500; text-align: center; background: #fdf2f2; padding: 4px; border-radius: 4px; border: 1px solid #fadcdc; width: max-content; margin-left: auto; margin-right: auto;">
+                            <strong>Presup. #${candidata.id_presupuesto_local}</strong><br>
+                            <span style="font-size: 0.9em; color: #555;">${localCliente}</span><br>
+                            <span style="font-size: 0.9em; color: #555;">${localFecha} - ${localTotal}</span>
+                        </div>
+                    `;
+                }
+
                 botonHtml = `
-                    <button class="btn btn-sm" disabled style="background-color: #7f8c8d; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: not-allowed; opacity: 0.6;" title="${titleText}">
-                        Ya vinculado
-                    </button>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <button class="btn btn-sm" disabled style="background-color: #7f8c8d; border: none; padding: 5px 10px; color: white; border-radius: 4px; cursor: not-allowed; opacity: 0.8;" title="${titleText}">
+                            Ya vinculado
+                        </button>
+                        ${detallesVinculo}
+                    </div>
                 `;
             } else {
                 botonHtml = `
@@ -2806,8 +2875,8 @@ async function buscarCandidatasLomasoft(presupuestoId) {
 
             tablaHtml += `
                 <tr style="border-bottom: 1px solid #eee;">
-                    <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante}</small></td>
-                    <td>${new Date(candidata.fecha).toLocaleDateString('es-AR')}</td>
+                    <td title="${artsResumen}"><strong>${numeroFormateado}</strong><br><small style="color:#666">${candidata.tipo_comprobante || ''}</small></td>
+                    <td>${fechaCand}</td>
                     <td>${importe}</td>
                     <td style="padding: 8px 0;">
                         ${botonHtml}
@@ -2821,7 +2890,7 @@ async function buscarCandidatasLomasoft(presupuestoId) {
         Swal.fire({
             title: 'Facturas Candidatas (Lomasoft)',
             html: tablaHtml,
-            width: '600px',
+            width: '850px',
             showConfirmButton: false,
             showCloseButton: true
         });

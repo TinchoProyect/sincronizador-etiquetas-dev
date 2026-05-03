@@ -98,6 +98,7 @@ const obtenerPresupuestos = async (req, res) => {
             clienteId,
             cliente_id, // Añadimos compatibilidad con llamadas legacy front-end
             clienteName,
+            presupuestoId, // Nuevo filtro por PK numérica
             // Nuevo parámetro de filtro por estado
             estado,
             // Parámetros de paginación nuevos
@@ -249,6 +250,12 @@ const obtenerPresupuestos = async (req, res) => {
             paramCount++;
             query += ` AND p.id_presupuesto_ext = $${paramCount}`;
             params.push(sheet_id);
+        }
+
+        if (presupuestoId) {
+            paramCount++;
+            query += ` AND p.id = $${paramCount}`;
+            params.push(parseInt(presupuestoId));
         }
 
         // Filtro por estado - Filtro por Estado – 2024-12-19
@@ -527,6 +534,12 @@ const obtenerPresupuestos = async (req, res) => {
             countParamCount++;
             countQuery += ` AND p.id_presupuesto_ext = $${countParamCount}`;
             countParams.push(sheet_id);
+        }
+
+        if (presupuestoId) {
+            countParamCount++;
+            countQuery += ` AND p.id = $${countParamCount}`;
+            countParams.push(parseInt(presupuestoId));
         }
 
         // Aplicar mismo filtro de estado para el conteo - Filtro por Estado – 2024-12-19
@@ -2025,6 +2038,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 presupuesto: {
                     id: presupuesto.id,
                     id_presupuesto: presupuesto.id_presupuesto_ext,
+                    id_presupuesto_ext: presupuesto.id_presupuesto_ext,
                     tipo_comprobante: presupuesto.tipo_comprobante,
                     condicion_iva: presupuesto.condicion_iva,
                     descuento: parseFloat(presupuesto.descuento || 0)
