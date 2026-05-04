@@ -1262,11 +1262,11 @@ function updatePresupuestosTable(data) {
                     ${!item.comprobante_lomasoft ? `
                     <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🔗</span>
-                    </button>` : ''}
-                    ${item.estado === 'Administrativa NC' ? `
-                    <button class="btn-action btn-lomasoft" onclick="buscarCandidatasLomasoft(${item.id})" title="Conciliar Lomasoft" style="background:transparent; border:1px solid #9b59b6; border-radius: 4px; cursor:pointer; color: #8e44ad; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
-                        <span style="font-size: 1.2rem;">🔗</span>
-                    </button>
+                    </button>` : `
+                    <button class="btn-action btn-desconciliar" onclick="desconciliarLomasoft(${item.id})" title="Desconciliar Lomasoft" style="background:transparent; border:1px solid #e74c3c; border-radius: 4px; cursor:pointer; color: #e74c3c; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.2rem;">🔓</span>
+                    </button>`}
+                    ${item.estado === 'Administrativa NC' && !item.comprobante_lomasoft ? `
                     <button class="btn-action btn-facturar" onclick="enviarAFacturador(${item.id})" title="Emitir NC Local" style="background:transparent; border:1px solid #28a745; border-radius: 4px; cursor:pointer; color: #28a745; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🧾</span>
                     </button>` : ''}
@@ -2949,6 +2949,56 @@ async function seleccionarCandidataLomasoft(presupuestoId, candidataIndex) {
     } catch (error) {
         console.error("Error Lomasoft Conciliación:", error);
         Swal.fire('Error al conciliar', error.message, 'error');
+    }
+}
+
+async function desconciliarLomasoft(presupuestoId) {
+    const result = await Swal.fire({
+        title: '¿Desvincular Factura?',
+        text: 'Esto romperá el vínculo con Lomasoft, reingresará el stock físico y dejará el presupuesto libre. Esta acción quedará registrada en auditoría.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e74c3c',
+        cancelButtonColor: '#95a5a6',
+        confirmButtonText: 'Sí, Desconciliar',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        Swal.fire({
+            title: 'Desconciliando...',
+            text: 'Reingresando stock y limpiando vínculos...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const response = await fetch(`/api/presupuestos/${presupuestoId}/desconciliar-lomasoft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Error al desconciliar el presupuesto.');
+        }
+
+        await Swal.fire({
+            title: '¡Desconciliado!',
+            text: 'El presupuesto ha sido liberado exitosamente.',
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+        // Refrescar grilla
+        applyFilters();
+
+    } catch (error) {
+        console.error("Error Desconciliación:", error);
+        Swal.fire('Error', error.message, 'error');
     }
 }
 

@@ -82,7 +82,8 @@ const {
 // Importar controlador de Lomasoft (Conciliación)
 const {
     buscarCandidatasLomasoft,
-    confirmarConciliacion
+    confirmarConciliacion,
+    desconciliarLomasoft
 } = require('../controllers/presupuestosLomasoft');
 
 // Importar middleware
@@ -671,6 +672,22 @@ router.post('/:id/confirmar-conciliacion',
     async (req, res) => {
         try {
             await confirmarConciliacion(req, res);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+);
+
+/**
+ * @route POST /api/presupuestos/:id/desconciliar-lomasoft
+ * @desc Revertir asociación manual Lomasoft y reingresar stock
+ */
+router.post('/:id/desconciliar-lomasoft',
+    validatePermissions('presupuestos.update'),
+    validarIdPresupuesto,
+    async (req, res) => {
+        try {
+            await desconciliarLomasoft(req, res);
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
         }

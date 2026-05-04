@@ -426,7 +426,80 @@ const confirmarConciliacion = async (req, res) => {
     }
 };
 
+const desconciliarLomasoft = async (req, res) => {
+    const { id } = req.params;
+    const usuario = req.user ? req.user.username : 'SISTEMA';
+
+    try {
+        console.log(`🔗 [LOMASOFT] Desconciliando Presupuesto ${id} (Usu: ${usuario})`);
+
+        // Comprobamos el estado actual para saber si es NC o no
+        const chkSql = `SELECT estado FROM presupuestos WHERE id = $1 AND comprobante_lomasoft IS NOT NULL`;
+        const chkRes = await req.db.query(chkSql, [id]);
+        if (chkRes.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'El presupuesto no se encuentra conciliado o no existe.' });
+        }
+
+        const sql = `
+            WITH updated_pres AS (
+                UPDATE presupuestos 
+                SET 
+                    id_factura_lomasoft = NULL,
+                    comprobante_lomasoft = NULL
+                WHERE id = $1
+                RETURNING id, estado
+            ),
+            updated_mant AS (
+                UPDATE mantenimiento_movimientos
+                SET estado = NULL,
+                    observaciones = observaciones || ' [Desconciliado vía Lomasoft]'
+                WHERE id_presupuesto_origen = $1
+                  AND tipo_movimiento = 'INGRESO'
+                  AND estado = 'CONCILIADO'
+                RETURNING articulo_numero, cantidad, id_presupuesto_origen
+            ),
+            stock_reversion AS (
+                UPDATE public.stock_real_consolidado src
+                SET stock_consolidado = src.stock_consolidado + agg.total_cantidad,
+                    stock_ajustes = COALESCE(src.stock_ajustes, 0) + agg.total_cantidad,
+                    ultima_actualizacion = NOW()
+                FROM (
+                    SELECT um.articulo_numero, SUM(um.cantidad) as total_cantidad
+                    FROM updated_mant um
+                    JOIN updated_pres up ON up.id = um.id_presupuesto_origen
+                    WHERE up.estado != 'Administrativa NC'
+                    GROUP BY um.articulo_numero
+                ) agg
+                WHERE src.articulo_numero = agg.articulo_numero
+            ),
+            insert_audit AS (
+                INSERT INTO public.mantenimiento_movimientos 
+                (articulo_numero, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado, id_presupuesto_origen)
+                SELECT um.articulo_numero, um.cantidad, 'AJUSTE', NOW(), $2, '[Ajuste Automático] Reingreso por Desconciliación Lomasoft', 'FINALIZADO', um.id_presupuesto_origen
+                FROM updated_mant um
+                JOIN updated_pres up ON up.id = um.id_presupuesto_origen
+                WHERE up.estado != 'Administrativa NC'
+            )
+            SELECT * FROM updated_pres;
+        `;
+
+        const dbResult = await req.db.query(sql, [id, usuario]);
+
+        if (dbResult.rowCount === 0) {
+            return res.status(400).json({ success: false, message: 'No se pudo revertir la conciliación' });
+        }
+
+        console.log(`✅ [LOMASOFT] Presupuesto ${id} desconciliado exitosamente`);
+        return res.json({ success: true, message: 'Presupuesto desconciliado exitosamente', data: dbResult.rows[0] });
+
+    } catch (error) {
+        console.error(`❌ [LOMASOFT] Error en desconciliarLomasoft:`, error);
+        res.status(500).json({ success: false, message: 'Error interno al desconciliar Lomasoft' });
+    }
+};
+
 module.exports = {
     buscarCandidatasLomasoft,
-    confirmarConciliacion
+    confirmarConciliacion,
+    desconciliarLomasoft
 };
