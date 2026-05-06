@@ -263,12 +263,19 @@ function inicializarModal() {
     }
 
     // 🛡️ TICKET #015: Reparación del binding de cierre de modal
-    function cerrarModal() {
+    function cerrarModal(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       // Limpiar UI y vaciar la memoria de edición actual UUID para no dejar "residuos"
       if (typeof window.cerrarModalIngresoManual === 'function') {
         window.cerrarModalIngresoManual();
       } else {
-        if (modal) modal.style.display = 'none';
+        if (modal) {
+          modal.classList.remove('show');
+          modal.style.display = '';
+        }
         window.edicionUUIDActual = null;
         if (typeof limpiarCamposModal === 'function') limpiarCamposModal();
       }
@@ -626,13 +633,20 @@ function reactivarBotonConfirmar() {
 }
 
 // 🛡️ FUNCIÓN CERRAR MODAL CON VALIDACIÓN
-function cerrarModal() {
+function cerrarModal(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
   try {
     if (modal) {
       modal.classList.remove('show');
+      modal.style.display = '';
     } else {
       console.warn('⚠️ No se puede cerrar el modal (elemento no disponible)');
     }
+    window.edicionUUIDActual = null;
+    if (typeof limpiarCamposModal === 'function') limpiarCamposModal();
   } catch (error) {
     console.error('❌ Error en cerrarModal:', error);
   }
@@ -2184,11 +2198,15 @@ window.cerrarModalIngresoManual = function() {
     btnConfirmar.innerText = 'Confirmar';
     btnConfirmar.style.backgroundColor = '';
   }
-  if (typeof origCerrarModal === 'function') origCerrarModal();
-  else {
-    const modal = document.getElementById('modalIngresoManual');
-    if (modal) modal.style.display = 'none';
+  
+  const modal = document.getElementById('modalIngresoManual');
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = '';
   }
+
+  if (typeof origCerrarModal === 'function') origCerrarModal();
+  if (typeof limpiarCamposModal === 'function') limpiarCamposModal();
 };
 
 // Hacer funciones disponibles globalmente

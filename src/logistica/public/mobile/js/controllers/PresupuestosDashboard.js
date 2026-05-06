@@ -234,8 +234,13 @@ const DashboardComercial = {
                             ? `<button class="btn-secondary" style="padding:0.6rem 1rem; font-size:0.85rem; background:#64748b; color:white; border:none; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="window.location.href='crear-presupuesto-movil.html?edit=${idPresupuesto}'">✏️ Editar</button>`
                             : ''; // Si está sellado legalmente, desaparece el acceso a Edición
 
+                        const btnEliminarDynamic = !esIntocableContablemente
+                            ? `<button class="btn-secondary" style="padding:0.6rem 1rem; font-size:0.85rem; background:#ef4444; color:white; border:none; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="DashboardComercial.eliminarPresupuesto(${idPresupuesto})">🗑️ Eliminar</button>`
+                            : '';
+
                         htmlDetalles += `
                             <div style="margin-top:1rem; text-align:right; display:flex; gap:0.5rem; justify-content:flex-end;">
+                                ${btnEliminarDynamic}
                                 ${btnEditarDynamic}
                                 <button class="btn-continue" style="padding:0.6rem 1rem; font-size:0.85rem; background:#2563eb; display:inline-flex; width:auto; border-radius:0.5rem;" onclick="DashboardComercial.abrirPreImpresion(${idPresupuesto})">
                                     🖨️ Imprimir / Compartir
@@ -253,6 +258,47 @@ const DashboardComercial = {
         } catch (error) {
             console.error('[DETALLES ERROR]:', error);
             container.innerHTML = '<p style="text-align:center; color:#ef4444; font-size:0.75rem; margin:0">Error de conexión al cargar detalle.</p>';
+        }
+    },
+
+    async eliminarPresupuesto(id) {
+        const confirmacion = await Swal.fire({
+            title: '¿Eliminar documento?',
+            text: "Esta acción no se puede deshacer.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!confirmacion.isConfirmed) return;
+
+        try {
+            Swal.fire({
+                title: 'Eliminando...',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading() }
+            });
+
+            const resp = await fetch(`${API_BASE_URL}/api/presupuestos/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            const data = await resp.json();
+            
+            if(data.success) {
+                Swal.fire('¡Eliminado!', 'El presupuesto ha sido borrado.', 'success');
+                // Remover de la memoria y re-renderizar
+                this.listaMemoria = this.listaMemoria.filter(p => p.id != id);
+                this.renderizarTarjetas();
+            } else {
+                throw new Error(data.error || data.message || "Error al eliminar");
+            }
+        } catch(e) {
+            console.error('❌ [ELIMINAR ERROR]:', e);
+            Swal.fire('Error', e.message || "Error de conexión", 'error');
         }
     },
 
