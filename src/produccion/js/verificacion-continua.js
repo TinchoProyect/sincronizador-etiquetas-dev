@@ -180,7 +180,8 @@ document.addEventListener('keydown', (e) => {
         const targetEnterPartial = SYSTEM_COMMANDS.ENTER.replace(/[-]/g, '');
         // Aniquilar el foco si empezamos a matar un comando global (Protege frente a enters fantasmas)
         if (partialClean && targetEnterPartial.startsWith(partialClean)) {
-            if (document.activeElement) {
+            // SOLO DESENFOCAR SI HAY MÁS DE 2 CARACTERES PARA EVITAR BLOQUEAR LA LETRA "C"
+            if (partialClean.length >= 3 && document.activeElement) {
                 document.activeElement.blur();
             }
         }

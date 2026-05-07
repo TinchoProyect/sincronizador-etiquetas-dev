@@ -984,7 +984,7 @@
                 return data;
             } else if (response.status === 404) {
                 console.log(`[SUGERENCIAS] Artículo ${articuloCodigo} sin receta o sin sugerencia`);
-                const resultado = { tiene_sugerencia: false, sugerencia: null };
+                const resultado = { tiene_receta: false, tiene_sugerencia: false, sugerencia: null };
                 cacheSugerencias.set(articuloCodigo, resultado);
                 return resultado;
             } else {
@@ -1017,18 +1017,35 @@
             botonSugerencia.style.cssText = 'background: #fd7e14; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
             botonSugerencia.setAttribute('data-tiene-sugerencia', 'true');
             botonSugerencia.setAttribute('data-sugerencia-numero', infoSugerencia.sugerencia.articulo_numero);
+            
+            botonSugerencia.addEventListener('click', (e) => {
+                e.stopPropagation();
+                abrirModalSugerencias(articuloCodigo, articuloNombre, infoSugerencia);
+            });
+        } else if (infoSugerencia && infoSugerencia.tiene_receta === false) {
+            // Estado 3: SIN RECETA (rojo/gris, ícono de advertencia)
+            botonSugerencia.innerHTML = '⚠️';
+            botonSugerencia.title = 'Requiere crear receta primero';
+            botonSugerencia.style.cssText = 'background: #dc3545; color: white; border: none; padding: 0; border-radius: 50%; cursor: help; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+            botonSugerencia.setAttribute('data-tiene-sugerencia', 'false');
+            botonSugerencia.setAttribute('data-tiene-receta', 'false');
+            
+            botonSugerencia.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mostrarMensaje('No existe receta para este artículo. Debe crear la receta primero.', 'error');
+            });
         } else {
             // Estado 1: SIN VÍNCULO (gris, ícono de link)
             botonSugerencia.innerHTML = '🔗';
             botonSugerencia.title = 'Asignar Sugerencia';
             botonSugerencia.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
             botonSugerencia.setAttribute('data-tiene-sugerencia', 'false');
+            
+            botonSugerencia.addEventListener('click', (e) => {
+                e.stopPropagation();
+                abrirModalSugerencias(articuloCodigo, articuloNombre, infoSugerencia);
+            });
         }
-
-        botonSugerencia.addEventListener('click', (e) => {
-            e.stopPropagation();
-            abrirModalSugerencias(articuloCodigo, articuloNombre, infoSugerencia);
-        });
 
         return botonSugerencia;
     }
@@ -1060,6 +1077,7 @@
                 </div>
                 
                 <div class="modal-sugerencias-body">
+                    <div id="sugerencia-modal-mensaje" style="display:none; margin-bottom: 15px; padding: 10px; border-radius: 4px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; font-size: 14px; font-weight: bold;"></div>
                     <div class="sugerencia-articulo-origen">
                         <strong>Artículo Origen:</strong> ${articuloNombre} (${articuloCodigo})
                     </div>
@@ -1228,8 +1246,18 @@
         const articuloOrigen = modalOverlay.getAttribute('data-articulo-origen');
         const radioSeleccionado = document.querySelector('input[name="articulo-sugerido"]:checked');
 
+        const mostrarErrorModal = (mensaje) => {
+            const errorDiv = document.getElementById('sugerencia-modal-mensaje');
+            if (errorDiv) {
+                errorDiv.textContent = mensaje;
+                errorDiv.style.display = 'block';
+            } else {
+                mostrarMensaje(mensaje, 'error');
+            }
+        };
+
         if (!radioSeleccionado) {
-            mostrarMensaje('Debe seleccionar un artículo', 'error');
+            mostrarErrorModal('Debe seleccionar un artículo');
             return;
         }
 
@@ -1265,7 +1293,7 @@
 
         } catch (error) {
             console.error('[SUGERENCIAS] Error al guardar:', error);
-            mostrarMensaje(`Error: ${error.message}`, 'error');
+            mostrarErrorModal(`Error: ${error.message}`);
         }
     }
 
