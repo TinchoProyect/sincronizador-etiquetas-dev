@@ -745,21 +745,25 @@
                                 <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaSi" value="externa_si">
                                 <label class="btn btn-outline-success" for="filtroExternaSi">Prod. Ext.</label>
                                 
-
-                                
                                 <input type="radio" class="btn-check" name="filtroProduccionExterna" id="filtroExternaNo" value="externa_no">
                                 <label class="btn btn-outline-warning" for="filtroExternaNo">NO Prod. Ext.</label>
                             </div>
                         </div>
                     </div>
                     <div class="buttons-container">
-                        <a href="inventario-articulos-pc.html" id="btn-ajustes-puntuales" class="secondary-button" style="text-decoration: none;">Ajustes Puntuales</a>
-                        <a href="inventario-articulos-pc.html" id="btn-iniciar-inventario" class="primary-button" style="text-decoration: none;">Iniciar Inventario</a>
+                        <button id="btn-ajustes-puntuales" class="secondary-button">Ajustes Puntuales</button>
+                        <button id="btn-confirmar-seleccion" class="success-button" style="display: none;">Confirmar Selección</button>
+                        <button id="btn-iniciar-inventario" class="primary-button">Iniciar Inventario</button>
                     </div>
                 </div>
                 <table class="tabla-articulos">
                     <thead>
                         <tr>
+                            <th class="checkbox-column">
+                                <div class="checkbox-header">
+                                    <input type="checkbox" id="seleccionar-todos" class="checkbox-articulo">
+                                </div>
+                            </th>
                             <th>Código</th>
                             <th>Nombre</th>
                             <th>Código de Barras</th>
@@ -781,6 +785,131 @@
         </footer>
     </div>
 
-    <script src="../js/gestionArticulos.js"></script>
+    <!-- Modal de Ajustes Puntuales -->
+    <div id="modal-ajustes" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Ajustes Puntuales de Stock</h2>
+                <span class="close" id="close-modal-ajustes">&times;</span>
+            </div>
+            
+            <!-- Paso 1: Selección de usuario -->
+            <div id="paso-usuario-ajustes" class="modal-step">
+                <div class="form-group">
+                    <label for="select-usuario-ajustes">Seleccionar Usuario:</label>
+                    <select id="select-usuario-ajustes">
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-continuar-ajustes" class="primary-button" disabled>Continuar</button>
+                </div>
+            </div>
+
+            <!-- Paso 2: Ajuste de artículos -->
+            <div id="paso-ajuste" class="modal-step" style="display: none;">
+                <div id="articulos-seleccionados">
+                    <!-- Los artículos seleccionados se mostrarán aquí -->
+                </div>
+                
+                <div id="acciones-ajuste">
+                    <button id="btn-finalizar-ajustes" class="success-button">Finalizar Ajustes</button>
+                    <button id="btn-cancelar-ajustes" class="secondary-button">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Inventario -->
+    <div id="modal-inventario" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Inventario de Stock</h2>
+                <span class="close" id="close-modal">&times;</span>
+            </div>
+            
+            <!-- Paso 1: Selección de usuario -->
+            <div id="paso-usuario" class="modal-step">
+                <div class="form-group">
+                    <label for="select-usuario">Seleccionar Usuario:</label>
+                    <select id="select-usuario">
+                        <option value="">-- Seleccionar usuario --</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button id="btn-continuar-usuario" class="primary-button" disabled>Continuar</button>
+                </div>
+            </div>
+
+            <!-- Paso 2: Conteo de artículos -->
+            <div id="paso-conteo" class="modal-step" style="display: none;">
+                <!-- Sección del código QR para acceso móvil -->
+                <div id="qr-section" class="qr-section">
+                    <h3>Acceso Móvil</h3>
+                    <p>Escanea el código QR desde tu celular para continuar el inventario:</p>
+                    <div class="qr-container">
+                        <div id="qr-canvas"></div>
+                    </div>
+                    <div class="url-container">
+                        <p><strong>URL:</strong> <span id="url-movil"></span></p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="input-codigo-barras">Código de Barras:</label>
+                    <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
+                </div>
+                
+                <div id="acciones-inventario">
+                    <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
+                    <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
+                    <button id="btn-cancelar-inventario" class="secondary-button">Cancelar</button>
+                </div>
+                
+                <div id="articulos-inventario">
+                    <!-- Los artículos del inventario se mostrarán aquí -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Diferencias -->
+    <div id="modal-diferencias" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Diferencias de Stock</h2>
+                <span class="close" id="close-modal-diferencias">&times;</span>
+            </div>
+            
+            <div class="modal-body">
+                <table class="tabla-articulos">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th>Stock Sistema</th>
+                            <th>Stock Contado</th>
+                            <th>Diferencia</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-diferencias-body">
+                        <!-- Las diferencias se cargarán dinámicamente aquí -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-guardar-correcciones" class="success-button">Guardar Correcciones</button>
+                <button id="btn-cerrar-diferencias" class="secondary-button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Librería para generar códigos QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Socket.IO Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/inventarioArticulosPC.js"></script>
 </body>
 </html>

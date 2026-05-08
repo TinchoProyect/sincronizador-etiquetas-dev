@@ -1,8 +1,6 @@
 {
-  "articulo": {
-    "numero": "MFSx5",
-    "nombre": "Mix/F/Secas x 5",
-    "codigo_barras": "2352648721"
-  },
-  "cantidad": "4.00"
+  "numero": "GS5X500G",
+  "nombre": "Grana de Sol 5 x 500 g",
+  "codigo_barras": "73282500",
+  "cantidad": 2
 }

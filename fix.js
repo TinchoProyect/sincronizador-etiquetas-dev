@@ -1,18 +1,21 @@
-const pool = require('./src/produccion/config/database');
+const fs = require('fs');
 
-async function run() {
-    try {
-        const query2 = "DELETE FROM mantenimiento_movimientos WHERE articulo_numero IS NULL AND ingrediente_id IS NULL";
-        const r2 = await pool.query(query2);
-        console.log('Deleted total nulls from movimientos: ', r2.rowCount);
+const file = 'src/produccion/js/gestionArticulos.js';
+let content = fs.readFileSync(file, 'utf8');
+let lines = content.split('\n');
 
-        const query3 = "DELETE FROM mantenimiento_tratamientos_items WHERE articulo_numero IS NULL AND ingrediente_id IS NULL";
-        const r3 = await pool.query(query3);
-        console.log('Deleted null items in tents: ', r3.rowCount);
-    } catch(ex) {
-        console.error('E', ex);
-    } finally {
-        pool.end();
+let newLines = [];
+let skip = false;
+
+for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    if (i >= 543 && i <= 645) { // Lines 544 to 646 (0-indexed 543 to 645)
+        continue;
     }
+    
+    newLines.push(line);
 }
-run();
+
+fs.writeFileSync(file, newLines.join('\n'), 'utf8');
+console.log('Fixed syntax error and removed dead listeners');
