@@ -860,7 +860,14 @@
                     <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
                 </div>
                 
-                <div id="acciones-inventario">
+                <div id="acciones-inventario" style="align-items: center;">
+                    <div style="margin-right: auto; display: flex; align-items: center; gap: 10px;">
+                        <label for="select-modalidad" style="margin:0; font-weight:bold; color: var(--text-color);">Modalidad:</label>
+                        <select id="select-modalidad" style="padding: 6px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px; height: 28px;">
+                            <option value="PARCIAL" selected>Parcial (Solo Actualizar Contados)</option>
+                            <option value="TOTAL">Total (Poner No Contados a Cero)</option>
+                        </select>
+                    </div>
                     <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
                     <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
                     <button id="btn-cancelar-inventario" class="secondary-button">Cancelar</button>

@@ -780,6 +780,22 @@ function inicializarWebSocket() {
             console.log('🔥 [PC] ===== FIN PROCESAMIENTO nuevo_articulo =====');
         });
         
+        socket.on('movil_solicitar_cierre', (data) => {
+            console.log('📱 [PC] ===== SOLICITUD DE CIERRE DESDE MÓVIL =====');
+            console.log('📱 [PC] Datos recibidos:', data);
+            
+            if (data.sessionId !== sessionId) {
+                console.error('❌ [PC] ERROR: Session ID no coincide en cierre');
+                return;
+            }
+            
+            const modalidad = data.modalidad || 'PARCIAL';
+            console.log(`📱 [PC] Cerrando inventario automáticamente con modalidad: ${modalidad}`);
+            
+            mostrarMensaje(`El celular ha solicitado finalizar el inventario (${modalidad})`, 'info');
+            finalizarInventario(modalidad);
+        });
+        
         socket.on('disconnect', () => {
             console.log('❌ [PC] Desconectado de WebSocket');
             console.log('❌ [PC] Session ID era:', sessionId);
@@ -829,8 +845,8 @@ function generarCodigoQR() {
         
         // Usar la URL de Cloudflare para acceso externo
         const baseUrl = 'https://inventario.lamdaser.com';
-        // Mantener la ruta original a /pages/inventario-movil.html
-        const urlMovil = `${baseUrl}/pages/inventario-movil.html?session=${encodeURIComponent(sessionId)}`;
+        // Redirigir a la vista móvil exclusiva para artículos
+        const urlMovil = `${baseUrl}/pages/inventario-articulos-movil.html?session=${encodeURIComponent(sessionId)}`;
         
         console.log('🔗 [PC] URL base (Cloudflare):', baseUrl);
         console.log('🔗 [PC] URL generada para el QR:', urlMovil);
@@ -981,15 +997,19 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     console.log('🎉 agregarArticuloAInventario completado exitosamente');
 }
 
-async function finalizarInventario() {
+async function finalizarInventario(modalidadForzada = null) {
     if (articulosInventario.size === 0) {
         mostrarMensaje('No hay artículos para registrar', 'error');
         return;
     }
 
+    const selectModalidad = document.getElementById('select-modalidad');
+    const modalidad = modalidadForzada || (selectModalidad ? selectModalidad.value : 'PARCIAL');
+
     console.log('🚀 [INVENTARIO-ARTICULOS] Iniciando finalización de inventario');
     console.log('📊 [INVENTARIO-ARTICULOS] Total artículos inventariados:', articulosInventario.size);
     console.log('👤 [INVENTARIO-ARTICULOS] Usuario seleccionado:', usuarioSeleccionado);
+    console.log('⚙️ [INVENTARIO-ARTICULOS] Modalidad:', modalidad);
 
     // Construir array de artículos inventariados con la estructura requerida por el backend
     const articulosInventariados = [];
@@ -1015,7 +1035,8 @@ async function finalizarInventario() {
     try {
         const payload = {
             usuario_id: usuarioSeleccionado,
-            articulos_inventariados: articulosInventariados
+            articulos_inventariados: articulosInventariados,
+            modalidad: modalidad
         };
 
         console.log('📤 [INVENTARIO-ARTICULOS] Enviando datos al backend:', payload);
@@ -1667,6 +1688,15 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Página de gestión de artículos cargada');
     cargarArticulos();
 
+    // Auto-abrir modal si viene de articulos.html
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+    if (action === 'iniciar') {
+        setTimeout(mostrarModal, 100);
+    } else if (action === 'ajuste') {
+        setTimeout(iniciarAjustesPuntuales, 100);
+    }
+    
     // Botón para iniciar inventario
     document.getElementById('btn-iniciar-inventario').addEventListener('click', mostrarModal);
 

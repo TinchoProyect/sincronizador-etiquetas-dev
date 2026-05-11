@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Inventario Móvil - Artículos</title>
+    <!-- Estilo unificado -->
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/inventario-movil.css">
+
+    <!-- Librerías -->
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <style>
+        .sector-badge { display: none !important; }
+        .modal-card { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; margin: auto; }
+        .btn-modalidad { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; }
+        .btn-modalidad.total { background-color: #dc3545; color: white; }
+        .btn-modalidad.parcial { background-color: #28a745; color: white; }
+    </style>
+</head>
+
+<body class="mobile-layout">
+
+    <!-- NAVBAR SUPERIOR -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            📦 Inv. Artículos
+        </div>
+        <div class="nav-actions">
+            <button id="btn-cancelar-global" class="btn-icon-danger" title="Cancelar Inventario">✖</button>
+        </div>
+    </nav>
+
+    <!-- TABS DE NAVEGACION -->
+    <div class="tabs-header">
+        <button class="tab-link active" data-tab="carga">⬇️ Carga</button>
+        <button class="tab-link" data-tab="pendientes">⏳ Pendientes (<span id="badge-pendientes">0</span>)</button>
+        <button class="tab-link" data-tab="contados">✅ Contados (<span id="badge-contados">0</span>)</button>
+    </div>
+
+    <div class="mobile-container with-tabs">
+
+        <!-- Estado de Conexión -->
+        <div id="sin-inventario" class="status-message error" style="display: block;">
+            <p>Conectando...</p>
+        </div>
+
+        <!-- CONTENIDO TABS -->
+
+        <!-- 1. TAB CARGA -->
+        <div id="tab-carga" class="tab-content active">
+
+            <!-- ACCIONES RAPIDAS -->
+            <div class="sector-actions-row" style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="btn-finalizar-movil" class="btn-secondary-small"
+                    style="background-color: #ffcccc; color: #d32f2f; border: 1px solid #d32f2f; width: 100%;">🏁 Finalizar Inventario</button>
+            </div>
+
+            <!-- INPUT PRINCIPAL (SCANNER/SEARCH) -->
+            <div class="input-group main-search-group">
+                <input type="text" id="buscador-movil" class="main-input" placeholder="Escanear o Buscar..."
+                    autocomplete="off">
+                <button id="btn-camera-toggle" class="btn-icon-small">📷</button>
+
+                <!-- DROPDOWN SUGERENCIAS -->
+                <div id="search-dropdown" class="dropdown-list" style="display:none"></div>
+            </div>
+
+            <!-- TARJETA DE PRODUCTO ACTIVO -->
+            <div id="info-articulo" class="product-card fade-in" style="display: none;">
+                <div class="card-header">
+                    <div style="flex: 1">
+                        <h3 id="nombre-articulo" class="product-name">Nombre del Producto</h3>
+                        <div class="product-meta-row">
+                            <small id="codigo-articulo" class="text-muted">COD: --</small>
+                            <small id="stock-sistema-badge" class="badge-neutral">Sys: 0</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Diferencia Visual -->
+                    <div id="diff-bar" class="diff-bar neutral">
+                        <span id="diff-text">Diferencia: 0</span>
+                    </div>
+
+                    <!-- Input Cantidad -->
+                    <div class="input-row centered-row">
+                        <!-- FIX: type="text" para permitir coma libremente en Android -->
+                        <input type="text" id="cantidad" class="qty-input" placeholder="0.00" inputmode="decimal"
+                            autocomplete="off">
+                        <span class="unit-label">kg/ud</span>
+                    </div>
+                </div>
+                <!-- Confirmar en tarjeta -->
+                <div class="card-actions">
+                    <button id="btn-cargar" class="btn-primary-block" disabled>CONFIRMAR CONTEO</button>
+                </div>
+            </div>
+
+            <div class="empty-state-placeholder" id="placeholder-carga">
+                <p>Escanea un artículo o búscalo por nombre/código</p>
+            </div>
+        </div>
+
+        <!-- 2. TAB PENDIENTES -->
+        <div id="tab-pendientes" class="tab-content">
+            <div class="list-header-sticky">
+                <input type="text" id="filtro-pendientes" placeholder="Filtrar pendientes..." class="mini-input">
+            </div>
+            <div id="lista-pendientes-container" class="items-list">
+                <!-- Items pendiente -->
+            </div>
+        </div>
+
+        <!-- 3. TAB CONTADOS -->
+        <div id="tab-contados" class="tab-content">
+            <div id="lista-contados-container" class="items-list">
+                <!-- Items contados -->
+            </div>
+        </div>
+
+
+        <!-- MODAL CAMARA -->
+        <div id="modal-scanner" class="camera-modal" style="display: none;">
+            <div class="camera-container">
+                <div id="reader" style="width: 100%"></div>
+                <button id="btn-cerrar-scanner" class="btn-pill-overlay">Cerrar Cámara</button>
+            </div>
+        </div>
+
+        <!-- MODAL FINALIZAR INVENTARIO (SELECCIONAR MODALIDAD) -->
+        <div id="modal-finalizar-opciones" class="modal-overlay" style="display: none; align-items: center;">
+            <div class="modal-card">
+                <h3 style="margin-top: 0;">Confirmar Finalización</h3>
+                <p style="font-size: 14px; margin-bottom: 20px;">Selecciona la modalidad de cierre para el sistema:</p>
+                
+                <button class="btn-modalidad parcial" id="btn-modalidad-parcial">
+                    ✅ INVENTARIO PARCIAL
+                    <br><small style="font-weight: normal;">Solo ajustar artículos escaneados.</small>
+                </button>
+                
+                <button class="btn-modalidad total" id="btn-modalidad-total">
+                    ⚠️ INVENTARIO TOTAL
+                    <br><small style="font-weight: normal;">No escaneados irán a stock CERO.</small>
+                </button>
+                
+                <button id="btn-cancelar-finalizar-modal" class="btn-secondary" style="width: 100%; margin-top: 15px;">Cancelar</button>
+            </div>
+        </div>
+
+        <!-- TOAST -->
+        <div id="confirmacion" class="toast-message" style="display: none;">✅ Guardado</div>
+
+    </div>
+
+    <!-- Modificado para apuntar al nuevo JS de artículos móvil -->
+    <script type="module" src="/js/inventarioArticulosMovil.js?v=1.0"></script>
+</body>
+
+</html>

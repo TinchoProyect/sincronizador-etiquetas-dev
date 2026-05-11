@@ -27,11 +27,12 @@ function sanitizarStock(valor) {
 async function finalizarInventarioArticulos(req, res) {
     try {
         console.log('🚀 [INVENTARIO-ARTICULOS] ===== INICIANDO FINALIZACIÓN DE INVENTARIO =====');
-        const { usuario_id, articulos_inventariados } = req.body;
+        const { usuario_id, articulos_inventariados, modalidad } = req.body;
         
         console.log('📋 [INVENTARIO-ARTICULOS] Datos recibidos:');
         console.log('- Usuario ID:', usuario_id);
-        console.log('- Artículos inventariados:', articulos_inventariados?.length || 0);
+        console.log('- Artículos inventariados (Iniciales):', articulos_inventariados?.length || 0);
+        console.log('- Modalidad de cierre:', modalidad || 'PARCIAL');
         
         // Validaciones básicas
         if (!usuario_id) {
@@ -44,8 +45,8 @@ async function finalizarInventarioArticulos(req, res) {
             return res.status(400).json({ error: 'Se requiere un array de articulos_inventariados' });
         }
         
-        if (articulos_inventariados.length === 0) {
-            console.error('❌ [INVENTARIO-ARTICULOS] Error: Array vacío');
+        if (articulos_inventariados.length === 0 && modalidad !== 'TOTAL') {
+            console.error('❌ [INVENTARIO-ARTICULOS] Error: Array vacío en modalidad Parcial');
             return res.status(400).json({ error: 'No hay artículos para procesar' });
         }
         
@@ -56,6 +57,38 @@ async function finalizarInventarioArticulos(req, res) {
         await client.query('BEGIN');
         
         try {
+            // Si es modalidad TOTAL, agregar los no contados al array
+            if (modalidad === 'TOTAL') {
+                console.log('🌐 [INVENTARIO-ARTICULOS] Modalidad TOTAL detectada. Ajustando artículos no contados a CERO...');
+                const queryAllArticulos = `
+                    SELECT 
+                        a.numero as articulo_numero,
+                        COALESCE(src.stock_consolidado, 0) as stock_sistema
+                    FROM public.articulos a
+                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+                `;
+                const allArticulosResult = await client.query(queryAllArticulos);
+                
+                const inventariadosSet = new Set(articulos_inventariados.map(a => String(a.articulo_numero)));
+                let agregadosATotal = 0;
+
+                for (const row of allArticulosResult.rows) {
+                    if (!inventariadosSet.has(String(row.articulo_numero))) {
+                        const stockSistema = parseFloat(row.stock_sistema) || 0;
+                        // Solo procesar si el stock_sistema es distinto de 0 para evitar transacciones vacías.
+                        if (stockSistema !== 0) {
+                            articulos_inventariados.push({
+                                articulo_numero: row.articulo_numero,
+                                stock_sistema: stockSistema,
+                                stock_contado: 0
+                            });
+                            agregadosATotal++;
+                        }
+                    }
+                }
+                console.log(`🌐 [INVENTARIO-ARTICULOS] Se forzaron a CERO ${agregadosATotal} artículos no contados.`);
+            }
+
             // 1. GENERAR INVENTARIO_ID ÚNICO
             console.log('🆔 [INVENTARIO-ARTICULOS] Generando inventario_id único...');
             const inventarioIdQuery = `
@@ -71,7 +104,7 @@ async function finalizarInventarioArticulos(req, res) {
             let diferenciasEncontradas = 0;
             let ajustesAplicados = 0;
             
-            console.log('🔄 [INVENTARIO-ARTICULOS] Procesando artículos...');
+            console.log(`🔄 [INVENTARIO-ARTICULOS] Procesando un total final de ${articulos_inventariados.length} artículos...`);
             
             for (let i = 0; i < articulos_inventariados.length; i++) {
                 const articulo = articulos_inventariados[i];

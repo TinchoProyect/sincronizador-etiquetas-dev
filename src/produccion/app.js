@@ -271,6 +271,10 @@ io.on('connection', (socket) => {
         if (session.tipo === 'ingredientes' && session.sectores) {
             respuestaConexion.sectores = session.sectores;
             console.log('🏢 [WS] Incluyendo sectores en respuesta:', session.sectores);
+        } else if ((!session.tipo || session.tipo === 'articulos') && session.items) {
+            // Para artículos, enviar los ya escaneados para tolerancia a fallos
+            respuestaConexion.articulosContados = Array.from(session.items.values());
+            console.log(`📦 [WS] Incluyendo ${respuestaConexion.articulosContados.length} artículos contados para sincronización móvil`);
         }
 
         console.log('📤 [WS] Enviando conexion_exitosa con datos:', JSON.stringify(respuestaConexion));
