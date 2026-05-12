@@ -669,6 +669,9 @@ function mostrarPasoConteo() {
     // DESPUÉS: Inicializar WebSocket y generar sesión
     inicializarWebSocket();
     
+    // Inicializar contadores
+    actualizarContadoresTabsPC();
+    
     document.getElementById('input-codigo-barras').focus();
 }
 
@@ -697,6 +700,10 @@ function inicializarWebSocket() {
         console.log('- Random:', random);
         console.log('- Session ID completo:', sessionId);
         
+        socket.onAny((eventName, ...args) => {
+            console.log(`📡 [PC-SOCKET-ANY] Evento recibido: ${eventName}`, args);
+        });
+
         socket.on('connect', () => {
             console.log('✅ [PC] Conectado a WebSocket con socket ID:', socket.id);
             
@@ -711,6 +718,20 @@ function inicializarWebSocket() {
             };
             console.log('📤 [PC] Enviando iniciar_inventario con datos:', datosInicioSesion);
             socket.emit('iniciar_inventario', datosInicioSesion);
+            
+            // HIDRATACIÓN: Si la PC se reconecta y tiene artículos, restaurar el estado del servidor
+            if (articulosInventario && articulosInventario.size > 0) {
+                console.log(`💧 [PC] Hidratando servidor con ${articulosInventario.size} artículos locales...`);
+                const itemsAEnviar = Array.from(articulosInventario.values()).map(articulo => {
+                    const input = document.querySelector(`.stock-fisico[data-articulo="${articulo.numero}"]`);
+                    const cantidad = input ? parseFloat(input.value) || 0 : 0;
+                    return { articulo, cantidad };
+                });
+                socket.emit('hydrate_server_state', {
+                    sessionId: sessionId,
+                    items: itemsAEnviar
+                });
+            }
         });
         
         socket.on('inventario_iniciado', (data) => {
@@ -762,10 +783,10 @@ function inicializarWebSocket() {
             
             console.log('🔍 [PC] Buscando artículo existente con número:', articulo.numero);
             
-            // Si el artículo ya existe, actualizar cantidad
-            const existingInput = document.querySelector(`input[data-articulo="${articulo.numero}"]`);
+            // Si el artículo ya existe en el modal de inventario, actualizar cantidad
+            const existingInput = document.querySelector(`.stock-fisico[data-articulo="${articulo.numero}"]`);
             if (existingInput) {
-                console.log('✅ [PC] Artículo existente encontrado, actualizando cantidad');
+                console.log('✅ [PC] Artículo existente encontrado en modal, actualizando cantidad');
                 console.log('✅ [PC] Input encontrado:', existingInput);
                 existingInput.value = cantidad;
                 mostrarMensaje(`Cantidad actualizada para ${articulo.nombre}: ${cantidad}`, 'info');
@@ -937,9 +958,11 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
         console.log('⚠️ Artículo ya existe en inventario');
         // Si el artículo ya existe, actualizar la cantidad si viene del móvil
         if (cantidadInicial > 0) {
-            const input = document.querySelector(`input[data-articulo="${articulo.numero}"]`);
+            const input = document.querySelector(`.stock-fisico[data-articulo="${articulo.numero}"]`);
             if (input) {
                 input.value = cantidadInicial;
+                // Disparar evento para asegurar reactividad (si aplica a futuro)
+                input.dispatchEvent(new Event('change', { bubbles: true }));
                 mostrarMensaje(`Cantidad actualizada para ${articulo.nombre}: ${cantidadInicial}`, 'info');
                 console.log('✅ Cantidad actualizada en input existente');
             } else {
@@ -981,6 +1004,12 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     contenedor.insertBefore(div, contenedor.firstChild);
     articulosInventario.set(articulo.numero, articulo);
     
+    // Asegurar re-renderizado
+    const nuevoInput = div.querySelector('.stock-fisico');
+    if (nuevoInput) {
+        nuevoInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    
     console.log('✅ Artículo agregado al Map. Total artículos:', articulosInventario.size);
     
     // Mostrar el botón "Mostrar Diferencias" si hay artículos
@@ -994,7 +1023,97 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
         console.log('✅ Mensaje de confirmación mostrado');
     }
     
+    actualizarContadoresTabsPC();
+    
+    // Si estamos en la pestaña de pendientes, re-renderizar para quitarlo de la lista
+    const viewPendientes = document.getElementById('view-pendientes-pc');
+    if (viewPendientes && viewPendientes.classList.contains('active')) {
+        renderizarPendientesPC();
+    }
+    
     console.log('🎉 agregarArticuloAInventario completado exitosamente');
+}
+
+// ===== LÓGICA DE TABS PC =====
+function cambiarTabPC(tabId) {
+    // 1. Actualizar botones
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tab-${tabId}-pc`).classList.add('active');
+    
+    // 2. Actualizar vistas
+    document.querySelectorAll('.tab-view-pc').forEach(view => {
+        view.classList.remove('active');
+        view.style.display = 'none';
+    });
+    
+    const targetView = document.getElementById(`view-${tabId}-pc`);
+    if (targetView) {
+        targetView.classList.add('active');
+        targetView.style.display = 'block';
+    }
+
+    // 3. Renderizar contenido específico
+    if (tabId === 'pendientes') {
+        renderizarPendientesPC();
+    } else if (tabId === 'contados') {
+        renderizarContadosPC();
+    }
+}
+
+function renderizarPendientesPC() {
+    const contenedor = document.getElementById('lista-pendientes-pc');
+    if (!contenedor) return;
+    
+    if (!todosLosArticulos || todosLosArticulos.length === 0) {
+        contenedor.innerHTML = '<p class="mensaje-info">No hay artículos cargados en el sistema.</p>';
+        return;
+    }
+
+    // Filtrar los que no están en inventario
+    const pendientes = todosLosArticulos.filter(art => !articulosInventario.has(art.numero.toString()) && !articulosInventario.has(art.numero));
+
+    if (pendientes.length === 0) {
+        contenedor.innerHTML = '<p class="mensaje-exito" style="color: green; font-weight: bold;">¡Todos los artículos han sido contados!</p>';
+        return;
+    }
+
+    let html = '';
+    pendientes.forEach(art => {
+        html += `
+            <div class="inventario-item pendiente-item" style="border-left: 4px solid #ffc107; opacity: 0.8; margin-bottom: 10px; padding: 10px; background: #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <h4 style="margin: 0 0 5px 0;">${art.nombre}</h4>
+                <div class="info-row" style="display: flex; gap: 15px; font-size: 0.9em; color: #555;">
+                    <span><strong>Código:</strong> ${art.numero}</span>
+                    <span><strong>Barras:</strong> ${art.codigo_barras || '-'}</span>
+                    <span><strong>Stock:</strong> ${formatearNumero(art.stock_consolidado || 0)}</span>
+                </div>
+            </div>
+        `;
+    });
+    
+    contenedor.innerHTML = html;
+}
+
+function renderizarContadosPC() {
+    // Los contados ya están en el DOM gracias a agregarArticuloAInventario.
+    // Solo refrescamos los contadores.
+    actualizarContadoresTabsPC();
+}
+
+function actualizarContadoresTabsPC() {
+    const countContados = articulosInventario.size;
+    let countPendientes = 0;
+    
+    if (todosLosArticulos) {
+        countPendientes = todosLosArticulos.length - countContados;
+        if (countPendientes < 0) countPendientes = 0;
+    }
+
+    const spanContados = document.getElementById('count-contados-pc');
+    const spanPendientes = document.getElementById('count-pendientes-pc');
+    
+    if (spanContados) spanContados.textContent = countContados;
+    if (spanPendientes) spanPendientes.textContent = countPendientes;
 }
 
 async function finalizarInventario(modalidadForzada = null) {
@@ -1366,7 +1485,7 @@ async function compararStock() {
         // Procesar artículos contados
         console.log('🔄 [DIFERENCIAS] Procesando artículos contados...');
         articulosInventario.forEach((articulo, numeroArticulo) => {
-            const input = document.querySelector(`input[data-articulo="${numeroArticulo}"]`);
+            const input = document.querySelector(`.stock-fisico[data-articulo="${numeroArticulo}"]`);
             const stockContado = parseInt(input?.value || 0);
             const stockSistema = articulo.stock_consolidado || 0;
             const diferencia = stockContado - stockSistema;
@@ -1651,7 +1770,7 @@ async function guardarCorrecciones() {
         
         if (esContado) {
             // Artículo ya contado - actualizar si fue modificado
-            const inputOriginal = document.querySelector(`input[data-articulo="${codigo}"]`);
+            const inputOriginal = document.querySelector(`.stock-fisico[data-articulo="${codigo}"]`);
             if (inputOriginal && parseInt(inputOriginal.value) !== stockContado) {
                 inputOriginal.value = stockContado;
                 articulosModificados++;

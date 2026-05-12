@@ -358,6 +358,45 @@ io.on('connection', (socket) => {
         console.log(`📊 [WS] Total items en sesión:`, session.items.size);
     });
 
+    // NUEVO: Hidratar estado del servidor desde la PC
+    socket.on('hydrate_server_state', (data) => {
+        const { sessionId, items } = data;
+        const session = inventarioSesiones.get(sessionId);
+        
+        if (session && items && Array.isArray(items)) {
+            console.log(`💧 [WS] Hidratando sesión ${sessionId} con ${items.length} artículos desde PC`);
+            const tipoInventario = detectarTipoInventario(sessionId);
+            
+            items.forEach(itemData => {
+                const item = itemData.articulo || itemData.ingrediente;
+                if (!item) return;
+                
+                const cantidad = itemData.cantidad;
+                const key = tipoInventario === 'ingredientes' ? (item.id || item.codigo) : item.numero;
+                
+                session.items.set(key, {
+                    [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item,
+                    cantidad,
+                    timestamp: new Date()
+                });
+            });
+            
+            console.log(`✅ [WS] Sesión hidratada. Total items ahora: ${session.items.size}`);
+            
+            // Mirroring al móvil si está conectado
+            if (session.mobileSocketId) {
+                console.log(`📦 [WS] Sincronizando móvil con estado hidratado...`);
+                const itemsAEnviar = Array.from(session.items.values());
+                io.to(session.mobileSocketId).emit('conexion_exitosa', {
+                    sessionId,
+                    usuario: session.usuario,
+                    sectores: session.sectores,
+                    articulosContados: itemsAEnviar
+                });
+            }
+        }
+    });
+
     // Relay de datos de inventario (PC -> Móvil)
     socket.on('sincronizar_datos_inventario', (data) => {
         const { sessionId, ingredientes } = data;

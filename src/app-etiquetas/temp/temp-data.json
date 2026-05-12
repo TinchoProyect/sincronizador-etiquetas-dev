@@ -1,6 +1,8 @@
 {
-  "numero": "GS5X500G",
-  "nombre": "Grana de Sol 5 x 500 g",
-  "codigo_barras": "73282500",
-  "cantidad": 2
+  "articulo": {
+    "numero": "SBx1",
+    "nombre": "Sesamo Blanco x 1",
+    "codigo_barras": "8229336744"
+  },
+  "cantidad": "1.00"
 }

@@ -689,6 +689,33 @@
         .kilos-unidad-cell:hover {
             background-color: #f8f9fa;
         }
+
+        /* ===== ESTILOS PARA TABS PC ===== */
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: none;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        .tab-btn:hover {
+            background: #e9ecef;
+        }
+        .tab-btn.active {
+            background: white;
+            color: var(--primary-color);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .tab-view-pc {
+            display: none;
+        }
+        .tab-view-pc.active {
+            display: block;
+        }
     </style>
 
     <!-- SweetAlert2 -->
@@ -843,38 +870,69 @@
 
             <!-- Paso 2: Conteo de artículos -->
             <div id="paso-conteo" class="modal-step" style="display: none;">
-                <!-- Sección del código QR para acceso móvil -->
-                <div id="qr-section" class="qr-section">
-                    <h3>Acceso Móvil</h3>
-                    <p>Escanea el código QR desde tu celular para continuar el inventario:</p>
-                    <div class="qr-container">
-                        <div id="qr-canvas"></div>
-                    </div>
-                    <div class="url-container">
-                        <p><strong>URL:</strong> <span id="url-movil"></span></p>
-                    </div>
+                <!-- TABS PC -->
+                <div class="tabs-header" style="display: flex; gap: 5px; margin-bottom: 15px; background: #f8f9fa; padding: 5px; border-radius: 8px;">
+                    <button id="tab-carga-pc" class="tab-btn active" onclick="cambiarTabPC('carga')">
+                        📥 Carga / Escaneo
+                    </button>
+                    <button id="tab-pendientes-pc" class="tab-btn" onclick="cambiarTabPC('pendientes')">
+                        ⏳ Pendientes (<span id="count-pendientes-pc">0</span>)
+                    </button>
+                    <button id="tab-contados-pc" class="tab-btn" onclick="cambiarTabPC('contados')">
+                        ✅ Contados (<span id="count-contados-pc">0</span>)
+                    </button>
                 </div>
 
-                <div class="form-group">
-                    <label for="input-codigo-barras">Código de Barras:</label>
-                    <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
-                </div>
-                
-                <div id="acciones-inventario" style="align-items: center;">
-                    <div style="margin-right: auto; display: flex; align-items: center; gap: 10px;">
+                <div id="acciones-inventario" style="align-items: center; justify-content: space-between; margin-bottom: 15px; display: flex;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
                         <label for="select-modalidad" style="margin:0; font-weight:bold; color: var(--text-color);">Modalidad:</label>
                         <select id="select-modalidad" style="padding: 6px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px; height: 28px;">
                             <option value="PARCIAL" selected>Parcial (Solo Actualizar Contados)</option>
                             <option value="TOTAL">Total (Poner No Contados a Cero)</option>
                         </select>
                     </div>
-                    <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
-                    <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
-                    <button id="btn-cancelar-inventario" class="secondary-button">Cancelar</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
+                        <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
+                        <button id="btn-cancelar-inventario" class="secondary-button" style="background:#dc3545;">Cancelar</button>
+                    </div>
                 </div>
-                
-                <div id="articulos-inventario">
-                    <!-- Los artículos del inventario se mostrarán aquí -->
+
+                <!-- CONTENIDO TABS -->
+                <div id="contenedor-tabs-pc" style="min-height: 400px; max-height: 50vh; overflow-y: auto;">
+                    <!-- 1. TAB CARGA -->
+                    <div id="view-carga-pc" class="tab-view-pc active" style="text-align: center; padding: 10px;">
+                        <!-- Sección del código QR para acceso móvil -->
+                        <div id="qr-section" class="qr-section">
+                            <h3>Acceso Móvil</h3>
+                            <p>Escanea el código QR desde tu celular para continuar el inventario:</p>
+                            <div class="qr-container">
+                                <div id="qr-canvas"></div>
+                            </div>
+                            <div class="url-container">
+                                <p><strong>URL:</strong> <span id="url-movil"></span></p>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="text-align: left;">
+                            <label for="input-codigo-barras">Código de Barras:</label>
+                            <input type="text" id="input-codigo-barras" placeholder="Escanear o escribir código de barras">
+                        </div>
+                    </div>
+
+                    <!-- 2. TAB PENDIENTES -->
+                    <div id="view-pendientes-pc" class="tab-view-pc">
+                        <div id="lista-pendientes-pc">
+                            <p class="mensaje-info">Cargando pendientes...</p>
+                        </div>
+                    </div>
+
+                    <!-- 3. TAB CONTADOS -->
+                    <div id="view-contados-pc" class="tab-view-pc">
+                        <div id="articulos-inventario">
+                            <!-- Los artículos contados (del inventario) se mostrarán aquí -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
