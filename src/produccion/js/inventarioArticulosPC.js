@@ -556,6 +556,15 @@ function cerrarModal() {
     const modal = document.getElementById('modal-inventario');
     modal.style.display = 'none';
     reiniciarInventario();
+    
+    // Limpiar URL parameter action=iniciar
+    if (window.history.replaceState) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('action')) {
+            const urlLimpia = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({ path: urlLimpia }, '', urlLimpia);
+        }
+    }
 }
 
 function reiniciarInventario() {
@@ -961,8 +970,19 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
             const input = document.querySelector(`.stock-fisico[data-articulo="${articulo.numero}"]`);
             if (input) {
                 input.value = cantidadInicial;
-                // Disparar evento para asegurar reactividad (si aplica a futuro)
-                input.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                // Actualizar diferencia
+                const stockSistema = articulo.stock_consolidado || 0;
+                const diffCell = document.querySelector(`.diferencia-cell[data-articulo="${articulo.numero}"]`);
+                if (diffCell) {
+                    const diff = cantidadInicial - stockSistema;
+                    diffCell.textContent = formatearNumero(diff);
+                    diffCell.style.color = diff === 0 ? 'green' : 'red';
+                    diffCell.style.fontWeight = 'bold';
+                }
+
+                // Disparar evento para asegurar reactividad (sin burbujear para no afectar fondo)
+                input.dispatchEvent(new Event('change'));
                 mostrarMensaje(`Cantidad actualizada para ${articulo.nombre}: ${cantidadInicial}`, 'info');
                 console.log('✅ Cantidad actualizada en input existente');
             } else {
@@ -975,21 +995,26 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     }
 
     console.log('➕ Creando nuevo elemento para el artículo');
-    const div = document.createElement('div');
-    div.className = 'inventario-item';
-        div.innerHTML = `
-            <h4>${articulo.nombre}</h4>
-            <div class="info-row">
-                <span>Código: ${articulo.numero}</span>
-                <span>Código de Barras: ${articulo.codigo_barras || '-'}</span>
-                <span>Stock Actual: ${formatearNumero(articulo.stock_consolidado || 0)}</span>
-            </div>
-            <div class="stock-input">
-                <label>Stock Físico:</label>
-                <input type="number" min="0" step="0.01" class="stock-fisico" 
-                       data-articulo="${articulo.numero}" value="${cantidadInicial}">
-            </div>
-        `;
+    const tr = document.createElement('tr');
+    tr.className = 'inventario-item-row';
+    
+    const stockSistema = articulo.stock_consolidado || 0;
+    const stockContado = cantidadInicial || 0;
+    const diffInicial = stockContado - stockSistema;
+    
+    tr.innerHTML = `
+        <td>${articulo.numero}</td>
+        <td>${articulo.codigo_barras || '-'}</td>
+        <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${articulo.nombre}">${articulo.nombre}</td>
+        <td>${formatearNumero(stockSistema)}</td>
+        <td>
+            <input type="number" min="0" step="0.01" class="stock-fisico form-control form-control-sm" 
+                   data-articulo="${articulo.numero}" value="${stockContado}" style="width: 100px;">
+        </td>
+        <td class="diferencia-cell" data-articulo="${articulo.numero}" style="font-weight: bold; color: ${diffInicial === 0 ? 'green' : 'red'};">
+            ${formatearNumero(diffInicial)}
+        </td>
+    `;
 
     console.log('🔍 Buscando contenedor articulos-inventario');
     // Insertar al principio del contenedor para que aparezca arriba
@@ -1001,13 +1026,23 @@ function agregarArticuloAInventario(articulo, cantidadInicial = 0) {
     }
     
     console.log('✅ Contenedor encontrado, insertando elemento');
-    contenedor.insertBefore(div, contenedor.firstChild);
+    contenedor.insertBefore(tr, contenedor.firstChild);
     articulosInventario.set(articulo.numero, articulo);
     
-    // Asegurar re-renderizado
-    const nuevoInput = div.querySelector('.stock-fisico');
+    // Asegurar re-renderizado local y calcular diferencia
+    const nuevoInput = tr.querySelector('.stock-fisico');
     if (nuevoInput) {
-        nuevoInput.dispatchEvent(new Event('change', { bubbles: true }));
+        nuevoInput.addEventListener('input', function() {
+            const currentVal = parseFloat(this.value) || 0;
+            const diff = currentVal - stockSistema;
+            const cell = tr.querySelector('.diferencia-cell');
+            if (cell) {
+                cell.textContent = formatearNumero(diff);
+                cell.style.color = diff === 0 ? 'green' : 'red';
+            }
+        });
+        // Disparar sin burbujear
+        nuevoInput.dispatchEvent(new Event('change'));
     }
     
     console.log('✅ Artículo agregado al Map. Total artículos:', articulosInventario.size);
@@ -1065,7 +1100,7 @@ function renderizarPendientesPC() {
     if (!contenedor) return;
     
     if (!todosLosArticulos || todosLosArticulos.length === 0) {
-        contenedor.innerHTML = '<p class="mensaje-info">No hay artículos cargados en el sistema.</p>';
+        contenedor.innerHTML = '<tr><td colspan="4" class="text-center">No hay artículos cargados en el sistema.</td></tr>';
         return;
     }
 
@@ -1073,21 +1108,19 @@ function renderizarPendientesPC() {
     const pendientes = todosLosArticulos.filter(art => !articulosInventario.has(art.numero.toString()) && !articulosInventario.has(art.numero));
 
     if (pendientes.length === 0) {
-        contenedor.innerHTML = '<p class="mensaje-exito" style="color: green; font-weight: bold;">¡Todos los artículos han sido contados!</p>';
+        contenedor.innerHTML = '<tr><td colspan="4" class="text-center" style="color: green; font-weight: bold;">¡Todos los artículos han sido contados!</td></tr>';
         return;
     }
 
     let html = '';
     pendientes.forEach(art => {
         html += `
-            <div class="inventario-item pendiente-item" style="border-left: 4px solid #ffc107; opacity: 0.8; margin-bottom: 10px; padding: 10px; background: #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <h4 style="margin: 0 0 5px 0;">${art.nombre}</h4>
-                <div class="info-row" style="display: flex; gap: 15px; font-size: 0.9em; color: #555;">
-                    <span><strong>Código:</strong> ${art.numero}</span>
-                    <span><strong>Barras:</strong> ${art.codigo_barras || '-'}</span>
-                    <span><strong>Stock:</strong> ${formatearNumero(art.stock_consolidado || 0)}</span>
-                </div>
-            </div>
+            <tr style="border-left: 4px solid #ffc107;">
+                <td>${art.numero}</td>
+                <td>${art.codigo_barras || '-'}</td>
+                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${art.nombre}">${art.nombre}</td>
+                <td>${formatearNumero(art.stock_consolidado || 0)}</td>
+            </tr>
         `;
     });
     
@@ -1130,15 +1163,18 @@ async function finalizarInventario(modalidadForzada = null) {
     console.log('👤 [INVENTARIO-ARTICULOS] Usuario seleccionado:', usuarioSeleccionado);
     console.log('⚙️ [INVENTARIO-ARTICULOS] Modalidad:', modalidad);
 
-    // Construir array de artículos inventariados con la estructura requerida por el backend
+    // Construir array leyendo directamente desde las celdas del modal de diferencias
     const articulosInventariados = [];
-    const inputs = document.querySelectorAll('.stock-fisico');
+    const inputs = document.querySelectorAll('.stock-contado-input');
     
     inputs.forEach(input => {
-        const articuloNumero = input.dataset.articulo;
-        const articulo = articulosInventario.get(articuloNumero);
-        const stockContado = parseFloat(input.value) || 0;
-        const stockSistema = articulo.stock_consolidado || 0;
+        const articuloNumero = input.dataset.codigo;
+        // Sanitizar precision usando parseFloat y toFixed para evadir bugs de .00001
+        const stockContadoRaw = parseFloat(input.value) || 0;
+        const stockSistemaRaw = parseFloat(input.dataset.stockSistema) || 0;
+        
+        const stockContado = parseFloat(stockContadoRaw.toFixed(2));
+        const stockSistema = parseFloat(stockSistemaRaw.toFixed(2));
         
         console.log(`📦 [ARTICULO] ${articuloNumero}: Sistema=${stockSistema}, Contado=${stockContado}`);
         
@@ -1177,7 +1213,14 @@ async function finalizarInventario(modalidadForzada = null) {
         console.log('✅ [INVENTARIO-ARTICULOS] Respuesta del backend:', resultado);
 
         mostrarMensaje(`Inventario finalizado correctamente: ${resultado.articulos_registrados} artículos procesados, ${resultado.diferencias_encontradas} diferencias aplicadas`, 'info');
+        
+        // Limpiar estado de UI y URL
+        document.getElementById('modal-diferencias').style.display = 'none';
         cerrarModal();
+        if (window.history.replaceState) {
+            const urlLimpia = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({ path: urlLimpia }, '', urlLimpia);
+        }
         cargarArticulos(); // Recargar la tabla de artículos
     } catch (error) {
         console.error('❌ [INVENTARIO-ARTICULOS] Error al finalizar inventario:', error);
@@ -1482,13 +1525,21 @@ async function compararStock() {
         // Generar lista de diferencias
         const diferencias = [];
         
+        const modalidad = document.getElementById('select-modalidad').value || 'PARCIAL';
+        console.log(`📊 [DIFERENCIAS] Modalidad seleccionada: ${modalidad}`);
+        
         // Procesar artículos contados
         console.log('🔄 [DIFERENCIAS] Procesando artículos contados...');
         articulosInventario.forEach((articulo, numeroArticulo) => {
             const input = document.querySelector(`.stock-fisico[data-articulo="${numeroArticulo}"]`);
-            const stockContado = parseInt(input?.value || 0);
-            const stockSistema = articulo.stock_consolidado || 0;
-            const diferencia = stockContado - stockSistema;
+            let stockContado = parseFloat(input?.value || 0);
+            let stockSistema = parseFloat(articulo.stock_consolidado || 0);
+            
+            // Redondear a 2 decimales para evitar 8.00001
+            stockContado = Math.round(stockContado * 100) / 100;
+            stockSistema = Math.round(stockSistema * 100) / 100;
+            
+            const diferencia = Math.round((stockContado - stockSistema) * 100) / 100;
             
             console.log(`📝 [DIFERENCIAS] ${articulo.nombre}: Sistema=${stockSistema}, Contado=${stockContado}, Diferencia=${diferencia}`);
             
@@ -1504,25 +1555,30 @@ async function compararStock() {
         });
         
         // Procesar artículos no contados (solo los que tienen stock en el sistema)
-        console.log('🔄 [DIFERENCIAS] Procesando artículos no contados...');
-        articulosDelSistema.forEach(articulo => {
-            if (!articulosInventario.has(articulo.numero)) {
-                const stockSistema = articulo.stock_consolidado || 0;
-                if (stockSistema !== 0) { // Solo mostrar artículos con stock diferente de 0
-                    console.log(`📝 [DIFERENCIAS] No contado: ${articulo.nombre}, Stock Sistema=${stockSistema}`);
-                    
-                    diferencias.push({
-                        codigo: articulo.numero,
-                        descripcion: articulo.nombre,
-                        stockSistema: stockSistema,
-                        stockContado: 0,
-                        diferencia: -stockSistema,
-                        estado: 'no-contado',
-                        esContado: false
-                    });
+        if (modalidad === 'TOTAL') {
+            console.log('🔄 [DIFERENCIAS] Modalidad TOTAL: Procesando artículos no contados...');
+            articulosDelSistema.forEach(articulo => {
+                if (!articulosInventario.has(articulo.numero)) {
+                    let stockSistema = parseFloat(articulo.stock_consolidado || 0);
+                    stockSistema = Math.round(stockSistema * 100) / 100;
+                    if (stockSistema !== 0) { // Solo mostrar artículos con stock diferente de 0
+                        console.log(`📝 [DIFERENCIAS] No contado: ${articulo.nombre}, Stock Sistema=${stockSistema}`);
+                        
+                        diferencias.push({
+                            codigo: articulo.numero,
+                            descripcion: articulo.nombre,
+                            stockSistema: stockSistema,
+                            stockContado: 0,
+                            diferencia: -stockSistema,
+                            estado: 'no-contado',
+                            esContado: false
+                        });
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            console.log('🔄 [DIFERENCIAS] Modalidad PARCIAL: Omitiendo artículos no contados...');
+        }
         
         console.log(`✅ [DIFERENCIAS] Comparación completada. Total diferencias: ${diferencias.length}`);
         
@@ -1817,7 +1873,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Botón para iniciar inventario
-    document.getElementById('btn-iniciar-inventario').addEventListener('click', mostrarModal);
+    document.getElementById('btn-iniciar-inventario').addEventListener('click', (e) => {
+        e.preventDefault();
+        mostrarModal();
+    });
 
     // Botones para ajustes puntuales
     document.getElementById('btn-ajustes-puntuales').addEventListener('click', iniciarAjustesPuntuales);
@@ -1902,7 +1961,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Botones del modal de diferencias
     document.getElementById('btn-mostrar-diferencias').addEventListener('click', compararStock);
-    document.getElementById('btn-guardar-correcciones').addEventListener('click', guardarCorrecciones);
+    // El botón guardar correcciones fue eliminado de la UI para unificar el cierre
     document.getElementById('btn-cerrar-diferencias').addEventListener('click', () => {
         document.getElementById('modal-diferencias').style.display = 'none';
     });

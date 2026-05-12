@@ -849,7 +849,7 @@
 
     <!-- Modal de Inventario -->
     <div id="modal-inventario" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header">
                 <h2 class="modal-title">Inventario de Stock</h2>
                 <span class="close" id="close-modal">&times;</span>
@@ -893,7 +893,6 @@
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button id="btn-mostrar-diferencias" class="secondary-button" style="display: none;">Mostrar Diferencias</button>
-                        <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
                         <button id="btn-cancelar-inventario" class="secondary-button" style="background:#dc3545;">Cancelar</button>
                     </div>
                 </div>
@@ -922,16 +921,38 @@
 
                     <!-- 2. TAB PENDIENTES -->
                     <div id="view-pendientes-pc" class="tab-view-pc">
-                        <div id="lista-pendientes-pc">
-                            <p class="mensaje-info">Cargando pendientes...</p>
-                        </div>
+                        <table class="tabla-articulos" style="margin-top: 10px;">
+                            <thead style="position: sticky; top: 0; background: #f8f9fa; z-index: 10;">
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Código de Barras</th>
+                                    <th style="width: 40%;">Descripción</th>
+                                    <th>Stock Sistema</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-pendientes-pc">
+                                <tr><td colspan="4" class="text-center">Cargando pendientes...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
 
                     <!-- 3. TAB CONTADOS -->
                     <div id="view-contados-pc" class="tab-view-pc">
-                        <div id="articulos-inventario">
-                            <!-- Los artículos contados (del inventario) se mostrarán aquí -->
-                        </div>
+                        <table class="tabla-articulos" style="margin-top: 10px;">
+                            <thead style="position: sticky; top: 0; background: #f8f9fa; z-index: 10;">
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Código de Barras</th>
+                                    <th style="width: 40%;">Descripción</th>
+                                    <th>Stock Sist.</th>
+                                    <th style="width: 120px;">Stock Físico</th>
+                                    <th>Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="articulos-inventario">
+                                <!-- Los artículos contados (del inventario) se mostrarán aquí -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -965,8 +986,8 @@
             </div>
 
             <div class="modal-footer">
-                <button id="btn-guardar-correcciones" class="success-button">Guardar Correcciones</button>
-                <button id="btn-cerrar-diferencias" class="secondary-button">Cerrar</button>
+                <button id="btn-finalizar-inventario" class="success-button">Finalizar Inventario</button>
+                <button id="btn-cerrar-diferencias" class="secondary-button" style="background:#dc3545;">Cerrar</button>
             </div>
         </div>
     </div>
