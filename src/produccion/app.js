@@ -24,14 +24,14 @@ const inventarioSesiones = new Map();
 // ✅ Middleware para interpretar JSON en los requests
 // NOTA: El proxy debe ir ANTES del body parser para que funcione correctamente el stream
 app.use('/api/presupuestos', createProxyMiddleware({
-    target: 'http://localhost:3003/api/presupuestos',
+    target: 'http://127.0.0.1:3003/api/presupuestos',
     changeOrigin: true,
     logLevel: 'debug'
 }));
 
 // Proxy hacia el módulo de logística
 app.use('/api/logistica', createProxyMiddleware({
-    target: 'http://localhost:3005/api/logistica',
+    target: 'http://127.0.0.1:3005/api/logistica',
     changeOrigin: true,
     logLevel: 'debug'
 }));

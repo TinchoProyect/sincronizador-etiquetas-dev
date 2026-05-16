@@ -1341,10 +1341,9 @@
                     const resDiv = document.getElementById('vinculacion-resultados');
                     try {
                         // 1. Fetch Historial
-                        const urlBase = window.location.origin;
                         const [resHistorial, resPrecios] = await Promise.all([
-                            fetch(`${urlBase}/api/presupuestos/historial-articulo?cliente_id=${clienteId}&articulo_codigo=${articuloNumero}`),
-                            fetch(`${urlBase}/api/presupuestos/precios?cliente_id=${clienteId}&codigo_barras=${articuloNumero}`)
+                            fetch(`/api/presupuestos/historial-articulo?cliente_id=${clienteId}&articulo_codigo=${articuloNumero}&descripcion=${encodeURIComponent(nombreArticulo)}`),
+                            fetch(`/api/presupuestos/precios?cliente_id=${clienteId}&codigo_barras=${articuloNumero}&descripcion=${encodeURIComponent(nombreArticulo)}`)
                         ]);
 
                         if (!resHistorial.ok) throw new Error('Error al buscar historial');
