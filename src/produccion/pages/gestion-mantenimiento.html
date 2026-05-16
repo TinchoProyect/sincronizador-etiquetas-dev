@@ -702,6 +702,84 @@
                 </div>
             </div>
         </div>
+        <!-- Modal de Opciones de Tratamiento (Bifurcación) -->
+        <div id="modal-opciones-tratamiento" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div class="swal2-popup" style="background: white; width: 450px; max-width: 90%; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); position: relative; font-family: 'Inter', sans-serif; text-align: center;">
+                <button onclick="cerrarModalOpcionesTratamiento()" style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
+                <h2 class="swal2-title" style="margin-top: 5px; font-size: 1.5em; margin-bottom: 25px; color: #333;">
+                    ⚙️ Seleccionar Tratamiento
+                </h2>
+                
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <button onclick="seleccionarOpcionInmunizado()" style="padding: 15px; font-size: 1.1em; font-weight: bold; background-color: #f8f9fa; border: 2px solid #17a2b8; color: #17a2b8; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.backgroundColor='#17a2b8'; this.style.color='white'" onmouseout="this.style.backgroundColor='#f8f9fa'; this.style.color='#17a2b8'">
+                        ⛺ Enviar a Inmunizado / Cuarentena
+                    </button>
+                    
+                    <button onclick="seleccionarOpcionIngredientes()" style="padding: 15px; font-size: 1.1em; font-weight: bold; background-color: #f8f9fa; border: 2px solid #6f42c1; color: #6f42c1; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.backgroundColor='#6f42c1'; this.style.color='white'" onmouseout="this.style.backgroundColor='#f8f9fa'; this.style.color='#6f42c1'">
+                        🧪 Agregar Ingredientes (Transformación)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Transformación con Ingredientes -->
+        <div id="modal-agregar-ingredientes" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div class="swal2-popup" style="background: white; width: 600px; max-width: 95%; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); position: relative; font-family: 'Inter', sans-serif; text-align: left;">
+                <button onclick="cerrarModalAgregarIngredientes()" style="position: absolute; top: 10px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #aaa;">&times;</button>
+                <h2 class="swal2-title" style="margin-top: 5px; font-size: 1.5em; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; color: #333;">
+                    🧪 Transformación con Ingredientes
+                </h2>
+
+                <div class="swal2-content" style="margin-top: 15px;">
+                    <!-- BLOQUE ORIGEN -->
+                    <div style="background: #e9ecef; padding: 15px; border-radius: 6px; border-left: 4px solid #6c757d; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1em; color: #495057;">📦 Bloque de Origen</h3>
+                        <p style="margin: 0; font-size: 0.9em; color: #333;">
+                            Artículo: <strong id="transform-origen-nombre">---</strong><br>
+                            Unidades a procesar: <strong id="transform-origen-unidades">0,00</strong> u. (<strong id="transform-origen-kilos">0,00</strong> kg brutos)
+                        </p>
+                    </div>
+
+                    <!-- BLOQUE ADICIÓN -->
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #6f42c1; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1em; color: #495057;">➕ Adición (Materia Prima)</h3>
+                        <div style="margin-bottom: 10px; position: relative;">
+                            <label style="font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 5px;">Buscar Ingrediente:</label>
+                            <input type="text" id="transform-ingrediente-search" class="swal2-input" placeholder="Escriba para buscar ingrediente..." style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; font-size: 0.95em;" oninput="buscarIngredienteParaTransformacion()">
+                            <div id="transform-ingrediente-results" style="border: 1px solid #ddd; max-height: 150px; overflow-y: auto; background: white; position: absolute; width: 100%; z-index: 10; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 0 0 4px 4px;"></div>
+                            <input type="hidden" id="transform-ingrediente-id">
+                            <div id="transform-ingrediente-selected" style="margin-top: 5px; font-size: 0.9em; color: #28a745; font-weight: bold; display: none;"></div>
+                        </div>
+                        <div>
+                            <label style="font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 5px;">Cantidad a añadir (kg):</label>
+                            <input type="number" id="transform-ingrediente-kilos" class="swal2-input" placeholder="Ej: 0.40" step="0.01" style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; font-size: 0.95em;" min="0.01">
+                        </div>
+                    </div>
+
+                    <!-- BLOQUE DESTINO -->
+                    <div style="background: #e8f4f8; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1em; color: #495057;">🏁 Resultado Final (Destino)</h3>
+                        <div style="margin-bottom: 10px; position: relative;">
+                            <label style="font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 5px;">Artículo Maestro Resultante:</label>
+                            <input type="text" id="transform-destino-search" class="swal2-input" placeholder="Escriba para buscar artículo oficial..." style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; font-size: 0.95em;" oninput="buscarArticuloParaTransformacion()">
+                            <div id="transform-destino-results" style="border: 1px solid #ddd; max-height: 150px; overflow-y: auto; background: white; position: absolute; width: 100%; z-index: 10; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 0 0 4px 4px;"></div>
+                            <input type="hidden" id="transform-destino-id">
+                            <div id="transform-destino-selected" style="margin-top: 5px; font-size: 0.9em; color: #007bff; font-weight: bold; display: none;"></div>
+                        </div>
+                        <div>
+                            <label style="font-weight: bold; font-size: 0.9em; display: block; margin-bottom: 5px;">Cantidad Final (Unidades obtenidas):</label>
+                            <input type="number" id="transform-destino-unidades" class="swal2-input" placeholder="Ej: 1" step="0.01" style="width: 100%; margin: 0; padding: 8px; box-sizing: border-box; font-size: 0.95em;" min="0.01">
+                        </div>
+                    </div>
+
+                    <div class="swal2-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="cerrarModalAgregarIngredientes()" class="swal2-cancel swal2-styled" style="background-color: #6c757d;">Cancelar</button>
+                        <button onclick="confirmarTransformacionIngrediente()" class="swal2-confirm swal2-styled" style="background-color: #28a745;">✅ Confirmar Transformación</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal de Iniciar Tratamiento -->
         <div id="modal-iniciar-tratamiento" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
             <div class="swal2-popup" style="background: white; width: 500px; max-width: 90%; padding: 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; font-family: 'Inter', sans-serif;">
@@ -1423,15 +1501,15 @@
 
                                         let pricingHTML = '';
                                         const diff = precioAct - precioHist;
-                                        const diffPercent = precioHist > 0 ? ((diff / precioHist) * 100).toFixed(1) : 0;
+                                        const diffPercent = precioHist > 0 ? ((diff / precioHist) * 100).toFixed(1).replace('.', ',') : 0;
                                         
                                         let badgeDiff = '';
                                         if (Math.abs(diff) < 0.01) {
                                             badgeDiff = `<span style="background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">⚖️ Mismo Precio</span>`;
                                         } else if (diff > 0) {
-                                            badgeDiff = `<span style="background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Subió ${diffPercent}% (+$${diff.toFixed(2)})</span>`;
+                                            badgeDiff = `<span style="background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Subió ${diffPercent}% (+$${diff.toFixed(2).replace('.', ',')})</span>`;
                                         } else {
-                                            badgeDiff = `<span style="background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Bajó ${Math.abs(diffPercent)}% (-$${Math.abs(diff).toFixed(2)})</span>`;
+                                            badgeDiff = `<span style="background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Bajó ${Math.abs(diffPercent)}% (-$${Math.abs(diff).toFixed(2).replace('.', ',')})</span>`;
                                         }
                                         
                                         const tituloPresupuesto = h.comprobante_lomasoft ? `Presupuesto #${h.id_presupuesto} <span style="margin-left: 8px; color: #00796b;">📄 Fac: ${h.comprobante_lomasoft}</span>` : `Presupuesto #${h.id_presupuesto}`;
@@ -1445,7 +1523,7 @@
                                                         🏢 <strong>${h.origen_facturacion || 'NO FACTURADO'}</strong>
                                                     </div>
                                                     <div style="font-size: 0.85em; color: #28a745; margin-top: 4px;">🕒 ${tiempoRel}</div>
-                                                    ${descuentoPct > 0 ? `<div style="font-size: 0.85em; color: #d9534f; margin-top: 4px; font-weight: bold; background: #f8dbdb; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2)}% de Descuento Global</div>` : ''}
+                                                    ${descuentoPct > 0 ? `<div style="font-size: 0.85em; color: #d9534f; margin-top: 4px; font-weight: bold; background: #f8dbdb; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2).replace('.', ',')}% de Descuento Global</div>` : ''}
                                                 </div>
                                                 <div style="text-align: right;">
                                                     <div style="font-size: 0.9em; color: #666;">Cant: <strong>${h.cantidad}</strong></div>
@@ -1454,17 +1532,17 @@
                                             
                                             <div style="background: #fafafa; padding: 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                                                 <div style="font-size: 0.9em;">
-                                                    <div style="margin-bottom: 4px;">Histórico: <strong>$${precioHist.toFixed(2)}</strong></div>
-                                                    <div style="color: #666;">Actual: <strong>$${precioAct.toFixed(2)}</strong></div>
+                                                    <div style="margin-bottom: 4px;">Histórico: <strong>$${precioHist.toFixed(2).replace('.', ',')}</strong></div>
+                                                    <div style="color: #666;">Actual: <strong>$${precioAct.toFixed(2).replace('.', ',')}</strong></div>
                                                     <div style="margin-top: 4px;">${badgeDiff}</div>
                                                 </div>
                                                 <div style="display: flex; gap: 8px;">
                                                     <button class="btn-historico" style="background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" onclick="confirmarUsoHistorico('${idMovimiento}', '${h.id_presupuesto}', '${clienteId}', '${articuloNumero}', '${cantidad}', '${fechaRef}', '${precioHist}', '${descuentoPct}', '${h.comprobante_lomasoft || ''}', '${h.id_presupuesto}', '${origenFacturacionTrigger}')">
-                                                        ↩️ Usar Histórico ($${precioHist.toFixed(0)})
+                                                        ↩️ Usar Histórico ($${precioHist.toFixed(0).replace('.', ',')})
                                                     </button>
                                                     ${Math.abs(diff) > 0.01 ? `
                                                     <button class="btn-actual" style="background: white; color: #2c3e50; border: 1px solid #2c3e50; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
-                                                        🆕 Usar Actual ($${precioAct.toFixed(0)})
+                                                        🆕 Usar Actual ($${precioAct.toFixed(0).replace('.', ',')})
                                                     </button>` : ''}
                                                 </div>
                                             </div>
@@ -1717,8 +1795,8 @@
 
                 let actionCell = '';
                 let stockCellHtml = `
-                    ${cantidad.toFixed(3)} u.
-                    <br><small>(${pesoTotal.toFixed(2)} kg)</small>
+                    ${cantidad.toFixed(3).replace('.', ',')} u.
+                    <br><small>(${pesoTotal.toFixed(2).replace('.', ',')} kg)</small>
                 `;
 
                 if (esRetornoLogistica) {
@@ -1799,7 +1877,7 @@
                     if (!item.articulo_numero) {
                         if (realKilos > 0) {
                             stockCellHtml = `
-                                <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2)} kg</span>
+                                <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2).replace('.', ',')} kg</span>
                                 <br><small style="color:#666;">(Peso Bruto por Bulto)</small>
                             `;
                         } else {
@@ -2355,7 +2433,7 @@
         function abrirModalRetornoIngrediente(ingredienteId, cantidadOriginal, nombreIngrediente, movimientoId = null) {
             document.getElementById('retorno-ingrediente-id').value = ingredienteId;
             const uiPesoOrig = document.getElementById('retorno-peso-orig');
-            uiPesoOrig.textContent = parseFloat(cantidadOriginal).toFixed(3);
+            uiPesoOrig.textContent = parseFloat(cantidadOriginal).toFixed(3).replace('.', ',');
             uiPesoOrig.dataset.originalId = ingredienteId;
             uiPesoOrig.dataset.originalNombre = nombreIngrediente;
             
@@ -2370,7 +2448,7 @@
             reqMovId.value = movimientoId || '';
             
             document.getElementById('retorno-ingrediente-nombre').textContent = nombreIngrediente;
-            document.getElementById('retorno-cantidad-real').value = parseFloat(cantidadOriginal).toFixed(3); // Por defecto mismo peso
+            document.getElementById('retorno-cantidad-real').value = parseFloat(cantidadOriginal).toFixed(3).replace('.', ','); // Por defecto mismo peso
 
             // Llenar operarios responsable vacio por defecto
             const selectResp = document.getElementById('retorno-responsable');
@@ -2391,7 +2469,7 @@
             let stockPre = "...";
             if (window.ingredientesCache) {
                 const iC = window.ingredientesCache.find(i => Number(i.id) === Number(ingredienteId));
-                if (iC) stockPre = parseFloat(iC.stock_actual || 0).toFixed(2);
+                if (iC) stockPre = parseFloat(iC.stock_actual || 0).toFixed(2).replace('.', ',');
             }
             uiPesoOrig.dataset.originalStock = stockPre;
 
@@ -2497,12 +2575,12 @@
             
             // Populate modal (equivalent to abrirModalIniciarTratamiento but using direct description)
             let totalKilos = parseFloat(kilos);
-            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2);
+            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2).replace('.', ',');
             document.getElementById('tto-items-count').innerText = 1;
 
             const listEl = document.getElementById('tto-items-list');
             if (listEl) {
-                listEl.innerHTML = `<li><strong>Tratamiento Logístico: ${descripcion_custom.substring(0, 30)}</strong> - Físico Ponderado: ${totalKilos.toFixed(2)}kg</li>`;
+                listEl.innerHTML = `<li><strong>Tratamiento Logístico: ${descripcion_custom.substring(0, 30)}</strong> - Físico Ponderado: ${totalKilos.toFixed(2).replace('.', ',')}kg</li>`;
             }
 
             document.getElementById('tto-notas').value = 'Ingreso Automático Módulo de Logística (Retiro Certificado)';
@@ -2523,7 +2601,7 @@
                 selectOperario.innerHTML = optionsHtml;
             }
 
-            document.getElementById('modal-iniciar-tratamiento').style.display = 'block';
+            document.getElementById('modal-opciones-tratamiento').style.display = 'block';
         }
 
         // FASE 4: Retorno a Logística
@@ -2864,6 +2942,27 @@
             }
         }
 
+        let articulosCache = [];
+        async function cargarArticulos() {
+            try {
+                const res = await fetch('/api/produccion/articulos');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data)) {
+                        articulosCache = data;
+                    } else if (data.data && Array.isArray(data.data)) {
+                        articulosCache = data.data;
+                    } else if (data.articulos && Array.isArray(data.articulos)) {
+                        articulosCache = data.articulos;
+                    }
+                    window.articulosCache = articulosCache;
+                    console.log(`✅ ${articulosCache.length} artículos maestros cargados para búsqueda.`);
+                }
+            } catch (error) {
+                console.error('Error cargando artículos maestros:', error);
+            }
+        }
+
         // ELEMENTOS DOM BÚSQUEDA
         const inputSearch = document.getElementById('transf-ingrediente-search');
         const resultsDiv = document.getElementById('transf-ingrediente-results');
@@ -2936,9 +3035,10 @@
             }
         }
 
-        // Cargar ingredientes al inicio
+        // Cargar ingredientes y artículos al inicio
         cargarOperariosParaModales();
         cargarIngredientes();
+        cargarArticulos();
 
         // Cerrar resultados si hago click afuera
         document.addEventListener('click', function (e) {
@@ -2959,7 +3059,7 @@
 
             document.getElementById('transf-cliente-id').value = clienteId;
             document.getElementById('transf-articulo').value = articulo;
-            document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
+            document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3).replace('.', ',');
             
             // Inyectamos unidades originales y el Ingrediente de origen (si aplica) para backend
             let reqUnid = document.getElementById('transf-unidades-origen');
@@ -3002,7 +3102,7 @@
             }
 
             document.getElementById('transf-articulo-display').value =
-                `${articulo} (${cantUnidades} u. × ${factorKilos} kg = ${pesoTotal.toFixed(3)} kg)`;
+                `${articulo} (${cantUnidades} u. × ${factorKilos} kg = ${pesoTotal.toFixed(3).replace('.', ',')} kg)`;
 
             document.getElementById('transf-cantidad').value = '';
             document.getElementById('transf-obs').value = '';
@@ -3025,9 +3125,9 @@
             const pesoReal = parseFloat(strReal) || 0;
             const merma = pesoOrig - pesoReal;
 
-            document.getElementById('merma-peso-orig').textContent = pesoOrig.toFixed(3);
-            document.getElementById('merma-peso-real').textContent = pesoReal.toFixed(3);
-            document.getElementById('merma-valor').textContent = merma.toFixed(3);
+            document.getElementById('merma-peso-orig').textContent = pesoOrig.toFixed(3).replace('.', ',');
+            document.getElementById('merma-peso-real').textContent = pesoReal.toFixed(3).replace('.', ',');
+            document.getElementById('merma-valor').textContent = merma.toFixed(3).replace('.', ',');
 
             // Si hay merma significativa, mostrar en rojo o advertencia
             const container = document.getElementById('merma-container');
@@ -3176,7 +3276,7 @@
                         <td>${new Date(mov.fecha_movimiento).toLocaleString()}</td>
                         <td><strong>${mov.articulo_nombre || mov.articulo_numero}</strong>${mov.articulo_numero ? `<br><small style="color:#666;">${mov.articulo_numero}</small>` : ''}</td>
                         <td><span class="status-badge ${badgeClass}">${mov.tipo_movimiento}</span></td>
-                        <td><strong>${parseFloat(mov.cantidad).toFixed(3)}</strong></td>
+                        <td><strong>${parseFloat(mov.cantidad).toFixed(3).replace('.', ',')}</strong></td>
                         <td>${mov.usuario}</td>
                         <td style="font-style: italic; color: #666;">
                             ${mov.observaciones || '-'}
@@ -3610,16 +3710,207 @@
             const btnCrear = document.getElementById('btn-crear-tratamiento');
             if (itemsSeleccionadosTratamiento.length > 0) {
                 btnCrear.style.display = 'inline-block';
-                btnCrear.innerText = `🏕️ Iniciar Tratamiento (${itemsSeleccionadosTratamiento.length} / ${totalKilos.toFixed(2)}kg)`;
+                btnCrear.innerText = `🏕️ Iniciar Tratamiento (${itemsSeleccionadosTratamiento.length} / ${totalKilos.toFixed(2).replace('.', ',')}kg)`;
             } else {
                 btnCrear.style.display = 'none';
             }
         }
 
+        function cerrarModalOpcionesTratamiento() {
+            document.getElementById('modal-opciones-tratamiento').style.display = 'none';
+        }
+
+        function seleccionarOpcionInmunizado() {
+            cerrarModalOpcionesTratamiento();
+            abrirModalCuarentenaDirecta();
+        }
+
+        function cerrarModalAgregarIngredientes() {
+            document.getElementById('modal-agregar-ingredientes').style.display = 'none';
+        }
+
+        function seleccionarOpcionIngredientes() {
+            cerrarModalOpcionesTratamiento();
+            
+            if (itemsSeleccionadosTratamiento.length === 0) return;
+            // Solo soportamos transformar de a 1 ítem a la vez para mantener trazabilidad
+            if (itemsSeleccionadosTratamiento.length > 1) {
+                Swal.fire('Atención', 'La transformación con ingredientes solo puede aplicarse a un ítem a la vez. Seleccione solo 1 ítem de la tabla.', 'warning');
+                return;
+            }
+
+            const item = itemsSeleccionadosTratamiento[0];
+            
+            // Llenar datos de origen
+            document.getElementById('transform-origen-nombre').innerText = item.descripcion_custom || ('Art. ' + item.articulo_numero);
+            let unidadesRender = item.stock_mantenimiento ? item.stock_mantenimiento.toFixed(2).replace('.', ',') : (item.kilos.toFixed(2).replace('.', ',')); 
+            document.getElementById('transform-origen-unidades').innerText = unidadesRender;
+            document.getElementById('transform-origen-kilos').innerText = item.kilos.toFixed(2).replace('.', ',');
+
+            // Limpiar inputs
+            document.getElementById('transform-ingrediente-search').value = '';
+            document.getElementById('transform-ingrediente-id').value = '';
+            document.getElementById('transform-ingrediente-selected').style.display = 'none';
+            document.getElementById('transform-ingrediente-kilos').value = '';
+            
+            document.getElementById('transform-destino-search').value = '';
+            document.getElementById('transform-destino-id').value = '';
+            document.getElementById('transform-destino-selected').style.display = 'none';
+            document.getElementById('transform-destino-unidades').value = '';
+
+            document.getElementById('modal-agregar-ingredientes').style.display = 'block';
+        }
+
+        // Búsqueda de ingrediente para el modal de transformación
+        function buscarIngredienteParaTransformacion() {
+            const term = document.getElementById('transform-ingrediente-search').value.toLowerCase().trim();
+            const resultsDiv = document.getElementById('transform-ingrediente-results');
+            
+            if (term.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            const terms = term.split(/\s+/);
+            const cache = window.ingredientesCache || [];
+            const filtrados = cache.filter(i => {
+                const searchString = `${i.nombre || ''} ${i.codigo || ''} ${i.sector_nombre || ''}`.toLowerCase();
+                return terms.every(t => searchString.includes(t));
+            }).slice(0, 8);
+
+            if (filtrados.length > 0) {
+                resultsDiv.innerHTML = filtrados.map(i => `
+                    <div style="padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;" 
+                         onclick="seleccionarIngredienteTransformacion(${i.id}, '${i.nombre.replace(/'/g, "\\'")}', '${i.codigo || ''}')"
+                         onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'">
+                        <span>${i.nombre} <small style="color: #666;">(${i.codigo || '-'})</small></span>
+                        <div style="display: flex; align-items: center;">
+                            <span style="color: #28a745; font-size: 0.85em; margin-right: 10px; font-weight: bold;">📦 ${i.stock_actual ? parseFloat(i.stock_actual).toFixed(2).replace('.', ',') : '0,00'} kg</span>
+                            <span style="color: #17a2b8; font-size: 0.9em; font-weight: bold;">[${i.sector_nombre || 'N/A'}]</span>
+                        </div>
+                    </div>
+                `).join('');
+                resultsDiv.style.display = 'block';
+            } else {
+                resultsDiv.innerHTML = '<div style="padding: 8px 10px; color: #999;">Sin resultados</div>';
+                resultsDiv.style.display = 'block';
+            }
+        }
+
+        function seleccionarIngredienteTransformacion(id, nombre, codigo) {
+            document.getElementById('transform-ingrediente-id').value = id;
+            document.getElementById('transform-ingrediente-search').value = nombre;
+            document.getElementById('transform-ingrediente-results').style.display = 'none';
+            const selDiv = document.getElementById('transform-ingrediente-selected');
+            selDiv.innerHTML = `✅ Ingrediente seleccionado: ${nombre} (${codigo})`;
+            selDiv.style.display = 'block';
+        }
+
+        // Búsqueda de artículo destino para el modal de transformación
+        function buscarArticuloParaTransformacion() {
+            const term = document.getElementById('transform-destino-search').value.toLowerCase().trim();
+            const resultsDiv = document.getElementById('transform-destino-results');
+            
+            if (term.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            const terms = term.split(/\s+/);
+            const cache = window.articulosCache || [];
+            const filtrados = cache.filter(a => {
+                const searchString = `${a.nombre || ''} ${a.numero || ''} ${a.codigo_barras || ''}`.toLowerCase();
+                return terms.every(t => searchString.includes(t));
+            }).slice(0, 8);
+
+            if (filtrados.length > 0) {
+                resultsDiv.innerHTML = filtrados.map(a => `
+                    <div style="padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;" 
+                         onclick="seleccionarArticuloTransformacion('${a.numero}', '${a.nombre.replace(/'/g, "\\'")}', '${a.codigo_barras || ''}')"
+                         onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'">
+                        <span>${a.nombre} <small style="color: #666;">(${a.codigo_barras || '-'})</small></span>
+                        <div style="display: flex; align-items: center;">
+                            <span style="color: #28a745; font-size: 0.85em; margin-right: 10px; font-weight: bold;">📦 ${a.stock_consolidado ? parseFloat(a.stock_consolidado).toFixed(2).replace('.', ',') : '0,00'} u.</span>
+                            <span style="color: #007bff; font-size: 0.9em; font-weight: bold;">[Art. ${a.numero}]</span>
+                        </div>
+                    </div>
+                `).join('');
+                resultsDiv.style.display = 'block';
+            } else {
+                resultsDiv.innerHTML = '<div style="padding: 8px 10px; color: #999;">Sin resultados</div>';
+                resultsDiv.style.display = 'block';
+            }
+        }
+
+        function seleccionarArticuloTransformacion(numero, nombre, codigo) {
+            document.getElementById('transform-destino-id').value = numero;
+            document.getElementById('transform-destino-search').value = nombre;
+            document.getElementById('transform-destino-results').style.display = 'none';
+            const selDiv = document.getElementById('transform-destino-selected');
+            selDiv.innerHTML = `✅ Artículo destino: ${nombre} (${numero})`;
+            selDiv.style.display = 'block';
+        }
+
+        async function confirmarTransformacionIngrediente() {
+            if (itemsSeleccionadosTratamiento.length === 0) return;
+            const item = itemsSeleccionadosTratamiento[0];
+
+            const ingredienteId = document.getElementById('transform-ingrediente-id').value;
+            const ingredienteKilos = document.getElementById('transform-ingrediente-kilos').value;
+            const articuloDestinoId = document.getElementById('transform-destino-id').value;
+            const articuloDestinoUnidades = document.getElementById('transform-destino-unidades').value;
+            
+            if (!ingredienteId || !ingredienteKilos || !articuloDestinoId || !articuloDestinoUnidades) {
+                Swal.fire('Error', 'Todos los campos de adición y destino son obligatorios.', 'error');
+                return;
+            }
+
+            try {
+                Swal.fire({
+                    title: 'Procesando transformación...',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+
+                const res = await fetch('/api/produccion/mantenimiento/transformar-con-ingrediente', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        movimiento_id: item.id,
+                        articulo_origen: item.articulo_numero,
+                        cantidad_origen: item.stock_mantenimiento || item.kilos, // Fallback a kilos si no hay stock
+                        ingrediente_id: ingredienteId,
+                        cantidad_ingrediente: parseFloat(ingredienteKilos),
+                        articulo_destino: articuloDestinoId,
+                        cantidad_destino: parseFloat(articuloDestinoUnidades)
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (data.success) {
+                    Swal.fire('¡Éxito!', 'Transformación completada exitosamente. El nuevo artículo ya está en Mantenimiento.', 'success');
+                    cerrarModalAgregarIngredientes();
+                    cargarStock();
+                    cargarHistorial();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'No se ha podido procesar la transformación: ' + (err.message || ''), 'error');
+            }
+        }
+
         function abrirModalIniciarTratamiento() {
             if (itemsSeleccionadosTratamiento.length === 0) return;
+            document.getElementById('modal-opciones-tratamiento').style.display = 'block';
+        }
+
+        function abrirModalCuarentenaDirecta() {
+            if (itemsSeleccionadosTratamiento.length === 0) return;
             let totalKilos = itemsSeleccionadosTratamiento.reduce((acc, curr) => acc + curr.kilos, 0);
-            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2);
+            document.getElementById('tto-kilos-brutos').innerText = totalKilos.toFixed(2).replace('.', ',');
             document.getElementById('tto-items-count').innerText = itemsSeleccionadosTratamiento.length;
             
             const listEl = document.getElementById('tto-items-list');
@@ -3633,7 +3924,7 @@
                     if (item.tratamiento_logistico && item.tratamiento_logistico !== 'undefined' && item.tratamiento_logistico.length > 0) {
                         label = item.tratamiento_logistico;
                     }
-                    return `<li><strong>${label}</strong> - Físico: ${item.kilos.toFixed(2)}kg</li>`;
+                    return `<li><strong>${label}</strong> - Físico: ${item.kilos.toFixed(2).replace('.', ',')}kg</li>`;
                 }).join('');
                 
                 // Mostrar el nombre del cliente extraido (si no es interno)
@@ -3796,7 +4087,7 @@
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Estado:</strong> ${estadoHtml}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Armado:</strong> ${new Date(tto.fecha_inicio_armado).toLocaleDateString()}</p>
                         <p style="margin: 5px 0; font-size: 0.9em;"><strong>Responsable:</strong> 🧑‍🏭 ${tto.usuario_armado || 'Desc.'}</p>
-                        <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2)} kg ${tto.bultos_fisicos ? `| 📦 ${tto.bultos_fisicos} Bultos` : ''}</p>
+                        <p style="margin: 5px 0; font-size: 1.05em; color: #856404;"><strong>Kilos Brutos:</strong> ${parseFloat(tto.kilos_brutos_totales).toFixed(2).replace('.', ',')} kg ${tto.bultos_fisicos ? `| 📦 ${tto.bultos_fisicos} Bultos` : ''}</p>
                         <hr style="margin: 10px 0; border-top: 1px solid #eee;">
                         <p style="margin: 0; font-weight: bold; font-size: 0.85em;">Contenido (${tto.items.length} items):</p>
                         ${itemsHtml}
@@ -3848,7 +4139,7 @@
                     matrizEtiquetas.push({
                         fecha_sellado: fechaStr,
                         item_nombre: nombre,
-                        cantidad_text: `${parseFloat(i.kilos_ingresados).toFixed(2)}kg | ${etiquetaArt}`,
+                        cantidad_text: `${parseFloat(i.kilos_ingresados).toFixed(2).replace('.', ',')}kg | ${etiquetaArt}`,
                         bulto_actual: b,
                         bultos_totales: bultos,
                         tipo_tratamiento: `${tto.tipo_tratamiento || 'TTO'} #${tto.id}`,
@@ -3903,7 +4194,7 @@
         async function abrirModalFinalizar(id, kilosBrutos) {
             document.getElementById('fin-tto-id').value = id;
             document.getElementById('fin-tto-id-display').innerText = id;
-            document.getElementById('fin-tto-brutos').innerText = parseFloat(kilosBrutos).toFixed(2);
+            document.getElementById('fin-tto-brutos').innerText = parseFloat(kilosBrutos).toFixed(2).replace('.', ',');
             document.getElementById('modal-finalizar-tratamiento').style.display = 'block';
         }
 
@@ -3978,7 +4269,7 @@
                             const li = document.createElement('li');
                             li.style.cssText = 'padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px;';
                             // El Stock Real del ingrediente
-                            let stockTexto = parseFloat(ing.stock_actual || 0).toFixed(2);
+                            let stockTexto = parseFloat(ing.stock_actual || 0).toFixed(2).replace('.', ',');
                             li.innerHTML = `<strong>#${ing.id}</strong> - ${ing.nombre} <br><small style="color:#666;">Stock Actual: ${stockTexto} kg</small>`;
                             li.addEventListener('mouseover', () => li.style.backgroundColor = '#f1f1f1');
                             li.addEventListener('mouseout', () => li.style.backgroundColor = 'transparent');

@@ -2955,6 +2955,116 @@ const buscarOrdenRetiro = async (req, res) => {
     }
 };
 
+/**
+ * Transformar un artículo consumiendo un ingrediente
+ * 1. Da de baja el ingrediente de su tabla de stock_actual
+ * 2. Cierra (Finaliza) el lote del artículo original en mantenimiento (restando su stock_mantenimiento).
+ * 3. Crea un nuevo lote (movimiento PENDIENTE) con el artículo destino y cantidad resultante en mantenimiento, arrastrando el origen del cliente.
+ */
+async function transformarConIngrediente(req, res) {
+    const client = await pool.connect();
+    try {
+        const {
+            movimiento_id,
+            articulo_origen,
+            cantidad_origen,
+            ingrediente_id,
+            cantidad_ingrediente,
+            articulo_destino,
+            cantidad_destino
+        } = req.body;
+        
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!movimiento_id || !ingrediente_id || !cantidad_ingrediente || !articulo_destino || !cantidad_destino) {
+            throw new Error('Faltan parámetros obligatorios para la transformación.');
+        }
+
+        console.log(`🧪 [MANTENIMIENTO] Transformación Inicada. Mov: ${movimiento_id}, Origen: ${articulo_origen}, Ingrediente: ${ingrediente_id} (${cantidad_ingrediente}kg), Destino: ${articulo_destino} (${cantidad_destino}u)`);
+
+        await client.query('BEGIN');
+
+        // 0. Obtener info del movimiento original (Para heredar presupuesto origen si existe)
+        const resOld = await client.query(`SELECT id_presupuesto_origen FROM public.mantenimiento_movimientos WHERE id = $1`, [movimiento_id]);
+        const idPresupuestoOrigen = resOld.rows.length > 0 ? resOld.rows[0].id_presupuesto_origen : null;
+
+        // 1. Deducir Ingrediente (USANDO ARQUITECTURA OFICIAL DE MOVIMIENTOS)
+        const resIngName = await client.query(`SELECT nombre FROM ingredientes WHERE id = $1`, [ingrediente_id]);
+        if (resIngName.rowCount === 0) {
+            throw new Error(`No se encontró el ingrediente ID ${ingrediente_id}`);
+        }
+        const ingredienteNombre = resIngName.rows[0].nombre;
+
+        const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
+        const movimientoEgreso = {
+            ingrediente_id: ingrediente_id,
+            kilos: -cantidad_ingrediente, // Negativo para descontar
+            tipo: 'egreso',
+            carro_id: null,
+            observaciones: `Transformación en Mantenimiento hacia Art. ${articulo_destino}`
+        };
+        await registrarMovimientoIngrediente(movimientoEgreso, client);
+
+        // 2. Dar de baja stock del Artículo Origen en Mantenimiento
+        if (articulo_origen && articulo_origen !== 'null') {
+            const updateOrigen = `
+                UPDATE public.stock_real_consolidado
+                SET 
+                    stock_mantenimiento = GREATEST(0, stock_mantenimiento - $1),
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateOrigen, [cantidad_origen, articulo_origen]);
+        }
+
+        // 3. Finalizar Movimiento de Origen (Higiene)
+        const obsCierre = `Transformado con ${ingredienteNombre} (${cantidad_ingrediente}kg) hacia Art. ${articulo_destino} (${cantidad_destino}u)`;
+        await cleanUpMaintenanceRecord(client, movimiento_id, obsCierre);
+
+        // 4. Ingresar Nuevo Artículo (Destino) en Mantenimiento
+        // 4.a Actualizar stock_real_consolidado destino
+        const resStockDest = await client.query(`SELECT 1 FROM public.stock_real_consolidado WHERE articulo_numero = $1`, [articulo_destino]);
+        if (resStockDest.rowCount > 0) {
+            const updateDestino = `
+                UPDATE public.stock_real_consolidado
+                SET 
+                    stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1,
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `;
+            await client.query(updateDestino, [cantidad_destino, articulo_destino]);
+        } else {
+            const insertDestino = `
+                INSERT INTO public.stock_real_consolidado (articulo_numero, stock_consolidado, stock_ajustes, stock_mantenimiento, ultima_actualizacion)
+                VALUES ($1, 0, 0, $2, NOW())
+            `;
+            await client.query(insertDestino, [articulo_destino, cantidad_destino]);
+        }
+
+        // 4.b Crear el movimiento PENDIENTE heredando el presupuesto de origen si existe
+        const insertMovDestino = `
+            INSERT INTO public.mantenimiento_movimientos (
+                articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado, id_presupuesto_origen
+            ) VALUES (
+                $1, $2, $3, 'INGRESO', $4, NOW(), 'PENDIENTE', $5
+            )
+        `;
+        const obsNuevo = `Alta por Transformación. Proviene de Movimiento #${movimiento_id} + Ingrediente ${ingredienteNombre} (${cantidad_ingrediente}kg).`;
+        await client.query(insertMovDestino, [articulo_destino, cantidad_destino, usuario, obsNuevo, idPresupuestoOrigen]);
+
+        await client.query('COMMIT');
+        console.log(`✅ [MANTENIMIENTO] Transformación Completada exitosamente.`);
+
+        res.json({ success: true, message: 'Transformación realizada correctamente.' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error en transformación:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -2988,5 +3098,6 @@ module.exports = {
     getPresupuestosEntregados,
     vincularPresupuesto,
     desvincularPresupuesto,
-    buscarOrdenRetiro
+    buscarOrdenRetiro,
+    transformarConIngrediente
 };

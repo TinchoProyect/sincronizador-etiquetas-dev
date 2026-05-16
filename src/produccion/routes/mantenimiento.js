@@ -37,6 +37,9 @@ router.post('/anular-traslado', mantenimientoCtrl.anularTraslado);
 router.post('/anular-traslado-agrupado', mantenimientoCtrl.anularTrasladoAgrupado);
 router.post('/retornar-ingrediente', mantenimientoCtrl.retornarIngrediente);
 
+// ---- TRANSFORMACIÓN CON INGREDIENTES ----
+router.post('/transformar-con-ingrediente', mantenimientoCtrl.transformarConIngrediente);
+
 // ---- NUEVO MÓDULO DE TRATAMIENTOS ----
 router.post('/tratamientos/iniciar', mantenimientoCtrl.iniciarTratamiento);
 router.get('/tratamientos', mantenimientoCtrl.getTratamientosActivos);
