@@ -1717,6 +1717,10 @@
                 }
 
                 let actionCell = '';
+                let stockCellHtml = `
+                    ${cantidad.toFixed(3)} u.
+                    <br><small>(${pesoTotal.toFixed(2)} kg)</small>
+                `;
 
                 if (esRetornoLogistica) {
                     actionCell = `
@@ -1781,6 +1785,7 @@
                     // Módulo Logística Fase 4
                     let detalles = 'Tratamiento logístico';
                     let nombreMapeado = '📌 Orden de Tratamiento';
+                    let realKilos = 0;
                     try {
                         let parsed = JSON.parse(item.observaciones);
                         if(Array.isArray(parsed) && parsed.length > 0) {
@@ -1788,8 +1793,18 @@
                             labelBultosLocal = parsed[0].bultos + ' bultos';
                             nombreMapeadoLocal = nombreMapeado;
                             detalles = parsed.map(d => `<span>- ${d.desc} (${d.kilos}kg - ${d.bultos} bultos)</span><br><small style="color:#666;"><i>Motivo: ${d.motivo}</i></small><br><small style="color:#333;"><i>Chofer: ${d.chofer || 'N/A'} | R. Carga: ${d.responsable || 'N/A'}</i></small>`).join('<br>');
+                            realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
                         }
                     } catch(e) {}
+                    
+                    if (realKilos > 0) {
+                        stockCellHtml = `
+                            <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2)} kg</span>
+                            <br><small style="color:#666;">(Peso Bruto por Bulto)</small>
+                        `;
+                    } else {
+                        stockCellHtml = `<span style="color:#999; font-style:italic;">-</span>`;
+                    }
                     
                     tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">${nombreMapeado}</b><br>${detalles}`;
                     
@@ -2067,8 +2082,7 @@
                 </td>
                 <td>${clienteHtml}</td>
                 <td style="font-size: 1.1em; color: #856404;">
-                    ${cantidad.toFixed(3)} u.
-                    <br><small>(${pesoTotal.toFixed(2)} kg)</small>
+                    ${stockCellHtml}
                 </td>
                 <td>
                     ${actionCell}
