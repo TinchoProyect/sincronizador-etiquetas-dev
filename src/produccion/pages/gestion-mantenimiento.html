@@ -1797,13 +1797,15 @@
                         }
                     } catch(e) {}
                     
-                    if (realKilos > 0) {
-                        stockCellHtml = `
-                            <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2)} kg</span>
-                            <br><small style="color:#666;">(Peso Bruto por Bulto)</small>
-                        `;
-                    } else {
-                        stockCellHtml = `<span style="color:#999; font-style:italic;">-</span>`;
+                    if (!item.articulo_numero) {
+                        if (realKilos > 0) {
+                            stockCellHtml = `
+                                <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2)} kg</span>
+                                <br><small style="color:#666;">(Peso Bruto por Bulto)</small>
+                            `;
+                        } else {
+                            stockCellHtml = `<span style="color:#999; font-style:italic;">-</span>`;
+                        }
                     }
                     
                     tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">${nombreMapeado}</b><br>${detalles}`;
