@@ -83,57 +83,90 @@
             font-size: 1.5em;
         }
 
-        .table-responsive {
-            overflow-x: auto;
+        /* Accordion Styles */
+        .accordion-month {
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e0e0e0;
         }
-
+        .accordion-month-header {
+            background: linear-gradient(135deg, #343a40 0%, #212529 100%);
+            color: white;
+            padding: 15px 20px;
+            font-size: 1.3em;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .accordion-month-body {
+            display: none;
+            background: #fdfdfd;
+            padding: 15px;
+        }
+        .accordion-month.active .accordion-month-body {
+            display: block;
+        }
+        .accordion-day {
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: white;
+        }
+        .accordion-day-header {
+            background-color: #f8f9fa;
+            padding: 10px 15px;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
         .lotes-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 800px;
+            min-width: 1000px; /* Increased for more columns */
         }
 
         .lotes-table th {
-            background-color: #f8f9fa;
+            background-color: #e9ecef;
             color: #495057;
             font-weight: bold;
             text-transform: uppercase;
-            font-size: 0.85em;
+            font-size: 0.80em;
             letter-spacing: 0.5px;
-            padding: 15px;
+            padding: 12px;
             border-bottom: 2px solid #dee2e6;
             text-align: left;
         }
 
         .lotes-table td {
-            padding: 15px;
+            padding: 12px;
             border-bottom: 1px solid #e9ecef;
             color: #333;
             vertical-align: middle;
+            font-size: 0.9em;
         }
-
-        .lotes-table tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        /* Elementos específicos de la grilla */
-        .badge-id {
-            background-color: #e9ecef;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-weight: bold;
-            font-size: 1.1em;
-            color: #495057;
-        }
-
-        .text-proveedor {
+        
+        .price-badge {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+            padding: 4px 8px;
+            border-radius: 4px;
             font-weight: 600;
-            color: #0056b3;
         }
-
-        .text-producto {
-            font-weight: 500;
+        
+        .discount-badge {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 5px;
+            font-weight: 600;
         }
 
         /* Botón de Imprimir */
@@ -320,22 +353,8 @@
                     <p>Conectando con Supabase...</p>
                 </div>
 
-                <div class="table-responsive" id="grid-container" style="display: none;">
-                    <table class="lotes-table">
-                        <thead>
-                            <tr>
-                                <th>ID Lote</th>
-                                <th>Fecha Ingreso</th>
-                                <th>Proveedor</th>
-                                <th>Producto</th>
-                                <th>Cantidad</th>
-                                <th style="text-align: center;">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="lotes-tbody">
-                            <!-- Inyectado por JS -->
-                        </tbody>
-                    </table>
+                <div id="grid-container" style="display: none;">
+                    <!-- Acordeón inyectado por JS -->
                 </div>
             </section>
 

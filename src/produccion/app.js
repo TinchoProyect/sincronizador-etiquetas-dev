@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -47,11 +48,81 @@ app.use('/api/produccion', produccionRoutes);
 // Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
 app.get('/api/supabase/lotes', async (req, res) => {
     try {
-        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref)&order=created_at.desc&limit=100';
-        const key = process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY';
-        const response = await fetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
+        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref)&order=created_at.desc&limit=100';
+        const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+        const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+        const response = await fetch(url, { headers });
         if (!response.ok) throw new Error(await response.text());
-        res.json(await response.json());
+        const lotes = await response.json();
+        
+        // Extraer IDs únicos de proveedores y pedidos
+        const proveedoresIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedor_id).filter(Boolean))];
+        const pedidosIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedido_id).filter(Boolean))];
+        
+        // 1. Obtener Tabla Maestra para cant_bult y cant_valor
+        let masterMap = {};
+        if (proveedoresIds.length > 0) {
+            const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})`;
+            const masterRes = await fetch(masterUrl, { headers });
+            if (masterRes.ok) {
+                const masterData = await masterRes.json();
+                masterData.forEach(row => {
+                    if (row.datos_maestros && row.datos_maestros.codigo) {
+                        const cod = String(row.datos_maestros.codigo).trim().toLowerCase();
+                        masterMap[cod] = {
+                            cantBult: row.datos_maestros.cant_bult,
+                            cantValor: row.datos_maestros.cant_valor,
+                            iva: row.datos_maestros.iva || row.datos_maestros.IVA || null
+                        };
+                    }
+                });
+            }
+        }
+        
+        // 2. Obtener Facturas para IVA Real
+        let facturasMap = {};
+        if (pedidosIds.length > 0) {
+            const facturasUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/facturas_raw?select=pedido_b2b_id,articulos&pedido_b2b_id=in.(${pedidosIds.join(',')})`;
+            const facturasRes = await fetch(facturasUrl, { headers });
+            if (facturasRes.ok) {
+                const facturasData = await facturasRes.json();
+                facturasData.forEach(fac => {
+                    if (fac.pedido_b2b_id && fac.articulos) {
+                        if (!facturasMap[fac.pedido_b2b_id]) facturasMap[fac.pedido_b2b_id] = {};
+                        fac.articulos.forEach(art => {
+                            const cod = String(art.codigo || art.producto_codigo || '').trim().toLowerCase();
+                            facturasMap[fac.pedido_b2b_id][cod] = art.porcentaje_iva || art.iva_porcentaje || art.iva || null;
+                        });
+                    }
+                });
+            }
+        }
+
+        // 3. Enriquecer los lotes
+        const enrichedLotes = lotes.map(lote => {
+            const item = lote.pedidos_b2b_items || {};
+            const cabecera = lote.recepciones_fisicas_cabecera || {};
+            const cod = String(item.producto_codigo || '').trim().toLowerCase();
+            const masterInfo = masterMap[cod] || { cantBult: null, cantValor: null, iva: null };
+            
+            // IVA Real (Factura vs Tabla Maestra)
+            let ivaReal = masterInfo.iva;
+            if (cabecera.pedido_id && facturasMap[cabecera.pedido_id] && facturasMap[cabecera.pedido_id][cod]) {
+                ivaReal = facturasMap[cabecera.pedido_id][cod];
+            }
+            
+            return {
+                ...lote,
+                pedidos_b2b_items: {
+                    ...item,
+                    cant_bult: item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult,
+                    cant_valor: item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor,
+                    iva_porcentaje: ivaReal
+                }
+            };
+        });
+        
+        res.json(enrichedLotes);
     } catch (e) {
         console.error("Error proxy Supabase:", e.message);
         res.status(500).json({ error: e.message });
