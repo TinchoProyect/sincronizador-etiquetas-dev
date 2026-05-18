@@ -123,32 +123,80 @@
             font-weight: 600;
             color: #495057;
             border-bottom: 1px solid #dee2e6;
-        }
-        
-        .lotes-table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 1000px; /* Increased for more columns */
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .lotes-table th {
-            background-color: #e9ecef;
-            color: #495057;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 0.80em;
-            letter-spacing: 0.5px;
-            padding: 12px;
-            border-bottom: 2px solid #dee2e6;
-            text-align: left;
+        .accordion-day-body {
+            display: none;
+            padding: 15px;
+            background: #fafafa;
         }
 
-        .lotes-table td {
-            padding: 12px;
+        .accordion-day.active .accordion-day-body {
+            display: block;
+        }
+
+        /* Ficha / Card Grid Layout */
+        .lote-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        .lote-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #e0e0e0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lote-card-header {
+            background: #f1f3f5;
+            padding: 10px 15px;
             border-bottom: 1px solid #e9ecef;
-            color: #333;
-            vertical-align: middle;
-            font-size: 0.9em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lote-card-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 15px;
+            gap: 20px;
+        }
+
+        .lote-section-maestra, .lote-section-financiera {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .lote-section-financiera {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .lote-label {
+            font-size: 0.8em;
+            color: #6c757d;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .lote-value {
+            font-size: 1em;
+            color: #212529;
+            font-weight: 500;
         }
         
         .price-badge {

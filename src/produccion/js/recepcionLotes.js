@@ -138,45 +138,63 @@ window.cargarLotes = async function() {
                     const ndBadge = isND ? `<span class="discount-badge" title="Nota de Débito aplicada">ND</span>` : '';
 
                     filasHtml += `
-                        <tr>
-                            <td><span class="badge-id">${idCorto}</span><br><small style="color:#6c757d;">${timeStr}</small></td>
-                            <td class="text-proveedor">${proveedor}</td>
-                            <td class="text-producto">${item.producto_codigo || ''} - ${item.producto_descripcion || 'Sin descripción'}</td>
-                            <td><b>${lote.cantidad_recibida}</b> ${item.unidad_ref || 'u'}</td>
-                            <td><span class="badge" style="background:#e2e3e5; color:#383d41; padding:3px 6px; border-radius:4px;">${desglose}</span></td>
-                            <td>$${valorUnitario.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${ndBadge}</td>
-                            <td><span class="price-badge">$${precioBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span></td>
-                            <td>${iva}</td>
-                            <td style="text-align: center;">
-                                <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${item.producto_descripcion ? item.producto_descripcion.replace(/'/g, "\\'") : ''}')" title="Imprimir">
-                                    🖨️
+                        <div class="lote-card">
+                            <div class="lote-card-header">
+                                <div>
+                                    <span class="badge-id">${idCorto}</span>
+                                    <span style="color:#6c757d; font-size: 0.85em; margin-left: 10px;">🕒 ${timeStr}</span>
+                                </div>
+                                <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${item.producto_descripcion ? item.producto_descripcion.replace(/'/g, "\\'") : ''}')" title="Imprimir Etiqueta">
+                                    🖨️ Imprimir
                                 </button>
-                            </td>
-                        </tr>
+                            </div>
+                            <div class="lote-card-body">
+                                <div class="lote-section-maestra">
+                                    <div>
+                                        <div class="lote-label">Proveedor</div>
+                                        <div class="lote-value text-proveedor">${proveedor}</div>
+                                    </div>
+                                    <div>
+                                        <div class="lote-label">Producto</div>
+                                        <div class="lote-value text-producto">${item.producto_codigo || ''} - ${item.producto_descripcion || 'Sin descripción'}</div>
+                                    </div>
+                                    <div>
+                                        <div class="lote-label">Presentación (Bultos x Cant)</div>
+                                        <div class="lote-value"><span class="badge" style="background:#e2e3e5; color:#383d41; padding:3px 6px; border-radius:4px;">${desglose}</span></div>
+                                    </div>
+                                    <div>
+                                        <div class="lote-label">Cantidad Recibida</div>
+                                        <div class="lote-value"><b>${lote.cantidad_recibida}</b> ${item.unidad_ref || 'u'}</div>
+                                    </div>
+                                </div>
+                                <div class="lote-section-financiera">
+                                    <div>
+                                        <div class="lote-label">Precio Referencia (x Unidad/Kg)</div>
+                                        <div class="lote-value">$${valorUnitario.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${ndBadge}</div>
+                                    </div>
+                                    <div>
+                                        <div class="lote-label">Precio por Bulto/Caja</div>
+                                        <div class="lote-value"><span class="price-badge" style="font-size: 1.1em;">$${precioBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span></div>
+                                    </div>
+                                    <div>
+                                        <div class="lote-label">Porcentaje IVA</div>
+                                        <div class="lote-value">${iva}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     `;
                 });
 
                 dayHtml.innerHTML = `
-                    <div class="accordion-day-header">${dia}</div>
-                    <div class="table-responsive">
-                        <table class="lotes-table">
-                            <thead>
-                                <tr>
-                                    <th>ID Lote</th>
-                                    <th>Proveedor</th>
-                                    <th>Producto</th>
-                                    <th>Cant.</th>
-                                    <th>Desglose (BultoxVal)</th>
-                                    <th>Precio Unit/Kg</th>
-                                    <th>Precio Bulto/Caja</th>
-                                    <th>% IVA</th>
-                                    <th style="text-align: center;">Imprimir</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${filasHtml}
-                            </tbody>
-                        </table>
+                    <div class="accordion-day-header" onclick="this.parentElement.classList.toggle('active')">
+                        <span>📅 ${dia}</span>
+                        <span style="font-size: 0.8em; color: #6c757d;">🔽 Desplegar</span>
+                    </div>
+                    <div class="accordion-day-body">
+                        <div class="lote-grid">
+                            ${filasHtml}
+                        </div>
                     </div>
                 `;
                 bodyMonth.appendChild(dayHtml);
