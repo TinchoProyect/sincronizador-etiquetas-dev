@@ -269,6 +269,48 @@ router.post('/etiquetas/sector', (req, res) => {
   });
 });
 
+// NUEVO: Endpoint para imprimir etiquetas de LOTES (Secreto Comercial: Sin Proveedor)
+router.post('/etiquetas/lote', (req, res) => {
+  const { id_corto, descripcion, cantidad } = req.body;
+
+  console.log(`[API Etiquetas] Imprimiendo Lote: ${id_corto}, Cantidad: ${cantidad}`);
+
+  if (!id_corto || !descripcion) {
+    return res.status(400).json({ error: 'Faltan datos del lote' });
+  }
+
+  const datos = {
+    id_corto,
+    descripcion
+  };
+
+  const cantidadImpresion = parseInt(cantidad) || 1;
+
+  const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiquetaLote.js');
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  const tempDataPath = path.join(tempDir, `temp-lote-${Date.now()}.json`);
+  fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
+
+  // Pasar el path del archivo temporal y la cantidad
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidadImpresion} "${tempDataPath}"`;
+
+  exec(command, (error, stdout, stderr) => {
+    // Limpieza
+    try {
+      if (fs.existsSync(tempDataPath)) fs.unlinkSync(tempDataPath);
+    } catch (e) { console.error("Error borrando temp lote:", e); }
+
+    if (error) {
+      console.error('Error al imprimir etiqueta de LOTE:', error);
+      return res.status(500).json({ error: 'Error al imprimir etiqueta de lote' });
+    }
+    console.log(`Etiqueta de LOTE enviada a Zebra (Cant: ${cantidadImpresion}).`);
+    res.json({ message: 'Etiqueta de lote enviada a imprimir' });
+  });
+});
+
 // NUEVO: Endpoint para imprimir etiquetas de TRATAMIENTO (CARPAS)
 router.post('/etiquetas/tratamiento', (req, res) => {
   const matrizEtiquetas = req.body; 

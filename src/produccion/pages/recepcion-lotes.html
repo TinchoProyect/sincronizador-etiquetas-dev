@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recepción de Lotes y Trazabilidad - Gestiones Lamda</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Importar Supabase via CDN (Regla de aislamiento) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .module-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Sección Escáner (Trazabilidad) */
+        .scanner-section {
+            background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            color: white;
+        }
+
+        .scanner-section h2 {
+            margin-top: 0;
+            color: white;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+
+        .scanner-input-container {
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .scanner-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 24px;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            box-sizing: border-box;
+        }
+
+        .scanner-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.4);
+        }
+
+        /* Grilla de Ingresos */
+        .grid-section {
+            background-color: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e9ecef;
+        }
+
+        .grid-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #f8f9fa;
+            padding-bottom: 10px;
+        }
+
+        .grid-header h2 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 1.5em;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        .lotes-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+
+        .lotes-table th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            padding: 15px;
+            border-bottom: 2px solid #dee2e6;
+            text-align: left;
+        }
+
+        .lotes-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            color: #333;
+            vertical-align: middle;
+        }
+
+        .lotes-table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Elementos específicos de la grilla */
+        .badge-id {
+            background-color: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #495057;
+        }
+
+        .text-proveedor {
+            font-weight: 600;
+            color: #0056b3;
+        }
+
+        .text-producto {
+            font-weight: 500;
+        }
+
+        /* Botón de Imprimir */
+        .btn-imprimir {
+            background: linear-gradient(to right, #6f42c1, #5a2d91);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-imprimir:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(111, 66, 193, 0.3);
+        }
+
+        /* Modal de Trazabilidad */
+        .modal-trazabilidad {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-trazabilidad.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .trazabilidad-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 700px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+        }
+
+        .modal-trazabilidad.show .trazabilidad-content {
+            transform: translateY(0);
+        }
+
+        .trazabilidad-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+
+        .trazabilidad-header h3 {
+            margin: 0;
+            font-size: 1.4em;
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .trazabilidad-body {
+            padding: 30px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .info-box.highlight {
+            grid-column: span 2;
+            background: #e9f2ff;
+            border-left-color: #007bff;
+        }
+
+        .info-label {
+            font-size: 0.85em;
+            color: #6c757d;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .time-elapsed {
+            margin-top: 25px;
+            text-align: center;
+            padding: 15px;
+            background: #fff3cd;
+            color: #856404;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.1em;
+            border: 1px solid #ffeeba;
+        }
+
+        /* Spinner de carga */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #17a2b8;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 Recepción de Lotes y Trazabilidad</h1>
+            <a href="produccion.html" class="back-button">← Volver a Producción</a>
+        </header>
+
+        <main class="module-container">
+            
+            <!-- SECCIÓN 1: Trazabilidad / Escáner -->
+            <section class="scanner-section">
+                <h2>🔍 Consulta de Trazabilidad por Escáner</h2>
+                <div class="scanner-input-container">
+                    <input type="text" id="scanner-input" class="scanner-input" 
+                           placeholder="Escanee el Código de Barras del Lote aquí..." 
+                           autocomplete="off" autofocus>
+                    <p style="margin-top: 10px; font-size: 0.9em; opacity: 0.9;">
+                        El sistema leerá automáticamente el ID Corto e identificará el lote.
+                    </p>
+                </div>
+            </section>
+
+            <!-- SECCIÓN 2: Grilla de Ingresos Recientes -->
+            <section class="grid-section">
+                <div class="grid-header">
+                    <h2>Últimos Ingresos de Lotes</h2>
+                    <button class="admin-button" onclick="window.cargarLotes()" style="background-color: #28a745;">
+                        🔄 Actualizar
+                    </button>
+                </div>
+
+                <div id="loading-grid" style="text-align: center;">
+                    <div class="loader"></div>
+                    <p>Conectando con Supabase...</p>
+                </div>
+
+                <div class="table-responsive" id="grid-container" style="display: none;">
+                    <table class="lotes-table">
+                        <thead>
+                            <tr>
+                                <th>ID Lote</th>
+                                <th>Fecha Ingreso</th>
+                                <th>Proveedor</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th style="text-align: center;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lotes-tbody">
+                            <!-- Inyectado por JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MODAL DE TRAZABILIDAD (RADIOGRAFÍA) -->
+    <div id="modal-trazabilidad" class="modal-trazabilidad">
+        <div class="trazabilidad-content">
+            <div class="trazabilidad-header">
+                <h3>📊 Radiografía del Lote <span id="radiografia-id" style="font-family: monospace;"></span></h3>
+                <button class="btn-close" onclick="cerrarTrazabilidad()">&times;</button>
+            </div>
+            <div class="trazabilidad-body">
+                <div class="info-grid">
+                    <div class="info-box highlight">
+                        <div class="info-label">Proveedor / Origen</div>
+                        <div class="info-value text-proveedor" id="radiografia-proveedor">-</div>
+                    </div>
+                    <div class="info-box highlight">
+                        <div class="info-label">Producto</div>
+                        <div class="info-value text-producto" id="radiografia-producto">-</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Cantidad Original</div>
+                        <div class="info-value" id="radiografia-cantidad">-</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Remito / Factura Asoc.</div>
+                        <div class="info-value" id="radiografia-remito">-</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Fecha Exacta Ingreso</div>
+                        <div class="info-value" id="radiografia-fecha">-</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Unidad de Medida</div>
+                        <div class="info-value" id="radiografia-unidad">-</div>
+                    </div>
+                </div>
+
+                <div class="time-elapsed" id="radiografia-tiempo">
+                    ⏱️ Calculando tiempo en depósito...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/services/supabaseService.js"></script>
+    <script src="/js/recepcionLotes.js"></script>
+</body>
+</html>

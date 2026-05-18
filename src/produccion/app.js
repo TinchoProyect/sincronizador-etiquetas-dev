@@ -43,6 +43,40 @@ const tiemposRouter = require('./routes/tiemposCarro');
 app.use('/api/tiempos', tiemposRouter);
 app.use('/api/produccion', produccionRoutes);
 
+// ✅ PROXY A SUPABASE (BYPASS DE CORS)
+// Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
+app.get('/api/supabase/lotes', async (req, res) => {
+    try {
+        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref)&order=created_at.desc&limit=100';
+        const key = process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY';
+        const response = await fetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
+        if (!response.ok) throw new Error(await response.text());
+        res.json(await response.json());
+    } catch (e) {
+        console.error("Error proxy Supabase:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
+    try {
+        const id_corto = req.params.id_corto.trim();
+        // Generar rango mínimo y máximo del UUID para evitar usar ilike que falla en Postgres para tipos uuid
+        const minUuid = id_corto + '-0000-0000-0000-000000000000';
+        const maxUuid = id_corto + '-ffff-ffff-ffff-ffffffffffff';
+        
+        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref)&id=gte.${minUuid}&id=lte.${maxUuid}&limit=1`;
+        const key = process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY';
+        const response = await fetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        res.json(data.length > 0 ? data[0] : null);
+    } catch (e) {
+        console.error("Error proxy Supabase ID:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Middleware para deshabilitar caché en archivos HTML y JS
 app.use((req, res, next) => {
     if (req.url.endsWith('.html') || req.url.endsWith('.js') || req.url.endsWith('.css')) {
