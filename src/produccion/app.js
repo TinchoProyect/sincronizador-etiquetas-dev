@@ -79,36 +79,80 @@ app.get('/api/supabase/lotes', async (req, res) => {
             }
         }
         
-        // 2. Obtener Facturas para IVA Real
+        // 2. Obtener Facturas para IVA Real (Heurística de Alícuotas)
         let facturasMap = {};
         if (pedidosIds.length > 0) {
-            const facturasUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/facturas_raw?select=pedido_b2b_id,articulos&pedido_b2b_id=in.(${pedidosIds.join(',')})`;
+            const facturasUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/facturas_raw?select=pedido_b2b_id,importe_iva_21,importe_iva_105,match_report&pedido_b2b_id=in.(${pedidosIds.join(',')})`;
             const facturasRes = await fetch(facturasUrl, { headers });
             if (facturasRes.ok) {
                 const facturasData = await facturasRes.json();
                 facturasData.forEach(fac => {
-                    if (fac.pedido_b2b_id && fac.articulos) {
+                    if (fac.pedido_b2b_id && fac.match_report) {
+                        const i21 = Number(fac.importe_iva_21) || 0;
+                        const i105 = Number(fac.importe_iva_105) || 0;
+                        
+                        let ivaBase = null;
+                        // Motor Heurístico:
+                        if (i21 === 0 && i105 === 0) ivaBase = 0;           // Factura Pura 0%
+                        else if (i105 > 0 && i21 === 0) ivaBase = 10.5;     // Factura Pura 10.5%
+                        else if (i21 > 0 && i105 === 0) ivaBase = 21;       // Factura Pura 21%
+                        
                         if (!facturasMap[fac.pedido_b2b_id]) facturasMap[fac.pedido_b2b_id] = {};
-                        fac.articulos.forEach(art => {
-                            const cod = String(art.codigo || art.producto_codigo || '').trim().toLowerCase();
-                            facturasMap[fac.pedido_b2b_id][cod] = art.porcentaje_iva || art.iva_porcentaje || art.iva || null;
+                        
+                        fac.match_report.forEach(mr => {
+                            const cod = String(mr.pedido?.codigo || '').trim().toLowerCase();
+                            if (cod) {
+                                if (ivaBase !== null) {
+                                    facturasMap[fac.pedido_b2b_id][cod] = ivaBase;
+                                } else {
+                                    // Factura Mixta (Fallback empírico)
+                                    // Asignamos 21% como fallback de seguridad
+                                    facturasMap[fac.pedido_b2b_id][cod] = 21;
+                                }
+                            }
                         });
                     }
                 });
             }
         }
 
-        // 3. Enriquecer los lotes
-        const enrichedLotes = lotes.map(lote => {
+        // 3. Deduplicación Reductora en Node.js (Agrupación por SKU)
+        const uniqueMap = new Map();
+        lotes.forEach(lote => {
+            const cod = String(lote.pedidos_b2b_items?.producto_codigo || '').trim().toLowerCase();
+            if (!cod) return;
+            
+            // Agrupamos por fecha (YYYY-MM-DD) y por SKU, emulando la vista vw_inventario_consolidado
+            // pero reteniendo la metadata del lote físico agrupado por día.
+            const fechaStr = (lote.recepciones_fisicas_cabecera?.fecha_recepcion || new Date().toISOString()).split('T')[0];
+            const dedupeKey = fechaStr + '_' + cod;
+            
+            if (!uniqueMap.has(dedupeKey)) {
+                // Clonamos para no mutar el lote original al sumar
+                uniqueMap.set(dedupeKey, { ...lote });
+            } else {
+                const existing = uniqueMap.get(dedupeKey);
+                existing.cantidad_recibida += Number(lote.cantidad_recibida);
+            }
+        });
+        const dedupedLotes = Array.from(uniqueMap.values());
+
+        // 4. Enriquecer los lotes consolidados
+        const enrichedLotes = dedupedLotes.map(lote => {
             const item = lote.pedidos_b2b_items || {};
             const cabecera = lote.recepciones_fisicas_cabecera || {};
             const cod = String(item.producto_codigo || '').trim().toLowerCase();
             const masterInfo = masterMap[cod] || { cantBult: null, cantValor: null, iva: null };
             
-            // IVA Real (Factura vs Tabla Maestra)
+            // IVA Real Inferido desde Facturas
             let ivaReal = masterInfo.iva;
-            if (cabecera.pedido_id && facturasMap[cabecera.pedido_id] && facturasMap[cabecera.pedido_id][cod]) {
+            if (cabecera.pedido_id && facturasMap[cabecera.pedido_id] && facturasMap[cabecera.pedido_id][cod] !== undefined) {
                 ivaReal = facturasMap[cabecera.pedido_id][cod];
+            }
+            
+            // Contingencia Fiscal (Fallback 21% para lotes huérfanos de factura)
+            if (ivaReal === null || ivaReal === undefined) {
+                ivaReal = 21;
             }
             
             return {

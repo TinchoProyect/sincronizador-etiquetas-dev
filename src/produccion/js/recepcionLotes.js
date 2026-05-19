@@ -46,8 +46,13 @@ window.cargarLotes = async function() {
     container.style.display = 'none';
 
     try {
-        const lotes = await window.SupabaseService.fetchUltimosLotes();
+        let lotes = await window.SupabaseService.fetchUltimosLotes();
         
+        // Purgado de SKUs residuales o defectuosos
+        if (lotes && lotes.length > 0) {
+            lotes = lotes.filter(i => i.pedidos_b2b_items?.producto_codigo !== 'LMD-MAN-B0B5BF36-OLD');
+        }
+
         container.innerHTML = ''; // Limpiar
 
         if (!lotes || lotes.length === 0) {
@@ -119,11 +124,23 @@ window.cargarLotes = async function() {
                     const proveedor = cabecera.pedidos_b2b_cabecera?.proveedores?.nombre || 'Proveedor Sin Asignar';
                     
                     const timeStr = lote.fechaRaw.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                    
+                    const parseSafeNumber = (val) => {
+                        if (val === null || val === undefined) return NaN;
+                        if (typeof val === 'string') {
+                            val = val.replace(',', '.');
+                        }
+                        return parseFloat(val);
+                    };
 
                     // Lógica Matemática y Desglose
-                    const bult = (item.cant_bult && !isNaN(item.cant_bult)) ? parseFloat(item.cant_bult) : 1;
-                    const val = (item.cant_valor && !isNaN(item.cant_valor)) ? parseFloat(item.cant_valor) : 1;
-                    const valorUnitario = (item.valor_unitario_ref && !isNaN(item.valor_unitario_ref)) ? parseFloat(item.valor_unitario_ref) : 0;
+                    const rawBult = parseSafeNumber(item.cant_bult);
+                    const rawVal = parseSafeNumber(item.cant_valor);
+                    const rawUnitario = parseSafeNumber(item.valor_unitario_ref);
+                    
+                    const bult = !isNaN(rawBult) ? rawBult : 1;
+                    const val = !isNaN(rawVal) ? rawVal : 1;
+                    const valorUnitario = !isNaN(rawUnitario) ? rawUnitario : 0;
                     
                     // Matemáticas trilateral corregida: Valor Unitario * Bulto * Valor
                     const precioBulto = valorUnitario * bult * val;
@@ -144,9 +161,15 @@ window.cargarLotes = async function() {
                                     <span class="badge-id">${idCorto}</span>
                                     <span style="color:#6c757d; font-size: 0.85em; margin-left: 10px;">🕒 ${timeStr}</span>
                                 </div>
-                                <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${item.producto_descripcion ? item.producto_descripcion.replace(/'/g, "\\'") : ''}')" title="Imprimir Etiqueta">
-                                    🖨️ Imprimir
-                                </button>
+                                ${(() => {
+                                    const safeDesc = item.producto_descripcion 
+                                        ? item.producto_descripcion.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ') 
+                                        : '';
+                                    return `
+                                    <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${safeDesc}')" title="Imprimir Etiqueta">
+                                        🖨️ Imprimir
+                                    </button>`;
+                                })()}
                             </div>
                             <div class="lote-card-body">
                                 <div class="lote-section-maestra">
