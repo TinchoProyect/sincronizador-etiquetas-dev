@@ -1795,9 +1795,9 @@ window.inicializarArbolCategorias = function() {
     if (!list) return;
     const listaId = list.lista_id;
     
-    // Filtrar los artículos que tienen esta lista activa
+    // Filtrar los artículos que tienen esta lista activa con casting robusto de lista_id
     const articulosFiltrados = articulosBunkerGlobal.filter(art => {
-        return art.margenes && art.margenes.some(m => m.lista_id === listaId);
+        return art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
     });
 
     // Agrupar por Rubro y Sub-rubro
@@ -2102,7 +2102,15 @@ window.actualizarPrevisualizacionPDF = function() {
         prevContainer.appendChild(rubroTitle);
 
         activeSubRubros.forEach(sub => {
-            if (sub.items.length === 0) return;
+            // Filtrado interno robusto a partir de articulosBunkerGlobal con normalización y casting
+            const items = articulosBunkerGlobal.filter(art => {
+                const rMatch = (art.rubro || 'SIN RUBRO').trim().toUpperCase() === rubro.name.trim().toUpperCase();
+                const sMatch = (art.sub_rubro || 'SIN SUB-RUBRO').trim().toUpperCase() === sub.name.trim().toUpperCase();
+                const hasMargin = art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
+                return rMatch && sMatch && hasMargin;
+            });
+
+            if (items.length === 0) return;
 
             // Sub-divisor de Categoría
             const subTitle = document.createElement('div');
@@ -2132,9 +2140,9 @@ window.actualizarPrevisualizacionPDF = function() {
             // tbody
             const tbody = document.createElement('tbody');
             
-            sub.items.forEach((art, index) => {
-                // Encontrar configuración del artículo para esta lista
-                const mFocused = art.margenes.find(m => m.lista_id === listaId);
+            items.forEach((art, index) => {
+                // Encontrar configuración del artículo para esta lista con casting robusto
+                const mFocused = art.margenes.find(m => Number(m.lista_id) === Number(listaId));
                 if (!mFocused) return;
                 
                 const pFinal = parseFloat(mFocused.precio_final || 0);
