@@ -405,7 +405,11 @@ const debouncedRecalcular = debounce(() => {
     recalcularPreciosGestor();
 }, 500);
 
+let gp_costoLomasoftKilo = 0;
+let gp_reposicionOfertas = [];
+
 function renderOfertasReposicion(ofertas) {
+    gp_reposicionOfertas = ofertas || [];
     const container = document.getElementById('gp-ofertas-reposicion-container');
     if (!container) return;
 
@@ -431,7 +435,7 @@ function renderOfertasReposicion(ofertas) {
         const heredadoBadge = of.heredado ? `<span style="font-size: 0.76em; background: #fef3c7; color: #d97706; border: 1px solid #fde68a; padding: 0px 4px; border-radius: 3px; font-weight: 700; margin-left: 5px;">Heredado</span>` : '';
         
         html += `
-            <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
+            <div class="reposicion-offer-card" onclick="window.aplicarCostoBaseManual(${costoKilo})" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);" title="Haga clic para inyectar este costo ($${costoKilo.toFixed(2)}/kg) en la calculadora">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; display: flex; align-items: center;" title="${of.nombre_proveedor}">${of.nombre_proveedor}${heredadoBadge}</span>
                     <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
@@ -511,6 +515,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
             const costoLomasoftBulto = parseFloat(data.costo_lomasoft) || 0;
             const costoLomasoftKilo = gp_factorPresentacion > 0 ? (costoLomasoftBulto / gp_factorPresentacion) : 0;
+            gp_costoLomasoftKilo = costoLomasoftKilo;
 
             const lomaValEl = document.getElementById('gp-costo-lomasoft-val');
             const lomaBultoEl = document.getElementById('gp-costo-lomasoft-bulto');
@@ -521,6 +526,17 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 
                 const ivaLomasoftVal = parseFloat(data.iva_lomasoft);
                 lomaIvaEl.innerText = !isNaN(ivaLomasoftVal) ? `${ivaLomasoftVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : 'N/A';
+                
+                // Click-to-Calculate interactivo
+                if (costoLomasoftKilo > 0) {
+                    lomaValEl.className = 'clickable-cost-val lomasoft';
+                    lomaValEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${costoLomasoftKilo})`);
+                    lomaValEl.title = `Haga clic para inyectar este costo ($${costoLomasoftKilo.toFixed(2)}/kg)`;
+                } else {
+                    lomaValEl.className = '';
+                    lomaValEl.removeAttribute('onclick');
+                    lomaValEl.removeAttribute('title');
+                }
             }
 
             // Despliegue Informativo de Lote Reciente Embudo (Fase 2: Multi-Fuente)
@@ -554,6 +570,17 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     loteBultoEl.style.color = '#10b981';
                     loteIvaEl.style.color = '#10b981';
                     loteFechaEl.style.color = '#10b981';
+                    
+                    // Click-to-Calculate interactivo
+                    if (costoLoteKilo > 0) {
+                        loteValEl.className = 'clickable-cost-val lote';
+                        loteValEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${costoLoteKilo})`);
+                        loteValEl.title = `Haga clic para inyectar este costo ($${costoLoteKilo.toFixed(2)}/kg)`;
+                    } else {
+                        loteValEl.className = '';
+                        loteValEl.removeAttribute('onclick');
+                        loteValEl.removeAttribute('title');
+                    }
                 } else {
                     loteValEl.innerText = 'Sin registros';
                     loteBultoEl.innerText = 'Sin registros';
@@ -564,6 +591,10 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     loteBultoEl.style.color = '#64748b';
                     loteIvaEl.style.color = '#64748b';
                     loteFechaEl.style.color = '#64748b';
+                    
+                    loteValEl.className = '';
+                    loteValEl.removeAttribute('onclick');
+                    loteValEl.removeAttribute('title');
                 }
             }
 
@@ -628,6 +659,17 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     recBadgeEl.style.background = '#e0f2fe';
                     recBadgeEl.style.color = '#0369a1';
                     recBadgeEl.style.borderColor = '#bae6fd';
+                    
+                    // Click-to-Calculate interactivo
+                    if (recKiloVal > 0) {
+                        recKiloEl.className = 'clickable-cost-val receta';
+                        recKiloEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${recKiloVal})`);
+                        recKiloEl.title = `Haga clic para inyectar este costo ($${recKiloVal.toFixed(2)}/kg)`;
+                    } else {
+                        recKiloEl.className = '';
+                        recKiloEl.removeAttribute('onclick');
+                        recKiloEl.removeAttribute('title');
+                    }
                 } else {
                     recKiloEl.innerText = 'Sin registros';
                     recBultoEl.innerText = 'Sin registros';
@@ -641,6 +683,10 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     recBadgeEl.style.background = '#f1f5f9';
                     recBadgeEl.style.color = '#64748b';
                     recBadgeEl.style.borderColor = '#cbd5e1';
+                    
+                    recKiloEl.className = '';
+                    recKiloEl.removeAttribute('onclick');
+                    recKiloEl.removeAttribute('title');
                 }
             }
 
@@ -756,6 +802,152 @@ window.cerrarGestorPrecios = function() {
     document.getElementById('modal-gestor-precios').style.display = 'none';
 };
 
+/**
+ * MÓDULO INTERACTIVO BÚNKER - CLICK-TO-CALCULATE
+ * Inyecta un costo base seleccionado por el operador directamente en la calculadora superior.
+ */
+window.aplicarCostoBaseManual = function(costVal) {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    
+    // Blindaje de nulos
+    if (costVal === undefined || costVal === null || isNaN(costVal) || costVal <= 0) return;
+    
+    // Desactivar la herencia automática
+    const heredarCheckbox = document.getElementById('gp-heredar-costo');
+    if (heredarCheckbox) {
+        heredarCheckbox.checked = false;
+    }
+    
+    // Guardar y poblar valor manual
+    list.costo_base_sobrescrito = parseFloat(costVal);
+    
+    const manualInput = document.getElementById('gp-costo-manual');
+    if (manualInput) {
+        manualInput.disabled = false;
+        manualInput.style.backgroundColor = 'white';
+        manualInput.value = parseFloat(costVal).toFixed(2);
+        
+        // Efecto visual premium glow verde instantáneo
+        manualInput.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.6)';
+        manualInput.style.borderColor = '#10b981';
+        setTimeout(() => {
+            manualInput.style.boxShadow = 'none';
+            manualInput.style.borderColor = '#cbd5e1';
+        }, 1500);
+    }
+    
+    // Cadena polinómica de recálculo reactivo en tiempo real
+    recalcularPreciosGestor();
+    
+    // Confirmación visual Toast
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        timerProgressBar: true
+    });
+    Toast.fire({
+        icon: 'success',
+        title: `Costo Kilo Base aplicado: $${parseFloat(costVal).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kg`
+    });
+};
+
+/**
+ * MÓDULO INTERACTIVO BÚNKER - DEFAULT PINNING
+ * Alterna y fija la fuente de costos predeterminada para la lista de precios activa.
+ */
+window.establecerFuenteDefault = function(event, fuente) {
+    if (event) event.stopPropagation(); // Evitar cascada de clics
+    
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    
+    // Validar si la fuente tiene registros válidos (Anti-Erreores)
+    if (fuente === 'LOMASOFT' && !(gp_costoLomasoftKilo > 0)) return;
+    if (fuente === 'LOTE' && !gp_loteVal) return;
+    if (fuente === 'RECETA' && !(gp_liveIngredienteCost > 0)) return;
+    if (fuente === 'REPOSICION' && !(gp_reposicionOfertas && gp_reposicionOfertas.length > 0)) return;
+    
+    // Alternar selección (Toggle)
+    if (list.fuente_costo_default === fuente) {
+        list.fuente_costo_default = null;
+    } else {
+        list.fuente_costo_default = fuente;
+    }
+    
+    // Sincronizar visual de pines
+    window.actualizarUiPines();
+    
+    // Toast de convalidación
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        timerProgressBar: true
+    });
+    Toast.fire({
+        icon: 'success',
+        title: list.fuente_costo_default 
+          ? `Fuente '${fuente}' fijada como predeterminada`
+          : 'Fijación de fuente desmarcada'
+    });
+};
+
+/**
+ * Sincroniza visualmente el estado de los pines 📌 activos y pasivos.
+ */
+window.actualizarUiPines = function() {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    
+    const activeFuente = list.fuente_costo_default;
+    
+    const syncPin = (pinId, fuenteName, isValid) => {
+        const el = document.getElementById(pinId);
+        if (!el) return;
+        
+        if (!isValid) {
+            el.className = 'gp-pin-btn disabled';
+            return;
+        }
+        
+        if (activeFuente === fuenteName) {
+            el.className = 'gp-pin-btn active';
+            el.title = `Fijado como predeterminado (${fuenteName})`;
+        } else {
+            el.className = 'gp-pin-btn';
+            el.title = `Fijar '${fuenteName}' como predeterminado`;
+        }
+    };
+    
+    syncPin('gp-pin-lomasoft', 'LOMASOFT', gp_costoLomasoftKilo > 0);
+    syncPin('gp-pin-lote', 'LOTE', !!gp_loteVal);
+    syncPin('gp-pin-receta', 'RECETA', gp_liveIngredienteCost > 0);
+    syncPin('gp-pin-reposicion', 'REPOSICION', gp_reposicionOfertas && gp_reposicionOfertas.length > 0);
+};
+
+/**
+ * Obtiene el valor numérico en caliente de la fuente default seleccionada.
+ */
+window.obtenerValorFuenteDefault = function(fuente) {
+    if (fuente === 'LOMASOFT' && gp_costoLomasoftKilo > 0) {
+        return gp_costoLomasoftKilo;
+    }
+    if (fuente === 'LOTE' && gp_loteVal) {
+        return parseFloat(gp_loteVal.costo_kilo_al_momento);
+    }
+    if (fuente === 'RECETA' && gp_liveIngredienteCost > 0) {
+        return gp_liveIngredienteCost;
+    }
+    if (fuente === 'REPOSICION' && gp_reposicionOfertas && gp_reposicionOfertas.length > 0) {
+        return parseFloat(gp_reposicionOfertas[0].precio_unitario);
+    }
+    return null;
+};
+
 function renderTabs() {
     const tabsContainer = document.getElementById('gp-tabs-container');
     tabsContainer.innerHTML = '';
@@ -784,6 +976,14 @@ function selectTab(idx) {
     
     const list = gp_listasFinancieras[idx];
     if (!list) return;
+    
+    // Ciclo de Apertura Inteligente: Autocompletado desde la fuente predeterminada
+    if (list.fuente_costo_default) {
+        const valDefault = window.obtenerValorFuenteDefault(list.fuente_costo_default);
+        if (valDefault !== null && valDefault > 0) {
+            list.costo_base_sobrescrito = valDefault;
+        }
+    }
     
     // Configurar Costo Base
     const inherits = list.costo_base_sobrescrito === null;
@@ -819,6 +1019,9 @@ function selectTab(idx) {
 
     // Configurar estado del botón de Artículo Patrón
     actualizarUiBotonPatron();
+    
+    // Sincronizar visual de pines 📌
+    window.actualizarUiPines();
     
     // Recalcular & renderizar precios
     recalcularPreciosGestor();
@@ -1261,6 +1464,7 @@ window.guardarEstructuraFinanciera = async function() {
             modo_calculo: l.modo_calculo || 'AUTOMATIC',
             modo_iva: l.modo_iva || 'COMPLETO',
             es_patron: l.es_patron === true || l.es_patron === 'true',
+            fuente_costo_default: l.fuente_costo_default || null,
             insumos: insPayload
         };
     });

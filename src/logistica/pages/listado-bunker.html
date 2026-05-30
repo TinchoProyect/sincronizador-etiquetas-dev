@@ -314,6 +314,71 @@
         #btn-exportar-pdf-comercial:active {
             transform: translateY(0);
         }
+
+        /* Estilos Interactivos Click-to-Calculate y Pinning */
+        .clickable-cost-val {
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .clickable-cost-val:hover {
+            filter: brightness(1.15);
+            transform: scale(1.03);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .clickable-cost-val.lomasoft:hover {
+            background-color: #cbd5e1;
+            color: #1e293b !important;
+        }
+        .clickable-cost-val.lote:hover {
+            background-color: #bbf7d0;
+            color: #15803d !important;
+        }
+        .clickable-cost-val.receta:hover {
+            background-color: #bae6fd;
+            color: #0369a1 !important;
+        }
+        
+        .gp-pin-btn {
+            cursor: pointer;
+            opacity: 0.25;
+            filter: grayscale(1);
+            transition: all 0.2s ease-in-out;
+            display: inline-block;
+            padding: 0 4px;
+            user-select: none;
+            font-size: 1.05em;
+            vertical-align: middle;
+        }
+        .gp-pin-btn:hover {
+            opacity: 0.75;
+            filter: grayscale(0.4);
+            transform: scale(1.2);
+        }
+        .gp-pin-btn.active {
+            opacity: 1 !important;
+            filter: grayscale(0) drop-shadow(0 0 4px rgba(234, 179, 8, 0.85)) !important;
+            transform: scale(1.3) rotate(-15deg);
+        }
+        .gp-pin-btn.disabled {
+            cursor: not-allowed !important;
+            pointer-events: none !important;
+            opacity: 0 !important;
+        }
+
+        .reposicion-offer-card {
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .reposicion-offer-card:hover {
+            transform: translateY(-1.5px);
+            border-color: #c084fc !important;
+            box-shadow: 0 4px 8px rgba(107, 33, 168, 0.1) !important;
+            background-color: #faf5ff !important;
+            filter: brightness(1.02);
+        }
     </style>
 </head>
 <body>
@@ -574,7 +639,10 @@
                         <!-- TARJETA 4: COSTO DE REPOSICIÓN VIVO (OFERTAS PROVEEDORES - FASE 4) -->
                         <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 6px rgba(107, 33, 168, 0.04);">
                             <div style="font-size: 0.88em; font-weight: 700; color: #6b21a8; display: flex; align-items: center; justify-content: space-between; gap: 4px; border-bottom: 1px solid #e9d5ff; padding-bottom: 6px; margin-bottom: 2px;">
-                                <span style="display: flex; align-items: center; gap: 6px;">🔮 COSTO REPOSICIÓN VIVO (OFERTAS MULTI-PROVEEDOR)</span>
+                                <span style="display: flex; align-items: center; gap: 6px;">
+                                    🔮 COSTO REPOSICIÓN VIVO (OFERTAS MULTI-PROVEEDOR)
+                                    <span class="gp-pin-btn" id="gp-pin-reposicion" onclick="window.establecerFuenteDefault(event, 'REPOSICION')" title="Fijar como fuente predeterminada">📌</span>
+                                </span>
                                 <button type="button" onclick="abrirVinculadorReposicion()" style="background: #c084fc; color: #581c87; border: 1px solid #a855f7; border-radius: 4px; padding: 4px 10px; font-size: 0.82em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s ease;" title="Vincular Manualmente Ofertas de Reposición">⚙️ Vincular Ofertas</button>
                             </div>
                             <div id="gp-ofertas-reposicion-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 150px; overflow-y: auto; padding-right: 4px;">
@@ -592,7 +660,9 @@
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.85em; color: #64748b;">Costo Kilo:</span>
+                                    <span style="font-size: 0.85em; color: #64748b; display: flex; align-items: center; gap: 4px;">
+                                        Costo Kilo: <span class="gp-pin-btn" id="gp-pin-lomasoft" onclick="window.establecerFuenteDefault(event, 'LOMASOFT')" title="Fijar como fuente predeterminada">📌</span>
+                                    </span>
                                     <strong id="gp-costo-lomasoft-val" style="color: #475569; font-size: 1.15em; font-family: monospace;">$ 0,00</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -614,7 +684,9 @@
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.85em; color: #166534;">Costo Kilo Lote:</span>
+                                    <span style="font-size: 0.85em; color: #166534; display: flex; align-items: center; gap: 4px;">
+                                        Costo Kilo Lote: <span class="gp-pin-btn" id="gp-pin-lote" onclick="window.establecerFuenteDefault(event, 'LOTE')" title="Fijar como fuente predeterminada">📌</span>
+                                    </span>
                                     <strong id="gp-costo-lote-val" style="color: #10b981; font-size: 1.15em; font-family: monospace;">$ 0,00</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -640,7 +712,9 @@
                             </div>
                             <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.85em; color: #0369a1;">Kilo Equivalente:</span>
+                                    <span style="font-size: 0.85em; color: #0369a1; display: flex; align-items: center; gap: 4px;">
+                                        Kilo Equivalente: <span class="gp-pin-btn" id="gp-pin-receta" onclick="window.establecerFuenteDefault(event, 'RECETA')" title="Fijar como fuente predeterminada">📌</span>
+                                    </span>
                                     <strong id="gp-costo-receta-kilo" style="color: #0284c7; font-size: 1.15em; font-family: monospace;">$ 0,00</strong>
                                 </div>
                                 <div style="display: flex; justify-content: space-between; align-items: center;">

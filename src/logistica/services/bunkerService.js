@@ -726,6 +726,7 @@ class BunkerService {
                 la.id as lista_articulo_id,
                 COALESCE(la.margen_ganancia, 0) as margen_porcentaje, -- Para compatibilidad
                 la.costo_base_sobrescrito,
+                la.fuente_costo_default,
                 COALESCE(la.costo_tiempo, 0) as costo_tiempo,
                 COALESCE(la.iva, 21.00) as iva,
                 COALESCE(la.precio_final, 0) as precio_final,
@@ -1083,7 +1084,8 @@ class BunkerService {
                         modo_calculo,
                         insumos,
                         modo_iva,
-                        es_patron
+                        es_patron,
+                        fuente_costo_default
                     } = conf;
 
                     // Si se está seteando este artículo como patrón, limpiar el flag de los hermanos en la lista
@@ -1110,9 +1112,9 @@ class BunkerService {
                     const queryLA = `
                         INSERT INTO public.bunker_lista_articulos (
                             lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, 
-                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, updated_at
+                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, updated_at
                         ) VALUES (
-                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP
                         ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
                             margen_ganancia = EXCLUDED.margen_ganancia,
                             costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
@@ -1122,6 +1124,7 @@ class BunkerService {
                             modo_calculo = EXCLUDED.modo_calculo,
                             modo_iva = EXCLUDED.modo_iva,
                             es_patron = EXCLUDED.es_patron,
+                            fuente_costo_default = EXCLUDED.fuente_costo_default,
                             updated_at = CURRENT_TIMESTAMP
                         RETURNING id
                     `;
@@ -1135,7 +1138,8 @@ class BunkerService {
                         precio_final || 0,
                         modo_calculo || 'AUTOMATIC',
                         modo_iva || 'COMPLETO',
-                        es_patron === true || es_patron === 'true'
+                        es_patron === true || es_patron === 'true',
+                        fuente_costo_default || null
                     ]);
 
                     const listaArticuloId = resLA.rows[0].id;

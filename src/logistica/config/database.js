@@ -41,7 +41,8 @@ pool.query('SELECT NOW()', async (err, res) => {
             await pool.query(`
                 ALTER TABLE public.bunker_lista_articulos 
                 ADD COLUMN IF NOT EXISTS modo_iva VARCHAR(20) DEFAULT 'COMPLETO',
-                ADD COLUMN IF NOT EXISTS es_patron BOOLEAN DEFAULT FALSE;
+                ADD COLUMN IF NOT EXISTS es_patron BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS fuente_costo_default VARCHAR(50);
             `);
             console.log('✅ [LOGISTICA] Columnas modo_iva y es_patron verificadas/agregadas a bunker_lista_articulos');
 
