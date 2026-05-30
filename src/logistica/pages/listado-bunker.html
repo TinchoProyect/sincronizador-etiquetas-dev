@@ -480,6 +480,10 @@
                             <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo Tiempo / Operario ($):</span>
                             <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
                         </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+                            <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo MP Sobrescrito ($/kg):</span>
+                            <input type="number" id="gp-costo-manual" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoManual(this.value)" onblur="recalcularPreciosGestor()">
+                        </div>
                         <label style="display: flex; align-items: center; font-size: 0.82em; color: #475569; cursor: pointer; font-weight: 500; margin-top: 6px;">
                             <input type="checkbox" id="gp-heredar-costo" style="margin-right: 6px;" onchange="toggleHeredarCosto(this.checked)"> 
                             Heredar costo base automático
