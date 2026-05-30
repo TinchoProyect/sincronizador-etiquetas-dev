@@ -694,9 +694,9 @@
 
     <!-- Modal Vinculador Manual de Reposición (Fase 4 - Enmienda Técnica) -->
     <div id="modal-vinculador-reposicion" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 1200; align-items: center; justify-content: center;">
-        <div class="trazabilidad-content" style="background: white; border-radius: 16px; width: 95%; max-width: 1400px; height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 24px; border: 1px solid #e2e8f0; animation: modalFadeIn 0.25s ease-out;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 98vw; height: 96vh; max-width: 98vw; max-height: 96vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 20px; border: 1px solid #e2e8f0; margin: 0; animation: modalFadeIn 0.25s ease-out;">
             <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                 <div>
                     <h3 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 8px; font-size: 1.35em; font-weight: 800;">
                         🔮 Vincular Ofertas de Reposición en Vivo
@@ -709,7 +709,7 @@
             </div>
 
             <!-- Toolbar de Filtros (Búsqueda Intensiva Multi-Columna) -->
-            <div style="display: grid; grid-template-columns: 1.2fr 1fr 2fr 1.2fr; gap: 15px; margin-bottom: 15px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px rgba(107, 33, 168, 0.03);">
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr 2fr 1.2fr; gap: 15px; margin-bottom: 12px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px rgba(107, 33, 168, 0.03);">
                 <!-- Columna 1: Proveedor -->
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <label style="font-size: 0.78em; color: #581c87; font-weight: 700; display: flex; align-items: center; gap: 4px;">🏭 Proveedor:</label>
@@ -736,24 +736,59 @@
                 </div>
             </div>
 
+            <!-- Toolbar de Visibilidad de Columnas (Hot-Swap Config) -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.85em; color: #475569; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                        🛠️ Columnas Visibles:
+                    </span>
+                    <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; margin-left: 10px;">
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-sku" checked onchange="window.toggleColumnaVinculador('sku', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Código
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-prov" checked onchange="window.toggleColumnaVinculador('prov', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Proveedor
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-desc" checked onchange="window.toggleColumnaVinculador('desc', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Descripción
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-rubro" checked onchange="window.toggleColumnaVinculador('rubro', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Rubro
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-pres" checked onchange="window.toggleColumnaVinculador('pres', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Presentación Origen
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-costo" checked onchange="window.toggleColumnaVinculador('costo', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Costo Kilo
+                        </label>
+                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
+                            <input type="checkbox" id="chk-col-ant" checked onchange="window.toggleColumnaVinculador('ant', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Antigüedad
+                        </label>
+                    </div>
+                </div>
+                <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 4px; font-size: 0.78em; color: #475569; font-weight: 600; cursor: pointer; transition: all 0.15s; outline: none;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                    Restablecer
+                </button>
+            </div>
+
             <!-- Grilla Interactiva -->
-            <div style="flex: 1; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; margin-bottom: 15px; min-height: 200px;">
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; margin-bottom: 12px; min-height: 200px;">
                 <table class="tabla-financiera" style="margin: 0; width: 100%; border-collapse: collapse; font-size: 0.9em; box-shadow: none;">
                     <thead style="background: #581c87; color: white; position: sticky; top: 0; z-index: 10;">
                         <tr>
                             <th style="width: 40px; text-align: center; padding: 10px;">Select</th>
-                            <th style="width: 150px; text-align: left; padding: 10px;">Proveedor</th>
-                            <th style="width: 110px; text-align: left; padding: 10px;">Código Proveedor</th>
-                            <th style="width: 110px; text-align: left; padding: 10px;">Rubro</th>
-                            <th style="text-align: left; padding: 10px;">Descripción</th>
-                            <th style="width: 110px; text-align: right; padding: 10px;">Costo Kilo</th>
-                            <th style="width: 80px; text-align: center; padding: 10px;">Medida</th>
-                            <th style="width: 110px; text-align: center; padding: 10px;">Antigüedad</th>
+                            <th class="vr-col-sku" style="width: 100px; text-align: left; padding: 10px;">Código</th>
+                            <th class="vr-col-prov" style="width: 150px; text-align: left; padding: 10px;">Proveedor</th>
+                            <th class="vr-col-desc" style="text-align: left; padding: 10px;">Descripción</th>
+                            <th class="vr-col-rubro" style="width: 120px; text-align: left; padding: 10px;">Rubro</th>
+                            <th class="vr-col-pres" style="width: 150px; text-align: left; padding: 10px;">Presentación Origen</th>
+                            <th class="vr-col-costo" style="width: 110px; text-align: right; padding: 10px;">Costo Kilo</th>
+                            <th class="vr-col-ant" style="width: 110px; text-align: center; padding: 10px;">Antigüedad</th>
                         </tr>
                     </thead>
                     <tbody id="vr-tabla-tbody">
                         <tr>
-                            <td colspan="7" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
+                            <td colspan="8" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
                                 Cargando catálogo de ofertas de reposición en vivo...
                             </td>
                         </tr>
@@ -762,7 +797,7 @@
             </div>
 
             <!-- Footer con Acciones -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: auto;">
                 <span style="font-size: 0.85em; color: #64748b; font-weight: 500;">
                     Seleccionados: <strong id="vr-contador-seleccionados" style="color: #6b21a8; font-family: monospace;">0</strong> ofertas.
                 </span>

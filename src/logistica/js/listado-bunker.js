@@ -1811,18 +1811,30 @@ window.filtrarOfertasVinculador = function() {
         
         const badgeFmt = dias === 0 ? 'Hoy' : `Hace ${dias} d`;
 
+        // Absorber de forma obligatoria las variables cant_bult y cant_valor de la cotización y mapearlas de forma prolija
+        let presentacionOrigen = '1 blt';
+        if (of.cant_bult && of.cant_valor) {
+            presentacionOrigen = `${of.cant_bult} blt x ${of.cant_valor} ${of.unidad_medida || 'kg'}`;
+        } else if (of.cant_valor) {
+            presentacionOrigen = `1 blt x ${of.cant_valor} ${of.unidad_medida || 'kg'}`;
+        } else if (of.cant_bult) {
+            presentacionOrigen = `${of.cant_bult} blt`;
+        } else if (of.unidad_medida) {
+            presentacionOrigen = `1 blt x ${of.unidad_medida}`;
+        }
+
         html += `
             <tr style="border-bottom: 1px solid #f1f5f9; hover: background: #faf5ff;">
                 <td style="text-align: center; padding: 10px;">
                     <input type="checkbox" class="vr-checkbox-item" data-prov-id="${of.proveedor_id}" data-prov-sku="${of.sku_proveedor}" ${checkedAttr} onchange="actualizarContadorSeleccionados()" style="width: 18px; height: 18px; cursor: pointer;">
                 </td>
-                <td style="padding: 10px; font-weight: bold; color: #581c87;">${of.nombre_proveedor}</td>
-                <td style="padding: 10px; font-family: monospace; font-size: 1.05em; color: #475569;">${of.sku_proveedor}</td>
-                <td style="padding: 10px; font-weight: 600; color: #6b21a8;">${of.rubro || 'N/A'}</td>
-                <td style="padding: 10px; color: #334155;">${of.descripcion}</td>
-                <td style="padding: 10px; text-align: right; font-family: monospace; font-size: 1.1em; font-weight: bold; color: #1e293b;">${currencyFormatter.format(of.precio_unitario)}</td>
-                <td style="padding: 10px; text-align: center; font-weight: 600; color: #64748b;">${of.unidad_medida || 'U'}</td>
-                <td style="padding: 10px; text-align: center;">
+                <td class="vr-col-sku" style="padding: 10px; font-family: monospace; font-size: 1.05em; color: #475569;">${of.sku_proveedor}</td>
+                <td class="vr-col-prov" style="padding: 10px; font-weight: bold; color: #581c87;">${of.nombre_proveedor}</td>
+                <td class="vr-col-desc" style="padding: 10px; color: #334155;">${of.descripcion}</td>
+                <td class="vr-col-rubro" style="padding: 10px; font-weight: 600; color: #6b21a8;">${of.rubro || 'N/A'}</td>
+                <td class="vr-col-pres" style="padding: 10px; font-weight: bold; color: #0284c7; font-family: monospace;">${presentacionOrigen}</td>
+                <td class="vr-col-costo" style="padding: 10px; text-align: right; font-family: monospace; font-size: 1.1em; font-weight: bold; color: #1e293b;">${currencyFormatter.format(of.precio_unitario)}</td>
+                <td class="vr-col-ant" style="padding: 10px; text-align: center;">
                     <span class="badge" style="font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: bold; ${badgeColor}">
                         ${badgeFmt}
                     </span>
@@ -1833,6 +1845,9 @@ window.filtrarOfertasVinculador = function() {
 
     tbody.innerHTML = html;
     actualizarContadorSeleccionados();
+    
+    // Aplicar en caliente el configurador de visibilidad de columnas guardado localmente
+    aplicarVisibilidadColumnas();
 };
 
 window.actualizarContadorSeleccionados = function() {
@@ -1887,3 +1902,61 @@ window.guardarVinculacionReposicion = async function() {
         Swal.fire('Error', `No se pudo guardar la vinculación: ${err.message}`, 'error');
     }
 };
+
+// ✅ CONFIGURADOR DINÁMICO DE VISIBILIDAD DE COLUMNAS POR HOT-SWAP LOCAL (FASE 4)
+window.toggleColumnaVinculador = function(colName, isVisible) {
+    const className = `vr-col-${colName}`;
+    const elements = document.querySelectorAll(`.${className}`);
+    elements.forEach(el => {
+        el.style.display = isVisible ? '' : 'none';
+    });
+    
+    // Guardar en localStorage para persistencia premium
+    let visibilidad = {};
+    try {
+        const stored = localStorage.getItem('lambda_bunker_vr_columnas');
+        if (stored) visibilidad = JSON.parse(stored);
+    } catch (e) {
+        console.error('Error parsing column visibility from localStorage:', e);
+    }
+    visibilidad[colName] = isVisible;
+    localStorage.setItem('lambda_bunker_vr_columnas', JSON.stringify(visibilidad));
+};
+
+window.resetearVisibilidadColumnas = function() {
+    const cols = ['sku', 'prov', 'desc', 'rubro', 'pres', 'costo', 'ant'];
+    cols.forEach(col => {
+        const chk = document.getElementById(`chk-col-${col}`);
+        if (chk) {
+            chk.checked = true;
+            window.toggleColumnaVinculador(col, true);
+        }
+    });
+};
+
+function aplicarVisibilidadColumnas() {
+    let visibilidad = {};
+    try {
+        const stored = localStorage.getItem('lambda_bunker_vr_columnas');
+        if (stored) visibilidad = JSON.parse(stored);
+    } catch (e) {
+        console.error('Error parsing column visibility:', e);
+    }
+    
+    const cols = ['sku', 'prov', 'desc', 'rubro', 'pres', 'costo', 'ant'];
+    cols.forEach(col => {
+        // Si no está definido en localStorage, por defecto es visible (true)
+        const isVisible = visibilidad[col] !== undefined ? visibilidad[col] : true;
+        
+        // Sincronizar checkbox en la UI
+        const chk = document.getElementById(`chk-col-${col}`);
+        if (chk) chk.checked = isVisible;
+        
+        // Aplicar a los elementos de la tabla
+        const className = `vr-col-${col}`;
+        const elements = document.querySelectorAll(`.${className}`);
+        elements.forEach(el => {
+            el.style.display = isVisible ? '' : 'none';
+        });
+    });
+}

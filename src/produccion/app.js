@@ -308,7 +308,9 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
                 unidad_medida: dm.unidad,
                 dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
-                rubro: dm.rubro || ""
+                rubro: dm.rubro || "",
+                cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
+                cant_valor: dm.cant_valor !== undefined && dm.cant_valor !== null ? dm.cant_valor : ""
             };
         });
 
@@ -392,7 +394,9 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
                 unidad_medida: dm.unidad,
                 dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
-                rubro: dm.rubro || ""
+                rubro: dm.rubro || "",
+                cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
+                cant_valor: dm.cant_valor !== undefined && dm.cant_valor !== null ? dm.cant_valor : ""
             };
         });
 
