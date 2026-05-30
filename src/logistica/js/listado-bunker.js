@@ -481,6 +481,44 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 lomaIvaEl.innerText = !isNaN(ivaLomasoftVal) ? `${ivaLomasoftVal.toFixed(2)}%` : 'N/A';
             }
 
+            // Despliegue Informativo de Lote Reciente Embudo (Fase 2: Multi-Fuente)
+            // Decisión de diseño: Si no existe el lote, mostramos 'Sin registros' de forma explícita.
+            const loteValEl = document.getElementById('gp-costo-lote-val');
+            const loteBultoEl = document.getElementById('gp-costo-lote-bulto');
+            const loteFechaEl = document.getElementById('gp-lote-fecha-val');
+
+            if (loteValEl && loteBultoEl && loteFechaEl) {
+                if (data.lote) {
+                    const costoLoteKilo = parseFloat(data.lote.costo_kilo_al_momento) || 0;
+                    const costoLoteBulto = gp_factorPresentacion > 0 ? (costoLoteKilo * gp_factorPresentacion) : 0;
+                    
+                    let fechaFmt = 'N/A';
+                    if (data.lote.fecha_vinculacion) {
+                        const dateObj = new Date(data.lote.fecha_vinculacion);
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const year = dateObj.getFullYear();
+                        fechaFmt = `${day}/${month}/${year}`;
+                    }
+
+                    loteValEl.innerText = costoLoteKilo > 0 ? currencyFormatter.format(costoLoteKilo) : 'N/A';
+                    loteBultoEl.innerText = costoLoteBulto > 0 ? currencyFormatter.format(costoLoteBulto) : 'N/A';
+                    loteFechaEl.innerText = fechaFmt;
+                    
+                    loteValEl.style.color = '#10b981';
+                    loteBultoEl.style.color = '#10b981';
+                    loteFechaEl.style.color = '#10b981';
+                } else {
+                    loteValEl.innerText = 'Sin registros';
+                    loteBultoEl.innerText = 'Sin registros';
+                    loteFechaEl.innerText = 'Sin registros';
+                    
+                    loteValEl.style.color = '#64748b';
+                    loteBultoEl.style.color = '#64748b';
+                    loteFechaEl.style.color = '#64748b';
+                }
+            }
+
             // Renderizar la Receta Activa de Origen
             const recetaInfoBadge = document.getElementById('gp-receta-info-badge');
             const recetaIngredientes = document.getElementById('gp-receta-ingredientes');

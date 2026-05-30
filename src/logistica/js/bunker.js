@@ -16,12 +16,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             searchPanels[0].style.display = 'none';
         }
         
-        // UX: Dynamic Return Button
+        // UX: Cambiar título del header para denotar edición
+        const headerTitle = document.querySelector('.header-left h1');
+        if (headerTitle) {
+            headerTitle.innerHTML = '🛡️ Edición de Artículos';
+        }
+
+        // UX: Dynamic Return Button (Mantener ambos botones para máxima flexibilidad)
         const headerRight = document.querySelector('.header-right');
         if (headerRight) {
             headerRight.innerHTML = `
-                <button class="btn-secondary" onclick="window.location.href='/pages/listado-bunker.html'" style="background-color: #3b82f6; color: white; border: none;">
+                <button class="btn-secondary" onclick="window.location.href='listado-bunker.html'" style="background-color: #3b82f6; color: white; border: none; cursor: pointer;">
                     ← Volver a Gestión de Artículos
+                </button>
+                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" style="cursor: pointer;">
+                    ← Volver al Menú Principal
                 </button>
             `;
         }
@@ -355,6 +364,22 @@ document.addEventListener('click', (e) => {
 });
 
 async function validarDiccionarioBlur(inputEl, categoria) {
+    let queryTemp = inputEl.value.trim();
+    if (queryTemp.includes(' [')) {
+        queryTemp = queryTemp.split(' [')[0].trim();
+    }
+
+    // EXCEPCIÓN DE VALIDACIÓN: El Artículo Principal no interrumpe el flujo y conserva su nombre descriptivo largo
+    if (inputEl.id === 'descripcion_principal') {
+        if (!queryTemp) {
+            limpiarTerminoDict(inputEl.id);
+            return;
+        }
+        asignarTerminoDict('descripcion_principal', queryTemp, queryTemp);
+        inputEl.value = queryTemp;
+        return;
+    }
+
     if (isPrompting) return;
     
     // Pequeño delay por si hicicieron click en autocomplete
@@ -488,8 +513,8 @@ function terminoYaAsignado(inputId, query) {
 
 function actualizarLivePreview() {
     let parts = [];
-    if (dictLocal.principal && dictLocal.principal.abreviatura) {
-        let baseAb = dictLocal.principal.abreviatura.toString();
+    if (dictLocal.principal && (dictLocal.principal.termino || dictLocal.principal.abreviatura)) {
+        let baseAb = (dictLocal.principal.termino || dictLocal.principal.abreviatura).toString();
         // Regex para eliminar strings estilo "x 10kg" o "1 x 10kg" cargados por legacy
         baseAb = baseAb.replace(/\s*\d*\s*[xX]\s*\d+(\.\d+)?[kK]?[gG]?/g, '').trim();
         if (baseAb) parts.push(baseAb);

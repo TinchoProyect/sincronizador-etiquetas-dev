@@ -1,4 +1,5 @@
 const BunkerService = require('../services/bunkerService');
+const PDFDocument = require('pdfkit');
 
 console.log('📦 [BUNKER-CONTROLLER] Cargando controlador del Búnker...');
 
@@ -9,6 +10,38 @@ exports.getListas = async (req, res) => {
     } catch (error) {
         console.error('❌ [BUNKER] Error obteniendo listas:', error);
         res.status(500).json({ success: false, error: 'Error interno obteniendo listas' });
+    }
+};
+
+exports.crearLista = async (req, res) => {
+    try {
+        const lista = await BunkerService.crearLista(req.db, req.body);
+        res.status(201).json({ success: true, data: lista, message: 'Lista de precios creada exitosamente.' });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error creando lista de precios:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno creando lista' });
+    }
+};
+
+exports.actualizarLista = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const lista = await BunkerService.actualizarLista(req.db, id, req.body);
+        res.json({ success: true, data: lista, message: 'Lista de precios actualizada exitosamente.' });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error actualizando lista de precios:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno actualizando lista' });
+    }
+};
+
+exports.eliminarLista = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await BunkerService.eliminarLista(req.db, id);
+        res.json({ success: true, message: 'Lista de precios eliminada exitosamente.' });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error eliminando lista de precios:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno eliminando lista' });
     }
 };
 
@@ -121,13 +154,11 @@ exports.crearArticulo = async (req, res) => {
         articuloData.codigo_barras = codigo_barras || articulo_id;
 
         // PARCHE CRÍTICO: Asegurar que el Artículo Principal se registre SIEMPRE en el diccionario (categoria = 'general')
-        // Si el usuario grabó tan rápido que evadió el Swal.fire del OnBlur, lo forzamos silenciosamente en backend
         let terminosAsegurados = nuevos_terminos_diccionario || [];
         const terminoPrimarioStr = articuloData.descripcion_abreviada || articuloData.descripcion;
         if (terminoPrimarioStr) {
              let baseNombre = terminoPrimarioStr.split('.')[0].trim();
-             // Limpiar sufijos genericos de empaque que ensucian el diccionario raiz
-             baseNombre = baseNombre.replace(/\s*\d*\s*[xX]\s*\d+(\.\d+)?[kK]?[gG]?/g, '').trim();
+             baseNombre = baseNombre.replace(/\s*\d*\s*[xX]\s*\d+(\.\d+)?[kK]?[gG]/g, '').trim();
              if (baseNombre && !terminosAsegurados.some(t => t.termino.toLowerCase() === baseNombre.toLowerCase())) {
                   terminosAsegurados.push({
                       termino: baseNombre,
@@ -147,22 +178,6 @@ exports.crearArticulo = async (req, res) => {
     } catch (error) {
         console.error('❌ [BUNKER] Error creando artículo:', error);
         res.status(500).json({ success: false, error: error.message || 'Error interno al crear artículo' });
-    }
-};
-
-exports.obtenerArticulo = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const articulo = await BunkerService.obtenerArticulo(req.db, id);
-        
-        if (!articulo) {
-            return res.status(200).json({ success: true, data: null, message: 'Artículo no encontrado en el Búnker' });
-        }
-
-        res.json({ success: true, data: articulo });
-    } catch (error) {
-        console.error(`❌ [BUNKER] Error obteniendo artículo ${req.params.id}:`, error);
-        res.status(500).json({ success: false, error: 'Error interno obteniendo artículo' });
     }
 };
 
@@ -203,6 +218,278 @@ exports.actualizarArticulo = async (req, res) => {
     } catch (error) {
         console.error(`❌ [BUNKER] Error actualizando artículo ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: error.message || 'Error interno al actualizar artículo' });
+    }
+};
+
+// ==========================================
+// GESTOR DE PRECIOS PARALELO
+// ==========================================
+
+exports.obtenerRadiografiaFinanciera = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const finanzas = await BunkerService.obtenerRadiografiaFinanciera(req.db, id);
+        res.json({ success: true, data: finanzas });
+    } catch (error) {
+        console.error(`❌ [BUNKER] Error obteniendo radiografía financiera ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: 'Error interno obteniendo datos financieros' });
+    }
+};
+
+exports.actualizarEstructuraFinanciera = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { costo_base, margenes, configs } = req.body;
+        
+        await BunkerService.actualizarEstructuraFinancieraTransaccional(req.db, id, { costo_base, margenes, configs });
+        res.json({ success: true, message: 'Estructura financiera actualizada exitosamente' });
+    } catch (error) {
+        console.error(`❌ [BUNKER] Error actualizando finanzas ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: 'Error interno actualizando estructura financiera' });
+    }
+};
+
+exports.buscarInsumosBunker = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q) {
+            return res.status(400).json({ success: false, error: 'Falta parámetro de búsqueda (q)' });
+        }
+        const insumos = await BunkerService.buscarInsumosBunker(req.db, q);
+        res.json({ success: true, data: insumos });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error buscando insumos en bunker:', error);
+        res.status(500).json({ success: false, error: 'Error interno buscando insumos en bunker' });
+    }
+};
+
+
+exports.exportarPDFListado = async (req, res) => {
+    try {
+        const { listaId } = req.params;
+        const db = req.db;
+        const path = require('path');
+        const fs = require('fs');
+
+        // 1. Obtener datos de la lista de precios
+        const resLista = await db.query(
+            'SELECT nombre, descripcion FROM public.bunker_listas_precios WHERE id = $1',
+            [listaId]
+        );
+        if (resLista.rows.length === 0) {
+            return res.status(404).send('La lista de precios simulada especificada no existe.');
+        }
+        const listaNombre = resLista.rows[0].nombre;
+
+        // 2. Obtener los artículos asociados a esta lista
+        const resArticulos = await db.query(
+            `SELECT 
+                 la.articulo_numero,
+                 COALESCE(b.descripcion_generada, b.descripcion) as descripcion,
+                 b.kilos_unidad,
+                 la.precio_final,
+                 la.iva,
+                 b.propiedades_dinamicas
+             FROM public.bunker_lista_articulos la
+             JOIN public.bunker_articulos b ON b.articulo_id = la.articulo_numero
+             WHERE la.lista_id = $1
+             ORDER BY COALESCE(b.descripcion_generada, b.descripcion) ASC`,
+            [listaId]
+        );
+
+        if (resArticulos.rows.length === 0) {
+            return res.status(404).send('La lista de precios seleccionada no posee artículos asociados para exportar.');
+        }
+
+        // 3. Configurar respuesta HTTP para descarga del PDF
+        const sanitizeNombre = listaNombre.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
+        const hoyFmt = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+        const filename = `Lista_Bunker_${sanitizeNombre}_${hoyFmt}.pdf`;
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        // 4. Procesar columnas activas y escalado elástico de anchos (495pt en total)
+        const activeColsParam = req.query.columns;
+        let activeColumns = ['codigo', 'descripcion', 'presentacion', 'kilo', 'bulto']; // default
+        if (activeColsParam) {
+            activeColumns = activeColsParam.split(',').map(c => c.trim().toLowerCase());
+        }
+
+        const baseWidthsDict = {
+            codigo: 65,
+            descripcion: 190,
+            presentacion: 100,
+            kilo: 70,
+            bulto: 70,
+            final_kilo: 70,
+            final_bulto: 70
+        };
+        const columnsMeta = {
+            codigo: { header: 'Código', align: 'left' },
+            descripcion: { header: 'Descripción', align: 'left' },
+            presentacion: { header: 'Presentación', align: 'left' },
+            kilo: { header: 'Precio Kilo (Neto)', align: 'right' },
+            bulto: { header: 'Precio Bulto (Neto)', align: 'right' },
+            final_kilo: { header: 'Precio Kilo Final', align: 'right' },
+            final_bulto: { header: 'Precio Bulto Final', align: 'right' }
+        };
+
+        const activeKeys = activeColumns.filter(k => baseWidthsDict[k] !== undefined);
+        if (activeKeys.length === 0) {
+            activeKeys.push('descripcion');
+        }
+
+        let totalBaseWidth = 0;
+        activeKeys.forEach(k => {
+            totalBaseWidth += baseWidthsDict[k];
+        });
+
+        const colWidths = activeKeys.map(k => {
+            const baseW = baseWidthsDict[k];
+            return Math.round((baseW / totalBaseWidth) * 495);
+        });
+
+        const sumWidths = colWidths.reduce((a, b) => a + b, 0);
+        if (sumWidths !== 495 && colWidths.length > 0) {
+            colWidths[colWidths.length - 1] += (495 - sumWidths);
+        }
+
+        const colAlign = activeKeys.map(k => columnsMeta[k].align);
+        const colHeaders = activeKeys.map(k => columnsMeta[k].header);
+        const padding = 6;
+
+        // 5. Crear documento PDF
+        const doc = new PDFDocument({ margin: 50, size: 'A4', info: { Title: filename } });
+        doc.pipe(res);
+
+        // Header Institucional: Logo Oficial
+        const headerY = doc.y;
+        const logoPath = path.join(__dirname, '../img/logo_LAMDA_grande.png');
+
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, headerY, { width: 110 });
+        } else {
+            doc.fontSize(24).font('Helvetica-Bold').fillColor('#8e4785').text('LAMDA', 50, headerY);
+        }
+
+        const hoy = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+        doc.fontSize(9).font('Helvetica').fillColor('#64748b').text(`Emisión: ${hoy}`, 390, headerY + 8, { width: 155, align: 'right' });
+        
+        // Ajustar posición vertical y agregar título limpio "Lista de precios"
+        let yStartText = headerY + 40;
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#1e293b').text('Lista de precios', 50, yStartText);
+        
+        doc.y = yStartText + 28;
+        
+        // Línea divisoria
+        doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#e2e8f0').lineWidth(1.5).stroke();
+        doc.moveDown(1.2);
+
+        // Función para dibujar la cabecera de la tabla
+        const dibujarCabeceraTabla = (y) => {
+            doc.rect(50, y, 495, 24).fill('#8e4785');
+            
+            let currentX = 50;
+            colHeaders.forEach((h, i) => {
+                doc.fontSize(8.5)
+                   .font('Helvetica-Bold')
+                   .fillColor('#ffffff')
+                   .text(h, currentX + padding, y + padding + 1, {
+                       width: colWidths[i] - (padding * 2),
+                       align: colAlign[i]
+                   });
+                currentX += colWidths[i];
+            });
+            
+            return y + 24;
+        };
+
+        let currentY = dibujarCabeceraTabla(doc.y);
+
+        const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+        for (const art of resArticulos.rows) {
+            const pFinal = parseFloat(art.precio_final || 0);
+            const ivaVal = parseFloat(art.iva || 21.00);
+            const factorKilos = parseFloat(art.kilos_unidad || 0);
+            
+            const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
+            const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
+            const precioBultoFinal = pFinal;
+            const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
+
+            let presentacionText = '';
+            if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
+                const pres = art.propiedades_dinamicas.presentacion;
+                const presVal = typeof pres === 'object' ? pres.valor : pres;
+                presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
+            } else {
+                presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
+            }
+
+            // Mapear dinámicamente según columnas activas
+            const rowData = [];
+            activeKeys.forEach(key => {
+                if (key === 'codigo') rowData.push(art.articulo_numero);
+                else if (key === 'descripcion') rowData.push(art.descripcion);
+                else if (key === 'presentacion') rowData.push(presentacionText);
+                else if (key === 'kilo') rowData.push(formatter.format(precioKiloNeto));
+                else if (key === 'bulto') rowData.push(formatter.format(precioBultoNeto));
+                else if (key === 'final_kilo') rowData.push(formatter.format(precioKiloFinal));
+                else if (key === 'final_bulto') rowData.push(formatter.format(precioBultoFinal));
+            });
+
+            let maxHeight = 0;
+            rowData.forEach((text, i) => {
+                const textHeight = doc.heightOfString(text || '', { width: colWidths[i] - (padding * 2) });
+                if (textHeight > maxHeight) maxHeight = textHeight;
+            });
+            const rowHeight = maxHeight + (padding * 2);
+
+            if (currentY + rowHeight > doc.page.height - 70) {
+                doc.addPage();
+                currentY = dibujarCabeceraTabla(50);
+            }
+
+            const idx = resArticulos.rows.indexOf(art);
+            if (idx % 2 === 1) {
+                doc.rect(50, currentY, 495, rowHeight).fill('#f8fafc');
+            }
+
+            let currentX = 50;
+            rowData.forEach((text, i) => {
+                doc.fontSize(8.5)
+                   .font('Helvetica')
+                   .fillColor('#334155')
+                   .text(text, currentX + padding, currentY + padding, {
+                       width: colWidths[i] - (padding * 2),
+                       align: colAlign[i]
+                   });
+                currentX += colWidths[i];
+            });
+
+            doc.moveTo(50, currentY + rowHeight).lineTo(545, currentY + rowHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+
+            currentY += rowHeight;
+        }
+
+        let pages = doc.bufferedPageRange();
+        for (let i = 0; i < pages.count; i++) {
+            doc.switchToPage(i);
+            doc.fontSize(7.5).fillColor('#94a3b8').text(
+                `LAMDA • El presente es un documento de simulación interna comercial. • Página ${i + 1} de ${pages.count}`,
+                50,
+                doc.page.height - 40,
+                { align: 'center', width: 495 }
+            );
+        }
+
+        doc.end();
+
+    } catch (error) {
+        console.error('❌ [BUNKER-PDF] Error en exportación PDF comercial:', error);
+        res.status(500).send('Falló la generación de la lista de precios comercial en formato PDF.');
     }
 };
 

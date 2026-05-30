@@ -26,7 +26,7 @@ console.log(`🔌 [LOGISTICA] Conectado a BD: ${process.env.DB_NAME || 'etiqueta
 /**
  * Verificar conexión al iniciar
  */
-pool.query('SELECT NOW()', (err, res) => {
+pool.query('SELECT NOW()', async (err, res) => {
     if (err) {
         console.error('❌ [LOGISTICA] Error al conectar con la base de datos:', err.message);
         console.error('❌ [LOGISTICA] Stack:', err.stack);
@@ -35,6 +35,26 @@ pool.query('SELECT NOW()', (err, res) => {
         console.log('🕒 [LOGISTICA] Timestamp de conexión:', res.rows[0].now);
         console.log('📊 [LOGISTICA] Base de datos:', process.env.DB_NAME || 'etiquetas');
         console.log('🔌 [LOGISTICA] Host:', process.env.DB_HOST || 'localhost');
+
+        // Patcher setup to introduce DDL alterations to public.bunker_lista_articulos
+        try {
+            await pool.query(`
+                ALTER TABLE public.bunker_lista_articulos 
+                ADD COLUMN IF NOT EXISTS modo_iva VARCHAR(20) DEFAULT 'COMPLETO',
+                ADD COLUMN IF NOT EXISTS es_patron BOOLEAN DEFAULT FALSE;
+            `);
+            console.log('✅ [LOGISTICA] Columnas modo_iva y es_patron verificadas/agregadas a bunker_lista_articulos');
+
+            // Garantizar la vinculación de artículos hermanos en bunker_articulos para la herencia parental
+            await pool.query(`
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'MPBX25' WHERE articulo_id = 'MPBX5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'MPBX25');
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAx5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAX1' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
+            `);
+            console.log('✅ [LOGISTICA] Relaciones de hermanos comerciales (pack_hijo_codigo) verificadas y configuradas');
+        } catch (alterErr) {
+            console.error('❌ [LOGISTICA] Error al realizar ALTER TABLE o vinculaciones en base de datos:', alterErr.message);
+        }
     }
 });
 
