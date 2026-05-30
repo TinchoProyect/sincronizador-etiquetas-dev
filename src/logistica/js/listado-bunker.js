@@ -1676,6 +1676,7 @@ window.confirmarEImprimirPDF = function() {
 let vr_todasOfertas = [];
 let vr_mapeosActivos = [];
 let currentExternalFilter = 'TODOS'; // 'TODOS', 'NUEVOS', 'MODIFICADOS'
+let currentProveedorFilter = 'ALL'; // Filtro de proveedor seleccionado en combo
 
 // ✅ ESTRUCTURA DE COLUMNAS PARA AG GRID (GRILLA V4.1)
 const columnDefs = [
@@ -1861,17 +1862,28 @@ const gridOptions = {
     },
     doesExternalFilterPass: (node) => {
         if (!node.data) return true;
-        const estado = node.data._estado_delta || 'INTACTO';
         
+        // 1. Intersección por Estado Delta (Pills)
+        const estado = node.data._estado_delta || 'INTACTO';
+        let passEstado = true;
         if (currentExternalFilter === 'TODOS') {
-            return estado !== 'BAJA';
+            passEstado = (estado !== 'BAJA');
+        } else if (currentExternalFilter === 'NUEVOS') {
+            passEstado = (estado === 'ALTA');
+        } else if (currentExternalFilter === 'MODIFICADOS') {
+            passEstado = (estado === 'MODIFICADO');
         }
-        if (currentExternalFilter === 'NUEVOS') {
-            return estado === 'ALTA';
+        
+        if (!passEstado) return false;
+        
+        // 2. Intersección por Proveedor (Combo #vr-filtro-proveedor)
+        if (currentProveedorFilter && currentProveedorFilter !== 'ALL') {
+            const proveedor = node.data._proveedor || node.data.nombre_proveedor || '';
+            if (String(proveedor).trim() !== String(currentProveedorFilter).trim()) {
+                return false;
+            }
         }
-        if (currentExternalFilter === 'MODIFICADOS') {
-            return estado === 'MODIFICADO';
-        }
+        
         return true;
     },
     
@@ -1896,6 +1908,7 @@ const gridOptions = {
     }
 };
 
+
 // ✅ APERTURA DEL VINCULADOR (ABRIR & CARGAR DATOS)
 window.abrirVinculadorReposicion = async function() {
     const articulo_id = document.getElementById('gp-articulo-id').value;
@@ -1913,6 +1926,16 @@ window.abrirVinculadorReposicion = async function() {
     // Higiene Obligatoria (Clean Slate):
     localStorage.removeItem('lamda_v4_filter_state');
     currentExternalFilter = 'TODOS';
+    currentProveedorFilter = 'ALL';
+
+    // Limpiar maximizado residual en modal content
+    const modalContent = document.getElementById('vr-modal-content');
+    const maximizeBtn = document.getElementById('vr-btn-maximize');
+    if (modalContent) modalContent.classList.remove('vr-maximized');
+    if (maximizeBtn) {
+        maximizeBtn.innerHTML = '🗖';
+        maximizeBtn.title = 'Maximizar';
+    }
     
     // Sincronizar pills de UI
     document.querySelectorAll('.vr-pill').forEach(pill => {
@@ -1945,6 +1968,21 @@ window.abrirVinculadorReposicion = async function() {
         vr_todasOfertas.forEach(o => {
             o.cant_value = o.cant_valor;
         });
+
+        // Poblar dinámicamente selector de proveedores (#vr-filtro-proveedor)
+        const selectProveedor = document.getElementById('vr-filtro-proveedor');
+        if (selectProveedor) {
+            // Extraer lista única y ordenada de proveedores activos (evitando nulos)
+            const proveedoresUnicos = [...new Set(vr_todasOfertas.map(o => o.nombre_proveedor || o._proveedor).filter(Boolean))].sort();
+            selectProveedor.innerHTML = '<option value="ALL">-- Todos los Proveedores --</option>';
+            proveedoresUnicos.forEach(prov => {
+                const opt = document.createElement('option');
+                opt.value = prov;
+                opt.textContent = prov;
+                selectProveedor.appendChild(opt);
+            });
+            selectProveedor.value = 'ALL';
+        }
 
         // Limpiar spinner
         gridDiv.innerHTML = '';
@@ -1992,6 +2030,33 @@ window.abrirVinculadorReposicion = async function() {
                 ❌ Error de conexión: ${err.message}
             </div>
         `;
+    }
+};
+
+// ✅ CONTROL DEL SELECTOR DE PROVEEDORES
+window.onProveedorFilterChanged = function() {
+    const selectProveedor = document.getElementById('vr-filtro-proveedor');
+    if (selectProveedor) {
+        currentProveedorFilter = selectProveedor.value;
+        if (window.v4GridApi) {
+            window.v4GridApi.onFilterChanged();
+        }
+    }
+};
+
+// ✅ CONTROL DEL TOGGLE DE MAXIMIZADO DE PANTALLA COMPLETA
+window.toggleMaximizarVinculador = function() {
+    const modalContent = document.getElementById('vr-modal-content');
+    const maximizeBtn = document.getElementById('vr-btn-maximize');
+    if (!modalContent || !maximizeBtn) return;
+    
+    const isMaximized = modalContent.classList.toggle('vr-maximized');
+    if (isMaximized) {
+        maximizeBtn.innerHTML = '🗗';
+        maximizeBtn.title = 'Restaurar';
+    } else {
+        maximizeBtn.innerHTML = '🗖';
+        maximizeBtn.title = 'Maximizar';
     }
 };
 

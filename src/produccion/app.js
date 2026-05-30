@@ -246,12 +246,25 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
         const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
-        // Obtener hasta 1000 registros activos de la tabla maestra filtrando las bajas
-        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&limit=1000`;
+        // Obtener cotizaciones de forma paginada en bucle para evitar el límite de 1000 de Supabase y barrer el mercado real (2728+ registros)
+        let cotizaciones = [];
+        let offset = 0;
+        let hasMore = true;
         
-        const response = await fetch(url, { headers });
-        if (!response.ok) throw new Error(await response.text());
-        const cotizaciones = await response.json();
+        while (hasMore && cotizaciones.length < 5000) {
+            const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&limit=1000&offset=${offset}`;
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(await response.text());
+            
+            const rows = await response.json();
+            cotizaciones = cotizaciones.concat(rows);
+            
+            if (rows.length < 1000) {
+                hasMore = false;
+            } else {
+                offset += 1000;
+            }
+        }
 
         if (cotizaciones.length === 0) {
             return res.json([]);
