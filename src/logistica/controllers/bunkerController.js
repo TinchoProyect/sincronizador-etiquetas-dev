@@ -289,7 +289,9 @@ exports.exportarPDFListado = async (req, res) => {
                  b.kilos_unidad,
                  la.precio_final,
                  la.iva,
-                 b.propiedades_dinamicas
+                 b.propiedades_dinamicas,
+                 b.rubro,
+                 b.sub_rubro
              FROM public.bunker_lista_articulos la
              JOIN public.bunker_articulos b ON b.articulo_id = la.articulo_numero
              WHERE la.lista_id = $1
@@ -318,6 +320,8 @@ exports.exportarPDFListado = async (req, res) => {
 
         const baseWidthsDict = {
             codigo: 65,
+            rubro: 75,
+            sub_rubro: 75,
             descripcion: 190,
             presentacion: 100,
             kilo: 70,
@@ -327,6 +331,8 @@ exports.exportarPDFListado = async (req, res) => {
         };
         const columnsMeta = {
             codigo: { header: 'Código', align: 'left' },
+            rubro: { header: 'Rubro', align: 'left' },
+            sub_rubro: { header: 'Sub-rubro', align: 'left' },
             descripcion: { header: 'Descripción', align: 'left' },
             presentacion: { header: 'Presentación', align: 'left' },
             kilo: { header: 'Precio Kilo (Neto)', align: 'right' },
@@ -432,6 +438,8 @@ exports.exportarPDFListado = async (req, res) => {
             const rowData = [];
             activeKeys.forEach(key => {
                 if (key === 'codigo') rowData.push(art.articulo_numero);
+                else if (key === 'rubro') rowData.push(art.rubro || 'N/A');
+                else if (key === 'sub_rubro') rowData.push(art.sub_rubro || 'N/A');
                 else if (key === 'descripcion') rowData.push(art.descripcion);
                 else if (key === 'presentacion') rowData.push(presentacionText);
                 else if (key === 'kilo') rowData.push(formatter.format(precioKiloNeto));

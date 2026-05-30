@@ -1666,22 +1666,22 @@ window.eliminarListaActiva = async function() {
 };
 
 // --- Persistencia del Configurador en localStorage (LAMDA Work Policy Compliance) ---
+let pdfColumnsOrder = [
+    { id: 'codigo', label: 'Código', checked: true, align: 'left', baseWidth: 65 },
+    { id: 'rubro', label: 'Rubro', checked: false, align: 'left', baseWidth: 75 },
+    { id: 'sub_rubro', label: 'Sub-rubro', checked: false, align: 'left', baseWidth: 75 },
+    { id: 'descripcion', label: 'Descripción', checked: true, align: 'left', baseWidth: 190 },
+    { id: 'presentacion', label: 'Presentación', checked: true, align: 'left', baseWidth: 100 },
+    { id: 'kilo', label: 'Precio Kilo (Neto)', checked: true, align: 'right', baseWidth: 70 },
+    { id: 'bulto', label: 'Precio Bulto (Neto)', checked: true, align: 'right', baseWidth: 70 },
+    { id: 'final_kilo', label: 'Precio Kilo Final', checked: true, align: 'right', baseWidth: 70 },
+    { id: 'final_bulto', label: 'Precio Bulto Final', checked: true, align: 'right', baseWidth: 70 }
+];
+
 window.guardarConfiguracionColumnas = function() {
     try {
-        const getChecked = (id) => {
-            const el = document.getElementById(id);
-            return el ? el.checked : true;
-        };
-        const configs = {
-            codigo: getChecked('p-col-codigo'),
-            descripcion: getChecked('p-col-descripcion'),
-            presentacion: getChecked('p-col-presentacion'),
-            kilo: getChecked('p-col-kilo'),
-            bulto: getChecked('p-col-bulto'),
-            final_kilo: getChecked('p-col-final-kilo'),
-            final_bulto: getChecked('p-col-final-bulto')
-        };
-        localStorage.setItem('bunker_pdf_columns_config', JSON.stringify(configs));
+        const toSave = pdfColumnsOrder.map(c => ({ id: c.id, checked: c.checked }));
+        localStorage.setItem('bunker_pdf_columns_config_v2', JSON.stringify(toSave));
     } catch (e) {
         console.error("Error guardando configuración de columnas:", e);
     }
@@ -1689,22 +1689,105 @@ window.guardarConfiguracionColumnas = function() {
 
 window.cargarConfiguracionColumnas = function() {
     try {
-        const stored = localStorage.getItem('bunker_pdf_columns_config');
+        const stored = localStorage.getItem('bunker_pdf_columns_config_v2');
         if (stored) {
-            const configs = JSON.parse(stored);
-            if (configs && typeof configs === 'object') {
-                if (document.getElementById('p-col-codigo')) document.getElementById('p-col-codigo').checked = configs.codigo !== undefined ? !!configs.codigo : true;
-                if (document.getElementById('p-col-descripcion')) document.getElementById('p-col-descripcion').checked = configs.descripcion !== undefined ? !!configs.descripcion : true;
-                if (document.getElementById('p-col-presentacion')) document.getElementById('p-col-presentacion').checked = configs.presentacion !== undefined ? !!configs.presentacion : true;
-                if (document.getElementById('p-col-kilo')) document.getElementById('p-col-kilo').checked = configs.kilo !== undefined ? !!configs.kilo : true;
-                if (document.getElementById('p-col-bulto')) document.getElementById('p-col-bulto').checked = configs.bulto !== undefined ? !!configs.bulto : true;
-                if (document.getElementById('p-col-final-kilo')) document.getElementById('p-col-final-kilo').checked = configs.final_kilo !== undefined ? !!configs.final_kilo : true;
-                if (document.getElementById('p-col-final-bulto')) document.getElementById('p-col-final-bulto').checked = configs.final_bulto !== undefined ? !!configs.final_bulto : true;
+            const loaded = JSON.parse(stored);
+            if (Array.isArray(loaded)) {
+                const merged = [];
+                loaded.forEach(item => {
+                    const original = pdfColumnsOrder.find(o => o.id === item.id);
+                    if (original) {
+                        merged.push({
+                            ...original,
+                            checked: item.checked !== undefined ? !!item.checked : original.checked
+                        });
+                    }
+                });
+                pdfColumnsOrder.forEach(o => {
+                    if (!merged.some(m => m.id === o.id)) {
+                        merged.push(o);
+                    }
+                });
+                pdfColumnsOrder = merged;
             }
         }
     } catch (e) {
         console.error("Error cargando configuración de columnas:", e);
     }
+};
+
+window.renderConfiguradorColumnas = function() {
+    const listContainer = document.getElementById('pdf-columns-order-list');
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = '';
+    
+    pdfColumnsOrder.forEach((col, idx) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: white; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 10px;';
+        
+        // Izquierda: checkbox + label
+        const left = document.createElement('label');
+        left.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; color: #334155; margin: 0; flex: 1;';
+        
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = col.checked;
+        chk.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
+        chk.onchange = (e) => {
+            col.checked = e.target.checked;
+            window.actualizarPrevisualizacionPDF();
+        };
+        
+        const labelSpan = document.createElement('span');
+        labelSpan.innerText = col.label;
+        
+        left.appendChild(chk);
+        left.appendChild(labelSpan);
+        
+        // Derecha: Controles de Flecha Arriba/Abajo 🔼/🔽
+        const right = document.createElement('div');
+        right.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+        
+        const btnUp = document.createElement('button');
+        btnUp.type = 'button';
+        btnUp.innerHTML = '🔼';
+        btnUp.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.9em; padding: 2px; transition: transform 0.1s; outline: none;';
+        btnUp.disabled = idx === 0;
+        if (idx === 0) btnUp.style.opacity = '0.2';
+        btnUp.onclick = () => {
+            window.moverColumnaPDF(idx, idx - 1);
+        };
+        
+        const btnDown = document.createElement('button');
+        btnDown.type = 'button';
+        btnDown.innerHTML = '🔽';
+        btnDown.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.9em; padding: 2px; transition: transform 0.1s; outline: none;';
+        btnDown.disabled = idx === pdfColumnsOrder.length - 1;
+        if (idx === pdfColumnsOrder.length - 1) btnDown.style.opacity = '0.2';
+        btnDown.onclick = () => {
+            window.moverColumnaPDF(idx, idx + 1);
+        };
+        
+        right.appendChild(btnUp);
+        right.appendChild(btnDown);
+        
+        item.appendChild(left);
+        item.appendChild(right);
+        listContainer.appendChild(item);
+    });
+};
+
+window.moverColumnaPDF = function(fromIdx, toIdx) {
+    if (toIdx < 0 || toIdx >= pdfColumnsOrder.length) return;
+    
+    // Intercambiar
+    const temp = pdfColumnsOrder[fromIdx];
+    pdfColumnsOrder[fromIdx] = pdfColumnsOrder[toIdx];
+    pdfColumnsOrder[toIdx] = temp;
+    
+    window.renderConfiguradorColumnas();
+    window.actualizarPrevisualizacionPDF();
 };
 
 window.abrirPrevisualizadorPDF = function() {
@@ -1726,6 +1809,20 @@ window.abrirPrevisualizadorPDF = function() {
     // Cargar la configuración guardada de columnas desde localStorage antes de renderizar
     window.cargarConfiguracionColumnas();
     
+    // Renderizar las opciones y orden de las columnas dinámicamente
+    window.renderConfiguradorColumnas();
+    
+    // Asegurar Higiene Clean Slate para el maximizado
+    const contentEl = document.getElementById('pdf-modal-content');
+    if (contentEl) {
+        contentEl.classList.remove('vr-maximized');
+    }
+    const btnMax = document.getElementById('pdf-btn-maximize');
+    if (btnMax) {
+        btnMax.innerHTML = '🗖';
+        btnMax.title = 'Maximizar';
+    }
+    
     const modalEl = document.getElementById('modal-preimpresion-pdf');
     if (modalEl) {
         modalEl.style.display = 'flex';
@@ -1735,6 +1832,17 @@ window.abrirPrevisualizadorPDF = function() {
 };
 
 window.cerrarPrevisualizadorPDF = function() {
+    // Limpieza de maximizado al cerrar
+    const contentEl = document.getElementById('pdf-modal-content');
+    if (contentEl) {
+        contentEl.classList.remove('vr-maximized');
+    }
+    const btnMax = document.getElementById('pdf-btn-maximize');
+    if (btnMax) {
+        btnMax.innerHTML = '🗖';
+        btnMax.title = 'Maximizar';
+    }
+    
     const modalEl = document.getElementById('modal-preimpresion-pdf');
     if (modalEl) {
         modalEl.style.display = 'none';
@@ -1749,23 +1857,16 @@ window.actualizarPrevisualizacionPDF = function() {
     // Guardar estado actual de columnas
     window.guardarConfiguracionColumnas();
     
-    const isChecked = (id) => {
-        const el = document.getElementById(id);
-        return el ? el.checked : true;
-    };
-    
-    // 1. Obtener Columnas Activas
-    const cols = [];
-    if (isChecked('p-col-codigo')) cols.push({ id: 'codigo', label: 'Código', align: 'left', baseWidth: 65 });
-    if (isChecked('p-col-descripcion')) cols.push({ id: 'descripcion', label: 'Descripción', align: 'left', baseWidth: 190 });
-    if (isChecked('p-col-presentacion')) cols.push({ id: 'presentacion', label: 'Presentación', align: 'left', baseWidth: 100 });
-    if (isChecked('p-col-kilo')) cols.push({ id: 'kilo', label: 'Precio Kilo (Neto)', align: 'right', baseWidth: 70 });
-    if (isChecked('p-col-bulto')) cols.push({ id: 'bulto', label: 'Precio Bulto (Neto)', align: 'right', baseWidth: 70 });
-    if (isChecked('p-col-final-kilo')) cols.push({ id: 'final_kilo', label: 'Precio Kilo Final', align: 'right', baseWidth: 70 });
-    if (isChecked('p-col-final-bulto')) cols.push({ id: 'final_bulto', label: 'Precio Bulto Final', align: 'right', baseWidth: 70 });
+    // 1. Obtener Columnas Activas respetando la secuencia del array dinámico pdfColumnsOrder
+    const cols = pdfColumnsOrder.filter(c => c.checked);
     
     if (cols.length === 0) {
-        cols.push({ id: 'descripcion', label: 'Descripción', align: 'left', baseWidth: 190 });
+        const descCol = pdfColumnsOrder.find(c => c.id === 'descripcion');
+        if (descCol) {
+            cols.push(descCol);
+        } else {
+            cols.push({ id: 'descripcion', label: 'Descripción', align: 'left', baseWidth: 190 });
+        }
     }
     
     // 2. Calcular anchos elásticos proporcionales (ancho total de tabla es 100%)
@@ -1776,15 +1877,18 @@ window.actualizarPrevisualizacionPDF = function() {
     
     // 3. Renderizar thead con anchos adaptativos
     const thead = document.getElementById('pdf-prev-table-thead');
-    let theadHtml = '<tr>';
-    cols.forEach(c => {
-        theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
-    });
-    theadHtml += '</tr>';
-    thead.innerHTML = theadHtml;
+    if (thead) {
+        let theadHtml = '<tr>';
+        cols.forEach(c => {
+            theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
+        });
+        theadHtml += '</tr>';
+        thead.innerHTML = theadHtml;
+    }
     
     // 4. Renderizar tbody con datos reales de la lista
     const tbody = document.getElementById('pdf-prev-table-tbody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     
     // Filtrar los artículos que tienen esta lista en `articulosBunkerGlobal`
@@ -1831,6 +1935,8 @@ window.actualizarPrevisualizacionPDF = function() {
         cols.forEach(c => {
             let val = '';
             if (c.id === 'codigo') val = art.articulo_id;
+            else if (c.id === 'rubro') val = art.rubro || 'N/A';
+            else if (c.id === 'sub_rubro') val = art.sub_rubro || 'N/A';
             else if (c.id === 'descripcion') val = art.descripcion_generada || art.descripcion;
             else if (c.id === 'presentacion') val = presentacionText;
             else if (c.id === 'kilo') val = formatter.format(precioKiloNeto);
@@ -1850,15 +1956,8 @@ window.confirmarEImprimirPDF = function() {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (!list) return;
     
-    // Obtener columnas activas
-    const cols = [];
-    if (document.getElementById('p-col-codigo').checked) cols.push('codigo');
-    if (document.getElementById('p-col-descripcion').checked) cols.push('descripcion');
-    if (document.getElementById('p-col-presentacion').checked) cols.push('presentacion');
-    if (document.getElementById('p-col-kilo').checked) cols.push('kilo');
-    if (document.getElementById('p-col-bulto').checked) cols.push('bulto');
-    if (document.getElementById('p-col-final-kilo').checked) cols.push('final_kilo');
-    if (document.getElementById('p-col-final-bulto').checked) cols.push('final_bulto');
+    // Obtener columnas activas secuenciales segun el array mutable global pdfColumnsOrder
+    const cols = pdfColumnsOrder.filter(c => c.checked).map(c => c.id);
     
     if (cols.length === 0) {
         cols.push('descripcion');
@@ -1871,6 +1970,23 @@ window.confirmarEImprimirPDF = function() {
     
     // Abrir descarga en nueva pestaña
     window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}`, '_blank');
+};
+
+window.toggleMaximizarPrevisualizador = function() {
+    const contentEl = document.getElementById('pdf-modal-content');
+    const btnMax = document.getElementById('pdf-btn-maximize');
+    if (!contentEl) return;
+    
+    const isMaximized = contentEl.classList.toggle('vr-maximized');
+    if (btnMax) {
+        if (isMaximized) {
+            btnMax.innerHTML = '🗗';
+            btnMax.title = 'Restaurar';
+        } else {
+            btnMax.innerHTML = '🗖';
+            btnMax.title = 'Maximizar';
+        }
+    }
 };
 
 // ==========================================
