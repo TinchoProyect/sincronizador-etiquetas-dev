@@ -525,6 +525,26 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 }
             }
 
+            // Sincronización Dinámica de Stock Físico (Ampliación Fase 2)
+            // Decisión de diseño: Si el stock es mayor a 0, mostramos en badge verde. Si es 0, mostramos 'Stock: 0' en gris de control.
+            const stockBadgeEl = document.getElementById('gp-lote-stock-badge');
+            if (stockBadgeEl) {
+                const stockUnidades = parseFloat(data.stock_unidades) || 0;
+                const stockKilos = parseFloat(data.stock_kilos) || 0;
+                
+                if (stockUnidades > 0) {
+                    stockBadgeEl.innerText = `Stock: ${stockUnidades.toLocaleString('es-AR', { maximumFractionDigits: 2 })} u. (${stockKilos.toLocaleString('es-AR', { maximumFractionDigits: 2 })} kg)`;
+                    stockBadgeEl.style.background = '#dcfce7';
+                    stockBadgeEl.style.color = '#166534';
+                    stockBadgeEl.style.borderColor = '#bbf7d0';
+                } else {
+                    stockBadgeEl.innerText = 'Stock: 0';
+                    stockBadgeEl.style.background = '#f1f5f9';
+                    stockBadgeEl.style.color = '#64748b';
+                    stockBadgeEl.style.borderColor = '#cbd5e1';
+                }
+            }
+
             // Renderizar la Receta Activa de Origen
             const recetaInfoBadge = document.getElementById('gp-receta-info-badge');
             const recetaIngredientes = document.getElementById('gp-receta-ingredientes');
