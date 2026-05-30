@@ -903,15 +903,19 @@ class BunkerService {
             console.error("[BUNKER-HERENCIA] Error al procesar costo de herencia o receta:", err);
         }
 
-        // Buscar el costo histórico de Lomasoft en la tabla precios_articulos
-        // Decisión de diseño: Fase 1 de la Arquitectura de Costos Multi-Fuente (Costo Informativo Lomasoft)
+        // Buscar el costo e IVA histórico de Lomasoft en la tabla precios_articulos
+        // Decisión de diseño: Fase 1 de la Arquitectura de Costos Multi-Fuente (Costo e IVA Informativo Lomasoft)
         let costo_lomasoft = null;
+        let iva_lomasoft = null;
         try {
-            const queryLomasoft = `SELECT costo FROM public.precios_articulos WHERE articulo = $1`;
+            const queryLomasoft = `SELECT costo, iva FROM public.precios_articulos WHERE articulo = $1`;
             const resLomasoft = await db.query(queryLomasoft, [articulo_id]);
-            costo_lomasoft = resLomasoft.rows.length > 0 && resLomasoft.rows[0].costo ? parseFloat(resLomasoft.rows[0].costo) : null;
+            if (resLomasoft.rows.length > 0) {
+                costo_lomasoft = resLomasoft.rows[0].costo ? parseFloat(resLomasoft.rows[0].costo) : null;
+                iva_lomasoft = resLomasoft.rows[0].iva ? parseFloat(resLomasoft.rows[0].iva) : null;
+            }
         } catch (lomaErr) {
-            console.error("[BUNKER-LOMASOFT] Error al recuperar costo histórico:", lomaErr);
+            console.error("[BUNKER-LOMASOFT] Error al recuperar costo e IVA histórico:", lomaErr);
         }
 
         return {
@@ -930,7 +934,8 @@ class BunkerService {
             receta_id,
             receta_ingredientes,
             receta_articulos,
-            costo_lomasoft
+            costo_lomasoft,
+            iva_lomasoft
         };
     }
 

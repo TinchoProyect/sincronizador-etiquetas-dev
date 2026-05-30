@@ -465,15 +465,20 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
 
             // Despliegue Informativo y Normalizado de Costo Lomasoft (Fase 1: Multi-Fuente)
             // Decisión de diseño: Se formatea el bulto y se divide por el factor para tener el costo por kilo normalizado.
+            // Se inyecta también la alícuota impositiva legacy en formato de porcentaje.
             const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
             const costoLomasoftBulto = parseFloat(data.costo_lomasoft) || 0;
             const costoLomasoftKilo = gp_factorPresentacion > 0 ? (costoLomasoftBulto / gp_factorPresentacion) : 0;
 
             const lomaValEl = document.getElementById('gp-costo-lomasoft-val');
             const lomaBultoEl = document.getElementById('gp-costo-lomasoft-bulto');
-            if (lomaValEl && lomaBultoEl) {
+            const lomaIvaEl = document.getElementById('gp-iva-lomasoft-val');
+            if (lomaValEl && lomaBultoEl && lomaIvaEl) {
                 lomaValEl.innerText = costoLomasoftKilo > 0 ? currencyFormatter.format(costoLomasoftKilo) : 'N/A';
                 lomaBultoEl.innerText = costoLomasoftBulto > 0 ? currencyFormatter.format(costoLomasoftBulto) : 'N/A';
+                
+                const ivaLomasoftVal = parseFloat(data.iva_lomasoft);
+                lomaIvaEl.innerText = !isNaN(ivaLomasoftVal) ? `${ivaLomasoftVal.toFixed(2)}%` : 'N/A';
             }
 
             // Renderizar la Receta Activa de Origen
