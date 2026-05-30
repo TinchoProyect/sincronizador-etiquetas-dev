@@ -412,7 +412,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
     gp_activeTabIdx = 0;
     
     // UI Reset
-    document.getElementById('gp-costo-vivo-val').innerText = '$ 0,00';
+    document.getElementById('gp-costo-integrado').innerText = '$ 0,00';
     document.getElementById('gp-costo-manual').value = '';
     document.getElementById('gp-buscar-insumo').value = '';
     document.getElementById('gp-insumos-tbody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>';
@@ -460,7 +460,6 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 }
             }
             gp_liveIngredienteCost = rawIngredienteCost;
-            document.getElementById('gp-costo-vivo-val').innerText = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(gp_liveIngredienteCost);
 
             // Despliegue Informativo y Normalizado de Costo Lomasoft (Fase 1: Multi-Fuente)
             // Decisión de diseño: Se formatea el bulto y se divide por el factor para tener el costo por kilo normalizado.
