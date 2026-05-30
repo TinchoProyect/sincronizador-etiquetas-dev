@@ -8,7 +8,35 @@
     <link rel="stylesheet" href="../css/dashboard.css">
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- AG Grid Community CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/dist/ag-grid-community.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/styles/ag-grid.min.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/styles/ag-theme-alpine.min.css"/>
     <style>
+        /* AG Grid Custom Overwrite Styles for Alpine Dark Slate */
+        .ag-theme-alpine-dark {
+            --ag-background-color: #0f172a !important;
+            --ag-header-background-color: #020617 !important;
+            --ag-foreground-color: #f8fafc !important;
+            --ag-header-foreground-color: #cbd5e1 !important;
+            --ag-odd-row-background-color: #1e293b !important;
+            --ag-row-hover-color: #334155 !important;
+            --ag-selected-row-background-color: #475569 !important;
+            --ag-border-color: #334155 !important;
+            font-family: 'Outfit', 'Inter', sans-serif !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+        }
+        .ag-theme-alpine-dark .ag-header-cell-label {
+            font-weight: 800 !important;
+            color: #cbd5e1 !important;
+            font-size: 0.88em !important;
+        }
+        .ag-theme-alpine-dark .ag-cell {
+            display: flex !important;
+            align-items: center !important;
+            font-size: 0.9em !important;
+        }
         .bunker-panel {
             background-color: #f8fafc;
             border: 2px solid #e2e8f0;
@@ -692,14 +720,14 @@
         </div>
     </div>
 
-    <!-- Modal Vinculador Manual de Reposición (Fase 4 - Enmienda Técnica) -->
+    <!-- Modal Vinculador Manual de Reposición (Fase 4 - Enmienda Técnica / AG Grid V4.1) -->
     <div id="modal-vinculador-reposicion" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 1200; align-items: center; justify-content: center;">
-        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 98vw; height: 96vh; max-width: 98vw; max-height: 96vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 20px; border: 1px solid #e2e8f0; margin: 0; animation: modalFadeIn 0.25s ease-out;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 1400px; height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 20px; border: 1px solid #e2e8f0; margin: 0; animation: modalFadeIn 0.25s ease-out;">
             <!-- Header -->
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                 <div>
                     <h3 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 8px; font-size: 1.35em; font-weight: 800;">
-                        🔮 Vincular Ofertas de Reposición en Vivo
+                        🔮 Vincular Ofertas de Reposición en Vivo (Grilla V4.1)
                     </h3>
                     <span style="font-size: 0.88em; color: #64748b; font-weight: 500; margin-top: 4px; display: inline-block;">
                         Artículo Búnker: <strong id="vr-articulo-nombre-titulo" style="color: #1e293b;">-</strong> (Código: <span id="vr-articulo-id-titulo" style="font-family: monospace; font-weight: bold;">-</span>)
@@ -708,93 +736,69 @@
                 <button onclick="cerrarVinculadorReposicion()" style="background: #f1f5f9; border: none; font-size: 1.25em; cursor: pointer; color: #64748b; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">✖</button>
             </div>
 
-            <!-- Toolbar de Filtros (Búsqueda Intensiva Multi-Columna) -->
-            <div style="display: grid; grid-template-columns: 1.2fr 1fr 2fr 1.2fr; gap: 15px; margin-bottom: 12px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px rgba(107, 33, 168, 0.03);">
-                <!-- Columna 1: Proveedor -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700; display: flex; align-items: center; gap: 4px;">🏭 Proveedor:</label>
-                    <select id="vr-filtro-proveedor" style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; color: #1e293b; cursor: pointer; background: white;" onchange="filtrarOfertasVinculador()">
-                        <option value="">Todos los proveedores</option>
-                    </select>
-                </div>
-                <!-- Columna 2: SKU / Código -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700; display: flex; align-items: center; gap: 4px;">🔢 Código / SKU:</label>
-                    <input type="text" id="vr-filtro-sku" placeholder="Filtrar por SKU..." style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; transition: border-color 0.2s;" oninput="filtrarOfertasVinculador()">
-                </div>
-                <!-- Columna 3: Descripción -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700; display: flex; align-items: center; gap: 4px;">🔍 Descripción / Detalle:</label>
-                    <input type="text" id="vr-filtro-descripcion" placeholder="Buscar por palabra clave o descripción..." style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; transition: border-color 0.2s;" oninput="filtrarOfertasVinculador()">
-                </div>
-                <!-- Columna 4: Rubro -->
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700; display: flex; align-items: center; gap: 4px;">🏷️ Rubro / Sector:</label>
-                    <select id="vr-filtro-rubro" style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; color: #1e293b; cursor: pointer; background: white;" onchange="filtrarOfertasVinculador()">
-                        <option value="">Todos los rubros</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Toolbar de Visibilidad de Columnas (Hot-Swap Config) -->
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.85em; color: #475569; font-weight: 700; display: flex; align-items: center; gap: 4px;">
-                        🛠️ Columnas Visibles:
-                    </span>
-                    <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; margin-left: 10px;">
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-sku" checked onchange="window.toggleColumnaVinculador('sku', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Código
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-prov" checked onchange="window.toggleColumnaVinculador('prov', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Proveedor
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-desc" checked onchange="window.toggleColumnaVinculador('desc', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Descripción
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-rubro" checked onchange="window.toggleColumnaVinculador('rubro', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Rubro
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-pres" checked onchange="window.toggleColumnaVinculador('pres', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Presentación Origen
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-costo" checked onchange="window.toggleColumnaVinculador('costo', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Costo Kilo
-                        </label>
-                        <label style="font-size: 0.82em; color: #334155; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none;">
-                            <input type="checkbox" id="chk-col-ant" checked onchange="window.toggleColumnaVinculador('ant', this.checked)" style="accent-color: #6b21a8; cursor: pointer;"> Antigüedad
-                        </label>
+            <!-- Toolbar de Control (Pills, Barómetro y ⚙️ Campos) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 12px; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.15);">
+                <!-- Pills de Filtro Externo -->
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 0.78em; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">⚖️ Filtro Estado:</span>
+                    <div style="display: flex; gap: 6px;">
+                        <button type="button" class="vr-pill active" data-filter="TODOS" onclick="window.setExternalFilter('TODOS')">Todos</button>
+                        <button type="button" class="vr-pill" data-filter="NUEVOS" onclick="window.setExternalFilter('NUEVOS')">Nuevos</button>
+                        <button type="button" class="vr-pill" data-filter="MODIFICADOS" onclick="window.setExternalFilter('MODIFICADOS')">Modificados</button>
                     </div>
                 </div>
-                <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 4px; font-size: 0.78em; color: #475569; font-weight: 600; cursor: pointer; transition: all 0.15s; outline: none;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
-                    Restablecer
-                </button>
+                
+                <!-- Status Bar Metrics (Barómetro) -->
+                <div style="display: flex; align-items: center; gap: 20px; font-size: 0.85em; color: #e2e8f0; font-weight: 600; flex: 1; justify-content: flex-end; margin-right: 15px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="color: #94a3b8; font-size: 0.9em;">Visualizados:</span>
+                        <span id="fmtTotalVisualizados" style="font-family: monospace; font-size: 1.15em; color: #a855f7; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(168, 85, 247, 0.3);">0</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="color: #94a3b8; font-size: 0.9em;">Última Extracción:</span>
+                        <span id="fmtUltimaExtraccion" style="color: #f8fafc; font-family: monospace;">--</span>
+                    </div>
+                </div>
+                
+                <!-- Configurador de Columnas en Vivo Dropdown (⚙️ Campos) -->
+                <div style="position: relative; display: inline-block;">
+                    <button type="button" onclick="window.toggleDropdownCampos(event)" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">
+                        ⚙️ Campos
+                    </button>
+                    <div id="vr-dropdown-campos" style="display: none; position: absolute; right: 0; top: 35px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; padding: 12px; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-sku" checked onchange="window.toggleColumnaVinculador('sku_proveedor', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Código Proveedor
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-prov" checked onchange="window.toggleColumnaVinculador('nombre_proveedor', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Proveedor
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-desc" checked onchange="window.toggleColumnaVinculador('descripcion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Descripción
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-rubro" checked onchange="window.toggleColumnaVinculador('rubro', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Rubro
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-cant-bult" checked onchange="window.toggleColumnaVinculador('cant_bult', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Cant. Bultos
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-cant-valor" checked onchange="window.toggleColumnaVinculador('cant_valor', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Cant. Valor
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-costo" checked onchange="window.toggleColumnaVinculador('precio_unitario', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Costo Kilo
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-ant" checked onchange="window.toggleColumnaVinculador('dias_antiguedad', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Antigüedad
+                        </label>
+                        <div style="border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 4px; display: flex; justify-content: flex-end;">
+                            <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #1e293b; border: none; font-size: 0.8em; color: #a855f7; font-weight: bold; cursor: pointer;">Restablecer</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Grilla Interactiva -->
-            <div style="flex: 1; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; margin-bottom: 12px; min-height: 200px;">
-                <table class="tabla-financiera" style="margin: 0; width: 100%; border-collapse: collapse; font-size: 0.9em; box-shadow: none;">
-                    <thead style="background: #581c87; color: white; position: sticky; top: 0; z-index: 10;">
-                        <tr>
-                            <th style="width: 40px; text-align: center; padding: 10px;">Select</th>
-                            <th class="vr-col-sku" style="width: 100px; text-align: left; padding: 10px;">Código</th>
-                            <th class="vr-col-prov" style="width: 150px; text-align: left; padding: 10px;">Proveedor</th>
-                            <th class="vr-col-desc" style="text-align: left; padding: 10px;">Descripción</th>
-                            <th class="vr-col-rubro" style="width: 120px; text-align: left; padding: 10px;">Rubro</th>
-                            <th class="vr-col-pres" style="width: 150px; text-align: left; padding: 10px;">Presentación Origen</th>
-                            <th class="vr-col-costo" style="width: 110px; text-align: right; padding: 10px;">Costo Kilo</th>
-                            <th class="vr-col-ant" style="width: 110px; text-align: center; padding: 10px;">Antigüedad</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vr-tabla-tbody">
-                        <tr>
-                            <td colspan="8" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
-                                Cargando catálogo de ofertas de reposición en vivo...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <!-- Grilla Industrial AG Grid V4.1 Community -->
+            <div id="vr-ag-grid" class="ag-theme-alpine-dark" style="flex: 1; width: 100%; height: 100%; border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 12px; min-height: 250px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>
 
             <!-- Footer con Acciones -->
             <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: auto;">

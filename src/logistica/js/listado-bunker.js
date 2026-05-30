@@ -1675,7 +1675,228 @@ window.confirmarEImprimirPDF = function() {
 
 let vr_todasOfertas = [];
 let vr_mapeosActivos = [];
+let currentExternalFilter = 'TODOS'; // 'TODOS', 'NUEVOS', 'MODIFICADOS'
 
+// ✅ ESTRUCTURA DE COLUMNAS PARA AG GRID (GRILLA V4.1)
+const columnDefs = [
+    {
+        headerName: '',
+        width: 50,
+        pinned: 'left',
+        checkboxSelection: true,
+        headerCheckboxSelection: true,
+        suppressHeaderMenuButton: true,
+        suppressMovable: true,
+        resizable: false,
+        sortable: false
+    },
+    {
+        headerName: 'Código',
+        field: 'sku_proveedor',
+        colId: 'sku_proveedor',
+        width: 120,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Proveedor',
+        field: 'nombre_proveedor',
+        colId: 'nombre_proveedor',
+        width: 160,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Descripción',
+        field: 'descripcion',
+        colId: 'descripcion',
+        width: 320,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Rubro',
+        field: 'rubro',
+        colId: 'rubro',
+        width: 130,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Cant. Bulto',
+        field: 'cant_bult',
+        colId: 'cant_bult',
+        width: 115,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Cant. Valor',
+        field: 'cant_valor',
+        colId: 'cant_valor',
+        width: 115,
+        sortable: true,
+        resizable: true
+    },
+    {
+        headerName: 'Costo Kilo',
+        field: 'precio_unitario',
+        colId: 'precio_unitario',
+        width: 125,
+        sortable: true,
+        resizable: true,
+        filter: 'agNumberColumnFilter',
+        valueFormatter: (params) => {
+            if (params.value == null) return '';
+            return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(params.value);
+        }
+    },
+    {
+        headerName: 'Antigüedad',
+        field: 'dias_antiguedad',
+        colId: 'dias_antiguedad',
+        width: 115,
+        sortable: true,
+        resizable: true,
+        filter: 'agNumberColumnFilter',
+        cellRenderer: (params) => {
+            if (params.value == null) return '';
+            const dias = params.value;
+            let badgeColor = '';
+            if (dias === 0) badgeColor = 'background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;';
+            else if (dias <= 5) badgeColor = 'background: #fef9c3; color: #713f12; border: 1px solid #fef08a;';
+            else badgeColor = 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;';
+            
+            const badgeFmt = dias === 0 ? 'Hoy' : `Hace ${dias} d`;
+            return `<span class="badge" style="font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: bold; ${badgeColor}">${badgeFmt}</span>`;
+        }
+    }
+];
+
+// ✅ DEFINICIÓN POR DEFECTO CON MOTOR DE FILTRADO MULTI-TOKEN UNICODE AVANZADO (DEBOUNCE 500MS)
+const defaultColDef = {
+    flex: 1,
+    minWidth: 50,
+    filter: 'agTextColumnFilter',
+    floatingFilter: true,
+    filterParams: {
+        debounceMs: 500, // Cortafuegos de Rendimiento (Debounce)
+        textFormatter: (r) => {
+            if (r == null) return null;
+            return String(r).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        },
+        textMatcher: (params) => {
+            const filterOption = params.filterOption || params.type;
+            const cleanStr = (s) => {
+                if (s == null) return "";
+                return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            };
+            
+            const cellValue = cleanStr(params.value);
+            const filterText = cleanStr(params.filterText);
+            
+            if (!filterText) return true;
+            if (!cellValue && !filterText.includes('[vacio]')) return false;
+            
+            if (filterOption === 'contains') {
+                const processedFText = filterText.replace(/#/g, ' #');
+                const rawTokens = processedFText.split(/\s+/).filter(t => t.length > 0);
+                
+                for (const rawToken of rawTokens) {
+                    if (rawToken === '#') continue;
+                    
+                    const isNeg = rawToken.startsWith('#');
+                    let effectiveToken = rawToken;
+                    if (isNeg) effectiveToken = effectiveToken.substring(1);
+                    effectiveToken = effectiveToken.replace(/#/g, '');
+                    if (effectiveToken.length === 0) continue;
+                    
+                    if (effectiveToken === '[vacio]') {
+                        if (isNeg) {
+                            if (cellValue === "") return false;
+                        } else {
+                            if (cellValue !== "") return false;
+                        }
+                    } else {
+                        let matchFound = false;
+                        if (effectiveToken.includes('%')) {
+                            let escapedToken = effectiveToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            let regexStr = escapedToken.replace(/%/g, '(?:^|\\s|$)');
+                            let regex = new RegExp(regexStr);
+                            matchFound = regex.test(cellValue);
+                        } else {
+                            matchFound = cellValue.includes(effectiveToken);
+                        }
+                        
+                        if (isNeg) {
+                            if (matchFound) return false;
+                        } else {
+                            if (!matchFound) return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            if (filterOption === 'equals') return cellValue === filterText;
+            if (filterOption === 'notEqual') return cellValue !== filterText;
+            if (filterOption === 'startsWith') return cellValue.startsWith(filterText);
+            if (filterOption === 'endsWith') return cellValue.endsWith(filterText);
+            
+            return false;
+        }
+    }
+};
+
+// ✅ CONFIGURACIÓN GENERAL DEL AG GRID
+const gridOptions = {
+    columnDefs: columnDefs,
+    defaultColDef: defaultColDef,
+    rowSelection: 'multiple',
+    rowMultiSelectWithClick: true,
+    suppressRowClickSelection: false,
+    
+    // Filtro Externo para Pills
+    isExternalFilterPresent: () => {
+        return true; 
+    },
+    doesExternalFilterPass: (node) => {
+        if (!node.data) return true;
+        const estado = node.data._estado_delta || 'INTACTO';
+        
+        if (currentExternalFilter === 'TODOS') {
+            return estado !== 'BAJA';
+        }
+        if (currentExternalFilter === 'NUEVOS') {
+            return estado === 'ALTA';
+        }
+        if (currentExternalFilter === 'MODIFICADOS') {
+            return estado === 'MODIFICADO';
+        }
+        return true;
+    },
+    
+    // Persistencia Geométrica (Column State)
+    onColumnResized: () => window.guardarGridState(),
+    onColumnMoved: () => window.guardarGridState(),
+    onColumnVisible: () => window.guardarGridState(),
+    onSortChanged: () => window.guardarGridState(),
+    
+    // Ganchos del Barómetro & Contador
+    onFilterChanged: () => {
+        window.updateFmtStatusBar();
+    },
+    onModelUpdated: () => {
+        window.updateFmtStatusBar();
+    },
+    onSelectionChanged: () => {
+        if (window.v4GridApi) {
+            const count = window.v4GridApi.getSelectedNodes().length;
+            document.getElementById('vr-contador-seleccionados').innerText = count;
+        }
+    }
+};
+
+// ✅ APERTURA DEL VINCULADOR (ABRIR & CARGAR DATOS)
 window.abrirVinculadorReposicion = async function() {
     const articulo_id = document.getElementById('gp-articulo-id').value;
     const articulo_nombre = document.getElementById('gp-producto').innerText;
@@ -1689,24 +1910,24 @@ window.abrirVinculadorReposicion = async function() {
     document.getElementById('vr-articulo-nombre-titulo').innerText = articulo_nombre;
     document.getElementById('vr-articulo-id-titulo').innerText = articulo_id;
     
-    // Resetear filtros
-    document.getElementById('vr-filtro-proveedor').value = '';
-    document.getElementById('vr-filtro-sku').value = '';
-    document.getElementById('vr-filtro-descripcion').value = '';
-    document.getElementById('vr-filtro-rubro').value = '';
+    // Higiene Obligatoria (Clean Slate):
+    localStorage.removeItem('lamda_v4_filter_state');
+    currentExternalFilter = 'TODOS';
     
+    // Sincronizar pills de UI
+    document.querySelectorAll('.vr-pill').forEach(pill => {
+        pill.classList.remove('active');
+        if (pill.getAttribute('data-filter') === 'TODOS') {
+            pill.classList.add('active');
+        }
+    });
+
     // Mostrar modal
     const modal = document.getElementById('modal-vinculador-reposicion');
     modal.style.display = 'flex';
 
-    const tbody = document.getElementById('vr-tabla-tbody');
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="8" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
-                Cargando catálogo de ofertas de reposición en vivo...
-            </td>
-        </tr>
-    `;
+    const gridDiv = document.getElementById('vr-ag-grid');
+    gridDiv.innerHTML = '<div style="color: #cbd5e1; text-align: center; padding: 40px; font-style: italic;">Cargando catálogo de ofertas de reposición en vivo...</div>';
 
     try {
         // 1. Obtener mapeos activos locales para este artículo
@@ -1719,151 +1940,85 @@ window.abrirVinculadorReposicion = async function() {
         const todasRes = await fetch('/api/supabase/reposicion/todas');
         if (!todasRes.ok) throw new Error('Error al cargar ofertas remotas de Supabase');
         vr_todasOfertas = await todasRes.json();
-
-        // 3. Poblar combo de proveedores
-        const provSelect = document.getElementById('vr-filtro-proveedor');
-        provSelect.innerHTML = '<option value="">Todos los proveedores</option>';
-        const proveedoresUnicos = [...new Set(vr_todasOfertas.map(o => o.nombre_proveedor).filter(Boolean))].sort();
-        proveedoresUnicos.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p;
-            opt.innerText = p;
-            provSelect.appendChild(opt);
+        
+        // Agregar campo cant_value mapeando a cant_valor para robustez técnica total
+        vr_todasOfertas.forEach(o => {
+            o.cant_value = o.cant_valor;
         });
 
-        // 4. Poblar combo de rubros
-        const rubroSelect = document.getElementById('vr-filtro-rubro');
-        rubroSelect.innerHTML = '<option value="">Todos los rubros</option>';
-        const rubrosUnicos = [...new Set(vr_todasOfertas.map(o => o.rubro).filter(Boolean))].sort();
-        rubrosUnicos.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = r;
-            opt.innerText = r;
-            rubroSelect.appendChild(opt);
+        // Limpiar spinner
+        gridDiv.innerHTML = '';
+        
+        // Destruir instancia anterior si existe
+        if (window.v4GridApi) {
+            window.v4GridApi.destroy();
+            window.v4GridApi = null;
+        }
+
+        // Crear grilla de AG Grid
+        window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);
+        
+        // Cargar datos
+        window.v4GridApi.setGridOption('rowData', vr_todasOfertas);
+        
+        // Restaurar estado geométrico (Persistencia)
+        window.cargarGridState();
+        
+        // Aplicar Clean Slate ( filterModel en null )
+        window.v4GridApi.setFilterModel(null);
+        
+        // Pre-seleccionar mapeados
+        window.v4GridApi.forEachNode(node => {
+            const of = node.data;
+            const estaMapeado = vr_mapeosActivos.some(m => 
+                String(m.proveedor_id).trim() === String(of.proveedor_id).trim() && 
+                String(m.proveedor_producto_codigo).trim().toLowerCase() === String(of.sku_proveedor).trim().toLowerCase()
+            );
+            if (estaMapeado) {
+                node.setSelected(true);
+            }
         });
 
-        // 5. Dibujar grilla inicial
-        filtrarOfertasVinculador();
+        // Sincronizar UI de checkboxes de columnas
+        sincronizarDropdownCampos();
+
+        // Actualizar Barómetro
+        window.updateFmtStatusBar();
 
     } catch (err) {
-        console.error("Error abriendo vinculador manual:", err);
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align: center; color: #ef4444; padding: 20px; font-weight: bold;">
-                    ❌ Error de conexión: ${err.message}
-                </td>
-            </tr>
+        console.error("Error abriendo vinculador manual AG Grid:", err);
+        gridDiv.innerHTML = `
+            <div style="text-align: center; color: #ef4444; padding: 40px; font-weight: bold;">
+                ❌ Error de conexión: ${err.message}
+            </div>
         `;
     }
 };
 
 window.cerrarVinculadorReposicion = function() {
+    // Higiene Obligatoria (Clean Slate) al cerrar
+    localStorage.removeItem('lamda_v4_filter_state');
+    if (window.v4GridApi) {
+        window.v4GridApi.setFilterModel(null);
+    }
     document.getElementById('modal-vinculador-reposicion').style.display = 'none';
 };
 
-window.filtrarOfertasVinculador = function() {
-    const prov = document.getElementById('vr-filtro-proveedor').value;
-    const sku = document.getElementById('vr-filtro-sku').value.toLowerCase().trim();
-    const desc = document.getElementById('vr-filtro-descripcion').value.toLowerCase().trim();
-    const rubro = document.getElementById('vr-filtro-rubro').value;
-
-    const tbody = document.getElementById('vr-tabla-tbody');
-    
-    // Filtrar cotizaciones en memoria concurrentemente
-    const filtradas = vr_todasOfertas.filter(of => {
-        const matchProv = !prov || of.nombre_proveedor === prov;
-        const matchSku = !sku || String(of.sku_proveedor || '').toLowerCase().includes(sku);
-        const matchDesc = !desc || String(of.descripcion || '').toLowerCase().includes(desc);
-        const matchRubro = !rubro || of.rubro === rubro;
-        return matchProv && matchSku && matchDesc && matchRubro;
-    });
-
-    if (filtradas.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align: center; color: #64748b; padding: 25px; font-style: italic;">
-                    Ninguna oferta coincide con los filtros aplicados.
-                </td>
-            </tr>
-        `;
-        actualizarContadorSeleccionados();
-        return;
-    }
-
-    const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
-    let html = '';
-
-    filtradas.forEach(of => {
-        // Verificar si está activo en el mapeo cargado
-        const estaMapeado = vr_mapeosActivos.some(m => 
-            String(m.proveedor_id).trim() === String(of.proveedor_id).trim() && 
-            String(m.proveedor_producto_codigo).trim().toLowerCase() === String(of.sku_proveedor).trim().toLowerCase()
-        );
-
-        const checkedAttr = estaMapeado ? 'checked' : '';
-        const dias = of.dias_antiguedad;
-        
-        // Estilo de antigüedad
-        let badgeColor = '';
-        if (dias === 0) badgeColor = 'background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;';
-        else if (dias <= 5) badgeColor = 'background: #fef9c3; color: #713f12; border: 1px solid #fef08a;';
-        else badgeColor = 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;';
-        
-        const badgeFmt = dias === 0 ? 'Hoy' : `Hace ${dias} d`;
-
-        // Absorber de forma obligatoria las variables cant_bult y cant_valor de la cotización y mapearlas de forma prolija
-        let presentacionOrigen = '1 blt';
-        if (of.cant_bult && of.cant_valor) {
-            presentacionOrigen = `${of.cant_bult} blt x ${of.cant_valor} ${of.unidad_medida || 'kg'}`;
-        } else if (of.cant_valor) {
-            presentacionOrigen = `1 blt x ${of.cant_valor} ${of.unidad_medida || 'kg'}`;
-        } else if (of.cant_bult) {
-            presentacionOrigen = `${of.cant_bult} blt`;
-        } else if (of.unidad_medida) {
-            presentacionOrigen = `1 blt x ${of.unidad_medida}`;
-        }
-
-        html += `
-            <tr style="border-bottom: 1px solid #f1f5f9; hover: background: #faf5ff;">
-                <td style="text-align: center; padding: 10px;">
-                    <input type="checkbox" class="vr-checkbox-item" data-prov-id="${of.proveedor_id}" data-prov-sku="${of.sku_proveedor}" ${checkedAttr} onchange="actualizarContadorSeleccionados()" style="width: 18px; height: 18px; cursor: pointer;">
-                </td>
-                <td class="vr-col-sku" style="padding: 10px; font-family: monospace; font-size: 1.05em; color: #475569;">${of.sku_proveedor}</td>
-                <td class="vr-col-prov" style="padding: 10px; font-weight: bold; color: #581c87;">${of.nombre_proveedor}</td>
-                <td class="vr-col-desc" style="padding: 10px; color: #334155;">${of.descripcion}</td>
-                <td class="vr-col-rubro" style="padding: 10px; font-weight: 600; color: #6b21a8;">${of.rubro || 'N/A'}</td>
-                <td class="vr-col-pres" style="padding: 10px; font-weight: bold; color: #0284c7; font-family: monospace;">${presentacionOrigen}</td>
-                <td class="vr-col-costo" style="padding: 10px; text-align: right; font-family: monospace; font-size: 1.1em; font-weight: bold; color: #1e293b;">${currencyFormatter.format(of.precio_unitario)}</td>
-                <td class="vr-col-ant" style="padding: 10px; text-align: center;">
-                    <span class="badge" style="font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: bold; ${badgeColor}">
-                        ${badgeFmt}
-                    </span>
-                </td>
-            </tr>
-        `;
-    });
-
-    tbody.innerHTML = html;
-    actualizarContadorSeleccionados();
-    
-    // Aplicar en caliente el configurador de visibilidad de columnas guardado localmente
-    aplicarVisibilidadColumnas();
-};
-
-window.actualizarContadorSeleccionados = function() {
-    const checkboxes = document.querySelectorAll('.vr-checkbox-item:checked');
-    document.getElementById('vr-contador-seleccionados').innerText = checkboxes.length;
-};
-
+// ✅ GUARDAR VINCULACIÓN EN BASE DE DATOS
 window.guardarVinculacionReposicion = async function() {
     const articulo_id = document.getElementById('gp-articulo-id').value;
     if (!articulo_id) return;
 
-    // Recopilar todos los mapeos seleccionados
-    const checkboxes = document.querySelectorAll('.vr-checkbox-item:checked');
-    const mapeos = Array.from(checkboxes).map(chk => ({
-        proveedor_id: chk.getAttribute('data-prov-id'),
-        proveedor_producto_codigo: chk.getAttribute('data-prov-sku')
+    if (!window.v4GridApi) {
+        Swal.fire('Error', 'La grilla no está inicializada.', 'error');
+        return;
+    }
+
+    // Recopilar selección usando API nativa
+    const selectedNodes = window.v4GridApi.getSelectedNodes();
+    const mapeos = selectedNodes.map(node => ({
+        proveedor_id: node.data.proveedor_id,
+        proveedor_producto_codigo: node.data.sku_proveedor
     }));
 
     try {
@@ -1887,10 +2042,14 @@ window.guardarVinculacionReposicion = async function() {
                 showConfirmButton: false
             });
             
+            // Higiene Obligatoria (Clean Slate) al guardar
+            localStorage.removeItem('lamda_v4_filter_state');
+            window.v4GridApi.setFilterModel(null);
+            
             // Cerrar el vinculador
             cerrarVinculadorReposicion();
             
-            // Refrescar el modal principal (Radiografía Financiera) de inmediato
+            // Refrescar el modal principal (Radiografía Financiera)
             const desc = document.getElementById('gp-producto').innerText;
             abrirGestorPrecios(articulo_id, desc);
         } else {
@@ -1903,60 +2062,147 @@ window.guardarVinculacionReposicion = async function() {
     }
 };
 
-// ✅ CONFIGURADOR DINÁMICO DE VISIBILIDAD DE COLUMNAS POR HOT-SWAP LOCAL (FASE 4)
-window.toggleColumnaVinculador = function(colName, isVisible) {
-    const className = `vr-col-${colName}`;
-    const elements = document.querySelectorAll(`.${className}`);
-    elements.forEach(el => {
-        el.style.display = isVisible ? '' : 'none';
-    });
-    
-    // Guardar en localStorage para persistencia premium
-    let visibilidad = {};
-    try {
-        const stored = localStorage.getItem('lambda_bunker_vr_columnas');
-        if (stored) visibilidad = JSON.parse(stored);
-    } catch (e) {
-        console.error('Error parsing column visibility from localStorage:', e);
+// ✅ PERSISTENCIA DE PREFERENCIAS GEOMÉTRICAS (localStorage)
+window.guardarGridState = function() {
+    if (!window.v4GridApi) return;
+    const state = window.v4GridApi.getColumnState();
+    localStorage.setItem('lamda_v4_grid_state', JSON.stringify(state));
+};
+
+window.cargarGridState = function() {
+    if (!window.v4GridApi) return;
+    const stored = localStorage.getItem('lamda_v4_grid_state');
+    if (stored) {
+        try {
+            const state = JSON.parse(stored);
+            window.v4GridApi.applyColumnState({ state: state, applyOrder: true });
+        } catch (e) {
+            console.error('Error al restaurar firma geométrica de AG Grid:', e);
+        }
     }
-    visibilidad[colName] = isVisible;
-    localStorage.setItem('lambda_bunker_vr_columnas', JSON.stringify(visibilidad));
+};
+
+// ✅ CONFIGURADOR EN VIVO DE VISIBILIDAD DE CAMPOS (⚙️ Campos)
+window.toggleColumnaVinculador = function(colId, isVisible) {
+    if (window.v4GridApi) {
+        window.v4GridApi.setColumnsVisible([colId], isVisible);
+        window.guardarGridState();
+    }
 };
 
 window.resetearVisibilidadColumnas = function() {
-    const cols = ['sku', 'prov', 'desc', 'rubro', 'pres', 'costo', 'ant'];
-    cols.forEach(col => {
-        const chk = document.getElementById(`chk-col-${col}`);
-        if (chk) {
-            chk.checked = true;
-            window.toggleColumnaVinculador(col, true);
-        }
-    });
+    if (window.v4GridApi) {
+        const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad'];
+        window.v4GridApi.setColumnsVisible(columns, true);
+        window.guardarGridState();
+        sincronizarDropdownCampos();
+    }
 };
 
-function aplicarVisibilidadColumnas() {
-    let visibilidad = {};
-    try {
-        const stored = localStorage.getItem('lambda_bunker_vr_columnas');
-        if (stored) visibilidad = JSON.parse(stored);
-    } catch (e) {
-        console.error('Error parsing column visibility:', e);
-    }
+function sincronizarDropdownCampos() {
+    if (!window.v4GridApi) return;
+    const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad'];
     
-    const cols = ['sku', 'prov', 'desc', 'rubro', 'pres', 'costo', 'ant'];
-    cols.forEach(col => {
-        // Si no está definido en localStorage, por defecto es visible (true)
-        const isVisible = visibilidad[col] !== undefined ? visibilidad[col] : true;
+    const state = window.v4GridApi.getColumnState();
+    
+    columns.forEach(colId => {
+        const colState = state.find(s => s.colId === colId);
+        const isVisible = colState ? !colState.hide : true;
         
-        // Sincronizar checkbox en la UI
-        const chk = document.getElementById(`chk-col-${col}`);
-        if (chk) chk.checked = isVisible;
+        let chkId = '';
+        if (colId === 'sku_proveedor') chkId = 'chk-col-sku';
+        else if (colId === 'nombre_proveedor') chkId = 'chk-col-prov';
+        else if (colId === 'descripcion') chkId = 'chk-col-desc';
+        else if (colId === 'rubro') chkId = 'chk-col-rubro';
+        else if (colId === 'cant_bult') chkId = 'chk-col-cant-bult';
+        else if (colId === 'cant_valor') chkId = 'chk-col-cant-valor';
+        else if (colId === 'precio_unitario') chkId = 'chk-col-costo';
+        else if (colId === 'dias_antiguedad') chkId = 'chk-col-ant';
         
-        // Aplicar a los elementos de la tabla
-        const className = `vr-col-${col}`;
-        const elements = document.querySelectorAll(`.${className}`);
-        elements.forEach(el => {
-            el.style.display = isVisible ? '' : 'none';
-        });
+        const chk = document.getElementById(chkId);
+        if (chk) {
+            chk.checked = isVisible;
+        }
     });
 }
+
+window.toggleDropdownCampos = function(event) {
+    event.stopPropagation();
+    const dropdown = document.getElementById('vr-dropdown-campos');
+    const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+    dropdown.style.display = isHidden ? 'flex' : 'none';
+};
+
+// Cerrar dropdown al hacer click afuera
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('vr-dropdown-campos');
+    if (dropdown && dropdown.style.display === 'flex') {
+        const button = event.target.closest('button');
+        const container = event.target.closest('#vr-dropdown-campos');
+        if (!container && (!button || !button.innerText.includes('Campos'))) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+// ✅ REACTIVIDAD DE PILLS EXTERNOS
+window.setExternalFilter = function(filterType) {
+    currentExternalFilter = filterType;
+    
+    document.querySelectorAll('.vr-pill').forEach(pill => {
+        pill.classList.remove('active');
+        if (pill.getAttribute('data-filter') === filterType) {
+            pill.classList.add('active');
+        }
+    });
+    
+    if (window.v4GridApi) {
+        window.v4GridApi.onFilterChanged();
+    }
+};
+
+// ✅ SINCRONIZACIÓN DEL BARÓMETRO DE CONTROL (METRICAS)
+window.updateFmtStatusBar = function() {
+    if (!window.v4GridApi) return;
+    
+    const count = window.v4GridApi.getDisplayedRowCount();
+    document.getElementById('fmtTotalVisualizados').innerText = count;
+    
+    let maxTimestamp = 0;
+    let providerCount = new Set();
+    
+    window.v4GridApi.forEachNodeAfterFilterAndSort(node => {
+        if (node.data && node.data._timestamp) {
+            const ts = new Date(node.data._timestamp).getTime();
+            if (ts > maxTimestamp) maxTimestamp = ts;
+        }
+        if (node.data && node.data._proveedor) {
+            providerCount.add(node.data._proveedor);
+        }
+    });
+    
+    const txtDate = document.getElementById('fmtUltimaExtraccion');
+    if (maxTimestamp > 0) {
+        let diffDays = Math.floor((new Date() - maxTimestamp) / (1000 * 60 * 60 * 24));
+        const dateStr = new Date(maxTimestamp).toLocaleDateString('es-AR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+        const daysStr = diffDays === 0 ? "Hoy" : `Hace ${diffDays} ${diffDays === 1 ? 'día' : 'días'}`;
+        
+        if (providerCount.size === 1) {
+            txtDate.innerHTML = `
+                <span class="text-blue-400 font-bold">${Array.from(providerCount)[0]}</span>: 
+                <span class="tracking-wide">${dateStr}</span> 
+                <span class="text-[9px] text-slate-500 font-normal">(${daysStr})</span> 
+                <span class="ml-2 inline-flex items-center gap-1 bg-blue-900/40 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-[9px] font-bold tracking-widest uppercase">
+                    ${count} registros
+                </span>`;
+        } else {
+            txtDate.innerHTML = `${dateStr} <span class="text-[9px] text-slate-500 font-normal">(${daysStr})</span>`;
+        }
+    } else {
+        txtDate.innerText = '--';
+    }
+};
+
