@@ -1690,8 +1690,10 @@ window.abrirVinculadorReposicion = async function() {
     document.getElementById('vr-articulo-id-titulo').innerText = articulo_id;
     
     // Resetear filtros
-    document.getElementById('vr-filtro-texto').value = '';
     document.getElementById('vr-filtro-proveedor').value = '';
+    document.getElementById('vr-filtro-sku').value = '';
+    document.getElementById('vr-filtro-descripcion').value = '';
+    document.getElementById('vr-filtro-rubro').value = '';
     
     // Mostrar modal
     const modal = document.getElementById('modal-vinculador-reposicion');
@@ -1700,7 +1702,7 @@ window.abrirVinculadorReposicion = async function() {
     const tbody = document.getElementById('vr-tabla-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
+            <td colspan="8" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
                 Cargando catálogo de ofertas de reposición en vivo...
             </td>
         </tr>
@@ -1729,14 +1731,25 @@ window.abrirVinculadorReposicion = async function() {
             provSelect.appendChild(opt);
         });
 
-        // 4. Dibujar grilla inicial
+        // 4. Poblar combo de rubros
+        const rubroSelect = document.getElementById('vr-filtro-rubro');
+        rubroSelect.innerHTML = '<option value="">Todos los rubros</option>';
+        const rubrosUnicos = [...new Set(vr_todasOfertas.map(o => o.rubro).filter(Boolean))].sort();
+        rubrosUnicos.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.innerText = r;
+            rubroSelect.appendChild(opt);
+        });
+
+        // 5. Dibujar grilla inicial
         filtrarOfertasVinculador();
 
     } catch (err) {
         console.error("Error abriendo vinculador manual:", err);
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; color: #ef4444; padding: 20px; font-weight: bold;">
+                <td colspan="8" style="text-align: center; color: #ef4444; padding: 20px; font-weight: bold;">
                     ❌ Error de conexión: ${err.message}
                 </td>
             </tr>
@@ -1749,24 +1762,26 @@ window.cerrarVinculadorReposicion = function() {
 };
 
 window.filtrarOfertasVinculador = function() {
-    const txt = document.getElementById('vr-filtro-texto').value.toLowerCase().trim();
     const prov = document.getElementById('vr-filtro-proveedor').value;
+    const sku = document.getElementById('vr-filtro-sku').value.toLowerCase().trim();
+    const desc = document.getElementById('vr-filtro-descripcion').value.toLowerCase().trim();
+    const rubro = document.getElementById('vr-filtro-rubro').value;
 
     const tbody = document.getElementById('vr-tabla-tbody');
     
-    // Filtrar cotizaciones en memoria
+    // Filtrar cotizaciones en memoria concurrentemente
     const filtradas = vr_todasOfertas.filter(of => {
-        const matchTxt = !txt || 
-            String(of.sku_proveedor || '').toLowerCase().includes(txt) ||
-            String(of.descripcion || '').toLowerCase().includes(txt);
         const matchProv = !prov || of.nombre_proveedor === prov;
-        return matchTxt && matchProv;
+        const matchSku = !sku || String(of.sku_proveedor || '').toLowerCase().includes(sku);
+        const matchDesc = !desc || String(of.descripcion || '').toLowerCase().includes(desc);
+        const matchRubro = !rubro || of.rubro === rubro;
+        return matchProv && matchSku && matchDesc && matchRubro;
     });
 
     if (filtradas.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; color: #64748b; padding: 25px; font-style: italic;">
+                <td colspan="8" style="text-align: center; color: #64748b; padding: 25px; font-style: italic;">
                     Ninguna oferta coincide con los filtros aplicados.
                 </td>
             </tr>
@@ -1803,6 +1818,7 @@ window.filtrarOfertasVinculador = function() {
                 </td>
                 <td style="padding: 10px; font-weight: bold; color: #581c87;">${of.nombre_proveedor}</td>
                 <td style="padding: 10px; font-family: monospace; font-size: 1.05em; color: #475569;">${of.sku_proveedor}</td>
+                <td style="padding: 10px; font-weight: 600; color: #6b21a8;">${of.rubro || 'N/A'}</td>
                 <td style="padding: 10px; color: #334155;">${of.descripcion}</td>
                 <td style="padding: 10px; text-align: right; font-family: monospace; font-size: 1.1em; font-weight: bold; color: #1e293b;">${currencyFormatter.format(of.precio_unitario)}</td>
                 <td style="padding: 10px; text-align: center; font-weight: 600; color: #64748b;">${of.unidad_medida || 'U'}</td>
