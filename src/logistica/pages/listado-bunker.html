@@ -213,6 +213,36 @@
         #tabla-bunker.hide-col-7 th:nth-child(8), #tabla-bunker.hide-col-7 tbody tr:not(.expandable-row) > td:nth-child(8) { display: none !important; }
         #tabla-bunker.hide-col-8 th:nth-child(9), #tabla-bunker.hide-col-8 tbody tr:not(.expandable-row) > td:nth-child(9) { display: none !important; }
         #tabla-bunker.hide-col-9 th:nth-child(10), #tabla-bunker.hide-col-9 tbody tr:not(.expandable-row) > td:nth-child(10) { display: none !important; }
+        #tabla-bunker.hide-col-10 th:nth-child(11), #tabla-bunker.hide-col-10 tbody tr:not(.expandable-row) > td:nth-child(11) { display: none !important; }
+        #tabla-bunker.hide-col-11 th:nth-child(12), #tabla-bunker.hide-col-11 tbody tr:not(.expandable-row) > td:nth-child(12) { display: none !important; }
+
+        /* Botón de Exportación PDF Comercial Premium */
+        #btn-exportar-pdf-comercial {
+            margin-top: 15px;
+            background-color: #8e4785;
+            color: white;
+            border: none;
+            font-weight: bold;
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background-color 0.2s ease-in-out, transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(142, 71, 133, 0.15);
+            font-size: 1em;
+        }
+        #btn-exportar-pdf-comercial:hover {
+            background-color: #723469;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(142, 71, 133, 0.3);
+        }
+        #btn-exportar-pdf-comercial:active {
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -224,6 +254,9 @@
                 <span class="subtitle" style="color: #cbd5e1;">DataGrid Base</span>
             </div>
             <div class="header-right">
+                <button class="btn-secondary" onclick="crearNuevaListaDesdeUI(false)" style="margin-right: 15px; background: #10b981; color: white; border: 1px solid #047857;">
+                    ➕ Nueva Lista
+                </button>
                 <button class="btn-secondary" onclick="window.location.href='diccionario-bunker.html'" title="Nomenclaturas y Abreviaturas" style="margin-right: 15px; background: #3b82f6; color: #fff; border: 1px solid #1e40af;">
                     📚 Gestor de Diccionario
                 </button>
@@ -276,18 +309,324 @@
                                 </select>
                             </th>
                             <th style="text-align: right;">Margen Base</th>
+                            <th style="text-align: center; width: 80px;">Total Entrante (Un)</th>
+                            <th style="text-align: center; width: 80px;">Total Entrante (Kg)</th>
                             <th style="text-align: center; width: 100px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-bunker">
                         <!-- Renderizado Vía JS -->
-                        <tr><td colspan="11" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
+                        <tr><td colspan="13" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
-    
-    <script src="../js/listado-bunker.js?v=1.4.3"></script>
+    <!-- Modal Gestor de Precios -->
+    <div id="modal-gestor-precios" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 950px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+                    💰 Gestor de Precios Bunker - <span id="gp-producto" style="color: #8e4785; font-weight: bold;">Producto</span>
+                </h3>
+                <button onclick="cerrarGestorPrecios()" style="background: transparent; border: none; font-size: 1.5em; cursor: pointer; color: #64748b;">✖</button>
+            </div>
+
+            <!-- Listas de Precios Tabs con Toolbar de Acciones -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; margin-bottom: 15px;">
+                <div id="gp-tabs-container" style="display: flex; gap: 5px; overflow-x: auto; flex: 1;">
+                    <!-- JS Injected Tabs -->
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; padding-bottom: 5px; margin-left: 10px;">
+                    <button type="button" class="btn-edit" onclick="renombrarListaActiva()" style="background-color: #f59e0b; padding: 5px 10px; font-size: 0.82em; color: white;" title="Renombrar Lista Seleccionada">✏️ Renombrar</button>
+                    <button type="button" class="btn-edit" onclick="eliminarListaActiva()" style="background-color: #ef4444; padding: 5px 10px; font-size: 0.82em; color: white;" title="Eliminar Lista Seleccionada">🗑️ Eliminar</button>
+                    <button type="button" class="btn-edit" onclick="crearNuevaListaDesdeUI(true)" style="background-color: #10b981; padding: 5px 10px; font-size: 0.82em; color: white;" title="Crear Nueva Lista">+ Nueva Lista</button>
+                </div>
+            </div>
+
+            <!-- Panel Activo de Edición -->
+            <div id="gp-active-panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Left: Cost Breakdown -->
+                <div>
+                    <!-- 1. Costo Base (Ingredientes) -->
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">1. Costo Base (Ingrediente principal)</h4>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <label style="display: flex; align-items: center; font-size: 0.85em; color: #475569; cursor: pointer; font-weight: 500;">
+                                <input type="checkbox" id="gp-heredar-costo" style="margin-right: 6px;" onchange="toggleHeredarCosto(this.checked)"> 
+                                Heredar costo automático del lote/receta
+                            </label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <div style="flex: 1;">
+                                    <span style="font-size: 0.75em; color: #64748b;">Costo en Vivo / Receta:</span><br>
+                                    <strong id="gp-costo-vivo-val" style="color: #3b82f6; font-size: 1.1em;">$ 0.00</strong>
+                                </div>
+                                <div style="flex: 1.2;">
+                                    <span style="font-size: 0.75em; color: #64748b;">Costo Sobrescrito ($):</span><br>
+                                    <input type="number" id="gp-costo-manual" step="0.01" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold;" oninput="actualizarPorCostoManual(this.value)" onblur="recalcularPreciosGestor()">
+                                </div>
+                            </div>
+                            <!-- Despliegue Informativo de Costo Lomasoft (Fase 1: Multi-Fuente) -->
+                            <div style="display: flex; gap: 10px; align-items: center; border-top: 1px dashed #e2e8f0; padding-top: 8px; margin-top: 4px;">
+                                <div style="flex: 1;">
+                                    <span style="font-size: 0.75em; color: #64748b; display: flex; align-items: center; gap: 3px;" title="Costo histórico por kilogramo proveniente del viejo sistema Lomasoft.">
+                                        📋 Costo Lomasoft Kilo:
+                                    </span>
+                                    <strong id="gp-costo-lomasoft-val" style="color: #64748b; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="flex: 1.2;">
+                                    <span style="font-size: 0.75em; color: #64748b; display: flex; align-items: center; gap: 3px;" title="Costo histórico total por bulto registrado en Lomasoft.">
+                                        📦 Lomasoft Bulto (Legacy):
+                                    </span>
+                                    <strong id="gp-costo-lomasoft-bulto" style="color: #64748b; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Costo Insumos Secundarios -->
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>2. Insumos Secundarios (Packaging/Envases)</span>
+                            <span id="gp-insumos-total-badge" style="background: #cbd5e1; color: #334155; font-size: 0.8em; padding: 1px 6px; border-radius: 10px; font-weight: bold;">$ 0.00</span>
+                        </h4>
+                        <!-- Buscador de insumos -->
+                        <div style="position: relative; margin-bottom: 8px;">
+                            <input type="text" id="gp-buscar-insumo" placeholder="🔍 Buscar insumo para agregar..." style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85em;" oninput="buscarInsumoInput(this.value)">
+                            <div id="gp-insumo-resultados" style="display: none; position: absolute; width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; max-height: 150px; overflow-y: auto; font-size: 0.85em;"></div>
+                        </div>
+                        <!-- Tabla Insumos -->
+                        <div style="max-height: 120px; overflow-y: auto;">
+                            <table class="tabla-financiera" style="margin-top: 0; font-size: 0.85em;">
+                                <thead>
+                                    <tr>
+                                        <th>Insumo</th>
+                                        <th style="width: 60px; text-align: center;">Cant.</th>
+                                        <th style="width: 80px; text-align: right;">Costo Un.</th>
+                                        <th style="width: 30px; text-align: center;">Acc.</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gp-insumos-tbody">
+                                    <!-- JS Injected Insumos -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 3. Costo Operativo / Tiempo -->
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 5px;">
+                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">3. Costo de Mano de Obra / Operativo</h4>
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="flex: 1;">
+                                <span style="font-size: 0.75em; color: #64748b;">Costo Tiempo / Operario ($):</span><br>
+                                <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 500;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Pricing reciprocity & alerts -->
+                <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                    <div style="background: #fdfdfd; border: 2px solid #8e4785; border-radius: 12px; padding: 15px; box-shadow: 0 4px 12px rgba(142, 71, 133, 0.05);">
+                        <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                            <span style="display: flex; align-items: center; gap: 6px;">🎯 Calculadora de Precios</span>
+                            <button type="button" id="gp-btn-patron" onclick="toggleArticuloPatron()" style="background: transparent; border: 1px solid #cbd5e1; border-radius: 20px; padding: 3px 10px; font-size: 0.78em; color: #64748b; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s ease;">
+                                <span>⭐ Setear como Patrón</span>
+                            </button>
+                        </h4>
+                        
+                        <!-- Costo Integrado Total con Factor de Presentación -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0; gap: 8px;">
+                            <div style="flex: 1;">
+                                <span style="font-size: 0.8em; color: #64748b;">Costo Kilo Base:</span><br>
+                                <strong id="gp-costo-integrado" style="font-size: 1.15em; color: #1e293b;">$ 0.00</strong>
+                            </div>
+                            <div style="flex: 1; text-align: center; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1;">
+                                <span style="font-size: 0.8em; color: #64748b;">Presentación Bulto:</span><br>
+                                <strong id="gp-factor-presentacion" style="font-size: 1.15em; color: #3b82f6;">1.00 kg</strong>
+                            </div>
+                            <div style="flex: 1.1; text-align: right;">
+                                <span style="font-size: 0.8em; color: #64748b;">Costo Total Bulto:</span><br>
+                                <strong id="gp-costo-bulto-val" style="font-size: 1.15em; color: #1e3a8a;">$ 0.00</strong>
+                            </div>
+                        </div>
+
+                        <!-- Bidirectional inputs -->
+                        <div style="display: flex; gap: 15px; margin-bottom: 12px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.85em; color: #475569; font-weight: bold; display: flex; flex-direction: column; gap: 2px;">
+                                    <span>Margen de Ganancia (%):</span>
+                                    <span id="gp-margen-advertencia" style="display: none; font-size: 0.76em; color: #8e4785; font-weight: 700; line-height: 1.25em;"></span>
+                                </label>
+                                <input type="number" id="gp-margen" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.1em; font-weight: bold; text-align: right; color: #1e293b;" oninput="actualizarPorMargen(this.value)" onblur="recalcularPreciosGestor()">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.85em; color: #475569; font-weight: bold;">Precio Final c/IVA ($):</label>
+                                <input type="number" id="gp-precio-final" step="0.01" style="width: 100%; padding: 8px; border: 2px solid #10b981; border-radius: 4px; font-size: 1.1em; font-weight: bold; text-align: right; color: #065f46; background-color: #f0fdf4;" oninput="actualizarPorPrecio(this.value)" onblur="recalcularPreciosGestor()">
+                            </div>
+                        </div>
+
+                        <!-- Tratamiento del IVA Avanzado (Efecto Nicolás) -->
+                        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82em; color: #64748b;">
+                                <span>IVA Nativo Lote:</span>
+                                <strong id="gp-iva-lote-val" style="color: #334155;">21.00%</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
+                                <span style="color: #475569; font-weight: bold;">Tratamiento IVA:</span>
+                                <select id="gp-modo-iva-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.95em; color: #1e293b;" onchange="actualizarTratamientoIva(this.value)">
+                                    <option value="COMPLETO">Completo (100%)</option>
+                                    <option value="MEDIO">Medio IVA (50%)</option>
+                                    <option value="SIN">Sin IVA (0%)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Rentabilidad & IIBB metrics -->
+                        <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px dashed #e2e8f0; font-size: 0.85em;">
+                            <div style="display: flex; justify-content: space-between; color: #64748b;">
+                                <span>Precio Venta (Sin IVA):</span>
+                                <strong id="gp-precio-sin-iva" style="color: #1e293b;">$ 0.00</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #64748b;">
+                                <span>Impuesto IIBB (4%):</span>
+                                <strong id="gp-iibb" style="color: #b45309;">$ 0.00</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 1em; font-weight: bold; padding-top: 5px; border-top: 1px solid #cbd5e1;">
+                                <span style="color: #166534;">Ganancia Neta Estimada:</span>
+                                <strong id="gp-ganancia-neta" style="color: #15803d; font-size: 1.15em;">$ 0.00</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BOTÓN DE EXPORTACIÓN PDF COMERCIAL -->
+                    <button type="button" id="btn-exportar-pdf-comercial" onclick="abrirPrevisualizadorPDF()" title="Configurar e Imprimir Lista de Precios Búnker Completa en PDF">
+                        📄 Exportar PDF Comercial
+                    </button>
+
+                    <!-- Alerta de costo desactualizado -->
+                    <div id="gp-alerta-desactualizado" style="display: none; background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 10px; margin-top: 10px; color: #b45309; font-size: 0.82em; font-weight: 500; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>⚠️</span>
+                            <span><strong>Costo desactualizado:</strong> Los costos del lote base o receta cambiaron. La rentabilidad cayó a <span id="gp-margen-implicito-val">0.00</span>%.</span>
+                        </div>
+                        <button type="button" onclick="sincronizarCostoAlerta()" style="align-self: flex-end; padding: 4px 8px; background: #d97706; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            🔄 Sincronizar Costo y Recalcular
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Receta Activa del Producto (Solo lectura) -->
+            <div id="gp-receta-seccion" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 15px;">
+                <h4 style="margin-top: 0; color: #475569; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em;">
+                    <span style="display: flex; align-items: center; gap: 6px;">📜 Estructura de Receta de Producción (Origen)</span>
+                    <span id="gp-receta-info-badge" style="font-size: 0.8em; background: #cbd5e1; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Sin Receta</span>
+                </h4>
+                <div id="gp-receta-ingredientes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px;">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+                <button type="button" class="btn-secondary" onclick="cerrarGestorPrecios()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
+                <button type="button" class="btn-submit" id="gp-btn-guardar" onclick="guardarEstructuraFinanciera()" style="padding: 8px 16px; border-radius: 4px; background: #10b981; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px;">💾 Guardar Cambios en Lista</button>
+            </div>
+            <!-- Hidden input para guardar el ID -->
+            <input type="hidden" id="gp-articulo-id">
+        </div>
+    </div>
+
+    <!-- Modal Previsualizador y Configurador de Impresión PDF -->
+    <div id="modal-preimpresion-pdf" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 1000px; height: 85vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); padding: 20px;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+                    🖨️ Configurador y Previsualización de Impresión
+                </h3>
+                <button onclick="cerrarPrevisualizadorPDF()" style="background: transparent; border: none; font-size: 1.5em; cursor: pointer; color: #64748b;">✖</button>
+            </div>
+            
+            <!-- Body: Dos Columnas -->
+            <div style="display: flex; flex: 1; gap: 20px; overflow: hidden; min-height: 0;">
+                <!-- Panel Izquierdo: Configuración de Columnas -->
+                <div style="width: 300px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 1em;">
+                            ⚙️ Columnas Visibles
+                        </h4>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                <input type="checkbox" id="p-col-codigo" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                Código
+                            </label>
+                            <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                <input type="checkbox" id="p-col-descripcion" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                Descripción
+                            </label>
+                            <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                <input type="checkbox" id="p-col-presentacion" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                Presentación
+                            </label>
+                            <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                 <input type="checkbox" id="p-col-kilo" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                 Precio Kilo (Neto)
+                             </label>
+                             <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                 <input type="checkbox" id="p-col-bulto" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                 Precio Bulto (Neto)
+                             </label>
+                             <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                 <input type="checkbox" id="p-col-final-kilo" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                 Precio Kilo Final
+                             </label>
+                             <label style="display: flex; align-items: center; font-size: 0.95em; color: #334155; font-weight: 500; cursor: pointer;">
+                                 <input type="checkbox" id="p-col-final-bulto" checked onchange="actualizarPrevisualizacionPDF()" style="margin-right: 10px; width: 18px; height: 18px; cursor: pointer;">
+                                 Precio Bulto Final
+                             </label>
+                        </div>
+                    </div>
+                    
+                    <button type="button" onclick="confirmarEImprimirPDF()" style="background: #10b981; color: white; border: none; font-weight: bold; width: 100%; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease-in-out; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); font-size: 0.95em;">
+                        🖨️ Confirmar e Imprimir PDF
+                    </button>
+                </div>
+                
+                <!-- Panel Derecho: Visor de Previsualización Dinámica -->
+                <div style="flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; background: #fafafa; box-shadow: inset 0 2px 8px rgba(0,0,0,0.05);">
+                    <!-- Hoja A4 Simulada Comercial -->
+                    <div id="pdf-sheet-simulated" style="background: white; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); padding: 30px; display: flex; flex-direction: column; min-height: 500px;">
+                        <!-- Encabezado de la previsualización -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px;">
+                            <div>
+                                <img src="../img/logo_LAMDA_grande.png" alt="LAMDA Logo" id="pdf-prev-logo" style="height: 32px; width: auto; object-fit: contain; margin-bottom: 8px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));">
+                                <h1 style="margin: 0; font-size: 1.3em; color: #1e293b; font-weight: bold;">Lista de precios</h1>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="font-size: 0.8em; color: #8e4785; font-weight: bold; letter-spacing: 0.5px;">EMISIÓN COMERCIAL</span><br>
+                                <span style="font-size: 0.78em; color: #94a3b8;" id="pdf-prev-emision-fecha">Fecha</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Grilla de Previsualización Adaptativa -->
+                        <div style="flex: 1; overflow-x: auto;">
+                            <table class="tabla-financiera" style="margin-top: 10px; width: 100%; box-shadow: none; border: 1px solid #e2e8f0; font-size: 0.85em; border-collapse: collapse;">
+                                <thead id="pdf-prev-table-thead" style="background-color: #8e4785; color: white;">
+                                    <!-- JS Injected Headers -->
+                                </thead>
+                                <tbody id="pdf-prev-table-tbody">
+                                    <!-- JS Injected Skeleton Rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/listado-bunker.js?v=1.4.4"></script>
 </body>
 </html>

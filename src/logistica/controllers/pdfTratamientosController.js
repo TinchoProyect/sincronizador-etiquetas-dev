@@ -1,5 +1,8 @@
 const PDFDocument = require('pdfkit');
 const TratamientosModel = require('../models/tratamientosModel');
+const path = require('path');
+const fs = require('fs');
+
 
 async function imprimirPDF(req, res) {
     try {
@@ -30,14 +33,25 @@ async function imprimirPDF(req, res) {
 
         doc.pipe(res);
 
-        // Header: Logo / Title
+        // Header Institucional: Logo Oficial de LAMDA (o fallback tipográfico)
+        // Decisión de diseño: Se renderiza el logotipo oficial de alta resolución. Si no se localiza
+        // físicamente el archivo, se utiliza una cabecera de fallback elegante para garantizar la robustez.
         const headerY = doc.y;
-        doc.fontSize(22).font('Helvetica-Bold').fillColor('#1e40af').text('LAMDA', 50, headerY);
+        const logoPath = path.join(__dirname, '../img/logo_LAMDA_grande.png');
+
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, headerY, { width: 110 });
+            // Se posiciona el cursor vertical doc.y debajo del logo para evitar superposiciones con los subtítulos
+            doc.y = headerY + 35;
+        } else {
+            doc.fontSize(22).font('Helvetica-Bold').fillColor('#8e4785').text('LAMDA', 50, headerY);
+        }
+
         const hoy = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
         doc.fontSize(10).fillColor('#94a3b8').text(`Fecha de Emisión: ${hoy}`, 390, headerY + 8, { width: 150, align: 'right' });
         
         doc.moveDown(1.5);
-        doc.fontSize(12).fillColor('#64748b').text('COMPROBANTE DE RECOLECCIÓN DE MERCADERÍA', 50, doc.y, { align: 'left' });
+        doc.fontSize(12).fillColor('#64748b').text('COMPROBANTE DE INCIDENTE', 50, doc.y, { align: 'left' });
         doc.moveDown(2);
 
         // Separators line
@@ -107,9 +121,9 @@ async function imprimirPDF(req, res) {
         doc.font('Helvetica').text(`Apellido: ${data.responsable_apellido || 'No provisto'}`);
         doc.font('Helvetica').text(`Contacto: ${data.responsable_celular || 'No provisto'}`);
 
-        // Chofer (Derecha)
-        doc.fontSize(11).font('Helvetica-Bold').text('ASISTENCIA DE RECEPCIÓN (LAMDA)', 300, finalY);
-        doc.font('Helvetica').text(`Nombre Chofer: ${data.chofer_nombre || 'No provisto'}`);
+        // Chofer (Derecha) -> Ahora Responsable de Registro
+        doc.fontSize(11).font('Helvetica-Bold').text('RESPONSABLE DE REGISTRO (LAMDA)', 300, finalY);
+        doc.font('Helvetica').text(`Responsable de Registro: ${data.chofer_nombre || 'No provisto'}`);
 
         doc.moveDown(4);
 
