@@ -485,12 +485,14 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             // Decisión de diseño: Si no existe el lote, mostramos 'Sin registros' de forma explícita.
             const loteValEl = document.getElementById('gp-costo-lote-val');
             const loteBultoEl = document.getElementById('gp-costo-lote-bulto');
+            const loteIvaEl = document.getElementById('gp-iva-lote-val');
             const loteFechaEl = document.getElementById('gp-lote-fecha-val');
 
-            if (loteValEl && loteBultoEl && loteFechaEl) {
+            if (loteValEl && loteBultoEl && loteIvaEl && loteFechaEl) {
                 if (data.lote) {
                     const costoLoteKilo = parseFloat(data.lote.costo_kilo_al_momento) || 0;
                     const costoLoteBulto = gp_factorPresentacion > 0 ? (costoLoteKilo * gp_factorPresentacion) : 0;
+                    const ivaLoteVal = parseFloat(data.lote.impuesto_iva);
                     
                     let fechaFmt = 'N/A';
                     if (data.lote.fecha_vinculacion) {
@@ -503,18 +505,22 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
 
                     loteValEl.innerText = costoLoteKilo > 0 ? currencyFormatter.format(costoLoteKilo) : 'N/A';
                     loteBultoEl.innerText = costoLoteBulto > 0 ? currencyFormatter.format(costoLoteBulto) : 'N/A';
+                    loteIvaEl.innerText = !isNaN(ivaLoteVal) ? `${ivaLoteVal.toFixed(2)}%` : 'N/A';
                     loteFechaEl.innerText = fechaFmt;
                     
                     loteValEl.style.color = '#10b981';
                     loteBultoEl.style.color = '#10b981';
+                    loteIvaEl.style.color = '#10b981';
                     loteFechaEl.style.color = '#10b981';
                 } else {
                     loteValEl.innerText = 'Sin registros';
                     loteBultoEl.innerText = 'Sin registros';
+                    loteIvaEl.innerText = 'Sin registros';
                     loteFechaEl.innerText = 'Sin registros';
                     
                     loteValEl.style.color = '#64748b';
                     loteBultoEl.style.color = '#64748b';
+                    loteIvaEl.style.color = '#64748b';
                     loteFechaEl.style.color = '#64748b';
                 }
             }

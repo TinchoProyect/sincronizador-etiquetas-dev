@@ -709,7 +709,7 @@ class BunkerService {
 
         // Buscar el último lote recibido para el costo real
         const queryLote = `
-            SELECT d.costo_kilo_al_momento, v.fecha_vinculacion, v.lote_id_supabase
+            SELECT d.costo_kilo_al_momento, v.fecha_vinculacion, v.lote_id_supabase, v.impuesto_iva
             FROM public.bunker_lotes_destinos d
             JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
             WHERE d.destino_id = $1
