@@ -813,7 +813,7 @@ class BunkerService {
         let receta_articulos = [];
 
         try {
-            const codigoBase = articulo.pack_hijo_codigo || articulo.articulo_id;
+            let codigoBase = articulo.articulo_id;
 
             const queryReceta = `
                 SELECT id 
@@ -822,7 +822,13 @@ class BunkerService {
                 ORDER BY fecha_creacion DESC 
                 LIMIT 1
             `;
-            const resReceta = await db.query(queryReceta, [codigoBase]);
+            let resReceta = await db.query(queryReceta, [codigoBase]);
+            
+            // Si el artículo no posee receta directa, intentar con su código de empaque padre (herencia)
+            if (resReceta.rows.length === 0 && articulo.pack_hijo_codigo) {
+                codigoBase = articulo.pack_hijo_codigo;
+                resReceta = await db.query(queryReceta, [codigoBase]);
+            }
             
             if (resReceta.rows.length > 0) {
                 const recetaId = resReceta.rows[0].id;
