@@ -45,6 +45,10 @@ router.delete('/articulos/:id', bunkerController.eliminarArticulo);
 router.get('/finanzas/:id', bunkerController.obtenerRadiografiaFinanciera);
 router.post('/finanzas/:id', bunkerController.actualizarEstructuraFinanciera);
 
+// --- MAPEOS DE REPOSICION (FASE 4) ---
+router.get('/reposicion/mapeo/:bunker_articulo_id', bunkerController.obtenerMapeoReposicion);
+router.post('/reposicion/mapeo/:bunker_articulo_id', bunkerController.guardarMapeoReposicion);
+
 // --- RUTAS DE VINCULACIÓN LOTES - BÚNKER ---
 const lotesBunkerController = require('../controllers/lotesBunkerController');
 

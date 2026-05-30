@@ -324,6 +324,85 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
     }
 });
 
+// ✅ PROXY A SUPABASE PARA TODAS LAS OFERTAS DE REPOSICIÓN VIVAS (FASE 4)
+app.get('/api/supabase/reposicion/todas', async (req, res) => {
+    try {
+        const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+        const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+
+        // Obtener hasta 1000 registros activos de la tabla maestra filtrando las bajas
+        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&limit=1000`;
+        
+        const response = await fetch(url, { headers });
+        if (!response.ok) throw new Error(await response.text());
+        const cotizaciones = await response.json();
+
+        if (cotizaciones.length === 0) {
+            return res.json([]);
+        }
+
+        // Obtener la curaduría humana de unidades para normalizar posibles ambigüedades
+        const proveedoresIds = [...new Set(cotizaciones.map(c => c.proveedor_id).filter(Boolean))];
+        let excepciones = [];
+        if (proveedoresIds.length > 0) {
+            const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
+            const excRes = await fetch(excUrl, { headers });
+            if (excRes.ok) {
+                excepciones = await excRes.json();
+            }
+        }
+
+        // Crear mapa O(N) para indexación
+        const curaduriaMap = new Map();
+        excepciones.forEach(exc => {
+            const keyMap = `${exc.proveedor_id}_${String(exc.producto_codigo).trim().toLowerCase()}`;
+            curaduriaMap.set(keyMap, exc.unidad_fijada);
+        });
+
+        // Normalizar y estructurar tarifas de forma homogénea y determinista
+        const cotizacionesNormalizadas = cotizaciones.map(row => {
+            const dm = { ...row.datos_maestros };
+            const skuProveedorRaw = dm.codigo || dm.sku || dm.código || "";
+            const skuClean = String(skuProveedorRaw).trim().toLowerCase();
+            const keyMap = `${row.proveedor_id}_${skuClean}`;
+            
+            // Intercepción por Curaduría de Unidad
+            if (curaduriaMap.has(keyMap) && curaduriaMap.get(keyMap)) {
+                dm.unidad = curaduriaMap.get(keyMap);
+            }
+            
+            // Calcular días de antigüedad del dato contra el tiempo actual (Mayo 2026)
+            const fechaTarifa = new Date(dm.ultima_actualizacion_origen || row.timestamp_extraccion);
+            const diasAntiguedad = Math.floor((new Date() - fechaTarifa) / (1000 * 60 * 60 * 24));
+            
+            // Convertir precio String Argentino a Float (ej: "3.423,77" -> 3423.77)
+            let precioUnitarioVal = 0;
+            if (dm.precio) {
+                const cleanPrice = String(dm.precio).replace(/\./g, '').replace(',', '.');
+                precioUnitarioVal = parseFloat(cleanPrice) || 0;
+            }
+
+            return {
+                oferta_id: row.id,
+                proveedor_id: row.proveedor_id,
+                nombre_proveedor: row.nombre_proveedor,
+                sku_proveedor: skuProveedorRaw,
+                descripcion: dm.descripcion,
+                precio_unitario: precioUnitarioVal,
+                unidad_medida: dm.unidad,
+                dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
+                valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion
+            };
+        });
+
+        res.json(cotizacionesNormalizadas);
+    } catch (e) {
+        console.error("Error en proxy de todas las ofertas de reposición:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
 // Middleware para deshabilitar caché en archivos HTML y JS
 app.use((req, res, next) => {
     if (req.url.endsWith('.html') || req.url.endsWith('.js') || req.url.endsWith('.css')) {

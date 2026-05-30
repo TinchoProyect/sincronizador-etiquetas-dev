@@ -428,10 +428,12 @@ function renderOfertasReposicion(ofertas) {
         const dias = of.dias_antiguedad;
         const badgeText = dias === 0 ? 'Hoy' : `Hace ${dias} día${dias > 1 ? 's' : ''}`;
         
+        const heredadoBadge = of.heredado ? `<span style="font-size: 0.76em; background: #fef3c7; color: #d97706; border: 1px solid #fde68a; padding: 0px 4px; border-radius: 3px; font-weight: 700; margin-left: 5px;">Heredado</span>` : '';
+        
         html += `
             <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
+                    <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; display: flex; align-items: center;" title="${of.nombre_proveedor}">${of.nombre_proveedor}${heredadoBadge}</span>
                     <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
                         ${badgeText}
                     </span>
@@ -691,70 +693,8 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             renderTabs();
             selectTab(0);
 
-            // FASE 4: Costo de Reposición Vivo (Ofertas de Proveedores)
-            const reposicionContainer = document.getElementById('gp-ofertas-reposicion-container');
-            if (reposicionContainer) {
-                reposicionContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 10px;">Cargando ofertas...</div>';
-            }
-
-            let skuParaReposicion = null;
-            
-            // 1. Intentar obtener SKU del lote directo del artículo
-            if (data.lote && data.lote.lote_id_supabase) {
-                try {
-                    const shortId = data.lote.lote_id_supabase.substring(0, 8);
-                    const loteRes = await fetch(`/api/supabase/lotes/${shortId}`);
-                    if (loteRes.ok) {
-                        const loteData = await loteRes.json();
-                        if (loteData && loteData.pedidos_b2b_items && loteData.pedidos_b2b_items.producto_codigo) {
-                            skuParaReposicion = loteData.pedidos_b2b_items.producto_codigo;
-                        }
-                    }
-                } catch (err) {
-                    console.error("Error recuperando SKU del lote directo:", err);
-                }
-            }
-            
-            // 2. Si no se obtuvo, intentar con los lotes de los ingredientes de la receta
-            if (!skuParaReposicion && data.receta_ingredientes && data.receta_ingredientes.length > 0) {
-                const ingConLote = data.receta_ingredientes.find(ing => ing.lote_id_ref);
-                if (ingConLote) {
-                    try {
-                        const shortId = ingConLote.lote_id_ref.substring(0, 8);
-                        const loteRes = await fetch(`/api/supabase/lotes/${shortId}`);
-                        if (loteRes.ok) {
-                            const loteData = await loteRes.json();
-                            if (loteData && loteData.pedidos_b2b_items && loteData.pedidos_b2b_items.producto_codigo) {
-                                skuParaReposicion = loteData.pedidos_b2b_items.producto_codigo;
-                            }
-                        }
-                    } catch (err) {
-                        console.error("Error recuperando SKU del lote del ingrediente:", err);
-                    }
-                }
-            }
-            
-            // 3. Fallbacks
-            if (!skuParaReposicion) {
-                skuParaReposicion = data.codigo_barras || data.pack_hijo_codigo || data.articulo_id;
-            }
-            
-            if (skuParaReposicion) {
-                try {
-                    const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
-                    if (repoRes.ok) {
-                        const ofertas = await repoRes.json();
-                        renderOfertasReposicion(ofertas);
-                    } else {
-                        renderOfertasReposicion([]);
-                    }
-                } catch (err) {
-                    console.error("Error recuperando ofertas de reposición:", err);
-                    renderOfertasReposicion([]);
-                }
-            } else {
-                renderOfertasReposicion([]);
-            }
+            // FASE 4: Costo de Reposición Vivo (Mapeo Manual Curado)
+            renderOfertasReposicion(data.reposicion_ofertas || []);
         } else {
             throw new Error(result.error);
         }
@@ -1727,4 +1667,207 @@ window.confirmarEImprimirPDF = function() {
     
     // Abrir descarga en nueva pestaña
     window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}`, '_blank');
+};
+
+// ==========================================
+// VINCULADOR MANUAL DE OFERTAS DE REPOSICION
+// ==========================================
+
+let vr_todasOfertas = [];
+let vr_mapeosActivos = [];
+
+window.abrirVinculadorReposicion = async function() {
+    const articulo_id = document.getElementById('gp-articulo-id').value;
+    const articulo_nombre = document.getElementById('gp-producto').innerText;
+    
+    if (!articulo_id) {
+        Swal.fire('Error', 'No hay ningún artículo seleccionado en el gestor.', 'error');
+        return;
+    }
+
+    // Setear títulos en el modal
+    document.getElementById('vr-articulo-nombre-titulo').innerText = articulo_nombre;
+    document.getElementById('vr-articulo-id-titulo').innerText = articulo_id;
+    
+    // Resetear filtros
+    document.getElementById('vr-filtro-texto').value = '';
+    document.getElementById('vr-filtro-proveedor').value = '';
+    
+    // Mostrar modal
+    const modal = document.getElementById('modal-vinculador-reposicion');
+    modal.style.display = 'flex';
+
+    const tbody = document.getElementById('vr-tabla-tbody');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="7" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
+                Cargando catálogo de ofertas de reposición en vivo...
+            </td>
+        </tr>
+    `;
+
+    try {
+        // 1. Obtener mapeos activos locales para este artículo
+        const mapeoRes = await fetch(`/api/logistica/bunker/reposicion/mapeo/${articulo_id}`);
+        if (!mapeoRes.ok) throw new Error('Error al cargar vinculaciones locales');
+        const mapeoPayload = await mapeoRes.json();
+        vr_mapeosActivos = mapeoPayload.data || [];
+
+        // 2. Obtener todas las cotizaciones del proxy remoto
+        const todasRes = await fetch('/api/supabase/reposicion/todas');
+        if (!todasRes.ok) throw new Error('Error al cargar ofertas remotas de Supabase');
+        vr_todasOfertas = await todasRes.json();
+
+        // 3. Poblar combo de proveedores
+        const provSelect = document.getElementById('vr-filtro-proveedor');
+        provSelect.innerHTML = '<option value="">Todos los proveedores</option>';
+        const proveedoresUnicos = [...new Set(vr_todasOfertas.map(o => o.nombre_proveedor).filter(Boolean))].sort();
+        proveedoresUnicos.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.innerText = p;
+            provSelect.appendChild(opt);
+        });
+
+        // 4. Dibujar grilla inicial
+        filtrarOfertasVinculador();
+
+    } catch (err) {
+        console.error("Error abriendo vinculador manual:", err);
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: #ef4444; padding: 20px; font-weight: bold;">
+                    ❌ Error de conexión: ${err.message}
+                </td>
+            </tr>
+        `;
+    }
+};
+
+window.cerrarVinculadorReposicion = function() {
+    document.getElementById('modal-vinculador-reposicion').style.display = 'none';
+};
+
+window.filtrarOfertasVinculador = function() {
+    const txt = document.getElementById('vr-filtro-texto').value.toLowerCase().trim();
+    const prov = document.getElementById('vr-filtro-proveedor').value;
+
+    const tbody = document.getElementById('vr-tabla-tbody');
+    
+    // Filtrar cotizaciones en memoria
+    const filtradas = vr_todasOfertas.filter(of => {
+        const matchTxt = !txt || 
+            String(of.sku_proveedor || '').toLowerCase().includes(txt) ||
+            String(of.descripcion || '').toLowerCase().includes(txt);
+        const matchProv = !prov || of.nombre_proveedor === prov;
+        return matchTxt && matchProv;
+    });
+
+    if (filtradas.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: #64748b; padding: 25px; font-style: italic;">
+                    Ninguna oferta coincide con los filtros aplicados.
+                </td>
+            </tr>
+        `;
+        actualizarContadorSeleccionados();
+        return;
+    }
+
+    const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+    let html = '';
+
+    filtradas.forEach(of => {
+        // Verificar si está activo en el mapeo cargado
+        const estaMapeado = vr_mapeosActivos.some(m => 
+            String(m.proveedor_id).trim() === String(of.proveedor_id).trim() && 
+            String(m.proveedor_producto_codigo).trim().toLowerCase() === String(of.sku_proveedor).trim().toLowerCase()
+        );
+
+        const checkedAttr = estaMapeado ? 'checked' : '';
+        const dias = of.dias_antiguedad;
+        
+        // Estilo de antigüedad
+        let badgeColor = '';
+        if (dias === 0) badgeColor = 'background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;';
+        else if (dias <= 5) badgeColor = 'background: #fef9c3; color: #713f12; border: 1px solid #fef08a;';
+        else badgeColor = 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;';
+        
+        const badgeFmt = dias === 0 ? 'Hoy' : `Hace ${dias} d`;
+
+        html += `
+            <tr style="border-bottom: 1px solid #f1f5f9; hover: background: #faf5ff;">
+                <td style="text-align: center; padding: 10px;">
+                    <input type="checkbox" class="vr-checkbox-item" data-prov-id="${of.proveedor_id}" data-prov-sku="${of.sku_proveedor}" ${checkedAttr} onchange="actualizarContadorSeleccionados()" style="width: 18px; height: 18px; cursor: pointer;">
+                </td>
+                <td style="padding: 10px; font-weight: bold; color: #581c87;">${of.nombre_proveedor}</td>
+                <td style="padding: 10px; font-family: monospace; font-size: 1.05em; color: #475569;">${of.sku_proveedor}</td>
+                <td style="padding: 10px; color: #334155;">${of.descripcion}</td>
+                <td style="padding: 10px; text-align: right; font-family: monospace; font-size: 1.1em; font-weight: bold; color: #1e293b;">${currencyFormatter.format(of.precio_unitario)}</td>
+                <td style="padding: 10px; text-align: center; font-weight: 600; color: #64748b;">${of.unidad_medida || 'U'}</td>
+                <td style="padding: 10px; text-align: center;">
+                    <span class="badge" style="font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: bold; ${badgeColor}">
+                        ${badgeFmt}
+                    </span>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+    actualizarContadorSeleccionados();
+};
+
+window.actualizarContadorSeleccionados = function() {
+    const checkboxes = document.querySelectorAll('.vr-checkbox-item:checked');
+    document.getElementById('vr-contador-seleccionados').innerText = checkboxes.length;
+};
+
+window.guardarVinculacionReposicion = async function() {
+    const articulo_id = document.getElementById('gp-articulo-id').value;
+    if (!articulo_id) return;
+
+    // Recopilar todos los mapeos seleccionados
+    const checkboxes = document.querySelectorAll('.vr-checkbox-item:checked');
+    const mapeos = Array.from(checkboxes).map(chk => ({
+        proveedor_id: chk.getAttribute('data-prov-id'),
+        proveedor_producto_codigo: chk.getAttribute('data-prov-sku')
+    }));
+
+    try {
+        const res = await fetch(`/api/logistica/bunker/reposicion/mapeo/${articulo_id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ mapeos })
+        });
+
+        if (!res.ok) throw new Error('Error al guardar vinculación en base de datos');
+        const resJson = await res.json();
+
+        if (resJson.success) {
+            Swal.fire({
+                title: '¡Guardado!',
+                text: 'Las equivalencias de reposición se guardaron exitosamente.',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            });
+            
+            // Cerrar el vinculador
+            cerrarVinculadorReposicion();
+            
+            // Refrescar el modal principal (Radiografía Financiera) de inmediato
+            const desc = document.getElementById('gp-producto').innerText;
+            abrirGestorPrecios(articulo_id, desc);
+        } else {
+            throw new Error(resJson.error || 'Error desconocido');
+        }
+
+    } catch (err) {
+        console.error("Error al guardar vinculación:", err);
+        Swal.fire('Error', `No se pudo guardar la vinculación: ${err.message}`, 'error');
+    }
 };

@@ -129,6 +129,19 @@ app.use('/api/presupuestos', createProxyMiddleware({
         res.status(503).json({ error: 'Módulo de presupuestos fuera de línea.' });
     }
 }));
+
+// Proxy para las transacciones API de Supabase (puerto 3002)
+app.use('/api/supabase', createProxyMiddleware({
+    target: 'http://localhost:3002',
+    changeOrigin: true,
+    pathRewrite: (path, req) => {
+        return '/api/supabase' + req.url; 
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Supabase (API):', err.message);
+        res.status(503).json({ error: 'Módulo de producción/Supabase fuera de línea.' });
+    }
+}));
 // ==========================================
 
 // Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)

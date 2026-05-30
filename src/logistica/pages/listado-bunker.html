@@ -570,8 +570,9 @@
 
                         <!-- TARJETA 4: COSTO DE REPOSICIÓN VIVO (OFERTAS PROVEEDORES - FASE 4) -->
                         <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
-                            <div style="font-size: 0.88em; font-weight: 700; color: #6b21a8; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #e9d5ff; padding-bottom: 6px; margin-bottom: 2px;">
+                            <div style="font-size: 0.88em; font-weight: 700; color: #6b21a8; display: flex; align-items: center; justify-content: space-between; gap: 4px; border-bottom: 1px solid #e9d5ff; padding-bottom: 6px; margin-bottom: 2px;">
                                 <span>🔮 COSTO REPOSICIÓN VIVO (OFERTAS)</span>
+                                <button type="button" onclick="abrirVinculadorReposicion()" style="background: #c084fc; color: #581c87; border: 1px solid #a855f7; border-radius: 4px; padding: 2px 6px; font-size: 0.8em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.2s ease;" title="Vincular Manualmente Ofertas de Reposición">⚙️ Vincular</button>
                             </div>
                             <div id="gp-ofertas-reposicion-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 110px; overflow-y: auto; padding-right: 4px;">
                                 <div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 10px;">Cargando ofertas...</div>
@@ -686,6 +687,73 @@
                             </table>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Vinculador Manual de Reposición (Fase 4 - Enmienda Técnica) -->
+    <div id="modal-vinculador-reposicion" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 1200; align-items: center; justify-content: center;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 16px; width: 95%; max-width: 950px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 24px; border: 1px solid #e2e8f0; animation: modalFadeIn 0.25s ease-out;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 15px;">
+                <div>
+                    <h3 style="margin: 0; color: #581c87; display: flex; align-items: center; gap: 8px; font-size: 1.35em; font-weight: 800;">
+                        🔮 Vincular Ofertas de Reposición en Vivo
+                    </h3>
+                    <span style="font-size: 0.88em; color: #64748b; font-weight: 500; margin-top: 4px; display: inline-block;">
+                        Artículo Búnker: <strong id="vr-articulo-nombre-titulo" style="color: #1e293b;">-</strong> (Código: <span id="vr-articulo-id-titulo" style="font-family: monospace; font-weight: bold;">-</span>)
+                    </span>
+                </div>
+                <button onclick="cerrarVinculadorReposicion()" style="background: #f1f5f9; border: none; font-size: 1.25em; cursor: pointer; color: #64748b; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">✖</button>
+            </div>
+
+            <!-- Toolbar de Filtros -->
+            <div style="display: flex; gap: 15px; margin-bottom: 15px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 12px;">
+                <div style="flex: 2; display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700;">🔍 Filtro de Texto (Descripción / Código):</label>
+                    <input type="text" id="vr-filtro-texto" placeholder="Buscar por código, descripción, marca..." style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; transition: border-color 0.2s;" oninput="filtrarOfertasVinculador()">
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.78em; color: #581c87; font-weight: 700;">🏭 Filtrar por Proveedor:</label>
+                    <select id="vr-filtro-proveedor" style="width: 100%; padding: 8px 12px; border: 1px solid #d8b4fe; border-radius: 6px; font-size: 0.9em; outline: none; color: #1e293b; cursor: pointer;" onchange="filtrarOfertasVinculador()">
+                        <option value="">Todos los proveedores</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Grilla Interactiva -->
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; margin-bottom: 15px; min-height: 200px;">
+                <table class="tabla-financiera" style="margin: 0; width: 100%; border-collapse: collapse; font-size: 0.9em; box-shadow: none;">
+                    <thead style="background: #581c87; color: white; position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th style="width: 40px; text-align: center; padding: 10px;">Select</th>
+                            <th style="width: 160px; text-align: left; padding: 10px;">Proveedor</th>
+                            <th style="width: 120px; text-align: left; padding: 10px;">Código Proveedor</th>
+                            <th style="text-align: left; padding: 10px;">Descripción</th>
+                            <th style="width: 110px; text-align: right; padding: 10px;">Costo Kilo</th>
+                            <th style="width: 80px; text-align: center; padding: 10px;">Medida</th>
+                            <th style="width: 110px; text-align: center; padding: 10px;">Antigüedad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vr-tabla-tbody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #64748b; padding: 20px; font-style: italic;">
+                                Cargando catálogo de ofertas de reposición en vivo...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer con Acciones -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: auto;">
+                <span style="font-size: 0.85em; color: #64748b; font-weight: 500;">
+                    Seleccionados: <strong id="vr-contador-seleccionados" style="color: #6b21a8; font-family: monospace;">0</strong> ofertas.
+                </span>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" onclick="cerrarVinculadorReposicion()" style="padding: 10px 20px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 600; color: #475569; transition: all 0.2s;">Cancelar</button>
+                    <button type="button" onclick="guardarVinculacionReposicion()" style="padding: 10px 20px; border-radius: 6px; background: #6b21a8; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; box-shadow: 0 4px 6px rgba(107, 33, 168, 0.2);">💾 Guardar Vinculación</button>
                 </div>
             </div>
         </div>

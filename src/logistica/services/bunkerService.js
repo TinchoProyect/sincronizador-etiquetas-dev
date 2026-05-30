@@ -924,6 +924,106 @@ class BunkerService {
             console.error("[BUNKER-LOMASOFT] Error al recuperar costo e IVA histórico:", lomaErr);
         }
 
+        // 4. Mapeos de reposición (Fase 4 - Enmienda Técnica)
+        let reposicion_ofertas = [];
+        try {
+            let mappingsQuery = `SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1`;
+            let resMappings = await db.query(mappingsQuery, [articulo_id]);
+            let mappings = resMappings.rows;
+            let esHeredado = false;
+
+            if (mappings.length === 0 && articulo.pack_hijo_codigo) {
+                resMappings = await db.query(mappingsQuery, [articulo.pack_hijo_codigo]);
+                mappings = resMappings.rows;
+                if (mappings.length > 0) {
+                    esHeredado = true;
+                }
+            }
+
+            if (mappings.length > 0) {
+                const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+                const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+
+                // Obtener códigos únicos mapeados
+                const uniqueCodes = [...new Set(mappings.map(m => String(m.proveedor_producto_codigo).trim()))];
+                if (uniqueCodes.length > 0) {
+                    const inList = uniqueCodes.map(c => `"${c.replace(/"/g, '\\"')}"`).join(',');
+                    const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&or=(datos_maestros->>codigo.in.(${inList}),datos_maestros->>sku.in.(${inList}),datos_maestros->>código.in.(${inList}))`;
+
+                    const response = await fetch(url, { headers });
+                    if (response.ok) {
+                        const cotizaciones = await response.json();
+
+                        // Cargar excepciones de curaduría
+                        const proveedoresIds = [...new Set(cotizaciones.map(c => c.proveedor_id).filter(Boolean))];
+                        let excepciones = [];
+                        if (proveedoresIds.length > 0) {
+                            const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
+                            const excRes = await fetch(excUrl, { headers });
+                            if (excRes.ok) {
+                                excepciones = await excRes.json();
+                            }
+                        }
+
+                        const curaduriaMap = new Map();
+                        excepciones.forEach(exc => {
+                            const keyMap = `${exc.proveedor_id}_${String(exc.producto_codigo).trim().toLowerCase()}`;
+                            curaduriaMap.set(keyMap, exc.unidad_fijada);
+                        });
+
+                        // Normalizar cotizaciones
+                        const todasNormalizadas = cotizaciones.map(row => {
+                            const dm = { ...row.datos_maestros };
+                            const skuProveedorRaw = dm.codigo || dm.sku || dm.código || "";
+                            const skuClean = String(skuProveedorRaw).trim().toLowerCase();
+                            const keyMap = `${row.proveedor_id}_${skuClean}`;
+
+                            if (curaduriaMap.has(keyMap) && curaduriaMap.get(keyMap)) {
+                                dm.unidad = curaduriaMap.get(keyMap);
+                            }
+
+                            const fechaTarifa = new Date(dm.ultima_actualizacion_origen || row.timestamp_extraccion);
+                            const diasAntiguedad = Math.floor((new Date() - fechaTarifa) / (1000 * 60 * 60 * 24));
+
+                            let precioUnitarioVal = 0;
+                            if (dm.precio) {
+                                const cleanPrice = String(dm.precio).replace(/\./g, '').replace(',', '.');
+                                precioUnitarioVal = parseFloat(cleanPrice) || 0;
+                            }
+
+                            return {
+                                oferta_id: row.id,
+                                proveedor_id: row.proveedor_id,
+                                nombre_proveedor: row.nombre_proveedor,
+                                sku_proveedor: skuProveedorRaw,
+                                descripcion: dm.descripcion,
+                                precio_unitario: precioUnitarioVal,
+                                unidad_medida: dm.unidad,
+                                dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
+                                valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion
+                            };
+                        });
+
+                        // Filtrar cotizaciones para conservar solo las mapeadas exactamente por (proveedor_id, codigo)
+                        const mappingsSet = new Set(mappings.map(m => `${m.proveedor_id}_${String(m.proveedor_producto_codigo).trim().toLowerCase()}`));
+                        const mapeadasFiltradas = todasNormalizadas.filter(c => {
+                            const skuClean = String(c.sku_proveedor).trim().toLowerCase();
+                            const keyCheck = `${c.proveedor_id}_${skuClean}`;
+                            return mappingsSet.has(keyCheck);
+                        });
+
+                        // Marcar como heredado si corresponde
+                        reposicion_ofertas = mapeadasFiltradas.map(c => ({
+                            ...c,
+                            heredado: esHeredado
+                        }));
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("❌ [BUNKER-REPOSICION] Error al procesar ofertas de reposición en radiografía:", err);
+        }
+
         return {
             articulo_id,
             codigo_barras: articulo.codigo_barras || null,
@@ -943,7 +1043,8 @@ class BunkerService {
             receta_ingredientes,
             receta_articulos,
             costo_lomasoft,
-            iva_lomasoft
+            iva_lomasoft,
+            reposicion_ofertas
         };
     }
 

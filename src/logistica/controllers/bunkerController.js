@@ -493,4 +493,56 @@ exports.exportarPDFListado = async (req, res) => {
     }
 };
 
+exports.obtenerMapeoReposicion = async (req, res) => {
+    try {
+        const { bunker_articulo_id } = req.params;
+        const db = req.db;
+        const result = await db.query(
+            'SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1',
+            [bunker_articulo_id]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error obteniendo mapeos de reposición:', error);
+        res.status(500).json({ success: false, error: 'Error interno obteniendo mapeos de reposición' });
+    }
+};
+
+exports.guardarMapeoReposicion = async (req, res) => {
+    const db = req.db;
+    try {
+        const { bunker_articulo_id } = req.params;
+        const { mapeos } = req.body; // array de { proveedor_id, proveedor_producto_codigo }
+
+        if (!Array.isArray(mapeos)) {
+            return res.status(400).json({ success: false, error: 'Se esperaba un array de mapeos' });
+        }
+
+        await db.query('BEGIN');
+
+        // Purgar los mapeos existentes para este artículo
+        await db.query(
+            'DELETE FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1',
+            [bunker_articulo_id]
+        );
+
+        // Insertar los nuevos elegidos
+        if (mapeos.length > 0) {
+            for (const map of mapeos) {
+                await db.query(
+                    'INSERT INTO public.bunker_articulos_reposicion_mapeo (bunker_articulo_id, proveedor_id, proveedor_producto_codigo) VALUES ($1, $2, $3)',
+                    [bunker_articulo_id, map.proveedor_id, map.proveedor_producto_codigo]
+                );
+            }
+        }
+
+        await db.query('COMMIT');
+        res.json({ success: true, message: 'Vinculaciones de reposición guardadas exitosamente' });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('❌ [BUNKER] Error guardando mapeos de reposición:', error);
+        res.status(500).json({ success: false, error: 'Error interno guardando mapeos de reposición' });
+    }
+};
+
 console.log('✅ [BUNKER-CONTROLLER] Controlador de búnker configurado');
