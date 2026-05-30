@@ -1668,8 +1668,6 @@ window.eliminarListaActiva = async function() {
 // --- Persistencia del Configurador en localStorage (LAMDA Work Policy Compliance) ---
 let pdfColumnsOrder = [
     { id: 'codigo', label: 'Código', checked: true, align: 'left', baseWidth: 65 },
-    { id: 'rubro', label: 'Rubro', checked: false, align: 'left', baseWidth: 75 },
-    { id: 'sub_rubro', label: 'Sub-rubro', checked: false, align: 'left', baseWidth: 75 },
     { id: 'descripcion', label: 'Descripción', checked: true, align: 'left', baseWidth: 190 },
     { id: 'presentacion', label: 'Presentación', checked: true, align: 'left', baseWidth: 100 },
     { id: 'kilo', label: 'Precio Kilo (Neto)', checked: true, align: 'right', baseWidth: 70 },
@@ -1790,6 +1788,204 @@ window.moverColumnaPDF = function(fromIdx, toIdx) {
     window.actualizarPrevisualizacionPDF();
 };
 
+window.pdfRubrosState = [];
+
+window.inicializarArbolCategorias = function() {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    const listaId = list.lista_id;
+    
+    // Filtrar los artículos que tienen esta lista activa
+    const articulosFiltrados = articulosBunkerGlobal.filter(art => {
+        return art.margenes && art.margenes.some(m => m.lista_id === listaId);
+    });
+
+    // Agrupar por Rubro y Sub-rubro
+    const rawMap = {};
+    articulosFiltrados.forEach(art => {
+        const rName = (art.rubro || 'SIN RUBRO').trim();
+        const sName = (art.sub_rubro || 'SIN SUB-RUBRO').trim();
+        
+        if (!rawMap[rName]) {
+            rawMap[rName] = {};
+        }
+        if (!rawMap[rName][sName]) {
+            rawMap[rName][sName] = [];
+        }
+        rawMap[rName][sName].push(art);
+    });
+
+    // Mantener la persistencia del estado previo de checks y secuencias de rubros en la sesión actual de la previsualización
+    const oldState = window.pdfRubrosState || [];
+    const newState = [];
+
+    const oldRubrosOrder = oldState.map(r => r.name);
+    const allNewRubros = Object.keys(rawMap);
+    
+    // Respetar la secuencia geométrica previa de rubros
+    let orderedRubros = [];
+    oldRubrosOrder.forEach(rName => {
+        if (allNewRubros.includes(rName)) {
+            orderedRubros.push(rName);
+        }
+    });
+    allNewRubros.forEach(rName => {
+        if (!orderedRubros.includes(rName)) {
+            orderedRubros.push(rName);
+        }
+    });
+
+    orderedRubros.forEach(rName => {
+        const oldR = oldState.find(r => r.name === rName);
+        const rChecked = oldR ? oldR.checked : true;
+
+        const subRubrosList = [];
+        const allNewSubRubros = Object.keys(rawMap[rName]).sort();
+
+        allNewSubRubros.forEach(sName => {
+            const oldS = oldR ? oldR.subRubros.find(s => s.name === sName) : null;
+            const sChecked = oldS ? oldS.checked : true;
+            
+            subRubrosList.push({
+                name: sName,
+                checked: sChecked,
+                items: rawMap[rName][sName]
+            });
+        });
+
+        newState.push({
+            name: rName,
+            checked: rChecked,
+            subRubros: subRubrosList
+        });
+    });
+
+    window.pdfRubrosState = newState;
+};
+
+window.renderArbolCategorias = function() {
+    const treeContainer = document.getElementById('pdf-category-tree');
+    if (!treeContainer) return;
+    
+    treeContainer.innerHTML = '';
+    
+    window.pdfRubrosState.forEach((rubro, rIdx) => {
+        const rContainer = document.createElement('div');
+        rContainer.style.cssText = 'display: flex; flex-direction: column; gap: 4px; padding: 4px; border-bottom: 1px solid #f1f5f9;';
+
+        const rHeader = document.createElement('div');
+        rHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 8px;';
+
+        // Checkbox + Nombre de Rubro Padre
+        const left = document.createElement('label');
+        left.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: bold; color: #8e4785; font-size: 0.85em; margin: 0; flex: 1;';
+        
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = rubro.checked;
+        chk.style.cssText = 'width: 14px; height: 14px; cursor: pointer;';
+        chk.onchange = (e) => {
+            rubro.checked = e.target.checked;
+            // Sincronizar todos sus subrubros hijos
+            rubro.subRubros.forEach(s => {
+                s.checked = e.target.checked;
+            });
+            window.renderArbolCategorias();
+            window.actualizarPrevisualizacionPDF();
+        };
+
+        const span = document.createElement('span');
+        span.innerText = `■ ${rubro.name.toUpperCase()}`;
+
+        left.appendChild(chk);
+        left.appendChild(span);
+
+        // Controles de Posición (🔼/🔽) para Rubros
+        const right = document.createElement('div');
+        right.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+
+        const btnUp = document.createElement('button');
+        btnUp.type = 'button';
+        btnUp.innerHTML = '🔼';
+        btnUp.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.8em; padding: 1px; outline: none;';
+        btnUp.disabled = rIdx === 0;
+        if (rIdx === 0) btnUp.style.opacity = '0.2';
+        btnUp.onclick = () => {
+            window.moverRubroPDF(rIdx, rIdx - 1);
+        };
+
+        const btnDown = document.createElement('button');
+        btnDown.type = 'button';
+        btnDown.innerHTML = '🔽';
+        btnDown.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.8em; padding: 1px; outline: none;';
+        btnDown.disabled = rIdx === window.pdfRubrosState.length - 1;
+        if (rIdx === window.pdfRubrosState.length - 1) btnDown.style.opacity = '0.2';
+        btnDown.onclick = () => {
+            window.moverRubroPDF(rIdx, rIdx + 1);
+        };
+
+        right.appendChild(btnUp);
+        right.appendChild(btnDown);
+
+        rHeader.appendChild(left);
+        rHeader.appendChild(right);
+        rContainer.appendChild(rHeader);
+
+        // Sub-rubros
+        const subList = document.createElement('div');
+        subList.style.cssText = 'display: flex; flex-direction: column; gap: 4px; margin-left: 15px; margin-top: 2px;';
+
+        rubro.subRubros.forEach((sub, sIdx) => {
+            const sHeader = document.createElement('div');
+            sHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 6px;';
+
+            const sLeft = document.createElement('label');
+            sLeft.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.8em; margin: 0;';
+
+            const sChk = document.createElement('input');
+            sChk.type = 'checkbox';
+            sChk.checked = sub.checked;
+            sChk.style.cssText = 'width: 12px; height: 12px; cursor: pointer;';
+            sChk.onchange = (e) => {
+                sub.checked = e.target.checked;
+                if (e.target.checked) {
+                    rubro.checked = true;
+                } else {
+                    const anyChecked = rubro.subRubros.some(s => s.checked);
+                    if (!anyChecked) {
+                        rubro.checked = false;
+                    }
+                }
+                window.renderArbolCategorias();
+                window.actualizarPrevisualizacionPDF();
+            };
+
+            const sSpan = document.createElement('span');
+            sSpan.innerText = `↳ ${sub.name}`;
+
+            sLeft.appendChild(sChk);
+            sLeft.appendChild(sSpan);
+
+            sHeader.appendChild(sLeft);
+            subList.appendChild(sHeader);
+        });
+
+        rContainer.appendChild(subList);
+        treeContainer.appendChild(rContainer);
+    });
+};
+
+window.moverRubroPDF = function(fromIdx, toIdx) {
+    if (toIdx < 0 || toIdx >= window.pdfRubrosState.length) return;
+    
+    const temp = window.pdfRubrosState[fromIdx];
+    window.pdfRubrosState[fromIdx] = window.pdfRubrosState[toIdx];
+    window.pdfRubrosState[toIdx] = temp;
+    
+    window.renderArbolCategorias();
+    window.actualizarPrevisualizacionPDF();
+};
+
 window.abrirPrevisualizadorPDF = function() {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (!list || !list.lista_id) {
@@ -1811,6 +2007,10 @@ window.abrirPrevisualizadorPDF = function() {
     
     // Renderizar las opciones y orden de las columnas dinámicamente
     window.renderConfiguradorColumnas();
+    
+    // Inicializar y renderizar Capa B: Árbol de Estructura de Mercado
+    window.inicializarArbolCategorias();
+    window.renderArbolCategorias();
     
     // Asegurar Higiene Clean Slate para el maximizado
     const contentEl = document.getElementById('pdf-modal-content');
@@ -1857,7 +2057,7 @@ window.actualizarPrevisualizacionPDF = function() {
     // Guardar estado actual de columnas
     window.guardarConfiguracionColumnas();
     
-    // 1. Obtener Columnas Activas respetando la secuencia del array dinámico pdfColumnsOrder
+    // 1. Obtener Columnas Activas de Capa A
     const cols = pdfColumnsOrder.filter(c => c.checked);
     
     if (cols.length === 0) {
@@ -1875,80 +2075,113 @@ window.actualizarPrevisualizacionPDF = function() {
         c.percentWidth = ((c.baseWidth / totalBase) * 100).toFixed(2) + '%';
     });
     
-    // 3. Renderizar thead con anchos adaptativos
-    const thead = document.getElementById('pdf-prev-table-thead');
-    if (thead) {
-        let theadHtml = '<tr>';
-        cols.forEach(c => {
-            theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
-        });
-        theadHtml += '</tr>';
-        thead.innerHTML = theadHtml;
-    }
-    
-    // 4. Renderizar tbody con datos reales de la lista
-    const tbody = document.getElementById('pdf-prev-table-tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    
-    // Filtrar los artículos que tienen esta lista en `articulosBunkerGlobal`
-    const articulosFiltrados = articulosBunkerGlobal.filter(art => {
-        return art.margenes && art.margenes.some(m => m.lista_id === listaId);
-    });
-    
-    if (articulosFiltrados.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${cols.length}" style="text-align: center; padding: 20px; color: #94a3b8; font-style: italic;">No hay artículos asociados a esta lista para previsualizar.</td></tr>`;
-        return;
-    }
+    // 3. Renderizar el visor central dinamico agrupado en `#pdf-prev-table-container`
+    const prevContainer = document.getElementById('pdf-prev-table-container');
+    if (!prevContainer) return;
+    prevContainer.innerHTML = '';
     
     const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+    // Filtrar rubros activos
+    const activeRubros = window.pdfRubrosState.filter(r => r.checked);
     
-    articulosFiltrados.forEach((art, index) => {
-        // Encontrar configuración del artículo para esta lista
-        const mFocused = art.margenes.find(m => m.lista_id === listaId);
-        if (!mFocused) return;
-        
-        const pFinal = parseFloat(mFocused.precio_final || 0);
-        const ivaVal = parseFloat(mFocused.iva || 21.00);
-        const factorKilos = parseFloat(art.kilos_unidad || 0);
-        
-        const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
-        const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
-        const precioBultoFinal = pFinal;
-        const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
-        
-        let presentacionText = '';
-        if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
-            const pres = art.propiedades_dinamicas.presentacion;
-            const presVal = typeof pres === 'object' ? pres.valor : pres;
-            presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
-        } else {
-            presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
-        }
-        
-        const tr = document.createElement('tr');
-        if (index % 2 === 1) {
-            tr.style.backgroundColor = '#f8fafc';
-        }
-        
-        let rowHtml = '';
-        cols.forEach(c => {
-            let val = '';
-            if (c.id === 'codigo') val = art.articulo_id;
-            else if (c.id === 'rubro') val = art.rubro || 'N/A';
-            else if (c.id === 'sub_rubro') val = art.sub_rubro || 'N/A';
-            else if (c.id === 'descripcion') val = art.descripcion_generada || art.descripcion;
-            else if (c.id === 'presentacion') val = presentacionText;
-            else if (c.id === 'kilo') val = formatter.format(precioKiloNeto);
-            else if (c.id === 'bulto') val = formatter.format(precioBultoNeto);
-            else if (c.id === 'final_kilo') val = formatter.format(precioKiloFinal);
-            else if (c.id === 'final_bulto') val = formatter.format(precioBultoFinal);
+    if (activeRubros.length === 0) {
+        prevContainer.innerHTML = `<div style="text-align: center; padding: 40px; color: #94a3b8; font-style: italic;">No hay rubros activos para previsualizar. Seleccione al menos un rubro en la Capa B.</div>`;
+        return;
+    }
+
+    activeRubros.forEach(rubro => {
+        // Filtrar sub-rubros activos para este rubro
+        const activeSubRubros = rubro.subRubros.filter(s => s.checked);
+        if (activeSubRubros.length === 0) return;
+
+        // Banner del Rubro Principal
+        const rubroTitle = document.createElement('div');
+        rubroTitle.style.cssText = 'font-size: 1.1em; font-weight: bold; color: #8e4785; margin-top: 15px; border-bottom: 2px solid #8e4785; padding-bottom: 4px; text-transform: uppercase; text-align: left;';
+        rubroTitle.innerText = `■ ${rubro.name}`;
+        prevContainer.appendChild(rubroTitle);
+
+        activeSubRubros.forEach(sub => {
+            if (sub.items.length === 0) return;
+
+            // Sub-divisor de Categoría
+            const subTitle = document.createElement('div');
+            subTitle.style.cssText = 'font-size: 0.9em; font-weight: bold; font-style: italic; color: #475569; margin-left: 10px; margin-top: 8px; margin-bottom: 6px; text-align: left;';
+            subTitle.innerText = `↳ ${sub.name}`;
+            prevContainer.appendChild(subTitle);
+
+            // Tabla para esta sección
+            const tableWrapper = document.createElement('div');
+            tableWrapper.style.cssText = 'width: 100%; overflow-x: auto; margin-left: 10px; width: calc(100% - 10px);';
+
+            const table = document.createElement('table');
+            table.className = 'tabla-financiera';
+            table.style.cssText = 'width: 100%; box-shadow: none; border: 1px solid #e2e8f0; font-size: 0.85em; border-collapse: collapse; margin-bottom: 15px;';
+
+            // thead
+            const thead = document.createElement('thead');
+            thead.style.cssText = 'background-color: #8e4785; color: white;';
+            let theadHtml = '<tr>';
+            cols.forEach(c => {
+                theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
+            });
+            theadHtml += '</tr>';
+            thead.innerHTML = theadHtml;
+            table.appendChild(thead);
+
+            // tbody
+            const tbody = document.createElement('tbody');
             
-            rowHtml += `<td style="padding: 8px; text-align: ${c.align}; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 0.9em;">${val}</td>`;
+            sub.items.forEach((art, index) => {
+                // Encontrar configuración del artículo para esta lista
+                const mFocused = art.margenes.find(m => m.lista_id === listaId);
+                if (!mFocused) return;
+                
+                const pFinal = parseFloat(mFocused.precio_final || 0);
+                const ivaVal = parseFloat(mFocused.iva || 21.00);
+                const factorKilos = parseFloat(art.kilos_unidad || 0);
+                
+                const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
+                const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
+                const precioBultoFinal = pFinal;
+                const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
+                
+                let presentacionText = '';
+                if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
+                    const pres = art.propiedades_dinamicas.presentacion;
+                    const presVal = typeof pres === 'object' ? pres.valor : pres;
+                    presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
+                } else {
+                    presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
+                }
+                
+                const tr = document.createElement('tr');
+                if (index % 2 === 1) {
+                    tr.style.backgroundColor = '#f8fafc';
+                }
+                
+                let rowHtml = '';
+                cols.forEach(c => {
+                    let val = '';
+                    if (c.id === 'codigo') val = art.articulo_id;
+                    else if (c.id === 'descripcion') val = art.descripcion_generada || art.descripcion;
+                    else if (c.id === 'presentacion') val = presentacionText;
+                    else if (c.id === 'kilo') val = formatter.format(precioKiloNeto);
+                    else if (c.id === 'bulto') val = formatter.format(precioBultoNeto);
+                    else if (c.id === 'final_kilo') val = formatter.format(precioKiloFinal);
+                    else if (c.id === 'final_bulto') val = formatter.format(precioBultoFinal);
+                    
+                    rowHtml += `<td style="padding: 8px; text-align: ${c.align}; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 0.9em;">${val}</td>`;
+                });
+                
+                tr.innerHTML = rowHtml;
+                tbody.appendChild(tr);
+            });
+
+            table.appendChild(tbody);
+            tableWrapper.appendChild(table);
+            prevContainer.appendChild(tableWrapper);
         });
-        
-        tr.innerHTML = rowHtml;
-        tbody.appendChild(tr);
     });
 };
 
@@ -1956,20 +2189,33 @@ window.confirmarEImprimirPDF = function() {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (!list) return;
     
-    // Obtener columnas activas secuenciales segun el array mutable global pdfColumnsOrder
+    // 1. Obtener columnas activas secuenciales de Capa A
     const cols = pdfColumnsOrder.filter(c => c.checked).map(c => c.id);
-    
     if (cols.length === 0) {
         cols.push('descripcion');
     }
-    
     const colsQuery = cols.join(',');
     
+    // 2. Obtener la secuencia ordenada de Rubros Activos de Capa B
+    const rubrosActivos = window.pdfRubrosState.filter(r => r.checked).map(r => r.name);
+    const rubrosQuery = encodeURIComponent(rubrosActivos.join(','));
+
+    // 3. Obtener la lista de Sub-rubros Ocultos de Capa B
+    const subrubrosOcultos = [];
+    window.pdfRubrosState.forEach(rubro => {
+        rubro.subRubros.forEach(sub => {
+            if (!sub.checked) {
+                subrubrosOcultos.push(sub.name);
+            }
+        });
+    });
+    const subrubrosQuery = encodeURIComponent(subrubrosOcultos.join(','));
+
     // Cerrar previsualizador para mejorar UX
     cerrarPrevisualizadorPDF();
     
-    // Abrir descarga en nueva pestaña
-    window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}`, '_blank');
+    // Abrir descarga en nueva pestaña transmitiendo los parámetros de capas y ordenamiento
+    window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}&rubros_order=${rubrosQuery}&hidden_subrubros=${subrubrosQuery}`, '_blank');
 };
 
 window.toggleMaximizarPrevisualizador = function() {

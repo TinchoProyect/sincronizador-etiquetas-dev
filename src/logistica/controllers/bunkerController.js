@@ -311,17 +311,22 @@ exports.exportarPDFListado = async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-        // 4. Procesar columnas activas y escalado elástico de anchos (495pt en total)
+        // 4. Procesar columnas activas, categorías, reordenamientos y escalado elástico de anchos (495pt en total)
         const activeColsParam = req.query.columns;
+        const rubrosOrderParam = req.query.rubros_order;
+        const hiddenSubrubrosParam = req.query.hidden_subrubros;
+
         let activeColumns = ['codigo', 'descripcion', 'presentacion', 'kilo', 'bulto']; // default
         if (activeColsParam) {
             activeColumns = activeColsParam.split(',').map(c => c.trim().toLowerCase());
         }
 
+        let rubrosOrderList = rubrosOrderParam ? rubrosOrderParam.split(',').map(r => r.trim()) : null;
+        let hiddenSubrubrosList = hiddenSubrubrosParam ? hiddenSubrubrosParam.split(',').map(s => s.trim()) : [];
+
+        // Purgamos definitivamente las columnas de rubros del diccionario de anchos comerciales para la redistribución elástica
         const baseWidthsDict = {
             codigo: 65,
-            rubro: 75,
-            sub_rubro: 75,
             descripcion: 190,
             presentacion: 100,
             kilo: 70,
@@ -331,8 +336,6 @@ exports.exportarPDFListado = async (req, res) => {
         };
         const columnsMeta = {
             codigo: { header: 'Código', align: 'left' },
-            rubro: { header: 'Rubro', align: 'left' },
-            sub_rubro: { header: 'Sub-rubro', align: 'left' },
             descripcion: { header: 'Descripción', align: 'left' },
             presentacion: { header: 'Presentación', align: 'left' },
             kilo: { header: 'Precio Kilo (Neto)', align: 'right' },
@@ -411,75 +414,183 @@ exports.exportarPDFListado = async (req, res) => {
             return y + 24;
         };
 
-        let currentY = dibujarCabeceraTabla(doc.y);
-
         const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
 
+        // Agrupar los artículos en memoria bajo la jerarquía Rubro -> Sub-rubro -> Artículos
+        const grouped = {};
         for (const art of resArticulos.rows) {
-            const pFinal = parseFloat(art.precio_final || 0);
-            const ivaVal = parseFloat(art.iva || 21.00);
-            const factorKilos = parseFloat(art.kilos_unidad || 0);
-            
-            const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
-            const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
-            const precioBultoFinal = pFinal;
-            const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
+            const rubroName = (art.rubro || 'SIN RUBRO').trim();
+            const subRubroName = (art.sub_rubro || 'SIN SUB-RUBRO').trim();
 
-            let presentacionText = '';
-            if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
-                const pres = art.propiedades_dinamicas.presentacion;
-                const presVal = typeof pres === 'object' ? pres.valor : pres;
-                presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
-            } else {
-                presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
+            // Filtrar si el sub-rubro está oculto
+            if (hiddenSubrubrosList.includes(subRubroName)) {
+                continue;
             }
 
-            // Mapear dinámicamente según columnas activas
-            const rowData = [];
-            activeKeys.forEach(key => {
-                if (key === 'codigo') rowData.push(art.articulo_numero);
-                else if (key === 'rubro') rowData.push(art.rubro || 'N/A');
-                else if (key === 'sub_rubro') rowData.push(art.sub_rubro || 'N/A');
-                else if (key === 'descripcion') rowData.push(art.descripcion);
-                else if (key === 'presentacion') rowData.push(presentacionText);
-                else if (key === 'kilo') rowData.push(formatter.format(precioKiloNeto));
-                else if (key === 'bulto') rowData.push(formatter.format(precioBultoNeto));
-                else if (key === 'final_kilo') rowData.push(formatter.format(precioKiloFinal));
-                else if (key === 'final_bulto') rowData.push(formatter.format(precioBultoFinal));
-            });
+            if (!grouped[rubroName]) {
+                grouped[rubroName] = {};
+            }
+            if (!grouped[rubroName][subRubroName]) {
+                grouped[rubroName][subRubroName] = [];
+            }
+            grouped[rubroName][subRubroName].push(art);
+        }
 
-            let maxHeight = 0;
-            rowData.forEach((text, i) => {
-                const textHeight = doc.heightOfString(text || '', { width: colWidths[i] - (padding * 2) });
-                if (textHeight > maxHeight) maxHeight = textHeight;
-            });
-            const rowHeight = maxHeight + (padding * 2);
+        // Filtrar rubros ocultos (los que no están en la lista de rubrosOrderList si está definida)
+        if (rubrosOrderList) {
+            for (const r in grouped) {
+                if (!rubrosOrderList.includes(r)) {
+                    delete grouped[r];
+                }
+            }
+        }
 
-            if (currentY + rowHeight > doc.page.height - 70) {
+        // Obtener la secuencia ordenada de rubros
+        let orderedRubros = [];
+        if (rubrosOrderList) {
+            orderedRubros = rubrosOrderList.filter(r => grouped[r] !== undefined);
+        } else {
+            orderedRubros = Object.keys(grouped).sort();
+        }
+
+        let currentY = doc.y;
+
+        // Función para validar espacio disponible y evitar cabeceras huérfanas
+        const checkEspacioDisponible = (requiredHeight) => {
+            if (currentY + requiredHeight > doc.page.height - 70) {
                 doc.addPage();
-                currentY = dibujarCabeceraTabla(50);
+                currentY = 50;
+                return true;
             }
+            return false;
+        };
 
-            const idx = resArticulos.rows.indexOf(art);
-            if (idx % 2 === 1) {
-                doc.rect(50, currentY, 495, rowHeight).fill('#f8fafc');
+        // Renderizado por Bloques (Ruptura de Rubro y Sub-rubro)
+        for (const rubro of orderedRubros) {
+            const subRubros = Object.keys(grouped[rubro]).sort();
+            let rubroImpreso = false;
+
+            for (const subRubro of subRubros) {
+                const articulos = grouped[rubro][subRubro];
+                if (articulos.length === 0) continue;
+
+                // Estimar espacio requerido para Rubro, Sub-rubro, Cabecera y al menos la primera fila
+                let requiredHeight = 0;
+                if (!rubroImpreso) requiredHeight += 25;
+                requiredHeight += 20; // Sub-rubro
+                requiredHeight += 24; // Cabecera
+                requiredHeight += 32; // Primera fila aproximada
+
+                checkEspacioDisponible(requiredHeight);
+
+                // A. Dibujar banner de Rubro Principal
+                if (!rubroImpreso) {
+                    doc.moveDown(0.5);
+                    doc.fontSize(11)
+                       .font('Helvetica-Bold')
+                       .fillColor('#8e4785')
+                       .text(`■ ${rubro.toUpperCase()}`, 50, doc.y);
+                    doc.moveDown(0.2);
+                    currentY = doc.y;
+                    rubroImpreso = true;
+                }
+
+                // B. Dibujar sub-divisor de Sub-rubro
+                doc.fontSize(9.5)
+                   .font('Helvetica-BoldOblique')
+                   .fillColor('#475569')
+                   .text(`  ↳ ${subRubro}`, 50, doc.y);
+                doc.moveDown(0.3);
+                currentY = doc.y;
+
+                // C. Dibujar Cabecera de la Tabla
+                currentY = dibujarCabeceraTabla(currentY);
+
+                // D. Dibujar Artículos de este grupo
+                articulos.forEach((art, index) => {
+                    const pFinal = parseFloat(art.precio_final || 0);
+                    const ivaVal = parseFloat(art.iva || 21.00);
+                    const factorKilos = parseFloat(art.kilos_unidad || 0);
+                    
+                    const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
+                    const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
+                    const precioBultoFinal = pFinal;
+                    const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
+
+                    let presentacionText = '';
+                    if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
+                        const pres = art.propiedades_dinamicas.presentacion;
+                        const presVal = typeof pres === 'object' ? pres.valor : pres;
+                        presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
+                    } else {
+                        presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
+                    }
+
+                    const rowData = [];
+                    activeKeys.forEach(key => {
+                        if (key === 'codigo') rowData.push(art.articulo_numero);
+                        else if (key === 'descripcion') rowData.push(art.descripcion);
+                        else if (key === 'presentacion') rowData.push(presentacionText);
+                        else if (key === 'kilo') rowData.push(formatter.format(precioKiloNeto));
+                        else if (key === 'bulto') rowData.push(formatter.format(precioBultoNeto));
+                        else if (key === 'final_kilo') rowData.push(formatter.format(precioKiloFinal));
+                        else if (key === 'final_bulto') rowData.push(formatter.format(precioBultoFinal));
+                    });
+
+                    let maxHeight = 0;
+                    rowData.forEach((text, i) => {
+                        const textHeight = doc.heightOfString(text || '', { width: colWidths[i] - (padding * 2) });
+                        if (textHeight > maxHeight) maxHeight = textHeight;
+                    });
+                    const rowHeight = maxHeight + (padding * 2);
+
+                    // Si no cabe, agregamos página y dibujamos cabeceras de continuación
+                    if (currentY + rowHeight > doc.page.height - 70) {
+                        doc.addPage();
+                        currentY = 50;
+                        
+                        doc.fontSize(11)
+                           .font('Helvetica-Bold')
+                           .fillColor('#8e4785')
+                           .text(`■ ${rubro.toUpperCase()} (Continuación)`, 50, currentY);
+                        doc.moveDown(0.2);
+                        currentY = doc.y;
+
+                        doc.fontSize(9.5)
+                           .font('Helvetica-BoldOblique')
+                           .fillColor('#475569')
+                           .text(`  ↳ ${subRubro} (Continuación)`, 50, currentY);
+                        doc.moveDown(0.3);
+                        currentY = doc.y;
+
+                        currentY = dibujarCabeceraTabla(currentY);
+                    }
+
+                    // Alternancia de color de fila
+                    if (index % 2 === 1) {
+                        doc.rect(50, currentY, 495, rowHeight).fill('#f8fafc');
+                    }
+
+                    let currentX = 50;
+                    rowData.forEach((text, i) => {
+                        doc.fontSize(8.5)
+                           .font('Helvetica')
+                           .fillColor('#334155')
+                           .text(text, currentX + padding, currentY + padding, {
+                               width: colWidths[i] - (padding * 2),
+                               align: colAlign[i]
+                           });
+                        currentX += colWidths[i];
+                    });
+
+                    doc.moveTo(50, currentY + rowHeight).lineTo(545, currentY + rowHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+                    currentY += rowHeight;
+                    doc.y = currentY;
+                });
+                
+                doc.moveDown(0.8);
+                currentY = doc.y;
             }
-
-            let currentX = 50;
-            rowData.forEach((text, i) => {
-                doc.fontSize(8.5)
-                   .font('Helvetica')
-                   .fillColor('#334155')
-                   .text(text, currentX + padding, currentY + padding, {
-                       width: colWidths[i] - (padding * 2),
-                       align: colAlign[i]
-                   });
-                currentX += colWidths[i];
-            });
-
-            doc.moveTo(50, currentY + rowHeight).lineTo(545, currentY + rowHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-
-            currentY += rowHeight;
         }
 
         let pages = doc.bufferedPageRange();

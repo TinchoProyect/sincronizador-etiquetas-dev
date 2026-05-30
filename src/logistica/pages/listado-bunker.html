@@ -767,19 +767,31 @@
             
             <!-- Body: Dos Columnas -->
             <div style="display: flex; flex: 1; gap: 20px; overflow: hidden; min-height: 0;">
-                <!-- Panel Izquierdo: Configuración de Columnas -->
-                <div style="width: 320px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; overflow-y: auto;">
-                    <div>
-                        <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 1em;">
-                            ⚙️ Columnas Visibles y Orden
-                        </h4>
+                <!-- Panel Izquierdo: Configuración y Gobernanza de Capas -->
+                <div style="width: 320px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; overflow-y: auto; gap: 15px;">
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <!-- Capa A: Columnas Comerciales -->
+                        <div>
+                            <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 0.95em;">
+                                ⚙️ Capa A: Columnas Comerciales
+                            </h4>
+                            <div id="pdf-columns-order-list" style="display: flex; flex-direction: column; gap: 6px;">
+                                <!-- JS Injected Column Options -->
+                            </div>
+                        </div>
                         
-                        <div id="pdf-columns-order-list" style="display: flex; flex-direction: column; gap: 8px;">
-                            <!-- JS Injected Column Options -->
+                        <!-- Capa B: Árbol de Estructura de Mercado -->
+                        <div>
+                            <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 0.95em;">
+                                🌳 Capa B: Árbol de Mercado
+                            </h4>
+                            <div id="pdf-category-tree" style="display: flex; flex-direction: column; gap: 6px; max-height: 250px; overflow-y: auto; padding: 5px; background: white; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                <!-- JS Injected Category Tree -->
+                            </div>
                         </div>
                     </div>
                     
-                    <button type="button" onclick="confirmarEImprimirPDF()" style="background: #10b981; color: white; border: none; font-weight: bold; width: 100%; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease-in-out; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); font-size: 0.95em;">
+                    <button type="button" onclick="confirmarEImprimirPDF()" style="background: #10b981; color: white; border: none; font-weight: bold; width: 100%; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease-in-out; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); font-size: 0.95em; flex-shrink: 0;">
                         🖨️ Confirmar e Imprimir PDF
                     </button>
                 </div>
@@ -800,16 +812,9 @@
                             </div>
                         </div>
                         
-                        <!-- Grilla de Previsualización Adaptativa -->
-                        <div style="flex: 1; overflow-x: auto;">
-                            <table class="tabla-financiera" style="margin-top: 10px; width: 100%; box-shadow: none; border: 1px solid #e2e8f0; font-size: 0.85em; border-collapse: collapse;">
-                                <thead id="pdf-prev-table-thead" style="background-color: #8e4785; color: white;">
-                                    <!-- JS Injected Headers -->
-                                </thead>
-                                <tbody id="pdf-prev-table-tbody">
-                                    <!-- JS Injected Skeleton Rows -->
-                                </tbody>
-                            </table>
+                        <!-- Grilla de Previsualización Adaptativa Dinámica (Ruptura de Rubros) -->
+                        <div id="pdf-prev-table-container" style="flex: 1; overflow-x: auto; display: flex; flex-direction: column; gap: 15px;">
+                            <!-- Inyectado Dinámicamente por JS por grupos de Rubro/Sub-rubro -->
                         </div>
                     </div>
                 </div>
