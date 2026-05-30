@@ -324,7 +324,7 @@
     </div>
     <!-- Modal Gestor de Precios -->
     <div id="modal-gestor-precios" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 950px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); padding: 20px;">
+        <div class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 1150px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #1e293b; display: flex; align-items: center; gap: 10px;">
                     💰 Gestor de Precios Bunker - <span id="gp-producto" style="color: #8e4785; font-weight: bold;">Producto</span>
@@ -344,86 +344,111 @@
                 </div>
             </div>
 
-            <!-- Panel Activo de Edición -->
-            <div id="gp-active-panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                <!-- Left: Cost Breakdown -->
-                <div>
-                    <!-- 1. Costo Base (Ingredientes) -->
-                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
-                        <h4 style="margin-top: 0; margin-bottom: 12px; color: #334155; font-size: 0.95em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
-                            <span>1. Costo Base (Ingrediente principal)</span>
+            <!-- Panel Activo de Edición (Layout Vertical Full-Width Premium) -->
+            <div id="gp-active-panel" style="display: flex; flex-direction: column; gap: 15px;">
+                <!-- SECCIÓN SUPERIOR: CALCULADORA DE PRECIOS Y ALERTAS (Ancho Completo) -->
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; background: #fdfdfd; border: 2px solid #8e4785; border-radius: 12px; padding: 15px; box-shadow: 0 4px 12px rgba(142, 71, 133, 0.05);">
+                    <!-- Lado Izquierdo: Inputs de Precios, Modo IVA, Factores -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; justify-content: space-between;">
+                        <h4 style="margin: 0; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                            <span style="display: flex; align-items: center; gap: 6px;">🎯 Calculadora de Precios y Ofertas</span>
+                            <button type="button" id="gp-btn-patron" onclick="toggleArticuloPatron()" style="background: transparent; border: 1px solid #cbd5e1; border-radius: 20px; padding: 3px 10px; font-size: 0.78em; color: #64748b; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s ease;">
+                                <span>⭐ Setear como Patrón</span>
+                            </button>
                         </h4>
-                        <div style="display: flex; flex-direction: column; gap: 12px;">
-                            <label style="display: flex; align-items: center; font-size: 0.85em; color: #475569; cursor: pointer; font-weight: 500;">
-                                <input type="checkbox" id="gp-heredar-costo" style="margin-right: 6px;" onchange="toggleHeredarCosto(this.checked)"> 
-                                Heredar costo automático del lote/receta
-                            </label>
-                            
-                            <div style="display: flex; gap: 10px; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px;">
-                                <div style="flex: 1;">
-                                    <span style="font-size: 0.75em; color: #64748b; font-weight: 600;">Costo en Vivo / Receta:</span><br>
-                                    <strong id="gp-costo-vivo-val" style="color: #3b82f6; font-size: 1.1em; font-family: monospace;">$ 0.00</strong>
-                                </div>
-                                <div style="flex: 1.2;">
-                                    <span style="font-size: 0.75em; color: #64748b; font-weight: 600;">Costo Sobrescrito ($):</span><br>
-                                    <input type="number" id="gp-costo-manual" step="0.01" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace;" oninput="actualizarPorCostoManual(this.value)" onblur="recalcularPreciosGestor()">
-                                </div>
-                            </div>
 
-                            <!-- BLOQUE HISTÓRICO (Origen Lomasoft) -->
-                            <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
-                                <div style="font-size: 0.75em; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 2px;">
-                                    📋 HISTÓRICO LEGACY (LOMASOFT)
-                                </div>
-                                <div style="display: flex; gap: 10px; align-items: center;">
-                                    <div style="flex: 1;">
-                                        <span style="font-size: 0.72em; color: #64748b; display: block; margin-bottom: 1px;">Costo Kilo:</span>
-                                        <strong id="gp-costo-lomasoft-val" style="color: #64748b; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
-                                    </div>
-                                    <div style="flex: 1.2;">
-                                        <span style="font-size: 0.72em; color: #64748b; display: block; margin-bottom: 1px;">Bulto Legacy:</span>
-                                        <strong id="gp-costo-lomasoft-bulto" style="color: #64748b; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
-                                    </div>
-                                    <div style="flex: 0.8;">
-                                        <span style="font-size: 0.72em; color: #64748b; display: block; margin-bottom: 1px;">IVA Lomasoft:</span>
-                                        <strong id="gp-iva-lomasoft-val" style="color: #64748b; font-size: 1.05em; font-family: monospace;">0,00%</strong>
-                                    </div>
-                                </div>
+                        <!-- Costo Integrado Total con Factor de Presentación -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0; gap: 8px;">
+                            <div style="flex: 1;">
+                                <span style="font-size: 0.8em; color: #64748b; font-weight: 600;">Costo Kilo Base:</span><br>
+                                <strong id="gp-costo-integrado" style="font-size: 1.25em; color: #1e293b; font-family: monospace;">$ 0,00</strong>
                             </div>
+                            <div style="flex: 1; text-align: center; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1;">
+                                <span style="font-size: 0.8em; color: #64748b; font-weight: 600;">Presentación Bulto:</span><br>
+                                <strong id="gp-factor-presentacion" style="font-size: 1.25em; color: #3b82f6; font-family: monospace;">1,00 kg</strong>
+                            </div>
+                            <div style="flex: 1.1; text-align: right;">
+                                <span style="font-size: 0.8em; color: #64748b; font-weight: 600;">Costo Total Bulto:</span><br>
+                                <strong id="gp-costo-bulto-val" style="font-size: 1.25em; color: #1e3a8a; font-family: monospace;">$ 0,00</strong>
+                            </div>
+                        </div>
 
-                            <!-- BLOQUE FÍSICO REAL (Origen Embudo / Búnker) -->
-                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-                                <div style="font-size: 0.75em; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #bbf7d0; padding-bottom: 4px; margin-bottom: 2px; justify-content: space-between;">
-                                    <span>🚀 ADQUISICIÓN FÍSICA (EMBUDO LOTES)</span>
-                                    <span id="gp-lote-stock-badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; font-size: 0.82em; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: 800; transition: all 0.2s ease;">Stock: 0</span>
-                                </div>
-                                <div style="display: flex; gap: 10px; align-items: center;">
-                                    <div style="flex: 1;">
-                                        <span style="font-size: 0.72em; color: #166534; display: block; margin-bottom: 1px;">Costo Kilo Lote:</span>
-                                        <strong id="gp-costo-lote-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
-                                    </div>
-                                    <div style="flex: 1.2;">
-                                        <span style="font-size: 0.72em; color: #166534; display: block; margin-bottom: 1px;">Costo Bulto Lote:</span>
-                                        <strong id="gp-costo-lote-bulto" style="color: #10b981; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
-                                    </div>
-                                    <div style="flex: 0.8;">
-                                        <span style="font-size: 0.72em; color: #166534; display: block; margin-bottom: 1px;">IVA Lote:</span>
-                                        <strong id="gp-iva-lote-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">0,00%</strong>
-                                    </div>
-                                    <div style="flex: 1.1;">
-                                        <span style="font-size: 0.72em; color: #166534; display: block; margin-bottom: 1px;">Fecha Ingreso:</span>
-                                        <strong id="gp-lote-fecha-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">DD/MM/AAAA</strong>
-                                    </div>
-                                </div>
+                        <!-- Bidirectional inputs -->
+                        <div style="display: flex; gap: 15px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.85em; color: #475569; font-weight: bold; display: flex; flex-direction: column; gap: 2px;">
+                                    <span>Margen de Ganancia (%):</span>
+                                    <span id="gp-margen-advertencia" style="display: none; font-size: 0.76em; color: #8e4785; font-weight: 700; line-height: 1.25em;"></span>
+                                </label>
+                                <input type="number" id="gp-margen" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.15em; font-weight: bold; text-align: right; color: #1e293b; font-family: monospace;" oninput="actualizarPorMargen(this.value)" onblur="recalcularPreciosGestor()">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.85em; color: #475569; font-weight: bold;">Precio Final c/IVA ($):</label>
+                                <input type="number" id="gp-precio-final" step="0.01" style="width: 100%; padding: 8px; border: 2px solid #10b981; border-radius: 4px; font-size: 1.15em; font-weight: bold; text-align: right; color: #065f46; background-color: #f0fdf4; font-family: monospace;" oninput="actualizarPorPrecio(this.value)" onblur="recalcularPreciosGestor()">
+                            </div>
+                        </div>
+
+                        <!-- Tratamiento del IVA Avanzado (Efecto Nicolás) -->
+                        <div style="display: flex; gap: 15px; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px;">
+                            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em; border-right: 1px solid #cbd5e1; padding-right: 15px;">
+                                <span style="color: #64748b; font-weight: 600;">IVA Nativo Lote:</span>
+                                <strong id="gp-iva-lote-val-calc" style="color: #334155; font-family: monospace; font-size: 1.1em;">21,00%</strong>
+                            </div>
+                            <div style="flex: 1.2; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
+                                <span style="color: #475569; font-weight: bold;">Tratamiento IVA:</span>
+                                <select id="gp-modo-iva-select" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.95em; color: #1e293b;" onchange="actualizarTratamientoIva(this.value)">
+                                    <option value="COMPLETO">Completo (100%)</option>
+                                    <option value="MEDIO">Medio IVA (50%)</option>
+                                    <option value="SIN">Sin IVA (0%)</option>
+                                </select>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Lado Derecho: Indicadores de Rentabilidad, IIBB y Acciones Rápidas -->
+                    <div style="display: flex; flex-direction: column; justify-content: space-between; background: #f8fafc; border-left: 2px solid #e2e8f0; padding-left: 15px; gap: 8px;">
+                        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.88em; padding-top: 5px;">
+                            <div style="display: flex; justify-content: space-between; color: #64748b;">
+                                <span>Precio Venta (Sin IVA):</span>
+                                <strong id="gp-precio-sin-iva" style="color: #1e293b; font-family: monospace; font-size: 1.05em;">$ 0,00</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #64748b;">
+                                <span>Impuesto IIBB (4%):</span>
+                                <strong id="gp-iibb" style="color: #b45309; font-family: monospace; font-size: 1.05em;">$ 0,00</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 1.02em; font-weight: bold; padding-top: 6px; border-top: 1px solid #cbd5e1; margin-top: 2px;">
+                                <span style="color: #166534;">Ganancia Neta:</span>
+                                <strong id="gp-ganancia-neta" style="color: #15803d; font-size: 1.2em; font-family: monospace;">$ 0,00</strong>
+                            </div>
+                        </div>
+
+                        <!-- Botón de Exportación PDF & Alerta de Desactualización -->
+                        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                            <button type="button" id="btn-exportar-pdf-comercial" onclick="abrirPrevisualizadorPDF()" style="width: 100%; padding: 8px; background: #8e4785; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.9em; box-shadow: 0 2px 4px rgba(142,71,133,0.15);" title="Configurar e Imprimir Lista de Precios Búnker Completa en PDF">
+                                📄 Exportar PDF Comercial
+                            </button>
+
+                            <!-- Alerta de costo desactualizado -->
+                            <div id="gp-alerta-desactualizado" style="display: none; background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 8px; color: #b45309; font-size: 0.78em; font-weight: 500; flex-direction: column; gap: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <span>⚠️</span>
+                                    <span><strong>Costo desactualizado:</strong> Rentabilidad en <span id="gp-margen-implicito-val" style="font-family: monospace; font-weight: bold;">0.00</span>%.</span>
+                                </div>
+                                <button type="button" onclick="sincronizarCostoAlerta()" style="align-self: flex-end; padding: 2px 6px; background: #d97706; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.85em;">
+                                    🔄 Sincronizar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN MEDIA: INSUMOS SECUNDARIOS Y MANO DE OBRA (Ancho Completo, Grilla de 2 Columnas) -->
+                <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 15px;">
                     <!-- 2. Costo Insumos Secundarios -->
-                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
                             <span>2. Insumos Secundarios (Packaging/Envases)</span>
-                            <span id="gp-insumos-total-badge" style="background: #cbd5e1; color: #334155; font-size: 0.8em; padding: 1px 6px; border-radius: 10px; font-weight: bold;">$ 0.00</span>
+                            <span id="gp-insumos-total-badge" style="background: #cbd5e1; color: #334155; font-size: 0.8em; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-family: monospace;">$ 0.00</span>
                         </h4>
                         <!-- Buscador de insumos -->
                         <div style="position: relative; margin-bottom: 8px;">
@@ -431,8 +456,8 @@
                             <div id="gp-insumo-resultados" style="display: none; position: absolute; width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; max-height: 150px; overflow-y: auto; font-size: 0.85em;"></div>
                         </div>
                         <!-- Tabla Insumos -->
-                        <div style="max-height: 120px; overflow-y: auto;">
-                            <table class="tabla-financiera" style="margin-top: 0; font-size: 0.85em;">
+                        <div style="max-height: 110px; overflow-y: auto; flex: 1;">
+                            <table class="tabla-financiera" style="margin-top: 0; font-size: 0.85em; width: 100%;">
                                 <thead>
                                     <tr>
                                         <th>Insumo</th>
@@ -449,105 +474,95 @@
                     </div>
 
                     <!-- 3. Costo Operativo / Tiempo -->
-                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 5px;">
-                        <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">3. Costo de Mano de Obra / Operativo</h4>
-                        <div style="display: flex; gap: 15px; align-items: center;">
-                            <div style="flex: 1;">
-                                <span style="font-size: 0.75em; color: #64748b;">Costo Tiempo / Operario ($):</span><br>
-                                <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 500;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
-                            </div>
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px;">
+                        <h4 style="margin-top: 0; margin-bottom: 4px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; font-weight: 600;">3. Mano de Obra / Costo de Proceso</h4>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo Tiempo / Operario ($):</span>
+                            <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
                         </div>
+                        <label style="display: flex; align-items: center; font-size: 0.82em; color: #475569; cursor: pointer; font-weight: 500; margin-top: 6px;">
+                            <input type="checkbox" id="gp-heredar-costo" style="margin-right: 6px;" onchange="toggleHeredarCosto(this.checked)"> 
+                            Heredar costo base automático
+                        </label>
                     </div>
                 </div>
 
-                <!-- Right: Pricing reciprocity & alerts -->
-                <div style="display: flex; flex-direction: column; justify-content: space-between;">
-                    <div style="background: #fdfdfd; border: 2px solid #8e4785; border-radius: 12px; padding: 15px; box-shadow: 0 4px 12px rgba(142, 71, 133, 0.05);">
-                        <h4 style="margin-top: 0; margin-bottom: 12px; color: #8e4785; font-weight: bold; border-bottom: 1px dashed #e2e8f0; padding-bottom: 5px; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                            <span style="display: flex; align-items: center; gap: 6px;">🎯 Calculadora de Precios</span>
-                            <button type="button" id="gp-btn-patron" onclick="toggleArticuloPatron()" style="background: transparent; border: 1px solid #cbd5e1; border-radius: 20px; padding: 3px 10px; font-size: 0.78em; color: #64748b; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s ease;">
-                                <span>⭐ Setear como Patrón</span>
-                            </button>
-                        </h4>
-                        
-                        <!-- Costo Integrado Total con Factor de Presentación -->
-                        <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0; gap: 8px;">
-                            <div style="flex: 1;">
-                                <span style="font-size: 0.8em; color: #64748b;">Costo Kilo Base:</span><br>
-                                <strong id="gp-costo-integrado" style="font-size: 1.15em; color: #1e293b;">$ 0.00</strong>
+                <!-- SECCIÓN INFERIOR: COMPARADOR MULTI-FUENTE DE COSTO BASE (100% Ancho, Grilla de 3 Columnas) -->
+                <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                    <h4 style="margin: 0; color: #334155; font-size: 0.95em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🔍 Comparador de Fuentes de Costos Base (Materia Prima Principal)</span>
+                        <span style="font-size: 0.8em; font-weight: 500; color: #64748b;">Kilos Unidad o Presentación regulan la equivalencia</span>
+                    </h4>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                        <!-- TARJETA 1: HISTÓRICO LEGACY (LOMASOFT) -->
+                        <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 0.78em; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 2px;">
+                                📋 HISTÓRICO LEGACY (LOMASOFT)
                             </div>
-                            <div style="flex: 1; text-align: center; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1;">
-                                <span style="font-size: 0.8em; color: #64748b;">Presentación Bulto:</span><br>
-                                <strong id="gp-factor-presentacion" style="font-size: 1.15em; color: #3b82f6;">1.00 kg</strong>
-                            </div>
-                            <div style="flex: 1.1; text-align: right;">
-                                <span style="font-size: 0.8em; color: #64748b;">Costo Total Bulto:</span><br>
-                                <strong id="gp-costo-bulto-val" style="font-size: 1.15em; color: #1e3a8a;">$ 0.00</strong>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #64748b;">Costo Kilo:</span>
+                                    <strong id="gp-costo-lomasoft-val" style="color: #475569; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #64748b;">Bulto Legacy:</span>
+                                    <strong id="gp-costo-lomasoft-bulto" style="color: #475569; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #64748b;">Alícuota IVA:</span>
+                                    <strong id="gp-iva-lomasoft-val" style="color: #475569; font-size: 1.05em; font-family: monospace;">0,00%</strong>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Bidirectional inputs -->
-                        <div style="display: flex; gap: 15px; margin-bottom: 12px;">
-                            <div style="flex: 1;">
-                                <label style="font-size: 0.85em; color: #475569; font-weight: bold; display: flex; flex-direction: column; gap: 2px;">
-                                    <span>Margen de Ganancia (%):</span>
-                                    <span id="gp-margen-advertencia" style="display: none; font-size: 0.76em; color: #8e4785; font-weight: 700; line-height: 1.25em;"></span>
-                                </label>
-                                <input type="number" id="gp-margen" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.1em; font-weight: bold; text-align: right; color: #1e293b;" oninput="actualizarPorMargen(this.value)" onblur="recalcularPreciosGestor()">
+                        <!-- TARJETA 2: ADQUISICIÓN FÍSICA (EMBUDO LOTES) -->
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 0.78em; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #bbf7d0; padding-bottom: 6px; margin-bottom: 2px; justify-content: space-between;">
+                                <span>🚀 COMPRA FÍSICA (LOTES)</span>
+                                <span id="gp-lote-stock-badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; font-size: 0.8em; padding: 1px 6px; border-radius: 4px; font-family: monospace; font-weight: 800;">Stock: 0</span>
                             </div>
-                            <div style="flex: 1;">
-                                <label style="font-size: 0.85em; color: #475569; font-weight: bold;">Precio Final c/IVA ($):</label>
-                                <input type="number" id="gp-precio-final" step="0.01" style="width: 100%; padding: 8px; border: 2px solid #10b981; border-radius: 4px; font-size: 1.1em; font-weight: bold; text-align: right; color: #065f46; background-color: #f0fdf4;" oninput="actualizarPorPrecio(this.value)" onblur="recalcularPreciosGestor()">
-                            </div>
-                        </div>
-
-                        <!-- Tratamiento del IVA Avanzado (Efecto Nicolás) -->
-                        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82em; color: #64748b;">
-                                <span>IVA Nativo Lote:</span>
-                                <strong id="gp-iva-lote-val" style="color: #334155;">21.00%</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
-                                <span style="color: #475569; font-weight: bold;">Tratamiento IVA:</span>
-                                <select id="gp-modo-iva-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.95em; color: #1e293b;" onchange="actualizarTratamientoIva(this.value)">
-                                    <option value="COMPLETO">Completo (100%)</option>
-                                    <option value="MEDIO">Medio IVA (50%)</option>
-                                    <option value="SIN">Sin IVA (0%)</option>
-                                </select>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #166534;">Costo Kilo Lote:</span>
+                                    <strong id="gp-costo-lote-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #166534;">Costo Bulto Lote:</span>
+                                    <strong id="gp-costo-lote-bulto" style="color: #10b981; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #166534;">IVA Lote:</span>
+                                    <strong id="gp-iva-lote-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">0,00%</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #166534;">Fecha Ingreso:</span>
+                                    <strong id="gp-lote-fecha-val" style="color: #10b981; font-size: 1.05em; font-family: monospace;">DD/MM/AAAA</strong>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Rentabilidad & IIBB metrics -->
-                        <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px dashed #e2e8f0; font-size: 0.85em;">
-                            <div style="display: flex; justify-content: space-between; color: #64748b;">
-                                <span>Precio Venta (Sin IVA):</span>
-                                <strong id="gp-precio-sin-iva" style="color: #1e293b;">$ 0.00</strong>
+                        <!-- TARJETA 3: COSTO COMPUESTO (RECETA / INGREDIENTES) -->
+                        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 0.78em; font-weight: 700; color: #0369a1; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #bae6fd; padding-bottom: 6px; margin-bottom: 2px; justify-content: space-between;">
+                                <span>🥣 ESTRUCTURA RECETA / INGREDIENTE</span>
+                                <span id="gp-receta-origen-badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; font-size: 0.8em; padding: 1px 6px; border-radius: 4px; font-family: monospace; font-weight: 800;">Sin registros</span>
                             </div>
-                            <div style="display: flex; justify-content: space-between; color: #64748b;">
-                                <span>Impuesto IIBB (4%):</span>
-                                <strong id="gp-iibb" style="color: #b45309;">$ 0.00</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 1em; font-weight: bold; padding-top: 5px; border-top: 1px solid #cbd5e1;">
-                                <span style="color: #166534;">Ganancia Neta Estimada:</span>
-                                <strong id="gp-ganancia-neta" style="color: #15803d; font-size: 1.15em;">$ 0.00</strong>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #0369a1;">Kilo Equivalente:</span>
+                                    <strong id="gp-costo-receta-kilo" style="color: #0284c7; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #0369a1;">Bulto Equivalente:</span>
+                                    <strong id="gp-costo-receta-bulto" style="color: #0284c7; font-size: 1.05em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.78em; color: #0369a1;">Tipo Estructura:</span>
+                                    <strong id="gp-receta-tipo-val" style="color: #0284c7; font-size: 1.05em; font-family: monospace;">N/A</strong>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- BOTÓN DE EXPORTACIÓN PDF COMERCIAL -->
-                    <button type="button" id="btn-exportar-pdf-comercial" onclick="abrirPrevisualizadorPDF()" title="Configurar e Imprimir Lista de Precios Búnker Completa en PDF">
-                        📄 Exportar PDF Comercial
-                    </button>
-
-                    <!-- Alerta de costo desactualizado -->
-                    <div id="gp-alerta-desactualizado" style="display: none; background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 10px; margin-top: 10px; color: #b45309; font-size: 0.82em; font-weight: 500; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span>⚠️</span>
-                            <span><strong>Costo desactualizado:</strong> Los costos del lote base o receta cambiaron. La rentabilidad cayó a <span id="gp-margen-implicito-val">0.00</span>%.</span>
-                        </div>
-                        <button type="button" onclick="sincronizarCostoAlerta()" style="align-self: flex-end; padding: 4px 8px; background: #d97706; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            🔄 Sincronizar Costo y Recalcular
-                        </button>
                     </div>
                 </div>
             </div>

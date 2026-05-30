@@ -460,7 +460,6 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 }
             }
             gp_liveIngredienteCost = rawIngredienteCost;
-            
             document.getElementById('gp-costo-vivo-val').innerText = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(gp_liveIngredienteCost);
 
             // Despliegue Informativo y Normalizado de Costo Lomasoft (Fase 1: Multi-Fuente)
@@ -478,7 +477,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 lomaBultoEl.innerText = costoLomasoftBulto > 0 ? currencyFormatter.format(costoLomasoftBulto) : 'N/A';
                 
                 const ivaLomasoftVal = parseFloat(data.iva_lomasoft);
-                lomaIvaEl.innerText = !isNaN(ivaLomasoftVal) ? `${ivaLomasoftVal.toFixed(2)}%` : 'N/A';
+                lomaIvaEl.innerText = !isNaN(ivaLomasoftVal) ? `${ivaLomasoftVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : 'N/A';
             }
 
             // Despliegue Informativo de Lote Reciente Embudo (Fase 2: Multi-Fuente)
@@ -505,7 +504,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
 
                     loteValEl.innerText = costoLoteKilo > 0 ? currencyFormatter.format(costoLoteKilo) : 'N/A';
                     loteBultoEl.innerText = costoLoteBulto > 0 ? currencyFormatter.format(costoLoteBulto) : 'N/A';
-                    loteIvaEl.innerText = !isNaN(ivaLoteVal) ? `${ivaLoteVal.toFixed(2)}%` : 'N/A';
+                    loteIvaEl.innerText = !isNaN(ivaLoteVal) ? `${ivaLoteVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : 'N/A';
                     loteFechaEl.innerText = fechaFmt;
                     
                     loteValEl.style.color = '#10b981';
@@ -542,6 +541,63 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     stockBadgeEl.style.background = '#f1f5f9';
                     stockBadgeEl.style.color = '#64748b';
                     stockBadgeEl.style.borderColor = '#cbd5e1';
+                }
+            }
+
+            // Sincronización impositiva de IVA en la Calculadora de Precios superior
+            const loteIvaCalcEl = document.getElementById('gp-iva-lote-val-calc');
+            if (loteIvaCalcEl) {
+                if (data.lote) {
+                    const ivaVal = parseFloat(data.lote.impuesto_iva);
+                    loteIvaCalcEl.innerText = !isNaN(ivaVal) ? `${ivaVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : 'N/A';
+                } else {
+                    const ivaVal = parseFloat(data.porcentaje_iva) || 21.00;
+                    loteIvaCalcEl.innerText = `${ivaVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+                }
+            }
+
+            // TARJETA 3: COSTO COMPUESTO POR RECETA / INGREDIENTES (Fase 3)
+            // Decisión de diseño: Renderizar el costo por receta de forma elástica en azul, o 'Sin registros' si no posee receta.
+            const recKiloEl = document.getElementById('gp-costo-receta-kilo');
+            const recBultoEl = document.getElementById('gp-costo-receta-bulto');
+            const recTipoEl = document.getElementById('gp-receta-tipo-val');
+            const recBadgeEl = document.getElementById('gp-receta-origen-badge');
+
+            if (recKiloEl && recBultoEl && recTipoEl && recBadgeEl) {
+                const hasRecipe = !!data.receta_id;
+                const hasParentIng = !!data.costo_referencia_lote;
+
+                if (hasRecipe || hasParentIng) {
+                    const recKiloVal = gp_liveIngredienteCost;
+                    const recBultoVal = gp_liveIngredienteCost * gp_factorPresentacion;
+                    const estructuraTipo = hasRecipe ? 'Receta' : 'Insumo Padre';
+                    const origenTexto = hasRecipe ? `ID: ${data.receta_id}` : `PADRE: ${data.nombre_ingrediente_ref || 'Granel'}`;
+
+                    recKiloEl.innerText = recKiloVal > 0 ? currencyFormatter.format(recKiloVal) : 'N/A';
+                    recBultoEl.innerText = recBultoVal > 0 ? currencyFormatter.format(recBultoVal) : 'N/A';
+                    recTipoEl.innerText = estructuraTipo;
+                    recBadgeEl.innerText = origenTexto;
+
+                    recKiloEl.style.color = '#0284c7';
+                    recBultoEl.style.color = '#0284c7';
+                    recTipoEl.style.color = '#0284c7';
+                    
+                    recBadgeEl.style.background = '#e0f2fe';
+                    recBadgeEl.style.color = '#0369a1';
+                    recBadgeEl.style.borderColor = '#bae6fd';
+                } else {
+                    recKiloEl.innerText = 'Sin registros';
+                    recBultoEl.innerText = 'Sin registros';
+                    recTipoEl.innerText = 'N/A';
+                    recBadgeEl.innerText = 'Sin registros';
+
+                    recKiloEl.style.color = '#64748b';
+                    recBultoEl.style.color = '#64748b';
+                    recTipoEl.style.color = '#64748b';
+
+                    recBadgeEl.style.background = '#f1f5f9';
+                    recBadgeEl.style.color = '#64748b';
+                    recBadgeEl.style.borderColor = '#cbd5e1';
                 }
             }
 
