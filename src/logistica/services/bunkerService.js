@@ -926,6 +926,8 @@ class BunkerService {
 
         return {
             articulo_id,
+            codigo_barras: articulo.codigo_barras || null,
+            pack_hijo_codigo: articulo.pack_hijo_codigo || null,
             costo_base_manual: articulo.costo_base,
             porcentaje_iva: articulo.porcentaje_iva,
             kilos_unidad: parseFloat(articulo.kilos_unidad || 0),

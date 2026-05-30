@@ -81,17 +81,24 @@ function restaurarEstadoVisualFiltros() {
     });
 }
 
-// ✅ NUEVA FUNCIÓN PARA RECARGAR DATOS SIN PERDER FILTROS
+// GESTIÓN DE FILTROS EN RECARGA
 async function recargarDatosMantenendoFiltros() {
     try {
         const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
         if (!response.ok) throw new Error('Error al obtener los datos');
         const datos = await response.json();
-        ingredientesOriginales = datos;
-        if (typeof window.actualizarListaIngredientes === 'function') window.actualizarListaIngredientes(datos);
         const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
         ingredientesOriginales = ingredientesConEstado;
+        if (typeof window.actualizarListaIngredientes === 'function') window.actualizarListaIngredientes(ingredientesConEstado);
         restaurarEstadoFiltros();
+        
+        // RE-RENDERIZADO DE LA GRILLA EN DEPÓSITO
+        if (vistaActual.startsWith('usuario-')) {
+            const usuarioId = vistaActual.split('-')[1];
+            await cargarIngredientes(usuarioId);
+        } else {
+            await actualizarTablaFiltrada();
+        }
     } catch (error) {
         console.error('Error al recargar datos:', error);
     }
@@ -1119,14 +1126,52 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                     ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}" style="margin-bottom: 4px; font-size: 0.75rem; line-height: 1.1;">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="display: none;">-</p>`}
 
                     <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0;">
-                        <!-- STOCK FÍSICO: Header y Valor Horizontal -->
+                        <!-- KILOS LIBRES: Header y Valor Horizontal -->
                         <div class="stat-item ${ingrediente.stock_actual < 0 ? 'stock-cero' : ''}" style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; margin-bottom: 0px; padding: 2px 4px;">
-                            <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">STOCK FÍSICO</span>
-                            <span class="stat-value" style="font-size: 1.6rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_actual) : '#3b82f6'}; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
+                            <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">KILOS LIBRES (SUELTO)</span>
+                            <span class="stat-value" style="font-size: 1.4rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_actual) : '#3b82f6'}; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
                                 ${window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : ingrediente.stock_actual} 
-                                <small style="font-size: 0.85rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
+                                <small style="font-size: 0.8rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
                             </span>
                         </div>
+                        
+                        <!-- CAJAS CERRADAS (SI APLICA) -->
+                        ${parseFloat(ingrediente.stock_bultos || 0) > 0 ? `
+                        <div style="display: flex; flex-direction: column; padding: 4px; border-top: 1px dashed #cbd5e1; background: #f8fafc; border-radius: 4px; margin-top: 2px; margin-bottom: 2px;">
+                            <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; cursor: pointer;" onclick="event.stopPropagation(); const el = this.nextElementSibling; el.style.display = el.style.display === 'none' ? 'block' : 'none';">
+                                <span style="font-size: 0.70rem; color: #0284c7; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                                    📦 CAJAS CERRADAS <small style="color: #64748b; font-size: 9px; font-weight: normal;">(ver lotes ▼)</small>
+                                </span>
+                                <span style="font-size: 1.25rem; font-weight: 900; color: #0284c7; line-height: 1;">
+                                    ${parseFloat(ingrediente.stock_bultos)} <small style="font-size: 0.75rem; font-weight: 600; color: #64748b;">cj</small>
+                                </span>
+                            </div>
+                            <div class="lotes-cajas-container" style="display: none; margin-top: 4px; border-top: 1px solid #e2e8f0; padding-top: 4px;">
+                                ${(ingrediente.lotes_cajas_cerradas || []).map(l => `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dotted #e2e8f0; font-size: 0.75rem; gap: 4px;">
+                                        <span style="font-weight: 600; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;" title="Lote: ${l.lote_id_supabase}">
+                                            ${l.lote_id_supabase}
+                                        </span>
+                                        <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                                            <span style="color: #475569; font-weight: 600; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 0.7rem; white-space: nowrap;" title="Costo por kilo real">
+                                                $${parseFloat(l.costo_kilo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg
+                                            </span>
+                                            <span style="color: #0369a1; font-weight: bold; background: #e0f2fe; padding: 1px 4px; border-radius: 3px; font-size: 0.7rem;" title="${l.kilos_por_caja} kg por caja">
+                                                ${l.cajas_disponibles} cj
+                                            </span>
+                                            <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteIdReal}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}')" 
+                                                    style="background: #10b981; color: white; border: none; padding: 2px 5px; border-radius: 3px; font-size: 0.7rem; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; transition: background 0.2s;"
+                                                    onmouseover="this.style.background='#059669'"
+                                                    onmouseout="this.style.background='#10b981'">
+                                                📦 Abrir
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+
                         <!-- STOCK POTENCIAL: Texto descriptivo y numérico forzados en una única línea block -->
                         <div style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; padding: 2px 4px; border-top: 1px dashed #cbd5e1;">
                             <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 600; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">STOCK POTENCIAL</span>
@@ -1145,6 +1190,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                                         ${(ingrediente.esMix || ingrediente.tipo_origen === 'Mix') ? `<button class="btn-tarjeta primary" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})">📋 Fórmula</button>` : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`}
                     <button class="btn-tarjeta-sector" onclick="if(window.abrirModalSector) abrirModalSector(${ingredienteIdReal}, ${ingrediente.sector_id || 'null'})" title="Cambiar Sector">📍</button>
                     <button class="btn-tarjeta action" onclick="if(window.abrirModalImpresionGeneral) abrirModalImpresionGeneral(${ingredienteIdReal}, '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')">🖨️ Etiquetas</button>
+                    <button class="btn-tarjeta action" style="background: #0284c7; color: white;" onclick="window.abrirModalDesglose(${ingredienteIdReal})" title="Auditar Stock y Lotes">🔎 Desglose</button>
                     <button class="btn-tarjeta adjust" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
                 </div>`;
                 groupContent.appendChild(card);
@@ -1575,36 +1621,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Manejar envío del formulario
-    document.getElementById('form-ingrediente').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        // Obtener valor del sector
-        const sectorValue = document.getElementById('sector').value;
-
-        const catIdValue = document.getElementById('categoria-id').value;
-        if (!catIdValue) {
-            alert('Por favor, seleccione o guarde la nueva categoría en el formulario antes de continuar.');
-            return;
-        }
-
-        const datos = {
-            codigo: document.getElementById('codigo').value,
-            nombre: document.getElementById('nombre').value,
-            unidad_medida: document.getElementById('unidad-medida').value,
-            categoria_id: document.getElementById('categoria-id').value ? parseInt(document.getElementById('categoria-id').value) : null,
-            stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
-            descripcion: document.getElementById('descripcion').value,
-            padre_id: ingredienteEditando ? ingredienteEditando.padre_id : null,
-            sector_id: sectorValue || null // Incluir sector_id, null si no hay selección
-        };
-
-        if (ingredienteEditando) {
-            await actualizarIngrediente(ingredienteEditando.id, datos);
-        } else {
-            await crearIngrediente(datos);
-        }
-    });
+    // Manejar envío del formulario - REMOVIDO
+    // (Esta lógica ahora la gestiona de forma centralizada y segura el componente modalIngrediente.js)
 });
 
 // Función para eliminar la composición de un mix
@@ -1649,6 +1667,56 @@ window.abrirModalCategorias = abrirModalCategorias;
 window.abrirSubFormularioCategoria = abrirSubFormularioCategoria;
 window.editarCategoriaDesdeModal = editarCategoriaDesdeModal;
 window.borrarCategoria = borrarCategoria;
+
+// GESTIÓN ACTIVA DE APERTURA DE CAJAS
+window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto, esDesdeDesglose = false) {
+    const confirm = await Swal.fire({
+        title: '¿Abrir caja de ingrediente?',
+        text: 'Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, abrir caja',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    Swal.fire({ 
+        title: 'Procesando Apertura...', 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+    });
+
+    try {
+        const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/abrir_caja', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId })
+        });
+        const result = await res.json();
+        
+        if (res.ok && result.success) {
+            await Swal.fire('Caja Abierta', 'Se ha transferido una caja a stock de kilos libres de fábrica.', 'success');
+            
+            // Recargar la grilla manteniendo los filtros activos
+            guardarEstadoFiltros();
+            await recargarDatosMantenendoFiltros();
+            restaurarEstadoFiltros();
+
+            if (esDesdeDesglose) {
+                // Sincronizar el modal de desglose en vivo con el estado recargado
+                window.abrirModalDesglose(destinoId);
+            }
+        } else {
+            throw new Error(result.error || 'Error al procesar apertura');
+        }
+    } catch(e) {
+        console.error('[VIGÍA FRONTEND] -> ERROR APERTURA:', e);
+        Swal.fire('Error', e.message || 'Error de conexión', 'error');
+    }
+};
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {
@@ -2253,3 +2321,201 @@ window.imprimirCartelSector = (letra, nombre) => {
     ventanaImpresion.document.write(html);
     ventanaImpresion.document.close();
 };
+
+// =========================================================================
+// VISOR DE DESGLOSE (DRILL-DOWN) E INTEGRIDAD DE STOCK POR LOTE
+// =========================================================================
+
+function renderDesgloseOfertasReposicion(ofertas, factor) {
+    const container = document.getElementById('desglose-ofertas-reposicion-container');
+    if (!container) return;
+
+    if (!ofertas || ofertas.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 15px;">
+                Sin ofertas de reposición vigentes
+            </div>
+        `;
+        return;
+    }
+
+    const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+    let html = '';
+    
+    ofertas.forEach(of => {
+        const costoKilo = of.precio_unitario || 0;
+        const costoBulto = factor > 0 ? (costoKilo * factor) : costoKilo;
+        
+        const dias = of.dias_antiguedad;
+        const badgeText = dias === 0 ? 'Hoy' : `Hace ${dias} día${dias > 1 ? 's' : ''}`;
+        
+        html += `
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
+                    <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                        ${badgeText}
+                    </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 1.15em; border-top: 1px dashed rgba(107, 33, 168, 0.15); padding-top: 4px;">
+                    <span style="color: #64748b;">${costoKilo > 0 ? currencyFormatter.format(costoKilo) + '/kg' : 'N/A'}</span>
+                    <strong style="color: #6b21a8;">${costoBulto > 0 ? currencyFormatter.format(costoBulto) + '/cj' : 'N/A'}</strong>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+window.abrirModalDesglose = async function(ingredienteId) {
+    const ingrediente = ingredientesOriginales.find(ing => (ing.ingrediente_id || ing.id) === ingredienteId);
+    if (!ingrediente) {
+        console.error("❌ [Drill-Down] Ingrediente no encontrado en la memoria local:", ingredienteId);
+        return;
+    }
+
+    // Mostrar el modal
+    const modal = document.getElementById('modalDesgloseStock');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+
+    // Cargar textos descriptivos de cabecera
+    const nombreIngrediente = ingrediente.nombre_ingrediente || ingrediente.nombre || 'Ingrediente';
+    document.getElementById('desglose-titulo').innerHTML = `🔎 Desglose: ${nombreIngrediente}`;
+    document.getElementById('desglose-subtitulo').textContent = `Sector: ${ingrediente.sector_nombre || 'Sin asignar'} | Unidad de Medida: ${ingrediente.unidad_medida}`;
+
+    // Cargar balanzas principales
+    const kilosLibres = window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : parseFloat(ingrediente.stock_actual).toFixed(3);
+    document.getElementById('desglose-kilos-libres').textContent = `${kilosLibres} ${ingrediente.unidad_medida}`;
+    document.getElementById('desglose-cajas-cerradas').textContent = `${parseFloat(ingrediente.stock_bultos || 0)} cj`;
+
+    // FASE 4: Cargar ofertas de reposición en vivo
+    const reposicionContainer = document.getElementById('desglose-ofertas-reposicion-container');
+    if (reposicionContainer) {
+        reposicionContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 10px;">Cargando ofertas...</div>';
+    }
+
+    const lotes = ingrediente.lotes_cajas_cerradas || [];
+    let skuParaReposicion = null;
+    let kilosPorCajaFactor = 1.00;
+    
+    if (lotes.length > 0) {
+        kilosPorCajaFactor = parseFloat(lotes[0].kilos_por_caja) || 1.00;
+        try {
+            const shortId = lotes[0].lote_id_supabase.substring(0, 8);
+            const loteRes = await fetch(`/api/supabase/lotes/${shortId}`);
+            if (loteRes.ok) {
+                const loteData = await loteRes.json();
+                if (loteData && loteData.pedidos_b2b_items && loteData.pedidos_b2b_items.producto_codigo) {
+                    skuParaReposicion = loteData.pedidos_b2b_items.producto_codigo;
+                }
+            }
+        } catch (err) {
+            console.error("Error recuperando SKU del lote para desglose:", err);
+        }
+    }
+    
+    if (!skuParaReposicion) {
+        skuParaReposicion = ingrediente.codigo || ingrediente.id;
+    }
+    
+    if (skuParaReposicion) {
+        try {
+            const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
+            if (repoRes.ok) {
+                const ofertas = await repoRes.json();
+                renderDesgloseOfertasReposicion(ofertas, kilosPorCajaFactor);
+            } else {
+                renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+            }
+        } catch (err) {
+            console.error("Error recuperando ofertas de reposición en desglose:", err);
+            renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+        }
+    } else {
+        renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+    }
+
+    // Renderizar filas de la tabla de lotes
+    const tbody = document.getElementById('desglose-tabla-body');
+    tbody.innerHTML = '';
+
+    const lotes = ingrediente.lotes_cajas_cerradas || [];
+    if (lotes.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 20px; color: #64748b; font-style: italic;">
+                    No hay lotes con cajas cerradas disponibles para este ingrediente.
+                </td>
+            </tr>
+        `;
+    } else {
+        lotes.forEach(l => {
+            const row = document.createElement('tr');
+            row.style.borderBottom = '1px solid #e2e8f0';
+            
+            // ID único para la celda del proveedor para actualización asincrónica en segundo plano
+            const cellProveedorId = `desglose-prov-${l.lote_id_supabase.substring(0, 8)}`;
+            
+            const kilosEquiv = parseFloat(l.cajas_disponibles) * parseFloat(l.kilos_por_caja);
+            const kilosEquivText = window.formatearStock ? window.formatearStock(kilosEquiv) : kilosEquiv.toFixed(3);
+
+            row.innerHTML = `
+                <td style="padding: 10px; font-weight: bold; color: #1e293b;">${l.lote_id_supabase}</td>
+                <td style="padding: 10px; color: #64748b;" id="${cellProveedorId}">Cargando proveedor...</td>
+                <td style="padding: 10px; text-align: center; color: #0369a1; font-weight: bold;">${l.cajas_disponibles} cj</td>
+                <td style="padding: 10px; text-align: right; font-weight: 600;">${kilosEquivText} ${ingrediente.unidad_medida}</td>
+                <td style="padding: 10px; text-align: right; font-weight: bold; color: #0284c7;">$ ${parseFloat(l.costo_kilo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</td>
+                <td style="padding: 10px; text-align: center;">
+                    <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteId}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}', true)" 
+                            style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: background 0.2s;"
+                            onmouseover="this.style.background='#059669'"
+                            onmouseout="this.style.background='#10b981'">
+                        📦 Abrir
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+
+            // Consultar proveedor asincrónicamente
+            fetchProveedorLote(l.lote_id_supabase, cellProveedorId);
+        });
+    }
+
+    // Configurar el botón FIFO
+    const btnFifo = document.getElementById('btn-desglose-fifo');
+    if (btnFifo) {
+        if (lotes.length > 0) {
+            btnFifo.style.display = 'inline-flex';
+            btnFifo.onclick = () => {
+                const oldest = lotes[0];
+                window.abrirCajaDestinoClick(oldest.vinculo_id, ingredienteId, oldest.lote_id_supabase, oldest.lote_id_supabase.substring(0, 6), true);
+            };
+        } else {
+            btnFifo.style.display = 'none';
+        }
+    }
+};
+
+async function fetchProveedorLote(loteId, cellId) {
+    const cell = document.getElementById(cellId);
+    if (!cell) return;
+    
+    try {
+        const idCorto = loteId.substring(0, 8);
+        const data = await window.SupabaseService.fetchTrazabilidadLote(idCorto);
+        if (data && data.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedores?.nombre) {
+            cell.textContent = data.recepciones_fisicas_cabecera.pedidos_b2b_cabecera.proveedores.nombre;
+        } else {
+            cell.textContent = 'Desconocido/Interno';
+            cell.style.color = '#94a3b8';
+        }
+    } catch (e) {
+        console.error("❌ [Drill-Down] Error al obtener proveedor para el lote", loteId, e);
+        cell.textContent = 'Error al cargar';
+        cell.style.color = '#ef4444';
+    }
+}
+

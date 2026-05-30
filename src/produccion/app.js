@@ -59,24 +59,38 @@ app.get('/api/supabase/lotes', async (req, res) => {
         const proveedoresIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedor_id).filter(Boolean))];
         const pedidosIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedido_id).filter(Boolean))];
         
-        // 1. Obtener Tabla Maestra para cant_bult y cant_valor
+        // 1. Obtener Tabla Maestra para cant_bult y cant_valor (Paginación en Bucle para evitar límite de 1000 de Supabase)
         let masterMap = {};
         if (proveedoresIds.length > 0) {
-            const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})`;
-            const masterRes = await fetch(masterUrl, { headers });
-            if (masterRes.ok) {
-                const masterData = await masterRes.json();
-                masterData.forEach(row => {
-                    if (row.datos_maestros && row.datos_maestros.codigo) {
-                        const cod = String(row.datos_maestros.codigo).trim().toLowerCase();
-                        masterMap[cod] = {
-                            cantBult: row.datos_maestros.cant_bult,
-                            cantValor: row.datos_maestros.cant_valor,
-                            iva: row.datos_maestros.iva || row.datos_maestros.IVA || null
-                        };
+            let masterData = [];
+            let offset = 0;
+            let hasMore = true;
+            while (hasMore) {
+                const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})&limit=1000&offset=${offset}`;
+                const masterRes = await fetch(masterUrl, { headers });
+                if (masterRes.ok) {
+                    const rows = await masterRes.json();
+                    masterData = masterData.concat(rows);
+                    if (rows.length < 1000) {
+                        hasMore = false;
+                    } else {
+                        offset += 1000;
                     }
-                });
+                } else {
+                    hasMore = false;
+                }
             }
+
+            masterData.forEach(row => {
+                if (row.datos_maestros && row.datos_maestros.codigo) {
+                    const cod = String(row.datos_maestros.codigo).trim().toLowerCase();
+                    masterMap[cod] = {
+                        cantBult: row.datos_maestros.cant_bult,
+                        cantValor: row.datos_maestros.cant_valor,
+                        iva: row.datos_maestros.iva || row.datos_maestros.IVA || null
+                    };
+                }
+            });
         }
         
         // 2. Obtener Facturas para IVA Real (Heurística de Alícuotas)
@@ -185,9 +199,127 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
         const response = await fetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
         if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
-        res.json(data.length > 0 ? data[0] : null);
+        if (data.length > 0) {
+            const lote = data[0];
+            const item = lote.pedidos_b2b_items || {};
+            const provId = lote.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedor_id;
+            const cod = String(item.producto_codigo || '').trim().toLowerCase();
+            
+            let masterInfo = { cantBult: null, cantValor: null, iva: null };
+            if (provId && cod) {
+                const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=eq.${provId}`;
+                const masterRes = await fetch(masterUrl, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
+                if (masterRes.ok) {
+                    const rows = await masterRes.json();
+                    const matchingRow = rows.find(r => r.datos_maestros && String(r.datos_maestros.codigo).trim().toLowerCase() === cod);
+                    if (matchingRow && matchingRow.datos_maestros) {
+                        masterInfo = {
+                            cantBult: matchingRow.datos_maestros.cant_bult,
+                            cantValor: matchingRow.datos_maestros.cant_valor,
+                            iva: matchingRow.datos_maestros.iva || matchingRow.datos_maestros.IVA || null
+                        };
+                    }
+                }
+            }
+            
+            let ivaReal = masterInfo.iva || 21;
+            
+            lote.pedidos_b2b_items = {
+                ...item,
+                cant_bult: item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult,
+                cant_valor: item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor,
+                iva_porcentaje: ivaReal
+            };
+            res.json(lote);
+        } else {
+            res.json(null);
+        }
     } catch (e) {
         console.error("Error proxy Supabase ID:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ✅ PROXY A SUPABASE PARA OFERTAS DE REPOSICIÓN VIVAS (FASE 4)
+app.get('/api/supabase/reposicion/:sku', async (req, res) => {
+    try {
+        const sku = String(req.params.sku || '').trim().toLowerCase();
+        if (!sku) {
+            return res.json([]);
+        }
+
+        const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+        const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+
+        // 1. Obtener registros activos de la tabla maestra filtrando las bajas y filtrando por SKU
+        // Hacemos el bypass de RLS con la Service Key y filtramos por codigo, sku o código en mayúsculas/minúsculas
+        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&or=(datos_maestros->>codigo.eq.${sku},datos_maestros->>sku.eq.${sku},datos_maestros->>c\u00f3digo.eq.${sku})`;
+        
+        const response = await fetch(url, { headers });
+        if (!response.ok) throw new Error(await response.text());
+        const cotizaciones = await response.json();
+
+        if (cotizaciones.length === 0) {
+            return res.json([]);
+        }
+
+        // 2. Obtener la curaduría humana de unidades para normalizar posibles ambigüedades
+        const proveedoresIds = [...new Set(cotizaciones.map(c => c.proveedor_id).filter(Boolean))];
+        let excepciones = [];
+        if (proveedoresIds.length > 0) {
+            const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
+            const excRes = await fetch(excUrl, { headers });
+            if (excRes.ok) {
+                excepciones = await excRes.json();
+            }
+        }
+
+        // 3. Crear mapa O(N) para indexación
+        const curaduriaMap = new Map();
+        excepciones.forEach(exc => {
+            const keyMap = `${exc.proveedor_id}_${String(exc.producto_codigo).trim().toLowerCase()}`;
+            curaduriaMap.set(keyMap, exc.unidad_fijada);
+        });
+
+        // 4. Normalizar y estructurar tarifas de forma homogénea y determinista
+        const cotizacionesNormalizadas = cotizaciones.map(row => {
+            const dm = { ...row.datos_maestros };
+            const skuProveedorRaw = dm.codigo || dm.sku || dm.código || "";
+            const skuClean = String(skuProveedorRaw).trim().toLowerCase();
+            const keyMap = `${row.proveedor_id}_${skuClean}`;
+            
+            // Intercepción por Curaduría de Unidad
+            if (curaduriaMap.has(keyMap) && curaduriaMap.get(keyMap)) {
+                dm.unidad = curaduriaMap.get(keyMap);
+            }
+            
+            // Calcular días de antigüedad del dato contra el tiempo actual (Mayo 2026)
+            const fechaTarifa = new Date(dm.ultima_actualizacion_origen || row.timestamp_extraccion);
+            const diasAntiguedad = Math.floor((new Date() - fechaTarifa) / (1000 * 60 * 60 * 24));
+            
+            // Convertir precio String Argentino a Float (ej: "3.423,77" -> 3423.77)
+            let precioUnitarioVal = 0;
+            if (dm.precio) {
+                const cleanPrice = String(dm.precio).replace(/\./g, '').replace(',', '.');
+                precioUnitarioVal = parseFloat(cleanPrice) || 0;
+            }
+
+            return {
+                oferta_id: row.id,
+                proveedor_id: row.proveedor_id,
+                nombre_proveedor: row.nombre_proveedor,
+                sku_proveedor: skuProveedorRaw,
+                descripcion: dm.descripcion,
+                precio_unitario: precioUnitarioVal,
+                unidad_medida: dm.unidad,
+                dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
+                valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion
+            };
+        });
+
+        res.json(cotizacionesNormalizadas);
+    } catch (e) {
+        console.error("Error en proxy de ofertas de reposición:", e.message);
         res.status(500).json({ error: e.message });
     }
 });

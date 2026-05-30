@@ -405,6 +405,48 @@ const debouncedRecalcular = debounce(() => {
     recalcularPreciosGestor();
 }, 500);
 
+function renderOfertasReposicion(ofertas) {
+    const container = document.getElementById('gp-ofertas-reposicion-container');
+    if (!container) return;
+
+    if (!ofertas || ofertas.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 15px;">
+                Sin ofertas de reposición vigentes
+            </div>
+        `;
+        return;
+    }
+
+    const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+    let html = '';
+    
+    ofertas.forEach(of => {
+        const costoKilo = of.precio_unitario || 0;
+        const costoBulto = gp_factorPresentacion > 0 ? (costoKilo * gp_factorPresentacion) : 0;
+        
+        const dias = of.dias_antiguedad;
+        const badgeText = dias === 0 ? 'Hoy' : `Hace ${dias} día${dias > 1 ? 's' : ''}`;
+        
+        html += `
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
+                    <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                        ${badgeText}
+                    </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 1.15em; border-top: 1px dashed rgba(107, 33, 168, 0.15); padding-top: 4px;">
+                    <span style="color: #64748b;">${costoKilo > 0 ? currencyFormatter.format(costoKilo) + '/kg' : 'N/A'}</span>
+                    <strong style="color: #6b21a8;">${costoBulto > 0 ? currencyFormatter.format(costoBulto) + '/blt' : 'N/A'}</strong>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
 window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
     document.getElementById('gp-producto').innerText = descripcion;
     document.getElementById('gp-articulo-id').value = articulo_id;
@@ -648,6 +690,71 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             gp_listasFinancieras = data.listas_margenes;
             renderTabs();
             selectTab(0);
+
+            // FASE 4: Costo de Reposición Vivo (Ofertas de Proveedores)
+            const reposicionContainer = document.getElementById('gp-ofertas-reposicion-container');
+            if (reposicionContainer) {
+                reposicionContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 10px;">Cargando ofertas...</div>';
+            }
+
+            let skuParaReposicion = null;
+            
+            // 1. Intentar obtener SKU del lote directo del artículo
+            if (data.lote && data.lote.lote_id_supabase) {
+                try {
+                    const shortId = data.lote.lote_id_supabase.substring(0, 8);
+                    const loteRes = await fetch(`/api/supabase/lotes/${shortId}`);
+                    if (loteRes.ok) {
+                        const loteData = await loteRes.json();
+                        if (loteData && loteData.pedidos_b2b_items && loteData.pedidos_b2b_items.producto_codigo) {
+                            skuParaReposicion = loteData.pedidos_b2b_items.producto_codigo;
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error recuperando SKU del lote directo:", err);
+                }
+            }
+            
+            // 2. Si no se obtuvo, intentar con los lotes de los ingredientes de la receta
+            if (!skuParaReposicion && data.receta_ingredientes && data.receta_ingredientes.length > 0) {
+                const ingConLote = data.receta_ingredientes.find(ing => ing.lote_id_ref);
+                if (ingConLote) {
+                    try {
+                        const shortId = ingConLote.lote_id_ref.substring(0, 8);
+                        const loteRes = await fetch(`/api/supabase/lotes/${shortId}`);
+                        if (loteRes.ok) {
+                            const loteData = await loteRes.json();
+                            if (loteData && loteData.pedidos_b2b_items && loteData.pedidos_b2b_items.producto_codigo) {
+                                skuParaReposicion = loteData.pedidos_b2b_items.producto_codigo;
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error recuperando SKU del lote del ingrediente:", err);
+                    }
+                }
+            }
+            
+            // 3. Fallbacks
+            if (!skuParaReposicion) {
+                skuParaReposicion = data.codigo_barras || data.pack_hijo_codigo || data.articulo_id;
+            }
+            
+            if (skuParaReposicion) {
+                try {
+                    const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
+                    if (repoRes.ok) {
+                        const ofertas = await repoRes.json();
+                        renderOfertasReposicion(ofertas);
+                    } else {
+                        renderOfertasReposicion([]);
+                    }
+                } catch (err) {
+                    console.error("Error recuperando ofertas de reposición:", err);
+                    renderOfertasReposicion([]);
+                }
+            } else {
+                renderOfertasReposicion([]);
+            }
         } else {
             throw new Error(result.error);
         }
