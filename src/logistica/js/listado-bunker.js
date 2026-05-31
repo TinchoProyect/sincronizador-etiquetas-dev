@@ -34,6 +34,13 @@ async function cargarListasPreciosFiltro() {
                 select.appendChild(opt);
             });
             listaSeleccionadaGlobal = parseInt(select.value) || 1;
+            
+            // Inicializar gp_listasFinancieras con datos base para permitir previsualizar/imprimir directamente
+            gp_listasFinancieras = result.data.map(lista => ({
+                lista_id: lista.id,
+                nombre_lista: lista.nombre
+            }));
+            gp_activeTabIdx = 0;
         } else {
             select.innerHTML = '<option value="1">L1 Base</option>';
         }
@@ -44,6 +51,15 @@ async function cargarListasPreciosFiltro() {
 
 window.cambiarListaPreciosDataGrid = function(nuevaListaId) {
     listaSeleccionadaGlobal = parseInt(nuevaListaId);
+    
+    // Sincronizar el tab activo del gestor financiero
+    if (gp_listasFinancieras && gp_listasFinancieras.length > 0) {
+        const idx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(nuevaListaId));
+        if (idx !== -1) {
+            gp_activeTabIdx = idx;
+        }
+    }
+    
     renderizarGrid(articulosBunkerGlobal);
 };
 
