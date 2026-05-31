@@ -2066,15 +2066,22 @@ window.cerrarPrevisualizadorPDF = function() {
 };
 
 window.actualizarPrevisualizacionPDF = function() {
+    console.log("=== VIGÍA DEPURADOR: INICIO DE ACTUALIZAR PREVISUALIZACIÓN ===");
     const list = gp_listasFinancieras[gp_activeTabIdx];
-    if (!list) return;
+    console.log("VIGÍA: Active list object:", list, "at gp_activeTabIdx:", gp_activeTabIdx);
+    if (!list) {
+        console.warn("VIGÍA: No list found in gp_listasFinancieras at active tab index", gp_activeTabIdx);
+        return;
+    }
     const listaId = list.lista_id;
+    console.log("VIGÍA: Active listaId:", listaId);
     
     // Guardar estado actual de columnas
     window.guardarConfiguracionColumnas();
     
     // 1. Obtener Columnas Activas de Capa A
     const cols = pdfColumnsOrder.filter(c => c.checked);
+    console.log("VIGÍA: Columnas activas (cols):", cols.map(c => c.id));
     
     if (cols.length === 0) {
         const descCol = pdfColumnsOrder.find(c => c.id === 'descripcion');
@@ -2083,6 +2090,7 @@ window.actualizarPrevisualizacionPDF = function() {
         } else {
             cols.push({ id: 'descripcion', label: 'Descripción', align: 'left', baseWidth: 190 });
         }
+        console.log("VIGÍA: cols was empty, pushed fallback:", cols.map(c => c.id));
     }
     
     // 2. Calcular anchos elásticos proporcionales (ancho total de tabla es 100%)
@@ -2090,25 +2098,33 @@ window.actualizarPrevisualizacionPDF = function() {
     cols.forEach(c => {
         c.percentWidth = ((c.baseWidth / totalBase) * 100).toFixed(2) + '%';
     });
+    console.log("VIGÍA: Calculated percent widths:", cols.map(c => `${c.id}: ${c.percentWidth}`));
     
     // 3. Renderizar el visor central dinamico agrupado en `#pdf-prev-table-container`
     const prevContainer = document.getElementById('pdf-prev-table-container');
-    if (!prevContainer) return;
+    if (!prevContainer) {
+        console.error("VIGÍA: #pdf-prev-table-container NOT FOUND in DOM!");
+        return;
+    }
     prevContainer.innerHTML = '';
     
     const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
 
     // Filtrar rubros activos
     const activeRubros = window.pdfRubrosState.filter(r => r.checked);
+    console.log("VIGÍA: Active Rubros (Capa B):", activeRubros.map(r => r.name));
     
     if (activeRubros.length === 0) {
+        console.warn("VIGÍA: No active rubros to previsualize.");
         prevContainer.innerHTML = `<div style="text-align: center; padding: 40px; color: #94a3b8; font-style: italic;">No hay rubros activos para previsualizar. Seleccione al menos un rubro en la Capa B.</div>`;
         return;
     }
 
     activeRubros.forEach(rubro => {
+        console.log(`VIGÍA: Processing Rubro: ${rubro.name}`);
         // Filtrar sub-rubros activos para este rubro
         const activeSubRubros = rubro.subRubros.filter(s => s.checked);
+        console.log(`VIGÍA: Active SubRubros for ${rubro.name}:`, activeSubRubros.map(s => s.name));
         if (activeSubRubros.length === 0) return;
 
         // Banner del Rubro Principal
@@ -2118,7 +2134,11 @@ window.actualizarPrevisualizacionPDF = function() {
         prevContainer.appendChild(rubroTitle);
 
         activeSubRubros.forEach(sub => {
-            if (sub.items.length === 0) return;
+            console.log(`VIGÍA: Processing Sub-Rubro ${sub.name} (items count: ${sub.items.length})`);
+            if (sub.items.length === 0) {
+                console.log(`VIGÍA: Sub-Rubro ${sub.name} has 0 items, skipping table.`);
+                return;
+            }
 
             // Sub-divisor de Categoría
             const subTitle = document.createElement('div');
@@ -2126,77 +2146,100 @@ window.actualizarPrevisualizacionPDF = function() {
             subTitle.innerText = `↳ ${sub.name}`;
             prevContainer.appendChild(subTitle);
 
-            // Tabla para esta sección
-            const tableWrapper = document.createElement('div');
-            tableWrapper.style.cssText = 'width: 100%; overflow-x: auto; margin-left: 10px; width: calc(100% - 10px);';
+            try {
+                // Tabla para esta sección
+                const tableWrapper = document.createElement('div');
+                tableWrapper.style.cssText = 'width: 100%; overflow-x: auto; margin-left: 10px; width: calc(100% - 10px);';
 
-            const table = document.createElement('table');
-            table.className = 'tabla-financiera';
-            table.style.cssText = 'width: 100%; box-shadow: none; border: 1px solid #e2e8f0; font-size: 0.85em; border-collapse: collapse; margin-bottom: 15px;';
+                const table = document.createElement('table');
+                table.className = 'tabla-financiera';
+                table.style.cssText = 'width: 100%; box-shadow: none; border: 1px solid #e2e8f0; font-size: 0.85em; border-collapse: collapse; margin-bottom: 15px;';
 
-            // thead
-            const thead = document.createElement('thead');
-            thead.style.cssText = 'background-color: #8e4785; color: white;';
-            let theadHtml = '<tr>';
-            cols.forEach(c => {
-                theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
-            });
-            theadHtml += '</tr>';
-            thead.innerHTML = theadHtml;
-            table.appendChild(thead);
-
-            // tbody
-            const tbody = document.createElement('tbody');
-            
-            sub.items.forEach((art, index) => {
-                // Encontrar configuración del artículo para esta lista con casting robusto
-                const mFocused = art.margenes.find(m => Number(m.lista_id) === Number(listaId));
-                if (!mFocused) return;
-                
-                const pFinal = parseFloat(mFocused.precio_final || 0);
-                const ivaVal = parseFloat(mFocused.iva || 21.00);
-                const factorKilos = parseFloat(art.kilos_unidad || 0);
-                
-                const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
-                const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
-                const precioBultoFinal = pFinal;
-                const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
-                
-                let presentacionText = '';
-                if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
-                    const pres = art.propiedades_dinamicas.presentacion;
-                    const presVal = typeof pres === 'object' ? pres.valor : pres;
-                    presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
-                } else {
-                    presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
-                }
-                
-                const tr = document.createElement('tr');
-                if (index % 2 === 1) {
-                    tr.style.backgroundColor = '#f8fafc';
-                }
-                
-                let rowHtml = '';
+                // thead
+                const thead = document.createElement('thead');
+                thead.style.cssText = 'background-color: #8e4785; color: white;';
+                let theadHtml = '<tr>';
                 cols.forEach(c => {
-                    let val = '';
-                    if (c.id === 'codigo') val = art.articulo_id;
-                    else if (c.id === 'descripcion') val = art.descripcion_generada || art.descripcion;
-                    else if (c.id === 'presentacion') val = presentacionText;
-                    else if (c.id === 'kilo') val = formatter.format(precioKiloNeto);
-                    else if (c.id === 'bulto') val = formatter.format(precioBultoNeto);
-                    else if (c.id === 'final_kilo') val = formatter.format(precioKiloFinal);
-                    else if (c.id === 'final_bulto') val = formatter.format(precioBultoFinal);
-                    
-                    rowHtml += `<td style="padding: 8px; text-align: ${c.align}; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 0.9em;">${val}</td>`;
+                    theadHtml += `<th style="width: ${c.percentWidth}; text-align: ${c.align}; padding: 8px; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px;">${c.label}</th>`;
                 });
-                
-                tr.innerHTML = rowHtml;
-                tbody.appendChild(tr);
-            });
+                theadHtml += '</tr>';
+                thead.innerHTML = theadHtml;
+                table.appendChild(thead);
 
-            table.appendChild(tbody);
-            tableWrapper.appendChild(table);
-            prevContainer.appendChild(tableWrapper);
+                // tbody
+                const tbody = document.createElement('tbody');
+                let renderedRowsCount = 0;
+                
+                sub.items.forEach((art, index) => {
+                    try {
+                        if (!art.margenes) {
+                            console.warn(`VIGÍA: Article ${art.articulo_id} lacks 'margenes' array!`);
+                            return;
+                        }
+                        // Encontrar configuración del artículo para esta lista con casting robusto
+                        const mFocused = art.margenes.find(m => Number(m.lista_id) === Number(listaId));
+                        if (!mFocused) {
+                            console.warn(`VIGÍA: Article ${art.articulo_id} has no margin config for listId ${listaId}`);
+                            return;
+                        }
+                        
+                        const pFinal = parseFloat(mFocused.precio_final || 0);
+                        const ivaVal = parseFloat(mFocused.iva || 21.00);
+                        const factorKilos = parseFloat(art.kilos_unidad || 0);
+                        
+                        const precioBultoNeto = pFinal / (1 + (ivaVal / 100));
+                        const precioKiloNeto = factorKilos > 0 ? (precioBultoNeto / factorKilos) : precioBultoNeto;
+                        const precioBultoFinal = pFinal;
+                        const precioKiloFinal = factorKilos > 0 ? (pFinal / factorKilos) : pFinal;
+                        
+                        let presentacionText = '';
+                        if (art.propiedades_dinamicas && art.propiedades_dinamicas.presentacion) {
+                            const pres = art.propiedades_dinamicas.presentacion;
+                            const presVal = typeof pres === 'object' ? pres.valor : pres;
+                            presentacionText = `${presVal} x ${factorKilos.toFixed(2)} kg`;
+                        } else {
+                            presentacionText = `Bulto x ${factorKilos.toFixed(2)} kg`;
+                        }
+                        
+                        const tr = document.createElement('tr');
+                        if (index % 2 === 1) {
+                            tr.style.backgroundColor = '#f8fafc';
+                        }
+                        
+                        let rowHtml = '';
+                        cols.forEach(c => {
+                            let val = '';
+                            if (c.id === 'codigo') val = art.articulo_id;
+                            else if (c.id === 'descripcion') val = art.descripcion_generada || art.descripcion;
+                            else if (c.id === 'presentacion') val = presentacionText;
+                            else if (c.id === 'kilo') val = formatter.format(precioKiloNeto);
+                            else if (c.id === 'bulto') val = formatter.format(precioBultoNeto);
+                            else if (c.id === 'final_kilo') val = formatter.format(precioKiloFinal);
+                            else if (c.id === 'final_bulto') val = formatter.format(precioBultoFinal);
+                            
+                            rowHtml += `<td style="padding: 8px; text-align: ${c.align}; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 0.9em;">${val}</td>`;
+                        });
+                        
+                        tr.innerHTML = rowHtml;
+                        tbody.appendChild(tr);
+                        renderedRowsCount++;
+                    } catch (artErr) {
+                        console.error(`VIGÍA: Error processing article ${art ? art.articulo_id : 'unknown'}:`, artErr);
+                    }
+                });
+
+                console.log(`VIGÍA: Sub-Rubro ${sub.name} - Rendered rows in tbody: ${renderedRowsCount}`);
+                table.appendChild(tbody);
+                tableWrapper.appendChild(table);
+                prevContainer.appendChild(tableWrapper);
+                console.log(`VIGÍA: Successfully appended tableWrapper for ${sub.name} to DOM.`);
+            } catch (tableErr) {
+                console.error(`VIGÍA: Critical error building table for Sub-Rubro ${sub.name}:`, tableErr);
+            }
+        });
+    });
+    console.log("=== VIGÍA DEPURADOR: FIN DE ACTUALIZAR PREVISUALIZACIÓN ===");
+};
         });
     });
 };
