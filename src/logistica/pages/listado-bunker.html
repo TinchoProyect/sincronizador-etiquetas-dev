@@ -80,6 +80,16 @@
             align-items: center !important;
             font-size: 0.9em !important;
         }
+        @keyframes ping {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            75%, 100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
         .bunker-panel {
             background-color: #f8fafc;
             border: 2px solid #e2e8f0;
@@ -874,9 +884,10 @@
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 0.78em; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">⚖️ Filtro Estado:</span>
                         <div style="display: flex; gap: 6px;">
-                            <button type="button" class="vr-pill active" data-filter="TODOS" onclick="window.setExternalFilter('TODOS')">Todos</button>
+                            <button type="button" class="vr-pill active" data-filter="VIVOS" onclick="window.setExternalFilter('VIVOS')">Vivos</button>
                             <button type="button" class="vr-pill" data-filter="NUEVOS" onclick="window.setExternalFilter('NUEVOS')">Nuevos</button>
                             <button type="button" class="vr-pill" data-filter="MODIFICADOS" onclick="window.setExternalFilter('MODIFICADOS')">Modificados</button>
+                            <button type="button" class="vr-pill" data-filter="DISCONTINUADOS" onclick="window.setExternalFilter('DISCONTINUADOS')">Discontinuados</button>
                         </div>
                     </div>
                     
@@ -930,6 +941,9 @@
                         </label>
                         <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
                             <input type="checkbox" id="chk-col-ant" checked onchange="window.toggleColumnaVinculador('dias_antiguedad', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Antigüedad
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-ultact" checked onchange="window.toggleColumnaVinculador('dias_actualizacion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Última Actualización
                         </label>
                         <div style="border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 4px; display: flex; justify-content: flex-end;">
                             <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #1e293b; border: none; font-size: 0.8em; color: #a855f7; font-weight: bold; cursor: pointer;">Restablecer</button>

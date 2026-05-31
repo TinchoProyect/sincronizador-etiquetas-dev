@@ -2529,9 +2529,7 @@ async function fetchProveedorLote(loteId, cellId) {
 // =========================================================================
 // ✅ [FASE 4 - VINCULACIÓN EN INGREDIENTES] VINCULADOR DE OFERTAS (AG-GRID)
 // =========================================================================
-let vr_todasOfertas = [];
-let vr_mapeosActivos = [];
-let currentExternalFilter = 'TODOS';
+let currentExternalFilter = 'VIVOS'; // 'VIVOS', 'NUEVOS', 'MODIFICADOS', 'DISCONTINUADOS'
 let currentProveedorFilter = 'ALL';
 
 // Grilla V4.1 Columns
@@ -2569,7 +2567,15 @@ const columnDefs = [
         colId: 'descripcion',
         width: 320,
         sortable: true,
-        resizable: true
+        resizable: true,
+        cellRenderer: (params) => {
+            if (!params.value) return '';
+            const isBaja = params.data && params.data._estado_delta === 'BAJA';
+            if (isBaja) {
+                return `<span class="badge" style="background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; font-size: 0.75em; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-right: 8px;">DISCONTINUADO</span>${params.value}`;
+            }
+            return params.value;
+        }
     },
     {
         headerName: 'Rubro',
@@ -2626,6 +2632,43 @@ const columnDefs = [
             
             const badgeFmt = dias === 0 ? 'Hoy' : `Hace ${dias} d`;
             return `<span class="badge" style="font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: bold; ${badgeColor}">${badgeFmt}</span>`;
+        }
+    },
+    {
+        headerName: 'Última Actualización',
+        field: 'dias_actualizacion',
+        colId: 'dias_actualizacion',
+        width: 155,
+        sortable: true,
+        resizable: true,
+        filter: 'agNumberColumnFilter',
+        cellRenderer: (params) => {
+            if (params.value == null) return '';
+            const dias = params.value;
+            let badgeStyle = 'display: inline-flex; align-items: center; font-size: 0.82em; padding: 4px 10px; border-radius: 6px; font-weight: bold; gap: 6px; border: 1px solid; ';
+            let dotHtml = '';
+            
+            if (dias <= 30) {
+                // Rango Verde (0 a 30 días)
+                badgeStyle += 'background-color: rgba(16, 185, 129, 0.1); color: #34d399; border-color: rgba(16, 185, 129, 0.3);';
+                dotHtml = '<span style="width: 6px; height: 6px; border-radius: 50%; display: inline-block; background-color: #34d399;"></span>';
+            } else if (dias <= 45) {
+                // Rango Ámbar (31 a 45 días)
+                badgeStyle += 'background-color: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);';
+                dotHtml = '<span style="width: 6px; height: 6px; border-radius: 50%; display: inline-block; background-color: #fbbf24;"></span>';
+            } else {
+                // Rango Rojo con Pulso Animado (Mayor a 45 días)
+                badgeStyle += 'background-color: rgba(244, 63, 94, 0.1); color: #fb7185; border-color: rgba(244, 63, 94, 0.3); box-shadow: 0 0 8px rgba(239, 68, 68, 0.1);';
+                dotHtml = `
+                    <span style="position: relative; display: inline-flex; width: 6px; height: 6px; align-items: center;">
+                        <span style="animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: #fb7185; opacity: 0.75;"></span>
+                        <span style="position: relative; display: inline-flex; border-radius: 50%; height: 6px; width: 6px; background-color: #f43f5e;"></span>
+                    </span>
+                `;
+            }
+            
+            const text = dias === 0 ? 'Hoy' : (dias === 1 ? 'Ayer' : `${dias} días`);
+            return `<span style="${badgeStyle}">${dotHtml} • ${text}</span>`;
         }
     }
 ];
@@ -2709,18 +2752,26 @@ const gridOptions = {
     rowSelection: 'multiple',
     rowMultiSelectWithClick: true,
     suppressRowClickSelection: false,
+    getRowStyle: (params) => {
+        if (params.data && params.data._estado_delta === 'BAJA') {
+            return { opacity: 0.5, 'text-decoration': 'line-through' };
+        }
+        return null;
+    },
     isExternalFilterPresent: () => true,
     doesExternalFilterPass: (node) => {
         if (!node.data) return true;
         
         const estado = node.data._estado_delta || 'INTACTO';
         let passEstado = true;
-        if (currentExternalFilter === 'TODOS') {
+        if (currentExternalFilter === 'VIVOS') {
             passEstado = (estado !== 'BAJA');
         } else if (currentExternalFilter === 'NUEVOS') {
             passEstado = (estado === 'ALTA');
         } else if (currentExternalFilter === 'MODIFICADOS') {
             passEstado = (estado === 'MODIFICADO');
+        } else if (currentExternalFilter === 'DISCONTINUADOS') {
+            passEstado = (estado === 'BAJA');
         }
         
         if (!passEstado) return false;
@@ -2792,7 +2843,7 @@ window.abrirVinculadorReposicionIngrediente = async function() {
 
         // Higiene Obligatoria (Clean Slate)
         localStorage.removeItem('lamda_v4_filter_state');
-        currentExternalFilter = 'TODOS';
+        currentExternalFilter = 'VIVOS';
         currentProveedorFilter = 'ALL';
 
         const modalContent = document.getElementById('vr-modal-content');
@@ -2805,7 +2856,7 @@ window.abrirVinculadorReposicionIngrediente = async function() {
 
         document.querySelectorAll('.vr-pill').forEach(pill => {
             pill.classList.remove('active');
-            if (pill.getAttribute('data-filter') === 'TODOS') {
+            if (pill.getAttribute('data-filter') === 'VIVOS') {
                 pill.classList.add('active');
             }
         });
@@ -2971,7 +3022,7 @@ window.toggleColumnaVinculador = function(colId, isVisible) {
 
 window.resetearVisibilidadColumnas = function() {
     if (window.v4GridApi) {
-        const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad'];
+        const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad', 'dias_actualizacion'];
         window.v4GridApi.setColumnsVisible(columns, true);
         window.guardarGridState();
         sincronizarDropdownCampos();
@@ -2980,7 +3031,7 @@ window.resetearVisibilidadColumnas = function() {
 
 function sincronizarDropdownCampos() {
     if (!window.v4GridApi) return;
-    const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad'];
+    const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad', 'dias_actualizacion'];
     const state = window.v4GridApi.getColumnState();
     
     columns.forEach(colId => {
@@ -2996,6 +3047,7 @@ function sincronizarDropdownCampos() {
         else if (colId === 'cant_valor') chkId = 'chk-col-cant-valor';
         else if (colId === 'precio_unitario') chkId = 'chk-col-costo';
         else if (colId === 'dias_antiguedad') chkId = 'chk-col-ant';
+        else if (colId === 'dias_actualizacion') chkId = 'chk-col-ultact';
         
         const chk = document.getElementById(chkId);
         if (chk) {

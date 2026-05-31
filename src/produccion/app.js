@@ -252,7 +252,7 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
         let hasMore = true;
         
         while (hasMore && cotizaciones.length < 5000) {
-            const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&limit=1000&offset=${offset}`;
+            const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&limit=1000&offset=${offset}`;
             const response = await fetch(url, { headers });
             if (!response.ok) throw new Error(await response.text());
             
@@ -300,9 +300,16 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
                 dm.unidad = curaduriaMap.get(keyMap);
             }
             
-            // Calcular días de antigüedad del dato contra el tiempo actual (Mayo 2026)
-            const fechaTarifa = new Date(dm.ultima_actualizacion_origen || row.timestamp_extraccion);
-            const diasAntiguedad = Math.floor((new Date() - fechaTarifa) / (1000 * 60 * 60 * 24));
+            // Eje C: Algoritmo de Recencia y Semáforo de Envejecimiento (Tabla Maestra V4.1)
+            const now = new Date();
+            
+            // 1. Antigüedad Precio: Días corridos de fecha_modificacion_precio
+            const fechaPrecioRaw = dm.fecha_modificacion_precio || row.timestamp_extraccion;
+            const diasAntiguedad = Math.max(0, Math.floor((now - new Date(fechaPrecioRaw)) / (1000 * 60 * 60 * 24)));
+            
+            // 2. Última Actualización: Días corridos de ultima_actualizacion_origen
+            const fechaActualizacionRaw = dm.ultima_actualizacion_origen || row.timestamp_extraccion;
+            const diasActualizacion = Math.max(0, Math.floor((now - new Date(fechaActualizacionRaw)) / (1000 * 60 * 60 * 24)));
             
             // Convertir precio String Argentino a Float (ej: "3.423,77" -> 3423.77)
             let precioUnitarioVal = 0;
@@ -319,7 +326,8 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
                 descripcion: dm.descripcion,
                 precio_unitario: precioUnitarioVal,
                 unidad_medida: dm.unidad,
-                dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
+                dias_antiguedad: diasAntiguedad,
+                dias_actualizacion: diasActualizacion,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
                 rubro: dm.rubro || "",
                 cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
@@ -348,8 +356,8 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
         const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
-        // 1. Obtener registros activos de la tabla maestra filtrando las bajas y filtrando por SKU
-        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&or=(datos_maestros->>codigo.eq.${sku},datos_maestros->>sku.eq.${sku},datos_maestros->>c\u00f3digo.eq.${sku})`;
+        // 1. Obtener registros de la tabla maestra filtrando por SKU (liberado de bajas estáticas)
+        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&or=(datos_maestros->>codigo.eq.${sku},datos_maestros->>sku.eq.${sku},datos_maestros->>c\u00f3digo.eq.${sku})`;
         
         const response = await fetch(url, { headers });
         if (!response.ok) throw new Error(await response.text());
@@ -389,9 +397,16 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
                 dm.unidad = curaduriaMap.get(keyMap);
             }
             
-            // Calcular días de antigüedad del dato contra el tiempo actual (Mayo 2026)
-            const fechaTarifa = new Date(dm.ultima_actualizacion_origen || row.timestamp_extraccion);
-            const diasAntiguedad = Math.floor((new Date() - fechaTarifa) / (1000 * 60 * 60 * 24));
+            // Eje C: Algoritmo de Recencia y Semáforo de Envejecimiento (Tabla Maestra V4.1)
+            const now = new Date();
+            
+            // 1. Antigüedad Precio: Días corridos de fecha_modificacion_precio
+            const fechaPrecioRaw = dm.fecha_modificacion_precio || row.timestamp_extraccion;
+            const diasAntiguedad = Math.max(0, Math.floor((now - new Date(fechaPrecioRaw)) / (1000 * 60 * 60 * 24)));
+            
+            // 2. Última Actualización: Días corridos de ultima_actualizacion_origen
+            const fechaActualizacionRaw = dm.ultima_actualizacion_origen || row.timestamp_extraccion;
+            const diasActualizacion = Math.max(0, Math.floor((now - new Date(fechaActualizacionRaw)) / (1000 * 60 * 60 * 24)));
             
             // Convertir precio String Argentino a Float (ej: "3.423,77" -> 3423.77)
             let precioUnitarioVal = 0;
@@ -408,7 +423,8 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
                 descripcion: dm.descripcion,
                 precio_unitario: precioUnitarioVal,
                 unidad_medida: dm.unidad,
-                dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
+                dias_antiguedad: diasAntiguedad,
+                dias_actualizacion: diasActualizacion,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
                 rubro: dm.rubro || "",
                 cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
