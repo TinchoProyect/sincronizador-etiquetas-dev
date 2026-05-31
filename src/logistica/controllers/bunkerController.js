@@ -614,9 +614,21 @@ exports.obtenerMapeoReposicion = async (req, res) => {
     try {
         const { bunker_articulo_id } = req.params;
         const db = req.db;
-        const result = await db.query(
-            'SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1',
+
+        // Normalización case-insensitive y redirección transparente si es un artículo fraccionado (pack_hijo_codigo)
+        const artRes = await db.query(
+            'SELECT articulo_id, pack_hijo_codigo FROM public.bunker_articulos WHERE LOWER(articulo_id) = LOWER($1)',
             [bunker_articulo_id]
+        );
+        let targetId = bunker_articulo_id;
+        if (artRes.rows.length > 0) {
+            targetId = artRes.rows[0].pack_hijo_codigo || artRes.rows[0].articulo_id;
+        }
+
+        console.log(`🔍 [BUNKER-MAPEO-GET] Recuperando mapeo para ID=${bunker_articulo_id} (Normalizado=${targetId})`);
+        const result = await db.query(
+            'SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE LOWER(bunker_articulo_id) = LOWER($1)',
+            [targetId]
         );
         res.json({ success: true, data: result.rows });
     } catch (error) {
@@ -635,12 +647,24 @@ exports.guardarMapeoReposicion = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Se esperaba un array de mapeos' });
         }
 
+        // Normalización case-insensitive y redirección transparente si es un artículo fraccionado (pack_hijo_codigo)
+        const artRes = await db.query(
+            'SELECT articulo_id, pack_hijo_codigo FROM public.bunker_articulos WHERE LOWER(articulo_id) = LOWER($1)',
+            [bunker_articulo_id]
+        );
+        let targetId = bunker_articulo_id;
+        if (artRes.rows.length > 0) {
+            targetId = artRes.rows[0].pack_hijo_codigo || artRes.rows[0].articulo_id;
+        }
+
+        console.log(`💾 [BUNKER-MAPEO-POST] Guardando ${mapeos.length} mapeos para ID=${bunker_articulo_id} (Normalizado=${targetId})`);
+
         await db.query('BEGIN');
 
         // Purgar los mapeos existentes para este artículo
         await db.query(
-            'DELETE FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1',
-            [bunker_articulo_id]
+            'DELETE FROM public.bunker_articulos_reposicion_mapeo WHERE LOWER(bunker_articulo_id) = LOWER($1)',
+            [targetId]
         );
 
         // Insertar los nuevos elegidos
@@ -648,7 +672,7 @@ exports.guardarMapeoReposicion = async (req, res) => {
             for (const map of mapeos) {
                 await db.query(
                     'INSERT INTO public.bunker_articulos_reposicion_mapeo (bunker_articulo_id, proveedor_id, proveedor_producto_codigo) VALUES ($1, $2, $3)',
-                    [bunker_articulo_id, map.proveedor_id, map.proveedor_producto_codigo]
+                    [targetId, map.proveedor_id, map.proveedor_producto_codigo]
                 );
             }
         }
