@@ -2240,9 +2240,6 @@ window.actualizarPrevisualizacionPDF = function() {
     });
     console.log("=== VIGÍA DEPURADOR: FIN DE ACTUALIZAR PREVISUALIZACIÓN ===");
 };
-        });
-    });
-};
 
 window.confirmarEImprimirPDF = function() {
     const list = gp_listasFinancieras[gp_activeTabIdx];
