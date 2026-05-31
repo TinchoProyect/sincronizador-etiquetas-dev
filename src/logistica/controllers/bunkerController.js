@@ -382,8 +382,6 @@ exports.exportarPDFListado = async (req, res) => {
             doc.fontSize(24).font('Helvetica-Bold').fillColor('#8e4785').text('LAMDA', 50, headerY);
         }
 
-        const hoy = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-        doc.fontSize(9).font('Helvetica').fillColor('#64748b').text(`Emisión: ${hoy}`, 390, headerY + 8, { width: 155, align: 'right' });
         
         // Ajustar posición vertical y agregar título limpio "Lista de precios"
         let yStartText = headerY + 40;
@@ -489,7 +487,7 @@ exports.exportarPDFListado = async (req, res) => {
                     doc.fontSize(11)
                        .font('Helvetica-Bold')
                        .fillColor('#8e4785')
-                       .text(`■ ${rubro.toUpperCase()}`, 50, doc.y);
+                       .text(`${rubro.toUpperCase()}`, 50, doc.y);
                     doc.moveDown(0.2);
                     currentY = doc.y;
                     rubroImpreso = true;
@@ -499,7 +497,7 @@ exports.exportarPDFListado = async (req, res) => {
                 doc.fontSize(9.5)
                    .font('Helvetica-BoldOblique')
                    .fillColor('#475569')
-                   .text(`  ↳ ${subRubro}`, 50, doc.y);
+                   .text(`    ${subRubro}`, 50, doc.y);
                 doc.moveDown(0.3);
                 currentY = doc.y;
 
@@ -552,14 +550,14 @@ exports.exportarPDFListado = async (req, res) => {
                         doc.fontSize(11)
                            .font('Helvetica-Bold')
                            .fillColor('#8e4785')
-                           .text(`■ ${rubro.toUpperCase()} (Continuación)`, 50, currentY);
+                           .text(`${rubro.toUpperCase()} (Continuación)`, 50, currentY);
                         doc.moveDown(0.2);
                         currentY = doc.y;
 
                         doc.fontSize(9.5)
                            .font('Helvetica-BoldOblique')
                            .fillColor('#475569')
-                           .text(`  ↳ ${subRubro} (Continuación)`, 50, currentY);
+                           .text(`    ${subRubro} (Continuación)`, 50, currentY);
                         doc.moveDown(0.3);
                         currentY = doc.y;
 

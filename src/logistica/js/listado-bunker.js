@@ -2102,15 +2102,7 @@ window.actualizarPrevisualizacionPDF = function() {
         prevContainer.appendChild(rubroTitle);
 
         activeSubRubros.forEach(sub => {
-            // Filtrado interno robusto a partir de articulosBunkerGlobal con normalización y casting
-            const items = articulosBunkerGlobal.filter(art => {
-                const rMatch = (art.rubro || 'SIN RUBRO').trim().toUpperCase() === rubro.name.trim().toUpperCase();
-                const sMatch = (art.sub_rubro || 'SIN SUB-RUBRO').trim().toUpperCase() === sub.name.trim().toUpperCase();
-                const hasMargin = art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
-                return rMatch && sMatch && hasMargin;
-            });
-
-            if (items.length === 0) return;
+            if (sub.items.length === 0) return;
 
             // Sub-divisor de Categoría
             const subTitle = document.createElement('div');
@@ -2140,7 +2132,7 @@ window.actualizarPrevisualizacionPDF = function() {
             // tbody
             const tbody = document.createElement('tbody');
             
-            items.forEach((art, index) => {
+            sub.items.forEach((art, index) => {
                 // Encontrar configuración del artículo para esta lista con casting robusto
                 const mFocused = art.margenes.find(m => Number(m.lista_id) === Number(listaId));
                 if (!mFocused) return;
