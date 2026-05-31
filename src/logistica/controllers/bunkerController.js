@@ -662,4 +662,49 @@ exports.guardarMapeoReposicion = async (req, res) => {
     }
 };
 
+// ✅ [FASE 4 - VINCULACIÓN INGREDIENTES] Resolutor atómico de identidades de ingredientes a artículos de búnker
+exports.resolverArticuloParaMapeo = async (req, res) => {
+    try {
+        const { sku, nombre } = req.query;
+        const db = req.db;
+
+        if (!sku && !nombre) {
+            return res.status(400).json({ success: false, error: 'Se requiere sku o nombre para resolver el mapeo' });
+        }
+
+        // Búsqueda ordenada por relevancia estricta para evitar inconsistencias de clave foránea
+        const query = `
+            SELECT articulo_id, descripcion, descripcion_generada, pack_hijo_codigo
+            FROM public.bunker_articulos
+            WHERE (articulo_id = $1 AND $1::VARCHAR IS NOT NULL)
+               OR (pack_hijo_codigo = $1 AND $1::VARCHAR IS NOT NULL)
+               OR (LOWER(descripcion) = LOWER($2) AND $2::VARCHAR IS NOT NULL)
+               OR (LOWER(descripcion_generada) = LOWER($2) AND $2::VARCHAR IS NOT NULL)
+            ORDER BY 
+               CASE WHEN articulo_id = $1 THEN 1
+                    WHEN pack_hijo_codigo = $1 THEN 2
+                    WHEN LOWER(descripcion) = LOWER($2) THEN 3
+                    ELSE 4 END ASC
+            LIMIT 1
+        `;
+        const result = await db.query(query, [sku || null, nombre || null]);
+
+        if (result.rows.length > 0) {
+            console.log(`🎯 [BUNKER-RESOLVER] Traducido ingrediente SKU=${sku} Nombre="${nombre}" -> ArticuloID=${result.rows[0].articulo_id}`);
+            res.json({ 
+                success: true, 
+                articulo_id: result.rows[0].articulo_id, 
+                descripcion: result.rows[0].descripcion_generada || result.rows[0].descripcion 
+            });
+        } else {
+            console.warn(`⚠️ [BUNKER-RESOLVER] No se pudo resolver coincidencia para ingrediente SKU=${sku} Nombre="${nombre}"`);
+            res.json({ success: false, error: 'No se encontró un artículo correspondiente en el Búnker' });
+        }
+    } catch (error) {
+        console.error('❌ [BUNKER-RESOLVER] Error resolviendo artículo para mapeo:', error);
+        res.status(500).json({ success: false, error: 'Error interno resolviendo artículo para mapeo' });
+    }
+};
+
 console.log('✅ [BUNKER-CONTROLLER] Controlador de búnker configurado');
+
