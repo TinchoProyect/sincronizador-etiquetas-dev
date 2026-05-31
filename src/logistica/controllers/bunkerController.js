@@ -672,7 +672,7 @@ exports.resolverArticuloParaMapeo = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Se requiere sku o nombre para resolver el mapeo' });
         }
 
-        // Búsqueda ordenada por relevancia estricta para evitar inconsistencias de clave foránea
+        // Criterio A: Búsqueda ordenada por relevancia estricta en el catálogo directo de Búnker
         const query = `
             SELECT articulo_id, descripcion, descripcion_generada, pack_hijo_codigo
             FROM public.bunker_articulos
@@ -691,15 +691,43 @@ exports.resolverArticuloParaMapeo = async (req, res) => {
 
         if (result.rows.length > 0) {
             console.log(`🎯 [BUNKER-RESOLVER] Traducido ingrediente SKU=${sku} Nombre="${nombre}" -> ArticuloID=${result.rows[0].articulo_id}`);
-            res.json({ 
+            return res.json({ 
                 success: true, 
                 articulo_id: result.rows[0].articulo_id, 
                 descripcion: result.rows[0].descripcion_generada || result.rows[0].descripcion 
             });
-        } else {
-            console.warn(`⚠️ [BUNKER-RESOLVER] No se pudo resolver coincidencia para ingrediente SKU=${sku} Nombre="${nombre}"`);
-            res.json({ success: false, error: 'No se encontró un artículo correspondiente en el Búnker' });
         }
+
+        // Criterio B: Cruce bidireccional secundario por recetas preexistentes (Ingrediente -> receta_ingredientes -> recetas -> bunker_articulos)
+        // Evita el falso negativo en ingredientes que no están dados de alta como artículos individuales pero sí forman parte de recetas.
+        console.log(`🔍 [BUNKER-RESOLVER] Criterio directo falló para SKU=${sku} Nombre="${nombre}". Iniciando búsqueda por cruce de recetas...`);
+        const recetaQuery = `
+            SELECT b.articulo_id, b.descripcion, b.descripcion_generada, b.pack_hijo_codigo
+            FROM public.bunker_articulos b
+            JOIN public.recetas r ON b.articulo_id = r.articulo_numero
+            JOIN public.receta_ingredientes ri ON r.id = ri.receta_id
+            WHERE (ri.ingrediente_id::VARCHAR = $1 AND $1::VARCHAR IS NOT NULL)
+               OR (ri.ingrediente_id::VARCHAR = (SELECT id::VARCHAR FROM public.ingredientes WHERE codigo::VARCHAR = $1 AND $1::VARCHAR IS NOT NULL))
+               OR (LOWER(ri.nombre_ingrediente) = LOWER($2) AND $2::VARCHAR IS NOT NULL)
+            ORDER BY 
+               CASE WHEN ri.ingrediente_id::VARCHAR = $1 THEN 1
+                    WHEN LOWER(ri.nombre_ingrediente) = LOWER($2) THEN 2
+                    ELSE 3 END ASC
+            LIMIT 1
+        `;
+        const recipeResult = await db.query(recetaQuery, [sku || null, nombre || null]);
+
+        if (recipeResult.rows.length > 0) {
+            console.log(`🎯 [BUNKER-RESOLVER] Traducido ingrediente SKU=${sku} Nombre="${nombre}" a través de RECETAS -> ArticuloID=${recipeResult.rows[0].articulo_id}`);
+            return res.json({ 
+                success: true, 
+                articulo_id: recipeResult.rows[0].articulo_id, 
+                descripcion: recipeResult.rows[0].descripcion_generada || recipeResult.rows[0].descripcion 
+            });
+        }
+
+        console.warn(`⚠️ [BUNKER-RESOLVER] No se pudo resolver coincidencia directa ni por recetas para ingrediente SKU=${sku} Nombre="${nombre}"`);
+        res.json({ success: false, error: 'No se encontró un artículo correspondiente en el Búnker' });
     } catch (error) {
         console.error('❌ [BUNKER-RESOLVER] Error resolviendo artículo para mapeo:', error);
         res.status(500).json({ success: false, error: 'Error interno resolviendo artículo para mapeo' });
