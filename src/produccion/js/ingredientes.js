@@ -2429,17 +2429,41 @@ window.abrirModalDesglose = async function(ingredienteId) {
     window.activeIngredienteSku = skuParaReposicion;
     
     if (skuParaReposicion) {
-
         try {
-            const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
-            if (repoRes.ok) {
-                const ofertas = await repoRes.json();
-                renderDesgloseOfertasReposicion(ofertas, kilosPorCajaFactor);
+            // 1. Resolver atómicamente el ID de artículo correspondiente en el Búnker
+            const resolveRes = await fetch(`/api/logistica/bunker/reposicion/resolver-articulo?sku=${encodeURIComponent(skuParaReposicion)}&nombre=${encodeURIComponent(nombreIngrediente)}`);
+            let mappedOfertas = null;
+            
+            if (resolveRes.ok) {
+                const resolveJson = await resolveRes.json();
+                if (resolveJson.success && resolveJson.articulo_id) {
+                    // 2. Obtener las ofertas unificadas desde el endpoint de finanzas del Búnker
+                    const finanzasRes = await fetch(`/api/logistica/bunker/finanzas/${encodeURIComponent(resolveJson.articulo_id)}`);
+                    if (finanzasRes.ok) {
+                        const finanzas = await finanzasRes.json();
+                        if (finanzas && Array.isArray(finanzas.reposicion_ofertas) && finanzas.reposicion_ofertas.length > 0) {
+                            mappedOfertas = finanzas.reposicion_ofertas;
+                            console.log(`🎯 [DESGLOSE-REPOSICION] Cargadas ${mappedOfertas.length} ofertas unificadas para ArticuloID=${resolveJson.articulo_id}`);
+                        }
+                    }
+                }
+            }
+
+            // 3. Renderizar las cotizaciones (con fallback al buscador general si no hay mapeos activos)
+            if (mappedOfertas) {
+                renderDesgloseOfertasReposicion(mappedOfertas, kilosPorCajaFactor);
             } else {
-                renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+                console.log(`🔍 [DESGLOSE-REPOSICION] Sin mapeos activos. Ejecutando fallback general para SKU=${skuParaReposicion}`);
+                const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
+                if (repoRes.ok) {
+                    const ofertas = await repoRes.json();
+                    renderDesgloseOfertasReposicion(ofertas, kilosPorCajaFactor);
+                } else {
+                    renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+                }
             }
         } catch (err) {
-            console.error("Error recuperando ofertas de reposición en desglose:", err);
+            console.error("❌ Error recuperando ofertas de reposición en desglose:", err);
             renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
         }
     } else {
@@ -2898,11 +2922,15 @@ window.abrirVinculadorReposicionIngrediente = async function() {
         }
 
         // Inicializar grilla
-        gridDiv.innerHTML = '';
         if (window.v4GridApi) {
-            window.v4GridApi.destroy();
+            try {
+                window.v4GridApi.destroy();
+            } catch (e) {
+                console.warn("⚠️ [VINCULADOR-GRID] Error destruyendo grilla anterior:", e);
+            }
             window.v4GridApi = null;
         }
+        gridDiv.innerHTML = '';
 
         window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);
         window.v4GridApi.setGridOption('rowData', vr_todasOfertas);
