@@ -424,6 +424,14 @@ const debouncedRecalcular = debounce(() => {
 let gp_costoLomasoftKilo = 0;
 let gp_reposicionOfertas = [];
 
+// Variables globales del artículo padre (ingrediente base - Fase 4)
+let gp_packHijoCodigo = null;
+let gp_parentLote = null;
+let gp_parentCostoBaseManual = null;
+let gp_parentCostoLomasoft = null;
+let gp_parentKilosUnidad = 1;
+let gp_parentDescripcion = '';
+
 function renderOfertasReposicion(ofertas) {
     gp_reposicionOfertas = ofertas || [];
     const container = document.getElementById('gp-ofertas-reposicion-container');
@@ -475,6 +483,17 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
     gp_ivaGlobal = parseFloat(iva) || 21;
     gp_activeTabIdx = 0;
     
+    // Reset global parent variables (Fase 4)
+    gp_packHijoCodigo = null;
+    gp_parentLote = null;
+    gp_parentCostoBaseManual = null;
+    gp_parentCostoLomasoft = null;
+    gp_parentKilosUnidad = 1;
+    gp_parentDescripcion = '';
+    
+    const alertPadreDiv = document.getElementById('gp-alerta-ingrediente-padre');
+    if (alertPadreDiv) alertPadreDiv.style.display = 'none';
+    
     // UI Reset
     document.getElementById('gp-costo-integrado').innerText = '$ 0,00';
     document.getElementById('gp-costo-manual').value = '';
@@ -492,6 +511,15 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
         
         if (res.ok && result.success) {
             const data = result.data;
+            
+            // Poblar variables globales del artículo padre (Fase 4)
+            gp_packHijoCodigo = data.pack_hijo_codigo || null;
+            gp_parentLote = data.parent_lote || null;
+            gp_parentCostoBaseManual = data.parent_costo_base_manual !== undefined && data.parent_costo_base_manual !== null ? parseFloat(data.parent_costo_base_manual) : null;
+            gp_parentCostoLomasoft = data.parent_costo_lomasoft !== undefined && data.parent_costo_lomasoft !== null ? parseFloat(data.parent_costo_lomasoft) : null;
+            gp_parentKilosUnidad = parseFloat(data.parent_kilos_unidad) || 1;
+            gp_parentDescripcion = data.parent_descripcion || '';
+
             gp_loteVal = data.lote;
             gp_stockUnidadesVal = data.stock_unidades || 0;
             gp_stockKilosVal = data.stock_kilos || 0;
@@ -655,13 +683,30 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
 
             if (recKiloEl && recBultoEl && recTipoEl && recBadgeEl) {
                 const hasRecipe = !!data.receta_id;
-                const hasParentIng = !!data.costo_referencia_lote;
+                const hasParentIng = !!data.costo_referencia_lote || !!data.pack_hijo_codigo;
 
                 if (hasRecipe || hasParentIng) {
-                    const recKiloVal = gp_liveIngredienteCost;
-                    const recBultoVal = gp_liveIngredienteCost * gp_factorPresentacion;
-                    const estructuraTipo = hasRecipe ? 'Receta' : 'Insumo Padre';
-                    const origenTexto = hasRecipe ? `ID: ${data.receta_id}` : `PADRE: ${data.nombre_ingrediente_ref || 'Granel'}`;
+                    let recKiloVal = gp_liveIngredienteCost;
+                    let estructuraTipo = hasRecipe ? 'Receta' : 'Insumo Padre';
+                    let origenTexto = hasRecipe ? `ID: ${data.receta_id}` : `PADRE: ${data.nombre_ingrediente_ref || 'Granel'}`;
+
+                    // Exposición del artículo ingrediente base padre en la Tarjeta 3 si es una fracción derivada (Fase 4)
+                    if (!hasRecipe && data.pack_hijo_codigo) {
+                        let parentCost = 0;
+                        if (data.parent_lote) {
+                            parentCost = parseFloat(data.parent_lote.costo_kilo_al_momento) || 0;
+                        } else if (data.parent_costo_base_manual !== null) {
+                            parentCost = parseFloat(data.parent_costo_base_manual) / parseFloat(data.parent_kilos_unidad || 1);
+                        } else if (data.parent_costo_lomasoft !== null) {
+                            parentCost = parseFloat(data.parent_costo_lomasoft) / parseFloat(data.parent_kilos_unidad || 1);
+                        }
+                        
+                        recKiloVal = parentCost;
+                        estructuraTipo = 'Ingrediente Base';
+                        origenTexto = `PADRE: ${data.parent_descripcion || data.pack_hijo_codigo}`;
+                    }
+
+                    const recBultoVal = recKiloVal * gp_factorPresentacion;
 
                     recKiloEl.innerText = recKiloVal > 0 ? currencyFormatter.format(recKiloVal) : 'N/A';
                     recBultoEl.innerText = recBultoVal > 0 ? currencyFormatter.format(recBultoVal) : 'N/A';
@@ -680,7 +725,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     if (recKiloVal > 0) {
                         recKiloEl.className = 'clickable-cost-val receta';
                         recKiloEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${recKiloVal})`);
-                        recKiloEl.title = `Haga clic para inyectar este costo ($${recKiloVal.toFixed(2)}/kg)`;
+                        recKiloEl.title = `Haga clic para inyectar este costo ($${recKiloVal.toFixed(2)}/kg) en la calculadora`;
                     } else {
                         recKiloEl.className = '';
                         recKiloEl.removeAttribute('onclick');
@@ -994,7 +1039,8 @@ function selectTab(idx) {
     if (!list) return;
     
     // Ciclo de Apertura Inteligente: Autocompletado desde la fuente predeterminada
-    if (list.fuente_costo_default) {
+    // NO INTERVENCIÓN AUTOMÁTICA EN FRACCIONES: Si es una fracción (gp_packHijoCodigo no es nulo), omitimos el autocompletado para mantener intactos los valores.
+    if (list.fuente_costo_default && !gp_packHijoCodigo) {
         const valDefault = window.obtenerValorFuenteDefault(list.fuente_costo_default);
         if (valDefault !== null && valDefault > 0) {
             list.costo_base_sobrescrito = valDefault;
@@ -1370,6 +1416,48 @@ window.recalcularPreciosGestor = function() {
         alertaDiv.style.display = 'flex';
     } else {
         alertaDiv.style.display = 'none';
+    }
+
+    // 4. Evaluar alerta de nuevo costo en ingrediente base padre (Fase 4)
+    const alertPadreDiv = document.getElementById('gp-alerta-ingrediente-padre');
+    if (alertPadreDiv) {
+        if (gp_packHijoCodigo) {
+            let parentLiveCostKilo = 0;
+            if (gp_parentLote) {
+                parentLiveCostKilo = parseFloat(gp_parentLote.costo_kilo_al_momento) || 0;
+            } else if (gp_parentCostoBaseManual !== null) {
+                parentLiveCostKilo = parseFloat(gp_parentCostoBaseManual) / gp_parentKilosUnidad;
+            } else if (gp_parentCostoLomasoft !== null) {
+                parentLiveCostKilo = parseFloat(gp_parentCostoLomasoft) / gp_parentKilosUnidad;
+            }
+
+            // Umbral estricto de desvío de $0.05/kg
+            const diffPadre = Math.abs(cBase - parentLiveCostKilo);
+            if (parentLiveCostKilo > 0 && diffPadre > 0.05) {
+                const pNombreEl = document.getElementById('gp-ingrediente-padre-nombre');
+                const fCostoEl = document.getElementById('gp-fraccion-costo-actual-val');
+                const pCostoEl = document.getElementById('gp-ingrediente-padre-nuevo-val');
+                const btnAplicarPadre = document.getElementById('gp-btn-aplicar-padre');
+
+                if (pNombreEl) pNombreEl.innerText = gp_parentDescripcion || gp_packHijoCodigo;
+                if (fCostoEl) fCostoEl.innerText = formatter.format(cBase);
+                if (pCostoEl) pCostoEl.innerText = formatter.format(parentLiveCostKilo);
+                if (btnAplicarPadre) {
+                    btnAplicarPadre.onclick = () => window.aplicarCostoBaseManual(parentLiveCostKilo);
+                }
+
+                alertPadreDiv.style.display = 'flex';
+            } else {
+                alertPadreDiv.style.display = 'none';
+            }
+        } else {
+            alertPadreDiv.style.display = 'none';
+        }
+    }
+
+    // FASE 4: Actualizar las filas de advertencia y costos en la Tarjeta 3 de ingredientes en caliente
+    if (typeof window.actualizarAlertasIngredienteBase === 'function') {
+        window.actualizarAlertasIngredienteBase();
     }
 };
 
@@ -2576,7 +2664,7 @@ window.abrirVinculadorReposicion = async function() {
 
     try {
         // 1. Obtener mapeos activos locales para este artículo
-        const mapeoRes = await fetch(`/api/logistica/bunker/reposicion/mapeo/${articulo_id}`);
+        const mapeoRes = await fetch(`/api/logistica/bunker/reposicion/mapeo/${encodeURIComponent(articulo_id)}`);
         if (!mapeoRes.ok) throw new Error('Error al cargar vinculaciones locales');
         const mapeoPayload = await mapeoRes.json();
         vr_mapeosActivos = mapeoPayload.data || [];
@@ -2709,7 +2797,7 @@ window.guardarVinculacionReposicion = async function() {
     }));
 
     try {
-        const res = await fetch(`/api/logistica/bunker/reposicion/mapeo/${articulo_id}`, {
+        const res = await fetch(`/api/logistica/bunker/reposicion/mapeo/${encodeURIComponent(articulo_id)}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2892,4 +2980,78 @@ window.updateFmtStatusBar = function() {
         txtDate.innerText = '--';
     }
 };
+
+// =========================================================================
+// FASE 4: EXPOSICIÓN DE NUEVOS HITOS DE COSTOS DE INGREDIENTES EN FRACCIONES
+// =========================================================================
+window.actualizarAlertasIngredienteBase = function() {
+    const parentLoteRow = document.getElementById('gp-parent-lote-row');
+    const parentRepRow = document.getElementById('gp-parent-rep-row');
+    const parentAlertEl = document.getElementById('gp-parent-alert');
+    const parentLoteCostEl = document.getElementById('gp-costo-parent-lote');
+    const parentRepCostEl = document.getElementById('gp-costo-parent-rep');
+
+    if (!parentLoteRow || !parentRepRow || !parentAlertEl || !parentLoteCostEl || !parentRepCostEl) return;
+
+    // Reset default hidden
+    parentLoteRow.style.display = 'none';
+    parentRepRow.style.display = 'none';
+    parentAlertEl.style.display = 'none';
+
+    // Si es un producto fraccionado/derivado (tiene pack_hijo_codigo activo)
+    if (gp_packHijoCodigo) {
+        const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+        // 1. Costo Lote Padre (Kilo)
+        let parentLoteKilo = 0;
+        if (gp_parentLote) {
+            parentLoteKilo = parseFloat(gp_parentLote.costo_kilo_al_momento) || 0;
+        } else if (gp_parentCostoBaseManual !== null) {
+            parentLoteKilo = parseFloat(gp_parentCostoBaseManual) / gp_parentKilosUnidad;
+        } else if (gp_parentCostoLomasoft !== null) {
+            parentLoteKilo = parseFloat(gp_parentCostoLomasoft) / gp_parentKilosUnidad;
+        }
+
+        if (parentLoteKilo > 0) {
+            parentLoteRow.style.display = 'flex';
+            parentLoteCostEl.innerText = currencyFormatter.format(parentLoteKilo);
+            parentLoteCostEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${parentLoteKilo})`);
+            parentLoteCostEl.title = `Haga clic para inyectar costo de lote de ingrediente base ($${parentLoteKilo.toFixed(2)}/kg)`;
+        }
+
+        // 2. Costo Reposición Padre (de Supabase cotizaciones)
+        let parentRepKilo = 0;
+        if (gp_reposicionOfertas && gp_reposicionOfertas.length > 0) {
+            const validOffers = gp_reposicionOfertas.filter(o => o.precio_unitario > 0);
+            if (validOffers.length > 0) {
+                parentRepKilo = parseFloat(validOffers[0].precio_unitario) || 0;
+            }
+        }
+        if (parentRepKilo > 0) {
+            parentRepRow.style.display = 'flex';
+            parentRepCostEl.innerText = currencyFormatter.format(parentRepKilo);
+            parentRepCostEl.setAttribute('onclick', `window.aplicarCostoBaseManual(${parentRepKilo})`);
+            parentRepCostEl.title = `Haga clic para inyectar costo de reposición de ingrediente base ($${parentRepKilo.toFixed(2)}/kg)`;
+        }
+
+        // 3. Alertas Contextuales de Advertencia (Comparar con el costo manual actual)
+        const manualInput = document.getElementById('gp-costo-manual');
+        if (manualInput) {
+            const inputCostoManual = parseFloat(manualInput.value) || 0;
+            let tieneVariacion = false;
+
+            if (parentLoteKilo > 0 && Math.abs(parentLoteKilo - inputCostoManual) > 0.05) {
+                tieneVariacion = true;
+            }
+            if (parentRepKilo > 0 && Math.abs(parentRepKilo - inputCostoManual) > 0.05) {
+                tieneVariacion = true;
+            }
+
+            if (tieneVariacion) {
+                parentAlertEl.style.display = 'block';
+            }
+        }
+    }
+};
+
 

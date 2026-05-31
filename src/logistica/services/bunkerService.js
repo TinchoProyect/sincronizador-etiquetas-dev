@@ -450,7 +450,7 @@ class BunkerService {
         }
 
         // Fallback 1: Último lote shadow directo
-        const loteDirecto = lotesMap.get(articulo_id);
+        const loteDirecto = lotesMap.get(codigoBase);
         if (loteDirecto) {
             // El costo del lote directo ya está expresado por kilogramo
             return loteDirecto.costo_kilo;
@@ -1025,6 +1025,53 @@ class BunkerService {
             console.error("❌ [BUNKER-REPOSICION] Error al procesar ofertas de reposición en radiografía:", err);
         }
 
+        // Búsqueda en cascada de datos de costos del artículo ingrediente base padre (Fase 4)
+        let parent_lote = null;
+        let parent_costo_base_manual = null;
+        let parent_costo_lomasoft = null;
+        let parent_iva_lomasoft = null;
+        let parent_descripcion = null;
+        let parent_kilos_unidad = null;
+
+        if (articulo.pack_hijo_codigo) {
+            try {
+                const parentId = articulo.pack_hijo_codigo;
+                
+                // 1. Buscar último lote físico del padre
+                const queryLoteParent = `
+                    SELECT d.costo_kilo_al_momento, v.fecha_vinculacion, v.lote_id_supabase, v.impuesto_iva
+                    FROM public.bunker_lotes_destinos d
+                    JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                    WHERE d.destino_id = $1
+                    ORDER BY v.fecha_vinculacion DESC
+                    LIMIT 1
+                `;
+                const resLoteParent = await db.query(queryLoteParent, [parentId]);
+                if (resLoteParent.rows.length > 0) {
+                    parent_lote = resLoteParent.rows[0];
+                }
+
+                // 2. Buscar costo base manual y descripción del padre
+                const queryParentArt = `SELECT costo_base, descripcion, descripcion_generada, kilos_unidad FROM public.bunker_articulos WHERE articulo_id = $1`;
+                const resParentArt = await db.query(queryParentArt, [parentId]);
+                if (resParentArt.rows.length > 0) {
+                    parent_costo_base_manual = resParentArt.rows[0].costo_base ? parseFloat(resParentArt.rows[0].costo_base) : null;
+                    parent_descripcion = resParentArt.rows[0].descripcion_generada || resParentArt.rows[0].descripcion;
+                    parent_kilos_unidad = resParentArt.rows[0].kilos_unidad ? parseFloat(resParentArt.rows[0].kilos_unidad) : 1;
+                }
+
+                // 3. Buscar costo e IVA de Lomasoft para el padre
+                const queryLomasoftParent = `SELECT costo, iva FROM public.precios_articulos WHERE articulo = $1`;
+                const resLomasoftParent = await db.query(queryLomasoftParent, [parentId]);
+                if (resLomasoftParent.rows.length > 0) {
+                    parent_costo_lomasoft = resLomasoftParent.rows[0].costo ? parseFloat(resLomasoftParent.rows[0].costo) : null;
+                    parent_iva_lomasoft = resLomasoftParent.rows[0].iva ? parseFloat(resLomasoftParent.rows[0].iva) : null;
+                }
+            } catch (parentErr) {
+                console.error("❌ [BUNKER-PADRE] Error al recuperar datos de costos del ingrediente base padre:", parentErr);
+            }
+        }
+
         return {
             articulo_id,
             codigo_barras: articulo.codigo_barras || null,
@@ -1045,7 +1092,13 @@ class BunkerService {
             receta_articulos,
             costo_lomasoft,
             iva_lomasoft,
-            reposicion_ofertas
+            reposicion_ofertas,
+            parent_lote,
+            parent_costo_base_manual,
+            parent_costo_lomasoft,
+            parent_iva_lomasoft,
+            parent_descripcion,
+            parent_kilos_unidad
         };
     }
 

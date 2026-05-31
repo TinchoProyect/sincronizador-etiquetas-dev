@@ -369,7 +369,7 @@ exports.exportarPDFListado = async (req, res) => {
         const padding = 6;
 
         // 5. Crear documento PDF
-        const doc = new PDFDocument({ margin: 50, size: 'A4', info: { Title: filename } });
+        const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true, info: { Title: filename } });
         doc.pipe(res);
 
         // Header Institucional: Logo Oficial
