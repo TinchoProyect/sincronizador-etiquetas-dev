@@ -1013,8 +1013,22 @@ class BunkerService {
                             return mappingsSet.has(keyCheck);
                         });
 
+                        // De-duplicar cotizaciones: para un mismo proveedor y código, conservar únicamente la más reciente (mayor timestamp)
+                        const deduplicadasMap = new Map();
+                        mapeadasFiltradas.forEach(c => {
+                            const skuClean = String(c.sku_proveedor).trim().toLowerCase();
+                            const keyUnique = `${c.proveedor_id}_${skuClean}`;
+                            
+                            const tExist = deduplicadasMap.has(keyUnique) ? new Date(deduplicadasMap.get(keyUnique)._timestamp || 0).getTime() : -1;
+                            const tNew = new Date(c._timestamp || 0).getTime();
+                            if (tNew > tExist) {
+                                deduplicadasMap.set(keyUnique, c);
+                            }
+                        });
+                        const mapeadasFinales = Array.from(deduplicadasMap.values());
+
                         // Marcar como heredado si corresponde
-                        reposicion_ofertas = mapeadasFiltradas.map(c => ({
+                        reposicion_ofertas = mapeadasFinales.map(c => ({
                             ...c,
                             heredado: esHeredado
                         }));

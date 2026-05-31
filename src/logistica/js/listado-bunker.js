@@ -434,6 +434,14 @@ let gp_parentDescripcion = '';
 
 function renderOfertasReposicion(ofertas) {
     gp_reposicionOfertas = ofertas || [];
+    
+    // Actualizar el contador dinámico en la cabecera del gestor
+    const contadorEl = document.getElementById('gp-reposicion-contador');
+    if (contadorEl) {
+        const count = gp_reposicionOfertas.length;
+        contadorEl.innerText = count > 0 ? `• ${count} oferta${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}` : '';
+    }
+
     const container = document.getElementById('gp-ofertas-reposicion-container');
     if (!container) return;
 
