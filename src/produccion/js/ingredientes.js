@@ -2531,6 +2531,8 @@ async function fetchProveedorLote(loteId, cellId) {
 // =========================================================================
 let currentExternalFilter = 'VIVOS'; // 'VIVOS', 'NUEVOS', 'MODIFICADOS', 'DISCONTINUADOS'
 let currentProveedorFilter = 'ALL';
+let vr_mapeosActivos = [];
+let vr_todasOfertas = [];
 
 // Grilla V4.1 Columns
 const columnDefs = [
