@@ -565,12 +565,35 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                             // 🔧 CORRECCIÓN CRÍTICA: Incluir sustituciones en el cálculo
                             // Stock = stock_actual de tabla ingredientes (ya incluye trigger de movimientos normales)
                             const queryStockReal = `
-        SELECT
-        i.stock_actual,
-            i.nombre as ingrediente_nombre
+                                SELECT
+                                    i.stock_actual,
+                                    COALESCE(i.stock_bultos, 0) as stock_bultos,
+                                    i.nombre as ingrediente_nombre,
+                                    COALESCE(
+                                        (
+                                            SELECT json_agg(
+                                                json_build_object(
+                                                    'vinculo_id', d.vinculo_id,
+                                                    'lote_id_supabase', v.lote_id_supabase,
+                                                    'cantidad_asignada', d.cantidad_asignada,
+                                                    'cantidad_abierta', COALESCE(d.cantidad_abierta, 0),
+                                                    'cajas_disponibles', d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0),
+                                                    'kilos_por_caja', COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0),
+                                                    'costo_kilo', COALESCE(d.costo_kilo_al_momento, v.costo_kilo_calculado, 0),
+                                                    'fecha_vinculacion', v.fecha_vinculacion
+                                                ) ORDER BY v.fecha_vinculacion ASC
+                                            )
+                                            FROM public.bunker_lotes_destinos d
+                                            JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                                            WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                                              AND d.destino_id = i.id::text 
+                                              AND (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0
+                                        ),
+                                        '[]'::json
+                                    ) as lotes_cajas_cerradas
                                 FROM ingredientes i
                                 WHERE i.id = $1
-            `;
+                            `;
                             const stockResult = await pool.query(queryStockReal, [ingrediente.id]);
 
                             if (stockResult.rows.length > 0) {
@@ -584,11 +607,22 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                                 stockActual = 0;
                                 console.log(`⚠️ No se encontró el ingrediente ${ingrediente.id} `);
                             }
+
+                            return {
+                                ...ingrediente,
+                                stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
+                                stock_bultos: parseFloat(stockResult.rows[0]?.stock_bultos || 0),
+                                lotes_cajas_cerradas: stockResult.rows[0]?.lotes_cajas_cerradas || [],
+                                origen_mix_id: ingrediente.origen_mix_id, // Preservar origen_mix_id
+                                sector_letra: ingrediente.sector_letra
+                            };
                         }
 
                         return {
                             ...ingrediente,
                             stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
+                            stock_bultos: 0,
+                            lotes_cajas_cerradas: [],
                             origen_mix_id: ingrediente.origen_mix_id, // Preservar origen_mix_id
                             sector_letra: ingrediente.sector_letra
                         };

@@ -1159,7 +1159,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                                             <span style="color: #0369a1; font-weight: bold; background: #e0f2fe; padding: 1px 4px; border-radius: 3px; font-size: 0.7rem;" title="${l.kilos_por_caja} kg por caja">
                                                 ${l.cajas_disponibles} cj
                                             </span>
-                                            <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteIdReal}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}')" 
+                                            <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteIdReal}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}', false, ${l.cajas_disponibles})" 
                                                     style="background: #10b981; color: white; border: none; padding: 2px 5px; border-radius: 3px; font-size: 0.7rem; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; transition: background 0.2s;"
                                                     onmouseover="this.style.background='#059669'"
                                                     onmouseout="this.style.background='#10b981'">
@@ -1669,19 +1669,49 @@ window.editarCategoriaDesdeModal = editarCategoriaDesdeModal;
 window.borrarCategoria = borrarCategoria;
 
 // GESTIÓN ACTIVA DE APERTURA DE CAJAS
-window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto, esDesdeDesglose = false) {
-    const confirm = await Swal.fire({
-        title: '¿Abrir caja de ingrediente?',
-        text: 'Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#64748b',
-        confirmButtonText: 'Sí, abrir caja',
-        cancelButtonText: 'Cancelar'
-    });
+window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto, esDesdeDesglose = false, cantidadDisponible = 1) {
+    let cantidadA_Abrir = 1;
 
-    if (!confirm.isConfirmed) return;
+    if (cantidadDisponible > 1) {
+        const { value: inputCant } = await Swal.fire({
+            title: '¿Cuántas cajas deseas abrir?',
+            text: `Hay ${cantidadDisponible} cajas cerradas disponibles para este lote (${idCorto}). Se restarán las cajas seleccionadas y se ingresará el equivalente en Kilos Libres al stock de fábrica.`,
+            input: 'number',
+            inputLabel: 'Cantidad de cajas',
+            inputValue: 1,
+            inputAttributes: {
+                min: 1,
+                max: cantidadDisponible,
+                step: 1
+            },
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Abrir cajas',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || isNaN(value) || parseInt(value) < 1 || parseInt(value) > cantidadDisponible) {
+                    return `Por favor, ingresa un número entre 1 y ${cantidadDisponible}`;
+                }
+            }
+        });
+
+        if (!inputCant) return;
+        cantidadA_Abrir = parseInt(inputCant);
+    } else {
+        const confirm = await Swal.fire({
+            title: '¿Abrir caja de ingrediente?',
+            text: `Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica para el lote ${idCorto}.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Sí, abrir caja',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!confirm.isConfirmed) return;
+    }
 
     Swal.fire({ 
         title: 'Procesando Apertura...', 
@@ -1693,12 +1723,12 @@ window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCo
         const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/abrir_caja', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId })
+            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId, cantidad: cantidadA_Abrir })
         });
         const result = await res.json();
         
         if (res.ok && result.success) {
-            await Swal.fire('Caja Abierta', 'Se ha transferido una caja a stock de kilos libres de fábrica.', 'success');
+            await Swal.fire('Caja Abierta', `Se ha transferido ${cantidadA_Abrir} caja(s) a stock de kilos libres de fábrica.`, 'success');
             
             // Recargar la grilla manteniendo los filtros activos
             guardarEstadoFiltros();
@@ -2500,7 +2530,7 @@ window.abrirModalDesglose = async function(ingredienteId) {
                 <td style="padding: 10px; text-align: right; font-weight: 600;">${kilosEquivText} ${ingrediente.unidad_medida}</td>
                 <td style="padding: 10px; text-align: right; font-weight: bold; color: #0284c7;">$ ${parseFloat(l.costo_kilo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</td>
                 <td style="padding: 10px; text-align: center;">
-                    <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteId}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}', true)" 
+                    <button onclick="event.stopPropagation(); window.abrirCajaDestinoClick('${l.vinculo_id}', '${ingredienteId}', '${l.lote_id_supabase}', '${l.lote_id_supabase.substring(0, 6)}', true, ${l.cajas_disponibles})" 
                             style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: background 0.2s;"
                             onmouseover="this.style.background='#059669'"
                             onmouseout="this.style.background='#10b981'">
@@ -2522,7 +2552,7 @@ window.abrirModalDesglose = async function(ingredienteId) {
             btnFifo.style.display = 'inline-flex';
             btnFifo.onclick = () => {
                 const oldest = lotes[0];
-                window.abrirCajaDestinoClick(oldest.vinculo_id, ingredienteId, oldest.lote_id_supabase, oldest.lote_id_supabase.substring(0, 6), true);
+                window.abrirCajaDestinoClick(oldest.vinculo_id, ingredienteId, oldest.lote_id_supabase, oldest.lote_id_supabase.substring(0, 6), true, oldest.cajas_disponibles);
             };
         } else {
             btnFifo.style.display = 'none';

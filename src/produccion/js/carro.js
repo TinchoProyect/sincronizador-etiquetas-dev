@@ -1737,11 +1737,36 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"`
                 : '';
 
+            let cajasCerradasHtml = '';
+            if (parseFloat(ing.stock_bultos || 0) > 0) {
+                let botonAbrirCaja = '';
+                if (mostrarBotones && !deshabilitado) {
+                    botonAbrirCaja = `
+                        <button onclick="event.stopPropagation(); window.abrirCajaDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${JSON.stringify(ing.lotes_cajas_cerradas).replace(/"/g, '&quot;')})" 
+                                style="background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: bold; transition: background 0.2s; margin-top: 2px;"
+                                onmouseover="this.style.background='#059669'"
+                                onmouseout="this.style.background='#10b981'"
+                                title="Abrir una caja de este ingrediente">
+                            🔓 Abrir
+                        </button>
+                    `;
+                }
+                cajasCerradasHtml = `
+                    <div class="cajas-cerradas-badge" style="font-size: 0.8em; color: #0284c7; font-weight: bold; margin-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;" title="Cajas Cerradas en Bunker">
+                        <span>📦 ${parseFloat(ing.stock_bultos)} cj</span>
+                        ${botonAbrirCaja}
+                    </div>
+                `;
+            }
+
             html += `
                 <tr class="${clasesFila.trim()}">
                     <td>${ing.nombre || 'Sin nombre'}</td>
                     <td>${cantidadNecesaria.toFixed(2)}</td>
-                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">${stockFinal.toFixed(2)}</td>
+                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">
+                        ${stockFinal.toFixed(2)}
+                        ${cajasCerradasHtml}
+                    </td>
                     <td>${indicadorEstado}</td>
                     <td>${ing.unidad_medida || ''}</td>
                     <td>${botonesAccion}</td>
@@ -3692,3 +3717,131 @@ document.addEventListener('recetaActualizada', async (event) => {
         console.error('⚠️ [CARRO] Error durante el auto-refresh tras actualización de receta:', error);
     }
 });
+
+// GESTIÓN ACTIVA DE APERTURA DE CAJAS DESDE EL CARRO DE PRODUCCIÓN
+window.abrirCajaDesdeCarro = async function(ingredienteId, nombre, lotes) {
+    if (!lotes || lotes.length === 0) {
+        Swal.fire('Error', 'No hay lotes con cajas cerradas disponibles para este ingrediente.', 'warning');
+        return;
+    }
+
+    let vinculoId = null;
+    let loteIdSupabase = null;
+    let idCorto = null;
+    let cantidadDisponible = 0;
+
+    if (lotes.length === 1) {
+        vinculoId = lotes[0].vinculo_id;
+        loteIdSupabase = lotes[0].lote_id_supabase;
+        idCorto = loteIdSupabase.substring(0, 6);
+        cantidadDisponible = lotes[0].cajas_disponibles;
+    } else {
+        // Múltiples lotes: mostrar selector de lote (FIFO y descripción)
+        const options = {};
+        lotes.forEach(l => {
+            const dateStr = l.fecha_vinculacion ? new Date(l.fecha_vinculacion).toLocaleDateString() : 'N/A';
+            options[l.vinculo_id] = `Lote: ${l.lote_id_supabase} (${l.cajas_disponibles} cj, ${parseFloat(l.kilos_por_caja).toFixed(2)} kg/cj) - Vinc: ${dateStr}`;
+        });
+
+        const { value: selectedVinculoId } = await Swal.fire({
+            title: 'Seleccionar lote a abrir',
+            text: `Selecciona de qué lote deseas abrir una caja para el ingrediente "${nombre}".`,
+            input: 'select',
+            inputOptions: options,
+            inputPlaceholder: 'Seleccionar un lote...',
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Seleccionar Lote',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'Debes seleccionar un lote';
+                }
+            }
+        });
+
+        if (!selectedVinculoId) return;
+
+        const selectedLote = lotes.find(l => l.vinculo_id === selectedVinculoId);
+        if (!selectedLote) return;
+
+        vinculoId = selectedLote.vinculo_id;
+        loteIdSupabase = selectedLote.lote_id_supabase;
+        idCorto = loteIdSupabase.substring(0, 6);
+        cantidadDisponible = selectedLote.cajas_disponibles;
+    }
+
+    let cantidadA_Abrir = 1;
+    if (cantidadDisponible > 1) {
+        const { value: inputCant } = await Swal.fire({
+            title: '¿Cuántas cajas deseas abrir?',
+            text: `Hay ${cantidadDisponible} cajas cerradas disponibles para el lote (${idCorto}). Se restarán las cajas seleccionadas y se ingresará el equivalente en Kilos Libres al stock de fábrica.`,
+            input: 'number',
+            inputLabel: 'Cantidad de cajas',
+            inputValue: 1,
+            inputAttributes: {
+                min: 1,
+                max: cantidadDisponible,
+                step: 1
+            },
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Abrir cajas',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || isNaN(value) || parseInt(value) < 1 || parseInt(value) > cantidadDisponible) {
+                    return `Por favor, ingresa un número entre 1 y ${cantidadDisponible}`;
+                }
+            }
+        });
+
+        if (!inputCant) return;
+        cantidadA_Abrir = parseInt(inputCant);
+    } else {
+        const confirm = await Swal.fire({
+            title: '¿Abrir caja de ingrediente?',
+            text: `Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica para el lote ${idCorto}.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Sí, abrir caja',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!confirm.isConfirmed) return;
+    }
+
+    Swal.fire({
+        title: 'Procesando Apertura...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/abrir_caja', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: ingredienteId, cantidad: cantidadA_Abrir })
+        });
+        const result = await res.json();
+
+        if (res.ok && result.success) {
+            await Swal.fire('Caja Abierta', `Se ha transferido ${cantidadA_Abrir} caja(s) a stock de kilos libres de fábrica.`, 'success');
+            
+            // Recargar el resumen de ingredientes en caliente
+            if (window.actualizarResumenIngredientes) {
+                await window.actualizarResumenIngredientes();
+            } else {
+                window.location.reload();
+            }
+        } else {
+            throw new Error(result.error || 'Error al procesar apertura');
+        }
+    } catch (e) {
+        console.error('[VIGÍA FRONTEND] -> ERROR APERTURA DESDE CARRO:', e);
+        Swal.fire('Error', e.message || 'Error de conexión', 'error');
+    }
+};

@@ -514,7 +514,7 @@ window.mostrarAuditoriaDestinos = function(loteId, idCorto) {
             
             // Botón premium para abrir caja si es ingrediente y tiene cerradas
             const btnAbrirCaja = d.tipo === 'INGREDIENTE_PRODUCCION' && bultosCerrados > 0
-                ? `<button onclick="window.abrirCajaDestinoClick('${datos.id}', '${d.id}', '${loteId}', '${idCorto}')" style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.2s; font-weight: bold; margin-top: 4px;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">📦 Abrir Caja</button>`
+                ? `<button onclick="window.abrirCajaDestinoClick('${datos.id}', '${d.id}', '${loteId}', '${idCorto}', ${bultosCerrados})" style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.2s; font-weight: bold; margin-top: 4px;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">📦 Abrir Caja</button>`
                 : '';
 
             const desgloseCajas = d.tipo === 'INGREDIENTE_PRODUCCION'
@@ -559,19 +559,49 @@ window.cerrarAuditoriaDestinos = function() {
 /**
  * Procesa la acción de abrir una caja cerrada e inyectar stock libre en caliente
  */
-window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto) {
-    const confirm = await Swal.fire({
-        title: '¿Abrir caja de ingrediente?',
-        text: 'Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#10b981',
-        cancelButtonColor: '#64748b',
-        confirmButtonText: 'Sí, abrir caja',
-        cancelButtonText: 'Cancelar'
-    });
+window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto, cantidadDisponible = 1) {
+    let cantidadA_Abrir = 1;
 
-    if (!confirm.isConfirmed) return;
+    if (cantidadDisponible > 1) {
+        const { value: inputCant } = await Swal.fire({
+            title: '¿Cuántas cajas deseas abrir?',
+            text: `Hay ${cantidadDisponible} cajas cerradas disponibles para este lote (${idCorto}). Se restarán las cajas seleccionadas y se ingresará el equivalente en Kilos Libres al stock de fábrica.`,
+            input: 'number',
+            inputLabel: 'Cantidad de cajas',
+            inputValue: 1,
+            inputAttributes: {
+                min: 1,
+                max: cantidadDisponible,
+                step: 1
+            },
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Abrir cajas',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || isNaN(value) || parseInt(value) < 1 || parseInt(value) > cantidadDisponible) {
+                    return `Por favor, ingresa un número entre 1 y ${cantidadDisponible}`;
+                }
+            }
+        });
+
+        if (!inputCant) return;
+        cantidadA_Abrir = parseInt(inputCant);
+    } else {
+        const confirm = await Swal.fire({
+            title: '¿Abrir caja de ingrediente?',
+            text: `Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica para el lote ${idCorto}.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Sí, abrir caja',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!confirm.isConfirmed) return;
+    }
 
     Swal.fire({ 
         title: 'Procesando Apertura...', 
@@ -583,7 +613,7 @@ window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCo
         const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/abrir_caja', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId })
+            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId, cantidad: cantidadA_Abrir })
         });
         const result = await res.json();
         
@@ -595,7 +625,7 @@ window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCo
                 dest.cantidad_abierta = parseFloat(result.data.nuevas_abiertas);
             }
             
-            await Swal.fire('Caja Abierta', 'Se ha transferido una caja a stock de kilos libres de fábrica.', 'success');
+            await Swal.fire('Caja Abierta', `Se ha transferido ${cantidadA_Abrir} caja(s) a stock de kilos libres de fábrica.`, 'success');
             
             // 2. Refrescar la vista en vivo del modal
             window.mostrarAuditoriaDestinos(loteId, idCorto);

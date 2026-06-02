@@ -232,7 +232,7 @@ class LotesBunkerService {
     /**
      * Abre una caja cerrada de un lote asignado a Ingredientes, transfiriendo su peso al stock de kilos libres.
      */
-    static async abrirCajaDestino(db, vinculoId, destinoId) {
+    static async abrirCajaDestino(db, vinculoId, destinoId, cantidad = 1) {
         const client = await db.connect();
         try {
             await client.query('BEGIN');
@@ -253,24 +253,28 @@ class LotesBunkerService {
             const destRow = resDest.rows[0];
             const asignadas = parseFloat(destRow.cantidad_asignada || 0);
             const abiertas = parseFloat(destRow.cantidad_abierta || 0);
+            const cerradas = asignadas - abiertas;
 
-            // 2. Validar que existan cajas cerradas
-            if (abiertas >= asignadas) {
+            // 2. Validar que existan suficientes cajas cerradas
+            if (cerradas <= 0) {
                 throw new Error('Todas las cajas de este lote en este almacén ya han sido abiertas.');
+            }
+            if (cantidad > cerradas) {
+                throw new Error(`Solo hay ${cerradas} caja(s) cerrada(s) disponible(s) para abrir en este lote.`);
             }
 
             // 3. Incrementar el contador de cajas abiertas
             const sqlUpdateDest = `
                 UPDATE public.bunker_lotes_destinos 
-                SET cantidad_abierta = COALESCE(cantidad_abierta, 0) + 1
+                SET cantidad_abierta = COALESCE(cantidad_abierta, 0) + $3
                 WHERE vinculo_id = $1 AND destino_id = $2 AND tipo_destino = 'INGREDIENTE_PRODUCCION'
             `;
-            await client.query(sqlUpdateDest, [vinculoId, destinoId]);
+            await client.query(sqlUpdateDest, [vinculoId, destinoId, cantidad]);
 
             // 4. Calcular el peso por bulto/caja para la conversión
             const kilosPorBulto = parseFloat(destRow.kilos_asignados || 0) / asignadas;
 
-            // 5. Registrar el movimiento de conversión (restar 1 caja, sumar peso equivalente en kilos)
+            // 5. Registrar el movimiento de conversión (restar N cajas, sumar peso equivalente en kilos)
             const sqlMov = `
                 INSERT INTO public.ingredientes_movimientos (
                     ingrediente_id, kilos, bultos, tipo, observaciones, fecha, stock_anterior
@@ -278,14 +282,14 @@ class LotesBunkerService {
             `;
             await client.query(sqlMov, [
                 parseInt(destinoId),
-                kilosPorBulto, // Sumar kilos al stock_actual
-                -1, // Restar 1 bulto de stock_bultos
+                kilosPorBulto * cantidad, // Sumar kilos al stock_actual
+                -cantidad, // Restar N bultos de stock_bultos
                 'ingreso', // tipo permitido por check constraint
-                'Apertura de caja - Lote: ' + destRow.lote_id_supabase
+                `Apertura de ${cantidad} caja(s) - Lote: ` + destRow.lote_id_supabase
             ]);
 
             await client.query('COMMIT');
-            return { success: true, nuevas_abiertas: abiertas + 1 };
+            return { success: true, nuevas_abiertas: abiertas + cantidad };
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

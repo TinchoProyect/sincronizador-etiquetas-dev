@@ -68,13 +68,18 @@ exports.consultarEstadosLotes = async (req, res) => {
 
 exports.abrirCajaDestino = async (req, res) => {
     try {
-        const { vinculo_id, destino_id } = req.body;
+        const { vinculo_id, destino_id, cantidad } = req.body;
         if (!vinculo_id || !destino_id) {
             return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos (vinculo_id, destino_id)' });
         }
+
+        const parsedCantidad = cantidad !== undefined ? parseInt(cantidad, 10) : 1;
+        if (isNaN(parsedCantidad) || parsedCantidad <= 0) {
+            return res.status(400).json({ success: false, error: 'La cantidad de cajas a abrir debe ser un número entero positivo.' });
+        }
         
-        console.log(`🔓 [ABRIR-CAJA] Solicitud recibida en controlador. Vinculo: ${vinculo_id} | Destino: ${destino_id}`);
-        const resultado = await LotesBunkerService.abrirCajaDestino(req.db, vinculo_id, destino_id);
+        console.log(`🔓 [ABRIR-CAJA] Solicitud recibida en controlador. Vinculo: ${vinculo_id} | Destino: ${destino_id} | Cantidad: ${parsedCantidad}`);
+        const resultado = await LotesBunkerService.abrirCajaDestino(req.db, vinculo_id, destino_id, parsedCantidad);
         
         res.json({
             success: true,
