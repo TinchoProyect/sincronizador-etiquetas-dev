@@ -3155,47 +3155,50 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
         // Usaremos 'precio1' para mostrar el total histórico.
 
         const queryReal = `
-            SELECT 
-                p.id as id_presupuesto,
-                p.fecha,
-                p.comprobante_lomasoft,
-                -- Determinación robusta de Origen priorizando Lomas Soft (Ticket 14)
-                CASE 
-                    WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 
-                        'LOMASOFT (Puesto ' || SPLIT_PART(p.comprobante_lomasoft, '-', 2) || ')'
-                    WHEN f.pto_vta = 32 THEN 'LAMDA (Puesto 32)'
-                    WHEN f.pto_vta IS NOT NULL THEN 'LOMASOFT (Puesto ' || f.pto_vta || ')'
-                    WHEN p.origen_facturacion != 'PENDIENTE' THEN p.origen_facturacion
-                    ELSE 'NO FACTURADO'
-                END as origen_facturacion,
-                f.pto_vta,
-                d.cantidad,
-                d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
-                d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
-                -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
-                d.articulo as descripcion,
-                COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
-            FROM presupuestos p
-            JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
-            LEFT JOIN (
-                -- Subquery para traer la última factura aprobada por si hay múltiples
-                SELECT presupuesto_id, pto_vta, cbte_nro, estado,
-                       ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
-                FROM factura_facturas 
-                WHERE estado = 'APROBADA'
-            ) f ON f.presupuesto_id = p.id AND f.rn = 1
-            WHERE p.id_cliente = $1::text 
-              AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
-              -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO
-              AND (
-                  p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
-                  OR p.estado IN ('Entregado', 'Confirmado')
-                  OR f.pto_vta IS NOT NULL
-                  OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
-              )
-              -- QA Modification: Excluir explícitamente Órdenes de Retiro
-              AND p.tipo_comprobante != 'Orden de Retiro'
-            ORDER BY p.fecha DESC
+            SELECT * FROM (
+                SELECT DISTINCT ON (p.id)
+                    p.id as id_presupuesto,
+                    p.fecha,
+                    p.comprobante_lomasoft,
+                    -- Determinación robusta de Origen priorizando Lomas Soft (Ticket 14)
+                    CASE 
+                        WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 
+                            'LOMASOFT (Puesto ' || SPLIT_PART(p.comprobante_lomasoft, '-', 2) || ')'
+                        WHEN f.pto_vta = 32 THEN 'LAMDA (Puesto 32)'
+                        WHEN f.pto_vta IS NOT NULL THEN 'LOMASOFT (Puesto ' || f.pto_vta || ')'
+                        WHEN p.origen_facturacion != 'PENDIENTE' THEN p.origen_facturacion
+                        ELSE 'NO FACTURADO'
+                    END as origen_facturacion,
+                    f.pto_vta,
+                    d.cantidad,
+                    d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
+                    d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
+                    -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
+                    d.articulo as descripcion,
+                    COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
+                FROM presupuestos p
+                JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+                LEFT JOIN (
+                    -- Subquery para traer la última factura aprobada por si hay múltiples
+                    SELECT presupuesto_id, pto_vta, cbte_nro, estado,
+                           ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
+                    FROM factura_facturas 
+                    WHERE estado = 'APROBADA'
+                ) f ON f.presupuesto_id = p.id AND f.rn = 1
+                WHERE p.id_cliente = $1::text 
+                  AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
+                  -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO
+                  AND (
+                      p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
+                      OR p.estado IN ('Entregado', 'Confirmado')
+                      OR f.pto_vta IS NOT NULL
+                      OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
+                  )
+                  -- QA Modification: Excluir explícitamente Órdenes de Retiro
+                  AND p.tipo_comprobante != 'Orden de Retiro'
+                ORDER BY p.id, p.fecha DESC
+            ) sub
+            ORDER BY sub.fecha DESC
             LIMIT 10
         `;
 
@@ -3214,6 +3217,35 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
 
         // Usamos wildcards para ILIKE en ambos parámetros para maximizar probabilidad de match
         const result = await req.db.query(queryReal, queryParams);
+
+        // MEJORA: Buscar los artículos de cada presupuesto devuelto para renderizar el desglose en el modal
+        if (result.rows.length > 0) {
+            const budgetIds = result.rows.map(r => parseInt(r.id_presupuesto)).filter(id => !isNaN(id));
+            if (budgetIds.length > 0) {
+                const itemsQuery = `
+                    SELECT 
+                        pd.id_presupuesto,
+                        pd.articulo as codigo,
+                        COALESCE(a.nombre, pd.articulo) as nombre,
+                        pd.cantidad
+                    FROM public.presupuestos_detalles pd
+                    LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                    WHERE pd.id_presupuesto = ANY($1)
+                `;
+                const itemsResult = await req.db.query(itemsQuery, [budgetIds]);
+                
+                // Mapear los ítems a cada fila de presupuesto
+                result.rows.forEach(row => {
+                    row.items_detalle = itemsResult.rows
+                        .filter(item => parseInt(item.id_presupuesto) === parseInt(row.id_presupuesto))
+                        .map(item => ({
+                            codigo: item.codigo || 'N/A',
+                            nombre: item.nombre || 'N/A',
+                            cantidad: parseFloat(item.cantidad) || 0
+                        }));
+                });
+            }
+        }
 
         console.log(`➡️ Registros devueltos por DB (crudas): ${result.rows.length}`);
         console.log('➡️ Resultados (primeros 3):', result.rows.slice(0, 3).map(r => ({id_presupuesto: r.id_presupuesto, fecha: r.fecha, descripcion: r.descripcion})));

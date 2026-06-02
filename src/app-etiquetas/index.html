@@ -102,10 +102,13 @@
   </div>
 
   <div class="container">
-    <header style="position: relative;">
-      <h1>Gestiones Lamda</h1>
+    <header style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 0 20px 0;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+        <img src="img/logo_LAMDA.png" alt="LAMDA Logo" style="height: 48px; width: auto; object-fit: contain;">
+        <span style="font-size: 0.95em; font-weight: 500; color: var(--medium-slate); letter-spacing: 4px; text-transform: uppercase; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; margin-top: 2px;">Gestiones</span>
+      </div>
       <!-- 🔐 Acceso discreto al panel de administración -->
-      <div class="admin-access">
+      <div class="admin-access" style="position: absolute; right: 30px; top: 50%; transform: translateY(-50%);">
         <button onclick="abrirModalLogin()" class="admin-button">👤 Administración</button>
       </div>
     </header>
@@ -149,7 +152,7 @@
         <span class="icon">🧾</span>
         Presupuestos
       </a>
-      <a href="http://localhost:3002/pages/recepcion-lotes.html" class="menu-button menu-tier-1" style="background-color: #17a2b8; color: white;">
+      <a href="http://localhost:3002/pages/recepcion-lotes.html" class="menu-button menu-tier-1">
         <span class="icon">📦</span>
         Recepción de Lotes
       </a>
@@ -169,7 +172,7 @@
         <span class="icon">🏷️</span>
         Impresión de etiquetas
       </a>
-      <a href="pages/informe-faltantes.html" class="menu-button menu-tier-3" style="background-color: #636e72; color: white;">
+      <a href="pages/informe-faltantes.html" class="menu-button menu-tier-3">
         <span class="icon">📈</span>
         Demanda No Satisfecha
       </a>
@@ -179,7 +182,7 @@
       </a>
       
       <!-- NIVEL 4 (Operaciones Base) -->
-      <a href="http://localhost:3005/pages/listado-bunker.html" class="menu-button menu-tier-1" style="background-color: #0f172a; color: white;">
+      <a href="http://localhost:3005/pages/listado-bunker.html" class="menu-button menu-tier-1">
         <span class="icon">📊</span>
         Gestión de Artículos
       </a>

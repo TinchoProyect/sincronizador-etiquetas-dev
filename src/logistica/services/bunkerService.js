@@ -509,7 +509,23 @@ class BunkerService {
                     (SELECT SUM(d.kilos_asignados) 
                      FROM public.bunker_lotes_destinos d 
                      WHERE d.destino_id = b.articulo_id), 
-                0) as stock_kilos
+                0) as stock_kilos,
+                COALESCE(
+                    (SELECT COUNT(*) 
+                     FROM public.bunker_lotes_destinos d 
+                     WHERE d.destino_id = b.articulo_id), 
+                0) as total_lotes_historicos,
+                COALESCE(
+                    (SELECT COUNT(*) 
+                     FROM public.recetas r 
+                     WHERE r.articulo_numero = b.articulo_id), 
+                0) as total_recetas,
+                COALESCE(
+                    (SELECT COUNT(*) 
+                     FROM public.bunker_articulos_reposicion_mapeo m 
+                     WHERE LOWER(m.bunker_articulo_id) = LOWER(b.articulo_id)
+                        OR (b.pack_hijo_codigo IS NOT NULL AND LOWER(m.bunker_articulo_id) = LOWER(b.pack_hijo_codigo))), 
+                0) as total_mapeos_reposicion
             FROM public.bunker_articulos b
             WHERE 1=1
         `;
@@ -928,18 +944,16 @@ class BunkerService {
         // 4. Mapeos de reposición (Fase 4 - Enmienda Técnica)
         let reposicion_ofertas = [];
         try {
-            let mappingsQuery = `SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE bunker_articulo_id = $1`;
-            let resMappings = await db.query(mappingsQuery, [articulo_id]);
-            let mappings = resMappings.rows;
+            let targetId = articulo_id;
             let esHeredado = false;
-
-            if (mappings.length === 0 && articulo.pack_hijo_codigo) {
-                resMappings = await db.query(mappingsQuery, [articulo.pack_hijo_codigo]);
-                mappings = resMappings.rows;
-                if (mappings.length > 0) {
-                    esHeredado = true;
-                }
+            if (articulo.pack_hijo_codigo) {
+                targetId = articulo.pack_hijo_codigo;
+                esHeredado = true;
             }
+
+            let mappingsQuery = `SELECT proveedor_id, proveedor_producto_codigo FROM public.bunker_articulos_reposicion_mapeo WHERE LOWER(bunker_articulo_id) = LOWER($1)`;
+            let resMappings = await db.query(mappingsQuery, [targetId]);
+            let mappings = resMappings.rows;
 
             if (mappings.length > 0) {
                 const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
@@ -1001,7 +1015,8 @@ class BunkerService {
                                 precio_unitario: precioUnitarioVal,
                                 unidad_medida: dm.unidad,
                                 dias_antiguedad: diasAntiguedad >= 0 ? diasAntiguedad : 0,
-                                valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion
+                                valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
+                                timestamp_extraccion: row.timestamp_extraccion || dm.ultima_actualizacion_origen
                             };
                         });
 
@@ -1019,8 +1034,8 @@ class BunkerService {
                             const skuClean = String(c.sku_proveedor).trim().toLowerCase();
                             const keyUnique = `${c.proveedor_id}_${skuClean}`;
                             
-                            const tExist = deduplicadasMap.has(keyUnique) ? new Date(deduplicadasMap.get(keyUnique)._timestamp || 0).getTime() : -1;
-                            const tNew = new Date(c._timestamp || 0).getTime();
+                            const tExist = deduplicadasMap.has(keyUnique) ? new Date(deduplicadasMap.get(keyUnique).timestamp_extraccion || deduplicadasMap.get(keyUnique).valido_hasta || 0).getTime() : -1;
+                            const tNew = new Date(c.timestamp_extraccion || c.valido_hasta || 0).getTime();
                             if (tNew > tExist) {
                                 deduplicadasMap.set(keyUnique, c);
                             }

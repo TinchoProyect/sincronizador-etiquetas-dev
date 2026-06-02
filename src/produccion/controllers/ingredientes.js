@@ -85,17 +85,40 @@ async function obtenerIngredientes() {
                 c.nombre as categoria,
                 i.categoria_id,
                 i.stock_actual,
+                COALESCE(i.stock_bultos, 0) as stock_bultos,
                 i.sector_id,
                 s.nombre as sector_nombre,
                 s.descripcion as sector_descripcion,
-                -- ✅ CÁLCULO DE STOCK POTENCIAL
+                -- ✅ CAJAS CERRADAS CON IDENTIDAD DE LOTE PRESERVADA
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'vinculo_id', d.vinculo_id,
+                                'lote_id_supabase', v.lote_id_supabase,
+                                'cantidad_asignada', d.cantidad_asignada,
+                                'cantidad_abierta', COALESCE(d.cantidad_abierta, 0),
+                                'cajas_disponibles', d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0),
+                                'kilos_por_caja', COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0),
+                                'costo_kilo', COALESCE(d.costo_kilo_al_momento, v.costo_kilo_calculado, 0),
+                                'fecha_vinculacion', v.fecha_vinculacion
+                            ) ORDER BY v.fecha_vinculacion ASC
+                        )
+                        FROM public.bunker_lotes_destinos d
+                        JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text 
+                          AND (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0
+                    ),
+                    '[]'::json
+                ) as lotes_cajas_cerradas,
+                -- ✅ CÁLCULO DE STOCK POTENCIAL (Soporte Dual: stock_actual + bultos * kilos_por_bulto)
                 COALESCE(
                     i.stock_actual + (
-                        SELECT COALESCE(SUM(src.stock_consolidado * src.kilos_unidad), 0)
-                        FROM ingrediente_articulos_nutrientes ian
-                        JOIN stock_real_consolidado src ON src.articulo_numero = ian.articulo_numero
-                        WHERE ian.ingrediente_id = i.id 
-                          AND ian.activo = true
+                        SELECT COALESCE(SUM((d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) * (COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0))), 0)
+                        FROM public.bunker_lotes_destinos d
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text
                     ),
                     i.stock_actual
                 ) as stock_potencial,

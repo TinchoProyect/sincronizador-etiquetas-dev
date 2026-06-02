@@ -867,8 +867,51 @@ window.actualizarTratamientoIva = function(modo) {
     recalcularPreciosGestor();
 };
 
+window.toggleMaximizarGestorPrecios = function() {
+    const modalContent = document.getElementById('gp-modal-content');
+    const btnMaximizar = document.getElementById('gp-btn-maximizar');
+    if (!modalContent || !btnMaximizar) return;
+    
+    const isMaximized = modalContent.getAttribute('data-maximized') === 'true';
+    if (isMaximized) {
+        // Restaurar
+        modalContent.style.width = '95%';
+        modalContent.style.maxWidth = '1150px';
+        modalContent.style.height = '';
+        modalContent.style.maxHeight = '90vh';
+        modalContent.style.borderRadius = '12px';
+        btnMaximizar.innerHTML = '🗖';
+        btnMaximizar.title = 'Maximizar';
+        modalContent.setAttribute('data-maximized', 'false');
+    } else {
+        // Maximizar
+        modalContent.style.width = '100vw';
+        modalContent.style.maxWidth = '100vw';
+        modalContent.style.height = '100vh';
+        modalContent.style.maxHeight = '100vh';
+        modalContent.style.borderRadius = '0';
+        btnMaximizar.innerHTML = '🗗';
+        btnMaximizar.title = 'Restaurar';
+        modalContent.setAttribute('data-maximized', 'true');
+    }
+};
+
 window.cerrarGestorPrecios = function() {
     document.getElementById('modal-gestor-precios').style.display = 'none';
+    const modalContent = document.getElementById('gp-modal-content');
+    const btnMaximizar = document.getElementById('gp-btn-maximizar');
+    if (modalContent && modalContent.getAttribute('data-maximized') === 'true') {
+        modalContent.style.width = '95%';
+        modalContent.style.maxWidth = '1150px';
+        modalContent.style.height = '';
+        modalContent.style.maxHeight = '90vh';
+        modalContent.style.borderRadius = '12px';
+        if (btnMaximizar) {
+            btnMaximizar.innerHTML = '🗖';
+            btnMaximizar.title = 'Maximizar';
+        }
+        modalContent.setAttribute('data-maximized', 'false');
+    }
 };
 
 /**
@@ -1901,15 +1944,167 @@ window.moverColumnaPDF = function(fromIdx, toIdx) {
 };
 
 window.pdfRubrosState = [];
+window.pdfCapaCState = null; // Guardará el estado detallado granular
+window.pdfCapaCExpanded = { legacy: false, lotes: false, receta: false, reposicion: false };
+
+// Helper robusto para extracción de valor de ordenamiento Capa D
+function obtenerValorOrdenamientoCapaD(art, attribute) {
+    if (!art.propiedades_dinamicas) return 0;
+    const prop = art.propiedades_dinamicas[attribute];
+    if (!prop) return 0;
+    const val = typeof prop === 'object' ? prop.valor : prop;
+    if (!val) return 0;
+
+    // 1. Intentar extraer número de presentación (ej: "10 kg", "envases por 10 kg", "500 g")
+    const match = String(val).match(/(\d+(?:\.\d+)?)\s*(kg|g|u|l|ml|unidad)?/i);
+    if (match) {
+        let num = parseFloat(match[1]);
+        let unit = (match[2] || '').toLowerCase();
+        if (unit === 'g' || unit === 'ml') {
+            num = num / 1000.0; // Normalizar gramos/mililitros
+        }
+        return num;
+    }
+
+    // 2. Fallback semántico cualitativo para ordenamiento de variables nominales comerciales
+    const valStr = String(val).toLowerCase();
+    if (valStr.includes('grande') || valStr.includes('mayor')) {
+        return 100;
+    } else if (valStr.includes('medio') || valStr.includes('mediano')) {
+        return 50;
+    } else if (valStr.includes('chico') || valStr.includes('pequeño')) {
+        return 10;
+    }
+
+    return String(val); // Fallback a ordenamiento alfabético
+}
+
+// Helper para obtener el valor formateado comercial de la Capa D
+function obtenerValorFormateadoCapaD(art, attribute) {
+    if (!art.propiedades_dinamicas) return 'Sin Especificar';
+    const prop = art.propiedades_dinamicas[attribute];
+    if (!prop) return 'Sin Especificar';
+    return typeof prop === 'object' ? prop.valor : prop;
+}
+
+// Inicializar el estado de los acordeones y los artículos individuales de la Capa C
+window.inicializarCapaCState = function() {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    const listaId = list.lista_id;
+
+    // Obtener artículos asociados a esta lista de precios
+    const articulosDeLista = articulosBunkerGlobal.filter(art => {
+        return art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
+    });
+
+    const oldState = window.pdfCapaCState || {
+        legacy: { checked: true, items: [] },
+        lotes: { checked: true, items: [] },
+        receta: { checked: true, items: [] },
+        reposicion: { checked: true, items: [] }
+    };
+
+    const categories = {
+        legacy: [],
+        lotes: [],
+        receta: [],
+        reposicion: []
+    };
+
+    articulosDeLista.forEach(art => {
+        const isLegacyOnly = parseFloat(art.costo_base) > 0 &&
+                             parseInt(art.total_lotes_historicos || 0) === 0 &&
+                             parseInt(art.total_recetas || 0) === 0 &&
+                             parseInt(art.total_mapeos_reposicion || 0) === 0;
+
+        const hasLotes = parseInt(art.total_lotes_historicos || 0) > 0;
+        const hasRecetas = parseInt(art.total_recetas || 0) > 0;
+        const hasReposicion = parseInt(art.total_mapeos_reposicion || 0) > 0;
+
+        const artItem = {
+            articulo_id: art.articulo_id,
+            descripcion: art.descripcion_generada || art.descripcion,
+            costo_base: parseFloat(art.costo_base)
+        };
+
+        if (isLegacyOnly) categories.legacy.push(artItem);
+        if (hasLotes) categories.lotes.push(artItem);
+        if (hasRecetas) categories.receta.push(artItem);
+        if (hasReposicion) categories.reposicion.push(artItem);
+    });
+
+    const syncCategory = (catKey) => {
+        const oldCat = oldState[catKey] || { checked: true, items: [] };
+        const newItems = categories[catKey].map(item => {
+            const oldItem = oldCat.items.find(i => i.articulo_id === item.articulo_id);
+            return {
+                ...item,
+                checked: oldItem ? oldItem.checked : true
+            };
+        });
+        
+        // El estado maestro de la categoría debe sincronizarse con si todos están checkeados
+        const allChecked = newItems.length > 0 && newItems.every(i => i.checked);
+        return {
+            checked: oldCat.items.length > 0 ? allChecked : oldCat.checked,
+            items: newItems
+        };
+    };
+
+    window.pdfCapaCState = {
+        legacy: syncCategory('legacy'),
+        lotes: syncCategory('lotes'),
+        receta: syncCategory('receta'),
+        reposicion: syncCategory('reposicion')
+    };
+};
 
 window.inicializarArbolCategorias = function() {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (!list) return;
     const listaId = list.lista_id;
     
-    // Filtrar los artículos que tienen esta lista activa con casting robusto de lista_id
+    // Si no está inicializado el estado de la Capa C, lo creamos
+    if (!window.pdfCapaCState) {
+        window.inicializarCapaCState();
+    }
+
+
+
+    // Filtrar los artículos que tienen esta lista activa y cumplen los filtros individuales de la Capa C
     const articulosFiltrados = articulosBunkerGlobal.filter(art => {
-        return art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
+        const hasMargin = art.margenes && art.margenes.some(m => Number(m.lista_id) === Number(listaId));
+        if (!hasMargin) return false;
+
+        const isLegacyOnly = parseFloat(art.costo_base) > 0 &&
+                             parseInt(art.total_lotes_historicos || 0) === 0 &&
+                             parseInt(art.total_recetas || 0) === 0 &&
+                             parseInt(art.total_mapeos_reposicion || 0) === 0;
+
+        const hasLotes = parseInt(art.total_lotes_historicos || 0) > 0;
+        const hasRecetas = parseInt(art.total_recetas || 0) > 0;
+        const hasReposicion = parseInt(art.total_mapeos_reposicion || 0) > 0;
+
+        // Comprobación granular
+        if (isLegacyOnly) {
+            const item = window.pdfCapaCState.legacy.items.find(i => i.articulo_id === art.articulo_id);
+            if (item && !item.checked) return false;
+        }
+        if (hasLotes) {
+            const item = window.pdfCapaCState.lotes.items.find(i => i.articulo_id === art.articulo_id);
+            if (item && !item.checked) return false;
+        }
+        if (hasRecetas) {
+            const item = window.pdfCapaCState.receta.items.find(i => i.articulo_id === art.articulo_id);
+            if (item && !item.checked) return false;
+        }
+        if (hasReposicion) {
+            const item = window.pdfCapaCState.reposicion.items.find(i => i.articulo_id === art.articulo_id);
+            if (item && !item.checked) return false;
+        }
+
+        return true;
     });
 
     // Agrupar por Rubro y Sub-rubro
@@ -1927,7 +2122,7 @@ window.inicializarArbolCategorias = function() {
         rawMap[rName][sName].push(art);
     });
 
-    // Mantener la persistencia del estado previo de checks y secuencias de rubros en la sesión actual de la previsualización
+    // Mantener la persistencia del estado previo de checks y secuencias de rubros
     const oldState = window.pdfRubrosState || [];
     const newState = [];
 
@@ -1952,16 +2147,49 @@ window.inicializarArbolCategorias = function() {
         const rChecked = oldR ? oldR.checked : true;
 
         const subRubrosList = [];
-        const allNewSubRubros = Object.keys(rawMap[rName]).sort();
-
+        const oldSubRubrosOrder = oldR ? oldR.subRubros.map(s => s.name) : [];
+        const allNewSubRubros = Object.keys(rawMap[rName]);
+        
+        let orderedSubRubros = [];
+        oldSubRubrosOrder.forEach(sName => {
+            if (allNewSubRubros.includes(sName)) {
+                orderedSubRubros.push(sName);
+            }
+        });
         allNewSubRubros.forEach(sName => {
+            if (!orderedSubRubros.includes(sName)) {
+                orderedSubRubros.push(sName);
+            }
+        });
+
+        orderedSubRubros.forEach(sName => {
             const oldS = oldR ? oldR.subRubros.find(s => s.name === sName) : null;
             const sChecked = oldS ? oldS.checked : true;
             
+            // Copiar los artículos y aplicar ordenamiento por múltiples atributos prioritarios de la Capa D
+            const sortedItems = [...rawMap[rName][sName]];
+            const activeAttrs = window.pdfCapaDAttributes ? window.pdfCapaDAttributes.filter(a => a.checked).map(a => a.id) : [];
+            
+            if (activeAttrs.length > 0) {
+                sortedItems.sort((a, b) => {
+                    for (const attr of activeAttrs) {
+                        const valA = obtenerValorOrdenamientoCapaD(a, attr);
+                        const valB = obtenerValorOrdenamientoCapaD(b, attr);
+                        if (valA !== valB) {
+                            if (typeof valA === 'number' && typeof valB === 'number') {
+                                return valB - valA; // Descendente por tamaño/peso
+                            }
+                            return String(valA).localeCompare(String(valB));
+                        }
+                    }
+                    return 0;
+                });
+            }
+
             subRubrosList.push({
                 name: sName,
                 checked: sChecked,
-                items: rawMap[rName][sName]
+                items: sortedItems
             });
         });
 
@@ -2052,7 +2280,7 @@ window.renderArbolCategorias = function() {
             sHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 6px;';
 
             const sLeft = document.createElement('label');
-            sLeft.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.8em; margin: 0;';
+            sLeft.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.8em; margin: 0; flex: 1;';
 
             const sChk = document.createElement('input');
             sChk.type = 'checkbox';
@@ -2078,7 +2306,35 @@ window.renderArbolCategorias = function() {
             sLeft.appendChild(sChk);
             sLeft.appendChild(sSpan);
 
+            // Controles posicionales para Subrubros
+            const sRight = document.createElement('div');
+            sRight.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+
+            const sBtnUp = document.createElement('button');
+            sBtnUp.type = 'button';
+            sBtnUp.innerHTML = '▲';
+            sBtnUp.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.75em; padding: 1px; outline: none;';
+            sBtnUp.disabled = sIdx === 0;
+            if (sIdx === 0) sBtnUp.style.opacity = '0.2';
+            sBtnUp.onclick = () => {
+                window.moverSubrubroPDF(rIdx, sIdx, sIdx - 1);
+            };
+
+            const sBtnDown = document.createElement('button');
+            sBtnDown.type = 'button';
+            sBtnDown.innerHTML = '▼';
+            sBtnDown.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.75em; padding: 1px; outline: none;';
+            sBtnDown.disabled = sIdx === rubro.subRubros.length - 1;
+            if (sIdx === rubro.subRubros.length - 1) sBtnDown.style.opacity = '0.2';
+            sBtnDown.onclick = () => {
+                window.moverSubrubroPDF(rIdx, sIdx, sIdx + 1);
+            };
+
+            sRight.appendChild(sBtnUp);
+            sRight.appendChild(sBtnDown);
+
             sHeader.appendChild(sLeft);
+            sHeader.appendChild(sRight);
             subList.appendChild(sHeader);
         });
 
@@ -2096,6 +2352,443 @@ window.moverRubroPDF = function(fromIdx, toIdx) {
     
     window.renderArbolCategorias();
     window.actualizarPrevisualizacionPDF();
+};
+
+window.moverSubrubroPDF = function(rubroIdx, fromIdx, toIdx) {
+    const rubro = window.pdfRubrosState[rubroIdx];
+    if (!rubro || toIdx < 0 || toIdx >= rubro.subRubros.length) return;
+    
+    const temp = rubro.subRubros[fromIdx];
+    rubro.subRubros[fromIdx] = rubro.subRubros[toIdx];
+    rubro.subRubros[toIdx] = temp;
+    
+    window.renderArbolCategorias();
+    window.actualizarPrevisualizacionPDF();
+};
+
+window.moverCapaDAttr = function(fromIdx, toIdx) {
+    if (toIdx < 0 || toIdx >= window.pdfCapaDAttributes.length) return;
+    const temp = window.pdfCapaDAttributes[fromIdx];
+    window.pdfCapaDAttributes[fromIdx] = window.pdfCapaDAttributes[toIdx];
+    window.pdfCapaDAttributes[toIdx] = temp;
+    
+    window.renderCapaDPriorityList();
+    window.actualizarPrevisualizacionPDF();
+};
+
+window.renderCapaDPriorityList = function() {
+    const container = document.getElementById('pdf-capad-priority-list');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    window.pdfCapaDAttributes.forEach((attr, idx) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;';
+        
+        const label = document.createElement('label');
+        label.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85em; color: #334155; margin: 0; font-weight: 500; flex: 1;';
+        
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = attr.checked;
+        chk.style.cssText = 'width: 14px; height: 14px; cursor: pointer;';
+        chk.onchange = (e) => {
+            attr.checked = e.target.checked;
+            window.actualizarPrevisualizacionPDF();
+        };
+        
+        const span = document.createElement('span');
+        span.innerHTML = attr.label;
+        
+        label.appendChild(chk);
+        label.appendChild(span);
+        
+        const controls = document.createElement('div');
+        controls.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+        
+        const btnUp = document.createElement('button');
+        btnUp.type = 'button';
+        btnUp.innerHTML = '▲';
+        btnUp.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.75em; padding: 1px; outline: none;';
+        btnUp.disabled = idx === 0;
+        if (idx === 0) btnUp.style.opacity = '0.2';
+        btnUp.onclick = () => {
+            window.moverCapaDAttr(idx, idx - 1);
+        };
+        
+        const btnDown = document.createElement('button');
+        btnDown.type = 'button';
+        btnDown.innerHTML = '▼';
+        btnDown.style.cssText = 'background: transparent; border: none; cursor: pointer; font-size: 0.75em; padding: 1px; outline: none;';
+        btnDown.disabled = idx === window.pdfCapaDAttributes.length - 1;
+        if (idx === window.pdfCapaDAttributes.length - 1) btnDown.style.opacity = '0.2';
+        btnDown.onclick = () => {
+            window.moverCapaDAttr(idx, idx + 1);
+        };
+        
+        controls.appendChild(btnUp);
+        controls.appendChild(btnDown);
+        
+        item.appendChild(label);
+        item.appendChild(controls);
+        container.appendChild(item);
+    });
+};
+
+window.toggleColapsarSidebar = function(event) {
+    if (event) event.stopPropagation();
+    const sidebar = document.getElementById('pdf-config-sidebar');
+    const btn = document.getElementById('pdf-btn-collapse-sidebar');
+    if (!sidebar || !btn) return;
+    
+    const isCollapsed = sidebar.style.width === '0px';
+    if (isCollapsed) {
+        sidebar.style.width = '320px';
+        sidebar.style.padding = '15px';
+        sidebar.style.opacity = '1';
+        sidebar.style.marginRight = '0px';
+        btn.innerHTML = '◀';
+        btn.style.left = '-6px';
+    } else {
+        sidebar.style.width = '0px';
+        sidebar.style.padding = '0px';
+        sidebar.style.opacity = '0';
+        sidebar.style.marginRight = '-12px';
+        btn.innerHTML = '▶';
+        btn.style.left = '0px';
+    }
+    window.guardarDisenoPDF();
+};
+
+window.inicializarSplitterDrag = function() {
+    const splitter = document.getElementById('pdf-sidebar-splitter');
+    const sidebar = document.getElementById('pdf-config-sidebar');
+    if (!splitter || !sidebar) return;
+    if (splitter.dataset.dragInitialized) return;
+    splitter.dataset.dragInitialized = 'true';
+    
+    let startX, startWidth;
+    
+    splitter.addEventListener('mousedown', function(e) {
+        if (e.target.id === 'pdf-btn-collapse-sidebar') return;
+        startX = e.clientX;
+        startWidth = parseInt(document.defaultView.getComputedStyle(sidebar).width, 10);
+        
+        sidebar.style.transition = 'none';
+        
+        function doDrag(e) {
+            const newWidth = startWidth + (e.clientX - startX);
+            if (newWidth >= 200 && newWidth <= 500) {
+                sidebar.style.width = newWidth + 'px';
+            }
+        }
+        
+        function stopDrag() {
+            document.documentElement.removeEventListener('mousemove', doDrag, false);
+            document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            sidebar.style.transition = 'width 0.3s ease, padding 0.3s ease, margin 0.3s ease, opacity 0.3s ease';
+            window.guardarDisenoPDF();
+        }
+        
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+    });
+    
+    splitter.addEventListener('dblclick', function(e) {
+        if (e.target.id === 'pdf-btn-collapse-sidebar') return;
+        window.toggleColapsarSidebar();
+    });
+};
+
+window.guardarDisenoPDF = function() {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list || !list.lista_id) return;
+    const listaId = list.lista_id;
+    
+    const capaA = pdfColumnsOrder.map(c => ({ id: c.id, checked: c.checked }));
+    
+    const capaB = window.pdfRubrosState ? window.pdfRubrosState.map(r => ({
+        name: r.name,
+        checked: r.checked,
+        subRubros: r.subRubros.map(s => ({ name: s.name, checked: s.checked }))
+    })) : [];
+    
+    const capaC = window.pdfCapaCState ? {
+        legacy: { checked: window.pdfCapaCState.legacy.checked, items: window.pdfCapaCState.legacy.items.map(i => ({ id: i.articulo_id, checked: i.checked })) },
+        lotes: { checked: window.pdfCapaCState.lotes.checked, items: window.pdfCapaCState.lotes.items.map(i => ({ id: i.articulo_id, checked: i.checked })) },
+        receta: { checked: window.pdfCapaCState.receta.checked, items: window.pdfCapaCState.receta.items.map(i => ({ id: i.articulo_id, checked: i.checked })) },
+        reposicion: { checked: window.pdfCapaCState.reposicion.checked, items: window.pdfCapaCState.reposicion.items.map(i => ({ id: i.articulo_id, checked: i.checked })) }
+    } : null;
+    
+    const capaD = window.pdfCapaDAttributes ? window.pdfCapaDAttributes.map(a => ({ id: a.id, checked: a.checked })) : [];
+    
+    const sidebar = document.getElementById('pdf-config-sidebar');
+    const sidebarWidth = sidebar ? sidebar.style.width : '320px';
+    const sidebarCollapsed = sidebar ? (sidebar.style.width === '0px') : false;
+    
+    const designState = {
+        capaA,
+        capaB,
+        capaC,
+        capaD,
+        sidebarWidth,
+        sidebarCollapsed
+    };
+    
+    localStorage.setItem(`pdf_design_state_${listaId}`, JSON.stringify(designState));
+};
+
+window.cargarDisenoPDF = function() {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list || !list.lista_id) return;
+    const listaId = list.lista_id;
+    
+    const saved = localStorage.getItem(`pdf_design_state_${listaId}`);
+    if (!saved) {
+        window.pdfCapaDAttributes = [
+            { id: 'variedad', label: '🌾 Variedad comercial', checked: false },
+            { id: 'presentacion', label: '📦 Presentación del empaque', checked: true },
+            { id: 'marca', label: '🏷️ Marca comercial', checked: false },
+            { id: 'origen', label: '🌍 Origen / Procedencia', checked: false }
+        ];
+        return;
+    }
+    
+    try {
+        const state = JSON.parse(saved);
+        
+        if (state.capaA) {
+            state.capaA.forEach(savedCol => {
+                const col = pdfColumnsOrder.find(c => c.id === savedCol.id);
+                if (col) col.checked = savedCol.checked;
+            });
+        }
+        
+        if (state.capaB) {
+            const restoredRubros = [];
+            state.capaB.forEach(savedRubro => {
+                const origRubro = window.pdfRubrosState ? window.pdfRubrosState.find(r => r.name === savedRubro.name) : null;
+                if (origRubro) {
+                    const restoredSubRubros = [];
+                    savedRubro.subRubros.forEach(savedSub => {
+                        const origSub = origRubro.subRubros.find(s => s.name === savedSub.name);
+                        if (origSub) {
+                            origSub.checked = savedSub.checked;
+                            restoredSubRubros.push(origSub);
+                        }
+                    });
+                    origRubro.subRubros.forEach(s => {
+                        if (!restoredSubRubros.some(rs => rs.name === s.name)) {
+                            restoredSubRubros.push(s);
+                        }
+                    });
+                    origRubro.checked = savedRubro.checked;
+                    origRubro.subRubros = restoredSubRubros;
+                    restoredRubros.push(origRubro);
+                }
+            });
+            if (window.pdfRubrosState) {
+                window.pdfRubrosState.forEach(r => {
+                    if (!restoredRubros.some(rr => rr.name === r.name)) {
+                        restoredRubros.push(r);
+                    }
+                });
+                window.pdfRubrosState = restoredRubros;
+            }
+        }
+        
+        if (state.capaC && window.pdfCapaCState) {
+            const syncCapaCCategory = (catKey) => {
+                const savedCat = state.capaC[catKey];
+                const origCat = window.pdfCapaCState[catKey];
+                if (savedCat && origCat) {
+                    origCat.checked = savedCat.checked;
+                    savedCat.items.forEach(savedItem => {
+                        const origItem = origCat.items.find(i => i.articulo_id === savedItem.id);
+                        if (origItem) origItem.checked = savedItem.checked;
+                    });
+                }
+            };
+            syncCapaCCategory('legacy');
+            syncCapaCCategory('lotes');
+            syncCapaCCategory('receta');
+            syncCapaCCategory('reposicion');
+        }
+        
+        if (state.capaD) {
+            const restoredCapaD = [];
+            state.capaD.forEach(savedAttr => {
+                restoredCapaD.push({
+                    id: savedAttr.id,
+                    label: savedAttr.id === 'variedad' ? '🌾 Variedad comercial' :
+                           savedAttr.id === 'presentacion' ? '📦 Presentación del empaque' :
+                           savedAttr.id === 'marca' ? '🏷️ Marca comercial' : '🌍 Origen / Procedencia',
+                    checked: savedAttr.checked
+                });
+            });
+            const attrs = ['variedad', 'presentacion', 'marca', 'origen'];
+            attrs.forEach(id => {
+                if (!restoredCapaD.some(a => a.id === id)) {
+                    restoredCapaD.push({
+                        id,
+                        label: id === 'variedad' ? '🌾 Variedad comercial' :
+                               id === 'presentacion' ? '📦 Presentación del empaque' :
+                               id === 'marca' ? '🏷️ Marca comercial' : '🌍 Origen / Procedencia',
+                        checked: id === 'presentacion'
+                    });
+                }
+            });
+            window.pdfCapaDAttributes = restoredCapaD;
+        } else {
+            window.pdfCapaDAttributes = [
+                { id: 'variedad', label: '🌾 Variedad comercial', checked: false },
+                { id: 'presentacion', label: '📦 Presentación del empaque', checked: true },
+                { id: 'marca', label: '🏷️ Marca comercial', checked: false },
+                { id: 'origen', label: '🌍 Origen / Procedencia', checked: false }
+            ];
+        }
+        
+        const sidebar = document.getElementById('pdf-config-sidebar');
+        if (sidebar) {
+            if (state.sidebarWidth) {
+                sidebar.style.width = state.sidebarWidth;
+            }
+            if (state.sidebarCollapsed) {
+                sidebar.style.width = '0px';
+                sidebar.style.padding = '0px';
+                sidebar.style.opacity = '0';
+                sidebar.style.marginRight = '-12px';
+                const btn = document.getElementById('pdf-btn-collapse-sidebar');
+                if (btn) {
+                    btn.innerHTML = '▶';
+                    btn.style.left = '0px';
+                }
+            }
+        }
+    } catch (e) {
+        console.error("VIGÍA: Error cargando diseño", e);
+    }
+};
+
+window.renderCapaCMatrix = function() {
+    const container = document.getElementById('pdf-capac-matrix');
+    if (!container) return;
+
+    if (!window.pdfCapaCState) {
+        window.inicializarCapaCState();
+    }
+
+    const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+    const sources = [
+        { key: 'legacy', label: '🕰️ Historial Legacy (Lomas)', icon: '🕰️' },
+        { key: 'lotes', label: '📦 Compra Física de Lotes', icon: '📦' },
+        { key: 'receta', label: '📜 Estructura de Recetas (Ingr.)', icon: '📜' },
+        { key: 'reposicion', label: '📡 Ofertas de Reposición', icon: '📡' }
+    ];
+
+    let html = '';
+    sources.forEach(src => {
+        const cat = window.pdfCapaCState[src.key];
+        if (!cat) return;
+
+        const isExpanded = window.pdfCapaCExpanded && window.pdfCapaCExpanded[src.key];
+        const arrow = isExpanded ? '▼' : '▶';
+        const displayStyle = isExpanded ? 'block' : 'none';
+        const itemsCount = cat.items.length;
+
+        // Comprobar si todos los hijos están marcados para poner el master checkbox
+        const allChecked = cat.items.length > 0 && cat.items.every(i => i.checked);
+        const masterChecked = cat.checked && allChecked;
+
+        html += `
+            <div class="capac-card" style="border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; margin-bottom: 6px; background: #f8fafc; transition: all 0.2s ease;">
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #e2e8f0; cursor: pointer; user-select: none;" onclick="window.toggleCapaCAccordion(event, '${src.key}')">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 0.75em; color: #64748b; font-family: monospace; width: 12px; text-align: center;">${arrow}</span>
+                        <input type="checkbox" id="capac-master-${src.key}" ${masterChecked ? 'checked' : ''} onclick="window.toggleCapaCMaster(event, '${src.key}', this.checked)" style="cursor: pointer; width: 14px; height: 14px; margin: 0;">
+                        <span style="font-size: 0.82em; font-weight: bold; color: #1e293b;">${src.label}</span>
+                    </div>
+                    <span style="background: #cbd5e1; color: #475569; font-size: 0.72em; padding: 2px 6px; border-radius: 10px; font-weight: bold;">${itemsCount}</span>
+                </div>
+                <!-- Items Drawer -->
+                <div id="capac-drawer-${src.key}" style="display: ${displayStyle}; max-height: 150px; overflow-y: auto; background: white; padding: 6px 10px; border-top: 1px solid #cbd5e1;">
+                    ${itemsCount === 0 ? `
+                        <div style="text-align: center; color: #94a3b8; font-style: italic; padding: 6px; font-size: 0.78em;">No hay artículos</div>
+                    ` : cat.items.map(item => `
+                        <label style="display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 0.78em; color: #475569; cursor: pointer; border-bottom: 1px dashed #f1f5f9; transition: color 0.2s;" onmouseover="this.style.color='#8e4785'" onmouseout="this.style.color='#475569'">
+                            <input type="checkbox" id="capac-item-${src.key}-${item.articulo_id}" ${item.checked ? 'checked' : ''} onchange="window.toggleCapaCItemChild('${src.key}', '${item.articulo_id}', this.checked)" style="cursor: pointer; width: 13px; height: 13px; margin: 0;">
+                            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.descripcion}">${item.descripcion}</span>
+                            <strong style="color: #64748b; font-family: monospace;">(${formatter.format(item.costo_base)})</strong>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+};
+
+window.toggleCapaCAccordion = function(e, key) {
+    if (e.target.type === 'checkbox') return;
+    window.pdfCapaCExpanded[key] = !window.pdfCapaCExpanded[key];
+    window.renderCapaCMatrix();
+};
+
+window.toggleCapaCMaster = function(e, key, checked) {
+    e.stopPropagation();
+    const cat = window.pdfCapaCState[key];
+    if (cat) {
+        cat.checked = checked;
+        cat.items.forEach(item => {
+            item.checked = checked;
+        });
+        window.renderCapaCMatrix();
+        window.inicializarArbolCategorias();
+        window.renderArbolCategorias();
+        window.actualizarPrevisualizacionPDF();
+    }
+};
+
+window.toggleCapaCItemChild = function(key, articulo_id, checked) {
+    const cat = window.pdfCapaCState[key];
+    if (cat) {
+        const item = cat.items.find(i => i.articulo_id === articulo_id);
+        if (item) {
+            item.checked = checked;
+        }
+        
+        const allChecked = cat.items.every(i => i.checked);
+        cat.checked = allChecked;
+        
+        window.renderCapaCMatrix();
+        window.inicializarArbolCategorias();
+        window.renderArbolCategorias();
+        window.actualizarPrevisualizacionPDF();
+    }
+};
+
+window.cambiarFiltroCostosCapaC = function() {
+    window.inicializarArbolCategorias();
+    window.renderArbolCategorias();
+    window.actualizarPrevisualizacionPDF();
+};
+
+window.cambiarAtributoCapaD = function() {
+    window.inicializarArbolCategorias();
+    window.renderArbolCategorias();
+    window.actualizarPrevisualizacionPDF();
+};
+
+window.abrirPrevisualizadorPDFGlobal = function() {
+    if (gp_listasFinancieras && gp_listasFinancieras.length > 0) {
+        const idx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaSeleccionadaGlobal));
+        if (idx !== -1) {
+            gp_activeTabIdx = idx;
+        }
+    }
+    window.abrirPrevisualizadorPDF();
 };
 
 window.abrirPrevisualizadorPDF = function() {
@@ -2120,9 +2813,15 @@ window.abrirPrevisualizadorPDF = function() {
     // Renderizar las opciones y orden de las columnas dinámicamente
     window.renderConfiguradorColumnas();
     
-    // Inicializar y renderizar Capa B: Árbol de Estructura de Mercado
+    // Inicializar y renderizar Capa C y Capa B con persistencia atómica
+    window.inicializarCapaCState();
     window.inicializarArbolCategorias();
+    window.cargarDisenoPDF(); // Carga la memoria del localStorage indexada por ID de lista
+    window.inicializarArbolCategorias(); // Re-inicializa con el orden y estados cargados
+    window.renderCapaCMatrix();
     window.renderArbolCategorias();
+    window.renderCapaDPriorityList();
+    window.inicializarSplitterDrag();
     
     // Asegurar Higiene Clean Slate para el maximizado
     const contentEl = document.getElementById('pdf-modal-content');
@@ -2172,8 +2871,9 @@ window.actualizarPrevisualizacionPDF = function() {
     const listaId = list.lista_id;
     console.log("VIGÍA: Active listaId:", listaId);
     
-    // Guardar estado actual de columnas
+    // Guardar estado actual de columnas y diseño con persistencia atómica
     window.guardarConfiguracionColumnas();
+    window.guardarDisenoPDF();
     
     // 1. Obtener Columnas Activas de Capa A
     const cols = pdfColumnsOrder.filter(c => c.checked);
@@ -2266,8 +2966,48 @@ window.actualizarPrevisualizacionPDF = function() {
                 const tbody = document.createElement('tbody');
                 let renderedRowsCount = 0;
                 
+                // Atributos activos prioritarios de la Capa D
+                const activeAttrs = window.pdfCapaDAttributes ? window.pdfCapaDAttributes.filter(a => a.checked).map(a => a.id) : [];
+                let lastAttrVals = {};
+                
                 sub.items.forEach((art, index) => {
                     try {
+                        // Comprobar si cambian los valores de los atributos activos
+                        let changedIdx = -1;
+                        const currentAttrVals = {};
+                        activeAttrs.forEach((attr, idx) => {
+                            const val = obtenerValorFormateadoCapaD(art, attr);
+                            currentAttrVals[attr] = val;
+                            if (changedIdx === -1 && val !== lastAttrVals[attr]) {
+                                changedIdx = idx;
+                            }
+                        });
+                        
+                        if (changedIdx !== -1) {
+                            // Al menos uno cambió. Dibujamos sub-cabeceras para los niveles de prioridad modificados
+                            for (let i = changedIdx; i < activeAttrs.length; i++) {
+                                const attr = activeAttrs[i];
+                                const attrVal = currentAttrVals[attr];
+                                lastAttrVals[attr] = attrVal;
+                                
+                                // Anular los valores de los sub-atributos siguientes para forzar su re-dibujo
+                                for (let j = i + 1; j < activeAttrs.length; j++) {
+                                    lastAttrVals[activeAttrs[j]] = null;
+                                }
+                                
+                                const level = i + 1;
+                                const indent = 24 * level;
+                                
+                                const subHeaderTr = document.createElement('tr');
+                                subHeaderTr.style.backgroundColor = 'transparent';
+                                subHeaderTr.innerHTML = `
+                                    <td colspan="${cols.length}" style="padding: 6px 12px 6px ${indent}px; font-style: italic; font-weight: 600; color: #64748b; font-size: 0.8em; text-align: left; border: none;">
+                                        ${attrVal}
+                                    </td>
+                                `;
+                                tbody.appendChild(subHeaderTr);
+                            }
+                        }
                         if (!art.margenes) {
                             console.warn(`VIGÍA: Article ${art.articulo_id} lacks 'margenes' array!`);
                             return;
@@ -2363,11 +3103,51 @@ window.confirmarEImprimirPDF = function() {
     });
     const subrubrosQuery = encodeURIComponent(subrubrosOcultos.join(','));
 
+    // 4. Obtener artículos excluidos de la Capa C basado en el estado granular de cada categoría
+    const excludedCapaC = [];
+    if (window.pdfCapaCState) {
+        const categoriesKeys = ['legacy', 'lotes', 'receta', 'reposicion'];
+        articulosBunkerGlobal.forEach(art => {
+            let isPresentInSomeCategory = false;
+            let isExcluded = false;
+
+            categoriesKeys.forEach(catKey => {
+                const cat = window.pdfCapaCState[catKey];
+                if (cat) {
+                    const item = cat.items.find(i => i.articulo_id === art.articulo_id);
+                    if (item) {
+                        isPresentInSomeCategory = true;
+                        if (!item.checked) {
+                            isExcluded = true;
+                        }
+                    }
+                }
+            });
+
+            if (isPresentInSomeCategory && isExcluded) {
+                excludedCapaC.push(art.articulo_id);
+            }
+        });
+    }
+    const excludeQuery = encodeURIComponent(excludedCapaC.join(','));
+
+    // 5. Obtener los atributos activos prioritarios de la Capa D
+    const capadActiveAttrs = window.pdfCapaDAttributes ? window.pdfCapaDAttributes.filter(a => a.checked).map(a => a.id).join(',') : 'none';
+
+    // 6. Obtener la secuencia posicional personalizada de todos los Sub-rubros de la Capa B
+    const subrubrosOrder = [];
+    window.pdfRubrosState.forEach(rubro => {
+        rubro.subRubros.forEach(sub => {
+            subrubrosOrder.push(sub.name);
+        });
+    });
+    const subrubrosOrderQuery = encodeURIComponent(subrubrosOrder.join(','));
+
     // Cerrar previsualizador para mejorar UX
     cerrarPrevisualizadorPDF();
     
-    // Abrir descarga en nueva pestaña transmitiendo los parámetros de capas y ordenamiento
-    window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}&rubros_order=${rubrosQuery}&hidden_subrubros=${subrubrosQuery}`, '_blank');
+    // Abrir descarga en nueva pestaña transmitiendo los parámetros de capas, reordenación posicional y anidamiento
+    window.open(`/api/logistica/bunker/exportar-pdf/${list.lista_id}?columns=${colsQuery}&rubros_order=${rubrosQuery}&hidden_subrubros=${subrubrosQuery}&exclude_articles=${excludeQuery}&capa_d_attributes=${capadActiveAttrs}&subrubros_order=${subrubrosOrderQuery}`, '_blank');
 };
 
 window.toggleMaximizarPrevisualizador = function() {
@@ -2755,14 +3535,18 @@ window.abrirVinculadorReposicion = async function() {
             selectProveedor.value = 'ALL';
         }
 
-        // Limpiar spinner
-        gridDiv.innerHTML = '';
-        
-        // Destruir instancia anterior si existe
+        // 1. Destruir instancia anterior de forma segura antes de tocar el DOM para evitar excepciones NotFoundError
         if (window.v4GridApi) {
-            window.v4GridApi.destroy();
+            try {
+                window.v4GridApi.destroy();
+            } catch (err) {
+                console.warn("[AG-GRID] Error destruyendo instancia anterior:", err);
+            }
             window.v4GridApi = null;
         }
+
+        // 2. Limpiar spinner o contenido
+        gridDiv.innerHTML = '';
 
         // Crear grilla de AG Grid
         window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);

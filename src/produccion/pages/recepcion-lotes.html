@@ -265,8 +265,9 @@
             border-radius: 12px;
             width: 90%;
             max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
             transform: translateY(20px);
             transition: all 0.3s ease;
         }
@@ -391,9 +392,14 @@
             <section class="grid-section">
                 <div class="grid-header">
                     <h2>Últimos Ingresos de Lotes</h2>
-                    <button class="admin-button" onclick="window.cargarLotes()" style="background-color: #28a745;">
-                        🔄 Actualizar
-                    </button>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button id="btn-vincular-lote-batch" class="admin-button" onclick="window.abrirModalVincularBatch()" style="background: linear-gradient(to right, #3b82f6, #1d4ed8); color: white; border: none; display: none; font-weight: bold;">
+                            🔗 Vincular Seleccionados (<span id="batch-select-count">0</span>)
+                        </button>
+                        <button class="admin-button" onclick="window.cargarLotes()" style="background-color: #28a745;">
+                            🔄 Actualizar
+                        </button>
+                    </div>
                 </div>
 
                 <div id="loading-grid" style="text-align: center;">
@@ -451,8 +457,181 @@
         </div>
     </div>
 
+    <!-- MODAL DE CALIBRACIÓN Y DESTINO (BÚNKER) -->
+    <div id="modal-bunker" class="modal-trazabilidad">
+        <div class="trazabilidad-content" style="max-width: 900px;">
+            <div class="trazabilidad-header" style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);">
+                <h3>🔗 Calibración y Vínculo al Búnker</h3>
+                <button class="btn-close" onclick="BunkerModal.cerrar()">&times;</button>
+            </div>
+            <div class="trazabilidad-body" style="background: #f8fafc; padding: 20px;">
+                <!-- Header del Lote -->
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 10px; margin-bottom: 20px;">
+                    <div>
+                        <span style="font-weight: bold; color: #475569;">Lote Supabase:</span>
+                        <span id="bm-lote-id" style="font-family: monospace; font-size: 1.1em; color: #0f172a;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #475569;">Producto:</span>
+                        <span id="bm-producto" style="color: #0f172a;">-</span>
+                    </div>
+                </div>
+
+                <!-- Alerta de Inconsistencia Flagrante -->
+                <div id="bm-warning-inconsistente" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; align-items: center; gap: 8px;">
+                </div>
+
+                <!-- BLOQUE 1: REALIDAD DEL LOTE -->
+                <h4 style="margin-top: 0; color: #1e293b;">1. Realidad del Lote (Costeo)</h4>
+                
+                <div style="display: flex; gap: 20px; background: #f1f5f9; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+                    <div>
+                        <span style="font-weight: bold; color: #475569; font-size: 0.85em;">Unidades/Bultos:</span>
+                        <span id="bm-bultos" style="color: #0f172a; font-weight: bold; margin-left: 5px;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #475569; font-size: 0.85em;">Kilos por Unidad:</span>
+                        <span id="bm-kilos-unidad" style="color: #0f172a; font-weight: bold; margin-left: 5px;">-</span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                    <div style="display:flex; flex-direction: column;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: #64748b;">Costo Bruto Factura ($)</label>
+                        <input type="number" id="bm-costo-bruto" step="0.01" style="padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" oninput="BunkerModal.recalcularCostos()">
+                    </div>
+                    <div style="display:flex; flex-direction: column;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: #64748b;">Cantidad Total en Kilos</label>
+                        <input type="number" id="bm-cantidad-total" step="0.01" style="padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" readonly>
+                    </div>
+                    <div style="display:flex; flex-direction: column;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: #64748b;">IVA (%)</label>
+                        <input type="number" id="bm-iva" value="21" step="0.01" style="padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    </div>
+                </div>
+                <div style="background: #e0f2fe; padding: 10px; border-radius: 6px; border: 1px solid #bae6fd; text-align: center; margin-bottom: 25px;">
+                    <span style="color: #0284c7; font-weight: bold;">Costo Real por Unidad/Kg:</span>
+                    <span id="bm-costo-kilo" style="font-size: 1.3em; font-weight: bold; color: #0369a1; margin-left: 10px;">$ 0.00</span>
+                </div>
+
+                <!-- BLOQUE 2: DISTRIBUCIÓN -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; color: #1e293b;">2. Destinos (Split del Lote)</h4>
+                    <button onclick="BunkerModal.agregarDestino()" style="background: #10b981; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">➕ Agregar Destino</button>
+                </div>
+                <div id="bm-destinos-container" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; max-height: 200px; overflow-y: auto;">
+                    <!-- Filas dinámicas aquí -->
+                </div>
+                <div style="text-align: right; margin-bottom: 25px; font-weight: bold; color: #475569;">
+                    Asignado: <span id="bm-asignado-total">0</span> / <span id="bm-disponible-total">0</span>
+                </div>
+
+                <!-- CHECK DE VALIDACIÓN MANUAL -->
+                <div style="background: #fef3c7; border: 1px solid #fcd34d; padding: 15px; border-radius: 6px; margin-bottom: 25px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="bm-validacion-manual" style="transform: scale(1.5);">
+                    <label for="bm-validacion-manual" style="color: #b45309; font-weight: bold; cursor: pointer;">
+                        Confirmo manualmente la equivalencia de Unidades/Kilos y autorizo este desglose en modo alerta preventiva.
+                    </label>
+                </div>
+
+                <!-- BLOQUE 3: ACCIONES -->
+                <div style="text-align: right;">
+                    <button onclick="BunkerModal.cerrar()" style="background: #94a3b8; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancelar</button>
+                    <button id="bm-btn-guardar" onclick="BunkerModal.guardar()" style="background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>💾 Guardar Vínculo</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE VINCULACIÓN EN LOTE (BATCH) -->
+    <div id="modal-bunker-batch" class="modal-trazabilidad">
+        <div class="trazabilidad-content" style="max-width: 1200px; width: 95%;">
+            <div class="trazabilidad-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                <h3>🔗 Vinculación de Lotes en Bloque</h3>
+                <button class="btn-close" onclick="BunkerModalBatch.cerrar()">&times;</button>
+            </div>
+            <div class="trazabilidad-body" style="background: #f8fafc; padding: 20px; max-height: 80vh; overflow-y: auto;">
+                
+                <!-- Alerta Inconsistencia en Batch -->
+                <div id="bmb-warning-general" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-weight: bold; font-size: 0.95em;">
+                    ⚠️ ATENCIÓN: Uno o más lotes seleccionados presentan inconsistencias flagrantes en su factor de conversión. Por favor verifique el costeo y presentación antes de proceder.
+                </div>
+
+                <div id="bmb-lotes-container" style="display: flex; flex-direction: column; gap: 20px;">
+                    <!-- Tarjetas de lotes inyectadas dinámicamente -->
+                </div>
+
+                <!-- CHECK DE VALIDACIÓN MANUAL BATCH -->
+                <div style="background: #fef3c7; border: 1px solid #fcd34d; padding: 15px; border-radius: 6px; margin-top: 25px; margin-bottom: 25px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="bmb-validacion-manual" style="transform: scale(1.5);" onchange="BunkerModalBatch.verificarBotonGuardar()">
+                    <label for="bmb-validacion-manual" style="color: #b45309; font-weight: bold; cursor: pointer; font-size: 0.95em;">
+                        Confirmo la equivalencia de Unidades/Kilos para todos los lotes y autorizo su procesamiento transaccional en bloque.
+                    </label>
+                </div>
+
+                <!-- ACCIONES BATCH -->
+                <div style="text-align: right;">
+                    <button onclick="BunkerModalBatch.cerrar()" style="background: #94a3b8; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; margin-right: 10px; font-weight: 500;">Cancelar</button>
+                    <button id="bmb-btn-guardar" onclick="BunkerModalBatch.guardar()" style="background: linear-gradient(to right, #10b981, #059669); color: white; border: none; padding: 12px 28px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: opacity 0.2s;" disabled>💾 Guardar Vínculos en Lote</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AUDITORÍA DE DESTINOS -->
+    <div id="modal-auditoria" class="modal-trazabilidad">
+        <div class="trazabilidad-content" style="max-width: 600px;">
+            <div class="trazabilidad-header" style="background: linear-gradient(135deg, #0dcaf0 0%, #0aa2c0 100%);">
+                <h3>🔎 Auditoría de Destinos: <span id="auditoria-lote-id" style="font-family: monospace;"></span></h3>
+                <button class="btn-close" onclick="cerrarAuditoriaDestinos()">&times;</button>
+            </div>
+            <div class="trazabilidad-body" style="background: #f8fafc; padding: 20px;">
+                
+                <h4 style="margin-top: 0; color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px;">📦 Realidad del Lote Original</h4>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                    <div>
+                        <span style="font-weight: bold; color: #64748b; font-size: 0.8em; text-transform: uppercase;">Unidades/Bultos</span><br>
+                        <span id="auditoria-origen-bultos" style="font-size: 1.3em; font-weight: bold; color: #0f172a;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #64748b; font-size: 0.8em; text-transform: uppercase;">Total Neto (Kg)</span><br>
+                        <span id="auditoria-origen-kilos" style="font-size: 1.3em; font-weight: bold; color: #0f172a;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #64748b; font-size: 0.8em; text-transform: uppercase;">Costo Origen</span><br>
+                        <span id="auditoria-costo-bruto" style="font-size: 1.1em; font-weight: bold; color: #0d47a1;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #64748b; font-size: 0.8em; text-transform: uppercase;">Costo x Kg</span><br>
+                        <span id="auditoria-costo-kilo" style="font-size: 1.1em; font-weight: bold; color: #0369a1;">-</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; color: #1e293b;">🔄 Desglose de Impacto Comercial</h4>
+                    <div style="text-align: right;">
+                        <span style="font-weight: bold; color: #64748b; font-size: 0.85em; text-transform: uppercase;">Total Neto Absorbido:</span>
+                        <span id="auditoria-asignado" style="font-size: 1.2em; font-weight: bold; color: #28a745; margin-left: 5px;">-</span>
+                    </div>
+                </div>
+                
+                <div id="auditoria-destinos-container" style="background: white; border-radius: 6px; border: 1px solid #cbd5e1; max-height: 300px; overflow-y: auto;">
+                    <!-- Destinos dinámicos aquí -->
+                </div>
+
+                <div style="text-align: right; margin-top: 20px;">
+                    <button onclick="cerrarAuditoriaDestinos()" style="background: #64748b; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="/js/services/supabaseService.js"></script>
     <script src="/js/recepcionLotes.js"></script>
+    <script src="/js/lotesBunkerModal.js"></script>
+    <script src="/js/lotesBunkerModalBatch.js"></script>
 </body>
 </html>

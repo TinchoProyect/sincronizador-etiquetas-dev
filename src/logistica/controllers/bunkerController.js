@@ -264,6 +264,61 @@ exports.buscarInsumosBunker = async (req, res) => {
 };
 
 
+function obtenerValorOrdenamientoCapaD(art, attribute) {
+    if (!art.propiedades_dinamicas) return 0;
+    // Soporta tanto objeto parseado como string JSON
+    let props = art.propiedades_dinamicas;
+    if (typeof props === 'string') {
+        try {
+            props = JSON.parse(props);
+        } catch (e) {
+            props = {};
+        }
+    }
+    const prop = props[attribute];
+    if (!prop) return 0;
+    const val = typeof prop === 'object' ? prop.valor : prop;
+    if (!val) return 0;
+
+    // 1. Intentar extraer número de presentación (ej: "10 kg", "envases por 10 kg", "500 g")
+    const match = String(val).match(/(\d+(?:\.\d+)?)\s*(kg|g|u|l|ml|unidad)?/i);
+    if (match) {
+        let num = parseFloat(match[1]);
+        let unit = (match[2] || '').toLowerCase();
+        if (unit === 'g' || unit === 'ml') {
+            num = num / 1000.0; // Normalizar gramos/mililitros
+        }
+        return num;
+    }
+
+    // 2. Fallback semántico cualitativo para ordenamiento de variables nominales comerciales
+    const valStr = String(val).toLowerCase();
+    if (valStr.includes('grande') || valStr.includes('mayor')) {
+        return 100;
+    } else if (valStr.includes('medio') || valStr.includes('mediano')) {
+        return 50;
+    } else if (valStr.includes('chico') || valStr.includes('pequeño')) {
+        return 10;
+    }
+
+    return String(val); // Fallback a ordenamiento alfabético
+}
+
+function obtenerValorFormateadoCapaD(art, attribute) {
+    if (!art.propiedades_dinamicas) return 'Sin Especificar';
+    let props = art.propiedades_dinamicas;
+    if (typeof props === 'string') {
+        try {
+            props = JSON.parse(props);
+        } catch (e) {
+            props = {};
+        }
+    }
+    const prop = props[attribute];
+    if (!prop) return 'Sin Especificar';
+    return typeof prop === 'object' ? prop.valor : prop;
+}
+
 exports.exportarPDFListado = async (req, res) => {
     try {
         const { listaId } = req.params;
@@ -314,7 +369,14 @@ exports.exportarPDFListado = async (req, res) => {
         // 4. Procesar columnas activas, categorías, reordenamientos y escalado elástico de anchos (495pt en total)
         const activeColsParam = req.query.columns;
         const rubrosOrderParam = req.query.rubros_order;
+        const subrubrosOrderParam = req.query.subrubros_order;
         const hiddenSubrubrosParam = req.query.hidden_subrubros;
+        const excludeArticlesParam = req.query.exclude_articles;
+        const capaDAttributesParam = req.query.capa_d_attributes;
+
+        let excludeArticlesList = excludeArticlesParam ? excludeArticlesParam.split(',').map(id => id.trim().toLowerCase()) : [];
+        let activeCapaDAttributes = capaDAttributesParam && capaDAttributesParam !== 'none' ? capaDAttributesParam.split(',').map(a => a.trim()) : [];
+        let subrubrosOrderList = subrubrosOrderParam ? subrubrosOrderParam.split(',').map(s => s.trim()) : null;
 
         let activeColumns = ['codigo', 'descripcion', 'presentacion', 'kilo', 'bulto']; // default
         if (activeColsParam) {
@@ -420,6 +482,11 @@ exports.exportarPDFListado = async (req, res) => {
             const rubroName = (art.rubro || 'SIN RUBRO').trim();
             const subRubroName = (art.sub_rubro || 'SIN SUB-RUBRO').trim();
 
+            // Filtrar si el artículo fue excluido (deseleccionado en la Capa C)
+            if (excludeArticlesList.includes(String(art.articulo_numero).trim().toLowerCase())) {
+                continue;
+            }
+
             // Filtrar si el sub-rubro está oculto
             if (hiddenSubrubrosList.includes(subRubroName)) {
                 continue;
@@ -465,12 +532,40 @@ exports.exportarPDFListado = async (req, res) => {
 
         // Renderizado por Bloques (Ruptura de Rubro y Sub-rubro)
         for (const rubro of orderedRubros) {
-            const subRubros = Object.keys(grouped[rubro]).sort();
+            let subRubros = Object.keys(grouped[rubro]);
+            if (subrubrosOrderList) {
+                const orderedSub = subrubrosOrderList.filter(s => subRubros.includes(s));
+                subRubros.forEach(s => {
+                    if (!orderedSub.includes(s)) {
+                        orderedSub.push(s);
+                    }
+                });
+                subRubros = orderedSub;
+            } else {
+                subRubros.sort();
+            }
             let rubroImpreso = false;
 
             for (const subRubro of subRubros) {
                 const articulos = grouped[rubro][subRubro];
                 if (articulos.length === 0) continue;
+
+                // Aplicar ordenamiento secundario por los múltiples atributos prioritarios de la Capa D
+                if (activeCapaDAttributes.length > 0) {
+                    articulos.sort((a, b) => {
+                        for (const attr of activeCapaDAttributes) {
+                            const valA = obtenerValorOrdenamientoCapaD(a, attr);
+                            const valB = obtenerValorOrdenamientoCapaD(b, attr);
+                            if (valA !== valB) {
+                                if (typeof valA === 'number' && typeof valB === 'number') {
+                                    return valB - valA; // Descendente por tamaño/peso
+                                }
+                                return String(valA).localeCompare(String(valB));
+                            }
+                        }
+                        return 0;
+                    });
+                }
 
                 // Estimar espacio requerido para Rubro, Sub-rubro, Cabecera y al menos la primera fila
                 let requiredHeight = 0;
@@ -505,7 +600,69 @@ exports.exportarPDFListado = async (req, res) => {
                 currentY = dibujarCabeceraTabla(currentY);
 
                 // D. Dibujar Artículos de este grupo
+                // D. Dibujar Artículos de este grupo
+                let lastAttrVals = {};
                 articulos.forEach((art, index) => {
+                    // Comprobar si cambian los valores de los atributos activos de la Capa D
+                    let changedIdx = -1;
+                    const currentAttrVals = {};
+                    activeCapaDAttributes.forEach((attr, idx) => {
+                        const val = obtenerValorFormateadoCapaD(art, attr);
+                        currentAttrVals[attr] = val;
+                        if (changedIdx === -1 && val !== lastAttrVals[attr]) {
+                            changedIdx = idx;
+                        }
+                    });
+
+                    if (changedIdx !== -1) {
+                        const subHeaderHeight = 18;
+                        
+                        // Si al menos un sub-header cambia, dibujamos la cascada
+                        for (let i = changedIdx; i < activeCapaDAttributes.length; i++) {
+                            const attr = activeCapaDAttributes[i];
+                            const attrVal = currentAttrVals[attr];
+                            lastAttrVals[attr] = attrVal;
+                            
+                            // Forzar re-dibujado de los niveles siguientes
+                            for (let j = i + 1; j < activeCapaDAttributes.length; j++) {
+                                lastAttrVals[activeCapaDAttributes[j]] = null;
+                            }
+                            
+                            const level = i + 1;
+                            const indentX = 50 + (25 * level); // Sangría proporcional: Nivel 1 -> X=75, Nivel 2 -> X=100, etc.
+
+                            // Si no cabe en la página actual, agregamos página y redibujamos cabeceras
+                            if (currentY + subHeaderHeight > doc.page.height - 70) {
+                                doc.addPage();
+                                currentY = 50;
+                                
+                                doc.fontSize(11)
+                                   .font('Helvetica-Bold')
+                                   .fillColor('#8e4785')
+                                   .text(`${rubro.toUpperCase()} (Continuación)`, 50, currentY);
+                                doc.moveDown(0.2);
+                                currentY = doc.y;
+
+                                doc.fontSize(9.5)
+                                   .font('Helvetica-BoldOblique')
+                                   .fillColor('#475569')
+                                   .text(`    ${subRubro} (Continuación)`, 50, currentY);
+                                doc.moveDown(0.3);
+                                currentY = doc.y;
+
+                                currentY = dibujarCabeceraTabla(currentY);
+                            }
+                            
+                            // Dibujar sub-cabecera divisoria minimalista desalineada con sangrado por nivel
+                            doc.fontSize(8)
+                               .font('Helvetica-Oblique')
+                               .fillColor('#64748b')
+                               .text(attrVal, indentX, currentY + 5);
+                            
+                            currentY += subHeaderHeight;
+                        }
+                    }
+
                     const pFinal = parseFloat(art.precio_final || 0);
                     const ivaVal = parseFloat(art.iva || 21.00);
                     const factorKilos = parseFloat(art.kilos_unidad || 0);

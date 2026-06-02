@@ -37,7 +37,7 @@ export const modalIngredienteHTML = `
                         <div id="categoria-form-container" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #e2e8f0; position: absolute; z-index: 10001; width: calc(100% - 30px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
                             <div style="margin-bottom: 10px;">
                                 <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Nombre de categoría</label>
-                                <input type="text" id="cat-form-nombre" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;" required>
+                                <input type="text" id="cat-form-nombre" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
                             </div>
                             <div style="margin-bottom: 10px;">
                                 <label style="font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: block;">Descripción (opcional)</label>
@@ -209,7 +209,7 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
         container.style.width = '100%';
         container.innerHTML = `
             <div style="margin-bottom: 8px; font-weight: bold; color: #334155; font-size: 0.9em;">Nueva/Editar Categoría</div>
-            <input type="text" id="cat-form-nombre" placeholder="Nombre exacto" required style="width: 100%; margin-bottom: 8px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
+            <input type="text" id="cat-form-nombre" placeholder="Nombre exacto" style="width: 100%; margin-bottom: 8px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
             <input type="text" id="cat-form-desc" placeholder="Descripción (Opcional)" style="width: 100%; margin-bottom: 12px; padding: 6px; border: 1px solid #ccc; border-radius:4px;">
             <div style="display: flex; gap: 8px;">
                 <button type="button" id="btn-guardar-categoria" style="background: #22c55e; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; flex: 1;">Guardar</button>
@@ -350,12 +350,14 @@ function configurarSubmitFormulario() {
         
         const id = document.getElementById('ingrediente-id').value;
         const ingrediente = {
+            codigo: document.getElementById('codigo') ? document.getElementById('codigo').value : null,
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
             categoria_id: document.getElementById('categoria-id').value || null, // Opcional
-            stock_actual: parseFloat(document.getElementById('stock').value),
+            stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             sector_id: document.getElementById('sector').value || null,
-            descripcion: document.getElementById('descripcion').value
+            descripcion: document.getElementById('descripcion').value,
+            padre_id: (typeof ingredienteEditando !== 'undefined' && ingredienteEditando) ? ingredienteEditando.padre_id : null
         };
 
         try {

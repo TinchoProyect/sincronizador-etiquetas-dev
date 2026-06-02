@@ -119,13 +119,38 @@ const buscarCandidatasLomasoft = async (req, res) => {
                         return true;
                     });
 
+                    // 1. Obtener alícuotas para todos los artículos candidatos de forma unificada
+                    const uniqueArticloCodes = [...new Set(resultados.map(r => r.codigo_articulo).filter(Boolean))];
+                    const ivaLookup = {};
+                    
+                    if (uniqueArticloCodes.length > 0) {
+                        try {
+                            const ivaQuery = `
+                                SELECT a.numero, a.codigo_barras, COALESCE(pa.iva, 21.00) as iva
+                                FROM public.articulos a
+                                LEFT JOIN public.precios_articulos pa ON pa.articulo = a.numero
+                                WHERE a.numero = ANY($1) OR a.codigo_barras = ANY($1)
+                            `;
+                            const ivaRes = await req.db.query(ivaQuery, [uniqueArticloCodes]);
+                            ivaRes.rows.forEach(row => {
+                                const rate = 1 + (parseFloat(row.iva) / 100);
+                                if (row.numero) ivaLookup[row.numero.toUpperCase()] = rate;
+                                if (row.codigo_barras) ivaLookup[row.codigo_barras.toUpperCase()] = rate;
+                            });
+                        } catch (err) {
+                            console.error("⚠️ [LOMASOFT] Error al consultar alícuotas para candidatos:", err);
+                        }
+                    }
+
                     resultados.forEach(r => {
                         let montoCandidato = Math.abs(parseFloat(r.importe_total || 0));
                         let neto = Math.abs(parseFloat(r.importe_neto || r.imp_neto || 0));
                         
-                        // Si Lomasoft no envió importe_total, le sumamos el 21% de IVA al neto para igualar el Total del Presupuesto
+                        // Si Lomasoft no envió importe_total, calculamos el IVA usando la alícuota real del producto
                         if (montoCandidato === 0 && neto > 0) {
-                            montoCandidato = neto * 1.21;
+                            const codeUpper = (r.codigo_articulo || '').toUpperCase();
+                            const multiplier = ivaLookup[codeUpper] || 1.21; // fallback a 21% si no se encuentra
+                            montoCandidato = neto * multiplier;
                         }
 
                         const ptoStr = String(r.punto_venta || 0).padStart(4, '0');

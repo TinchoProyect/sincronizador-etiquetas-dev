@@ -101,7 +101,7 @@ async function getStockMantenimiento(req, res) {
                 sc.observaciones,
                 or_retiro.id_orden_retiro
             FROM saldos_clientes sc
-            LEFT JOIN public.articulos a ON sc.articulo_numero = a.numero
+            LEFT JOIN public.articulos a ON (sc.articulo_numero = a.numero OR sc.articulo_numero = a.codigo_barras)
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
             LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
             LEFT JOIN public.usuarios u_resp ON u_resp.id::text = sc.usuario::text
@@ -184,7 +184,7 @@ async function getHistorialMantenimiento(req, res) {
                 mm.fecha_movimiento,
                 mm.estado
             FROM public.mantenimiento_movimientos mm
-            LEFT JOIN public.articulos a ON mm.articulo_numero = a.numero
+            LEFT JOIN public.articulos a ON (mm.articulo_numero = a.numero OR mm.articulo_numero = a.codigo_barras)
             LEFT JOIN public.ingredientes i ON mm.ingrediente_id = i.id
             LEFT JOIN public.usuarios u ON u.id::text = mm.usuario::text
         `;
@@ -2801,8 +2801,19 @@ const vincularPresupuesto = async (req, res) => {
         // Fórmula determinista exigida: (Precio) * (Cantidad) * (1 - Descuento decimal)
         const valorTotalAbsolutoNeto = Math.abs(cantidadAbs * precioUnitarioAbs * (1 - descuentoDecimal));
         
-        // Reconstrucción del Bruto para paridad en Devoluciones (IVA 21%)
-        const ivaMultiplicador = 1.21;
+        // Obtener la alícuota de IVA real del artículo desde la base de datos
+        const ivaQuery = `
+            SELECT COALESCE(pa.iva, 21.00) as iva
+            FROM public.articulos a
+            LEFT JOIN public.precios_articulos pa ON pa.articulo = a.numero
+            WHERE a.numero = $1 OR a.codigo_barras = $1
+            LIMIT 1
+        `;
+        const ivaRes = await client.query(ivaQuery, [articulo_numero]);
+        const alicuotaPorcentaje = ivaRes.rows.length > 0 ? parseFloat(ivaRes.rows[0].iva) : 21.00;
+        const ivaDecimal = alicuotaPorcentaje / 100;
+        const ivaMultiplicador = 1 + ivaDecimal;
+        
         const precioUnitarioBruto = Math.abs(precioUnitarioAbs * ivaMultiplicador);
         const valorTotalAbsolutoBruto = Math.abs(valorTotalAbsolutoNeto * ivaMultiplicador);
 
@@ -2820,7 +2831,7 @@ const vincularPresupuesto = async (req, res) => {
             precioUnitarioAbs,       // valor1 (Neto)
             precioUnitarioBruto,     // precio1 (Bruto)
             precioUnitarioAbs,       // camp1 (Precio base)
-            0.21,                    // camp2 (Tasa IVA 21%)
+            ivaDecimal,              // camp2 (Tasa IVA real, e.g. 0.105)
             valorTotalAbsolutoNeto,  // camp3 (Total Neto)
             valorTotalAbsolutoBruto  // camp4 (Total Bruto)
         ]);

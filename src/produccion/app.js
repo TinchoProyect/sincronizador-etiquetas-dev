@@ -119,9 +119,9 @@ app.get('/api/supabase/lotes', async (req, res) => {
                                 if (ivaBase !== null) {
                                     facturasMap[fac.pedido_b2b_id][cod] = ivaBase;
                                 } else {
-                                    // Factura Mixta (Fallback empírico)
-                                    // Asignamos 21% como fallback de seguridad
-                                    facturasMap[fac.pedido_b2b_id][cod] = 21;
+                                    // Factura Mixta: No asignamos un IVA duro del 21% por defecto en el mapa de facturas.
+                                    // Esto permite que el sistema respete el IVA configurado en la tabla_maestra_operativa (masterInfo.iva).
+                                    // Si no hay IVA en la tabla maestra, el código de contingencia inferior aplicará el 21%.
                                 }
                             }
                         });
@@ -240,9 +240,20 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
     }
 });
 
+// Caché en memoria para optimizar el vinculador de ofertas y evitar caídas en reintentos rápidos (TTL 30s)
+let cacheTodasReposicion = null;
+let cacheTodasReposicionTimestamp = 0;
+const CACHE_TTL_MS = 30000;
+
 // ✅ PROXY A SUPABASE PARA TODAS LAS OFERTAS DE REPOSICIÓN VIVAS (FASE 4 - REGISTRADO ANTES POR PRECEDENCIA DE WILDCARD)
 app.get('/api/supabase/reposicion/todas', async (req, res) => {
     try {
+        const now = Date.now();
+        if (cacheTodasReposicion && (now - cacheTodasReposicionTimestamp < CACHE_TTL_MS)) {
+            console.log("⚡ [Proxy Supabase] Retornando cotizaciones desde caché en memoria (Evitando cuello de botella HTTPS)");
+            return res.json(cacheTodasReposicion);
+        }
+
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
         const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
 
@@ -337,6 +348,10 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
                 _proveedor: row.nombre_proveedor
             };
         });
+
+        // Guardar en la caché global en memoria con timestamp actual
+        cacheTodasReposicion = cotizacionesNormalizadas;
+        cacheTodasReposicionTimestamp = now;
 
         res.json(cotizacionesNormalizadas);
     } catch (e) {

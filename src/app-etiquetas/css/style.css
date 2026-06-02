@@ -1,17 +1,22 @@
 /* Estilos generales */
 :root {
-  --primary-color: #2196F3;
-  --secondary-color: #4CAF50;
-  --text-color: #333;
-  --background-color: #f8f8f8;
-  --border-color: #ddd;
+  --primary-color: #8e4785;       /* Violeta institucional del logo */
+  --primary-hover: #73346b;       /* Violeta oscuro para interacciones hover */
+  --primary-light: #fbf6fb;       /* Fondo violeta sutil */
+  --secondary-color: #8e4785;     /* Violeta institucional secundario */
+  --dark-slate: #334155;          /* Gris oscuro principal (Slate-700) */
+  --medium-slate: #475569;        /* Gris medio para jerarquías secundarias (Slate-600) */
+  --light-slate: #f8fafc;         /* Fondo general premium de la aplicación */
+  --button-passive: #f1f5f9;      /* Gris muy suave para botones accesorios/terciarios */
+  --text-color: #1e293b;          /* Texto principal oscuro */
+  --border-color: #e2e8f0;        /* Bordes sutiles */
 }
 
 body {
-  font-family: Arial, sans-serif;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: var(--background-color);
+  background-color: var(--light-slate);
   color: var(--text-color);
 }
 
@@ -25,7 +30,8 @@ body {
 header {
   background-color: white;
   padding: 20px 0;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-bottom: 1px solid var(--border-color);
 }
 
 header h1 {
@@ -49,11 +55,13 @@ header h1 {
   grid-column: span 1;
   padding: 30px;
   font-size: 1.3em;
-  background-color: var(--primary-color);
+  background-color: var(--dark-slate);
+  color: white;
   justify-content: center;
   flex-direction: column;
   text-align: center;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  border: 1px solid var(--dark-slate);
 }
 .menu-tier-1 .icon {
   font-size: 2.2em;
@@ -66,8 +74,10 @@ header h1 {
   grid-column: span 1;
   padding: 20px;
   font-size: 1.1em;
-  background-color: var(--secondary-color);
+  background-color: var(--medium-slate);
+  color: white;
   justify-content: center;
+  border: 1px solid var(--medium-slate);
 }
 
 /* Nivel 3: Accesorios/Marginales */
@@ -76,23 +86,25 @@ header h1 {
   padding: 12px 20px;
   font-size: 0.95em;
   justify-content: center;
-  background-color: white;
+  background-color: var(--button-passive);
   color: var(--text-color);
   border: 1px solid var(--border-color);
 }
 .menu-tier-3:hover {
-  background-color: #f1f1f1;
-  color: var(--primary-color);
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
 }
 
 .menu-tier-3.warning {
-  background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
-  color: white;
-  border: none;
+  background-color: var(--button-passive);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
 }
 .menu-tier-3.warning:hover {
-  background: linear-gradient(135deg, #e67e22 0%, #c0392b 100%);
+  background-color: var(--primary-color);
   color: white;
+  border-color: var(--primary-color);
 }
 
 /* Responsividad (Celulares) */
@@ -108,21 +120,24 @@ header h1 {
   align-items: center;
   gap: 10px;
   padding: 15px 30px;
-  background-color: var(--primary-color);
-  color: white;
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 1.1em;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menu-button:hover {
-  background-color: #1976D2;
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(142, 71, 133, 0.15);
 }
 
 .menu-button .icon {
   font-size: 1.5em;
 }
+
 
 /* Sección de bienvenida */
 .welcome-section {
@@ -173,7 +188,7 @@ footer {
 }
 
 .dropdown-toggle:hover {
-  background-color: #1976D2;
+  background-color: var(--primary-hover);
 }
 
 .dropdown-toggle .caret {
@@ -347,7 +362,7 @@ footer {
 }
 
 .modal-editar-usuario .btn-guardar:hover {
-  background-color: #1976D2;
+  background-color: var(--primary-hover);
 }
 
 /* Botones de estado receta */
@@ -485,7 +500,7 @@ footer {
 }
 
 .btn-acceder:hover {
-  background-color: #1976D2;
+  background-color: var(--primary-hover);
 }
 
 .admin-button {

@@ -1,0 +1,525 @@
+--- TABLAS ENCONTRADAS ---
+
+Tabla: articulos
+Columnas:
+  - stock_ventas (numeric) [Nullable: YES]
+  - numero (text) [Nullable: YES]
+  - nombre (text) [Nullable: YES]
+  - codigo_barras (text) [Nullable: YES]
+Cantidad de Registros: 594
+Muestra (1er reg): {"numero":"ACX18","nombre":"Aceit/Coco x 18","codigo_barras":"9877455548","stock_ventas":"3"}
+
+Tabla: articulos_produccion_externa_relacion
+Columnas:
+  - id (integer) [Nullable: NO]
+  - fecha_creacion (timestamp without time zone) [Nullable: YES]
+  - multiplicador_ingredientes (numeric) [Nullable: YES]
+  - ingredientes_custom (jsonb) [Nullable: YES]
+  - articulo_produccion_codigo (text) [Nullable: NO]
+  - articulo_kilo_codigo (text) [Nullable: YES]
+Cantidad de Registros: 9
+Muestra de Datos:
+[
+  {
+    "id": 28,
+    "articulo_produccion_codigo": "APTPGUP",
+    "articulo_kilo_codigo": "APTPGXK",
+    "fecha_creacion": "2025-12-25T23:36:11.013Z",
+    "multiplicador_ingredientes": "1.00",
+    "ingredientes_custom": null
+  },
+  {
+    "id": 29,
+    "articulo_produccion_codigo": "APTSPGUP",
+    "articulo_kilo_codigo": "APTSPGXK",
+    "fecha_creacion": "2025-12-26T00:50:01.296Z",
+    "multiplicador_ingredientes": "1.00",
+    "ingredientes_custom": null
+  },
+  {
+    "id": 31,
+    "articulo_produccion_codigo": "CCTSGXKUP",
+    "articulo_kilo_codigo": "CCTSGXK",
+    "fecha_creacion": "2025-12-29T04:15:27.870Z",
+    "multiplicador_ingredientes": "1.00",
+    "ingredientes_custom": null
+  },
+  {
+    "id": 21,
+    "articulo_produccion_codigo": "APTSPGXK",
+    "articulo_kilo_codigo": "APTSPGXK",
+    "fecha_creacion": "2025-07-16T19:06:57.368Z",
+    "multiplicador_ingredientes": "1.00",
+    "ingredientes_custom": null
+  },
+  {
+    "id": 12,
+    "articulo_produccion_codigo": "GSGN",
+    "articulo_kilo_codigo": "GSGNFX1",
+    "fecha_creacion": "2025-07-09T08:48:07.580Z",
+    "multiplicador_ingredientes": "10.00",
+    "ingredientes_custom": [
+      {
+        "cantidad": 0.125,
+        "unidad_medida": "Kilo",
+        "ingrediente_id": null,
+        "nombre_ingrediente": "Coco en Escamas"
+      },
+      {
+        "cantidad": 0.125,
+        "unidad_medida": "Kilo",
+        "ingrediente_id": null,
+        "nombre_ingrediente": "Pasa Rubia 2"
+      }
+    ]
+  }
+]
+
+Tabla: receta_articulos
+Columnas:
+  - id (integer) [Nullable: NO]
+  - receta_id (integer) [Nullable: NO]
+  - cantidad (numeric) [Nullable: NO]
+  - articulo_numero (text) [Nullable: NO]
+Cantidad de Registros: 8
+Muestra de Datos:
+[
+  {
+    "id": 23,
+    "receta_id": 194,
+    "articulo_numero": "MPB",
+    "cantidad": "1.00"
+  },
+  {
+    "id": 34,
+    "receta_id": 209,
+    "articulo_numero": "MPGDFX6,9",
+    "cantidad": "1.00"
+  },
+  {
+    "id": 40,
+    "receta_id": 208,
+    "articulo_numero": "AGPX10Q",
+    "cantidad": "1.00"
+  },
+  {
+    "id": 41,
+    "receta_id": 214,
+    "articulo_numero": "MPGDSX7",
+    "cantidad": "1.00"
+  },
+  {
+    "id": 58,
+    "receta_id": 228,
+    "articulo_numero": "APC27/30x10",
+    "cantidad": "1.00"
+  }
+]
+
+Tabla: carros_articulos
+Columnas:
+  - duracion_ms (bigint) [Nullable: YES]
+  - carro_id (integer) [Nullable: NO]
+  - tiempo_fin (timestamp without time zone) [Nullable: YES]
+  - id (integer) [Nullable: NO]
+  - cantidad (numeric) [Nullable: NO]
+  - tiempo_inicio (timestamp without time zone) [Nullable: YES]
+  - articulo_numero (text) [Nullable: NO]
+  - descripcion (text) [Nullable: NO]
+Cantidad de Registros: 1670
+Muestra (1er reg): {"id":257,"carro_id":127,"articulo_numero":"GLX2","descripcion":"Garbanzo Lechoso x 2","cantidad":"1.00","tiempo_inicio":null,"tiempo_fin":null,"duracion_ms":null}
+
+Tabla: inventario_general_articulos_registro
+Columnas:
+  - id (integer) [Nullable: NO]
+  - inventario_id (integer) [Nullable: NO]
+  - usuario_id (integer) [Nullable: NO]
+  - fecha_hora (timestamp without time zone) [Nullable: NO]
+  - stock_consolidado (numeric) [Nullable: NO]
+  - articulo_numero (text) [Nullable: NO]
+Cantidad de Registros: 568
+Muestra (1er reg): {"id":1,"inventario_id":1,"usuario_id":10,"fecha_hora":"2025-07-28T21:37:04.976Z","articulo_numero":"TT10x8M","stock_consolidado":"0.00"}
+
+Tabla: inventario_general_articulos_diferencias
+Columnas:
+  - id (integer) [Nullable: NO]
+  - inventario_id (integer) [Nullable: NO]
+  - usuario_id (integer) [Nullable: NO]
+  - fecha_hora (timestamp without time zone) [Nullable: NO]
+  - diferencia (numeric) [Nullable: NO]
+  - stock_antes (numeric) [Nullable: NO]
+  - stock_contado (numeric) [Nullable: NO]
+  - articulo_numero (text) [Nullable: NO]
+Cantidad de Registros: 250
+Muestra (1er reg): {"id":1,"inventario_id":1,"usuario_id":10,"fecha_hora":"2025-07-28T21:37:04.976Z","articulo_numero":"ROMX500","stock_antes":"0.00","stock_contado":"52.00","diferencia":"52.00"}
+
+Tabla: articulos_ajustes
+Columnas:
+  - fecha (timestamp without time zone) [Nullable: NO]
+  - stock_nuevo (numeric) [Nullable: NO]
+  - diferencia (numeric) [Nullable: NO]
+  - id (integer) [Nullable: NO]
+  - usuario_id (integer) [Nullable: YES]
+  - stock_anterior (numeric) [Nullable: NO]
+  - articulo_numero (text) [Nullable: NO]
+  - observacion (text) [Nullable: YES]
+  - tipo_ajuste (text) [Nullable: NO]
+Cantidad de Registros: 151
+Muestra (1er reg): {"id":1,"articulo_numero":"ACX18","usuario_id":7,"tipo_ajuste":"ajuste_manual","stock_anterior":"0.00","stock_nuevo":"2.00","diferencia":"2.00","observacion":"Ajuste manual desde interfaz de gestión","fecha":"2025-12-05T01:24:38.292Z"}
+
+Tabla: precios_articulos
+Columnas:
+  - especial_brus (numeric) [Nullable: YES]
+  - consumidor_final (numeric) [Nullable: YES]
+  - lista_5 (numeric) [Nullable: YES]
+  - costo (numeric) [Nullable: YES]
+  - iva (numeric) [Nullable: YES]
+  - precio_neg (numeric) [Nullable: YES]
+  - mayorista (numeric) [Nullable: YES]
+  - sub_rubro (text) [Nullable: YES]
+  - descripcion (character varying(150)) [Nullable: YES]
+  - moneda (character varying(50)) [Nullable: YES]
+  - rubro (text) [Nullable: YES]
+  - articulo (character varying(30)) [Nullable: YES]
+Cantidad de Registros: 681
+Muestra (1er reg): {"articulo":"AAEPLO","descripcion":"AAA Articulo de ejemplo x 10","costo":"140400.00","moneda":"Pesos","iva":"21.00","precio_neg":"168480.00","mayorista":"165672.00","especial_brus":"161460.00","consumidor_final":"0.00","lista_5":"0.00","rubro":"Frutos Secos","sub_rubro":"Mix"}
+
+Tabla: ingrediente_articulos_nutrientes
+Columnas:
+  - id (integer) [Nullable: NO]
+  - ingrediente_id (integer) [Nullable: NO]
+  - activo (boolean) [Nullable: YES]
+  - manual (boolean) [Nullable: YES]
+  - fecha_deteccion (timestamp without time zone) [Nullable: YES]
+  - articulo_numero (text) [Nullable: NO]
+Cantidad de Registros: 183
+Muestra (1er reg): {"id":1,"ingrediente_id":73,"articulo_numero":"MFMMx2,5","activo":true,"manual":false,"fecha_deteccion":"2025-12-21T22:40:32.386Z"}
+
+Tabla: articulos_excluidos_config
+Columnas:
+  - id (integer) [Nullable: NO]
+  - cliente_id (integer) [Nullable: NO]
+  - fecha_creacion (timestamp without time zone) [Nullable: YES]
+  - articulo_numero (character varying(50)) [Nullable: NO]
+Cantidad de Registros: 1466
+Muestra (1er reg): {"id":1,"cliente_id":34,"articulo_numero":"EMX2","fecha_creacion":"2026-01-05T22:02:09.835Z"}
+
+Tabla: articulos_proveedor
+Columnas:
+  - updated_at (timestamp with time zone) [Nullable: NO]
+  - proveedor_id (integer) [Nullable: NO]
+  - articulo_numero (integer) [Nullable: NO]
+  - created_at (timestamp with time zone) [Nullable: NO]
+  - id (integer) [Nullable: NO]
+  - precio_costo (numeric) [Nullable: YES]
+  - fecha_actualizacion (date) [Nullable: YES]
+  - codigo_proveedor (character varying(255)) [Nullable: YES]
+  - descripcion_proveedor (character varying(255)) [Nullable: YES]
+Cantidad de Registros: 0
+
+Tabla: bunker_margenes
+Columnas:
+  - id (integer) [Nullable: NO]
+  - lista_id (integer) [Nullable: NO]
+  - margen_porcentaje (numeric) [Nullable: YES]
+  - articulo_id (character varying(30)) [Nullable: NO]
+Cantidad de Registros: 50
+Muestra (1er reg): {"id":1,"articulo_id":"AGPX10Q","lista_id":1,"margen_porcentaje":"22.00"}
+
+Tabla: bunker_articulos
+Columnas:
+  - expresado_en_gramos (boolean) [Nullable: YES]
+  - costo_base (numeric) [Nullable: YES]
+  - porcentaje_iva (numeric) [Nullable: YES]
+  - mantener_utilidad (boolean) [Nullable: YES]
+  - no_producido_por_lambda (boolean) [Nullable: YES]
+  - kilos_unidad (numeric) [Nullable: YES]
+  - es_pack (boolean) [Nullable: YES]
+  - propiedades_dinamicas (jsonb) [Nullable: YES]
+  - articulo_id (character varying(30)) [Nullable: NO]
+  - descripcion (character varying(255)) [Nullable: YES]
+  - descripcion_generada (character varying(255)) [Nullable: YES]
+  - moneda (character varying(50)) [Nullable: YES]
+  - redondeo (character varying(30)) [Nullable: YES]
+  - pack_hijo_codigo (text) [Nullable: YES]
+  - rubro (text) [Nullable: YES]
+  - sub_rubro (text) [Nullable: YES]
+Cantidad de Registros: 10
+Muestra de Datos:
+[
+  {
+    "articulo_id": "NMBEX1K",
+    "costo_base": "16390.00",
+    "porcentaje_iva": "21.00",
+    "moneda": "($)Pesos",
+    "redondeo": "Ninguno",
+    "mantener_utilidad": true,
+    "rubro": "FRUTOS SECOS",
+    "sub_rubro": "NUECES",
+    "no_producido_por_lambda": false,
+    "kilos_unidad": "1.00",
+    "es_pack": false,
+    "pack_hijo_codigo": null,
+    "propiedades_dinamicas": {
+      "tipo": {
+        "orden": 0,
+        "valor": "Mariposa",
+        "visible": true
+      },
+      "color": {
+        "orden": 1,
+        "valor": "Extra Light",
+        "visible": true
+      },
+      "cosecha": {
+        "orden": 4,
+        "valor": "Año 2025",
+        "visible": false
+      },
+      "variedad": {
+        "orden": 2,
+        "valor": "Chandler",
+        "visible": false
+      },
+      "presentacion": {
+        "orden": 3,
+        "valor": "Granel Chico",
+        "visible": false
+      }
+    },
+    "descripcion": "Nuez",
+    "descripcion_generada": "NUEZ.MPSA.EXGHT x 1kg",
+    "expresado_en_gramos": false
+  },
+  {
+    "articulo_id": "NMELCHx10",
+    "costo_base": "163900.00",
+    "porcentaje_iva": "21.00",
+    "moneda": "($)Pesos",
+    "redondeo": "Ninguno",
+    "mantener_utilidad": false,
+    "rubro": "FRUTOS SECOS",
+    "sub_rubro": "NUECES",
+    "no_producido_por_lambda": true,
+    "kilos_unidad": "10.00",
+    "es_pack": false,
+    "pack_hijo_codigo": null,
+    "propiedades_dinamicas": {
+      "tipo": {
+        "orden": 0,
+        "valor": "Mariposa",
+        "visible": true
+      },
+      "color": {
+        "orden": 1,
+        "valor": "Extra Light",
+        "visible": true
+      },
+      "cosecha": {
+        "orden": 4,
+        "valor": "Año 2025",
+        "visible": false
+      },
+      "variedad": {
+        "orden": 2,
+        "valor": "Chandler",
+        "visible": false
+      },
+      "presentacion": {
+        "orden": 3,
+        "valor": "Granel Grande",
+        "visible": false
+      }
+    },
+    "descripcion": "Nuez",
+    "descripcion_generada": "NUEZ.MPSA.EXGHT x 10kg",
+    "expresado_en_gramos": false
+  },
+  {
+    "articulo_id": "NMECHAMX200G",
+    "costo_base": "3500.00",
+    "porcentaje_iva": "21.00",
+    "moneda": "($)Pesos",
+    "redondeo": "Ninguno",
+    "mantener_utilidad": true,
+    "rubro": "FRUTOS SECOS",
+    "sub_rubro": "NUECES",
+    "no_producido_por_lambda": true,
+    "kilos_unidad": "0.20",
+    "es_pack": false,
+    "pack_hijo_codigo": null,
+    "propiedades_dinamicas": {
+      "tipo": {
+        "orden": 0,
+        "valor": "Mariposa",
+        "visible": true
+      },
+      "color": {
+        "orden": 1,
+        "valor": "Extra Light",
+        "visible": true
+      },
+      "cosecha": {
+        "orden": 4,
+        "valor": "Año 2025",
+        "visible": false
+      },
+      "variedad": {
+        "orden": 3,
+        "valor": "Chandler",
+        "visible": false
+      },
+      "presentacion": {
+        "orden": 2,
+        "valor": "Granel Chico",
+        "visible": false
+      }
+    },
+    "descripcion": "NUEZ",
+    "descripcion_generada": "NUEZ.MPSA.EXGHT x 200g",
+    "expresado_en_gramos": true
+  },
+  {
+    "articulo_id": "NMELCHx5",
+    "costo_base": "81950.00",
+    "porcentaje_iva": "21.00",
+    "moneda": "($)Pesos",
+    "redondeo": "Ninguno",
+    "mantener_utilidad": true,
+    "rubro": "FRUTOS SECOS",
+    "sub_rubro": "NUECES",
+    "no_producido_por_lambda": false,
+    "kilos_unidad": "5.00",
+    "es_pack": false,
+    "pack_hijo_codigo": null,
+    "propiedades_dinamicas": {
+      "tipo": {
+        "orden": 0,
+        "valor": "Mariposa",
+        "visible": true
+      },
+      "color": {
+        "orden": 1,
+        "valor": "Extra Light",
+        "visible": true
+      },
+      "cosecha": {
+        "orden": 4,
+        "valor": "Año 2025",
+        "visible": false
+      },
+      "variedad": {
+        "orden": 3,
+        "valor": "Chandler",
+        "visible": false
+      },
+      "presentacion": {
+        "orden": 2,
+        "valor": "Granel Grande",
+        "visible": false
+      }
+    },
+    "descripcion": "Nuez",
+    "descripcion_generada": "NUEZ.MPSA.EXGHT x 5kg",
+    "expresado_en_gramos": false
+  },
+  {
+    "articulo_id": "NMECHX2",
+    "costo_base": "32780.00",
+    "porcentaje_iva": "21.00",
+    "moneda": "($)Pesos",
+    "redondeo": "Ninguno",
+    "mantener_utilidad": true,
+    "rubro": "FRUTOS SECOS",
+    "sub_rubro": "NUECES",
+    "no_producido_por_lambda": false,
+    "kilos_unidad": "2.00",
+    "es_pack": false,
+    "pack_hijo_codigo": null,
+    "propiedades_dinamicas": {
+      "tipo": {
+        "orden": 0,
+        "valor": "Mariposa",
+        "visible": true
+      },
+      "color": {
+        "orden": 1,
+        "valor": "Extra Light",
+        "visible": true
+      },
+      "cosecha": {
+        "orden": 4,
+        "valor": "Año 2025",
+        "visible": false
+      },
+      "variedad": {
+        "orden": 3,
+        "valor": "Chandler",
+        "visible": false
+      },
+      "presentacion": {
+        "orden": 2,
+        "valor": "Granel Chico",
+        "visible": false
+      }
+    },
+    "descripcion": "Nuez",
+    "descripcion_generada": "NUEZ.MPSA.EXGHT x 2kg",
+    "expresado_en_gramos": false
+  }
+]
+
+Tabla: bunker_rubros
+Columnas:
+  - id (integer) [Nullable: NO]
+  - nombre (character varying(100)) [Nullable: NO]
+Cantidad de Registros: 1
+Muestra de Datos:
+[
+  {
+    "id": 1,
+    "nombre": "FRUTOS SECOS"
+  }
+]
+
+Tabla: bunker_subrubros
+Columnas:
+  - id (integer) [Nullable: NO]
+  - rubro_id (integer) [Nullable: NO]
+  - nombre (character varying(100)) [Nullable: NO]
+Cantidad de Registros: 2
+Muestra de Datos:
+[
+  {
+    "id": 1,
+    "rubro_id": 1,
+    "nombre": "NUECES"
+  },
+  {
+    "id": 2,
+    "rubro_id": 1,
+    "nombre": "ALMENDRAS"
+  }
+]
+
+Tabla: bunker_diccionario
+Columnas:
+  - id (integer) [Nullable: NO]
+  - creado_en (timestamp without time zone) [Nullable: YES]
+  - termino (character varying(150)) [Nullable: NO]
+  - abreviatura (character varying(20)) [Nullable: NO]
+  - categoria (character varying(50)) [Nullable: YES]
+Cantidad de Registros: 17
+Muestra (1er reg): {"id":1,"termino":"Guara","abreviatura":"GRA","categoria":"variedad","creado_en":"2026-03-26T03:02:48.281Z"}
+
+Tabla: presupuestos_articulos_sin_stock
+Columnas:
+  - cantidad (numeric) [Nullable: YES]
+  - id_presupuesto (integer) [Nullable: YES]
+  - fecha_registro (timestamp without time zone) [Nullable: YES]
+  - id (integer) [Nullable: NO]
+  - descripcion (character varying(255)) [Nullable: YES]
+  - articulo (character varying(100)) [Nullable: NO]
+  - motivo_falta (character varying(100)) [Nullable: YES]
+Cantidad de Registros: 11
+Muestra (1er reg): {"id":1,"id_presupuesto":8232804,"articulo":"2837449303","descripcion":"Pistach/Tos/Sal x 2","cantidad":"1.00","motivo_falta":"Sin Stock en mostrador","fecha_registro":"2026-04-09T16:22:15.069Z"}

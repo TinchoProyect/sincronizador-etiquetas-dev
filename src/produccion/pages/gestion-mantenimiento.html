@@ -861,6 +861,31 @@
 
     <!-- SCRIPT DE LÓGICA -->
     <script>
+        // Función de parseo robusta para observaciones en Mantenimiento / Tratamientos
+        function robustParseObservations(obsText) {
+            if (!obsText) return null;
+            let parsed = null;
+            try {
+                parsed = JSON.parse(obsText);
+            } catch (e) {
+                try {
+                    const firstBracket = obsText.indexOf('[');
+                    if (firstBracket !== -1) {
+                        for (let i = firstBracket + 1; i < obsText.length; i++) {
+                            if (obsText[i] === ']') {
+                                try {
+                                    const candidate = obsText.substring(firstBracket, i + 1);
+                                    parsed = JSON.parse(candidate);
+                                    break;
+                                } catch (err) {}
+                            }
+                        }
+                    }
+                } catch (err) {}
+            }
+            return parsed;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initResizer();
             cargarFiltrosGuardados(); // 1. Restaurar estado de localStorage
@@ -1399,13 +1424,17 @@
             return `Hace ${Math.round(elapsed / msAnio)} años`;
         }
 
-        async function abrirModalVincularPresupuesto(idMovimiento, clienteId, articuloNumero, cantidad, fechaRef, nombreArticulo = '') {
+        async function abrirModalVincularPresupuesto(idMovimiento, clienteId, articuloNumero, cantidad, fechaRef, nombreArticulo = '', clienteNombre = '') {
             Swal.fire({
                 title: 'Vincular Documento de Origen',
                 html: `
                     <div style="text-align: left;">
+                        <div style="margin-bottom: 15px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 10px 12px; text-align: left;">
+                            <small style="color: #0369a1; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">👤 Cliente de Origen:</small>
+                            <span style="color: #0c4a6e; font-size: 1.1em; font-weight: bold;">[Cliente #${clienteId || 'N/A'}] ${clienteNombre || 'Desconocido'}</span>
+                        </div>
                         <p style="margin-bottom: 15px; color: #555;">Seleccione el presupuesto / factura origen para vincular a este artículo.</p>
-                        <h4 style="color: #2c3e50; margin-bottom: 15px;">${nombreArticulo || articuloNumero}</h4>
+                        <h4 style="color: #2c3e50; margin-bottom: 15px;">📦 Artículo: ${nombreArticulo || articuloNumero}</h4>
                         <div id="vinculacion-resultados" style="max-height: 400px; overflow-y: auto; padding: 5px; background: #fff;">
                             <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">⏳ Consultando historial...</div>
                         </div>
@@ -1515,6 +1544,24 @@
                                         const tituloPresupuesto = h.comprobante_lomasoft ? `Presupuesto #${h.id_presupuesto} <span style="margin-left: 8px; color: #00796b;">📄 Fac: ${h.comprobante_lomasoft}</span>` : `Presupuesto #${h.id_presupuesto}`;
                                         const origenFacturacionTrigger = (h.comprobante_lomasoft || h.origen_facturacion || '').includes('LOMASOFT') ? 'LOMASOFT' : 'LAMDA';
 
+                                        // Renderizar lista de artículos en el presupuesto si viene del backend
+                                        let itemsDetalleHtml = '';
+                                        if (h.items_detalle && h.items_detalle.length > 0) {
+                                            const itemsRows = h.items_detalle.map(it => {
+                                                return `<li style="margin-bottom: 3px; font-size: 0.9em; color: #495057; text-align: left;">
+                                                    <strong>[${it.codigo}]</strong> ${it.nombre} — <strong>${it.cantidad.toFixed(2).replace('.', ',')} u.</strong>
+                                                </li>`;
+                                            }).join('');
+                                            itemsDetalleHtml = `
+                                                <div style="margin-top: 8px; margin-bottom: 8px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; text-align: left;">
+                                                    <div style="font-size: 0.85em; font-weight: bold; color: #495057; border-bottom: 1px dashed #ced4da; padding-bottom: 4px; margin-bottom: 6px;">📦 Artículos del Comprobante:</div>
+                                                    <ul style="margin: 0; padding-left: 15px; list-style-type: square; line-height: 1.4;">
+                                                        ${itemsRows}
+                                                    </ul>
+                                                </div>
+                                            `;
+                                        }
+
                                         itemDiv.innerHTML = `
                                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                                                 <div>
@@ -1529,6 +1576,8 @@
                                                     <div style="font-size: 0.9em; color: #666;">Cant: <strong>${h.cantidad}</strong></div>
                                                 </div>
                                             </div>
+                                            
+                                            ${itemsDetalleHtml}
                                             
                                             <div style="background: #fafafa; padding: 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                                                 <div style="font-size: 0.9em;">
@@ -1775,7 +1824,19 @@
                 // Cálculo de peso y formato CORRECTO
                 const cantidad = parseFloat(item.stock_mantenimiento);
                 const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
-                const pesoTotal = cantidad * kilosUnidad;
+                
+                // Corrección de Bug: Si es una orden de tratamiento, extraer el kilaje real de las observaciones
+                let realKilos = 0;
+                if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO' || item.tipo_movimiento === 'RETORNO_TRATAMIENTO') {
+                    try {
+                        let parsed = robustParseObservations(item.observaciones);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
+                        }
+                    } catch(e) {}
+                }
+                
+                const pesoTotal = realKilos > 0 ? realKilos : (cantidad * kilosUnidad);
 
                 let tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
                 let nombreMapeadoLocal = '';
@@ -1864,7 +1925,7 @@
                     let nombreMapeado = '📌 Orden de Tratamiento';
                     let realKilos = 0;
                     try {
-                        let parsed = JSON.parse(item.observaciones);
+                        let parsed = robustParseObservations(item.observaciones);
                         if(Array.isArray(parsed) && parsed.length > 0) {
                             nombreMapeado = `RT-${item.id_orden_tratamiento || '??'} - ` + parsed[0].desc; // Modificado por requerimiento
                             labelBultosLocal = parsed[0].bultos + ' bultos';
@@ -1905,7 +1966,7 @@
                         statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA ARTÍCULO]</span>`;
                     } else if (!item.id_presupuesto_origen) {
                         innerActions += `
-                             <button onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.articulo_nombre || '')}'))" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                             <button onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  🔗 Vincular Documento Origen
                              </button>`;
                         statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA DOCUMENTO]</span>`;
@@ -2034,7 +2095,7 @@
                     } else if (item.articulo_numero && !item.id_presupuesto_origen && item.cliente_id) {
                         // Caso "Bulto" enriquecido: Tiene Artículo y Cliente, pero AÚN no tiene un Documento Origen Vinculado.
                         lomasoftBtnHtml = `
-                        <button class="btn-accion" style="background-color: #6f42c1; color: white; border: none; font-weight: bold;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.articulo_nombre || '')}'))">
+                        <button class="btn-accion" style="background-color: #6f42c1; color: white; border: none; font-weight: bold;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))">
                             🔗 Vincular Documento
                         </button>`;
                     } else {
@@ -2201,12 +2262,35 @@
         }
 
         async function liberarStock(clienteId, articuloActivo, cantidadOriginal, motivoDefecto, usuarioOriginalId, movimientoId) {
-            // Extraer nombre del articulo origen para UI amigable
+            // Extraer nombre del articulo origen y peso/cantidad para UI amigable
             let nombreArtOrigen = '';
-            if (window.mantenimientoStockData) {
-                const origenCache = window.mantenimientoStockData.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
-                if (origenCache) nombreArtOrigen = origenCache.descripcion;
+            let realKilos = 0;
+            let kilosUnidad = 1;
+            
+            if (window.mantenimientoStockData && movimientoId) {
+                const item = window.mantenimientoStockData.find(a => a.id === movimientoId);
+                if (item) {
+                    nombreArtOrigen = item.descripcion;
+                    kilosUnidad = parseFloat(item.kilos_unidad) || 1;
+                    
+                    // Extraer kilaje real si tiene observaciones
+                    let parsed = robustParseObservations(item.observaciones);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
+                    }
+                }
             }
+            
+            // Fallback por si no encuentra el movimientoId
+            if (!nombreArtOrigen && window.mantenimientoStockData) {
+                const origenCache = window.mantenimientoStockData.find(a => a.articulo_numero?.toString() === articuloActivo?.toString() || a.ingrediente_id?.toString() === articuloActivo?.toString());
+                if (origenCache) {
+                    nombreArtOrigen = origenCache.descripcion;
+                    kilosUnidad = parseFloat(origenCache.kilos_unidad) || 1;
+                }
+            }
+            
+            const pesoTotal = realKilos > 0 ? realKilos : (parseFloat(cantidadOriginal) * kilosUnidad);
 
             // 1. Opciones de Responsable (obligatorio vacío inicial)
             let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
@@ -2252,8 +2336,15 @@
             const result = await Swal.fire({
                 title: '¿Enviar a Ventas (Liberar)?',
                 customClass: { popup: 'swal-wide-liberar' },
-                html: `<p>¿Confirmar salida comercial de <br><b>Origen: Art. #${articuloActivo} ${nombreArtOrigen ? '- ' + nombreArtOrigen : ''}</b> (Cantidad Física a enviar: ${cantidadOriginal})?</p>
-                       ${inputOpcionalHtml}`,
+                html: `
+                    <div style="background: #eef2f7; border: 1px solid #d0d7de; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 15px; font-family: sans-serif;">
+                        <div style="font-size: 14px; font-weight: bold; color: #0056b3; border-bottom: 1px solid #cfd5db; padding-bottom: 5px; margin-bottom: 8px;">📦 Origen Artículo:</div>
+                        <div style="font-size: 16px; color: #111; margin-bottom: 4px;"><b>Descripción:</b> ${nombreArtOrigen || 'Sin Descripción'}</div>
+                        <div style="font-size: 14px; color: #333; margin-bottom: 4px;"><b>Código Artículo / Barra:</b> #${articuloActivo}</div>
+                        <div style="font-size: 14px; color: #333;"><b>Cantidad / Peso Origen:</b> ${cantidadOriginal} u. (${pesoTotal.toFixed(2).replace('.', ',')} kg)</div>
+                    </div>
+                    ${inputOpcionalHtml}
+                `,
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'Sí, Ejecutar Liberación',

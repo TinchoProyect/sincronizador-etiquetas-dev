@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Iniciando LAMDA...</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+            flex-direction: column;
+            text-align: center;
+        }
+        .loader-container {
+            background: white;
+            padding: 45px 65px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .logo {
+            max-width: 240px;
+            height: auto;
+            margin-bottom: 30px;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.08));
+            animation: fadeIn 1.2s ease-in-out;
+        }
+        .loader {
+            border: 5px solid #f1f5f9;
+            border-top: 5px solid #8e4785; /* Violeta institucional del logo */
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h2 {
+            color: #1e293b;
+            margin-top: 10px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 1.5em;
+        }
+        p {
+            color: #64748b;
+            margin: 0;
+            font-size: 0.95em;
+        }
+    </style>
+    <script>
+        // Al ejecutar desde file://, los navegadores bloquean "fetch" por políticas CORS.
+        // En su lugar, daremos un tiempo prudencial (6.5 segundos) para que npm start levante
+        // todos los servicios y luego redirigimos directo al puerto 3000.
+        setTimeout(function() {
+            window.location.replace('http://localhost:3000/');
+        }, 6500);
+    </script>
+</head>
+<body>
+    <div class="loader-container">
+        <img src="img/logo_LAMDA_grande.png" alt="LAMDA Logo" class="logo">
+        <div class="loader"></div>
+        <h2>Iniciando sistema...</h2>
+        <p>Cargando componentes...</p>
+    </div>
+</body>
+</html>

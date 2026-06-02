@@ -21,10 +21,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Asegurar que el foco vuelva al input si se hace clic fuera de modales
         document.addEventListener('click', (e) => {
-            const modal = document.getElementById('modal-trazabilidad');
-            if (modal && !modal.classList.contains('show')) {
-                // No robar foco si el usuario está interactuando con la grilla u otros inputs
-                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+            const hasVisibleModal = document.querySelector('.modal-trazabilidad.show');
+            if (!hasVisibleModal) {
+                // No robar foco si el usuario está interactuando con otros controles
+                const activeTags = ['BUTTON', 'INPUT', 'SELECT', 'OPTION', 'TEXTAREA'];
+                if (!activeTags.includes(e.target.tagName)) {
                     scannerInput.focus();
                 }
             }
@@ -61,6 +62,34 @@ window.cargarLotes = async function() {
             container.style.display = 'block';
             return;
         }
+
+        // Obtener Estados de Asignación (Batch)
+        const lotesIds = lotes.map(l => l.id);
+        let estadosLotes = {};
+        try {
+            const resEstados = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/estados', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lotes: lotesIds })
+            });
+            if (resEstados.ok) {
+                const dataEstados = await resEstados.json();
+                if (dataEstados.success) {
+                    estadosLotes = dataEstados.data;
+                }
+            }
+        } catch(e) {
+            console.error('Error consultando estados de lotes:', e);
+        }
+        
+        // Guardar globalmente para poder ver el detalle luego
+        window.LotesTrazabilidadCache = estadosLotes;
+        
+        // Guardar los lotes crudos para acceder a la cantidad original y costos en el modal
+        window.LotesSupabaseCache = {};
+        lotes.forEach(l => {
+            window.LotesSupabaseCache[l.id] = l;
+        });
 
         // Agrupación de lotes
         const agruparPorMesYDia = (lotesArray) => {
@@ -154,21 +183,61 @@ window.cargarLotes = async function() {
                     const isND = proveedor.toLowerCase().includes('quercus');
                     const ndBadge = isND ? `<span class="discount-badge" title="Nota de Débito aplicada">ND</span>` : '';
 
+                    // Control de Inconsistencias Flagrantes (Soporte Dual)
+                    const isInconsistent = (precioBulto === valorUnitario && item.unidad_ref === 'Kilogramo' && valorUnitario > 1000);
+
+                    // Badge de Estado y Trazabilidad
+                    const estadoData = estadosLotes[fullId] || { estado: 'PENDIENTE' };
+                    let badgeColor = '#6c757d'; // Gris - Pendiente
+                    let badgeText = 'Pendiente';
+                    if (estadoData.estado === 'PENDIENTE' && isInconsistent) {
+                        badgeColor = '#ef4444'; // Rojo - Advertencia Crítica
+                        badgeText = 'Pendiente (⚠️ Requiere Verificación)';
+                    } else if (estadoData.estado === 'ASIGNADO_TOTAL') {
+                        badgeColor = '#28a745'; // Verde
+                        badgeText = 'Asignado Total';
+                    } else if (estadoData.estado === 'ASIGNADO_PARCIAL') {
+                        badgeColor = '#fd7e14'; // Naranja
+                        badgeText = 'Asignado Parcial';
+                    }
+                    const estadoBadge = `<span style="background-color: ${badgeColor}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-left: 10px;">${badgeText}</span>`;
+                    
+                    const warningBadge = isInconsistent 
+                        ? `<span style="background-color: #ef4444; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px;" title="Advertencia: Presentación sospechosa de 1x1 en artículo de valor mayorista premium. Por favor, verifique el maestro de conversión.">⚠️ Inconsistente</span>` 
+                        : '';
+
+                    const btnTrazabilidad = (estadoData.estado !== 'PENDIENTE')
+                        ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #0dcaf0, #0aa2c0); margin-left: 10px;" onclick="mostrarAuditoriaDestinos('${fullId}', '${idCorto}')" title="Auditoría de Destinos">🔎 Trazabilidad</button>`
+                        : '';
+
+                    const providerId = cabecera.pedidos_b2b_cabecera?.proveedor_id || '';
+                    const isPending = estadoData.estado === 'PENDIENTE';
+                    const selectCheckbox = isPending 
+                        ? `<input type="checkbox" class="lote-select-chk" data-lote-id="${fullId}" data-proveedor-id="${providerId}" onchange="window.onLoteSelectChange(this)" style="transform: scale(1.3); margin-right: 12px; cursor: pointer;" title="Seleccionar lote para vincular en bloque">`
+                        : '';
+
                     filasHtml += `
                         <div class="lote-card">
                             <div class="lote-card-header">
-                                <div>
-                                    <span class="badge-id">${idCorto}</span>
+                                <div style="display: flex; align-items: center;">
+                                    ${selectCheckbox}
+                                    <span class="badge-id" style="margin-left: ${isPending ? '0px' : '0px'}">${idCorto}</span>
                                     <span style="color:#6c757d; font-size: 0.85em; margin-left: 10px;">🕒 ${timeStr}</span>
+                                    ${estadoBadge}
+                                    ${warningBadge}
                                 </div>
                                 ${(() => {
                                     const safeDesc = item.producto_descripcion 
                                         ? item.producto_descripcion.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ') 
                                         : '';
                                     return `
-                                    <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${safeDesc}')" title="Imprimir Etiqueta">
+                                    <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${safeDesc}', ${lote.cantidad_recibida})" title="Imprimir Etiqueta">
                                         🖨️ Imprimir
-                                    </button>`;
+                                    </button>
+                                    <button class="btn-imprimir" style="background: linear-gradient(to right, #10b981, #059669); margin-left: 10px;" onclick='BunkerModal.abrir(${JSON.stringify(lote).replace(/'/g, "&apos;")})' title="Vincular al Búnker">
+                                        🔗 Vincular
+                                    </button>
+                                    ${btnTrazabilidad}`;
                                 })()}
                             </div>
                             <div class="lote-card-body">
@@ -183,11 +252,11 @@ window.cargarLotes = async function() {
                                     </div>
                                     <div>
                                         <div class="lote-label">Presentación (Bultos x Cant)</div>
-                                        <div class="lote-value"><span class="badge" style="background:#e2e3e5; color:#383d41; padding:3px 6px; border-radius:4px;">${desglose}</span></div>
+                                        <div class="lote-value"><span class="badge" style="background:${isInconsistent ? '#fee2e2' : '#e2e3e5'}; color:${isInconsistent ? '#b91c1c' : '#383d41'}; padding:3px 6px; border-radius:4px; font-weight:${isInconsistent ? 'bold' : 'normal'}; border:${isInconsistent ? '1px solid #fca5a5' : 'none'};">${desglose}</span></div>
                                     </div>
                                     <div>
                                         <div class="lote-label">Cantidad Recibida</div>
-                                        <div class="lote-value"><b>${lote.cantidad_recibida}</b> ${item.unidad_ref || 'u'}</div>
+                                        <div class="lote-value"><b>${lote.cantidad_recibida}</b> bultos</div>
                                     </div>
                                 </div>
                                 <div class="lote-section-financiera">
@@ -271,7 +340,7 @@ async function consultarTrazabilidad(idCorto) {
         document.getElementById('radiografia-id').innerText = idMostrar;
         document.getElementById('radiografia-proveedor').innerText = proveedor;
         document.getElementById('radiografia-producto').innerText = producto;
-        document.getElementById('radiografia-cantidad').innerText = `${lote.cantidad_recibida} ${item.unidad_ref || ''}`;
+        document.getElementById('radiografia-cantidad').innerText = `${lote.cantidad_recibida} bultos`;
         document.getElementById('radiografia-remito').innerText = remito;
         document.getElementById('radiografia-unidad').innerText = item.unidad_ref || 'Unidades';
         
@@ -332,8 +401,27 @@ window.cerrarTrazabilidad = function() {
 /**
  * Dispara la impresión Zebra manteniendo el SECRETO COMERCIAL (Sin proveedor)
  */
-window.imprimirEtiquetaLote = async function(idCorto, descripcionProducto) {
+window.imprimirEtiquetaLote = async function(idCorto, descripcionProducto, cantidadDefault = 1) {
     try {
+        const { value: cantidadElegida } = await Swal.fire({
+            title: 'Imprimir Etiquetas',
+            text: '¿Cuántas etiquetas (unidades) deseas imprimir?',
+            input: 'number',
+            inputValue: cantidadDefault,
+            showCancelButton: true,
+            confirmButtonText: 'Imprimir',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || value <= 0) {
+                    return 'Debes ingresar una cantidad válida';
+                }
+            }
+        });
+
+        if (!cantidadElegida) {
+            return; // El usuario canceló
+        }
+
         // Mostrar alerta de progreso
         Swal.fire({
             title: 'Imprimiendo...',
@@ -351,7 +439,7 @@ window.imprimirEtiquetaLote = async function(idCorto, descripcionProducto) {
             body: JSON.stringify({
                 id_corto: idCorto,
                 descripcion: descripcionProducto,
-                cantidad: 1 // Imprimimos 1 etiqueta térmica
+                cantidad: parseInt(cantidadElegida, 10)
             })
         });
 
@@ -362,7 +450,7 @@ window.imprimirEtiquetaLote = async function(idCorto, descripcionProducto) {
         Swal.fire({
             icon: 'success',
             title: '¡Impresión Enviada!',
-            text: 'La etiqueta se está imprimiendo correctamente.',
+            text: `Se enviaron ${cantidadElegida} etiquetas a la cola.`,
             timer: 2000,
             showConfirmButton: false
         });
@@ -372,3 +460,215 @@ window.imprimirEtiquetaLote = async function(idCorto, descripcionProducto) {
         Swal.fire('Error', 'Hubo un problema al intentar imprimir la etiqueta.', 'error');
     }
 };
+
+/**
+ * Muestra el modal de Auditoría de Destinos
+ */
+window.mostrarAuditoriaDestinos = function(loteId, idCorto) {
+    if (!window.LotesTrazabilidadCache || !window.LotesTrazabilidadCache[loteId]) {
+        Swal.fire('Atención', 'No hay datos de trazabilidad para este lote.', 'info');
+        return;
+    }
+    
+    const datos = window.LotesTrazabilidadCache[loteId];
+    const loteOriginal = window.LotesSupabaseCache && window.LotesSupabaseCache[loteId] ? window.LotesSupabaseCache[loteId] : null;
+    
+    // Variables de origen
+    let bultosOriginales = 0;
+    let kilosPorBulto = 1;
+    if (loteOriginal) {
+        if (loteOriginal.cantidad_recibida) {
+            bultosOriginales = loteOriginal.cantidad_recibida;
+        }
+        if (loteOriginal.pedidos_b2b_items && loteOriginal.pedidos_b2b_items.cant_valor) {
+            kilosPorBulto = parseFloat(loteOriginal.pedidos_b2b_items.cant_valor) || 1;
+        }
+    }
+
+    document.getElementById('auditoria-lote-id').innerText = idCorto;
+    
+    // Desglose de origen
+    document.getElementById('auditoria-origen-bultos').innerText = bultosOriginales.toString();
+    document.getElementById('auditoria-origen-kilos').innerText = (datos.total_lote || 0).toLocaleString('es-AR', {minimumFractionDigits: 2}) + ' kg';
+    
+    // Costos
+    const costoBruto = datos.costo_bruto || 0;
+    const costoKilo = datos.costo_kilo || 0;
+    document.getElementById('auditoria-costo-bruto').innerText = '$' + costoBruto.toLocaleString('es-AR', {minimumFractionDigits: 2});
+    document.getElementById('auditoria-costo-kilo').innerText = '$' + costoKilo.toLocaleString('es-AR', {minimumFractionDigits: 2});
+    
+    document.getElementById('auditoria-asignado').innerText = (datos.suma_asignada || 0).toLocaleString('es-AR', {minimumFractionDigits: 2}) + ' kg netos';
+    
+    let htmlDestinos = '';
+    if (datos.destinos && datos.destinos.length > 0) {
+        datos.destinos.forEach(d => {
+            const badgeTipo = d.tipo === 'ARTICULO_BUNKER' 
+                ? '<span style="background: #e2e8f0; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 8px;">BÚNKER</span>'
+                : '<span style="background: #fef08a; color: #854d0e; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 8px;">INGREDIENTES</span>';
+                
+            // Obtener datos reales guardados en la base de datos
+            const kilosDestino = parseFloat(d.cantidad_kilos || 0);
+            const bultosTotales = parseFloat(d.cantidad_bultos || 0);
+            const bultosAbiertos = parseFloat(d.cantidad_abierta || 0);
+            const bultosCerrados = Math.max(0, bultosTotales - bultosAbiertos);
+            
+            // Botón premium para abrir caja si es ingrediente y tiene cerradas
+            const btnAbrirCaja = d.tipo === 'INGREDIENTE_PRODUCCION' && bultosCerrados > 0
+                ? `<button onclick="window.abrirCajaDestinoClick('${datos.id}', '${d.id}', '${loteId}', '${idCorto}')" style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.2s; font-weight: bold; margin-top: 4px;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">📦 Abrir Caja</button>`
+                : '';
+
+            const desgloseCajas = d.tipo === 'INGREDIENTE_PRODUCCION'
+                ? `<div style="font-size: 0.8em; color: #475569; font-weight: 500; margin-top: 2px;">${bultosCerrados} cerradas | ${bultosAbiertos} abiertas</div>`
+                : '';
+
+            htmlDestinos += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-bottom: 1px solid #e2e8f0;">
+                    <div>
+                        ${badgeTipo}
+                        <strong>${d.descripcion}</strong> 
+                        <span style="color: #64748b; font-size: 0.85em;">(ID: ${d.id})</span>
+                        <div>${btnAbrirCaja}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: bold; color: #0f172a; font-size: 1.1em;">
+                            ${kilosDestino.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.8em; color: #64748b; font-weight: normal;">kg netos</span>
+                        </div>
+                        <div style="font-size: 0.85em; color: #64748b; font-weight: 500;">
+                            ${bultosTotales.toLocaleString('es-AR', {minimumFractionDigits: 0})} cajas/bultos
+                        </div>
+                        ${desgloseCajas}
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        htmlDestinos = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay destinos registrados.</p>';
+    }
+    
+    document.getElementById('auditoria-destinos-container').innerHTML = htmlDestinos;
+    document.getElementById('modal-auditoria').classList.add('show');
+};
+
+/**
+ * Cierra el modal de Auditoría de Destinos
+ */
+window.cerrarAuditoriaDestinos = function() {
+    document.getElementById('modal-auditoria').classList.remove('show');
+};
+
+/**
+ * Procesa la acción de abrir una caja cerrada e inyectar stock libre en caliente
+ */
+window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCorto) {
+    const confirm = await Swal.fire({
+        title: '¿Abrir caja de ingrediente?',
+        text: 'Se restará 1 caja del stock cerrado de Ingredientes y se ingresará el equivalente en Kilos Libres al stock de fábrica.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, abrir caja',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    Swal.fire({ 
+        title: 'Procesando Apertura...', 
+        allowOutsideClick: false, 
+        didOpen: () => Swal.showLoading() 
+    });
+
+    try {
+        const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/abrir_caja', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vinculo_id: vinculoId, destino_id: destinoId })
+        });
+        const result = await res.json();
+        
+        if (res.ok && result.success) {
+            // 1. Actualizar caché local de trazabilidad
+            const datosCached = window.LotesTrazabilidadCache[loteId];
+            const dest = datosCached.destinos.find(d => d.id === destinoId && d.tipo === 'INGREDIENTE_PRODUCCION');
+            if (dest) {
+                dest.cantidad_abierta = parseFloat(result.data.nuevas_abiertas);
+            }
+            
+            await Swal.fire('Caja Abierta', 'Se ha transferido una caja a stock de kilos libres de fábrica.', 'success');
+            
+            // 2. Refrescar la vista en vivo del modal
+            window.mostrarAuditoriaDestinos(loteId, idCorto);
+        } else {
+            throw new Error(result.error || 'Error al procesar apertura');
+        }
+    } catch(e) {
+        console.error('[VIGÍA FRONTEND] -> ERROR APERTURA:', e);
+        Swal.fire('Error', e.message || 'Error de conexión', 'error');
+    }
+};
+
+/**
+ * Lógica de Selección Múltiple y Consistencia de Proveedor
+ */
+window.onLoteSelectChange = function(chk) {
+    const checkedChks = document.querySelectorAll('.lote-select-chk:checked');
+    const allChks = document.querySelectorAll('.lote-select-chk');
+    const btnBatch = document.getElementById('btn-vincular-lote-batch');
+    const countSpan = document.getElementById('batch-select-count');
+    
+    if (checkedChks.length > 0) {
+        const selectedProveedorId = checkedChks[0].dataset.proveedorId;
+        
+        // Bloquear y atenuar visualmente los lotes que pertenezcan a otros proveedores
+        allChks.forEach(c => {
+            if (c.dataset.proveedorId !== selectedProveedorId) {
+                c.disabled = true;
+                const card = c.closest('.lote-card');
+                if (card) card.style.opacity = '0.4';
+            } else {
+                c.disabled = false;
+                const card = c.closest('.lote-card');
+                if (card) card.style.opacity = '1';
+            }
+        });
+        
+        btnBatch.style.display = 'inline-block';
+        countSpan.innerText = checkedChks.length;
+    } else {
+        // Habilitar y restablecer la opacidad si no queda ningún lote seleccionado
+        allChks.forEach(c => {
+            c.disabled = false;
+            const card = c.closest('.lote-card');
+            if (card) card.style.opacity = '1';
+        });
+        
+        btnBatch.style.display = 'none';
+        countSpan.innerText = '0';
+    }
+};
+
+/**
+ * Abre el modal compuesto de vinculación múltiple
+ */
+window.abrirModalVincularBatch = function() {
+    const checkedChks = document.querySelectorAll('.lote-select-chk:checked');
+    const lotesSeleccionados = [];
+    
+    checkedChks.forEach(chk => {
+        const id = chk.dataset.loteId;
+        const loteRaw = window.LotesSupabaseCache[id];
+        if (loteRaw) {
+            lotesSeleccionados.push(loteRaw);
+        }
+    });
+    
+    if (lotesSeleccionados.length === 0) {
+        Swal.fire('Atención', 'No hay lotes seleccionados.', 'warning');
+        return;
+    }
+    
+    // Iniciar y abrir el Modal Batch
+    window.BunkerModalBatch.abrir(lotesSeleccionados);
+};
+
