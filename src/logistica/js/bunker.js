@@ -49,6 +49,7 @@ let dictLocal = {
 let nuevosTerminosPendientes = [];
 let isPrompting = false;
 let timeoutBusqueda = null;
+let pendingPregenerarPromise = null;
 
 let articuloConsolidadoSeleccionado = null;
 let timeoutConsolidado = null;
@@ -1191,10 +1192,40 @@ async function guardarArticuloBunker(event) {
         }
     });
 
+    const isCrearLocal = document.getElementById('chk_crear_local') ? document.getElementById('chk_crear_local').checked : false;
+
+    let articulo_id = null;
+    let codigo_barras = null;
+
+    if (isCrearLocal) {
+        const pivoteEl = document.getElementById('bunker_id_pivote');
+        // Si el valor contiene placeholders, forzamos la pre-generación asíncrona de códigos y la esperamos
+        if (pivoteEl && (pivoteEl.value.includes('Se generará') || pivoteEl.value.includes('Generado'))) {
+            await window.pregenerarCodigosLocal(true);
+        } else if (pendingPregenerarPromise) {
+            // Si hay una promesa en vuelo, esperamos a que complete
+            await pendingPregenerarPromise;
+        }
+
+        const uiId = document.getElementById('bunker_id_pivote') ? document.getElementById('bunker_id_pivote').value.trim() : '';
+        const uiBarras = document.getElementById('bunker_codigo_barras') ? document.getElementById('bunker_codigo_barras').value.trim() : '';
+        
+        if (uiId && !uiId.startsWith('Se generará') && !uiId.includes('Generado')) {
+            articulo_id = uiId;
+        }
+        if (uiBarras && !uiBarras.startsWith('Se generará') && !uiBarras.includes('Generado')) {
+            codigo_barras = uiBarras;
+        }
+    } else {
+        articulo_id = articuloConsolidadoSeleccionado ? articuloConsolidadoSeleccionado.id : null;
+        codigo_barras = articuloConsolidadoSeleccionado ? (articuloConsolidadoSeleccionado.codigo_barras || articuloConsolidadoSeleccionado.id) : null;
+    }
+
     // Recolectar datos estructurales y base del Búnker
     const articuloData = {
-        articulo_id: articuloConsolidadoSeleccionado ? articuloConsolidadoSeleccionado.id : null,
-        codigo_barras: articuloConsolidadoSeleccionado ? (articuloConsolidadoSeleccionado.codigo_barras || articuloConsolidadoSeleccionado.id) : null,
+        articulo_id,
+        codigo_barras,
+        crear_local: isCrearLocal,
         descripcion: dictLocal.principal.termino,
         descripcion_abreviada: desc_abreviada,
         propiedades_dinamicas: propsJSON,
@@ -1271,6 +1302,15 @@ async function guardarArticuloBunker(event) {
                 confirmText = 'Entendido. Proceder a Lomasoft.';
             }
 
+            // Si es novedad local, inyectamos en el panel estático del tope y lo mostramos
+            if (isCrearLocal) {
+                document.getElementById('txt-generado-alfa').innerText = result.data.articulo_id;
+                document.getElementById('txt-generado-barras').innerText = result.data.codigo_barras;
+                document.getElementById('panel-codigos-generados').style.display = 'block';
+                // Scroll suave al tope para visualización y copia inmediata
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
             Swal.fire({
                 icon: 'success',
                 title: modalTitle,
@@ -1287,6 +1327,13 @@ async function guardarArticuloBunker(event) {
                 nuevosTerminosPendientes = [];
                 actualizarLivePreview();
                 recalcularTodaLaGrilla();
+
+                // Asegurar que el switch de Crear en Local esté desactivado y la UI reestablecida
+                const chk = document.getElementById('chk_crear_local');
+                if (chk) {
+                    chk.checked = false;
+                    toggleCrearLocalMode(chk);
+                }
             });
         } else {
             throw new Error(result.error || 'Falla desconocida en el servidor');
@@ -1301,3 +1348,177 @@ async function guardarArticuloBunker(event) {
         });
     }
 }
+
+/**
+ * Control del modo de creación local (Sin Origen Legacy)
+ */
+window.toggleCrearLocalMode = async function(checkboxEl) {
+    const isLocal = checkboxEl.checked;
+    
+    // El panel de enriquecimiento (color amarillo/naranja con borde eab308)
+    const panels = document.querySelectorAll('.bunker-panel');
+    let enrichmentPanel = null;
+    panels.forEach(p => {
+        if (p.innerHTML.includes('Enriquecer') || p.innerHTML.includes('buscador_consolidado')) {
+            enrichmentPanel = p;
+        }
+    });
+
+    const inputConsolidado = document.getElementById('buscador_consolidado');
+    const pivoteEl = document.getElementById('bunker_id_pivote');
+    const barrasEl = document.getElementById('bunker_codigo_barras');
+    const btnPregenerar = document.getElementById('btn_pregenerar_id');
+    const costoBaseEl = document.getElementById('costo_base');
+    
+    if (isLocal) {
+        // Limpiar selección previa
+        limpiarSeleccionConsolidado();
+        
+        // Deshabilitar y opacar visualmente el panel de enriquecimiento
+        if (enrichmentPanel) {
+            enrichmentPanel.style.opacity = '0.4';
+            enrichmentPanel.style.pointerEvents = 'none';
+        }
+        if (inputConsolidado) {
+            inputConsolidado.disabled = true;
+        }
+        
+        // Indicar al operador que se autogenerarán con firma EMB- y 10 dígitos numéricos
+        if (pivoteEl) pivoteEl.value = 'Se generará EMB-XXXXXX';
+        if (barrasEl) barrasEl.value = 'Se generará de 10 dígitos';
+
+        // Mostrar botón de pre-generación reactiva
+        if (btnPregenerar) btnPregenerar.style.display = 'inline-block';
+
+        // Hacer flexible la validación de costo base (Ajuste B)
+        if (costoBaseEl) {
+            costoBaseEl.removeAttribute('required');
+        }
+
+        // Si ya hay un Artículo Principal escrito, pre-generar de inmediato de forma reactiva (Ajuste A)
+        const principalVal = document.getElementById('descripcion_principal') ? document.getElementById('descripcion_principal').value.trim() : '';
+        if (principalVal) {
+            await window.pregenerarCodigosLocal(true); // silencioso = true para no abrumar con toast
+        }
+    } else {
+        // Restaurar panel de enriquecimiento
+        if (enrichmentPanel) {
+            enrichmentPanel.style.opacity = '1';
+            enrichmentPanel.style.pointerEvents = 'auto';
+        }
+        if (inputConsolidado) {
+            inputConsolidado.disabled = false;
+        }
+        
+        if (pivoteEl) pivoteEl.value = 'Generado Automáticamente';
+        if (barrasEl) barrasEl.value = 'Generado Automáticamente';
+
+        // Ocultar botón de pre-generación reactiva y panel estático
+        if (btnPregenerar) btnPregenerar.style.display = 'none';
+        window.cerrarPanelCodigos();
+
+        // Restaurar campo requerido para costo base
+        if (costoBaseEl) {
+            costoBaseEl.setAttribute('required', 'required');
+        }
+    }
+};
+
+/**
+ * Evento click del botón secundario de pre-generación reactiva
+ */
+window.pregenerarIdentidadLocalClick = async function() {
+    const principalVal = document.getElementById('descripcion_principal').value.trim();
+    if (!principalVal) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            icon: 'warning',
+            title: 'Debe escribir el Artículo Principal primero'
+        });
+        return;
+    }
+    await window.pregenerarCodigosLocal(false);
+};
+
+/**
+ * Invoca al backend de forma reactiva para aprovisionar los códigos en pantalla
+ */
+window.pregenerarCodigosLocal = function(silencioso = false) {
+    pendingPregenerarPromise = new Promise(async (resolve, reject) => {
+        try {
+            const res = await fetch('/api/logistica/bunker/generar-identidad-local');
+            const result = await res.json();
+            if (result.success && result.data) {
+                document.getElementById('bunker_id_pivote').value = result.data.articulo_id;
+                document.getElementById('bunker_codigo_barras').value = result.data.codigo_barras;
+                
+                // Rellenar también el panel estático superior para que el operador pueda copiarlos
+                document.getElementById('txt-generado-alfa').innerText = result.data.articulo_id;
+                document.getElementById('txt-generado-barras').innerText = result.data.codigo_barras;
+                document.getElementById('panel-codigos-generados').style.display = 'block';
+                
+                if (!silencioso) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 2000,
+                        icon: 'success',
+                        title: 'Códigos pre-generados correctamente'
+                    });
+                }
+                resolve(result.data);
+            } else {
+                resolve(null);
+            }
+        } catch (err) {
+            console.error("❌ Error pre-generando códigos locales:", err);
+            resolve(null);
+        }
+    });
+    return pendingPregenerarPromise;
+};
+
+/**
+ * Evento blur del Artículo Principal para pre-generar códigos automáticamente
+ */
+window.handleDescripcionPrincipalBlur = async function() {
+    const isLocal = document.getElementById('chk_crear_local') ? document.getElementById('chk_crear_local').checked : false;
+    const principalVal = document.getElementById('descripcion_principal').value.trim();
+    const pivoteEl = document.getElementById('bunker_id_pivote');
+    
+    // Si es modo local, tiene Artículo Principal y no se han pre-generado aún los códigos (contiene placeholder)
+    if (isLocal && principalVal && pivoteEl && pivoteEl.value.includes('Se generará')) {
+        await window.pregenerarCodigosLocal(true);
+    }
+};
+
+/**
+ * Utilidad ergonómica para copiar al portapapeles
+ */
+window.copiarAlPortapapeles = function(elementId) {
+    const text = document.getElementById(elementId).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 2000,
+            icon: 'success',
+            title: 'Copiado al portapapeles: ' + text
+        });
+    }).catch(err => {
+        console.error('Error al copiar: ', err);
+    });
+};
+
+/**
+ * Cerrar visualmente el panel estático de códigos generados
+ */
+window.cerrarPanelCodigos = function() {
+    document.getElementById('panel-codigos-generados').style.display = 'none';
+};
+

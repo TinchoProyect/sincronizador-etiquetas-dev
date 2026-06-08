@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Middleware base y Controlador
 const auth = require('../middleware/auth');
+const { validatePermissions } = require('../middleware/auth');
 const tratamientosController = require('../controllers/tratamientosController');
 
 /**
@@ -41,5 +42,11 @@ router.put('/dashboard/checkin/:hash', auth.validateSession, tratamientosControl
 
 // 5. Trazabilidad: Exportación a PDF de la Orden de Tratamiento
 router.get('/print/:hash', pdfTratamientosController.imprimirPDF);
+
+// 6. Asignar domicilio de entrega/retiro a un tratamiento
+router.put('/:id/domicilio',
+    validatePermissions('logistica.asignar_domicilio'),
+    tratamientosController.asignarDomicilio
+);
 
 module.exports = router;

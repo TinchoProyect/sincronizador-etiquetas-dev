@@ -157,12 +157,15 @@ async function imprimirPDF(req, res) {
         }
 
         // Footer
+        const oldBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
         doc.fontSize(9).fillColor('#94a3b8').text(
             'El presente documento certifica la recolección, mantenimiento y/o devolución de mercadería según el protocolo del sistema de trazabilidad de LAMDA. Su generación es acumulativa por hitos y garantiza la integridad de los registros.', 
             50, 
             doc.page.height - 100, 
             { align: 'justify', width: 500 }
         );
+        doc.page.margins.bottom = oldBottomMargin;
 
         doc.end();
 

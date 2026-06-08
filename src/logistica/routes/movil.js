@@ -461,13 +461,16 @@ router.get('/ruta-activa', async (req, res) => {
                 )) FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id) as detalles
             FROM ordenes_tratamiento o
             LEFT JOIN clientes c ON o.id_cliente = c.cliente_id
-            LEFT JOIN LATERAL (
-                SELECT id, direccion, localidad, latitud, longitud
-                FROM clientes_domicilios 
-                WHERE id_cliente = c.id AND activo = true
-                ORDER BY es_predeterminado DESC, id ASC
-                LIMIT 1
-            ) cd ON true
+            LEFT JOIN clientes_domicilios cd ON cd.id = COALESCE(
+                o.id_domicilio_entrega,
+                (
+                    SELECT id 
+                    FROM clientes_domicilios 
+                    WHERE id_cliente = c.id AND activo = true
+                    ORDER BY es_predeterminado DESC, id ASC
+                    LIMIT 1
+                )
+            )
             WHERE o.id_ruta = $1
             AND o.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'EN_CAMINO', 'PENDIENTE_DEVOLUCION_CLIENTE')
             ORDER BY o.id ASC

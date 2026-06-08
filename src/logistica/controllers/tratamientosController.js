@@ -184,8 +184,8 @@ async function checkInChofer(req, res) {
         if (!formData.responsable_nombre || formData.responsable_nombre.trim() === '') {
             return res.status(400).json({ success: false, error: 'El Nombre del Responsable es obligatorio para la trazabilidad.' });
         }
-        if (!formData.kilos || formData.kilos <= 0) return res.status(400).json({ success: false, error: 'Kilos inválidos' });
-        if (!formData.bultos || formData.bultos < 1) return res.status(400).json({ success: false, error: 'Bultos inválidos' });
+        if (!formData.kilos || formData.kilos <= 0) return res.status(400).json({ success: false, error: 'Kilos invalidos' });
+        if (!formData.bultos || formData.bultos < 1) return res.status(400).json({ success: false, error: 'Bultos invalidos' });
         if (!formData.descripcion_externa) return res.status(400).json({ success: false, error: 'Descripción obligatoria' });
         if (!formData.motivo) return res.status(400).json({ success: false, error: 'Motivo obligatorio' });
 
@@ -203,11 +203,67 @@ async function checkInChofer(req, res) {
     }
 }
 
+async function asignarDomicilio(req, res) {
+    try {
+        const { id } = req.params;
+        const { id_domicilio_entrega } = req.body;
+
+        console.log(`[TRATAMIENTOS-LOG] Asignando domicilio ${id_domicilio_entrega} a orden de tratamiento ${id}`);
+
+        if (!id_domicilio_entrega) {
+            return res.status(400).json({
+                success: false,
+                error: 'El campo id_domicilio_entrega es requerido'
+            });
+        }
+
+        // Validar que el domicilio existe y está activo
+        const { pool } = require('../config/database');
+        const domicilioCheck = await pool.query(
+            'SELECT id FROM clientes_domicilios WHERE id = $1 AND activo = true',
+            [id_domicilio_entrega]
+        );
+
+        if (domicilioCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Domicilio no encontrado'
+            });
+        }
+
+        // Actualizar orden de tratamiento
+        const result = await TratamientosModel.asignarDomicilio(id, id_domicilio_entrega);
+
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                error: 'Orden de Tratamiento no encontrada'
+            });
+        }
+
+        console.log(`[TRATAMIENTOS-LOG] ✅ Domicilio asignado correctamente`);
+
+        res.json({
+            success: true,
+            message: 'Domicilio asignado correctamente',
+            data: result
+        });
+
+    } catch (error) {
+        console.error('[TRATAMIENTOS-LOG] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+}
+
 module.exports = {
     generarQR,
     buscarClientes,
     generarQRChofer,
     obtenerSesion,
     procesarPreCheckin,
-    checkInChofer
+    checkInChofer,
+    asignarDomicilio
 };

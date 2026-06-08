@@ -20,10 +20,10 @@ async function main() {
     console.table(resCol.rows);
 
     const resRows = await client.query(`
-      SELECT articulo_numero, descripcion, codigo_barras 
+      SELECT articulo_numero, descripcion, stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado 
       FROM public.stock_real_consolidado 
-      WHERE codigo_barras IS NOT NULL AND codigo_barras != '' 
-      LIMIT 10;
+      WHERE articulo_numero IN ('APC27/30x10', 'APN27/30X5', 'AGPX2', 'AATGX5', 'CHBx2')
+      ORDER BY articulo_numero;
     `);
     console.log('stock_real_consolidado SAMPLE ROWS:');
     console.log(JSON.stringify(resRows.rows, null, 2));
@@ -36,3 +36,4 @@ async function main() {
 }
 
 main();
+

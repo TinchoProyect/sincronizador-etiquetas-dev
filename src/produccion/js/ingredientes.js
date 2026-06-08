@@ -1323,6 +1323,12 @@ async function editarIngrediente(id) {
             selectorSector.value = ingrediente.sector_id || '';
         }
 
+        // Mostrar botón de trazabilidad cruzada
+        const btnTrazabilidad = document.getElementById('btn-trazabilidad');
+        if (btnTrazabilidad) {
+            btnTrazabilidad.style.display = 'block';
+        }
+
         abrirModal('Editar Ingrediente');
         actualizarBotonImpresion();
     } catch (error) {
@@ -1654,6 +1660,76 @@ async function eliminarComposicionMix(id) {
     }
 }
 
+async function abrirTrazabilidadDesdeFicha() {
+    const id = document.getElementById('ingrediente-id').value;
+    if (!id) {
+        mostrarMensaje('Debe seleccionar un ingrediente válido', 'error');
+        return;
+    }
+    
+    try {
+        const nombreIng = document.getElementById('nombre').value;
+        document.getElementById('trazabilidad-nombre-ingrediente').textContent = nombreIng;
+        const tbody = document.getElementById('trazabilidad-tabla-body');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">Cargando vinculaciones...</td></tr>';
+        
+        const modal = document.getElementById('modal-trazabilidad');
+        modal.style.display = 'block';
+        
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/trazabilidad`);
+        if (!response.ok) {
+            throw new Error('Error al cargar la trazabilidad');
+        }
+        
+        const data = await response.json();
+        tbody.innerHTML = '';
+        
+        if (!data.vinculos || data.vinculos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748b; font-style: italic;">Este ingrediente no participa de ninguna receta o artículo en el sistema.</td></tr>';
+            return;
+        }
+        
+        data.vinculos.forEach(vinculo => {
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #e2e8f0';
+            
+            const artNombre = vinculo.articulo_nombre || `<span style="color: #94a3b8; font-style: italic;">Sin nombre en sistema</span>`;
+            
+            let bunkerIdent = '';
+            if (vinculo.bunker_descripcion_generada || vinculo.bunker_descripcion) {
+                bunkerIdent = vinculo.bunker_descripcion_generada || vinculo.bunker_descripcion;
+            } else {
+                bunkerIdent = `<span style="color: #d97706; background-color: #fef3c7; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">Sin homólogo</span>`;
+            }
+            
+            const cantidadTotalVal = parseFloat(vinculo.cantidad_total_ingrediente);
+            const cantidadTotalFormatted = isNaN(cantidadTotalVal) ? vinculo.cantidad_total_ingrediente : cantidadTotalVal.toFixed(3);
+            const implicancia = `<strong>${cantidadTotalFormatted}</strong> <span style="color: #64748b; font-size: 0.85em;">${vinculo.unidad_medida}</span>`;
+            
+            const esDirecto = parseInt(vinculo.nivel_minimo) === 1;
+            const badgeVinculo = esDirecto 
+                ? `<span style="color: #16a34a; background-color: #dcfce7; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Directo</span>`
+                : `<span style="color: #2563eb; background-color: #dbeafe; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Indirecto (Nivel ${vinculo.nivel_minimo})</span>`;
+            
+            tr.innerHTML = `
+                <td style="padding: 12px 16px; font-weight: 500; color: #1e293b;">
+                    ${artNombre}
+                    <small style="color: #64748b; font-family: monospace; display: block; font-size: 0.75rem; margin-top: 2px;">Cód: ${vinculo.articulo_numero}</small>
+                </td>
+                <td style="padding: 12px 16px; color: #334155; font-weight: 500;">${bunkerIdent}</td>
+                <td style="padding: 12px 16px; text-align: right; color: #0f172a;">${implicancia}</td>
+                <td style="padding: 12px 16px; text-align: center;">${badgeVinculo}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+    } catch (error) {
+        console.error('Error fetching trazabilidad:', error);
+        mostrarMensaje('Error al obtener trazabilidad: ' + error.message, 'error');
+        document.getElementById('modal-trazabilidad').style.display = 'none';
+    }
+}
+
 // Hacer funciones disponibles globalmente
 window.editarIngrediente = editarIngrediente;
 window.eliminarIngrediente = eliminarIngrediente;
@@ -1661,6 +1737,7 @@ window.gestionarComposicionMix = gestionarComposicionMix;
 window.eliminarComposicionMix = eliminarComposicionMix;
 window.cargarIngredientes = cargarIngredientes;
 window.toggleVinculo = toggleVinculo;
+window.abrirTrazabilidadDesdeFicha = abrirTrazabilidadDesdeFicha;
 
 // Exponer funciones de Categorías al scope global
 window.abrirModalCategorias = abrirModalCategorias;

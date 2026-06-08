@@ -122,11 +122,11 @@ async function eliminarRegistrosRelacionados(carroId) {
         // 2. Obtener y procesar movimientos de stock de ventas antes de eliminarlos
         let movimientosQuery;
         if (conteos.tipoCarro === 'externa') {
-            // Para carros externos: incluir movimientos de producción externa
+            // Para carros externos: incluir movimientos de producción externa y egresos de abastecimiento
             movimientosQuery = `
                 SELECT articulo_numero, cantidad, tipo
                 FROM stock_ventas_movimientos 
-                WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas', 'ingreso por produccion externa', 'egreso por receta externa')
+                WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas', 'ingreso por produccion externa', 'egreso por receta externa', 'egreso')
             `;
         } else {
             // Para carros internos: solo movimientos tradicionales
@@ -185,6 +185,16 @@ async function eliminarRegistrosRelacionados(carroId) {
                     WHERE articulo_numero = $2
                 `, [Math.abs(mov.cantidad), mov.articulo_numero]);
                 console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${Math.abs(mov.cantidad)} (revertir egreso por receta externa)`);
+            } else if (mov.tipo === 'egreso') {
+                // Para egreso (abastecimiento) eliminado: SUMAR de vuelta la cantidad a stock_movimientos
+                await pool.query(`
+                    UPDATE stock_real_consolidado 
+                    SET 
+                        stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2
+                `, [mov.cantidad, mov.articulo_numero]);
+                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir egreso de abastecimiento)`);
             }
 
             // Agregar artículo a la lista para recalcular

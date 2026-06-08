@@ -198,13 +198,16 @@ class RutasModel {
                 EXISTS(SELECT 1 FROM ordenes_tratamiento_detalles otd WHERE otd.id_orden_tratamiento = p.id) as tiene_checkin
             FROM ordenes_tratamiento p
             LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
-            LEFT JOIN LATERAL (
-                SELECT id, direccion, latitud, longitud
-                FROM clientes_domicilios 
-                WHERE id_cliente = c.id AND activo = true
-                ORDER BY es_predeterminado DESC, id ASC
-                LIMIT 1
-            ) cd ON true
+            LEFT JOIN clientes_domicilios cd ON cd.id = COALESCE(
+                p.id_domicilio_entrega,
+                (
+                    SELECT id 
+                    FROM clientes_domicilios 
+                    WHERE id_cliente = c.id AND activo = true
+                    ORDER BY es_predeterminado DESC, id ASC
+                    LIMIT 1
+                )
+            )
             WHERE p.id_ruta = $1
             ORDER BY id ASC
         `;

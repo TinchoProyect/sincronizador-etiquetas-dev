@@ -99,7 +99,8 @@ const {
     obtenerSectores,
     obtenerIngredientesPorSectores,
     obtenerNutrientes,
-    actualizarVinculo
+    actualizarVinculo,
+    obtenerTrazabilidadIngrediente
 } = require('../controllers/ingredientes');
 
 const mixesRouter = require('./mixes'); // ← Incorporación del router de mixes
@@ -631,6 +632,19 @@ router.delete('/ingredientes/:mixId/composicion/:ingredienteId', async (req, res
         res.json({ message: 'Ingrediente eliminado de la composición' });
     } catch (error) {
         console.error('Error en ruta DELETE /ingredientes/:mixId/composicion/:ingredienteId:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/ingredientes/:id/trazabilidad', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID inválido' });
+        }
+        await obtenerTrazabilidadIngrediente(req, res);
+    } catch (error) {
+        console.error('Error en ruta GET /ingredientes/:id/trazabilidad:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3721,7 +3735,7 @@ router.post('/clientes/:id/perfil-impresion', async (req, res) => {
  */
 router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
     try {
-        const { articulo_numero, cantidad, ingrediente_id, usuario_id } = req.body;
+        const { articulo_numero, cantidad, ingrediente_id, usuario_id, carro_id } = req.body;
 
         if (!articulo_numero || !cantidad || !ingrediente_id || !usuario_id) {
             return res.status(400).json({ error: 'Faltan parámetros obligatorios para el abastecimiento atómico' });
@@ -3730,8 +3744,8 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
         console.log(`\n🚚 [ABASTECIMIENTO EXTERNO] Solicitud de Usuario ${usuario_id}`);
         console.log(` > Retirando ${cantidad} unidades del Articulo: ${articulo_numero}`);
         console.log(` > Destino: Ingrediente ${ingrediente_id}`);
+        if (carro_id) console.log(` > Vinculado a Carro ID: ${carro_id}`);
 
-        // 1. Obtener los kilos por unidad del artículo seleccionado
         // 1. Obtener los kilos por unidad del artículo seleccionado
         const checkArtQuery = `
             SELECT src.kilos_unidad, src.descripcion 
@@ -3765,12 +3779,13 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             const outQuery = `
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, codigo_barras, kilos, carro_id, usuario_id, cantidad, tipo, origen_ingreso, fecha
-                ) VALUES ($1, NULL, $2, NULL, $3, $4, 'egreso', 'abastecimiento_domicilio', NOW())
+                ) VALUES ($1, NULL, $2, $3, $4, $5, 'egreso', 'abastecimiento_domicilio', NOW())
                 RETURNING id;
             `;
             await client.query(outQuery, [
                 articulo_numero, 
                 kilosTotales, 
+                carro_id ? parseInt(carro_id) : null,
                 usuario_id, 
                 cantidad
             ]);
@@ -3793,17 +3808,17 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             await recalcularStockConsolidado(client, articulo_numero);
 
             // B) Declarar el ALTA de stock personal en el domicilio para ese operario
-            // Nota Crítica: Se usa carroIdFinal = null para desacoplarlo estrucuralmente
             const inQuery = `
                 INSERT INTO ingredientes_stock_usuarios (
                     usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id, contexto_envase
-                ) VALUES ($1, $2, $3, NULL, NOW(), NULL, $4)
+                ) VALUES ($1, $2, $3, $4, NOW(), NULL, $5)
                 RETURNING id;
             `;
             await client.query(inQuery, [
                 usuario_id,
                 ingrediente_id,
                 kilosTotales,
+                carro_id ? parseInt(carro_id) : null,
                 kilosUnidad
             ]);
 

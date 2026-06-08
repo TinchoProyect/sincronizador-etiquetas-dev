@@ -169,7 +169,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             'Orden de Tratamiento' as estado,
             p.estado_logistico,
             'Pedido_Listo' as secuencia,
-            NULL as id_domicilio_entrega,
+            p.id_domicilio_entrega,
             false as bloqueo_entrega,
             p.id_cliente,
             NULL as agente,
@@ -193,13 +193,16 @@ async function obtenerPresupuestosDisponibles(pool) {
             EXISTS(SELECT 1 FROM ordenes_tratamiento_detalles otd WHERE otd.id_orden_tratamiento = p.id) as tiene_checkin
         FROM ordenes_tratamiento p
         LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
-        LEFT JOIN LATERAL (
-            SELECT direccion, localidad, latitud, longitud
-            FROM clientes_domicilios 
-            WHERE id_cliente = c.id AND activo = true
-            ORDER BY es_predeterminado DESC, id ASC
-            LIMIT 1
-        ) cd ON true
+        LEFT JOIN clientes_domicilios cd ON cd.id = COALESCE(
+            p.id_domicilio_entrega,
+            (
+                SELECT id 
+                FROM clientes_domicilios 
+                WHERE id_cliente = c.id AND activo = true
+                ORDER BY es_predeterminado DESC, id ASC
+                LIMIT 1
+            )
+        )
         WHERE p.id_ruta IS NULL 
         AND p.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
     `;
@@ -273,16 +276,20 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
             '' as domicilio_provincia,
             cd.latitud as domicilio_latitud,
-            cd.longitud as domicilio_longitud
+            cd.longitud as domicilio_longitud,
+            p.id_domicilio_entrega
         FROM ordenes_tratamiento p
         LEFT JOIN clientes c ON p.id_cliente = c.cliente_id
-        LEFT JOIN LATERAL (
-            SELECT direccion, localidad, latitud, longitud
-            FROM clientes_domicilios 
-            WHERE id_cliente = c.id AND activo = true
-            ORDER BY es_predeterminado DESC, id ASC
-            LIMIT 1
-        ) cd ON true
+        LEFT JOIN clientes_domicilios cd ON cd.id = COALESCE(
+            p.id_domicilio_entrega,
+            (
+                SELECT id 
+                FROM clientes_domicilios 
+                WHERE id_cliente = c.id AND activo = true
+                ORDER BY es_predeterminado DESC, id ASC
+                LIMIT 1
+            )
+        )
         WHERE p.id_ruta = $1
     `;
     const treatResult = await pool.query(queryTreatments, [rutaId]);

@@ -26,6 +26,9 @@ router.get('/buscar-consolidado', bunkerController.buscarConsolidado);
 // Buscar insumos restringidos al entorno Búnker
 router.get('/buscar-insumos', bunkerController.buscarInsumosBunker);
 
+// Pre-generación reactiva de códigos local
+router.get('/generar-identidad-local', bunkerController.generarIdentidadLocal);
+
 // Obtener detalle de artículo
 router.get('/articulos/:id', bunkerController.obtenerArticulo);
 
@@ -41,9 +44,13 @@ router.put('/articulos/:id', bunkerController.actualizarArticulo);
 // Eliminar un artículo exclusivamente del Búnker
 router.delete('/articulos/:id', bunkerController.eliminarArticulo);
 
+// Imprimir etiqueta doble asimétrica Zebra
+router.post('/articulos/:id/imprimir', bunkerController.imprimirEtiquetaDobleBunker);
+
 // --- GESTOR DE PRECIOS PARALELO ---
 router.get('/finanzas/:id', bunkerController.obtenerRadiografiaFinanciera);
 router.post('/finanzas/:id', bunkerController.actualizarEstructuraFinanciera);
+router.post('/articulo/lista-disponibilidad', bunkerController.actualizarDisponibilidadArticulo);
 
 // --- MAPEOS DE REPOSICION (FASE 4) ---
 router.get('/reposicion/resolver-articulo', bunkerController.resolverArticuloParaMapeo);

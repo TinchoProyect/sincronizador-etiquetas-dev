@@ -1,10 +1,16 @@
 let articulosBunkerGlobal = [];
 let listaSeleccionadaGlobal = 1; // Default a Lista 1
 
+window.filtroCapas = [ { id: 1, propiedad: '', exclusions: [] } ]; // Inicializar con capa 1 estática
+window.capaCounter = 1;
+window.propSortAscending = true;  // Dirección de ordenamiento
+
 document.addEventListener('DOMContentLoaded', async () => {
     initColumnToggler();
     await cargarListasPreciosFiltro();
     await cargarDataGrid();
+    initScannerExpressListener();
+    initTableResizableColumns('tabla-bunker');
 });
 
 // Click outside to close column settings dropdown
@@ -49,7 +55,7 @@ async function cargarListasPreciosFiltro() {
     }
 }
 
-window.cambiarListaPreciosDataGrid = function(nuevaListaId) {
+window.cambiarListaPreciosDataGrid = async function(nuevaListaId) {
     listaSeleccionadaGlobal = parseInt(nuevaListaId);
     
     // Sincronizar el tab activo del gestor financiero
@@ -60,7 +66,7 @@ window.cambiarListaPreciosDataGrid = function(nuevaListaId) {
         }
     }
     
-    renderizarGrid(articulosBunkerGlobal);
+    await cargarDataGrid();
 };
 
 // --- LOGICA DE VISIBILIDAD DE COLUMNAS ---
@@ -76,7 +82,8 @@ const BUNKER_COLUMNS = [
     { id: 8, name: 'Precio Final c/IVA', defaultVisible: true },
     { id: 9, name: 'Margen Base', defaultVisible: true },
     { id: 10, name: 'Total Entrante (Un)', defaultVisible: true },
-    { id: 11, name: 'Total Entrante (Kg)', defaultVisible: true }
+    { id: 11, name: 'Total Entrante (Kg)', defaultVisible: true },
+    { id: 12, name: 'Stock Tradicional (Lomas Soft)', defaultVisible: true }
 ];
 
 let bunkerGridPreferences = {};
@@ -129,21 +136,25 @@ function aplicarVisibilidadColumna(colId, isVisible) {
 async function cargarDataGrid() {
     const search = document.getElementById('filtro-busqueda').value.trim();
     const tbody = document.getElementById('tbody-bunker');
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
     
     try {
-        const query = search ? `?search=${encodeURIComponent(search)}` : '';
-        const res = await fetch(`/api/logistica/bunker/listado${query}`);
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (listaSeleccionadaGlobal) params.append('lista_id', listaSeleccionadaGlobal);
+        
+        const res = await fetch(`/api/logistica/bunker/listado?${params.toString()}`);
         const result = await res.json();
         
         if (res.ok && result.success) {
             articulosBunkerGlobal = result.data;
-            renderizarGrid(result.data);
+            window.actualizarCheckboxesTodasLasCapas();
+            window.aplicarFiltrosYOrdenamiento();
         } else {
             throw new Error(result.error);
         }
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="13" style="color: red; text-align: center;">Error de conexión: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="14" style="color: red; text-align: center;">Error de conexión: ${e.message}</td></tr>`;
     }
 }
 
@@ -152,7 +163,7 @@ function renderizarGrid(articulos) {
     tbody.innerHTML = '';
     
     if (articulos.length === 0) {
-         tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
+         tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
          return;
     }
     
@@ -197,6 +208,7 @@ function renderizarGrid(articulos) {
             }
         }
         
+        let disponibleActiva = true;
         let margenPrincipalText = 'N/A';
         let precioFinalDinamicoHtml = `<span style="color:#94a3b8;">N/D</span>`;
         let ivaStr = `${iva.toFixed(2)}%`;
@@ -212,6 +224,9 @@ function renderizarGrid(articulos) {
             
             // Buscar el margen de la lista enfocada globalmente
             const mFocused = art.margenes.find(m => m.lista_id === listaSeleccionadaGlobal) || art.margenes[0];
+            if (mFocused) {
+                disponibleActiva = mFocused.disponible !== false;
+            }
             const pctMargen = parseFloat(mFocused.margen_porcentaje);
             margenPrincipalText = `${pctMargen.toFixed(2)} %`;
             
@@ -289,11 +304,16 @@ function renderizarGrid(articulos) {
         if (isOutdated) {
             trMain.style.cssText = 'background-color: #fffbeb; border-left: 4px solid #d97706;';
         }
+        if (!disponibleActiva) {
+            trMain.classList.add('articulo-excluido');
+        }
+        
+        const badgeExcluido = disponibleActiva ? '' : ' <span class="badge" style="background-color: #64748b; color: white; padding: 2px 6px; font-size: 0.75em; border-radius: 4px; vertical-align: middle; margin-left: 5px;">🚫 Excluido</span>';
         
         trMain.innerHTML = `
             <td style="font-family: monospace; font-weight: bold; color: #3b82f6;">${art.articulo_id}</td>
             <td>
-                <strong>${art.descripcion}</strong><br>
+                <strong>${art.descripcion}</strong>${badgeExcluido}<br>
                 <span style="font-size: 0.8em; color: #64748b;">${art.rubro || 'Sin Rubro'} > ${art.sub_rubro || ''}</span>
             </td>
             <td style="font-family: monospace; font-size: 0.9em;">${art.descripcion_generada || '-'}</td>
@@ -314,12 +334,19 @@ function renderizarGrid(articulos) {
             <td style="text-align: center; font-weight: bold; font-size: 1.1em; ${art.stock_kilos > 0 ? 'color: #10b981;' : 'color: #ef4444; opacity: 0.7;'}">
                 ${stockFormatter.format(art.stock_kilos || 0)}
             </td>
+            <td style="text-align: center; font-weight: bold; font-size: 1.1em; ${art.stock_legacy > 0 ? 'color: #7c3aed;' : 'color: #ef4444; opacity: 0.7;'}">
+                ${stockFormatter.format(art.stock_legacy || 0)}
+            </td>
+            <td style="text-align: center;">
+                <button type="button" class="btn-edit" style="background-color: #64748b; padding: 6px 10px; font-size: 0.85em;" onclick="window.mostrarPopoverListas(event, '${art.articulo_id}')">📋 Listas</button>
+            </td>
             <td style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: center; gap: 8px;">
                     <button type="button" style="background: #8e4785; color: white; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.9em; display: flex; gap: 5px; align-items: center; box-shadow: 0 2px 4px rgba(142,71,133,0.15);" onclick="abrirGestorPrecios('${art.articulo_id}', '${art.descripcion_generada || art.descripcion}', ${iva})" title="Gestor de Precios Independiente">
                         💰 Finanzas
                     </button>
                     <button class="btn-edit" onclick="editarArticulo('${art.articulo_id}')">✏️ Editar</button>
+                    <button class="btn-edit" style="background-color: #10b981;" onclick="imprimirEtiquetaBunker('${art.articulo_id}')" title="Imprimir Etiqueta Asimétrica Doble (Zebra)">🖨️ Imprimir</button>
                     <button type="button" style="background: transparent; border: none; cursor: pointer; font-size: 1.3em; padding: 0; display: flex; transition: transform 0.2s; color: #ef4444;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" title="Eliminar del Búnker" onclick="eliminarArticuloBunker('${art.articulo_id}')">🗑️</button>
                 </div>
             </td>
@@ -331,7 +358,7 @@ function renderizarGrid(articulos) {
             trDetails.id = `details_${rowIndex}`;
             trDetails.className = 'expandable-row';
             trDetails.innerHTML = `
-                <td colspan="13" style="padding: 10px 40px; background-color: #f1f5f9;">
+                <td colspan="15" style="padding: 10px 40px; background-color: #f1f5f9;">
                     <div style="margin-bottom: 5px; font-weight: 600; color: #334155; font-size: 0.9em;">👇 Desglose Financiero de Listas de Precios Búnker</div>
                     ${expandedGridHtml}
                 </td>
@@ -510,6 +537,8 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
     document.getElementById('gp-receta-ingredientes').innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #64748b; font-style: italic;">Cargando estructura de receta...</div>';
     document.getElementById('gp-tabs-container').innerHTML = '<span style="color:#64748b; font-style:italic; padding: 5px;">Cargando listas...</span>';
     document.getElementById('gp-alerta-desactualizado').style.display = 'none';
+    const simDescEl = document.getElementById('gp-sim-descuento');
+    if (simDescEl) simDescEl.value = '0';
 
     document.getElementById('modal-gestor-precios').style.display = 'flex';
     
@@ -806,7 +835,13 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             
             gp_listasFinancieras = data.listas_margenes;
             renderTabs();
-            selectTab(0);
+            
+            // Sincronizar solapa con la lista activa en la grilla principal (listaSeleccionadaGlobal)
+            let targetTabIdx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaSeleccionadaGlobal));
+            if (targetTabIdx === -1) {
+                targetTabIdx = 0;
+            }
+            selectTab(targetTabIdx);
 
             // FASE 4: Costo de Reposición Vivo (Mapeo Manual Curado)
             renderOfertasReposicion(data.reposicion_ofertas || []);
@@ -1098,6 +1133,12 @@ function selectTab(idx) {
         }
     }
     
+    // Configurar Disponibilidad en Catálogo
+    const dispCheckbox = document.getElementById('gp-disponibilidad-lista');
+    if (dispCheckbox) {
+        dispCheckbox.checked = list.disponible !== false;
+    }
+
     // Configurar Costo Base
     const inherits = list.costo_base_sobrescrito === null;
     const heredarCheckbox = document.getElementById('gp-heredar-costo');
@@ -1178,14 +1219,26 @@ function renderInsumosGrid() {
         const qty = parseFloat(ins.cantidad || 1);
         const uCost = parseFloat(ins.costo_unitario_capturado || 0);
         const subtotal = qty * uCost;
-        totalInsumos += subtotal;
+        
+        const isIncluido = (ins.incluido === true || ins.incluido === 'true');
+        if (isIncluido) {
+            totalInsumos += subtotal;
+        }
         
         // Alerta de desfase en insumo
         const liveCost = parseFloat(ins.costo_unitario_en_vivo || uCost);
         const isDiff = Math.abs(liveCost - uCost) > 0.01;
         const diffBadge = isDiff ? ` <span style="color:#d97706; cursor:help;" title="Live cost: ${formatter.format(liveCost)} (Discrepancia detectada)">⚠️</span>` : '';
         
+        const activeText = isIncluido ? 'Incluido' : 'Excluido';
+        const activeColor = isIncluido ? '#15803d' : '#ef4444';
+        const activeBg = isIncluido ? '#dcfce7' : '#fef2f2';
+        const activeBorder = isIncluido ? '#bbf7d0' : '#fecaca';
+
         const tr = document.createElement('tr');
+        tr.style.opacity = isIncluido ? '1' : '0.75';
+        tr.style.backgroundColor = isIncluido ? 'transparent' : '#f8fafc';
+        
         tr.innerHTML = `
             <td>
                 <strong>${ins.descripcion || ins.insumo_articulo_numero}</strong><br>
@@ -1195,9 +1248,14 @@ function renderInsumosGrid() {
                 <input type="number" step="0.0001" value="${qty}" style="width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; text-align:center;" oninput="actualizarInsumoQty(${subIdx}, this.value)">
             </td>
             <td style="text-align: right;">
-                <div style="display:flex; justify-content: flex-end; align-items:center; gap: 4px;">
-                    <input type="number" step="0.01" value="${uCost.toFixed(2)}" style="width: 70px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; text-align:right;" oninput="actualizarInsumoCost(${subIdx}, this.value)">
-                    ${diffBadge}
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap: 3px;">
+                    <div style="display:flex; justify-content: flex-end; align-items:center; gap: 4px;">
+                        <input type="number" step="0.01" value="${uCost.toFixed(2)}" style="width: 70px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; text-align:right; font-family: monospace; ${isIncluido ? 'background-color:#f0fdf4;' : 'background-color:#f1f5f9; color:#94a3b8;'}" oninput="actualizarInsumoCost(${subIdx}, this.value)">
+                        ${diffBadge}
+                    </div>
+                    <span onclick="window.toggleInsumoInclusion(${subIdx})" style="cursor:pointer; font-size:0.75em; padding: 2px 6px; border-radius: 4px; font-weight:bold; border: 1px solid ${activeBorder}; background-color:${activeBg}; color:${activeColor}; user-select:none;" title="Haz clic para alternar inclusión de este costo en la calculadora financiera">
+                        ${activeText}
+                    </span>
                 </div>
             </td>
             <td style="text-align: center;">
@@ -1223,6 +1281,16 @@ window.actualizarInsumoCost = function(idx, val) {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (list && list.insumos && list.insumos[idx]) {
         list.insumos[idx].costo_unitario_capturado = parseFloat(val) || 0;
+        renderInsumosGrid();
+        recalcularPreciosGestor();
+    }
+};
+
+window.toggleInsumoInclusion = function(idx) {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (list && list.insumos && list.insumos[idx]) {
+        const current = list.insumos[idx].incluido;
+        list.insumos[idx].incluido = !(current === true || current === 'true');
         renderInsumosGrid();
         recalcularPreciosGestor();
     }
@@ -1291,7 +1359,8 @@ function selectInsumoParaAgregar(art) {
         descripcion: art.descripcion,
         cantidad: 1.0000,
         costo_unitario_capturado: parseFloat(art.costo_base || 0),
-        costo_unitario_en_vivo: parseFloat(art.costo_base || 0)
+        costo_unitario_en_vivo: parseFloat(art.costo_base || 0),
+        incluido: false // HITL: Desactivado por defecto al agregarlo
     });
     
     document.getElementById('gp-buscar-insumo').value = '';
@@ -1324,7 +1393,9 @@ window.recalcularPreciosGestor = function() {
     let cInsumos = 0;
     if (list.insumos && list.insumos.length > 0) {
         list.insumos.forEach(ins => {
-            cInsumos += parseFloat(ins.cantidad || 1) * parseFloat(ins.costo_unitario_capturado || 0);
+            if (ins.incluido === true || ins.incluido === 'true') {
+                cInsumos += parseFloat(ins.cantidad || 1) * parseFloat(ins.costo_unitario_capturado || 0);
+            }
         });
     }
     
@@ -1386,6 +1457,10 @@ window.recalcularPreciosGestor = function() {
         }
     }
 
+    // Simulación de Descuento
+    const simDescEl = document.getElementById('gp-sim-descuento');
+    const simDescuentoVal = simDescEl ? (parseFloat(simDescEl.value) || 0) : 0;
+
     if (list.modo_calculo === 'AUTOMATIC') {
         // Evitar sobreescritura si el usuario está enfocado
         if (document.activeElement.id !== 'gp-margen' && margenInput) {
@@ -1393,34 +1468,67 @@ window.recalcularPreciosGestor = function() {
         }
         
         // Precio Final del Bulto = [ Costo Total Bulto * (1 + Margen/100) + Costo Tiempo ] * (1 + IVA)
-        const precioS_iva = cBulto * (1 + (margen / 100)) + cTiempo;
-        const precioFinal = precioS_iva * ivaCoeff;
+        const precioS_ivaBase = cBulto * (1 + (margen / 100)) + cTiempo;
+        const precioFinalBase = precioS_ivaBase * ivaCoeff;
         
-        list.precio_final = precioFinal;
+        list.precio_final = precioFinalBase;
         if (document.activeElement.id !== 'gp-precio-final') {
-            document.getElementById('gp-precio-final').value = precioFinal.toFixed(2);
+            document.getElementById('gp-precio-final').value = precioFinalBase.toFixed(2);
         }
         
-        // Métricas secundarias (basadas en bulto)
-        const iibb = precioFinal * 0.04;
-        const gananciaNeta = precioS_iva - cTiempo - cBulto;
+        // Simulación de Descuento Venta (Casillero Interactivo)
+        const precioFinalDescontado = precioFinalBase * (1 - simDescuentoVal / 100);
+        const precioS_ivaDescontado = precioFinalDescontado / ivaCoeff;
         
-        document.getElementById('gp-precio-sin-iva').innerText = formatter.format(precioS_iva);
+        // Métricas secundarias basadas en el precio descontado
+        const iibb = precioFinalDescontado * 0.04;
+        const gananciaNeta = precioS_ivaDescontado - cTiempo - cBulto;
+        const gananciaSinIIBB = gananciaNeta - iibb;
+        
+        // Cálculo complementario de IVA y Diferencia a rendir (AFIP)
+        const ivaVenta = precioS_ivaDescontado * (ivaVal / 100);
+        const ivaCompra = cBulto * (gp_ivaGlobal / 100);
+        const diferenciaIva = ivaVenta - ivaCompra;
+        const diferenciaARendir = Math.max(0, diferenciaIva);
+        const gananciaReal = gananciaSinIIBB - diferenciaARendir;
+        
+        const simFacturadoEl = document.getElementById('gp-precio-facturado-simulado');
+        if (simFacturadoEl) {
+            simFacturadoEl.innerText = formatter.format(precioFinalDescontado);
+        }
+        
+        document.getElementById('gp-precio-sin-iva').innerText = formatter.format(precioS_ivaDescontado);
         document.getElementById('gp-iibb').innerText = formatter.format(iibb);
-        document.getElementById('gp-ganancia-neta').innerText = formatter.format(gananciaNeta);
-        document.getElementById('gp-ganancia-neta').style.color = gananciaNeta >= 0 ? '#15803d' : '#ef4444';
+        
+        const gNetaEl = document.getElementById('gp-ganancia-neta');
+        if (gNetaEl) {
+            gNetaEl.innerText = formatter.format(gananciaNeta);
+            gNetaEl.style.color = gananciaNeta >= 0 ? '#475569' : '#ef4444'; // Color neutro si es positivo
+        }
+        
+        const gSinIibbEl = document.getElementById('gp-ganancia-sin-iibb');
+        if (gSinIibbEl) {
+            gSinIibbEl.innerText = formatter.format(gananciaSinIIBB);
+            gSinIibbEl.style.color = gananciaSinIIBB >= 0 ? '#475569' : '#ef4444'; // Color neutro si es positivo
+        }
+        
+        const gRealEl = document.getElementById('gp-ganancia-real');
+        if (gRealEl) {
+            gRealEl.innerText = formatter.format(gananciaReal);
+            gRealEl.style.color = gananciaReal >= 0 ? '#15803d' : '#ef4444'; // Destacado verde si es positivo
+        }
     } else {
         // Modo MANUAL
-        const precioFinal = parseFloat(list.precio_final) || 0;
+        const precioFinalBase = parseFloat(list.precio_final) || 0;
         if (document.activeElement.id !== 'gp-precio-final') {
-            document.getElementById('gp-precio-final').value = precioFinal.toFixed(2);
+            document.getElementById('gp-precio-final').value = precioFinalBase.toFixed(2);
         }
         
         // Margen Implícito = ( (Precio Final / (1+IVA) - Costo Tiempo) / Costo Total Bulto - 1 ) * 100
-        const precioS_iva = precioFinal / ivaCoeff;
+        const precioS_ivaBase = precioFinalBase / ivaCoeff;
         let margenImplicito = 0;
         if (cBulto > 0) {
-            margenImplicito = ((precioS_iva - cTiempo) / cBulto - 1) * 100;
+            margenImplicito = ((precioS_ivaBase - cTiempo) / cBulto - 1) * 100;
         }
         
         list.margen_porcentaje = margenImplicito; // compatibilidad
@@ -1429,14 +1537,47 @@ window.recalcularPreciosGestor = function() {
             margenInput.value = margenImplicito.toFixed(2);
         }
         
-        // Métricas secundarias (basadas en bulto)
-        const iibb = precioFinal * 0.04;
-        const gananciaNeta = precioS_iva - cTiempo - cBulto;
+        // Simulación de Descuento Venta (Casillero Interactivo)
+        const precioFinalDescontado = precioFinalBase * (1 - simDescuentoVal / 100);
+        const precioS_ivaDescontado = precioFinalDescontado / ivaCoeff;
         
-        document.getElementById('gp-precio-sin-iva').innerText = formatter.format(precioS_iva);
+        // Métricas secundarias basadas en el precio descontado
+        const iibb = precioFinalDescontado * 0.04;
+        const gananciaNeta = precioS_ivaDescontado - cTiempo - cBulto;
+        const gananciaSinIIBB = gananciaNeta - iibb;
+        
+        // Cálculo complementario de IVA y Diferencia a rendir (AFIP)
+        const ivaVenta = precioS_ivaDescontado * (ivaVal / 100);
+        const ivaCompra = cBulto * (gp_ivaGlobal / 100);
+        const diferenciaIva = ivaVenta - ivaCompra;
+        const diferenciaARendir = Math.max(0, diferenciaIva);
+        const gananciaReal = gananciaSinIIBB - diferenciaARendir;
+        
+        const simFacturadoEl = document.getElementById('gp-precio-facturado-simulado');
+        if (simFacturadoEl) {
+            simFacturadoEl.innerText = formatter.format(precioFinalDescontado);
+        }
+        
+        document.getElementById('gp-precio-sin-iva').innerText = formatter.format(precioS_ivaDescontado);
         document.getElementById('gp-iibb').innerText = formatter.format(iibb);
-        document.getElementById('gp-ganancia-neta').innerText = formatter.format(gananciaNeta);
-        document.getElementById('gp-ganancia-neta').style.color = gananciaNeta >= 0 ? '#15803d' : '#ef4444';
+        
+        const gNetaEl = document.getElementById('gp-ganancia-neta');
+        if (gNetaEl) {
+            gNetaEl.innerText = formatter.format(gananciaNeta);
+            gNetaEl.style.color = gananciaNeta >= 0 ? '#475569' : '#ef4444'; // Color neutro si es positivo
+        }
+        
+        const gSinIibbEl = document.getElementById('gp-ganancia-sin-iibb');
+        if (gSinIibbEl) {
+            gSinIibbEl.innerText = formatter.format(gananciaSinIIBB);
+            gSinIibbEl.style.color = gananciaSinIIBB >= 0 ? '#475569' : '#ef4444'; // Color neutro si es positivo
+        }
+        
+        const gRealEl = document.getElementById('gp-ganancia-real');
+        if (gRealEl) {
+            gRealEl.innerText = formatter.format(gananciaReal);
+            gRealEl.style.color = gananciaReal >= 0 ? '#15803d' : '#ef4444'; // Destacado verde si es positivo
+        }
     }
     
     // 3. Evaluar alerta de desactualización (costos en vivo vs costo calibrado)
@@ -1606,7 +1747,8 @@ window.guardarEstructuraFinanciera = async function() {
         const insPayload = (l.insumos || []).map(ins => ({
             insumo_articulo_numero: ins.insumo_articulo_numero,
             cantidad: parseFloat(ins.cantidad) || 1.0000,
-            costo_unitario_capturado: parseFloat(ins.costo_unitario_capturado) || 0
+            costo_unitario_capturado: parseFloat(ins.costo_unitario_capturado) || 0,
+            incluido: ins.incluido === true || ins.incluido === 'true'
         }));
         
         return {
@@ -1620,6 +1762,7 @@ window.guardarEstructuraFinanciera = async function() {
             modo_iva: l.modo_iva || 'COMPLETO',
             es_patron: l.es_patron === true || l.es_patron === 'true',
             fuente_costo_default: l.fuente_costo_default || null,
+            disponible: l.disponible !== false,
             insumos: insPayload
         };
     });
@@ -2797,6 +2940,19 @@ window.abrirPrevisualizadorPDF = function() {
         Swal.fire('Error', 'No se pudo determinar la lista activa en el Gestor de Precios.', 'error');
         return;
     }
+
+    // Poblar de manera dinámica el dropdown del selector de lista comercial activa del previsualizador
+    const pdfSelect = document.getElementById('pdf-seleccion-lista');
+    if (pdfSelect) {
+        pdfSelect.innerHTML = '';
+        gp_listasFinancieras.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l.lista_id;
+            opt.textContent = l.nombre_lista;
+            pdfSelect.appendChild(opt);
+        });
+        pdfSelect.value = list.lista_id;
+    }
     
     if (document.getElementById('pdf-prev-lista-nombre')) {
         document.getElementById('pdf-prev-lista-nombre').innerText = list.nombre_lista;
@@ -2857,6 +3013,39 @@ window.cerrarPrevisualizadorPDF = function() {
     const modalEl = document.getElementById('modal-preimpresion-pdf');
     if (modalEl) {
         modalEl.style.display = 'none';
+    }
+};
+
+window.cambiarListaPreciosPDF = function(listaId) {
+    console.log("=== VIGÍA DEPURADOR: INICIO DE CAMBIO DE LISTA EN PREVISUALIZADOR PDF ===");
+    // 1. Guardar el diseño actual de la lista que se está abandonando
+    window.guardarDisenoPDF();
+
+    // 2. Resolver el índice de la nueva lista seleccionada
+    const idx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaId));
+    if (idx !== -1) {
+        gp_activeTabIdx = idx;
+        const list = gp_listasFinancieras[idx];
+        console.log(`VIGÍA: Cambiando a listaId ${listaId} (${list.nombre_lista}) en gp_activeTabIdx: ${gp_activeTabIdx}`);
+
+        // 3. Actualizar la cabecera de la hoja simulada
+        if (document.getElementById('pdf-prev-lista-nombre')) {
+            document.getElementById('pdf-prev-lista-nombre').innerText = list.nombre_lista;
+        }
+
+        // 4. Cargar el diseño de columnas/categorías específico de la nueva lista
+        window.cargarDisenoPDF();
+
+        // 5. Re-inicializar y renderizar las capas comerciales
+        window.inicializarArbolCategorias();
+        window.renderArbolCategorias();
+        window.renderCapaCMatrix();
+        window.renderCapaDPriorityList();
+
+        // 6. Forzar actualización de la previsualización adaptativa
+        window.actualizarPrevisualizacionPDF();
+    } else {
+        console.error(`VIGÍA: No se encontró la listaId ${listaId} en gp_listasFinancieras`);
     }
 };
 
@@ -3899,5 +4088,629 @@ window.actualizarAlertasIngredienteBase = function() {
         }
     }
 };
+
+// 🖨️ [FASE 4 - IMPRESIÓN ASIMÉTRICA] Envío directo de orden de impresión doble al backend
+window.imprimirEtiquetaBunker = async function(id) {
+    try {
+        Swal.fire({
+            title: 'Preparando Impresión',
+            text: 'Enviando orden a la impresora Zebra...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const response = await fetch(`/api/logistica/bunker/articulos/${encodeURIComponent(id)}/imprimir`, {
+            method: 'POST'
+        });
+        const res = await response.json();
+
+        if (response.ok && res.success) {
+            Swal.fire({
+                title: '¡Impresión Enviada!',
+                text: 'La etiqueta doble asimétrica se ha enviado a la Zebra con éxito.',
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire('Error al Imprimir', res.error || 'No se pudo enviar la orden a la impresora.', 'error');
+        }
+    } catch (e) {
+        console.error('Error de red al imprimir:', e);
+        Swal.fire('Error de Red', 'Fallo de comunicación con el servidor de logística.', 'error');
+    }
+};
+
+// 📟 [FASE 4 - BUSCADOR OMNICANAL ESCÁNER]
+window.procesarEscaneoBuscador = async function() {
+    const input = document.getElementById('buscador-escaner');
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) return;
+
+    console.log(`📟 [ESCÁNER] Procesando código escaneado: "${val}"`);
+
+    // Inyectar en el campo de búsqueda convencional para reflejar el estado actual
+    const filtroBusqueda = document.getElementById('filtro-busqueda');
+    if (filtroBusqueda) {
+        filtroBusqueda.value = val;
+    }
+
+    // Refrescar el grid con el filtro aplicado
+    await cargarDataGrid();
+
+    // Limpiar el campo del escáner
+    input.value = '';
+    // Devolver el foco al campo del escáner para dejarlo listo para la siguiente lectura
+    input.focus();
+};
+
+function initScannerExpressListener() {
+    const scannerInput = document.getElementById('buscador-escaner');
+    if (scannerInput) {
+        // Enviar al presionar la tecla Enter (comportamiento por defecto de las lectoras de emulación de teclado)
+        scannerInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.procesarEscaneoBuscador();
+            }
+        });
+
+        // Asegurar que el foco vuelva al buscador de escáner tras des-enfoques accidentales
+        // pero respetando la navegación a otros campos editables del listado
+        scannerInput.addEventListener('blur', () => {
+            setTimeout(() => {
+                const active = document.activeElement;
+                if (active && (
+                    active.tagName === 'INPUT' || 
+                    active.tagName === 'SELECT' || 
+                    active.tagName === 'TEXTAREA' || 
+                    active.tagName === 'BUTTON' ||
+                    active.closest('.swal2-container') // No quitar foco si hay un SweetAlert2 abierto
+                )) {
+                    return;
+                }
+                scannerInput.focus();
+            }, 150);
+        });
+    }
+}
+
+function initTableResizableColumns(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const cols = table.querySelectorAll('thead th');
+    
+    cols.forEach(col => {
+        // Evitar duplicar resizers si ya existen, y no poner resizer en la columna Acciones
+        if (col.querySelector('.resizer') || col.textContent.trim() === 'Acciones') return;
+        
+        const resizer = document.createElement('div');
+        resizer.className = 'resizer';
+        col.appendChild(resizer);
+        
+        let startX, startWidth;
+        
+        const mouseMoveHandler = (e) => {
+            const width = startWidth + (e.pageX - startX);
+            if (width > 50) { // Ancho mínimo de 50px
+                col.style.width = `${width}px`;
+            }
+        };
+        
+        const mouseUpHandler = () => {
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            table.classList.remove('resizing');
+        };
+
+        resizer.addEventListener('mousedown', (e) => {
+            startX = e.pageX;
+            startWidth = col.offsetWidth;
+            
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            table.classList.add('resizing');
+            e.preventDefault();
+        });
+    });
+}
+
+// =========================================================================
+// 🚫 CONTROL DE EXCLUSIONES Y ORDENAMIENTO DE PROPIEDADES DINÁMICAS (FASE 4)
+// =========================================================================
+
+window.filtroCapas = [ { id: 1, propiedad: '', exclusions: [] } ]; // Inicializar con capa 1 estática
+window.capaCounter = 1;
+
+// Agrega una nueva capa de filtro dinámico
+window.agregarCapaFiltro = function() {
+    window.capaCounter++;
+    const capaId = window.capaCounter;
+    
+    // Crear el objeto de estado de la capa
+    window.filtroCapas.push({
+        id: capaId,
+        propiedad: '',
+        exclusions: []
+    });
+
+    const container = document.getElementById('filtro-capas-container');
+    if (!container) return;
+
+    // Crear el elemento HTML
+    const capaDiv = document.createElement('div');
+    capaDiv.id = `capa-filtro-${capaId}`;
+    capaDiv.className = 'capa-filtro-row';
+    capaDiv.style.cssText = 'margin-top: 8px; width: 100%; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; font-weight: normal; text-align: left; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 6px;';
+    
+    capaDiv.innerHTML = `
+        <div style="display: flex; gap: 4px; align-items: center; justify-content: space-between;">
+            <select class="select-propiedad-capa" data-capa-id="${capaId}" style="flex: 1; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 4px; font-size: 0.8em; font-weight: normal; color: #1e293b; background: white;" onchange="window.cambiarPropiedadCapa(${capaId}, this.value)">
+                <option value="">-- Seleccionar --</option>
+                <option value="tipo">Tipo</option>
+                <option value="color">Color</option>
+                <option value="cosecha">Cosecha</option>
+                <option value="variedad">Variedad</option>
+                <option value="presentacion">Presentación</option>
+            </select>
+            <button type="button" class="btn-eliminar-capa" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 0.8em; font-weight: bold; height: 21px; display: flex; align-items: center; justify-content: center;" onclick="window.eliminarCapaFiltro(${capaId})" title="Eliminar Capa (➖)">
+                ➖
+            </button>
+        </div>
+        <div class="capa-calificativos-container" id="capa-calificativos-container-${capaId}" style="display: none;">
+            <div style="font-size: 0.75em; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px;">
+                <span>Calificativos:</span>
+                <span style="color: #3b82f6; cursor: pointer; text-transform: none; font-size: 0.85em; font-weight: bold;" onclick="window.limpiarFiltrosCalificativosCapa(${capaId})" title="Mostrar Todo">🔄 Todo</span>
+            </div>
+            <div class="capa-checkboxes-list" id="capa-checkboxes-list-${capaId}" style="display: flex; flex-direction: column; gap: 4px; max-height: 100px; overflow-y: auto; padding-right: 4px;">
+                <!-- Se poblará dinámicamente -->
+            </div>
+        </div>
+    `;
+
+    container.appendChild(capaDiv);
+    window.actualizarDropdownsCapas();
+};
+
+// Elimina una capa de filtro y refresca la vista
+window.eliminarCapaFiltro = function(capaId) {
+    window.filtroCapas = window.filtroCapas.filter(c => c.id !== capaId);
+    
+    const capaDiv = document.getElementById(`capa-filtro-${capaId}`);
+    if (capaDiv) {
+        capaDiv.remove();
+    }
+
+    window.actualizarDropdownsCapas();
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Actualiza los dropdowns de propiedades excluyendo las que ya están seleccionadas
+window.actualizarDropdownsCapas = function() {
+    window.rebuildingDropdowns = true;
+    try {
+        const listadoPropiedades = [
+            { value: 'tipo', label: 'Tipo' },
+            { value: 'color', label: 'Color' },
+            { value: 'cosecha', label: 'Cosecha' },
+            { value: 'variedad', label: 'Variedad' },
+            { value: 'presentacion', label: 'Presentación' }
+        ];
+
+        // Recopilar qué propiedades están seleccionadas en qué capas
+        const seleccionadas = {};
+        window.filtroCapas.forEach(capa => {
+            if (capa.propiedad) {
+                seleccionadas[capa.id] = capa.propiedad;
+            }
+        });
+
+        // Para cada capa, re-generar las opciones de su select
+        window.filtroCapas.forEach(capa => {
+            const select = capa.id === 1
+                ? document.getElementById('sort-propiedad')
+                : document.querySelector(`.select-propiedad-capa[data-capa-id="${capa.id}"]`);
+            if (!select) return;
+
+            const valorActual = select.value || capa.propiedad;
+
+            // Limpiar
+            select.innerHTML = capa.id === 1 
+                ? '<option value="">-- Sin Ordenar --</option>' 
+                : '<option value="">-- Seleccionar --</option>';
+
+            listadoPropiedades.forEach(item => {
+                // Mostrar la propiedad si:
+                // 1. No está seleccionada por ninguna otra capa
+                // 2. O es la seleccionada por esta capa actual
+                const estaEnOtraCapa = Object.entries(seleccionadas).some(([id, prop]) => parseInt(id) !== capa.id && prop === item.value);
+
+                if (!estaEnOtraCapa) {
+                    const opt = document.createElement('option');
+                    opt.value = item.value;
+                    opt.textContent = item.label;
+                    if (item.value === valorActual) {
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
+                }
+            });
+
+            // Forzar el valor seleccionado explícitamente para evitar pérdida de estado en la interfaz
+            select.value = valorActual;
+        });
+    } finally {
+        window.rebuildingDropdowns = false;
+    }
+};
+
+// Cambia la propiedad asignada a una capa
+window.cambiarPropiedadCapa = function(capaId, prop) {
+    if (window.rebuildingDropdowns) return;
+
+    const capa = window.filtroCapas.find(c => c.id === capaId);
+    if (!capa) return;
+
+    if (capa.propiedad === prop) return;
+
+    capa.propiedad = prop;
+    capa.exclusions = []; // Limpiar exclusiones previas
+
+    window.actualizarDropdownsCapas();
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Renderiza los checkboxes de calificativos de una capa específica (soporta cascada)
+window.renderizarCheckboxesCapa = function(capaId, articulos) {
+    const capa = window.filtroCapas.find(c => c.id === capaId);
+    if (!capa) return;
+
+    const subMenu = capa.id === 1
+        ? document.getElementById('sub-menu-calificativos')
+        : document.getElementById(`capa-calificativos-container-${capa.id}`);
+    const listado = capa.id === 1
+        ? document.getElementById('listado-calificativos-checkboxes')
+        : document.getElementById(`capa-checkboxes-list-${capa.id}`);
+    if (!subMenu || !listado) return;
+
+    const prop = capa.propiedad;
+    if (!prop) {
+        subMenu.style.display = 'none';
+        listado.innerHTML = '';
+        return;
+    }
+
+    // Utilizar los artículos sobrevivientes de las capas superiores
+    const dataset = articulos || articulosBunkerGlobal;
+
+    const mapaValores = new Set();
+    dataset.forEach(art => {
+        if (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object') {
+            const rawVal = art.propiedades_dinamicas[prop];
+            const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+            if (valStr !== undefined && valStr !== null && String(valStr).trim() !== '') {
+                mapaValores.add(String(valStr).trim());
+            }
+        }
+    });
+
+    if (mapaValores.size === 0) {
+        subMenu.style.display = 'none';
+        listado.innerHTML = '';
+        return;
+    }
+
+    subMenu.style.display = 'block';
+    let html = '';
+    const valoresOrdenados = Array.from(mapaValores).sort();
+
+    valoresOrdenados.forEach(val => {
+        const estaExcluido = capa.exclusions.includes(val);
+        const isChecked = !estaExcluido;
+
+        html += `
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82em; color: #334155; cursor: pointer; user-select: none; margin: 0; padding: 2px 0;">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="window.cambiarExclusionCalificativoCapa(${capaId}, '${val.replace(/'/g, "\\'")}', this.checked)" style="cursor: pointer; margin: 0;">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${val}">${val}</span>
+            </label>
+        `;
+    });
+
+    listado.innerHTML = html;
+};
+
+// Alterna la exclusión de un calificativo en una capa
+window.cambiarExclusionCalificativoCapa = function(capaId, val, isChecked) {
+    const capa = window.filtroCapas.find(c => c.id === capaId);
+    if (!capa) return;
+
+    if (isChecked) {
+        capa.exclusions = capa.exclusions.filter(v => v !== val);
+    } else {
+        if (!capa.exclusions.includes(val)) {
+            capa.exclusions.push(val);
+        }
+    }
+
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Limpia todas las exclusiones de una capa
+window.limpiarFiltrosCalificativosCapa = function(capaId) {
+    const capa = window.filtroCapas.find(c => c.id === capaId);
+    if (!capa) return;
+
+    capa.exclusions = [];
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Sincroniza todos los checkboxes de todas las capas aplicando reactividad en cascada descendente
+window.actualizarCheckboxesTodasLasCapas = function() {
+    let articulosSurviving = [...articulosBunkerGlobal];
+
+    window.filtroCapas.forEach((capa) => {
+        // Renderizar los checkboxes de la capa usando solo los artículos que sobrevivieron a las capas superiores
+        window.renderizarCheckboxesCapa(capa.id, articulosSurviving);
+
+        // Filtrar los sobrevivientes para pasárselos a las capas de más abajo
+        const prop = capa.propiedad;
+        if (prop && capa.exclusions.length > 0) {
+            articulosSurviving = articulosSurviving.filter(art => {
+                if (!art.propiedades_dinamicas) return true;
+                const rawVal = art.propiedades_dinamicas[prop];
+                const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+                if (valStr !== undefined && valStr !== null) {
+                    const valTrimmed = String(valStr).trim();
+                    if (capa.exclusions.includes(valTrimmed)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+    });
+};
+
+// Evento gatillado al cambiar el sub-atributo de ordenamiento en el dropdown de la cabecera
+window.cambiarOrdenPropiedades = function(prop) {
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Alterna la dirección del ordenamiento (Ascendente / Descendente)
+window.toggleSortDirectionPropiedades = function() {
+    const btn = document.getElementById('btn-sort-dir');
+    if (!btn) return;
+
+    window.propSortAscending = !window.propSortAscending;
+    if (window.propSortAscending) {
+        btn.innerText = '🔼';
+        btn.title = 'Alternar Dirección (Descendente)';
+    } else {
+        btn.innerText = '🔽';
+        btn.title = 'Alternar Dirección (Ascendente)';
+    }
+
+    window.aplicarFiltrosYOrdenamiento();
+};
+
+// Aplica el filtrado de exclusiones y el ordenamiento secuencial por sub-atributos en el cliente,
+// y procede a repintar la tabla del grid invocando renderizarGrid
+window.aplicarFiltrosYOrdenamiento = function() {
+    // 1. Recalcular y renderizar los checkboxes de cada capa reactivamente en cascada descendente
+    window.actualizarCheckboxesTodasLasCapas();
+
+    let articulosFiltrados = [...articulosBunkerGlobal];
+
+    // 2. Filtrado por Exclusión en Cascada Cumulativa (AND entre capas)
+    window.filtroCapas.forEach(capa => {
+        const prop = capa.propiedad;
+        if (!prop || capa.exclusions.length === 0) return;
+
+        articulosFiltrados = articulosFiltrados.filter(art => {
+            if (!art.propiedades_dinamicas) return true; // Si no posee atributos, no es excluido por valor específico
+
+            const rawVal = art.propiedades_dinamicas[prop];
+            const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+            if (valStr !== undefined && valStr !== null) {
+                const valTrimmed = String(valStr).trim();
+                if (capa.exclusions.includes(valTrimmed)) {
+                    return false; // Excluido: Ocultar esta fila
+                }
+            }
+            return true;
+        });
+    });
+
+    // 3. Ordenamiento Secuencial por Sub-Atributo
+    const sortPropSelect = document.getElementById('sort-propiedad');
+    const sortProp = sortPropSelect ? sortPropSelect.value : '';
+
+    if (sortProp) {
+        const sortAsc = window.propSortAscending;
+        articulosFiltrados.sort((a, b) => {
+            let valA = obtenerValorOrdenamientoCapaD(a, sortProp);
+            let valB = obtenerValorOrdenamientoCapaD(b, sortProp);
+
+            // Si alguno es 0 (vacío/nulo), enviarlo al final independientemente de la dirección
+            if (valA === 0 && valB !== 0) return 1;
+            if (valB === 0 && valA !== 0) return -1;
+            if (valA === 0 && valB === 0) return 0;
+
+            // Comparar si ambos valores resueltos son numéricos (ej. pesos o kg normalizados)
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return sortAsc ? valA - valB : valB - valA;
+            }
+
+            // Comparar de forma alfabética/semántica
+            let strA = String(valA).toLowerCase();
+            let strB = String(valB).toLowerCase();
+
+            return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+        });
+    }
+
+    // 4. Pintar en la tabla principal
+    renderizarGrid(articulosFiltrados);
+};
+
+window.actualizarDisponibilidadListaModal = function(checked) {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (list) {
+        list.disponible = checked;
+    }
+};
+
+window.mostrarPopoverListas = function(event, articuloId) {
+    event.stopPropagation();
+    
+    // Cerrar popover existente si hubiera
+    const existing = document.getElementById('bunker-listas-popover');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Buscar artículo en lista global
+    const art = articulosBunkerGlobal.find(a => a.articulo_id === articuloId);
+    if (!art) return;
+    
+    // Crear contenedor de popover
+    const popover = document.createElement('div');
+    popover.id = 'bunker-listas-popover';
+    popover.style.cssText = `
+        position: absolute;
+        background: white;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 12px;
+        z-index: 1100;
+        min-width: 220px;
+        font-family: inherit;
+    `;
+    
+    // Posicionar el popover cerca del botón disparador
+    const rect = event.target.getBoundingClientRect();
+    popover.style.top = `${window.scrollY + rect.bottom + 5}px`;
+    popover.style.left = `${window.scrollX + rect.left}px`;
+    
+    // Cabecera e inicio de lista
+    let html = `
+        <div style="font-weight: bold; font-size: 0.85em; color: #475569; margin-bottom: 8px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+            <span>Habilitar en Catálogos</span>
+            <span style="cursor: pointer; font-size: 1.1em; font-weight: bold;" onclick="document.getElementById('bunker-listas-popover').remove()">×</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+    `;
+    
+    // Ordenar de forma que listaSeleccionadaGlobal sea el primero
+    const reorderedListas = [...gp_listasFinancieras].sort((a, b) => {
+        if (a.lista_id === listaSeleccionadaGlobal) return -1;
+        if (b.lista_id === listaSeleccionadaGlobal) return 1;
+        return a.lista_id - b.lista_id;
+    });
+    
+    reorderedListas.forEach(lista => {
+        const m = art.margenes ? art.margenes.find(x => Number(x.lista_id) === Number(lista.lista_id)) : null;
+        const disponible = m ? (m.disponible !== false) : true;
+        const star = lista.lista_id === listaSeleccionadaGlobal ? ' <span style="color: #eab308; font-size: 0.8em;" title="Lista Activa en Grid">★</span>' : '';
+        
+        html += `
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: #1e293b; cursor: pointer; user-select: none;">
+                <input type="checkbox" data-lista-id="${lista.lista_id}" ${disponible ? 'checked' : ''} onchange="window.toggleDisponibilidadArticulo('${articuloId}', ${lista.lista_id}, this.checked)">
+                <span>${lista.nombre_lista}${star}</span>
+            </label>
+        `;
+    });
+    
+    html += '</div>';
+    popover.innerHTML = html;
+    document.body.appendChild(popover);
+    
+    // Cerrar al hacer click afuera
+    const outsideClickListener = (e) => {
+        if (!popover.contains(e.target) && e.target !== event.target) {
+            popover.remove();
+            document.removeEventListener('click', outsideClickListener);
+        }
+    };
+    // Esperar al siguiente tick para registrar y no dispararse en este evento
+    setTimeout(() => {
+        document.addEventListener('click', outsideClickListener);
+    }, 0);
+};
+
+window.toggleDisponibilidadArticulo = async function(articuloId, listaId, disponible) {
+    try {
+        const res = await fetch('/api/logistica/bunker/articulo/lista-disponibilidad', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articuloId, listaId, disponible })
+        });
+        const result = await res.json();
+        
+        if (res.ok && result.success) {
+            // Actualizar estado en memoria local
+            const art = articulosBunkerGlobal.find(a => a.articulo_id === articuloId);
+            if (art && art.margenes) {
+                let m = art.margenes.find(x => Number(x.lista_id) === Number(listaId));
+                if (m) {
+                    m.disponible = disponible;
+                } else {
+                    art.margenes.push({
+                        lista_id: listaId,
+                        margen_porcentaje: 0,
+                        costo_base_sobrescrito: null,
+                        costo_tiempo: 0,
+                        iva: art.porcentaje_iva || 21,
+                        precio_final: 0,
+                        modo_calculo: 'AUTOMATIC',
+                        costo_desactualizado: false,
+                        disponible: disponible
+                    });
+                }
+            }
+            
+            // Si coincide con la lista activa en la grilla, aplicar cambio visual en tiempo real
+            if (Number(listaId) === Number(listaSeleccionadaGlobal)) {
+                const rows = document.getElementById('tbody-bunker').children;
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (row.cells && row.cells.length > 0 && row.cells[0].textContent.trim() === articuloId) {
+                        if (disponible) {
+                            row.classList.remove('articulo-excluido');
+                            const badgeEl = row.cells[1].querySelector('.badge');
+                            if (badgeEl && badgeEl.textContent.includes('Excluido')) {
+                                badgeEl.remove();
+                            }
+                        } else {
+                            row.classList.add('articulo-excluido');
+                            const descStrong = row.cells[1].querySelector('strong');
+                            if (descStrong) {
+                                const existingBadge = row.cells[1].querySelector('.badge');
+                                if (!existingBadge || !existingBadge.textContent.includes('Excluido')) {
+                                    const badgeSpan = document.createElement('span');
+                                    badgeSpan.className = 'badge';
+                                    badgeSpan.style.cssText = 'background-color: #64748b; color: white; padding: 2px 6px; font-size: 0.75em; border-radius: 4px; vertical-align: middle; margin-left: 5px;';
+                                    badgeSpan.textContent = '🚫 Excluido';
+                                    descStrong.after(badgeSpan);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } else {
+            console.error('Error actualizando disponibilidad:', result.error);
+            Swal.fire('Error', result.error || 'No se pudo actualizar la disponibilidad.', 'error');
+        }
+    } catch (e) {
+        console.error('Error en fetch disponibilidad:', e);
+        Swal.fire('Error', 'Fallo de red al intentar actualizar la disponibilidad.', 'error');
+    }
+};
+
+
 
 

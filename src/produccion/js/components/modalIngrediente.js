@@ -78,6 +78,7 @@ export const modalIngredienteHTML = `
 
             <!-- Botones de Acción (Formulario Principal) -->
             <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; position: relative; z-index: 100;">
+                <button type="button" id="btn-trazabilidad" style="display: none; padding: 10px 20px; background: #0284c7; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s; margin-right: auto;" onclick="window.abrirTrazabilidadDesdeFicha()">🔄 Trazabilidad en Recetas</button>
                 <button type="submit" class="btn btn-success" style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); transition: all 0.2s; pointer-events: auto;">Guardar Ingrediente</button>
             </div>
         </form>
@@ -402,6 +403,8 @@ export async function abrirModalNuevoIngrediente() {
     document.getElementById('categoria-id').value = '';
     const btnEdit = document.getElementById('btn-edit-categoria');
     if (btnEdit) btnEdit.style.display = 'none';
+    const btnTrazabilidad = document.getElementById('btn-trazabilidad');
+    if (btnTrazabilidad) btnTrazabilidad.style.display = 'none';
 
     try {
         const response = await fetch('/api/produccion/ingredientes/nuevo-codigo');

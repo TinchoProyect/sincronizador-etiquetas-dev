@@ -5,6 +5,89 @@
 
 class BunkerService {
     /**
+     * Verifica si un código alfanumérico existe en las tablas del sistema local
+     */
+    static async esCodigoAlfaUnico(db, code) {
+        const queryBunker = 'SELECT 1 FROM public.bunker_articulos WHERE articulo_id = $1';
+        const resBunker = await db.query(queryBunker, [code]);
+        if (resBunker.rows.length > 0) return false;
+
+        const queryArticulos = 'SELECT 1 FROM public.articulos WHERE numero = $1';
+        const resArticulos = await db.query(queryArticulos, [code]);
+        if (resArticulos.rows.length > 0) return false;
+
+        const queryPrecios = 'SELECT 1 FROM public.precios_articulos WHERE articulo = $1';
+        const resPrecios = await db.query(queryPrecios, [code]);
+        if (resPrecios.rows.length > 0) return false;
+
+        return true;
+    }
+
+    /**
+     * Verifica si un código de barras existe en las tablas del sistema local
+     */
+    static async esCodigoBarrasUnico(db, barcode) {
+        const queryArticulos = 'SELECT 1 FROM public.articulos WHERE codigo_barras = $1';
+        const resArticulos = await db.query(queryArticulos, [barcode]);
+        if (resArticulos.rows.length > 0) return false;
+
+        const queryConsolidado = 'SELECT 1 FROM public.stock_real_consolidado WHERE codigo_barras = $1';
+        const resConsolidado = await db.query(queryConsolidado, [barcode]);
+        if (resConsolidado.rows.length > 0) return false;
+
+        return true;
+    }
+
+    /**
+     * Genera un código alfanumérico único que inicia con EMB- seguido de 6 caracteres aleatorios
+     */
+    static async generarCodigoAlfanumericoUnico(db) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        let esUnico = false;
+        let intentos = 0;
+
+        while (!esUnico && intentos < 100) {
+            code = 'EMB-';
+            for (let i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            esUnico = await BunkerService.esCodigoAlfaUnico(db, code);
+            intentos++;
+        }
+
+        if (!esUnico) {
+            throw new Error('No se pudo generar un código alfanumérico único del búnker después de 100 intentos.');
+        }
+
+        return code;
+    }
+
+    /**
+     * Genera un código de barras numérico único de 10 dígitos (sin cero inicial)
+     */
+    static async generarCodigoBarrasUnico(db) {
+        let barcode = '';
+        let esUnico = false;
+        let intentos = 0;
+
+        while (!esUnico && intentos < 100) {
+            barcode = (Math.floor(Math.random() * 9) + 1).toString();
+            for (let i = 0; i < 9; i++) {
+                barcode += Math.floor(Math.random() * 10).toString();
+            }
+            esUnico = await BunkerService.esCodigoBarrasUnico(db, barcode);
+            intentos++;
+        }
+
+        if (!esUnico) {
+            throw new Error('No se pudo generar un código de barras único del búnker después de 100 intentos.');
+        }
+
+        return barcode;
+    }
+
+    /**
      * Obtener todas las listas activas de bunker_listas_precios
      */
     static async getListasActivas(db) {
@@ -60,32 +143,67 @@ class BunkerService {
     }
 
     /**
-     * Buscar artículos de insumos restringidos al entorno Búnker (Fase 1)
+     * Buscar artículos de insumos en la Tabla Maestra de Supabase (Fase 5 - HITL)
      */
     static async buscarInsumosBunker(db, query) {
         const tokens = query.split(' ').filter(t => t.trim() !== '');
         if (tokens.length === 0) return [];
         
-        let sql = `
-            SELECT 
-                b.articulo_id as id, 
-                b.descripcion, 
-                b.descripcion_generada, 
-                b.costo_base
-            FROM public.bunker_articulos b
-            WHERE 1=1
-        `;
-        
-        let params = [];
-        tokens.forEach((token, i) => {
-            const paramIdx = i + 1;
-            sql += ` AND (b.descripcion ILIKE $${paramIdx} OR b.descripcion_generada ILIKE $${paramIdx} OR b.articulo_id ILIKE $${paramIdx})`;
-            params.push(`%${token}%`);
-        });
-        
-        sql += ` ORDER BY b.descripcion_generada ASC LIMIT 30`;
-        const result = await db.query(sql, params);
-        return result.rows;
+        try {
+            const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+            const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+            
+            let url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA`;
+            
+            if (tokens.length === 1) {
+                const cleanToken = tokens[0].replace(/[*%]/g, '');
+                url += `&or=(datos_maestros->>descripcion.ilike.*${cleanToken}*,datos_maestros->>codigo.eq.${cleanToken},datos_maestros->>sku.eq.${cleanToken},datos_maestros->>c\u00f3digo.eq.${cleanToken})`;
+            } else {
+                const andFilters = tokens.map(token => {
+                    const cleanToken = token.replace(/[*%]/g, '');
+                    return `datos_maestros->>descripcion.ilike.*${cleanToken}*`;
+                });
+                url += `&and=(${andFilters.join(',')})`;
+            }
+            url += `&limit=30`;
+            
+            const response = await fetch(url, { headers });
+            if (!response.ok) {
+                throw new Error(`Supabase query failed: ${await response.text()}`);
+            }
+            
+            const rows = await response.json();
+            return rows.map(row => {
+                const dm = row.datos_maestros || {};
+                let priceVal = 0;
+                if (dm.precio) {
+                    const cleanPrice = String(dm.precio).replace(/\./g, '').replace(',', '.');
+                    priceVal = parseFloat(cleanPrice) || 0;
+                }
+                return {
+                    id: row.id,
+                    descripcion: `${dm.descripcion || 'Sin descripción'} (${row.nombre_proveedor || 'Sin proveedor'})`,
+                    costo_base: priceVal
+                };
+            });
+        } catch (error) {
+            console.error('❌ [BUNKER-SERVICES] Error al buscar insumos en Supabase:', error);
+            // Fallback a base de datos local en caso de error
+            const params = [];
+            let sql = `
+                SELECT b.articulo_id as id, b.descripcion, b.descripcion_generada, b.costo_base
+                FROM public.bunker_articulos b
+                WHERE 1=1
+            `;
+            tokens.forEach((token, i) => {
+                const paramIdx = i + 1;
+                sql += ` AND (b.descripcion ILIKE $${paramIdx} OR b.descripcion_generada ILIKE $${paramIdx} OR b.articulo_id ILIKE $${paramIdx})`;
+                params.push(`%${token}%`);
+            });
+            sql += ` ORDER BY b.descripcion_generada ASC LIMIT 30`;
+            const result = await db.query(sql, params);
+            return result.rows;
+        }
     }
 
     /**
@@ -272,6 +390,18 @@ class BunkerService {
         if (resLegacy.rows.length > 0) {
             if (!articulo.descripcion) articulo.descripcion = resLegacy.rows[0].descripcion;
             articulo.codigo_barras = resLegacy.rows[0].codigo_barras;
+        } else {
+            let props = articulo.propiedades_dinamicas;
+            if (typeof props === 'string') {
+                try {
+                    props = JSON.parse(props);
+                } catch (e) {
+                    props = {};
+                }
+            }
+            if (props && props.codigo_barras_local) {
+                articulo.codigo_barras = props.codigo_barras_local;
+            }
         }
 
         return articulo;
@@ -378,6 +508,35 @@ class BunkerService {
         const preciosMap = new Map();
         resPrecios.rows.forEach(r => preciosMap.set(r.articulo, parseFloat(r.costo || 0)));
 
+        // Enriquecer con insumos de Supabase
+        try {
+            const resUniqueInsumos = await db.query("SELECT DISTINCT insumo_articulo_numero FROM public.bunker_lista_insumos WHERE insumo_articulo_numero IS NOT NULL");
+            const uuidInsumos = resUniqueInsumos.rows
+                .map(r => String(r.insumo_articulo_numero).trim())
+                .filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+            
+            if (uuidInsumos.length > 0) {
+                const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+                const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+                const queryUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,datos_maestros&id=in.(${uuidInsumos.join(',')})`;
+                
+                const resBatch = await fetch(queryUrl, { headers });
+                if (resBatch.ok) {
+                    const data = await resBatch.json();
+                    data.forEach(row => {
+                        let priceVal = 0;
+                        if (row.datos_maestros && row.datos_maestros.precio) {
+                            const cleanPrice = String(row.datos_maestros.precio).replace(/\./g, '').replace(',', '.');
+                            priceVal = parseFloat(cleanPrice) || 0;
+                        }
+                        preciosMap.set(row.id, priceVal);
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("❌ [BUNKER-COSTS] Error al resolver costos de insumos Supabase en lote:", err);
+        }
+
         // 2. Obtener últimos lotes vinculados por destino_id
         const resLotes = await db.query(`
             SELECT DISTINCT ON (destino_id) destino_id, costo_kilo_al_momento, v.lote_id_supabase, v.fecha_vinculacion
@@ -468,8 +627,11 @@ class BunkerService {
         let totalInsumos = 0;
         if (insumos && Array.isArray(insumos)) {
             insumos.forEach(ins => {
-                const liveCost = preciosMap.get(ins.insumo_articulo_numero) || 0;
-                totalInsumos += parseFloat(ins.cantidad) * liveCost;
+                // Solo sumar al costo si el operador explícitamente lo incluyó (HITL)
+                if (ins.incluido === true || ins.incluido === 'true') {
+                    const liveCost = preciosMap.get(ins.insumo_articulo_numero) || 0;
+                    totalInsumos += parseFloat(ins.cantidad) * liveCost;
+                }
             });
         }
         return totalInsumos;
@@ -525,17 +687,67 @@ class BunkerService {
                      FROM public.bunker_articulos_reposicion_mapeo m 
                      WHERE LOWER(m.bunker_articulo_id) = LOWER(b.articulo_id)
                         OR (b.pack_hijo_codigo IS NOT NULL AND LOWER(m.bunker_articulo_id) = LOWER(b.pack_hijo_codigo))), 
-                0) as total_mapeos_reposicion
+                0) as total_mapeos_reposicion,
+                COALESCE(
+                    /* Se utiliza stock_consolidado en lugar de stock_lomasoft para reflejar el 
+                       saldo neto real (Lomas Soft + Movimientos + Ajustes) expuesto en producción */
+                    (SELECT src.stock_consolidado 
+                     FROM public.stock_real_consolidado src 
+                     WHERE src.articulo_numero = b.articulo_id), 
+                0) as stock_legacy
             FROM public.bunker_articulos b
+            LEFT JOIN public.articulos a ON b.articulo_id = a.numero
             WHERE 1=1
         `;
         let params = [];
         let pIndex = 1;
 
         if (filtros.search) {
-            query += ` AND (b.descripcion_generada ILIKE $${pIndex} OR b.descripcion ILIKE $${pIndex} OR b.articulo_id ILIKE $${pIndex})`;
-            params.push(`%${filtros.search}%`);
-            pIndex++;
+            const searchTerm = filtros.search.trim();
+            const isEmb = searchTerm.toUpperCase().startsWith('EMB-');
+            const isTenDigits = /^\d{10}$/.test(searchTerm);
+            
+            let isLot = false;
+            try {
+                const lotCheck = await db.query(
+                    `SELECT 1 FROM public.bunker_lotes_vinculos 
+                     WHERE LOWER(lote_id_supabase) = LOWER($1) 
+                        OR LOWER(lote_codigo_corto) = LOWER($1)
+                        OR LOWER(id::text) = LOWER($1) 
+                     LIMIT 1`, 
+                    [searchTerm]
+                );
+                isLot = lotCheck.rows.length > 0;
+            } catch (e) {
+                console.error('Error verificando lote en buscador omnicanal:', e);
+            }
+
+            if (isEmb) {
+                query += ` AND LOWER(b.articulo_id) = LOWER($${pIndex})`;
+                params.push(searchTerm);
+                pIndex++;
+            } else if (isTenDigits) {
+                query += ` AND (
+                    LOWER(a.codigo_barras) = LOWER($${pIndex}) 
+                    OR LOWER(b.propiedades_dinamicas->>'codigo_barras_local') = LOWER($${pIndex})
+                )`;
+                params.push(searchTerm);
+                pIndex++;
+            } else if (isLot) {
+                query += ` AND b.articulo_id IN (
+                    SELECT d.destino_id
+                    FROM public.bunker_lotes_destinos d
+                    JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                    WHERE (LOWER(v.lote_id_supabase) = LOWER($${pIndex}) OR LOWER(v.lote_codigo_corto) = LOWER($${pIndex}) OR LOWER(v.id::text) = LOWER($${pIndex}))
+                      AND d.tipo_destino = 'ARTICULO_BUNKER'
+                )`;
+                params.push(searchTerm);
+                pIndex++;
+            } else {
+                query += ` AND (b.descripcion_generada ILIKE $${pIndex} OR b.descripcion ILIKE $${pIndex} OR b.articulo_id ILIKE $${pIndex})`;
+                params.push(`%${searchTerm}%`);
+                pIndex++;
+            }
         }
         
         query += ` ORDER BY b.descripcion_generada ASC LIMIT 1000`;
@@ -546,6 +758,10 @@ class BunkerService {
 
         // 1. Obtener contexto de costos en vivo
         const context = await this.resolverCostosEnVivo(db);
+
+        // 1b. Obtener todas las listas de precios activas para asegurar correspondencia
+        const resListasActivas = await db.query("SELECT id, nombre FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
+        const listasActivas = resListasActivas.rows.length > 0 ? resListasActivas.rows : [{ id: 1, nombre: 'Lista Nico' }];
 
         // 2. Obtener todas las configuraciones de listas para todos los artículos
         const queryLA = `
@@ -560,7 +776,8 @@ class BunkerService {
                 la.precio_final,
                 la.modo_calculo,
                 COALESCE(la.modo_iva, 'COMPLETO') as modo_iva,
-                COALESCE(la.es_patron, false) as es_patron
+                COALESCE(la.es_patron, false) as es_patron,
+                COALESCE(la.disponible, true) as disponible
             FROM public.bunker_lista_articulos la
         `;
         const resLA = await db.query(queryLA);
@@ -576,7 +793,7 @@ class BunkerService {
 
         // 3. Obtener todos los insumos
         const queryInsumos = `
-            SELECT li.lista_articulo_id, li.insumo_articulo_numero, li.cantidad, li.costo_unitario_capturado
+            SELECT li.lista_articulo_id, li.insumo_articulo_numero, li.cantidad, li.costo_unitario_capturado, li.incluido
             FROM public.bunker_lista_insumos li
         `;
         const resInsumos = await db.query(queryInsumos);
@@ -627,9 +844,9 @@ class BunkerService {
             const liveIngredienteCost = BunkerService.calcularCostoIngredienteEnVivo(art.articulo_id, art.pack_hijo_codigo, art.costo_base, context, factor);
             const baseIng = art.pack_hijo_codigo || art.articulo_id;
 
-            if (artConfigs.length > 0) {
-                // Mapear configuraciones nuevas
-                art.margenes = artConfigs.map(la => {
+            art.margenes = listasActivas.map(list => {
+                const la = artConfigs.find(c => c.lista_id === list.id);
+                if (la) {
                     const laInsumos = insumosPorLA.get(la.id) || [];
                     const liveInsumoCost = BunkerService.calcularCostoInsumosEnVivo(laInsumos, context);
                     
@@ -676,41 +893,128 @@ class BunkerService {
                         modo_iva: la.modo_iva,
                         es_patron: la.es_patron,
                         margen_patron_heredado: margenHeredado,
-                        descripcion_patron: descripcionPatron
+                        descripcion_patron: descripcionPatron,
+                        disponible: la.disponible
                     };
-                });
-            } else {
-                // Fallback a legacy bunker_margenes
-                const legacyMargenes = legacyPorArt.get(art.articulo_id) || [];
-                art.margenes = legacyMargenes.map(lm => {
-                    const keyPatron = `${lm.lista_id}_${baseIng}`;
-                    const patronInfo = patronesMap.get(keyPatron);
-                    let margenHeredado = null;
-                    let descripcionPatron = null;
-                    if (patronInfo && patronInfo.articulo_id !== art.articulo_id) {
-                        margenHeredado = patronInfo.margen_ganancia;
-                        descripcionPatron = patronInfo.descripcion_patron;
-                    }
+                } else {
+                    // Si no tiene configuración en la nueva lista, intentar heredar del fallback
+                    const legacyMargenes = legacyPorArt.get(art.articulo_id) || [];
+                    const lm = legacyMargenes.find(m => m.lista_id === list.id);
+                    
+                    if (lm) {
+                        const keyPatron = `${lm.lista_id}_${baseIng}`;
+                        const patronInfo = patronesMap.get(keyPatron);
+                        let margenHeredado = null;
+                        let descripcionPatron = null;
+                        if (patronInfo && patronInfo.articulo_id !== art.articulo_id) {
+                            margenHeredado = patronInfo.margen_ganancia;
+                            descripcionPatron = patronInfo.descripcion_patron;
+                        }
 
-                    return {
-                        lista_id: lm.lista_id,
-                        margen_porcentaje: parseFloat(lm.margen_porcentaje),
-                        costo_base_sobrescrito: null,
-                        costo_tiempo: 0,
-                        iva: art.porcentaje_iva || 21.00,
-                        precio_final: (liveIngredienteCost * factor) * (1 + (parseFloat(lm.margen_porcentaje) / 100)) * (1 + ((art.porcentaje_iva || 21.00) / 100)),
-                        modo_calculo: 'AUTOMATIC',
-                        costo_desactualizado: false,
-                        costo_ingrediente_en_vivo: liveIngredienteCost, // Guarda costo por KILO
-                        costo_insumos_en_vivo: 0,
-                        margen_implicito: parseFloat(lm.margen_porcentaje),
-                        modo_iva: 'COMPLETO',
-                        es_patron: false,
-                        margen_patron_heredado: margenHeredado,
-                        descripcion_patron: descripcionPatron
-                    };
-                });
-            }
+                        return {
+                            lista_id: lm.lista_id,
+                            margen_porcentaje: parseFloat(lm.margen_porcentaje),
+                            costo_base_sobrescrito: null,
+                            costo_tiempo: 0,
+                            iva: art.porcentaje_iva || 21.00,
+                            precio_final: (liveIngredienteCost * factor) * (1 + (parseFloat(lm.margen_porcentaje) / 100)) * (1 + ((art.porcentaje_iva || 21.00) / 100)),
+                            modo_calculo: 'AUTOMATIC',
+                            costo_desactualizado: false,
+                            costo_ingrediente_en_vivo: liveIngredienteCost, // Guarda costo por KILO
+                            costo_insumos_en_vivo: 0,
+                            margen_implicito: parseFloat(lm.margen_porcentaje),
+                            modo_iva: 'COMPLETO',
+                            es_patron: false,
+                            margen_patron_heredado: margenHeredado,
+                            descripcion_patron: descripcionPatron,
+                            disponible: true
+                        };
+                    } else {
+                        // Intentar heredar de la configuración de Lista 1 (Lista Nico) si existe
+                        const laL1 = artConfigs.find(c => c.lista_id === 1) || artConfigs[0];
+                        if (laL1) {
+                            const laInsumos = insumosPorLA.get(laL1.id) || [];
+                            const liveInsumoCost = BunkerService.calcularCostoInsumosEnVivo(laInsumos, context);
+                            
+                            const cBase = laL1.costo_base_sobrescrito !== null ? parseFloat(laL1.costo_base_sobrescrito) : liveIngredienteCost;
+                            const baseCostoVivo = (cBase * factor) + liveInsumoCost;
+
+                            const ivaCoeff = 1 + (parseFloat(laL1.iva) / 100);
+                            const precioS_iva = parseFloat(laL1.precio_final) / ivaCoeff;
+                            const costoOperativo = parseFloat(laL1.costo_tiempo);
+
+                            let margenImplicito = 0;
+                            if (baseCostoVivo > 0) {
+                                margenImplicito = ((precioS_iva - costoOperativo) / baseCostoVivo - 1) * 100;
+                            }
+
+                            const targetMargen = parseFloat(laL1.margen_ganancia);
+                            const diffMargen = targetMargen - margenImplicito;
+                            const costo_desactualizado = Math.abs(diffMargen) > 0.1;
+
+                            const keyPatron = `${list.id}_${baseIng}`;
+                            const patronInfo = patronesMap.get(keyPatron);
+                            let margenHeredado = null;
+                            let descripcionPatron = null;
+                            if (patronInfo && patronInfo.articulo_id !== art.articulo_id) {
+                                margenHeredado = patronInfo.margen_ganancia;
+                                descripcionPatron = patronInfo.descripcion_patron;
+                            }
+
+                            return {
+                                lista_id: list.id,
+                                margen_porcentaje: laL1.margen_ganancia,
+                                costo_base_sobrescrito: laL1.costo_base_sobrescrito,
+                                costo_tiempo: laL1.costo_tiempo,
+                                iva: laL1.iva,
+                                precio_final: laL1.precio_final,
+                                modo_calculo: laL1.modo_calculo,
+                                costo_desactualizado: costo_desactualizado,
+                                costo_ingrediente_en_vivo: liveIngredienteCost,
+                                costo_insumos_en_vivo: liveInsumoCost,
+                                margen_implicito: margenImplicito,
+                                modo_iva: laL1.modo_iva,
+                                es_patron: false,
+                                margen_patron_heredado: margenHeredado,
+                                descripcion_patron: descripcionPatron,
+                                disponible: true
+                            };
+                        } else {
+                            // Fallback por defecto usando margen 0%
+                            const keyPatron = `${list.id}_${baseIng}`;
+                            const patronInfo = patronesMap.get(keyPatron);
+                            let margenHeredado = null;
+                            let descripcionPatron = null;
+                            if (patronInfo && patronInfo.articulo_id !== art.articulo_id) {
+                                margenHeredado = patronInfo.margen_ganancia;
+                                descripcionPatron = patronInfo.descripcion_patron;
+                            }
+
+                            const lm1 = legacyMargenes.find(m => m.lista_id === 1) || legacyMargenes[0];
+                            const defMargen = lm1 ? parseFloat(lm1.margen_porcentaje) : 0;
+
+                            return {
+                                lista_id: list.id,
+                                margen_porcentaje: defMargen,
+                                costo_base_sobrescrito: null,
+                                costo_tiempo: 0,
+                                iva: art.porcentaje_iva || 21.00,
+                                precio_final: (liveIngredienteCost * factor) * (1 + (defMargen / 100)) * (1 + ((art.porcentaje_iva || 21.00) / 100)),
+                                modo_calculo: 'AUTOMATIC',
+                                costo_desactualizado: false,
+                                costo_ingrediente_en_vivo: liveIngredienteCost,
+                                costo_insumos_en_vivo: 0,
+                                margen_implicito: defMargen,
+                                modo_iva: 'COMPLETO',
+                                es_patron: false,
+                                margen_patron_heredado: margenHeredado,
+                                descripcion_patron: descripcionPatron,
+                                disponible: true
+                            };
+                        }
+                    }
+                }
+            });
         }
 
         return articles;
@@ -748,7 +1052,8 @@ class BunkerService {
                 COALESCE(la.precio_final, 0) as precio_final,
                 COALESCE(la.modo_calculo, 'AUTOMATIC') as modo_calculo,
                 COALESCE(la.modo_iva, 'COMPLETO') as modo_iva,
-                COALESCE(la.es_patron, false) as es_patron
+                COALESCE(la.es_patron, false) as es_patron,
+                COALESCE(la.disponible, true) as disponible
             FROM public.bunker_listas_precios lp
             LEFT JOIN public.bunker_lista_articulos la ON la.lista_id = lp.id AND la.articulo_numero = $1
             WHERE lp.activa = true
@@ -771,6 +1076,53 @@ class BunkerService {
               )
             LIMIT 1
         `;
+
+        // Recopilar todos los UUIDs de insumos de Supabase cargados para este artículo
+        const allUuidInsumos = [];
+        for (const row of resListas.rows) {
+            if (row.lista_articulo_id) {
+                const resIns = await db.query(`
+                    SELECT DISTINCT insumo_articulo_numero 
+                    FROM public.bunker_lista_insumos 
+                    WHERE lista_articulo_id = $1
+                `, [row.lista_articulo_id]);
+                resIns.rows.forEach(ins => {
+                    const idClean = String(ins.insumo_articulo_numero).trim();
+                    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idClean)) {
+                        allUuidInsumos.push(idClean);
+                    }
+                });
+            }
+        }
+
+        // Consultar Supabase en lote para obtener las descripciones y precios en vivo de los insumos
+        const supabaseInsumosMap = new Map();
+        if (allUuidInsumos.length > 0) {
+            try {
+                const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+                const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
+                const queryUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,nombre_proveedor,datos_maestros&id=in.(${[...new Set(allUuidInsumos)].join(',')})`;
+                
+                const resBatch = await fetch(queryUrl, { headers });
+                if (resBatch.ok) {
+                    const data = await resBatch.json();
+                    data.forEach(item => {
+                        const dm = item.datos_maestros || {};
+                        let priceVal = 0;
+                        if (dm.precio) {
+                            const cleanPrice = String(dm.precio).replace(/\./g, '').replace(',', '.');
+                            priceVal = parseFloat(cleanPrice) || 0;
+                        }
+                        supabaseInsumosMap.set(item.id, {
+                            descripcion: `${dm.descripcion || 'Sin descripción'} (${item.nombre_proveedor || 'Sin proveedor'})`,
+                            costo_unitario_en_vivo: priceVal
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error("❌ [BUNKER-RADIOGRAFIA] Error cargando insumos Supabase:", err);
+            }
+        }
 
         // Cargar insumos adicionales para cada lista
         const listasConInsumos = [];
@@ -795,14 +1147,30 @@ class BunkerService {
 
             if (row.lista_articulo_id) {
                 const resIns = await db.query(`
-                    SELECT li.id, li.insumo_articulo_numero, li.cantidad, li.costo_unitario_capturado,
+                    SELECT li.id, li.insumo_articulo_numero, li.cantidad, li.costo_unitario_capturado, li.incluido,
                            p.costo as costo_unitario_en_vivo, a.nombre as descripcion
                     FROM public.bunker_lista_insumos li
                     LEFT JOIN public.precios_articulos p ON p.articulo = li.insumo_articulo_numero
                     LEFT JOIN public.articulos a ON a.numero = li.insumo_articulo_numero
                     WHERE li.lista_articulo_id = $1
                 `, [row.lista_articulo_id]);
-                listObj.insumos = resIns.rows;
+                
+                listObj.insumos = resIns.rows.map(ins => {
+                    const insObj = { ...ins };
+                    const idClean = String(insObj.insumo_articulo_numero).trim();
+                    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idClean)) {
+                        // Insumo de Supabase: cruzar con el mapa enriquecido en lote
+                        const sbData = supabaseInsumosMap.get(idClean);
+                        if (sbData) {
+                            insObj.descripcion = sbData.descripcion;
+                            insObj.costo_unitario_en_vivo = sbData.costo_unitario_en_vivo;
+                        } else {
+                            insObj.descripcion = `Insumo Supabase (${insObj.insumo_articulo_numero})`;
+                            insObj.costo_unitario_en_vivo = parseFloat(insObj.costo_unitario_capturado || 0);
+                        }
+                    }
+                    return insObj;
+                });
             } else {
                 // Fallback / Default vacío
                 listObj.insumos = [];
@@ -1194,9 +1562,9 @@ class BunkerService {
                     const queryLA = `
                         INSERT INTO public.bunker_lista_articulos (
                             lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, 
-                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, updated_at
+                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible, updated_at
                         ) VALUES (
-                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, true), CURRENT_TIMESTAMP
                         ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
                             margen_ganancia = EXCLUDED.margen_ganancia,
                             costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
@@ -1207,6 +1575,7 @@ class BunkerService {
                             modo_iva = EXCLUDED.modo_iva,
                             es_patron = EXCLUDED.es_patron,
                             fuente_costo_default = EXCLUDED.fuente_costo_default,
+                            disponible = COALESCE(EXCLUDED.disponible, bunker_lista_articulos.disponible),
                             updated_at = CURRENT_TIMESTAMP
                         RETURNING id
                     `;
@@ -1221,7 +1590,8 @@ class BunkerService {
                         modo_calculo || 'AUTOMATIC',
                         modo_iva || 'COMPLETO',
                         es_patron === true || es_patron === 'true',
-                        fuente_costo_default || null
+                        fuente_costo_default || null,
+                        conf.disponible !== undefined ? (conf.disponible === true || conf.disponible === 'true') : null
                     ]);
 
                     const listaArticuloId = resLA.rows[0].id;
@@ -1234,14 +1604,15 @@ class BunkerService {
                         for (const ins of insumos) {
                             const queryIns = `
                                 INSERT INTO public.bunker_lista_insumos (
-                                    lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado
-                                ) VALUES ($1, $2, $3, $4)
+                                    lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido
+                                ) VALUES ($1, $2, $3, $4, $5)
                             `;
                             await client.query(queryIns, [
                                 listaArticuloId,
                                 ins.insumo_articulo_numero,
                                 ins.cantidad || 1.0000,
-                                ins.costo_unitario_capturado || 0
+                                ins.costo_unitario_capturado || 0,
+                                ins.incluido === true || ins.incluido === 'true'
                             ]);
                         }
                     }
@@ -1284,6 +1655,27 @@ class BunkerService {
         } finally {
             client.release();
         }
+    }
+
+    /**
+     * Actualiza la disponibilidad de un artículo para una lista de precios específica
+     */
+    static async actualizarDisponibilidadArticulo(db, articuloId, listaId, disponible) {
+        const query = `
+            INSERT INTO public.bunker_lista_articulos (
+                lista_id, 
+                articulo_numero, 
+                disponible,
+                updated_at
+            ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT (lista_id, articulo_numero) 
+            DO UPDATE SET 
+                disponible = EXCLUDED.disponible,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+        `;
+        const result = await db.query(query, [listaId, articuloId, disponible]);
+        return result.rows[0];
     }
 }
 

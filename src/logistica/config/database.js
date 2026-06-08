@@ -42,9 +42,16 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ALTER TABLE public.bunker_lista_articulos 
                 ADD COLUMN IF NOT EXISTS modo_iva VARCHAR(20) DEFAULT 'COMPLETO',
                 ADD COLUMN IF NOT EXISTS es_patron BOOLEAN DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS fuente_costo_default VARCHAR(50);
+                ADD COLUMN IF NOT EXISTS fuente_costo_default VARCHAR(50),
+                ADD COLUMN IF NOT EXISTS disponible BOOLEAN DEFAULT TRUE;
             `);
-            console.log('✅ [LOGISTICA] Columnas modo_iva y es_patron verificadas/agregadas a bunker_lista_articulos');
+            console.log('✅ [LOGISTICA] Columnas modo_iva, es_patron y disponible verificadas/agregadas a bunker_lista_articulos');
+
+            await pool.query(`
+                ALTER TABLE public.ordenes_tratamiento 
+                ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id);
+            `);
+            console.log('✅ [LOGISTICA] Columna id_domicilio_entrega verificada/agregada a ordenes_tratamiento');
 
             // Garantizar la vinculación de artículos hermanos en bunker_articulos para la herencia parental
             await pool.query(`

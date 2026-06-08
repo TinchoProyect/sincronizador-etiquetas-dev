@@ -81,12 +81,16 @@ class LotesBunkerService {
         try {
             await client.query('BEGIN');
 
+            // Generar alias corto de lote único
+            const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+
             // 1. Insertar Cabecera (El vínculo matemático)
             const sqlVinculo = `
                 INSERT INTO public.bunker_lotes_vinculos (
                     lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
-                    cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
+                    lote_codigo_corto
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING id
             `;
             const valuesVinculo = [
@@ -96,7 +100,8 @@ class LotesBunkerService {
                 data.cantidad_total_lote,
                 data.iva !== undefined ? data.iva : 0,
                 data.iibb !== undefined ? data.iibb : 0,
-                data.usuario || 'SISTEMA'
+                data.usuario || 'SISTEMA',
+                loteCodigoCorto
             ];
             const resVinculo = await client.query(sqlVinculo, valuesVinculo);
             const vinculoId = resVinculo.rows[0].id;
@@ -133,6 +138,82 @@ class LotesBunkerService {
                             'Ingreso por vinculación de lote: ' + data.lote_id_supabase
                         ]);
                     }
+
+                    // Si deriva a artículos búnker, inyectamos la cascada hacia el stock legacy de Lomas Soft
+                    if (destino.tipo_destino === 'ARTICULO_BUNKER') {
+                        // A. Recuperar mapeo desde bunker_articulos
+                        const artRes = await client.query(
+                            'SELECT articulo_id, kilos_unidad FROM public.bunker_articulos WHERE articulo_id = $1',
+                            [destino.id]
+                        );
+                        if (artRes.rows.length > 0) {
+                            const legacyCode = artRes.rows[0].articulo_id;
+
+                            // B. Obtener detalles de articulos
+                            const legacyArtRes = await client.query(
+                                'SELECT nombre, codigo_barras FROM public.articulos WHERE numero = $1',
+                                [legacyCode]
+                            );
+                            const nombreLegacy = legacyArtRes.rows.length > 0 ? legacyArtRes.rows[0].nombre : null;
+                            const barcodeLegacy = legacyArtRes.rows.length > 0 ? legacyArtRes.rows[0].codigo_barras : null;
+
+                            // C. Resolver usuario_id
+                            let usuarioId = null;
+                            if (data.usuario) {
+                                const userRes = await client.query(
+                                    'SELECT id FROM public.usuarios WHERE usuario = $1 OR nombre_completo = $1 LIMIT 1',
+                                    [data.usuario]
+                                );
+                                if (userRes.rows.length > 0) {
+                                    usuarioId = userRes.rows[0].id;
+                                }
+                            }
+
+                            // D. Inyectar en stock_ventas_movimientos
+                            const sqlMov = `
+                                INSERT INTO public.stock_ventas_movimientos (
+                                    articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad, tipo, origen_ingreso, observaciones
+                                ) VALUES ($1, $2, $3, NULL, $4, NOW(), $5, 'ingreso_lote', $6, $7)
+                            `;
+                            await client.query(sqlMov, [
+                                legacyCode,
+                                barcodeLegacy,
+                                destino.kilos_asignados,
+                                usuarioId,
+                                destino.cantidad_asignada,
+                                data.lote_id_supabase,
+                                `Ingreso de lote por vinculación manual: ${data.lote_id_supabase}`
+                            ]);
+
+                            // E. Upsert en stock_real_consolidado
+                            const sqlUpsertStock = `
+                                INSERT INTO public.stock_real_consolidado (
+                                    articulo_numero, descripcion, codigo_barras, stock_movimientos, stock_ajustes, stock_consolidado, no_producido_por_lambda, solo_produccion_externa, ultima_actualizacion
+                                ) VALUES ($1, $2, $3, $4, 0, $4, false, false, NOW())
+                                ON CONFLICT (articulo_numero)
+                                DO UPDATE SET 
+                                    stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $4,
+                                    ultima_actualizacion = NOW()
+                            `;
+                            await client.query(sqlUpsertStock, [
+                                legacyCode,
+                                nombreLegacy,
+                                barcodeLegacy,
+                                destino.cantidad_asignada
+                            ]);
+
+                            // F. Recalcular stock_consolidado
+                            const sqlRecalculo = `
+                                UPDATE public.stock_real_consolidado
+                                SET stock_consolidado = COALESCE(stock_lomasoft, 0) + 
+                                                        COALESCE(stock_movimientos, 0) + 
+                                                        COALESCE(stock_ajustes, 0),
+                                    ultima_actualizacion = NOW()
+                                WHERE articulo_numero = $1
+                            `;
+                            await client.query(sqlRecalculo, [legacyCode]);
+                        }
+                    }
                 }
             }
 
@@ -161,12 +242,16 @@ class LotesBunkerService {
             const vinculosCreados = [];
 
             for (const loteData of data.lotes) {
+                // Generar alias corto de lote único
+                const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+
                 // 1. Insertar Cabecera
                 const sqlVinculo = `
                     INSERT INTO public.bunker_lotes_vinculos (
                         lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
-                        cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
+                        lote_codigo_corto
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     RETURNING id
                 `;
                 const valuesVinculo = [
@@ -176,7 +261,8 @@ class LotesBunkerService {
                     loteData.cantidad_total_lote,
                     loteData.iva !== undefined ? loteData.iva : 0,
                     loteData.iibb !== undefined ? loteData.iibb : 0,
-                    loteData.usuario || 'SISTEMA'
+                    loteData.usuario || 'SISTEMA',
+                    loteCodigoCorto
                 ];
                 const resVinculo = await client.query(sqlVinculo, valuesVinculo);
                 const vinculoId = resVinculo.rows[0].id;
@@ -213,6 +299,83 @@ class LotesBunkerService {
                                 'ingreso',
                                 'Ingreso por vinculación batch de lote: ' + loteData.lote_id_supabase
                             ]);
+                        }
+
+                        // Si deriva a artículos búnker, inyectamos la cascada hacia el stock legacy de Lomas Soft (Batch)
+                        if (destino.tipo_destino === 'ARTICULO_BUNKER') {
+                            // A. Recuperar mapeo desde bunker_articulos
+                            const artRes = await client.query(
+                                'SELECT articulo_id, kilos_unidad FROM public.bunker_articulos WHERE articulo_id = $1',
+                                [destino.id]
+                            );
+                            if (artRes.rows.length > 0) {
+                                const legacyCode = artRes.rows[0].articulo_id;
+
+                                // B. Obtener detalles de articulos
+                                const legacyArtRes = await client.query(
+                                    'SELECT nombre, codigo_barras FROM public.articulos WHERE numero = $1',
+                                    [legacyCode]
+                                );
+                                const nombreLegacy = legacyArtRes.rows.length > 0 ? legacyArtRes.rows[0].nombre : null;
+                                const barcodeLegacy = legacyArtRes.rows.length > 0 ? legacyArtRes.rows[0].codigo_barras : null;
+
+                                // C. Resolver usuario_id
+                                let usuarioId = null;
+                                const currentUsuario = loteData.usuario || data.usuario;
+                                if (currentUsuario) {
+                                    const userRes = await client.query(
+                                        'SELECT id FROM public.usuarios WHERE usuario = $1 OR nombre_completo = $1 LIMIT 1',
+                                        [currentUsuario]
+                                    );
+                                    if (userRes.rows.length > 0) {
+                                        usuarioId = userRes.rows[0].id;
+                                    }
+                                }
+
+                                // D. Inyectar en stock_ventas_movimientos
+                                const sqlMov = `
+                                    INSERT INTO public.stock_ventas_movimientos (
+                                        articulo_numero, codigo_barras, kilos, carro_id, usuario_id, fecha, cantidad, tipo, origen_ingreso, observaciones
+                                    ) VALUES ($1, $2, $3, NULL, $4, NOW(), $5, 'ingreso_lote', $6, $7)
+                                `;
+                                await client.query(sqlMov, [
+                                    legacyCode,
+                                    barcodeLegacy,
+                                    destino.kilos_asignados,
+                                    usuarioId,
+                                    destino.cantidad_asignada,
+                                    loteData.lote_id_supabase,
+                                    `Ingreso de lote por vinculación batch: ${loteData.lote_id_supabase}`
+                                ]);
+
+                                // E. Upsert en stock_real_consolidado
+                                const sqlUpsertStock = `
+                                    INSERT INTO public.stock_real_consolidado (
+                                        articulo_numero, descripcion, codigo_barras, stock_movimientos, stock_ajustes, stock_consolidado, no_producido_por_lambda, solo_produccion_externa, ultima_actualizacion
+                                    ) VALUES ($1, $2, $3, $4, 0, $4, false, false, NOW())
+                                    ON CONFLICT (articulo_numero)
+                                    DO UPDATE SET 
+                                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $4,
+                                        ultima_actualizacion = NOW()
+                                `;
+                                await client.query(sqlUpsertStock, [
+                                    legacyCode,
+                                    nombreLegacy,
+                                    barcodeLegacy,
+                                    destino.cantidad_asignada
+                                ]);
+
+                                // F. Recalcular stock_consolidado
+                                const sqlRecalculo = `
+                                    UPDATE public.stock_real_consolidado
+                                    SET stock_consolidado = COALESCE(stock_lomasoft, 0) + 
+                                                            COALESCE(stock_movimientos, 0) + 
+                                                            COALESCE(stock_ajustes, 0),
+                                        ultima_actualizacion = NOW()
+                                    WHERE articulo_numero = $1
+                                `;
+                                await client.query(sqlRecalculo, [legacyCode]);
+                            }
                         }
                     }
                 }
@@ -374,6 +537,29 @@ class LotesBunkerService {
         });
         
         return resultado;
+    }
+
+    static async generarAliasLoteCortoUnico(client) {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let alias = '';
+        let exists = true;
+        let attempts = 0;
+        while (exists && attempts < 100) {
+            alias = 'L';
+            for (let i = 0; i < 7; i++) {
+                alias += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            const check = await client.query(
+                'SELECT 1 FROM public.bunker_lotes_vinculos WHERE lote_codigo_corto = $1 LIMIT 1',
+                [alias]
+            );
+            exists = check.rows.length > 0;
+            attempts++;
+        }
+        if (exists) {
+            throw new Error('No se pudo generar un alias de lote único después de 100 intentos.');
+        }
+        return alias;
     }
 }
 

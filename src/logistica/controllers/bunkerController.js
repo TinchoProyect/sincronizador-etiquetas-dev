@@ -125,6 +125,18 @@ exports.obtenerArticulo = async (req, res) => {
     }
 };
 
+exports.generarIdentidadLocal = async (req, res) => {
+    try {
+        const db = req.db;
+        const code = await BunkerService.generarCodigoAlfanumericoUnico(db);
+        const barcode = await BunkerService.generarCodigoBarrasUnico(db);
+        res.json({ success: true, data: { articulo_id: code, codigo_barras: barcode } });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error generando identidad local:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error generando identidad local' });
+    }
+};
+
 exports.crearArticulo = async (req, res) => {
     try {
         const db = req.db;
@@ -139,19 +151,46 @@ exports.crearArticulo = async (req, res) => {
         const cantidad = Number(articuloData.pack_unidades) || 1;
         articuloData.es_pack = (cantidad > 1 && kilos > 0);
 
-        // Generar IDs locales SI NO VIENEN en el payload (Fase 3 Upsert)
+        // Generar IDs locales SI NO VIENEN en el payload o si se solicita crear en local
         let articulo_id = articuloData.articulo_id;
         let codigo_barras = articuloData.codigo_barras;
 
-        if (!articulo_id) {
+        const esMarcador = (val) => {
+            if (!val) return true;
+            const str = String(val).trim();
+            return str === '' || str.startsWith('Se generará') || str.includes('Generado');
+        };
+
+        if (articuloData.crear_local) {
+            // Si ya viene pre-generado desde la UI, lo conservamos. Si no, lo aprovisionamos.
+            if (esMarcador(articulo_id)) {
+                articulo_id = await BunkerService.generarCodigoAlfanumericoUnico(db);
+            }
+            if (esMarcador(codigo_barras)) {
+                codigo_barras = await BunkerService.generarCodigoBarrasUnico(db);
+            }
+        } else if (esMarcador(articulo_id)) {
             const timestamp = Date.now().toString().slice(-6); 
             const rnd = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
             articulo_id = `LAMDA-${timestamp}${rnd}`;
-            if (!codigo_barras) codigo_barras = `LAMDCB${timestamp}${rnd}`;
+            if (esMarcador(codigo_barras)) codigo_barras = `LAMDCB${timestamp}${rnd}`;
         }
 
         articuloData.articulo_id = articulo_id;
-        articuloData.codigo_barras = codigo_barras || articulo_id;
+        articuloData.codigo_barras = esMarcador(codigo_barras) ? articulo_id : codigo_barras;
+
+        const esLocal = (articuloData.crear_local || (articulo_id && articulo_id.startsWith('EMB-')));
+        if (esLocal && articuloData.codigo_barras) {
+            articuloData.propiedades_dinamicas = articuloData.propiedades_dinamicas || {};
+            if (typeof articuloData.propiedades_dinamicas === 'string') {
+                try {
+                    articuloData.propiedades_dinamicas = JSON.parse(articuloData.propiedades_dinamicas);
+                } catch (e) {
+                    articuloData.propiedades_dinamicas = {};
+                }
+            }
+            articuloData.propiedades_dinamicas.codigo_barras_local = articuloData.codigo_barras;
+        }
 
         // PARCHE CRÍTICO: Asegurar que el Artículo Principal se registre SIEMPRE en el diccionario (categoria = 'general')
         let terminosAsegurados = nuevos_terminos_diccionario || [];
@@ -198,7 +237,10 @@ exports.eliminarArticulo = async (req, res) => {
 
 exports.obtenerTodosLosArticulos = async (req, res) => {
     try {
-        const filtros = { search: req.query.search };
+        const filtros = { 
+            search: req.query.search,
+            lista_id: req.query.lista_id ? parseInt(req.query.lista_id, 10) : null
+        };
         const data = await BunkerService.obtenerTodosLosArticulos(req.db, filtros);
         res.json({ success: true, data });
     } catch (error) {
@@ -246,6 +288,20 @@ exports.actualizarEstructuraFinanciera = async (req, res) => {
     } catch (error) {
         console.error(`❌ [BUNKER] Error actualizando finanzas ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: 'Error interno actualizando estructura financiera' });
+    }
+};
+
+exports.actualizarDisponibilidadArticulo = async (req, res) => {
+    try {
+        const { articuloId, listaId, disponible } = req.body;
+        if (!articuloId || !listaId) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos (articuloId, listaId)' });
+        }
+        await BunkerService.actualizarDisponibilidadArticulo(req.db, articuloId, listaId, disponible);
+        res.json({ success: true, message: 'Disponibilidad del artículo actualizada con éxito en la lista.' });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error actualizando disponibilidad de artículo:', error);
+        res.status(500).json({ success: false, error: 'Error interno actualizando disponibilidad' });
     }
 };
 
@@ -336,27 +392,37 @@ exports.exportarPDFListado = async (req, res) => {
         }
         const listaNombre = resLista.rows[0].nombre;
 
-        // 2. Obtener los artículos asociados a esta lista
-        const resArticulos = await db.query(
-            `SELECT 
-                 la.articulo_numero,
-                 COALESCE(b.descripcion_generada, b.descripcion) as descripcion,
-                 b.kilos_unidad,
-                 la.precio_final,
-                 la.iva,
-                 b.propiedades_dinamicas,
-                 b.rubro,
-                 b.sub_rubro
-             FROM public.bunker_lista_articulos la
-             JOIN public.bunker_articulos b ON b.articulo_id = la.articulo_numero
-             WHERE la.lista_id = $1
-             ORDER BY COALESCE(b.descripcion_generada, b.descripcion) ASC`,
-            [listaId]
-        );
+        // 2. Obtener todos los artículos del búnker enriquecidos y resolver precios unificados
+        const todosLosArticulos = await BunkerService.obtenerTodosLosArticulos(db, {});
 
-        if (resArticulos.rows.length === 0) {
+        // Mapear al formato esperado por el generador de PDF para la lista especificada,
+        // aplicando las reglas de herencia y fallbacks calculadas unificadamente en el servicio.
+        const filasArticulos = [];
+        for (const art of todosLosArticulos) {
+            const mFocused = art.margenes ? art.margenes.find(m => Number(m.lista_id) === Number(listaId)) : null;
+            if (!mFocused) continue;
+            if (mFocused.disponible === false) continue;
+
+            filasArticulos.push({
+                articulo_numero: art.articulo_id,
+                descripcion: art.descripcion_generada || art.descripcion,
+                kilos_unidad: art.kilos_unidad,
+                precio_final: mFocused.precio_final,
+                iva: mFocused.iva,
+                propiedades_dinamicas: art.propiedades_dinamicas,
+                rubro: art.rubro,
+                sub_rubro: art.sub_rubro
+            });
+        }
+
+        // Ordenar alfabéticamente por descripción para mantener consistencia
+        filasArticulos.sort((a, b) => a.descripcion.localeCompare(b.descripcion));
+
+        if (filasArticulos.length === 0) {
             return res.status(404).send('La lista de precios seleccionada no posee artículos asociados para exportar.');
         }
+
+        const resArticulos = { rows: filasArticulos };
 
         // 3. Configurar respuesta HTTP para descarga del PDF
         const sanitizeNombre = listaNombre.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
@@ -447,7 +513,14 @@ exports.exportarPDFListado = async (req, res) => {
         
         // Ajustar posición vertical y agregar título limpio "Lista de precios"
         let yStartText = headerY + 40;
-        doc.fontSize(14).font('Helvetica-Bold').fillColor('#1e293b').text('Lista de precios', 50, yStartText);
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#1e293b').text('Lista de Precios', 50, yStartText);
+
+        // Dibujar el nombre de la lista activa en el extremo superior derecho (sangrado para evitar encabalgamiento)
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#8e4785').text(listaNombre, 350, yStartText - 2, { align: 'right', width: 195 });
+
+        // Dibujar la fecha/hora de emisión debajo del nombre de la lista activa
+        const hoyFmtStr = new Date().toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Emisión: ${hoyFmtStr}`, 350, yStartText + 10, { align: 'right', width: 195 });
         
         doc.y = yStartText + 28;
         
@@ -517,12 +590,13 @@ exports.exportarPDFListado = async (req, res) => {
         } else {
             orderedRubros = Object.keys(grouped).sort();
         }
+        const activeRubros = orderedRubros.filter(r => grouped[r] !== undefined);
 
         let currentY = doc.y;
 
         // Función para validar espacio disponible y evitar cabeceras huérfanas
         const checkEspacioDisponible = (requiredHeight) => {
-            if (currentY + requiredHeight > doc.page.height - 70) {
+            if (currentY + requiredHeight > doc.page.height - 78) {
                 doc.addPage();
                 currentY = 50;
                 return true;
@@ -531,7 +605,9 @@ exports.exportarPDFListado = async (req, res) => {
         };
 
         // Renderizado por Bloques (Ruptura de Rubro y Sub-rubro)
-        for (const rubro of orderedRubros) {
+        const totalRubros = activeRubros.length;
+        for (let rIdx = 0; rIdx < totalRubros; rIdx++) {
+            const rubro = activeRubros[rIdx];
             let subRubros = Object.keys(grouped[rubro]);
             if (subrubrosOrderList) {
                 const orderedSub = subrubrosOrderList.filter(s => subRubros.includes(s));
@@ -544,11 +620,14 @@ exports.exportarPDFListado = async (req, res) => {
             } else {
                 subRubros.sort();
             }
+            
+            const activeSubRubros = subRubros.filter(sr => grouped[rubro][sr] && grouped[rubro][sr].length > 0);
             let rubroImpreso = false;
+            const totalSubRubros = activeSubRubros.length;
 
-            for (const subRubro of subRubros) {
+            for (let sIdx = 0; sIdx < totalSubRubros; sIdx++) {
+                const subRubro = activeSubRubros[sIdx];
                 const articulos = grouped[rubro][subRubro];
-                if (articulos.length === 0) continue;
 
                 // Aplicar ordenamiento secundario por los múltiples atributos prioritarios de la Capa D
                 if (activeCapaDAttributes.length > 0) {
@@ -600,7 +679,6 @@ exports.exportarPDFListado = async (req, res) => {
                 currentY = dibujarCabeceraTabla(currentY);
 
                 // D. Dibujar Artículos de este grupo
-                // D. Dibujar Artículos de este grupo
                 let lastAttrVals = {};
                 articulos.forEach((art, index) => {
                     // Comprobar si cambian los valores de los atributos activos de la Capa D
@@ -631,8 +709,8 @@ exports.exportarPDFListado = async (req, res) => {
                             const level = i + 1;
                             const indentX = 50 + (25 * level); // Sangría proporcional: Nivel 1 -> X=75, Nivel 2 -> X=100, etc.
 
-                            // Si no cabe en la página actual, agregamos página y redibujamos cabeceras
-                            if (currentY + subHeaderHeight > doc.page.height - 70) {
+                            // Si no cabe en la página actual, agregamos página y redibujamos cabeceras (necesitamos subHeaderHeight + una fila aproximada de 32pt)
+                            if (currentY + subHeaderHeight + 32 > doc.page.height - 78) {
                                 doc.addPage();
                                 currentY = 50;
                                 
@@ -700,7 +778,7 @@ exports.exportarPDFListado = async (req, res) => {
                     const rowHeight = maxHeight + (padding * 2);
 
                     // Si no cabe, agregamos página y dibujamos cabeceras de continuación
-                    if (currentY + rowHeight > doc.page.height - 70) {
+                    if (currentY + rowHeight > doc.page.height - 78) {
                         doc.addPage();
                         currentY = 50;
                         
@@ -743,20 +821,26 @@ exports.exportarPDFListado = async (req, res) => {
                     doc.y = currentY;
                 });
                 
-                doc.moveDown(0.8);
-                currentY = doc.y;
+                const isLast = (rIdx === totalRubros - 1) && (sIdx === totalSubRubros - 1);
+                if (!isLast) {
+                    doc.moveDown(0.8);
+                    currentY = doc.y;
+                }
             }
         }
 
         let pages = doc.bufferedPageRange();
         for (let i = 0; i < pages.count; i++) {
             doc.switchToPage(i);
+            const oldBottomMargin = doc.page.margins.bottom;
+            doc.page.margins.bottom = 0;
             doc.fontSize(7.5).fillColor('#94a3b8').text(
                 `LAMDA • El presente es un documento de simulación interna comercial. • Página ${i + 1} de ${pages.count}`,
                 50,
                 doc.page.height - 40,
                 { align: 'center', width: 495 }
             );
+            doc.page.margins.bottom = oldBottomMargin;
         }
 
         doc.end();
@@ -912,6 +996,94 @@ exports.resolverArticuloParaMapeo = async (req, res) => {
     } catch (error) {
         console.error('❌ [BUNKER-RESOLVER] Error resolviendo artículo para mapeo:', error);
         res.status(500).json({ success: false, error: 'Error interno resolviendo artículo para mapeo' });
+    }
+};
+
+// 🖨️ [FASE 4 - IMPRESIÓN ASIMÉTRICA] Invocación directa del motor Zebra para etiqueta doble (comercial + lote)
+exports.imprimirEtiquetaDobleBunker = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = req.db;
+
+        console.log(`🖨️ [BUNKER-IMPRIMIR] Solicitud recibida para artículo: ${id}`);
+
+        // A. Consultar los datos del artículo búnker y legacy
+        const artQuery = `
+            SELECT b.articulo_id, b.descripcion_generada, a.codigo_barras
+            FROM public.bunker_articulos b
+            LEFT JOIN public.articulos a ON b.articulo_id = a.numero
+            WHERE b.articulo_id = $1
+        `;
+        const artRes = await db.query(artQuery, [id]);
+        if (artRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Artículo búnker no encontrado' });
+        }
+
+        const articulo = artRes.rows[0];
+
+        // B. Consultar el último lote activo
+        const loteQuery = `
+            SELECT v.lote_id_supabase, v.lote_codigo_corto
+            FROM public.bunker_lotes_destinos d
+            JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+            WHERE d.destino_id = $1 AND d.tipo_destino = 'ARTICULO_BUNKER'
+            ORDER BY v.fecha_vinculacion DESC
+            LIMIT 1
+        `;
+        const loteRes = await db.query(loteQuery, [id]);
+        const loteId = loteRes.rows.length > 0 ? loteRes.rows[0].lote_id_supabase : null;
+        const loteCodigoCorto = loteRes.rows.length > 0 ? loteRes.rows[0].lote_codigo_corto : null;
+
+        // C. Invocar el script de impresión
+        const { exec } = require('child_process');
+        const path = require('path');
+        const fs = require('fs');
+
+        const scriptPath = path.resolve(__dirname, '../../scripts/imprimirEtiquetaBunker.js');
+        const tempDir = path.resolve(__dirname, '../../app-etiquetas/temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        const uniqueId = Date.now() + Math.random().toString(36).substring(7);
+        const tempFileName = `temp-bunker-${uniqueId}.json`;
+        const tempDataPath = path.join(tempDir, tempFileName);
+
+        const datosImpresion = {
+            articulo_id: articulo.articulo_id,
+            descripcion_generada: articulo.descripcion_generada || 'Sin Descripción',
+            codigo_barras: articulo.codigo_barras || '',
+            lote_id: loteId, // puede venir null/vacío
+            lote_codigo_corto: loteCodigoCorto // puede venir null/vacío
+        };
+
+        fs.writeFileSync(tempDataPath, JSON.stringify(datosImpresion, null, 2));
+
+        // Por defecto imprimimos 2 copias (representando 1 par de etiquetas físicas en la Zebra)
+        const command = `cd "${path.dirname(path.dirname(__dirname))}" && node "${scriptPath}" 2 "${tempDataPath}"`;
+
+        exec(command, (error, stdout, stderr) => {
+            // Limpieza
+            try {
+                if (fs.existsSync(tempDataPath)) {
+                    fs.unlinkSync(tempDataPath);
+                }
+            } catch (e) {
+                console.error("Error eliminando temporal:", e);
+            }
+
+            if (error) {
+                console.error('❌ Error al ejecutar script de impresión:', error);
+                return res.status(500).json({ success: false, error: 'Error al enviar orden a la impresora' });
+            }
+
+            console.log(`✅ Impresión enviada con éxito para artículo: ${id}`);
+            res.json({ success: true, message: 'Impresión de etiqueta doble enviada a la Zebra con éxito' });
+        });
+
+    } catch (error) {
+        console.error('❌ Error en imprimirEtiquetaDobleBunker:', error);
+        res.status(500).json({ success: false, error: 'Error interno del servidor procesando la impresión' });
     }
 };
 

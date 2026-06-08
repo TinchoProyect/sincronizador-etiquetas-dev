@@ -349,7 +349,7 @@ function renderizarPedidos() {
                  data-pedido='${pedidoJson}'
                  ondragstart="handleDragStart(event)" 
                  ondragend="handleDragEnd(event)"
-                 oncontextmenu="mostrarMenuContextual(event, ${pedido.id})"
+                 oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')"
                  style="${estiloCard}">
                 
                 <!-- Indicador visual de domicilio -->
@@ -1258,7 +1258,7 @@ function filtrarPedidos() {
              data-pedido='${pedidoJson}'
              ondragstart="handleDragStart(event)" 
              ondragend="handleDragEnd(event)"
-             oncontextmenu="mostrarMenuContextual(event, ${pedido.id})">
+             oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')">
             
             <div class="pedido-domicilio-indicator ${tieneDomicilio ? 'tiene-domicilio' : ''}" 
                  title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}">
@@ -2076,7 +2076,13 @@ async function seleccionarDomicilio(domicilioId) {
     }
 
     try {
-        const response = await fetch(`/api/logistica/presupuestos/${presupuestoId}/domicilio`, {
+        const isRetiro = String(presupuestoId).startsWith('RT-');
+        const cleanId = isRetiro ? String(presupuestoId).replace('RT-', '') : presupuestoId;
+        const url = isRetiro 
+            ? `/api/logistica/tratamientos/${cleanId}/domicilio`
+            : `/api/logistica/presupuestos/${presupuestoId}/domicilio`;
+
+        const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_domicilio_entrega: domicilioId })

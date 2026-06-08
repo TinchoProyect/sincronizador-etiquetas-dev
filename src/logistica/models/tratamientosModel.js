@@ -182,5 +182,22 @@ class TratamientosModel {
             client.release();
         }
     }
+
+    /**
+     * Asignar domicilio de entrega a una orden de tratamiento
+     * @param {number|string} id - ID de la orden de tratamiento
+     * @param {number} id_domicilio_entrega - ID del domicilio de entrega
+     * @returns {Promise<Object>} Orden de tratamiento actualizada
+     */
+    static async asignarDomicilio(id, id_domicilio_entrega) {
+        const query = `
+            UPDATE ordenes_tratamiento 
+            SET id_domicilio_entrega = $1
+            WHERE id = $2
+            RETURNING id, id_domicilio_entrega
+        `;
+        const result = await pool.query(query, [id_domicilio_entrega, parseInt(id)]);
+        return result.rows[0];
+    }
 }
 module.exports = TratamientosModel;

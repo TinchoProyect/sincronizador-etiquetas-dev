@@ -913,6 +913,44 @@
             </div>
         </div>
 
+        <!-- Modal de Trazabilidad Cruzada (Vínculo Multi-Artículo) -->
+        <div id="modal-trazabilidad" class="modal" style="display: none; z-index: 10060; cursor: default;">
+            <div class="modal-content card" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; max-width: 900px; width: 95%; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1); background-color: #ffffff; display: flex; flex-direction: column; max-height: 85vh; padding: 25px;">
+                <span class="close-modal" onclick="document.getElementById('modal-trazabilidad').style.display='none'" style="position: absolute; top: 15px; right: 20px; font-size: 1.8rem; color: #64748b; cursor: pointer; line-height: 1; transition: color 0.2s;" onmouseover="this.style.color='#ef4444';" onmouseout="this.style.color='#64748b';">&times;</span>
+                <div class="modal-header" style="border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; padding-right: 30px;">
+                    <h2 style="font-weight: 800; color: #1e293b; font-size: 1.5rem; margin: 0; display: flex; align-items: center; gap: 10px;">
+                        🔄 Trazabilidad e Impacto en Recetas
+                    </h2>
+                </div>
+                
+                <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 10px 0;">
+                    <p style="font-size: 0.95rem; color: #64748b; margin-top: 0; margin-bottom: 20px;">
+                        Ingrediente analizado: <strong id="trazabilidad-nombre-ingrediente" style="color: #2563eb; font-size: 1.1rem;">-</strong>
+                    </p>
+                    
+                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #f8fafc; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; margin: 0;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #e2e8f0; background: #f1f5f9;">
+                                    <th style="padding: 12px 16px; color: #475569; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;">Artículo Actual / Viejo ("Lo masó")</th>
+                                    <th style="padding: 12px 16px; color: #475569; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;">Identificación en Búnker</th>
+                                    <th style="padding: 12px 16px; color: #475569; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; text-align: right;">Implicancia (Peso / Proporción)</th>
+                                    <th style="padding: 12px 16px; color: #475569; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; text-align: center; width: 120px;">Relación</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trazabilidad-tabla-body">
+                                <!-- Filas generadas dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px;">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-trazabilidad').style.display='none'" style="padding: 10px 20px; border: 1px solid #cbd5e1; background: white; border-radius: 8px; cursor: pointer; font-weight: 600; color: #475569; transition: all 0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">Cerrar</button>
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2024 Gestiones Lamda</p>
         </footer>

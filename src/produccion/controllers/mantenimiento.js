@@ -2648,12 +2648,15 @@ async function imprimirComprobanteArribo(req, res) {
         doc.fontSize(11).font('Helvetica').fillColor('#000000').text('Por medio del presente documento, el establecimiento LAMDA certifica la recepción formal de la mercadería detallada, la cual queda bajo custodia en nuestras instalaciones.', { align: 'justify' });
         
         // Footer
+        const oldBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
         doc.fontSize(9).fillColor('#94a3b8').text(
             'El presente documento certifica la recepción y custodia de mercadería según el protocolo del sistema de trazabilidad de LAMDA. Su generación garantiza la integridad de los registros de arribo a depósito.', 
             50, 
             doc.page.height - 100, 
             { align: 'justify', width: 500 }
         );
+        doc.page.margins.bottom = oldBottomMargin;
 
         doc.end();
 

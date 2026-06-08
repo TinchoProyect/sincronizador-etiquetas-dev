@@ -904,6 +904,89 @@ async function eliminarCategoria(id) {
         throw error;
     }
 }
+
+/**
+ * Obtiene la trazabilidad cruzada de un ingrediente (en qué recetas/artículos participa)
+ * @param {Object} req - Objeto de solicitud de Express
+ * @param {Object} res - Objeto de respuesta de Express
+ */
+async function obtenerTrazabilidadIngrediente(req, res) {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) {
+            return res.status(400).json({ error: 'ID de ingrediente inválido' });
+        }
+
+        // Primero obtener el ingrediente para conocer su nombre
+        const ingredienteQuery = 'SELECT nombre FROM ingredientes WHERE id = $1';
+        const ingredienteResult = await pool.query(ingredienteQuery, [id]);
+        if (ingredienteResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+        const nombreIngrediente = ingredienteResult.rows[0].nombre;
+
+        // Consulta recursiva (CTE) para encontrar dependencias directas e indirectas
+        const query = `
+            WITH RECURSIVE dependency_tree AS (
+                -- Caso Base: Recetas que contienen directamente al ingrediente (por ID o por nombre)
+                SELECT 
+                    r.id AS receta_id,
+                    r.articulo_numero,
+                    ri.cantidad::numeric AS cantidad_ingrediente,
+                    ri.unidad_medida,
+                    1::numeric AS multiplicador,
+                    1 AS nivel,
+                    ARRAY[r.articulo_numero] AS path
+                FROM receta_ingredientes ri
+                JOIN recetas r ON ri.receta_id = r.id
+                WHERE ri.ingrediente_id = $1 OR LOWER(TRIM(ri.nombre_ingrediente)) = LOWER(TRIM($2))
+
+                UNION ALL
+
+                -- Caso Recursivo: Recetas que contienen un artículo que a su vez tiene receta en el árbol
+                SELECT 
+                    r_parent.id AS receta_id,
+                    r_parent.articulo_numero,
+                    dt.cantidad_ingrediente,
+                    dt.unidad_medida,
+                    (dt.multiplicador * ra.cantidad)::numeric AS multiplicador,
+                    dt.nivel + 1 AS nivel,
+                    dt.path || r_parent.articulo_numero AS path
+                FROM receta_articulos ra
+                JOIN recetas r_parent ON ra.receta_id = r_parent.id
+                JOIN dependency_tree dt ON ra.articulo_numero = dt.articulo_numero
+                WHERE NOT (r_parent.articulo_numero = ANY(dt.path)) -- Evitar ciclos infinitos
+            )
+            SELECT 
+                dt.receta_id,
+                dt.articulo_numero,
+                a.nombre AS articulo_nombre,
+                ba.descripcion AS bunker_descripcion,
+                ba.descripcion_generada AS bunker_descripcion_generada,
+                SUM(dt.cantidad_ingrediente * dt.multiplicador)::numeric AS cantidad_total_ingrediente,
+                dt.unidad_medida,
+                MIN(dt.nivel) AS nivel_minimo -- Nivel mínimo de vinculación
+            FROM dependency_tree dt
+            LEFT JOIN articulos a ON dt.articulo_numero = a.numero
+            LEFT JOIN bunker_articulos ba ON dt.articulo_numero = ba.articulo_id
+            GROUP BY dt.receta_id, dt.articulo_numero, a.nombre, ba.descripcion, ba.descripcion_generada, dt.unidad_medida
+            ORDER BY nivel_minimo ASC, cantidad_total_ingrediente DESC;
+        `;
+
+        const result = await pool.query(query, [id, nombreIngrediente]);
+        res.json({
+            ingrediente: {
+                id,
+                nombre: nombreIngrediente
+            },
+            vinculos: result.rows
+        });
+    } catch (error) {
+        console.error('❌ Error al obtener trazabilidad de ingrediente:', error);
+        res.status(500).json({ error: 'Error interno del servidor al obtener la trazabilidad' });
+    }
+}
+
 module.exports = {
     obtenerIngredientes,
     obtenerIngrediente,
@@ -924,5 +1007,6 @@ module.exports = {
     buscarIngredientePorCodigo,
     obtenerIngredientesPorSectores,
     obtenerNutrientes,
-    actualizarVinculo
+    actualizarVinculo,
+    obtenerTrazabilidadIngrediente
 };

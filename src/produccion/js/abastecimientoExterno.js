@@ -91,6 +91,65 @@ function normalizar(texto) {
     return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+// Parseador inteligente de unidades físicas desde la descripción (para fallback)
+function deducirKilosUnidadDesdeNombre(nombre) {
+    if (!nombre) return 1;
+    const norm = nombre.toLowerCase();
+    
+    // 1. Coincidencia del tipo "X x Y litros/l/kg/g/unidades" o "X x Y"
+    const regex1 = /(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(litros|l|kg|g|unidades)?/i;
+    const match1 = norm.match(regex1);
+    if (match1) {
+        const qty = parseFloat(match1[1]);
+        const unitVal = parseFloat(match1[2]);
+        const unitStr = match1[3] || '';
+        
+        let multiplier = 1;
+        if (unitStr.startsWith('g')) {
+            multiplier = 0.001;
+        }
+        return qty * unitVal * multiplier;
+    }
+
+    // 2. Coincidencia del tipo "x Y litros/l/kg/g"
+    const regex2 = /x\s*(\d+(?:\.\d+)?)\s*(litros|l|kg|g)/i;
+    const match2 = norm.match(regex2);
+    if (match2) {
+        const unitVal = parseFloat(match2[1]);
+        const unitStr = match2[2];
+        let multiplier = 1;
+        if (unitStr.startsWith('g')) {
+            multiplier = 0.001;
+        }
+        return unitVal * multiplier;
+    }
+
+    // 3. Coincidencia del tipo "Y litros/l/kg/g"
+    const regex3 = /(\d+(?:\.\d+)?)\s*(litros|l|kg|g)\b/i;
+    const match3 = norm.match(regex3);
+    if (match3) {
+        const unitVal = parseFloat(match3[1]);
+        const unitStr = match3[2];
+        let multiplier = 1;
+        if (unitStr.startsWith('g')) {
+            multiplier = 0.001;
+        }
+        return unitVal * multiplier;
+    }
+
+    return 1;
+}
+
+// Deducir unidad de medida L o kg para la UI
+function deducirUnidadMedidaDesdeNombre(nombre) {
+    if (!nombre) return 'kg';
+    const norm = nombre.toLowerCase();
+    if (norm.includes('litro') || norm.includes(' l ') || norm.endsWith(' l') || norm.includes(' l\b') || /\d+\s*l\b/.test(norm)) {
+        return 'L';
+    }
+    return 'kg';
+}
+
 function manejarBusqueda() {
     const query = inputBusqueda.value.trim();
     listaResultados.innerHTML = '';
@@ -100,10 +159,29 @@ function manejarBusqueda() {
         return;
     }
 
+    // Evaluación de escaneo: coincidencia exacta por código de barras o SKU/Número
+    const exactMatch = todosLosArticulos.find(art => 
+        (art.codigo_barras && art.codigo_barras.trim() === query) || 
+        (art.numero && art.numero.trim() === query)
+    );
+
+    if (exactMatch) {
+        console.log('[ABASTECIMIENTO] Coincidencia exacta detectada (Escáner):', query);
+        seleccionarArticulo(exactMatch);
+        return;
+    }
+
     const tokens = normalizar(query).split(' ').filter(t => t.length > 0);
     let resultados = todosLosArticulos.filter(art => {
         const nombreNorm = normalizar(art.nombre || art.descripcion || '');
-        return tokens.every(token => nombreNorm.includes(token));
+        const codigoNorm = normalizar(art.codigo_barras || '');
+        const numeroNorm = normalizar(art.numero || '');
+        
+        return tokens.every(token => 
+            nombreNorm.includes(token) || 
+            codigoNorm.includes(token) || 
+            numeroNorm.includes(token)
+        );
     });
 
     listaResultados.style.display = 'block';
@@ -144,7 +222,7 @@ async function seleccionarArticulo(art) {
     
     inputCantidad.value = '1';
     
-    // Obtenemos los kilos unidad frescos 
+    // Obtenemos los kilos unidad frescos
     try {
         const resp = await fetch(`http://localhost:3002/api/produccion/articulos`);
         let arts = await resp.json();
@@ -153,11 +231,21 @@ async function seleccionarArticulo(art) {
         if (target && target.kilos_unidad) {
             articuloSeleccionado.kilos_unidad = parseFloat(target.kilos_unidad);
         } else {
-            console.warn('Artículo no posee kilos_unidad explicito. Usando default de fallback.');
-            articuloSeleccionado.kilos_unidad = DEFAULT_KILOS_FALLBACK;
+            console.warn('Artículo no posee kilos_unidad explicito en base de datos. Autodeduciendo...');
+            articuloSeleccionado.kilos_unidad = deducirKilosUnidadDesdeNombre(art.nombre || art.descripcion);
         }
     } catch(e) {
-         articuloSeleccionado.kilos_unidad = DEFAULT_KILOS_FALLBACK;
+        console.warn('Error fetching fresh weight. Autodeduciendo...');
+        articuloSeleccionado.kilos_unidad = deducirKilosUnidadDesdeNombre(art.nombre || art.descripcion);
+    }
+
+    // Actualizar unidad física en UI
+    const unidadMedida = deducirUnidadMedidaDesdeNombre(art.nombre || art.descripcion);
+    articuloSeleccionado.unidad_medida = unidadMedida;
+    
+    const labelUnidad = document.getElementById('unidad-abastecer-label');
+    if (labelUnidad) {
+        labelUnidad.textContent = unidadMedida;
     }
 
     calcularKilos();
@@ -177,7 +265,7 @@ function calcularKilos() {
         return;
     }
 
-    const totalKilos = cant * articuloSeleccionado.kilos_unidad;
+    const totalKilos = cant * (articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK);
     spanKilosTotales.textContent = totalKilos.toFixed(2);
     divResumen.style.display = 'block';
     
@@ -197,6 +285,11 @@ async function confirmarAbastecimiento() {
     
     const usuarioId = JSON.parse(colaboradorData).id;
 
+    // Obtener carroId de la interfaz o de la sesión
+    const workspaceContainer = document.getElementById('workspace-container');
+    const carroId = workspaceContainer?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+    const parsedCarroId = carroId ? parseInt(carroId) : null;
+
     btnConfirmar.disabled = true;
     btnConfirmar.innerHTML = 'Procesando...';
 
@@ -204,7 +297,8 @@ async function confirmarAbastecimiento() {
         articulo_numero: articuloSeleccionado.numero,
         cantidad: cantidad,
         ingrediente_id: ingredienteDestinoId,
-        usuario_id: usuarioId
+        usuario_id: usuarioId,
+        carro_id: parsedCarroId
     };
 
     try {
@@ -219,12 +313,13 @@ async function confirmarAbastecimiento() {
             throw new Error(err.error || err.detalles || 'Fallo interno en el servidor');
         }
 
-        const totalKilos = cantidad * articuloSeleccionado.kilos_unidad;
-        const mensajeExito = `✅ Retiro confirmado: ${cantidad} x ${articuloSeleccionado.kilos_unidad} kg (Total: ${totalKilos.toFixed(2)} kg)`;
+        const totalKilos = cantidad * (articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK);
+        const u = articuloSeleccionado.unidad_medida || 'kg';
+        const mensajeExito = `✅ Retiro confirmado: ${cantidad} x ${articuloSeleccionado.kilos_unidad} ${u} (Total: ${totalKilos.toFixed(2)} ${u})`;
         console.log(mensajeExito);
         cerrarModal();
         
-        // Brindar feedback visual nativo (si mostrarNotificacionExito está global o usar alert como fallback)
+        // Brindar feedback visual nativo
         if (typeof window.mostrarNotificacionExito === 'function') {
             window.mostrarNotificacionExito(mensajeExito);
         } else {
