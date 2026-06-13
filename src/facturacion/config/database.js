@@ -113,11 +113,133 @@ const ejecutarTransaccion = async (callback) => {
 };
 
 /**
+ * Inicializar tablas de cuentas y movimientos bancarios si no existen
+ */
+const inicializarTablasBancarias = async () => {
+    console.log('🔄 [FACTURACION-DB] Inicializando tablas de cuentas bancarias...');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Crear tabla de cuentas bancarias
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.fin_cuentas_bancarias (
+                id SERIAL PRIMARY KEY,
+                banco VARCHAR(150) NOT NULL,
+                titular VARCHAR(150) NOT NULL,
+                tipo_cuenta VARCHAR(100) NOT NULL,
+                numero_cuenta VARCHAR(50) UNIQUE NOT NULL,
+                cbu VARCHAR(22) UNIQUE NOT NULL,
+                alias VARCHAR(100) NOT NULL,
+                saldo NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA',
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        
+        // 2. Crear tabla de movimientos bancarios
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.fin_movimientos_bancarios (
+                id SERIAL PRIMARY KEY,
+                cuenta_id INTEGER NOT NULL REFERENCES public.fin_cuentas_bancarias(id) ON DELETE CASCADE,
+                fecha_movimiento TIMESTAMP NOT NULL,
+                concepto VARCHAR(500) NOT NULL,
+                tipo_operacion VARCHAR(100) NOT NULL,
+                debito NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                credito NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                referencia VARCHAR(100) DEFAULT NULL,
+                saldo_resultante NUMERIC(15, 2) NOT NULL,
+                hash_dedup VARCHAR(64) UNIQUE NOT NULL,
+                cuit_extraido VARCHAR(11) DEFAULT NULL,
+                referencia_operacion VARCHAR(100) DEFAULT NULL,
+                cliente_id INTEGER DEFAULT NULL REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
+                estado_clasificacion VARCHAR(30) NOT NULL DEFAULT 'AUTO',
+                metadata_adicional JSONB DEFAULT NULL,
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // Ejecutar migración para añadir columnas si la tabla ya existía
+        await client.query(`
+            ALTER TABLE public.fin_movimientos_bancarios
+            ADD COLUMN IF NOT EXISTS cuit_extraido VARCHAR(11) DEFAULT NULL,
+            ADD COLUMN IF NOT EXISTS referencia_operacion VARCHAR(100) DEFAULT NULL,
+            ADD COLUMN IF NOT EXISTS cliente_id INTEGER DEFAULT NULL REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS estado_clasificacion VARCHAR(30) NOT NULL DEFAULT 'AUTO',
+            ADD COLUMN IF NOT EXISTS metadata_adicional JSONB DEFAULT NULL;
+        `);
+        
+        // 3. Crear índices
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_movs_cuenta ON public.fin_movimientos_bancarios(cuenta_id);
+        `);
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_movs_fecha ON public.fin_movimientos_bancarios(fecha_movimiento);
+        `);
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_movs_cuit ON public.fin_movimientos_bancarios(cuit_extraido);
+        `);
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_movs_cliente ON public.fin_movimientos_bancarios(cliente_id);
+        `);
+
+        // 4. Sembrado (Seed) de la cuenta Galicia por defecto
+        const checkCuenta = await client.query('SELECT COUNT(*) FROM public.fin_cuentas_bancarias');
+        if (parseInt(checkCuenta.rows[0].count) === 0) {
+            console.log('🌱 [FACTURACION-DB] Sembrando cuenta Galicia por defecto...');
+            await client.query(`
+                INSERT INTO public.fin_cuentas_bancarias (
+                    banco,
+                    titular,
+                    tipo_cuenta,
+                    numero_cuenta,
+                    cbu,
+                    alias,
+                    saldo,
+                    estado
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8
+                )
+            `, [
+                'Banco de Galicia y Buenos Aires S.A.U (CUIT: 30-50000173-5)',
+                'MARTIN IGNACIO SERRANO (DU Nro. 24892174)',
+                'Caja de Ahorro en Pesos (CA $)',
+                '400784413734',
+                '0070373230004007844141',
+                'LAMDA.SER.MARTIN',
+                3349084.93,
+                'ACTIVA'
+            ]);
+            console.log('🌱 [FACTURACION-DB] Cuenta Galicia sembrada con éxito.');
+        } else {
+            console.log('ℹ️ [FACTURACION-DB] La tabla fin_cuentas_bancarias ya tiene datos. Omitiendo sembrado.');
+        }
+
+        await client.query('COMMIT');
+        console.log('✅ [FACTURACION-DB] Tablas de cuentas bancarias inicializadas correctamente');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [FACTURACION-DB] Error al inicializar tablas de cuentas bancarias:', error.message);
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+/**
  * Verificar existencia de tablas requeridas
  * @returns {Promise<Object>} Estado de las tablas
  */
 const verificarTablas = async () => {
     console.log('🔍 [FACTURACION-DB] Verificando tablas requeridas...');
+
+    // Asegurar inicialización de tablas bancarias primero
+    try {
+        await inicializarTablasBancarias();
+    } catch (err) {
+        console.error('❌ [FACTURACION-DB] Error crítico al inicializar tablas bancarias:', err.message);
+    }
 
     const tablasRequeridas = [
         'factura_facturas',
@@ -125,7 +247,9 @@ const verificarTablas = async () => {
         'factura_afip_ta',
         'factura_afip_wsfe_logs',
         'factura_numeracion_afip',
-        'factura_numeracion_interna'
+        'factura_numeracion_interna',
+        'fin_cuentas_bancarias',
+        'fin_movimientos_bancarios'
     ];
 
     const resultado = {

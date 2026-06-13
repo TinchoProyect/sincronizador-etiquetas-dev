@@ -103,7 +103,7 @@ async function getStockMantenimiento(req, res) {
             FROM saldos_clientes sc
             LEFT JOIN public.articulos a ON (sc.articulo_numero = a.numero OR sc.articulo_numero = a.codigo_barras)
             LEFT JOIN public.ingredientes i ON sc.ingrediente_id = i.id
-            LEFT JOIN public.stock_real_consolidado s ON sc.articulo_numero = s.articulo_numero
+            LEFT JOIN public.stock_real_consolidado s ON (sc.articulo_numero = s.articulo_numero OR sc.articulo_numero = s.codigo_barras)
             LEFT JOIN public.usuarios u_resp ON u_resp.id::text = sc.usuario::text
             LEFT JOIN LATERAL (
                 SELECT 
@@ -568,21 +568,30 @@ async function confirmarConciliacion(req, res) {
 
         await client.query('BEGIN');
 
+        // Resolve target articulo_numero / SKU and barcode
+        let articuloReal = articulo;
+        let codigoBarras = '';
+        const resArt = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [articulo]);
+        if (resArt.rows.length > 0) {
+            articuloReal = resArt.rows[0].numero;
+            codigoBarras = resArt.rows[0].codigo_barras || '';
+        }
+
         // 1. Identificar Movimiento Pendiente (Lock Row)
         // Lo buscamos ANTES de insertar para obtener su ID y asegurar consistencia
         let findMovSql = `
             SELECT mm.id, p.id AS id_presupuesto, p.estado AS estado_presupuesto
             FROM public.mantenimiento_movimientos mm
             JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-            WHERE mm.articulo_numero = $1
+            WHERE (mm.articulo_numero = $1 OR (mm.articulo_numero = $3 AND $3 != ''))
               AND p.id_cliente = $2
               AND mm.tipo_movimiento IN ('INGRESO', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
               AND mm.estado = 'PENDIENTE'
         `;
-        const queryParams = [articulo, cliente_id];
+        const queryParams = [articuloReal, cliente_id, codigoBarras];
 
         if (id_presupuesto_origen) {
-            findMovSql += ` AND p.id = $3 `;
+            findMovSql += ` AND p.id = $4 `;
             queryParams.push(id_presupuesto_origen);
         }
 
@@ -605,12 +614,12 @@ async function confirmarConciliacion(req, res) {
         const arcaCheck = `
             SELECT 1 
             FROM public.mantenimiento_movimientos
-            WHERE articulo_numero = $1
+            WHERE (articulo_numero = $1 OR articulo_numero = $3)
               AND observaciones LIKE $2
               AND tipo_movimiento = 'EMISION_NC'
             LIMIT 1
         `;
-        const resArcaCheck = await client.query(arcaCheck, [articulo, '%Cliente #' + cliente_id + '%']);
+        const resArcaCheck = await client.query(arcaCheck, [articuloReal, '%Cliente #' + cliente_id + '%', codigoBarras]);
         if (resArcaCheck.rowCount > 0) {
             throw new Error('Exclusión Mutua: Este artículo ya se encuentra en proceso de Nota de Crédito por circuito ARCA.');
         }
@@ -647,7 +656,7 @@ async function confirmarConciliacion(req, res) {
             (id_conciliacion, articulo_numero, cantidad_conciliada, id_movimiento_origen)
             VALUES ($1, $2, $3, $4)
         `;
-        await client.query(insertItem, [idConciliacion, articulo, cantidad, idMovimiento]);
+        await client.query(insertItem, [idConciliacion, articuloReal, cantidad, idMovimiento]);
 
         // 4. Actualizar Estado del Movimiento
         const updateMov = `
@@ -683,14 +692,14 @@ async function confirmarConciliacion(req, res) {
                     ultima_actualizacion = NOW()
                 WHERE articulo_numero = $2
             `;
-            await client.query(updateStock, [cantidad, articulo]);
+            await client.query(updateStock, [cantidad, articuloReal]);
 
             const insertAudit = `
                 INSERT INTO public.mantenimiento_movimientos 
                 (articulo_numero, cantidad, tipo_movimiento, fecha_movimiento, usuario, observaciones, estado, id_presupuesto_origen)
                 VALUES ($1, $2, 'LIBERACION', NOW(), $3, '[Ajuste Automático] Reversión por Conciliación Lomasoft', 'FINALIZADO', $4)
             `;
-            await client.query(insertAudit, [articulo, cantidad, usuario, idPresupuesto]);
+            await client.query(insertAudit, [articuloReal, cantidad, usuario, idPresupuesto]);
         }
 
         await client.query('COMMIT');
@@ -734,6 +743,13 @@ async function liberarStock(req, res) {
             obsvAuditoria = `[REENVASADO: Hacia Art. #${destino}] ` + obsvAuditoria;
         }
 
+        // Resolve target articulo_numero / SKU from origen (which might be SKU or barcode)
+        let origenRealNumero = origen;
+        const checkOrigenQuery = await client.query('SELECT articulo_numero FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR codigo_barras = $1', [origen]);
+        if (checkOrigenQuery.rows.length > 0) {
+            origenRealNumero = checkOrigenQuery.rows[0].articulo_numero;
+        }
+
         // REEMPLAZO DETERMINISTA: Ejecutar baja global tolerante (GREATEST 0 para eludir errores asincronicos)
         await client.query(`
             UPDATE public.stock_real_consolidado
@@ -743,7 +759,7 @@ async function liberarStock(req, res) {
                 stock_consolidado = COALESCE(stock_lomasoft, 0) + COALESCE(stock_movimientos, 0) + (COALESCE(stock_ajustes, 0) + $1),
                 ultima_actualizacion = NOW()
             WHERE articulo_numero = $2
-        `, [cantidad, origen]);
+        `, [cantidad, origenRealNumero]);
         
         // Registrar el movimiento de LIBERACION explícitamente para auditoría contable
         // (Debe indicarse como 'CONCILIADO' o estado válido del Check de la DB para que resista el filtro 'FINALIZADO' y
@@ -752,7 +768,7 @@ async function liberarStock(req, res) {
             INSERT INTO public.mantenimiento_movimientos (
                 articulo_numero, cantidad, usuario, tipo_movimiento, observaciones, fecha_movimiento, estado
             ) VALUES ($1, $2, $3, 'LIBERACION', $4, NOW(), 'CONCILIADO')
-        `, [origen, cantidad, usuario, obsvAuditoria]);
+        `, [origenRealNumero, cantidad, usuario, obsvAuditoria]);
 
         // Cierre Definitivo del Lote (HIGIENE):
         // Actualizamos estrictamente el lote transaccional a 'FINALIZADO'
@@ -762,15 +778,20 @@ async function liberarStock(req, res) {
         
         // Alta explícita en Ventas para el Destino
         try {
-            const artQuery = await client.query('SELECT codigo_barras FROM articulos WHERE numero = $1', [destino]);
-            const codigoBarras = artQuery.rows.length > 0 ? artQuery.rows[0].codigo_barras : '';
+            let destinoRealNumero = destino;
+            let codigoBarrasDestino = '';
+            const checkDestinoQuery = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [destino]);
+            if (checkDestinoQuery.rows.length > 0) {
+                destinoRealNumero = checkDestinoQuery.rows[0].numero;
+                codigoBarrasDestino = checkDestinoQuery.rows[0].codigo_barras || '';
+            }
 
             // Sumamos el stock al articulo_destino en el historial de ventas
             await client.query(`
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, codigo_barras, kilos, cantidad, tipo, fecha, usuario_id, origen_ingreso
                 ) VALUES ($1, $2, 0, $3, 'REVERSION_DESDE_MANTENIMIENTO', NOW(), $4, 'mantenimiento')
-            `, [destino, codigoBarras || '', cantidad, null]);
+            `, [destinoRealNumero, codigoBarrasDestino, cantidad, null]);
         } catch (e) {
             console.error('⚠️ [MANTENIMIENTO] Error al hacer insert en stock_ventas_movimientos para el Destino. El trigger de la DB podría estar bloqueándolo o ya hizo el ingreso automático.', e.message);
         }
@@ -815,11 +836,12 @@ async function transferirAIngredientes(req, res) {
         let pesoTeoricoTotal = cantidadUnidades;
 
         // 1. Obtener Stock Actual en Mantenimiento para KilosPorUnidad y validaciones secundarias
+        let articuloRealNumero = articulo;
         if (articulo && articulo !== 'null' && articulo !== '') {
             const stockQuery = `
-                SELECT stock_mantenimiento, kilos_unidad 
+                SELECT stock_mantenimiento, kilos_unidad, articulo_numero
                 FROM public.stock_real_consolidado 
-                WHERE articulo_numero = $1
+                WHERE articulo_numero = $1 OR codigo_barras = $1
                 FOR UPDATE
             `;
             const resStock = await client.query(stockQuery, [articulo]);
@@ -827,6 +849,8 @@ async function transferirAIngredientes(req, res) {
             if (resStock.rows.length === 0) {
                 throw new Error(`Artículo ${articulo} no encontrado en stock consolidado.`);
             }
+
+            articuloRealNumero = resStock.rows[0].articulo_numero;
 
             if (!cantidadUnidades || cantidadUnidades <= 0) {
                 cantidadUnidades = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
@@ -836,7 +860,7 @@ async function transferirAIngredientes(req, res) {
             pesoTeoricoTotal = cantidadUnidades * kilosUnidad;
 
             if (cantidadUnidades <= 0) {
-                throw new Error(`El artículo ${articulo} no tiene stock asignado a transferir.`);
+                throw new Error(`El artículo ${articuloRealNumero} no tiene stock asignado a transferir.`);
             }
         } else {
             // Es un ingrediente
@@ -870,7 +894,7 @@ async function transferirAIngredientes(req, res) {
                 ultima_actualizacion = NOW()
             WHERE articulo_numero = $1
         `;
-        await client.query(updateMantenimiento, [articulo, cantidadUnidades]);
+        await client.query(updateMantenimiento, [articuloRealNumero, cantidadUnidades]);
 
         // 3. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA)
         const obsAdicional = observaciones ? ` | Obs: ${observaciones}` : '';
@@ -884,7 +908,7 @@ async function transferirAIngredientes(req, res) {
                     $1, $2, $3, 'TRANSF_INGREDIENTE', $4, NOW()
                 )
             `;
-            await client.query(insertMov, [articulo, cantidadUnidades, usuario, obsFinal]);
+            await client.query(insertMov, [articuloRealNumero, cantidadUnidades, usuario, obsFinal]);
         } else {
             const insertMov = `
                 INSERT INTO public.mantenimiento_movimientos (
@@ -963,20 +987,29 @@ async function emitirNotaCreditoBorrador(req, res) {
         if (itemsInfo && itemsInfo.length > 0) {
             const primerArticulo = itemsInfo[0].articulo || (itemsInfo[0].descripcion?.match(/Devolución:\s*(.+)/)?.[1]?.trim());
             if (primerArticulo) {
-                console.log(`[MANTENIMIENTO_ORQ] Intentando recuperar descuento de la Orden de Retiro origen para Art: ${primerArticulo}, Cliente: ${cliente_id}`);
+                // Resolucion de codigo de barras a SKU real
+                const resArt = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [primerArticulo]);
+                let primerArticuloReal = primerArticulo;
+                let primerCodigoBarras = '';
+                if (resArt.rows.length > 0) {
+                    primerArticuloReal = resArt.rows[0].numero;
+                    primerCodigoBarras = resArt.rows[0].codigo_barras || '';
+                }
+
+                console.log(`[MANTENIMIENTO_ORQ] Intentando recuperar descuento de la Orden de Retiro origen para Art: ${primerArticuloReal}, Cliente: ${cliente_id}`);
                 const descQuery = `
                     SELECT COALESCE(p.descuento, 0) as descuento_decimal
                     FROM public.mantenimiento_movimientos mm
                     JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                     WHERE p.id_cliente::text = $1
-                      AND mm.articulo_numero = $2
+                      AND (mm.articulo_numero = $2 OR (mm.articulo_numero = $3 AND $3 != ''))
                       AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
                       AND mm.estado IS DISTINCT FROM 'FINALIZADO'
                       AND mm.estado IS DISTINCT FROM 'ANULADO'
                     ORDER BY mm.id DESC
                     LIMIT 1
                 `;
-                const resDesc = await client.query(descQuery, [cliente_id.toString(), primerArticulo]);
+                const resDesc = await client.query(descQuery, [cliente_id.toString(), primerArticuloReal, primerCodigoBarras]);
 
                 if (resDesc.rowCount > 0) {
                     const descuentoDecimal = parseFloat(resDesc.rows[0].descuento_decimal) || 0; // ej: 0.04
@@ -1035,18 +1068,27 @@ async function emitirNotaCreditoBorrador(req, res) {
                 throw new Error("No se pudo extraer el código del artículo en el payload.");
             }
 
+            // Resolucion de codigo de barras a SKU real
+            let articuloReal = articulo;
+            let codigoBarras = '';
+            const resArt = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [articulo]);
+            if (resArt.rows.length > 0) {
+                articuloReal = resArt.rows[0].numero;
+                codigoBarras = resArt.rows[0].codigo_barras || '';
+            }
+
             // 0. CHECK EXCLUSIÓN MUTUA: Verificar que Lomasoft no lo haya conciliado
             const lomaCheck = `
                 SELECT 1
                 FROM public.mantenimiento_conciliacion_items mci
                 JOIN public.mantenimiento_conciliaciones mc ON mc.id = mci.id_conciliacion
-                WHERE mci.articulo_numero = $1
+                WHERE (mci.articulo_numero = $1 OR (mci.articulo_numero = $3 AND $3 != ''))
                   AND mc.id_cliente::text = $2
                 LIMIT 1
             `;
-            const resLomaCheck = await client.query(lomaCheck, [articulo, cliente_id.toString()]);
+            const resLomaCheck = await client.query(lomaCheck, [articuloReal, cliente_id.toString(), codigoBarras]);
             if (resLomaCheck.rowCount > 0) {
-                throw new Error(`Exclusión Mutua: El artículo ${articulo} ya ha sido conciliado vía Lomasoft.`);
+                throw new Error(`Exclusión Mutua: El artículo ${articuloReal} ya ha sido conciliado vía Lomasoft.`);
             }
 
             const cantidadEmitida = parseFloat(item.qty || 0);
@@ -1055,16 +1097,16 @@ async function emitirNotaCreditoBorrador(req, res) {
             const stockQuery = `
                 SELECT stock_mantenimiento 
                 FROM public.stock_real_consolidado 
-                WHERE articulo_numero = $1
+                WHERE articulo_numero = $1 OR codigo_barras = $1
                 FOR UPDATE
             `;
-            const resStock = await client.query(stockQuery, [articulo]);
+            const resStock = await client.query(stockQuery, [articuloReal]);
 
             if (resStock.rows.length > 0) {
                 const pesoOriginal = parseFloat(resStock.rows[0].stock_mantenimiento || 0);
 
                 if (pesoOriginal < cantidadEmitida) {
-                    console.warn(`[ALERTA SOBRE-DEVOLUCION] ${articulo} Solo hay ${pesoOriginal} en mantenimiento, se emitió un borrador por ${cantidadEmitida}.`);
+                    console.warn(`[ALERTA SOBRE-DEVOLUCION] ${articuloReal} Solo hay ${pesoOriginal} en mantenimiento, se emitió un borrador por ${cantidadEmitida}.`);
                 }
                 // ¡RESTA PREMATURA ELIMINADA!
                 // El stock físico de Mantenimiento queda intacto.
@@ -1080,7 +1122,7 @@ async function emitirNotaCreditoBorrador(req, res) {
                 VALUES ($1, $2, $3, $4, 'EMISION_NC', $5, 'FINALIZADO')
                 RETURNING id
             `;
-            await client.query(insertMov, [idPresupuestoOrigen, articulo, cantidadEmitida, usuario, obsFinal]);
+            await client.query(insertMov, [idPresupuestoOrigen, articuloReal, cantidadEmitida, usuario, obsFinal]);
         }
 
         // Sincronización Inversa: Marcar la Orden de Retiro como Conciliada para bloquear UI en Presupuestos

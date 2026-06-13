@@ -304,12 +304,30 @@ const listarFacturas = async (req, res) => {
             estado,
             tipo_cbte,
             cliente_id,
+            cliente,
             limit = 50,
             offset = 0
         } = req.query;
 
-        // Construir query con filtros
-        let query = 'SELECT * FROM factura_facturas WHERE 1=1';
+        // Construir query con filtros (retornando razon_social)
+        let query = `
+            SELECT 
+                f.*,
+                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
+                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
+                COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
+                COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
+                COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
+                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas
+            FROM factura_facturas f
+            LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
+            LEFT JOIN bunker_clientes bc ON 
+                (CASE 
+                    WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer 
+                    ELSE NULL 
+                END) = f.cliente_id
+            WHERE 1=1
+        `;
         const params = [];
         let paramIndex = 1;
 
@@ -319,12 +337,12 @@ const listarFacturas = async (req, res) => {
         if (req.query.es_prueba !== 'true') {
             // "Ocultar pruebas": solo mostrar facturas con id > 100 
             // (Ajustar este número al momento de salir a PROD real, ej: id > 150)
-            query += ` AND id > 100`;
+            query += ` AND f.id > 100`;
         }
 
         // Filtro por presupuesto_id (para verificar si ya existe factura)
         if (presupuesto_id) {
-            query += ` AND presupuesto_id = $${paramIndex}`;
+            query += ` AND f.presupuesto_id = $${paramIndex}`;
             params.push(parseInt(presupuesto_id));
             paramIndex++;
             console.log(`   - Filtro presupuesto_id: ${presupuesto_id}`);
@@ -332,7 +350,7 @@ const listarFacturas = async (req, res) => {
 
         // Filtro por fecha desde
         if (fecha_desde) {
-            query += ` AND fecha_emision >= $${paramIndex}`;
+            query += ` AND f.fecha_emision >= $${paramIndex}`;
             params.push(fecha_desde);
             paramIndex++;
             console.log(`   - Filtro fecha_desde: ${fecha_desde}`);
@@ -340,7 +358,7 @@ const listarFacturas = async (req, res) => {
 
         // Filtro por fecha hasta
         if (fecha_hasta) {
-            query += ` AND fecha_emision <= $${paramIndex}`;
+            query += ` AND f.fecha_emision <= $${paramIndex}`;
             params.push(fecha_hasta);
             paramIndex++;
             console.log(`   - Filtro fecha_hasta: ${fecha_hasta}`);
@@ -348,7 +366,7 @@ const listarFacturas = async (req, res) => {
 
         // Filtro por estado
         if (estado) {
-            query += ` AND estado = $${paramIndex}`;
+            query += ` AND f.estado = $${paramIndex}`;
             params.push(estado);
             paramIndex++;
             console.log(`   - Filtro estado: ${estado}`);
@@ -356,22 +374,33 @@ const listarFacturas = async (req, res) => {
 
         // Filtro por tipo de comprobante
         if (tipo_cbte) {
-            query += ` AND tipo_cbte = $${paramIndex}`;
+            query += ` AND f.tipo_cbte = $${paramIndex}`;
             params.push(parseInt(tipo_cbte));
             paramIndex++;
             console.log(`   - Filtro tipo_cbte: ${tipo_cbte}`);
         }
 
-        // Filtro por cliente
+        // Filtro por ID de cliente
         if (cliente_id) {
-            query += ` AND cliente_id = $${paramIndex}`;
+            query += ` AND f.cliente_id = $${paramIndex}`;
             params.push(parseInt(cliente_id));
             paramIndex++;
             console.log(`   - Filtro cliente_id: ${cliente_id}`);
         }
 
+        // Filtro por búsqueda de texto de cliente (Razón social, nombre, CUIT/DNI)
+        if (cliente) {
+            query += ` AND (
+                COALESCE(bc.razon_social, bc.cliente_nombre, c.apellido) ILIKE $${paramIndex}
+                OR f.doc_nro::text ILIKE $${paramIndex}
+            )`;
+            params.push(`%${cliente}%`);
+            paramIndex++;
+            console.log(`   - Filtro cliente search: ${cliente}`);
+        }
+
         // Ordenar y limitar
-        query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        query += ` ORDER BY f.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
         params.push(parseInt(limit), parseInt(offset));
 
         const resultado = await pool.query(query, params);
@@ -676,10 +705,24 @@ const eliminarBorrador = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Solo se pueden eliminar facturas en estado BORRADOR o RECHAZADA.' });
         }
 
+        // Obtener el presupuesto_id antes de eliminar para restaurar su estado
+        const getPresupuestoIdQuery = 'SELECT presupuesto_id FROM factura_facturas WHERE id = $1';
+        const getPresupuestoIdResult = await pool.query(getPresupuestoIdQuery, [parseInt(id)]);
+        const presupuestoId = getPresupuestoIdResult.rows[0]?.presupuesto_id;
+
         // Eliminar items primero por foreign key
         await pool.query('DELETE FROM factura_factura_items WHERE factura_id = $1', [parseInt(id)]);
         // Eliminar factura
         await pool.query('DELETE FROM factura_facturas WHERE id = $1', [parseInt(id)]);
+
+        // Si la factura estaba vinculada a un presupuesto, limpiar vinculación y restaurar estado
+        if (presupuestoId) {
+            await pool.query(
+                `UPDATE public.presupuestos SET factura_id = NULL, estado = 'Presupuesto/Orden' WHERE id = $1`,
+                [presupuestoId]
+            );
+            console.log(`🔗 [FACTURACION-CTRL] Presupuesto ${presupuestoId} desvinculado y restaurado a 'Presupuesto/Orden'`);
+        }
 
         console.log(`✅ [FACTURACION-CTRL] Borrador #${id} eliminado exitosamente`);
         res.status(200).json({ success: true, message: 'Borrador eliminado exitosamente' });
@@ -687,6 +730,41 @@ const eliminarBorrador = async (req, res) => {
     } catch (error) {
         console.error('❌ [FACTURACION-CTRL] Error eliminando borrador:', error.message);
         res.status(500).json({ success: false, error: 'Error interno eliminando borrador' });
+    }
+};
+
+/**
+ * Anular factura (genera y emite Nota de Crédito espejo)
+ * POST /facturacion/facturas/:id/anular
+ */
+const anularFactura = async (req, res) => {
+    const { id } = req.params;
+    const usuario = req.body.usuario || 'Sistema';
+
+    console.log(`🚫 [FACTURACION-CTRL] POST /facturas/${id}/anular - Anular factura`);
+
+    try {
+        // 1. Crear borrador de Nota de Crédito espejo
+        const ncId = await facturaService.anular(parseInt(id), usuario);
+        console.log(`✅ [FACTURACION-CTRL] Borrador de NC creado ID: ${ncId}. Procediendo a emitir...`);
+
+        // 2. Emitir la Nota de Crédito
+        const ncEmitida = await facturaService.emitir(ncId);
+        console.log(`✅ [FACTURACION-CTRL] Nota de Crédito emitida ID: ${ncId}. Estado: ${ncEmitida.estado}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Comprobante anulado exitosamente',
+            data: ncEmitida
+        });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error en anularFactura:', error.message);
+        res.status(400).json({
+            success: false,
+            error: 'Error anulando factura',
+            message: error.message
+        });
     }
 };
 
@@ -701,5 +779,6 @@ module.exports = {
     sincronizarBorrador,
     validarFacturaAfip,
     buscarDevoluciones,
-    eliminarBorrador
+    eliminarBorrador,
+    anularFactura
 };

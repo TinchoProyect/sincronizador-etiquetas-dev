@@ -142,6 +142,19 @@ app.use('/api/supabase', createProxyMiddleware({
         res.status(503).json({ error: 'Módulo de producción/Supabase fuera de línea.' });
     }
 }));
+
+// Proxy para las transacciones API de Facturación (puerto 3004)
+app.use('/api/facturacion', createProxyMiddleware({
+    target: 'http://localhost:3004',
+    changeOrigin: true,
+    pathRewrite: (path, req) => {
+        return '/facturacion' + req.url; 
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Facturación (API):', err.message);
+        res.status(503).json({ error: 'Módulo de facturación fuera de línea.' });
+    }
+}));
 // ==========================================
 
 // Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)
@@ -185,6 +198,15 @@ console.log('[LOGISTICA] ✅ Rutas de Artículos montadas en /api/logistica/arti
 // Rutas del Búnker (Core Financiero)
 app.use('/api/logistica/bunker', require('./routes/bunker'));
 console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker');
+
+// Rutas de Clientes Búnker
+app.use('/api/logistica/bunker/clientes', require('./routes/clientesBunker'));
+console.log('[LOGISTICA] ✅ Rutas de Clientes Búnker montadas en /api/logistica/bunker/clientes');
+
+// Rutas de Cuenta Corriente Búnker
+app.use('/api/logistica/bunker/cuentas-corrientes', require('./routes/cuentaCorriente'));
+console.log('[LOGISTICA] ✅ Rutas de Cuenta Corriente montadas en /api/logistica/bunker/cuentas-corrientes');
+
 
 // Rutas del Diccionario ABM Búnker
 app.use('/api/logistica/bunker-diccionario', require('./routes/bunkerDiccionario'));

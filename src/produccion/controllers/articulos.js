@@ -313,7 +313,8 @@ async function buscarArticulos(req, res) {
                     src.stock_consolidado,
                     src.es_pack,
                     src.pack_hijo_codigo,
-                    src.pack_unidades
+                    src.pack_unidades,
+                    src.kilos_unidad
                 FROM stock_real_consolidado src
                 WHERE src.articulo_numero = $1 
                    OR src.codigo_barras = $1
@@ -342,7 +343,8 @@ async function buscarArticulos(req, res) {
                     src.stock_consolidado,
                     src.es_pack,
                     src.pack_hijo_codigo,
-                    src.pack_unidades
+                    src.pack_unidades,
+                    src.kilos_unidad
                 FROM stock_real_consolidado src
                 WHERE ${filterSQL}
                 ORDER BY src.descripcion

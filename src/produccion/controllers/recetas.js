@@ -274,7 +274,7 @@ async function obtenerReceta(numero_articulo) {
 
         // Obtener ingredientes de la receta
         const ingredientesQuery = `
-            SELECT nombre_ingrediente, unidad_medida, cantidad
+            SELECT ingrediente_id, nombre_ingrediente, unidad_medida, cantidad
             FROM receta_ingredientes
             WHERE receta_id = $1
             ORDER BY id
@@ -299,6 +299,7 @@ async function obtenerReceta(numero_articulo) {
             descripcion: recetaBase.descripcion,
             fecha_creacion: recetaBase.fecha_creacion,
             ingredientes: ingredientesResult.rows.map(row => ({
+                ingrediente_id: row.ingrediente_id,
                 nombre_ingrediente: row.nombre_ingrediente,
                 unidad_medida: row.unidad_medida,
                 cantidad: row.cantidad

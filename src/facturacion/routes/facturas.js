@@ -18,6 +18,22 @@ const { validarCrearFactura, validarEmitirFactura } = require('../middleware/val
 // Aplicar logger a todas las rutas
 router.use(requestLogger);
 
+// ===== RUTA DE CONFIGURACIÓN DE EMPRESA =====
+
+/**
+ * @route GET /facturacion/company-config
+ * @desc Obtener datos de configuración de la empresa (CUIT, dirección, banco, etc)
+ * @access Privado
+ */
+router.get('/company-config', (req, res) => {
+    console.log('🔍 [FACTURACION-ROUTES] GET /company-config');
+    const { COMPANY_CONFIG } = require('../config/company');
+    res.json({
+        success: true,
+        data: COMPANY_CONFIG
+    });
+});
+
 // ===== RUTAS DE FACTURAS =====
 
 /**
@@ -40,6 +56,13 @@ router.put('/facturas/:id', facturasController.actualizarFactura);
  * @access Privado
  */
 router.post('/facturas/:id/emitir', validarEmitirFactura, facturasController.emitirFactura);
+
+/**
+ * @route POST /facturacion/facturas/:id/anular
+ * @desc Anular factura y generar/emitir Nota de Crédito espejo
+ * @access Privado
+ */
+router.post('/facturas/:id/anular', facturasController.anularFactura);
 
 /**
  * @route DELETE /facturacion/facturas/:id

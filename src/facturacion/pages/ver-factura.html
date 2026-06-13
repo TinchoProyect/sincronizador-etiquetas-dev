@@ -4,10 +4,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Factura - LAMDA Proveedor Comercial</title>
+    <title>Visualización de Factura - LAMDA</title>
+    <!-- Google Fonts Inter & Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     <!-- SweetAlert2 para alertas modernas -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Librerías CDN para QR y Códigos de Barras AFIP -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <style>
+        :root {
+            --primary-color: #8e4785; /* Violeta institucional */
+            --primary-hover: #753b6d;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+            --bg-light: #f8fafc;
+            --border-color: #cbd5e1;
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-title: 'Outfit', sans-serif;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -15,373 +31,549 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--font-main);
+            background-color: #f1f5f9;
+            color: var(--text-dark);
             min-height: 100vh;
-            padding: 20px;
+            padding: 10px 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .container {
-            max-width: 900px;
-            margin: 0 auto;
+            width: 100%;
+            max-width: 850px;
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
             overflow: hidden;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
         }
 
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        .invoice-sheet {
+            padding: 12px 20px; /* Reducido verticalmente para compactar el diseño */
+            background: white;
+        }
+
+        /* Cabecera de la factura en tres columnas (AFIP) */
+        .invoice-header {
+            display: grid;
+            grid-template-columns: 1.3fr auto 1.1fr;
+            gap: 10px;
+            margin-bottom: 4px; /* Reducido para compactar */
+            align-items: start;
+        }
+
+        .company-info {
+            font-size: 10px;
+            color: var(--text-dark);
+            line-height: 1.3;
+        }
+
+        .company-logo {
+            height: 32px; /* Reducido de 44px para ahorrar espacio vertical */
+            width: auto;
+            margin-bottom: 2px;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* Recuadro de Letra AFIP */
+        .letter-box-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0 8px;
+            position: relative;
+        }
+
+        .letter-box {
+            width: 28px;
+            height: 28px;
+            background-color: var(--primary-color);
             color: white;
-            padding: 40px 30px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            opacity: 0.1;
-        }
-
-        .header-content {
-            position: relative;
-            z-index: 1;
-        }
-
-        .company-name {
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        .company-tagline {
+            font-family: var(--font-title);
             font-size: 16px;
-            opacity: 0.9;
-            font-weight: 300;
-            margin-bottom: 20px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            box-shadow: 0 2px 6px rgba(142, 71, 133, 0.15);
         }
 
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .header p {
-            font-size: 14px;
-            opacity: 0.8;
-        }
-
-        .cliente-destacado {
-            background: linear-gradient(135deg, #e8f4f8 0%, #d1ecf1 100%);
-            border: 2px solid #17a2b8;
-            border-radius: 12px;
-            padding: 25px;
-            margin: 20px 0;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.15);
-        }
-
-        .cliente-nombre {
-            font-size: 32px;
-            font-weight: 700;
-            color: #2c3e50;
-            margin-bottom: 8px;
+        .letter-code {
+            font-size: 7px;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-top: 3px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
         }
 
-        .cliente-info {
-            font-size: 16px;
-            color: #17a2b8;
-            font-weight: 500;
+        /* Línea divisoria vertical */
+        .vertical-divider {
+            width: 1px;
+            background-color: #e2e8f0;
+            height: 55px; /* Reducido de 75px */
+            position: absolute;
+            top: 38px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .invoice-info {
+            text-align: right;
+            font-size: 10px;
+            color: var(--text-dark);
+            line-height: 1.3;
+        }
+
+        .invoice-title {
+            font-family: var(--font-title);
+            font-size: 13.5px; /* Reducido */
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 1px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+
+        .invoice-number {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 2px;
+        }
+
+        .header-divider {
+            border-bottom: 2px solid var(--primary-color);
+            margin-bottom: 6px; /* Reducido de 12px */
         }
 
         .loading {
             text-align: center;
             padding: 60px 20px;
-            color: #667eea;
+            color: var(--primary-color);
         }
 
         .loading-spinner {
             border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
+            border-top: 4px solid var(--primary-color);
             border-radius: 50%;
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 45px;
             animation: spin 1s linear infinite;
             margin: 0 auto 20px;
         }
 
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .error {
-            background: #fee;
-            border: 2px solid #fcc;
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
             border-radius: 8px;
             padding: 20px;
-            margin: 20px;
-            color: #c33;
+            margin: 30px;
+            color: #991b1b;
+            font-weight: 500;
+            font-size: 14px;
         }
 
-        .content {
-            padding: 30px;
-        }
-
+        /* Insignias de Estado */
         .badge {
             display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-
-        .badge.borrador {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .badge.aprobada {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge.rechazada {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .info-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            border-left: 4px solid #667eea;
-        }
-
-        .info-card h3 {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 8px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
-        .info-card p {
-            font-size: 18px;
-            color: #333;
+        .badge.borrador {
+            background: #fffbeb;
+            color: #d97706;
+            border: 1px solid #fde68a;
+        }
+
+        .badge.aprobada {
+            background: #ecfdf5;
+            color: #059669;
+            border: 1px solid #a7f3d0;
+        }
+
+        .badge.aprobada_local {
+            background: #ecfeff;
+            color: #0891b2;
+            border: 1px solid #a5f3fc;
+        }
+
+        .badge.rechazada {
+            background: #fdf2f2;
+            color: #dc2626;
+            border: 1px solid #fde8e8;
+        }
+
+        .badge.anulada {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+        }
+
+        /* Panel del Cliente */
+        .client-panel {
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--primary-color);
+            border-radius: 4px;
+            padding: 4px 10px; /* Reducido */
+            margin-bottom: 6px; /* Reducido */
+        }
+
+        .panel-title {
+            font-size: 9px;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .client-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 3px 15px; /* Reducido */
+            font-size: 10px;
+        }
+
+        .client-field {
+            line-height: 1.3;
+        }
+
+        .field-label {
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-right: 5px;
+        }
+
+        .field-value {
             font-weight: 600;
+            color: var(--text-dark);
         }
 
-        .section {
-            margin-bottom: 30px;
-        }
-
-        .section-title {
-            font-size: 20px;
-            color: #333;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #667eea;
-        }
-
+        /* Tabla de Productos */
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 15px;
+            margin-bottom: 6px; /* Reducido */
+            font-size: 10px;
         }
 
         .items-table th {
-            background: #667eea;
+            background-color: var(--primary-color);
             color: white;
-            padding: 12px;
-            text-align: left;
+            padding: 3px 6px;
             font-weight: 600;
+            text-align: left;
         }
 
         .items-table td {
-            padding: 12px;
-            border-bottom: 1px solid #eee;
+            padding: 3px 6px; /* Reducido a 3px vertical para compactar como sándwich */
+            border-bottom: 1px solid #f1f5f9;
+            color: var(--text-dark);
+            vertical-align: middle;
         }
 
-        .items-table tr:hover {
-            background: #f8f9fa;
+        .items-table tr:nth-child(even) td {
+            background-color: #fafafa;
         }
 
         .items-table .text-right {
             text-align: right;
         }
 
-        .totals {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-
-        .totals-row {
+        /* Sección de Totales */
+        .totals-section {
             display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            font-size: 16px;
+            justify-content: flex-end;
+            margin-bottom: 6px;
         }
 
-        .totals-row.total {
-            border-top: 2px solid #667eea;
-            margin-top: 10px;
-            padding-top: 15px;
-            font-size: 24px;
-            font-weight: 700;
-            color: #667eea;
+        .totals-table {
+            width: 240px;
+            border-collapse: collapse;
+            font-size: 10px;
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
         }
 
-        .actions {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            padding: 30px;
-            background: #f8f9fa;
+        .totals-table td {
+            padding: 2px 8px; /* Reducido */
+            border-bottom: 1px solid #f1f5f9;
         }
 
-        .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
+        .totals-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .totals-label {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .totals-val {
+            text-align: right;
             font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-decoration: none;
+            color: var(--text-dark);
+        }
+
+        .totals-val.total-val {
+            color: var(--primary-color);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        /* Bloque AFIP CAE + QR + Barcode */
+        .cae-section {
+            border: 1.5px solid var(--primary-color);
+            border-radius: 6px;
+            padding: 5px 10px; /* Reducido */
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 6px;
+            background-color: #fffafb;
+        }
+
+        .cae-graphics {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .qr-image {
+            width: 85px;
+            height: 85px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            background: white;
+            display: block;
+        }
+
+        .barcode-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            padding: 3px 6px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+        }
+
+        .barcode-image {
+            max-height: 28px;
+            width: auto;
+            display: block;
+        }
+
+        /* Ocultar elementos sin contenido cargado */
+        .qr-image:not([src]), .barcode-image:not([src]), .barcode-container:not(.active) {
+            display: none !important;
+        }
+
+        .cae-details {
+            flex: 1;
+            font-size: 10px;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1px;
+        }
+
+        .cae-title {
+            font-size: 7.5px;
+            font-weight: 800;
+            color: var(--primary-color);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .cae-value {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-dark);
+            letter-spacing: 0.5px;
+        }
+
+        .cae-vto {
+            color: var(--text-muted);
+            font-size: 9.5px;
+        }
+
+        .cae-badge-official {
+            font-size: 7.5px;
+            font-weight: 800;
+            color: #059669;
+            border: 1.5px solid #a7f3d0;
+            background-color: #ecfdf5;
+            padding: 1px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
             display: inline-block;
         }
 
+        /* Datos bancarios */
+        .bank-details-box {
+            border-top: 1px dashed var(--border-color);
+            padding-top: 4px; /* Reducido */
+            margin-top: 6px; /* Reducido */
+            font-size: 9.5px;
+            color: var(--text-muted);
+            line-height: 1.35;
+        }
+
+        .bank-title {
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            font-size: 8.5px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Barra de Acciones */
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            padding: 12px 20px;
+            background: #f8fafc;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .btn {
+            padding: 8px 18px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            font-family: var(--font-main);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
         .btn-primary {
-            background: #667eea;
+            background-color: var(--primary-color);
             color: white;
         }
 
         .btn-primary:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
         }
 
         .btn-secondary {
-            background: #6c757d;
-            color: white;
+            background-color: white;
+            border-color: #cbd5e1;
+            color: #475569;
         }
 
         .btn-secondary:hover {
-            background: #5a6268;
+            background-color: #f1f5f9;
+            color: #1e293b;
         }
 
         .btn-success {
-            background: #10b981;
+            background-color: #10b981;
             color: white;
         }
 
         .btn-success:hover {
-            background: #059669;
+            background-color: #059669;
+            transform: translateY(-1px);
         }
 
         .btn-warning {
-            background: #f59e0b;
+            background-color: #f59e0b;
             color: white;
         }
 
         .btn-warning:hover {
-            background: #d97706;
+            background-color: #d97706;
+            transform: translateY(-1px);
         }
 
-        .cae-box {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 20px;
-            text-align: center;
-        }
+        /* Optimizaciones para Impresión */
+        @media print {
+            body {
+                background: white !important;
+                padding: 0 !important;
+                display: block !important;
+                min-height: auto !important;
+            }
 
-        .cae-box h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
-            opacity: 0.9;
-        }
+            .container {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+            }
 
-        .cae-box .cae-number {
-            font-size: 28px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            margin-bottom: 10px;
-        }
+            .invoice-sheet {
+                padding: 0 !important;
+            }
 
-        .cae-box .cae-vto {
-            font-size: 14px;
-            opacity: 0.9;
-        }
+            .actions {
+                display: none !important;
+            }
 
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
+            /* Quitar el cartel redundante de aprobado/borrador en impresión */
+            .badge {
+                display: none !important;
+            }
 
-        .alert-info {
-            background: #dbeafe;
-            border: 1px solid #3b82f6;
-            color: #1e40af;
-        }
+            /* Forzar visualización de imágenes con src cargados en impresión */
+            .qr-image[src], .barcode-image[src] {
+                display: block !important;
+            }
+            
+            .barcode-container.active {
+                display: flex !important;
+            }
 
-        .alert-success {
-            background: #d1fae5;
-            border: 1px solid #10b981;
-            color: #065f46;
-        }
-
-        .alert-error {
-            background: #fee2e2;
-            border: 1px solid #ef4444;
-            color: #991b1b;
+            /* Ocultar ID interno y bloque de control interno en impresión */
+            .internal-control-id, .internal-control-block {
+                display: none !important;
+            }
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <div class="header" style="display: flex; justify-content: space-between; align-items: center; padding: 30px;">
-            <div class="header-content" style="text-align: left;">
-                <div class="company-name" style="font-size: 20px; font-weight: 700; opacity: 0.9;">LAMDA - Proveedor
-                    Comercial</div>
-                <div class="company-tagline" style="font-size: 14px; opacity: 0.8; margin-bottom: 10px;">Distribuidora
-                    de Frutos Secos</div>
-                <h1 style="margin: 0; font-size: 28px;">🧾 Factura Electrónica</h1>
-                <p style="margin: 5px 0 0 0; opacity: 0.9;">Sistema de Gestión de Facturación</p>
-            </div>
-        </div>
-
         <div id="loading" class="loading">
             <div class="loading-spinner"></div>
             <p>Cargando factura...</p>
@@ -389,17 +581,20 @@
 
         <div id="error" class="error" style="display: none;"></div>
 
-        <div id="content" class="content" style="display: none;">
+        <div id="content" class="invoice-sheet" style="display: none;">
             <!-- El contenido se cargará dinámicamente -->
         </div>
 
         <div class="actions" id="actions">
-            <button class="btn btn-secondary" onclick="window.close()">Cerrar</button>
+            <button class="btn btn-secondary" onclick="window.close()">❌ Cerrar</button>
             <button class="btn btn-success" id="btn-obtener-cae" onclick="obtenerCAE()" style="display: none;">
-                📄 Obtener CAE de AFIP
+                📄 Obtener CAE de ARCA
             </button>
             <button class="btn btn-success" onclick="descargarPDF()">📄 Descargar PDF</button>
-            <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir Página</button>
+            <button class="btn btn-primary" id="btn-whatsapp" onclick="enviarPorWhatsApp()" style="background-color: #10b981; border-color: #059669; display: none; color: white;">
+                🟢 Enviar por WhatsApp
+            </button>
+            <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir Factura</button>
         </div>
     </div>
 
@@ -410,10 +605,30 @@
         // Constante para la URL base de la API
         const API_URL = 'http://localhost:3004/facturacion';
 
-        if (!facturaId) {
-            mostrarError('No se especificó el ID de la factura');
-        } else {
-            cargarFactura(facturaId);
+        let companyConfig = null;
+        let currentFactura = null;
+
+        // Inicializar el flujo de carga
+        inicializar();
+
+        async function inicializar() {
+            try {
+                // Cargar datos de la empresa desde el servidor
+                const res = await fetch(`${API_URL}/company-config`);
+                const result = await res.json();
+                if (result.success && result.data) {
+                    companyConfig = result.data;
+                    console.log('✅ Configuración de empresa obtenida:', companyConfig);
+                }
+            } catch (err) {
+                console.warn('⚠️ No se pudo obtener la configuración corporativa:', err.message);
+            }
+
+            if (!facturaId) {
+                mostrarError('No se especificó el ID de la factura');
+            } else {
+                cargarFactura(facturaId);
+            }
         }
 
         async function cargarFactura(id) {
@@ -443,14 +658,19 @@
         }
 
         function renderizarFactura(factura) {
+            currentFactura = factura;
             document.getElementById('loading').style.display = 'none';
             document.getElementById('content').style.display = 'block';
 
             let badgeClass = 'borrador';
-            if (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') {
+            if (factura.estado === 'APROBADA') {
                 badgeClass = 'aprobada';
+            } else if (factura.estado === 'APROBADA_LOCAL') {
+                badgeClass = 'aprobada_local';
             } else if (factura.estado === 'RECHAZADA') {
                 badgeClass = 'rechazada';
+            } else if (factura.estado === 'ANULADA') {
+                badgeClass = 'anulada';
             }
 
             const formatMoney = (num) => {
@@ -464,75 +684,126 @@
                 1: 'Factura A',
                 6: 'Factura B',
                 11: 'Factura C',
+                2: 'Nota de Débito A',
                 3: 'Nota de Crédito A',
+                7: 'Nota de Débito B',
                 8: 'Nota de Crédito B',
+                12: 'Nota de Débito C',
                 13: 'Nota de Crédito C'
             };
 
             const tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
 
+            const obtenerLetra = (tipo) => {
+                const t = parseInt(tipo);
+                if ([1, 2, 3].includes(t)) return 'A';
+                if ([6, 7, 8].includes(t)) return 'B';
+                if ([11, 12, 13].includes(t)) return 'C';
+                return 'X';
+            };
+
+            const letra = obtenerLetra(factura.tipo_cbte);
+            const codigoCbte = String(factura.tipo_cbte).padStart(3, '0');
+            const numFactura = formatNumeroFactura(factura);
+
+            // Cargar datos de emisor desde la configuración del servidor, o usar valores por defecto (con el celular 221-6615746)
+            const address = companyConfig ? companyConfig.address : 'Av. 19 Nº 406';
+            const cuitFmt = companyConfig ? companyConfig.cuitFmt : '23-24892174-9';
+            const email = companyConfig ? companyConfig.email : '';
+            const phone = companyConfig && companyConfig.phone ? companyConfig.phone : '221-6615746';
+            const bankName = companyConfig ? companyConfig.bank : 'Banco Galicia';
+            const bankDU = companyConfig ? companyConfig.du : '24892174';
+            const bankAccount = companyConfig ? companyConfig.account : '4007844-1 373-4';
+            const bankCbu = companyConfig ? companyConfig.cbuFmt : '00703732 30004007 844141';
+            const bankAlias = companyConfig ? companyConfig.alias : 'LAMDA.SER.MARTIN';
+            const inicioActividad = companyConfig && companyConfig.inicioActividad ? companyConfig.inicioActividad : '01/01/2026';
+
+            // Generar HTML de la hoja de factura
+            // Nota: Se fusionó CUIT e Ingresos Brutos en un renglón, y se colocó el estado badge inline con el título
             let html = `
-                <span class="badge ${badgeClass}">${factura.estado}</span>
+                <!-- Cabecera de la Factura -->
+                <div class="invoice-header">
+                    <div class="company-info">
+                        <img src="../img/logo_LAMDA_grande.png" class="company-logo" alt="LAMDA Logo" onerror="this.src='../img/logo_LAMDA.png'; this.onerror=null;">
+                        <div>Dirección: ${address}</div>
+                        <div>Condición IVA: Responsable Inscripto</div>
+                        <div>Tel / WA: ${phone}${email ? ` | Email: ${email}` : ''}</div>
+                    </div>
+                    
+                    <div class="letter-box-container">
+                        <div class="letter-box">${letra}</div>
+                        <div class="letter-code">COD. ${codigoCbte}</div>
+                        <div class="vertical-divider"></div>
+                    </div>
+                    
+                    <div class="invoice-info">
+                        <div class="invoice-title">
+                            ${tipoComprobante} 
+                            <span class="badge ${badgeClass}" style="font-size: 8.5px; padding: 2px 6px; vertical-align: middle;">${factura.estado}</span>
+                        </div>
+                        <div class="invoice-number">Nº ${numFactura}</div>
+                        <div><strong>Fecha de Emisión:</strong> ${formatDate(factura.fecha_emision)}</div>
+                        <div><strong>CUIT / IIBB:</strong> ${cuitFmt}</div>
+                        <div><strong>Inicio de Actividades:</strong> ${inicioActividad}</div>
+                    </div>
+                </div>
+                
+                <div class="header-divider"></div>
+                
                 ${(factura.estado === 'RECHAZADA' && factura.observaciones) ? `
-                <div style="background-color: #fee2e2; border: 1px solid #ef4444; border-left: 5px solid #ef4444; color: #991b1b; padding: 15px; margin-top: 20px; border-radius: 6px; font-weight: 500;">
-                    ⚠️ Rechazada por AFIP: ${factura.observaciones}
+                <div style="background-color: #fee2e2; border: 1px solid #ef4444; border-left: 5px solid #ef4444; color: #991b1b; padding: 10px; margin-bottom: 12px; border-radius: 6px; font-weight: 500; font-size: 11.5px;">
+                    ⚠️ Rechazada por ARCA: ${factura.observaciones}
                 </div>` : ''}
 
-                <div class="cliente-destacado" style="margin-top: ${(factura.estado === 'RECHAZADA' && factura.observaciones) ? '10px' : '20px'};">
-                    <div class="cliente-nombre">${factura.razon_social || 'Cliente'}</div>
-                    <div class="cliente-info">Cliente</div>
-                </div>
+                ${(factura.estado === 'ANULADA') ? `
+                <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-left: 5px solid #64748b; color: #475569; padding: 10px; margin-bottom: 12px; border-radius: 6px; font-weight: 700; font-size: 11.5px; text-align: center; text-transform: uppercase; letter-spacing: 1px;">
+                    🚫 COMPROBANTE ANULADO (Cuenta Corriente y Stock Compensados)
+                </div>` : ''}
 
-                <div class="info-grid">
-                    <div class="info-card">
-                        <h3>Tipo de Comprobante</h3>
-                        <p>${tipoComprobante}</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>Número</h3>
-                        <p>${formatNumeroFactura(factura)}</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>Fecha de Emisión</h3>
-                        <p>${formatDate(factura.fecha_emision)}</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>ID Factura</h3>
-                        <p>#${factura.id}</p>
-                    </div>
-                </div>
-
-                <div class="section">
-                    <h2 class="section-title">Información del Cliente</h2>
-                    <div class="info-grid">
-                        <div class="info-card">
-                            <h3>Tipo de Documento</h3>
-                            <p>${factura.doc_tipo || '-'}</p>
+                <!-- Panel Cliente -->
+                <div class="client-panel">
+                    <div class="panel-title">Receptor del Comprobante</div>
+                    <div class="client-grid">
+                        <div class="client-field">
+                            <span class="field-label">Razón Social / Nombre:</span>
+                            <span class="field-value">${factura.razon_social || 'Consumidor Final'}</span>
                         </div>
-                        <div class="info-card">
-                            <h3>Número de Documento</h3>
-                            <p>${factura.doc_nro || '-'}</p>
+                        <div class="client-field">
+                            <span class="field-label">${factura.doc_tipo === 80 ? 'CUIT' : factura.doc_tipo === 96 ? 'DNI' : 'Documento'}:</span>
+                            <span class="field-value">${factura.cliente_cuit || factura.doc_nro || 'S/D'}</span>
                         </div>
-                        <div class="info-card">
-                            <h3>Condición IVA</h3>
-                            <p>${obtenerCondicionIVA(factura.condicion_iva_id)}</p>
+                        <div class="client-field">
+                            <span class="field-label">Condición IVA:</span>
+                            <span class="field-value">${factura.cliente_condicion_iva || obtenerCondicionIVA(factura.condicion_iva_id)}</span>
+                        </div>
+                        <div class="client-field">
+                            <span class="field-label">Domicilio Fiscal:</span>
+                            <span class="field-value">${factura.cliente_domicilio || 'S/D'}</span>
+                        </div>
+                        <div class="client-field">
+                            <span class="field-label">Provincia:</span>
+                            <span class="field-value">${factura.cliente_provincia || 'S/D'}</span>
+                        </div>
+                        <div class="client-field internal-control-id">
+                            <span class="field-label">ID Interno / Presupuesto:</span>
+                            <span class="field-value">#${factura.id} ${factura.presupuesto_id ? `(Presu: #${factura.presupuesto_id})` : ''}</span>
                         </div>
                     </div>
                 </div>
             `;
 
+            // Agregar tabla de items
             if (factura.items && factura.items.length > 0) {
                 html += `
                     <div class="section">
-                        <h2 class="section-title">Detalle de Productos</h2>
                         <table class="items-table">
                             <thead>
                                 <tr>
                                     <th>Descripción</th>
-                                    <th class="text-right">Cantidad</th>
-                                    <th class="text-right">Precio Unit.</th>
-                                    <th class="text-right">IVA</th>
-                                    <th class="text-right">Subtotal</th>
+                                    <th class="text-right" style="width: 75px;">Cant</th>
+                                    <th class="text-right" style="width: 110px;">Precio Unit.</th>
+                                    <th class="text-right" style="width: 80px;">IVA</th>
+                                    <th class="text-right" style="width: 120px;">Subtotal</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -562,25 +833,22 @@
             const ivasPorAlicuota = {};
             let subtotalAntesDescuento = 0;
 
-            // Primero calcular el subtotal antes del descuento
             factura.items.forEach(item => {
                 const qty = parseFloat(item.qty) || 0;
                 const pUnit = parseFloat(item.p_unit) || 0;
                 subtotalAntesDescuento += qty * pUnit;
             });
 
-            // Aplicar descuento para obtener neto
             const descuento = parseFloat(factura.descuento) || 0;
             const montoDescuento = subtotalAntesDescuento * descuento;
             const subtotalConDescuento = subtotalAntesDescuento - montoDescuento;
 
-            // Ahora calcular gravado/exento y agrupar IVA
             let netoGravado = 0;
             let netoExento = 0;
 
             factura.items.forEach(item => {
                 const codigo = normalizarCodigoIVA(item.alic_iva_id);
-                const baseImp = parseFloat(item.imp_neto) || 0;  // Este ya tiene descuento aplicado
+                const baseImp = parseFloat(item.imp_neto) || 0;
                 const impIva = parseFloat(item.imp_iva) || 0;
 
                 if (codigo === 3) {
@@ -594,172 +862,302 @@
                 }
             });
 
-            html += `<div class="totals">`;
+            // Resumen de Totales
+            html += `
+                <div class="totals-section">
+                    <table class="totals-table">
+            `;
 
-            // Subtotal y descuento si aplica
             if (descuento > 0) {
                 html += `
-                    <div class="totals-row">
-                        <span>Subtotal:</span>
-                        <span>${formatMoney(subtotalAntesDescuento)}</span>
-                    </div>
-                `;
-
-                const porcentajeDesc = (descuento * 100).toFixed(2).replace('.', ',');
-                html += `
-                    <div class="totals-row">
-                        <span>Descuento (${porcentajeDesc}%):</span>
-                        <span>-${formatMoney(montoDescuento)}</span>
-                    </div>
+                    <tr>
+                        <td class="totals-label">Subtotal:</td>
+                        <td class="totals-val">${formatMoney(subtotalAntesDescuento)}</td>
+                    </tr>
+                    <tr>
+                        <td class="totals-label">Descuento (${(descuento * 100).toFixed(2).replace('.', ',')}%):</td>
+                        <td class="totals-val" style="color: #ef4444;">-${formatMoney(montoDescuento)}</td>
+                    </tr>
                 `;
             }
 
-            // Neto Gravado (ya con descuento aplicado)
             if (netoGravado > 0) {
                 html += `
-                    <div class="totals-row">
-                        <span>Neto Gravado:</span>
-                        <span>${formatMoney(netoGravado)}</span>
-                    </div>
+                    <tr>
+                        <td class="totals-label">Neto Gravado:</td>
+                        <td class="totals-val">${formatMoney(netoGravado)}</td>
+                    </tr>
                 `;
             }
 
-            // Neto Exento
             if (netoExento > 0) {
                 html += `
-                    <div class="totals-row">
-                        <span>Neto Exento:</span>
-                        <span>${formatMoney(netoExento)}</span>
-                    </div>
+                    <tr>
+                        <td class="totals-label">Neto Exento:</td>
+                        <td class="totals-val">${formatMoney(netoExento)}</td>
+                    </tr>
                 `;
             }
 
-            // IVA discriminado por tasa
             const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
-
             if (codigosOrdenados.length > 0) {
                 codigosOrdenados.forEach(codigo => {
                     const montoIva = ivasPorAlicuota[codigo];
                     const etiqueta = obtenerAlicuotaIVA(codigo);
 
                     html += `
-                        <div class="totals-row">
-                            <span>IVA ${etiqueta}:</span>
-                            <span>${formatMoney(montoIva)}</span>
-                        </div>
+                        <tr>
+                            <td class="totals-label">IVA ${etiqueta}:</td>
+                            <td class="totals-val">${formatMoney(montoIva)}</td>
+                        </tr>
                     `;
                 });
 
-                // Total IVA si hay múltiples alícuotas
                 if (codigosOrdenados.length > 1) {
                     const totalIva = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
                     html += `
-                        <div class="totals-row" style="font-weight: 600;">
-                            <span>Total IVA:</span>
-                            <span>${formatMoney(totalIva)}</span>
-                        </div>
+                        <tr>
+                            <td class="totals-label">Total IVA:</td>
+                            <td class="totals-val" style="font-weight: bold;">${formatMoney(totalIva)}</td>
+                        </tr>
                     `;
                 }
             }
 
             if (factura.imp_trib > 0) {
                 html += `
-                    <div class="totals-row">
-                        <span>Otros Tributos:</span>
-                        <span>${formatMoney(factura.imp_trib)}</span>
-                    </div>
+                    <tr>
+                        <td class="totals-label">Otros Tributos:</td>
+                        <td class="totals-val">${formatMoney(factura.imp_trib)}</td>
+                    </tr>
                 `;
             }
 
             html += `
-                    <div class="totals-row total">
-                        <span>TOTAL:</span>
-                        <span>${formatMoney(factura.imp_total)}</span>
-                    </div>
-                </div>
+                    <tr style="border-top: 1.5px solid var(--primary-color);">
+                        <td class="totals-label" style="font-size: 12px; font-weight: bold; color: var(--primary-color);">TOTAL:</td>
+                        <td class="totals-val total-val">${formatMoney(factura.imp_total)}</td>
+                    </tr>
+                </table>
+            </div>
             `;
 
+            // Bloque de Autorización CAE con QR y Código de Barras (imprimibles vía img)
             if (factura.cae) {
                 html += `
-                    <div class="cae-box">
-                        <h3>Código de Autorización Electrónico (CAE)</h3>
-                        <div class="cae-number">${factura.cae}</div>
-                        <div class="cae-vto">Vencimiento: ${formatDate(factura.cae_vto)}</div>
+                    <div class="cae-section">
+                        <div class="cae-graphics">
+                            <img id="qr-img" class="qr-image" alt="Código QR ARCA" />
+                            <div class="barcode-container" id="barcode-container">
+                                <img id="barcode-img" class="barcode-image" alt="Código de Barras ARCA" />
+                            </div>
+                        </div>
+                        <div class="cae-details">
+                            <div class="cae-title">Código de Autorización Electrónico (CAE)</div>
+                            <div class="cae-value">CAE ${factura.cae}</div>
+                            <div class="cae-vto">Vencimiento: ${formatDate(factura.cae_vto)}</div>
+                            <div class="cae-badge-official">🔒 Autorizado por ARCA</div>
+                        </div>
                     </div>
                 `;
             } else if (factura.serie_interna) {
                 html += `
-                    <div class="cae-box">
-                        <h3>Factura Interna</h3>
-                        <div class="cae-number">${factura.serie_interna}-${factura.nro_interno}</div>
-                        <div class="cae-vto">Sin CAE (Facturación Interna)</div>
+                    <div class="cae-section" style="border-color: #64748b; background-color: #f8fafc;">
+                        <div style="background-color: #64748b; color: white; padding: 8px 12px; border-radius: 4px; font-weight: bold; font-size: 16px;">
+                            📄
+                        </div>
+                        <div class="cae-details" style="align-items: flex-start; text-align: left;">
+                            <div class="cae-title" style="color: #64748b;">Comprobante de Facturación Interna</div>
+                            <div class="cae-value" style="font-size: 13px;">${factura.serie_interna}-${factura.nro_interno}</div>
+                            <div class="cae-vto">Sin validez fiscal (Emisión local de control)</div>
+                        </div>
+                        <div style="font-size: 9.5px; font-weight: bold; color: #64748b; border: 1.5px solid #64748b; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Interno
+                        </div>
                     </div>
                 `;
             }
 
+            // Datos bancarios
+            if (bankName || bankCbu) {
+                html += `
+                    <div class="bank-details-box">
+                        <div class="bank-title">Medios de Pago / Transferencia Bancaria</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 20px;">
+                            <div>
+                                <div><strong>${bankName}</strong>${bankDU ? ` — DU: ${bankDU}` : ''}${bankAccount ? ` — Cta. Corriente: ${bankAccount}` : ''}</div>
+                                <div><strong>CBU:</strong> ${bankCbu}</div>
+                                <div><strong>CUIT/CUIL:</strong> ${cuitFmt}</div>
+                            </div>
+                            <div style="background-color: #fdf6fd; border: 1px solid var(--primary-color); padding: 5px 12px; border-radius: 6px; text-align: center; min-width: 180px;">
+                                <div style="font-size: 7.5px; font-weight: 800; color: var(--primary-color); text-transform: uppercase; letter-spacing: 0.5px;">ALIAS PARA TRANSFERIR</div>
+                                <div style="font-size: 12.5px; font-weight: 800; color: var(--primary-color); letter-spacing: 0.5px; margin-top: 1px;">${bankAlias}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Información Adicional del Sistema
             html += `
-                <div class="section" style="margin-top: 30px;">
-                    <h2 class="section-title">Información Adicional</h2>
-                    <div class="info-grid">
-                        ${factura.presupuesto_id ? `
-                        <div class="info-card">
-                            <h3>Presupuesto Origen</h3>
-                            <p>#${factura.presupuesto_id}</p>
-                        </div>
-                        ` : ''}
-                        <div class="info-card">
-                            <h3>Moneda</h3>
-                            <p>${factura.moneda || 'PES'} (Cotiz: ${factura.mon_cotiz || 1})</p>
-                        </div>
-                        <div class="info-card">
-                            <h3>Requiere AFIP</h3>
-                            <p>${factura.requiere_afip ? 'Sí' : 'No'}</p>
-                        </div>
-                        <div class="info-card">
-                            <h3>Fecha de Creación</h3>
-                            <p>${new Date(factura.created_at).toLocaleString('es-AR')}</p>
-                        </div>
+                <div class="internal-control-block" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
+                    <div style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Información de Control Interno</div>
+                    <div style="display: flex; gap: 20px; font-size: 10.5px; color: var(--text-muted);">
+                        ${factura.presupuesto_id ? `<div><strong>Presupuesto Origen:</strong> #${factura.presupuesto_id}</div>` : ''}
+                        <div><strong>Moneda:</strong> ${factura.moneda || 'PES'} (Cotiz: ${factura.mon_cotiz || 1})</div>
+                        <div><strong>Requiere ARCA:</strong> ${factura.requiere_afip ? 'Sí' : 'No'}</div>
+                        <div><strong>Creada el:</strong> ${new Date(factura.created_at).toLocaleString('es-AR')}</div>
                     </div>
                 </div>
             `;
 
             document.getElementById('content').innerHTML = html;
 
-            // Mostrar botón "Obtener CAE" si:
-            // - Estado es BORRADOR o RECHAZADA
-            // - Requiere AFIP
-            // - NO tiene CAE todavía
+            // Renderizar gráficos AFIP en formato img para asegurar su impresión
+            if (factura.cae) {
+                // 1. Renderizar Código QR en formato base64 y asignarlo a img
+                let qrUrl = factura.qr_url;
+                if (!qrUrl) {
+                    try {
+                        const cuitRaw = (companyConfig && companyConfig.cuitRaw) 
+                            ? companyConfig.cuitRaw 
+                            : '23248921749';
+                        
+                        const fechaStr = factura.fecha_emision instanceof Date
+                            ? factura.fecha_emision.toISOString().split('T')[0]
+                            : String(factura.fecha_emision).split('T')[0];
+                        const fechaYmd = fechaStr.replace(/-/g, '');
+
+                        const qrData = {
+                            ver: 1,
+                            fecha: fechaYmd,
+                            cuit: parseInt(cuitRaw, 10),
+                            ptoVta: parseInt(factura.pto_vta || 0, 10),
+                            tipoCmp: parseInt(factura.tipo_cbte || 0, 10),
+                            nroCmp: parseInt(factura.cbte_nro || 0, 10),
+                            importe: parseFloat(factura.imp_total || 0),
+                            moneda: factura.moneda || 'PES',
+                            ctz: parseFloat(factura.mon_cotiz || 1),
+                            tipoCodAut: 'E',
+                            codAut: parseInt(factura.cae, 10)
+                        };
+
+                        if (factura.doc_tipo) {
+                            qrData.tipoDocRec = parseInt(factura.doc_tipo, 10);
+                        }
+                        if (factura.doc_nro) {
+                            qrData.nroDocRec = parseInt(factura.doc_nro, 10);
+                        }
+
+                        // Codificar en Base64 compatible con UTF-8
+                        const jsonStr = JSON.stringify(qrData);
+                        const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+                        qrUrl = `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
+                        console.log('✅ QR URL generada en frontend como fallback:', qrUrl);
+                    } catch (err) {
+                        console.error('Error generando QR URL en frontend:', err);
+                    }
+                }
+
+                if (qrUrl) {
+                    try {
+                        QRCode.toDataURL(qrUrl, {
+                            width: 120,
+                            margin: 1,
+                            color: {
+                                dark: '#1e293b',
+                                light: '#ffffff'
+                            }
+                        }, function (error, url) {
+                            if (error) {
+                                console.error('Error generando QR:', error);
+                            } else {
+                                const qrImg = document.getElementById('qr-img');
+                                qrImg.src = url;
+                                qrImg.setAttribute('src', url);
+                            }
+                        });
+                    } catch (err) {
+                        console.error('Error con librería QRCode:', err);
+                    }
+                }
+                
+                // 2. Renderizar Código de Barras Code128 directamente en el elemento img
+                if (factura.barcode_value) {
+                    try {
+                        const barcodeImg = document.getElementById('barcode-img');
+                        JsBarcode("#barcode-img", factura.barcode_value, {
+                            format: "CODE128",
+                            width: 1.2,
+                            height: 28,
+                            displayValue: true,
+                            fontSize: 8,
+                            font: "monospace",
+                            lineColor: "#1e293b",
+                            margin: 0
+                        });
+                        const srcVal = barcodeImg.getAttribute('src');
+                        if (srcVal) {
+                            barcodeImg.setAttribute('src', srcVal);
+                        }
+                        document.getElementById('barcode-container').classList.add('active');
+                    } catch (err) {
+                        console.error('Error generando Código de Barras en pantalla:', err);
+                    }
+                }
+            }
+
+            // Mostrar botón "Obtener CAE" si corresponde
             const btnCae = document.getElementById('btn-obtener-cae');
             if ((factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip && !factura.cae) {
                 btnCae.style.display = 'inline-block';
                 if (factura.estado === 'RECHAZADA') {
-                    btnCae.innerHTML = '🔄 Reintentar Emisión AFIP';
+                    btnCae.innerHTML = '🔄 Reintentar Emisión ARCA';
                     btnCae.className = 'btn btn-warning';
-                    console.log('✅ Botón "Obtener CAE" habilitado para Reintento (RECHAZADA)');
                 } else {
-                    btnCae.innerHTML = '📄 Obtener CAE de AFIP';
+                    btnCae.innerHTML = '📄 Obtener CAE de ARCA';
                     btnCae.className = 'btn btn-success';
-                    console.log('✅ Botón "Obtener CAE" habilitado (BORRADOR sin CAE)');
                 }
             } else {
                 btnCae.style.display = 'none';
-                console.log('ℹ️ Botón "Obtener CAE" oculto:', {
-                    estado: factura.estado,
-                    requiere_afip: factura.requiere_afip,
-                    tiene_cae: !!factura.cae
-                });
+            }
+
+            // Mostrar botón WhatsApp si la factura está aprobada (ya sea AFIP o Local)
+            const btnWp = document.getElementById('btn-whatsapp');
+            if (btnWp) {
+                const puedeEnviarse = factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL';
+                btnWp.style.display = puedeEnviarse ? 'inline-block' : 'none';
+                if (puedeEnviarse) {
+                    if (factura.whatsapp_facturas && factura.whatsapp_facturas.trim()) {
+                        btnWp.disabled = false;
+                        btnWp.style.backgroundColor = '#10b981';
+                        btnWp.style.borderColor = '#059669';
+                        btnWp.style.color = 'white';
+                        btnWp.style.cursor = 'pointer';
+                        btnWp.innerHTML = '🟢 Enviar por WhatsApp';
+                        btnWp.title = 'Enviar esta factura por WhatsApp al cliente';
+                    } else {
+                        btnWp.disabled = true;
+                        btnWp.style.backgroundColor = '#e2e8f0';
+                        btnWp.style.borderColor = '#cbd5e1';
+                        btnWp.style.color = '#94a3b8';
+                        btnWp.style.cursor = 'not-allowed';
+                        btnWp.innerHTML = '📱 Sin número';
+                        btnWp.title = 'Cliente sin número de WhatsApp configurado';
+                    }
+                }
             }
         }
 
         async function obtenerCAE() {
-            if (!confirm('¿Emitir esta factura a AFIP para obtener CAE?')) {
+            if (!confirm('¿Emitir esta factura a ARCA para obtener CAE?')) {
                 return;
             }
 
             const btn = document.getElementById('btn-obtener-cae');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '⏳ Emitiendo a AFIP...';
+            btn.innerHTML = '⏳ Emitiendo a ARCA...';
 
             try {
                 console.log('📤 Emitiendo factura a AFIP, ID:', facturaId);
@@ -776,21 +1174,18 @@
                 if (result.success) {
                     alert('✅ CAE obtenido exitosamente: ' + result.data.cae);
                     console.log('✅ CAE obtenido:', result.data);
-
-                    // Recargar la página para mostrar el CAE
                     window.location.reload();
                 } else {
                     throw new Error(result.detalle || result.message || 'Error al obtener CAE');
                 }
 
             } catch (error) {
-                console.error('🔍 [VIGÍA DEPURADOR] Factura fallida. Motivo AFIP:', error.message);
+                console.error('❌ Error emitiendo factura:', error.message);
 
-                // ARCA 344k ARS limit check
                 if (error.message.includes('AFIP exige DNI') || error.message.includes('344')) {
                     const { value: dni } = await Swal.fire({
                         title: 'Ingrese DNI del Cliente',
-                        text: 'AFIP exige un DNI para ventas a Consumidor Final superiores a $344.000 ARS',
+                        text: 'ARCA exige un DNI para ventas a Consumidor Final superiores a $344.000 ARS',
                         input: 'text',
                         icon: 'warning',
                         inputPlaceholder: 'Ej: 30123456',
@@ -823,7 +1218,7 @@
                         }
                     }
                 } else {
-                    alert('Error al obtener CAE de AFIP:\n\n' + error.message);
+                    alert('Error al obtener CAE de ARCA:\n\n' + error.message);
                 }
 
                 btn.disabled = false;
@@ -833,17 +1228,14 @@
 
         function formatNumeroFactura(factura) {
             if (factura.cbte_nro) {
-                // Factura con AFIP: formato 00032 - 00000001
                 const ptoVta = String(factura.pto_vta || 0).padStart(5, '0');
                 const numero = String(factura.cbte_nro).padStart(8, '0');
                 return `${ptoVta} - ${numero}`;
             } else if (factura.nro_interno) {
-                // Factura interna: formato SERIE - 00000001
                 const serie = factura.serie_interna || 'INT';
                 const numero = String(factura.nro_interno).padStart(8, '0');
                 return `${serie} - ${numero}`;
             } else {
-                // Borrador sin número asignado
                 return 'Sin número asignado';
             }
         }
@@ -872,7 +1264,6 @@
         }
 
         function normalizarCodigoIVA(id) {
-            // Normalizar códigos antiguos (convierte 1→5, 2→4)
             const normalizacion = {
                 1: 5,  // 21%
                 2: 4   // 10.5%
@@ -883,14 +1274,13 @@
         function obtenerAlicuotaIVA(id) {
             const codigoNormalizado = normalizarCodigoIVA(id);
 
-            // Tabla oficial de códigos AFIP
             const alicuotas = {
                 3: '0%',
-                4: '10,5%',    // Con coma decimal
+                4: '10,5%',
                 5: '21%',
                 6: '27%',
                 8: '5%',
-                9: '2,5%'      // Con coma decimal
+                9: '2,5%'
             };
             return alicuotas[codigoNormalizado] || `${codigoNormalizado}%`;
         }
@@ -899,7 +1289,7 @@
             try {
                 console.log('📄 Descargando PDF de factura ID:', facturaId);
 
-                const response = await fetch(`http://localhost:3004/facturacion/facturas/${facturaId}/pdf`, {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/pdf`, {
                     method: 'POST'
                 });
 
@@ -923,6 +1313,144 @@
                 console.error('❌ Error descargando PDF:', error);
                 alert('Error al descargar el PDF: ' + error.message);
             }
+        }
+
+        async function enviarPorWhatsApp() {
+            if (!currentFactura) {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'No se han cargado los datos de la factura.',
+                    icon: 'error'
+                });
+                return;
+            }
+
+            const raw = (currentFactura.whatsapp_facturas || '').trim();
+            if (!raw) {
+                Swal.fire({
+                    title: 'Sin números',
+                    text: 'Esta factura no tiene números de WhatsApp configurados.',
+                    icon: 'warning'
+                });
+                return;
+            }
+
+            let contacts = [];
+            if (raw.startsWith('[')) {
+                try {
+                    contacts = JSON.parse(raw);
+                } catch(e) {}
+            }
+            if (!Array.isArray(contacts) || contacts.length === 0) {
+                // Soporte para formato legado (separado por comas)
+                contacts = raw.split(',').map(num => ({
+                    numero: num.trim(),
+                    nombre: '',
+                    cargo: ''
+                })).filter(c => c.numero);
+            }
+
+            let htmlContent = `
+                <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
+                        Seleccione los destinatarios para enviar la factura:
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px;">
+            `;
+
+            contacts.forEach((c, index) => {
+                const formattedNum = c.numero.replace(/\D/g, '');
+                let displayNum = c.numero;
+                if (formattedNum.length === 10) {
+                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
+                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
+                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
+                }
+                
+                const labelText = c.nombre 
+                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">${c.cargo}</span>` : ''}`
+                    : `Contacto #${index + 1}`;
+
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 13px; color: #1f2937; margin-bottom: 2px;">${labelText}</div>
+                            <div style="font-size: 12px; color: #6b7280;">📱 ${displayNum}</div>
+                        </div>
+                    </label>
+                `;
+            });
+
+            htmlContent += `
+                    </div>
+                </div>
+            `;
+
+            Swal.fire({
+                title: 'Enviar por WhatsApp',
+                html: htmlContent,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: '🟢 Enviar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#6b7280',
+                preConfirm: () => {
+                    const selected = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    if (selected.length === 0) {
+                        Swal.showValidationMessage('Debes seleccionar al menos un contacto.');
+                        return false;
+                    }
+                    return selected;
+                }
+            }).then(async (result) => {
+                if (!result.isConfirmed) return;
+
+                const destinatariosSeleccionados = result.value;
+
+                Swal.fire({
+                    title: 'Enviando...',
+                    text: 'Generando comprobante y enviando mensaje...',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                try {
+                    const response = await fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ destinatarios: destinatariosSeleccionados })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        Swal.fire({
+                            title: '¡Factura Enviada!',
+                            text: `Se envió la factura con éxito a: ${data.data.destinatarios}`,
+                            icon: 'success',
+                            confirmButtonColor: '#10b981'
+                        });
+                    } else {
+                        throw new Error(data.message || data.error || 'Error desconocido al enviar');
+                    }
+                } catch (err) {
+                    console.error('Error enviando por WhatsApp:', err);
+                    Swal.fire({
+                        title: 'Error al enviar',
+                        text: err.message,
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                }
+            });
         }
 
         function mostrarError(mensaje) {

@@ -168,7 +168,16 @@ const obtenerPresupuestos = async (req, res) => {
                 (draft.last_draft_id IS NOT NULL) as tiene_borrador,
                 draft.last_draft_id as id_borrador,
                 (COALESCE(p.fecha_actualizacion, p.fecha) > draft.draft_date) as borrador_desincronizado,
-                p.comprobante_lomasoft
+                p.comprobante_lomasoft,
+                p.origen_facturacion,
+                p.origen_punto_venta,
+                p.origen_numero_factura,
+                (
+                    SELECT f.id FROM public.factura_facturas f
+                    WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
+                      AND f.estado = 'APROBADA'
+                    LIMIT 1
+                ) AS factura_asociada_id
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN (
@@ -1412,7 +1421,16 @@ const obtenerPresupuestoPorId = async (req, res) => {
                         LIMIT 1
                     ) THEN true
                     ELSE false
-                END AS esta_facturado
+                END AS esta_facturado,
+                p.origen_facturacion,
+                p.origen_punto_venta,
+                p.origen_numero_factura,
+                (
+                    SELECT f.id FROM public.factura_facturas f
+                    WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
+                      AND f.estado = 'APROBADA'
+                    LIMIT 1
+                ) AS factura_asociada_id
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             WHERE p.id = $1 AND p.activo = true
@@ -1909,9 +1927,16 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 p.id_presupuesto_ext, 
                 p.tipo_comprobante,
                 p.descuento,
-                c.condicion_iva
+                c.condicion_iva,
+                f.pto_vta
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN (
+                SELECT presupuesto_id, pto_vta,
+                       ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
+                FROM public.factura_facturas 
+                WHERE estado = 'APROBADA'
+            ) f ON f.presupuesto_id = p.id AND f.rn = 1
             WHERE p.id = $1 AND p.activo = true
         `;
 

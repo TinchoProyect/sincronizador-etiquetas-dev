@@ -111,12 +111,14 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 WHERE p.activo = true 
                   AND (
                       REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                      OR (REPLACE(LOWER(TRIM($1)), ' ', '') = 'presupuesto/orden' AND p.estado IN ('Facturado', 'Administrativa NC', 'Enviado a Facturación'))
                       OR p.estado = 'Retira por Deposito'
                   )
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
                   AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
                   AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
+                  AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
                   AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
             ),
             articulos_por_presupuesto AS (
@@ -525,8 +527,12 @@ const obtenerPedidosArticulos = async (req, res) => {
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 WHERE p.activo = true 
-                  AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                  AND (
+                      REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                      OR (REPLACE(LOWER(TRIM($1)), ' ', '') = 'presupuesto/orden' AND p.estado IN ('Facturado', 'Administrativa NC', 'Enviado a Facturación'))
+                  )
                   AND p.fecha::date <= $2::date
+                  AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
                   AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
             ),
             articulos_consolidados AS (

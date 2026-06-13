@@ -1,5 +1,7 @@
 let articulosBunkerGlobal = [];
 let listaSeleccionadaGlobal = 1; // Default a Lista 1
+window.articulosSeleccionadosMasa = new Set();
+window.articulosVisiblesActualmente = [];
 
 window.filtroCapas = [ { id: 1, propiedad: '', exclusions: [] } ]; // Inicializar con capa 1 estática
 window.capaCounter = 1;
@@ -134,9 +136,10 @@ function aplicarVisibilidadColumna(colId, isVisible) {
 // ------------------------------------------
 
 async function cargarDataGrid() {
+    window.articulosSeleccionadosMasa.clear();
     const search = document.getElementById('filtro-busqueda').value.trim();
     const tbody = document.getElementById('tbody-bunker');
-    tbody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="16" style="text-align: center; padding: 20px;">Cargando Búnker...</td></tr>';
     
     try {
         const params = new URLSearchParams();
@@ -154,7 +157,7 @@ async function cargarDataGrid() {
             throw new Error(result.error);
         }
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="14" style="color: red; text-align: center;">Error de conexión: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="16" style="color: red; text-align: center;">Error de conexión: ${e.message}</td></tr>`;
     }
 }
 
@@ -163,7 +166,10 @@ function renderizarGrid(articulos) {
     tbody.innerHTML = '';
     
     if (articulos.length === 0) {
-         tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
+         tbody.innerHTML = '<tr><td colspan="16" style="text-align: center; padding: 20px;">No se encontraron artículos en el Búnker.</td></tr>';
+         const masterCheckbox = document.getElementById('chk-seleccionar-todo-visible');
+         if (masterCheckbox) masterCheckbox.checked = false;
+         window.actualizarEstadoBotonMasivo();
          return;
     }
     
@@ -311,6 +317,9 @@ function renderizarGrid(articulos) {
         const badgeExcluido = disponibleActiva ? '' : ' <span class="badge" style="background-color: #64748b; color: white; padding: 2px 6px; font-size: 0.75em; border-radius: 4px; vertical-align: middle; margin-left: 5px;">🚫 Excluido</span>';
         
         trMain.innerHTML = `
+            <td style="text-align: center; width: 40px;">
+                <input type="checkbox" class="chk-articulo-masa" data-articulo-id="${art.articulo_id}" ${window.articulosSeleccionadosMasa.has(art.articulo_id) ? 'checked' : ''} onchange="window.toggleSeleccionArticuloMasa('${art.articulo_id}', this.checked)" style="width: 18px; height: 18px; cursor: pointer;">
+            </td>
             <td style="font-family: monospace; font-weight: bold; color: #3b82f6;">${art.articulo_id}</td>
             <td>
                 <strong>${art.descripcion}</strong>${badgeExcluido}<br>
@@ -358,7 +367,7 @@ function renderizarGrid(articulos) {
             trDetails.id = `details_${rowIndex}`;
             trDetails.className = 'expandable-row';
             trDetails.innerHTML = `
-                <td colspan="15" style="padding: 10px 40px; background-color: #f1f5f9;">
+                <td colspan="16" style="padding: 10px 40px; background-color: #f1f5f9;">
                     <div style="margin-bottom: 5px; font-weight: 600; color: #334155; font-size: 0.9em;">👇 Desglose Financiero de Listas de Precios Búnker</div>
                     ${expandedGridHtml}
                 </td>
@@ -366,6 +375,20 @@ function renderizarGrid(articulos) {
             tbody.appendChild(trDetails);
         }
     });
+
+    // Actualizar checkbox maestro basado en artículos elegibles visibles
+    const masterCheckbox = document.getElementById('chk-seleccionar-todo-visible');
+    if (masterCheckbox) {
+        const eligibleIds = articulos.filter(a => {
+            const mFocused = a.margenes ? a.margenes.find(m => m.lista_id === listaSeleccionadaGlobal) : null;
+            const disponibleActiva = mFocused ? (mFocused.disponible !== false) : true;
+            const isBaja = a._estado_delta === 'BAJA' || a.estado === 'BAJA';
+            return disponibleActiva && !isBaja;
+        }).map(a => a.articulo_id);
+        const allChecked = eligibleIds.length > 0 && eligibleIds.every(id => window.articulosSeleccionadosMasa.has(id));
+        masterCheckbox.checked = allChecked;
+    }
+    window.actualizarEstadoBotonMasivo();
 }
 
 window.toggleRow = function(targetId, elIcon) {
@@ -567,12 +590,12 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 factorEl.innerText = `${gp_factorPresentacion.toFixed(2)} kg`;
             }
             
-            // Calcular Costo de Ingrediente en Vivo por KILO
+            // Calcular Costo de Ingrediente en Vivo por KILO (Costo de Producción Origen) (Comentarios en español)
             let rawIngredienteCost = 0;
             if (data.receta_id && data.receta_ingredientes && data.receta_ingredientes.length > 0) {
                 let recipeTotalCost = 0;
                 data.receta_ingredientes.forEach(ing => {
-                    const cKilo = parseFloat(ing.costo_kilo_lote) || 0;
+                    const cKilo = parseFloat(ing.costo_patron) || 0; // Utilizar costo patrón dinámico resuelto
                     const qty = parseFloat(ing.cantidad) || 0;
                     recipeTotalCost += cKilo * qty;
                 });
@@ -800,31 +823,66 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                     let html = '';
                     if (data.receta_ingredientes && data.receta_ingredientes.length > 0) {
                         const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+                        let rowsHtml = '';
+                        let recetaTotalCost = 0;
+                        
                         data.receta_ingredientes.forEach(ing => {
-                            const costoKilo = parseFloat(ing.costo_kilo_lote || 0);
+                            const costoUnitario = parseFloat(ing.costo_patron || 0);
                             const cantidad = parseFloat(ing.cantidad || 0);
-                            const costoRef = cantidad * costoKilo;
-                            html += `
-                                <div style="display: flex; flex-direction: column; padding: 8px 10px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 8px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 4px;" title="${ing.lote_id_ref ? 'Lote de referencia: ' + ing.lote_id_ref : 'Sin lote vinculado'}">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                                        <span style="font-weight: 700; color: #0369a1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${ing.nombre_ingrediente}</span>
-                                        <span style="font-weight: 800; color: #0369a1; font-family: monospace; background: white; padding: 1px 4px; border-radius: 4px; border: 1px solid #bae6fd; white-space: nowrap;">
-                                            ${cantidad.toLocaleString('es-AR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} ${ing.unidad_medida}
-                                        </span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(3, 105, 161, 0.15); padding-top: 3px;">
-                                        <span style="color: #64748b;">${costoKilo > 0 ? currencyFormatter.format(costoKilo) + '/kg' : 'N/A'}</span>
-                                        <strong style="color: #0284c7;">${costoKilo > 0 ? currencyFormatter.format(costoRef) : 'N/A'}</strong>
-                                    </div>
-                                </div>
+                            const subtotal = cantidad * costoUnitario;
+                            recetaTotalCost += subtotal;
+                            
+                            rowsHtml += `
+                                <tr style="border-bottom: 1px solid #cbd5e1;">
+                                    <td style="padding: 10px 12px; text-align: left; font-weight: 600; color: #1e293b;">
+                                        ${ing.nombre_ingrediente}
+                                    </td>
+                                    <td style="padding: 10px 12px; text-align: center; font-family: monospace; font-weight: bold; color: #475569; background: #f8fafc;">
+                                        ${cantidad.toLocaleString('es-AR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} ${ing.unidad_medida}
+                                    </td>
+                                    <td style="padding: 10px 12px; text-align: right; font-family: monospace; color: #475569;">
+                                        ${costoUnitario > 0 ? currencyFormatter.format(costoUnitario) + '/' + (ing.unidad_medida === 'u' ? 'u' : 'kg') : 'N/A'}
+                                    </td>
+                                    <td style="padding: 10px 12px; text-align: right; font-family: monospace; font-weight: bold; color: #1e3a8a; background: #f8fafc;">
+                                        ${subtotal > 0 ? currencyFormatter.format(subtotal) : 'N/A'}
+                                    </td>
+                                </tr>
                             `;
                         });
+
+                        recetaIngredientes.style.display = 'block'; // Quitar grid layout para compatibilidad de tabla
+                        html = `
+                            <table class="tabla-financiera" style="width: 100%; border-collapse: collapse; margin-top: 8px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                                <thead>
+                                    <tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                        <th style="text-align: left; padding: 10px 12px; color: #475569; font-weight: 700; font-size: 0.88em;">Componente de Receta</th>
+                                        <th style="text-align: center; padding: 10px 12px; width: 130px; color: #475569; font-weight: 700; font-size: 0.88em;">Cantidad</th>
+                                        <th style="text-align: right; padding: 10px 12px; width: 165px; color: #475569; font-weight: 700; font-size: 0.88em;">Costo Unitario (Patrón)</th>
+                                        <th style="text-align: right; padding: 10px 12px; width: 170px; color: #475569; font-weight: 700; font-size: 0.88em;">Subtotal de Línea</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background-color: #e2e8f0; font-weight: 800; border-top: 2px solid #94a3b8; font-size: 1.02em;">
+                                        <td colspan="3" style="text-align: left; padding: 12px; color: #1e293b;">
+                                            💰 Costo Total de Producción (Origen)
+                                        </td>
+                                        <td id="gp-receta-total-cost-origen" onclick="window.aplicarCostoBaseManual(${recetaTotalCost / gp_factorPresentacion})" class="clickable-cost-val receta" style="text-align: right; padding: 12px; color: #1e3a8a; font-family: monospace; font-size: 1.15em; cursor: pointer;" title="Haga clic para inyectar este costo equivalente ($${(recetaTotalCost / gp_factorPresentacion).toFixed(2)}/kg) en la calculadora">
+                                            ${currencyFormatter.format(recetaTotalCost)}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        `;
                     }
                     recetaIngredientes.innerHTML = html || '<div style="grid-column: 1/-1; text-align: center; color: #64748b; font-style: italic; padding: 10px;">La receta no posee ingredientes configurados.</div>';
                 } else {
                     recetaInfoBadge.innerText = 'Sin Receta';
                     recetaInfoBadge.style.background = '#fef3c7';
                     recetaInfoBadge.style.color = '#d97706';
+                    recetaIngredientes.style.display = 'block'; // Quitar grid
                     recetaIngredientes.innerHTML = `
                         <div style="grid-column: 1/-1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; background: #fffbeb; border: 1px dashed #fcd34d; border-radius: 6px; color: #b45309; font-weight: 500; font-size: 0.9em;">
                             ⚠️ Este artículo no posee una receta de producción activa.
@@ -1139,6 +1197,12 @@ function selectTab(idx) {
         dispCheckbox.checked = list.disponible !== false;
     }
 
+    // Configurar Exención Operativa de Costos
+    const exencionCheckbox = document.getElementById('gp-exencion-operativa');
+    if (exencionCheckbox) {
+        exencionCheckbox.checked = list.exencion_operativa === true;
+    }
+
     // Configurar Costo Base
     const inherits = list.costo_base_sobrescrito === null;
     const heredarCheckbox = document.getElementById('gp-heredar-costo');
@@ -1272,6 +1336,7 @@ window.actualizarInsumoQty = function(idx, val) {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (list && list.insumos && list.insumos[idx]) {
         list.insumos[idx].cantidad = parseFloat(val) || 0;
+        propagarCostosOperativos();
         renderInsumosGrid();
         recalcularPreciosGestor();
     }
@@ -1281,6 +1346,7 @@ window.actualizarInsumoCost = function(idx, val) {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (list && list.insumos && list.insumos[idx]) {
         list.insumos[idx].costo_unitario_capturado = parseFloat(val) || 0;
+        propagarCostosOperativos();
         renderInsumosGrid();
         recalcularPreciosGestor();
     }
@@ -1291,6 +1357,7 @@ window.toggleInsumoInclusion = function(idx) {
     if (list && list.insumos && list.insumos[idx]) {
         const current = list.insumos[idx].incluido;
         list.insumos[idx].incluido = !(current === true || current === 'true');
+        propagarCostosOperativos();
         renderInsumosGrid();
         recalcularPreciosGestor();
     }
@@ -1300,6 +1367,7 @@ window.removerInsumo = function(idx) {
     const list = gp_listasFinancieras[gp_activeTabIdx];
     if (list && list.insumos) {
         list.insumos.splice(idx, 1);
+        propagarCostosOperativos();
         renderInsumosGrid();
         recalcularPreciosGestor();
     }
@@ -1363,6 +1431,7 @@ function selectInsumoParaAgregar(art) {
         incluido: false // HITL: Desactivado por defecto al agregarlo
     });
     
+    propagarCostosOperativos();
     document.getElementById('gp-buscar-insumo').value = '';
     document.getElementById('gp-insumo-resultados').style.display = 'none';
     renderInsumosGrid();
@@ -1693,6 +1762,7 @@ window.actualizarPorCostoTiempo = function(val) {
     if (!list) return;
     
     list.costo_tiempo = parseFloat(val) || 0;
+    propagarCostosOperativos();
     debouncedRecalcular();
 };
 
@@ -1734,6 +1804,7 @@ window.sincronizarCostoAlerta = function() {
         showConfirmButton: false
     });
     
+    propagarCostosOperativos();
     renderInsumosGrid();
     recalcularPreciosGestor();
 };
@@ -1763,6 +1834,7 @@ window.guardarEstructuraFinanciera = async function() {
             es_patron: l.es_patron === true || l.es_patron === 'true',
             fuente_costo_default: l.fuente_costo_default || null,
             disponible: l.disponible !== false,
+            exencion_operativa: l.exencion_operativa === true,
             insumos: insPayload
         };
     });
@@ -4551,6 +4623,7 @@ window.aplicarFiltrosYOrdenamiento = function() {
     }
 
     // 4. Pintar en la tabla principal
+    window.articulosVisiblesActualmente = articulosFiltrados;
     renderizarGrid(articulosFiltrados);
 };
 
@@ -4560,6 +4633,86 @@ window.actualizarDisponibilidadListaModal = function(checked) {
         list.disponible = checked;
     }
 };
+
+window.actualizarExencionOperativaModal = function(checked) {
+    const list = gp_listasFinancieras[gp_activeTabIdx];
+    if (!list) return;
+    list.exencion_operativa = checked;
+    
+    // Si desmarca la exención, sincronizar en caliente copiando los costos de otra lista no exenta
+    if (!checked) {
+        const otherNoExempt = gp_listasFinancieras.find((l, idx) => idx !== gp_activeTabIdx && !l.exencion_operativa);
+        if (otherNoExempt) {
+            list.costo_tiempo = otherNoExempt.costo_tiempo;
+            list.insumos = JSON.parse(JSON.stringify(otherNoExempt.insumos || []));
+            // Actualizar campos
+            document.getElementById('gp-costo-tiempo').value = parseFloat(list.costo_tiempo || 0).toFixed(2);
+            renderInsumosGrid();
+        }
+    }
+    recalcularPreciosGestor();
+};
+
+function recalcularValoresDeListaEnMemoria(l) {
+    const cBase = l.costo_base_sobrescrito !== null ? parseFloat(l.costo_base_sobrescrito) : gp_liveIngredienteCost;
+    
+    let cInsumos = 0;
+    if (l.insumos && l.insumos.length > 0) {
+        l.insumos.forEach(ins => {
+            if (ins.incluido === true || ins.incluido === 'true') {
+                cInsumos += parseFloat(ins.cantidad || 1) * parseFloat(ins.costo_unitario_capturado || 0);
+            }
+        });
+    }
+    
+    const cTiempo = parseFloat(l.costo_tiempo || 0);
+    const cTotalPresentacion = cBase * gp_factorPresentacion;
+    const cBulto = cTotalPresentacion + cInsumos;
+    
+    const modoIva = l.modo_iva || 'COMPLETO';
+    let ivaVal = gp_ivaGlobal;
+    if (modoIva === 'MEDIO') {
+        ivaVal = gp_ivaGlobal / 2;
+    } else if (modoIva === 'SIN') {
+        ivaVal = 0.00;
+    }
+    l.iva = ivaVal;
+    const ivaCoeff = 1 + (ivaVal / 100);
+    
+    let margen = parseFloat(l.margen_ganancia) || parseFloat(l.margen_porcentaje) || 0;
+    if (l.modo_calculo === 'AUTOMATIC' && !l.has_manual_override && margen === 0 && l.margen_patron_heredado !== null && l.margen_patron_heredado !== undefined) {
+        margen = parseFloat(l.margen_patron_heredado);
+    }
+    
+    if (l.modo_calculo === 'AUTOMATIC') {
+        const precioS_ivaBase = cBulto * (1 + (margen / 100)) + cTiempo;
+        const precioFinalBase = precioS_ivaBase * ivaCoeff;
+        l.precio_final = precioFinalBase;
+    } else {
+        // Modo MANUAL
+        const precioFinalBase = parseFloat(l.precio_final) || 0;
+        let margenImplicito = 0;
+        if (cBulto > 0) {
+            margenImplicito = (((precioFinalBase / ivaCoeff) - cTiempo) / cBulto - 1) * 100;
+        }
+        l.margen_porcentaje = margenImplicito;
+        l.margen_ganancia = margenImplicito;
+    }
+}
+
+function propagarCostosOperativos() {
+    const activeList = gp_listasFinancieras[gp_activeTabIdx];
+    if (!activeList || activeList.exencion_operativa) return;
+
+    gp_listasFinancieras.forEach((l, idx) => {
+        if (idx !== gp_activeTabIdx && !l.exencion_operativa) {
+            l.costo_tiempo = activeList.costo_tiempo;
+            // Clonar profundamente insumos para evitar referencias compartidas
+            l.insumos = JSON.parse(JSON.stringify(activeList.insumos || []));
+            recalcularValoresDeListaEnMemoria(l);
+        }
+    });
+}
 
 window.mostrarPopoverListas = function(event, articuloId) {
     event.stopPropagation();
@@ -4709,6 +4862,208 @@ window.toggleDisponibilidadArticulo = async function(articuloId, listaId, dispon
         console.error('Error en fetch disponibilidad:', e);
         Swal.fire('Error', 'Fallo de red al intentar actualizar la disponibilidad.', 'error');
     }
+};
+
+// ==========================================
+// SELECCIÓN Y ACTUALIZACIÓN EN LOTE (HITL)
+// ==========================================
+// ==========================================
+// SELECCIÓN Y ACTUALIZACIÓN EN LOTE (HITL)
+// ==========================================
+function obtenerIdsElegiblesVisibles() {
+    return (window.articulosVisiblesActualmente || []).filter(a => {
+        const mFocused = a.margenes ? a.margenes.find(m => m.lista_id === listaSeleccionadaGlobal) : null;
+        const disponibleActiva = mFocused ? (mFocused.disponible !== false) : true;
+        const isBaja = a._estado_delta === 'BAJA' || a.estado === 'BAJA';
+        return disponibleActiva && !isBaja;
+    }).map(a => a.articulo_id);
+}
+
+window.toggleSeleccionArticuloMasa = function(articuloId, checked) {
+    if (checked) {
+        window.articulosSeleccionadosMasa.add(articuloId);
+    } else {
+        window.articulosSeleccionadosMasa.delete(articuloId);
+    }
+    
+    // Sincronizar checkbox maestro basado únicamente en artículos elegibles visibles
+    const masterCheckbox = document.getElementById('chk-seleccionar-todo-visible');
+    if (masterCheckbox) {
+        const eligibleIds = obtenerIdsElegiblesVisibles();
+        const allChecked = eligibleIds.length > 0 && eligibleIds.every(id => window.articulosSeleccionadosMasa.has(id));
+        masterCheckbox.checked = allChecked;
+    }
+    
+    window.actualizarEstadoBotonMasivo();
+};
+
+window.toggleSeleccionarTodoVisible = function(checked) {
+    const eligibleIds = obtenerIdsElegiblesVisibles();
+    const visibleIds = (window.articulosVisiblesActualmente || []).map(a => a.articulo_id);
+    
+    visibleIds.forEach(id => {
+        if (checked) {
+            // Solo agregar si es elegible
+            if (eligibleIds.includes(id)) {
+                window.articulosSeleccionadosMasa.add(id);
+            }
+        } else {
+            // Si desmarcamos, removemos todos los visibles seleccionados
+            window.articulosSeleccionadosMasa.delete(id);
+        }
+    });
+    
+    // Actualizar checkboxes del DOM a su estado correspondiente
+    const inputs = document.querySelectorAll('.chk-articulo-masa');
+    inputs.forEach(input => {
+        const id = input.getAttribute('data-articulo-id');
+        input.checked = window.articulosSeleccionadosMasa.has(id);
+    });
+    
+    window.actualizarEstadoBotonMasivo();
+};
+
+window.actualizarEstadoBotonMasivo = function() {
+    const btn = document.getElementById('btn-actualizar-margenes-masa');
+    if (!btn) return;
+    
+    // Solo considerar seleccionados los artículos que además estén actualmente visibles
+    const seleccionadosVisibles = Array.from(window.articulosSeleccionadosMasa).filter(id => 
+        (window.articulosVisiblesActualmente || []).some(a => a.articulo_id === id)
+    );
+    
+    const tieneSeleccionados = seleccionadosVisibles.length > 0;
+    
+    // Habilitado si hay al menos uno seleccionado y visible, sin acoplamiento a filtros
+    if (tieneSeleccionados) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+    }
+};
+
+window.abrirMinimodalMargenesMasa = function() {
+    // Obtener artículos a actualizar
+    const seleccionadosVisibles = Array.from(window.articulosSeleccionadosMasa).filter(id => 
+        (window.articulosVisiblesActualmente || []).some(a => a.articulo_id === id)
+    );
+    
+    if (seleccionadosVisibles.length === 0) {
+        Swal.fire({
+            title: 'Sin Selección',
+            text: 'Debe seleccionar al menos un artículo visible en la grilla.',
+            icon: 'warning'
+        });
+        return;
+    }
+    
+    Swal.fire({
+        title: 'Actualizar en Masa (Búnker)',
+        html: `
+            <p style="font-size: 0.92em; color: #475569; margin-bottom: 15px; text-align: left; line-height: 1.4;">
+                Se actualizarán los <strong>${seleccionadosVisibles.length}</strong> artículos seleccionados. Los precios finales se recalcularán automáticamente en la base de datos.
+            </p>
+            <div style="display: flex; flex-direction: column; align-items: stretch; gap: 12px; text-align: left;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="swal-margen-masa" style="font-weight: bold; font-size: 0.9em; color: #1e293b;">
+                        Nuevo Margen de Ganancia General (%):
+                    </label>
+                    <input type="number" id="swal-margen-masa" class="swal2-input" placeholder="Ej: 35.00" step="0.01" style="margin: 0; width: 100%; box-sizing: border-box;">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="swal-iva-masa" style="font-weight: bold; font-size: 0.9em; color: #1e293b;">
+                        Tratamiento de IVA a Aplicar:
+                    </label>
+                    <select id="swal-iva-masa" class="swal2-select" style="margin: 0; width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 1em; color: #1e293b; background: white; font-weight: 500;">
+                        <option value="MANTENER" selected>Mantener actual de cada artículo</option>
+                        <option value="COMPLETO">Completo (100% del IVA original)</option>
+                        <option value="MEDIO">Medio IVA (50% del IVA original)</option>
+                        <option value="SIN">Sin IVA / Exento (0%)</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Confirmar Actualización',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const val = document.getElementById('swal-margen-masa').value;
+            const floatVal = parseFloat(val);
+            const ivaVal = document.getElementById('swal-iva-masa').value;
+            
+            // Sanitización y blindaje de la entrada numérica (SweetAlert2)
+            // Debe ser un número válido estrictamente mayor o igual a 0 (ej. permitir margen 0% para venta al costo)
+            if (isNaN(floatVal)) {
+                Swal.showValidationMessage('Debe ingresar un porcentaje numérico válido.');
+                return false;
+            }
+            if (floatVal < 0) {
+                Swal.showValidationMessage('El margen de ganancia no puede ser menor a 0%.');
+                return false;
+            }
+            return { margen: floatVal, modoIva: ivaVal };
+        }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            const { margen, modoIva } = result.value;
+            
+            Swal.fire({
+                title: 'Actualizando artículos...',
+                text: 'Procesando recálculo en lote y persistiendo en base de datos.',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+            
+            try {
+                const response = await fetch('/api/logistica/bunker/articulos/actualizar-margenes-masa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lista_id: listaSeleccionadaGlobal,
+                        articulo_ids: seleccionadosVisibles,
+                        margen_ganancia: margen,
+                        modo_iva: modoIva
+                    })
+                });
+                
+                const resData = await response.json();
+                
+                if (response.ok && resData.success) {
+                    Swal.fire({
+                        title: 'Actualización Exitosa',
+                        text: `Se actualizaron los márgenes y alícuotas para los ${seleccionadosVisibles.length} artículos.`,
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                    
+                    // Limpiar selección tras la actualización exitosa (Pizarra Limpia)
+                    window.articulosSeleccionadosMasa.clear();
+                    
+                    // Sincronizar/desmarcar checkbox maestro visualmente
+                    const masterCheckbox = document.getElementById('chk-seleccionar-todo-visible');
+                    if (masterCheckbox) {
+                        masterCheckbox.checked = false;
+                    }
+                    
+                    // Refrescar en caliente
+                    await cargarDataGrid();
+                } else {
+                    Swal.fire('Error', resData.error || 'No se pudo realizar la actualización masiva.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error de Conexión', 'Fallo de red al intentar comunicarse con el servidor.', 'error');
+            }
+        }
+    });
 };
 
 

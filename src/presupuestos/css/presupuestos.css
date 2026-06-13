@@ -1959,6 +1959,18 @@ footer {
     color: var(--white);
 }
 
+.estado-badge.estado-enviado-a-facturacion,
+.estado-badge.estado-enviado-a-facturación {
+    background-color: #ffeb3b;
+    color: #212529;
+    border: 1px solid #fdec6d;
+}
+
+.estado-badge.estado-facturado {
+    background-color: #27ae60;
+    color: var(--white);
+}
+
 /* Responsive para modal de configuración */
 @media (max-width: 768px) {
     .modal-content {
@@ -2505,7 +2517,7 @@ footer {
     z-index: 10;
 }
 
-/* Modificaci�n para integrar filtros con solapas */
+/* Modificaci�n para integrar filtros con solapas */
 .filters-section-compact {
     border-top: 2px solid var(--secondary-color);
     border-radius: 0 8px 8px 8px;

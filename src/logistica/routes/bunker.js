@@ -41,6 +41,9 @@ router.get('/articulos/:id', bunkerController.obtenerArticulo);
 // Actualizar valores/márgenes en el Búnker
 router.put('/articulos/:id', bunkerController.actualizarArticulo);
 
+// Actualizar márgenes en masa (Bulk Update)
+router.post('/articulos/actualizar-margenes-masa', bunkerController.actualizarMargenesEnMasa);
+
 // Eliminar un artículo exclusivamente del Búnker
 router.delete('/articulos/:id', bunkerController.eliminarArticulo);
 

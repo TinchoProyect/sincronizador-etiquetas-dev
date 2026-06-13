@@ -2,6 +2,109 @@
 let sectoresList = [];
 let sectorEditando = null;
 
+// ==============================================================================
+// HELPERS ALFABÉTICOS Y DESENSAMBLADO
+// ==============================================================================
+
+// Convierte letras a número (ej: A -> 1, Z -> 26, AA -> 27)
+function letterToNumber(str) {
+    let num = 0;
+    for (let i = 0; i < str.length; i++) {
+        num = num * 26 + (str.charCodeAt(i) - 64);
+    }
+    return num;
+}
+
+// Convierte número a letras (ej: 1 -> A, 26 -> Z, 27 -> AA)
+function numberToLetter(num) {
+    let str = '';
+    while (num > 0) {
+        let rem = (num - 1) % 26;
+        str = String.fromCharCode(65 + rem) + str;
+        num = Math.floor((num - 1) / 26);
+    }
+    return str;
+}
+
+// Extrae la letra pura de la descripción del sector (ej: 'sector "J"' -> 'J')
+function obtenerLetraDeSector(descripcion) {
+    if (!descripcion) return '';
+    const texto = descripcion.replace(/["']/g, '').trim();
+    if (!texto) return '';
+
+    // Nivel 1: Regex que soporta 'sector [LETRA]' o 'Sector [LETRA]'
+    const matchSector = texto.match(/Sect[a-z]*\s+([A-Z0-9]{1,2})/i);
+    if (matchSector) {
+        return matchSector[1].toUpperCase();
+    }
+
+    // Nivel 2: Si el texto completo es de 1 o 2 letras/números
+    if (texto.length > 0 && texto.length <= 2) {
+        return texto.toUpperCase();
+    }
+
+    return '';
+}
+
+// Calcula la siguiente letra disponible y autocompleta el input
+function autocompletarSiguienteLetra() {
+    let maxVal = 0;
+    sectoresList.forEach(sector => {
+        const letra = obtenerLetraDeSector(sector.descripcion);
+        if (letra && /^[A-Z]+$/.test(letra)) { // Asegurar que sean letras para la progresión infinita
+            const val = letterToNumber(letra);
+            if (val > maxVal) {
+                maxVal = val;
+            }
+        }
+    });
+    const siguienteLetra = numberToLetter(maxVal + 1);
+    const letraInput = document.getElementById('sector-letra-input');
+    if (letraInput) {
+        letraInput.value = siguienteLetra;
+    }
+}
+
+// Valida si la letra ingresada colisiona con otro sector
+function validarColisionSector(letraIngresada) {
+    const alerta = document.getElementById('alerta-colision-sector');
+    const submitBtn = document.querySelector('#form-sector button[type="submit"]');
+    if (!alerta || !submitBtn) return false;
+
+    if (!letraIngresada) {
+        alerta.style.display = 'none';
+        submitBtn.disabled = false;
+        return false;
+    }
+
+    const letraNormalizada = letraIngresada.toUpperCase().trim();
+    const sectorIdActual = document.getElementById('sector-id').value;
+
+    const colisiona = sectoresList.some(sector => {
+        // Excluir el sector que estamos editando
+        if (sectorIdActual && String(sector.id) === String(sectorIdActual)) {
+            return false;
+        }
+        const letraSector = obtenerLetraDeSector(sector.descripcion);
+        return letraSector === letraNormalizada;
+    });
+
+    if (colisiona) {
+        alerta.textContent = `⚠️ El identificador de sector "${letraNormalizada}" ya se encuentra registrado.`;
+        alerta.style.display = 'block';
+        submitBtn.disabled = true;
+        return true;
+    } else {
+        alerta.style.display = 'none';
+        submitBtn.disabled = false;
+        return false;
+    }
+}
+
+// ==============================================================================
+// CORE LOGIC DE SECTORES
+// ==============================================================================
+
 // Función para mostrar mensajes
 function mostrarMensaje(mensaje, tipo = 'error') {
     const contenedor = document.querySelector('.content-section');
@@ -81,6 +184,13 @@ function cerrarModal() {
     const modal = document.getElementById('modal-sector');
     modal.style.display = 'none';
     document.getElementById('form-sector').reset();
+    
+    // Limpiar alertas de colisión y habilitar botón
+    const alerta = document.getElementById('alerta-colision-sector');
+    if (alerta) alerta.style.display = 'none';
+    const submitBtn = document.querySelector('#form-sector button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = false;
+    
     sectorEditando = null;
 }
 
@@ -147,10 +257,15 @@ async function editarSector(id) {
 
         sectorEditando = sector;
 
-        // Llenar el formulario con los datos del sector
+        // Llenar el formulario con los datos del sector desensamblados
         document.getElementById('sector-id').value = sector.id;
         document.getElementById('nombre').value = sector.nombre;
-        document.getElementById('descripcion').value = sector.descripcion || '';
+        
+        const letra = obtenerLetraDeSector(sector.descripcion);
+        document.getElementById('sector-letra-input').value = letra;
+
+        // Validar colisión inicial del valor del sector (debe ser falso porque se excluye a sí mismo)
+        validarColisionSector(letra);
 
         abrirModal('Editar Sector');
 
@@ -199,8 +314,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Botón para abrir modal de nuevo sector
     document.getElementById('btn-nuevo-sector').addEventListener('click', () => {
+        document.getElementById('sector-id').value = '';
+        autocompletarSiguienteLetra();
         abrirModal();
     });
+
+    // Validar colisiones y normalizar entrada en tiempo real
+    const letraInput = document.getElementById('sector-letra-input');
+    if (letraInput) {
+        letraInput.addEventListener('input', (e) => {
+            const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+            e.target.value = val;
+            validarColisionSector(val);
+        });
+    }
 
     // Botón para cerrar modal
     document.querySelector('.close-modal').addEventListener('click', cerrarModal);
@@ -218,9 +345,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form-sector').addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        const nombre = document.getElementById('nombre').value.trim();
+        const letra = document.getElementById('sector-letra-input').value.toUpperCase().trim();
+
+        // Ensamblado
         const datos = {
-            nombre: document.getElementById('nombre').value.trim(),
-            descripcion: document.getElementById('descripcion').value.trim() || null
+            nombre: nombre,
+            descripcion: letra ? `sector "${letra}"` : null
         };
 
         if (sectorEditando) {

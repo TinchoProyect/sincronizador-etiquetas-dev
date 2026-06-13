@@ -19,28 +19,46 @@ window.toggleClearButton = toggleClearButton;
 window.limpiarInputArticulo = limpiarInputArticulo;
 
 /**
+ * Establecer modo de búsqueda de artículos
+ */
+function setModoBusqueda(modo) {
+    if (modo === modoBusqueda) return;
+    modoBusqueda = modo;
+    const btn = document.getElementById('btn-toggle-busqueda');
+    if (btn) {
+        if (modo === 'codigo') {
+            btn.textContent = '📟 Modo: Código de Barras';
+            btn.classList.add('modo-codigo');
+        } else {
+            btn.textContent = '🔍 Modo: Descripción';
+            btn.classList.remove('modo-codigo');
+        }
+    }
+    console.log(`[MODO-BUSQUEDA] Cambiado a: ${modo}`);
+}
+
+/**
  * Toggle entre modo descripción y modo código de barras
  */
 function toggleModoBusqueda() {
-    const btn = document.getElementById('btn-toggle-busqueda');
-    if (!btn) return;
-
     if (modoBusqueda === 'descripcion') {
-        modoBusqueda = 'codigo';
-        btn.textContent = '📟 Modo: Código de Barras';
-        btn.classList.add('modo-codigo');
-        console.log('[MODO-BUSQUEDA] Cambiado a: Código de Barras');
-
+        setModoBusqueda('codigo');
         // AUTO-FOCUS: Poner foco en el campo de código de barras
         setTimeout(() => {
             enfocarCampoCodigoBarras();
         }, 100);
     } else {
-        modoBusqueda = 'descripcion';
-        btn.textContent = '🔍 Modo: Descripción';
-        btn.classList.remove('modo-codigo');
-        console.log('[MODO-BUSQUEDA] Cambiado a: Descripción');
+        setModoBusqueda('descripcion');
     }
+}
+
+/**
+ * Verificar si un string es un código de barras (numérico de 5 a 20 dígitos)
+ */
+function esCodigoBarras(query) {
+    if (!query) return false;
+    const clean = query.trim();
+    return /^\d{5,20}$/.test(clean);
 }
 
 /**
@@ -1162,10 +1180,26 @@ async function handleClienteInput(event) {
  * Manejar teclas especiales
  */
 function handleClienteKeydown(event) {
-    const sugerenciasContainer = document.getElementById('cliente-sugerencias');
-    const items = sugerenciasContainer ? sugerenciasContainer.querySelectorAll('.cliente-sugerencia-item') : [];
+    if (event.key === 'Enter') {
+        event.preventDefault(); // Evitar submit del formulario en todos los casos al presionar Enter en cliente
+    }
 
-    if (!items || items.length === 0) return;
+    const sugerenciasContainer = document.getElementById('cliente-sugerencias');
+    if (!sugerenciasContainer) return;
+
+    const items = sugerenciasContainer.querySelectorAll('.cliente-sugerencia-item');
+
+    if (event.key === 'Enter') {
+        if (items.length > 0) {
+            // Si hay un índice seleccionado (navegación con flechas), usar ese, si no el primero
+            const indexToSelect = (selectedIndex >= 0 && selectedIndex < items.length) ? selectedIndex : 0;
+            console.log(`🔍 [NuevoPresupuesto] Auto-seleccionando cliente de la lista (índice ${indexToSelect})`);
+            seleccionarCliente(items[indexToSelect]);
+        }
+        return;
+    }
+
+    if (items.length === 0) return;
 
     switch (event.key) {
         case 'ArrowDown':
@@ -1178,20 +1212,6 @@ function handleClienteKeydown(event) {
             event.preventDefault();
             selectedIndex = Math.max(selectedIndex - 1, -1);
             updateSelection(items);
-            break;
-
-        case 'Enter':
-            event.preventDefault(); // ✅ Evitar submit del formulario
-
-            // Si hay un índice seleccionado (navegación con flechas), usar ese
-            if (selectedIndex >= 0 && items[selectedIndex]) {
-                seleccionarCliente(items[selectedIndex]);
-            }
-            // Si no hay índice seleccionado pero hay resultados, auto-seleccionar el primero
-            else if (items.length > 0) {
-                console.log('🔍 [NuevoPresupuesto] Auto-seleccionando primer resultado al presionar Enter');
-                seleccionarCliente(items[0]);
-            }
             break;
 
         case 'Escape':
@@ -1749,52 +1769,67 @@ async function simularBusquedaArticulos(query) {
  * Manejar teclas especiales para artículos
  */
 function handleArticuloKeydown(event) {
-    // MODO CÓDIGO DE BARRAS: Detectar Enter para carga directa
-    if (event.key === 'Enter' && modoBusqueda === 'codigo') {
-        event.preventDefault();
+    if (event.key === 'Enter') {
+        event.preventDefault(); // Evitar submit del formulario en todos los casos al presionar Enter en artículos
+        
         const input = event.target;
         const query = (input.value || '').trim();
-
+        
         if (query.length > 0) {
-            console.log('[MODO-CODIGO] Enter detectado, procesando código:', query);
-            handleCodigoBarrasEnter(input, query);
+            // Caso auto-switch o modo código activo
+            if (modoBusqueda === 'codigo' || esCodigoBarras(query)) {
+                if (modoBusqueda !== 'codigo') {
+                    console.log('[AUTO-SWITCH] Detectado código de barras en modo descripción. Cambiando a modo código de barras.');
+                    setModoBusqueda('codigo');
+                }
+                console.log('[MODO-CODIGO] Enter detectado, procesando código:', query);
+                handleCodigoBarrasEnter(input, query);
+                return;
+            }
+        }
+
+        // Caso modo descripción normal con sugerencias
+        if (modoBusqueda === 'descripcion') {
+            const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
+            if (sugerenciasContainer && sugerenciasContainer.style.display !== 'none') {
+                const items = sugerenciasContainer.querySelectorAll('.articulo-sugerencia-item');
+                let selectedIndex = parseInt(sugerenciasContainer.dataset.selectedIndex || '-1', 10);
+                if (selectedIndex >= 0 && items[selectedIndex]) {
+                    seleccionarArticulo(input, items[selectedIndex]);
+                }
+            }
         }
         return;
     }
 
-    // MODO DESCRIPCIÓN: Comportamiento normal con sugerencias
-    const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
-    if (!sugerenciasContainer || sugerenciasContainer.style.display === 'none') return;
+    // Navegación con flechas / Escape para modo descripción
+    if (modoBusqueda === 'descripcion') {
+        const sugerenciasContainer = document.querySelector('.articulo-sugerencias');
+        if (!sugerenciasContainer || sugerenciasContainer.style.display === 'none') return;
 
-    const items = sugerenciasContainer.querySelectorAll('.articulo-sugerencia-item');
-    if (items.length === 0) return;
+        const items = sugerenciasContainer.querySelectorAll('.articulo-sugerencia-item');
+        if (items.length === 0) return;
 
-    let selectedIndex = parseInt(sugerenciasContainer.dataset.selectedIndex || '-1', 10);
+        let selectedIndex = parseInt(sugerenciasContainer.dataset.selectedIndex || '-1', 10);
 
-    switch (event.key) {
-        case 'ArrowDown':
-            event.preventDefault();
-            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-            updateArticuloSelection(items, selectedIndex);
-            break;
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                updateArticuloSelection(items, selectedIndex);
+                break;
 
-        case 'ArrowUp':
-            event.preventDefault();
-            selectedIndex = Math.max(selectedIndex - 1, -1);
-            updateArticuloSelection(items, selectedIndex);
-            break;
+            case 'ArrowUp':
+                event.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                updateArticuloSelection(items, selectedIndex);
+                break;
 
-        case 'Enter':
-            event.preventDefault();
-            if (selectedIndex >= 0 && items[selectedIndex]) {
-                seleccionarArticulo(event.target, items[selectedIndex]);
-            }
-            break;
-
-        case 'Escape':
-            event.preventDefault();
-            ocultarSugerenciasArticulo();
-            break;
+            case 'Escape':
+                event.preventDefault();
+                ocultarSugerenciasArticulo();
+                break;
+        }
     }
 }
 
@@ -1831,15 +1866,32 @@ async function handleCodigoBarrasEnter(input, codigoBarras) {
             // Artículo ya existe: sumar 1 a la cantidad
             console.log('[MODO-CODIGO] Artículo ya existe en detalle, sumando cantidad');
             incrementarCantidadArticulo(filaExistente);
+
+            // Limpiar campo donde se escaneó y mantener foco
+            input.value = '';
+            input.focus();
         } else {
             // Artículo nuevo: agregar fila con cantidad 1
             console.log('[MODO-CODIGO] Artículo nuevo, agregando al detalle');
             await agregarArticuloAlDetalle(articulo, input);
-        }
 
-        // Limpiar campo y mantener foco para siguiente escaneo
-        input.value = '';
-        input.focus();
+            // Agregar una nueva fila vacía al final para el siguiente escaneo
+            agregarDetalle();
+
+            // Poner el foco en el nuevo input creado
+            const tbody = document.getElementById('detalles-tbody');
+            if (tbody) {
+                const rows = tbody.querySelectorAll('tr');
+                if (rows.length > 0) {
+                    const lastRow = rows[rows.length - 1];
+                    const lastInput = lastRow.querySelector('input[name*="[articulo]"]');
+                    if (lastInput) {
+                        lastInput.value = '';
+                        lastInput.focus();
+                    }
+                }
+            }
+        }
 
         console.log('[MODO-CODIGO] Código procesado exitosamente, listo para siguiente escaneo');
 
@@ -1968,8 +2020,14 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     const filaActual = inputOriginal.closest('tr');
     const articuloInputActual = filaActual?.querySelector('input[name*="[articulo]"]');
 
-    // Si la fila actual está vacía, usarla; si no, crear nueva
-    const usarFilaActual = articuloInputActual && (!articuloInputActual.value || articuloInputActual.value.trim() === '');
+    // Modificamos la condición para considerar la fila como "vacía/usable" si:
+    // 1. El input del artículo no tiene valor, O
+    // 2. No tiene un código de barras real en dataset (está vacío de datos reales) AND estamos en modo código (el valor del input es solo el barcode escaneado temporal)
+    const tieneArticuloReal = articuloInputActual && (
+        (articuloInputActual.dataset.codigoBarras && articuloInputActual.dataset.codigoBarras.trim() !== '') ||
+        (articuloInputActual.value && articuloInputActual.value.trim() !== '' && modoBusqueda !== 'codigo')
+    );
+    const usarFilaActual = articuloInputActual && !tieneArticuloReal;
 
     let targetRow;
     let targetInput;
@@ -2942,9 +3000,10 @@ async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
                         origenNumFacturaInput.value = parseInt(partes[1], 10);
                     }
                 } else if (idPresupuesto) {
-                    // Es de Lamda
+                    // Es de LAMDA
                     origenFactSelect.value = 'LAMDA';
-                    origenPuntoVentaInput.value = 4; // Por defecto
+                    const ptoVta = (data.data && data.data.presupuesto && data.data.presupuesto.pto_vta) ? parseInt(data.data.presupuesto.pto_vta, 10) : null;
+                    origenPuntoVentaInput.value = ptoVta || 32;
                     origenNumFacturaInput.value = parseInt(idPresupuesto, 10);
                 }
                 
@@ -3297,10 +3356,10 @@ function presentarOpcionesDeOrigen(historial, itemData, precioActual) {
 
                 // Event Listeners para los botones
                 const btnHist = itemDiv.querySelector('.btn-historico');
-                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist, h.descuento_porcentaje || 0, h.id_presupuesto, h.comprobante_lomasoft); };
+                btnHist.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(precioHist, h.descuento_porcentaje || 0, h.id_presupuesto, h.comprobante_lomasoft, h.pto_vta); };
 
                 const btnAct = itemDiv.querySelector('.btn-actual');
-                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null, 0, h.id_presupuesto, h.comprobante_lomasoft); }; // Null = Recalcula con precio actual y 0 descuento
+                if (btnAct) btnAct.onclick = (e) => { e.stopPropagation(); seleccionarOrigenConfirmed(null, 0, h.id_presupuesto, h.comprobante_lomasoft, h.pto_vta); }; // Null = Recalcula con precio actual y 0 descuento
 
                 mesDiv.appendChild(itemDiv);
             });
@@ -3369,7 +3428,7 @@ function tiempoRelativo(fechaISO) {
 /**
  * Callback al seleccionar una opción del modal
  */
-function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0, origenId = null, comprobanteLomasoft = null) {
+function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0, origenId = null, comprobanteLomasoft = null, ptoVta = null) {
     modalOrigen.hide();
     
     // AUTOFILL DE CAMPOS ORIGEN DE FACTURACIÓN (REGLA GRANÍTICA 1:1)
@@ -3388,9 +3447,9 @@ function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0, or
                     origenNumFacturaInput.value = parseInt(partes[1], 10);
                 }
             } else if (origenId) {
-                // Es de Lamda
+                // Es de LAMDA
                 origenFactSelect.value = 'LAMDA';
-                origenPuntoVentaInput.value = 4; // Por defecto para Lamda
+                origenPuntoVentaInput.value = ptoVta ? parseInt(ptoVta, 10) : 32; // Usar ptoVta del histórico o fallback a 32 para LAMDA
                 origenNumFacturaInput.value = parseInt(origenId, 10);
             }
         }

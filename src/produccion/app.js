@@ -7,7 +7,7 @@ const { Server } = require('socket.io');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const produccionRoutes = require('./routes/produccion');
 const usuariosRoutes = require('../usuarios/rutas');
-
+const { supabaseFetch } = require('./utils/supabaseHelper');
 
 const app = express();
 const httpServer = createServer(app);
@@ -264,7 +264,7 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
         
         while (hasMore && cotizaciones.length < 5000) {
             const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&limit=1000&offset=${offset}`;
-            const response = await fetch(url, { headers });
+            const response = await supabaseFetch(url, { headers });
             if (!response.ok) throw new Error(await response.text());
             
             const rows = await response.json();
@@ -286,7 +286,7 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
         let excepciones = [];
         if (proveedoresIds.length > 0) {
             const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
-            const excRes = await fetch(excUrl, { headers });
+            const excRes = await supabaseFetch(excUrl, { headers });
             if (excRes.ok) {
                 excepciones = await excRes.json();
             }
@@ -374,7 +374,7 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
         // 1. Obtener registros de la tabla maestra filtrando por SKU (liberado de bajas estáticas)
         const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&or=(datos_maestros->>codigo.eq.${sku},datos_maestros->>sku.eq.${sku},datos_maestros->>c\u00f3digo.eq.${sku})`;
         
-        const response = await fetch(url, { headers });
+        const response = await supabaseFetch(url, { headers });
         if (!response.ok) throw new Error(await response.text());
         const cotizaciones = await response.json();
 
@@ -387,7 +387,7 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
         let excepciones = [];
         if (proveedoresIds.length > 0) {
             const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
-            const excRes = await fetch(excUrl, { headers });
+            const excRes = await supabaseFetch(excUrl, { headers });
             if (excRes.ok) {
                 excepciones = await excRes.json();
             }

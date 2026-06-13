@@ -1253,6 +1253,10 @@ function updatePresupuestosTable(data) {
                 `<span class="estado-badge badge-purple" style="display:block; margin-top:5px; background-color: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8;">
                 📁 Admin (Solo NC)
             </span>` : ''}
+                ${item.estado === 'Administrativa NC' && item.tiene_borrador && item.id_borrador ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #ffe8cc; color: #d9480f; border: 1px solid #ffd8a8;">
+                📝 Borrador NC
+            </span>` : ''}
             </td>
             <td class="text-center">
                 <div class="action-buttons-compact" style="display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; justify-content: center;">
@@ -3043,23 +3047,38 @@ window.enviarAFacturador = async function (presupuestoId) {
         }
 
         const currentClientId = presupuesto.cliente_id ? parseInt(presupuesto.cliente_id.split(' - ')[0]) : null;
+        const resolvedFacturaAsociadaId = (detallesJson.data && detallesJson.data.presupuesto && detallesJson.data.presupuesto.factura_asociada_id) 
+            ? detallesJson.data.presupuesto.factura_asociada_id 
+            : presupuesto.factura_asociada_id;
 
         const payload = {
             es_nota_credito: true,
-            cliente_id: currentClientId,
-            // Asumimos que como es Administrativa NC ya se grabó el factura_asociada_id
-            factura_asociada_id: presupuesto.factura_asociada_id,
+            cliente: {
+                cliente_id: currentClientId
+            },
+            presupuesto_id: presupuestoId,
+            factura_asociada_id: resolvedFacturaAsociadaId,
+            precio_modo: 'NETO',
             total: presupuesto.total_final || presupuesto.monto,
             descuento: presupuesto.descuento || 0,
-            items: detallesJson.data.detalles.map(d => ({
-                id_articulo: d.id_articulo,
-                cantidad: d.cantidad,
-                valor1: d.valor1,
-                camp2: d.camp2
-            }))
+            items: detallesJson.data.detalles.map(d => {
+                const aliquot = parseFloat(d.camp2);
+                let alicIvaId = 1; // 21% por defecto
+                if (aliquot === 0.105 || aliquot === 10.5) {
+                    alicIvaId = 2;
+                } else if (aliquot === 0) {
+                    alicIvaId = 3;
+                }
+                return {
+                    descripcion: d.articulo_nombre || d.articulo || 'Artículo',
+                    qty: parseFloat(d.cantidad) || 0,
+                    p_unit: parseFloat(d.valor1) || 0,
+                    alic_iva_id: alicIvaId
+                };
+            })
         };
 
-        const response = await fetch('/api/facturacion/facturador/nc/directa', { // Asegurar usar el endpoint correcto o '/api/facturas' con flag
+        const response = await fetch('http://localhost:3004/facturacion/facturas', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -3072,8 +3091,8 @@ window.enviarAFacturador = async function (presupuestoId) {
         }
 
         await Swal.fire(
-            '¡Nota de Crédito Emitida!',
-            'La NC ha sido generada y aprobada por AFIP.',
+            '¡Borrador de NC Generado!',
+            'El borrador de la Nota de Crédito ha sido enviado al módulo de facturación local con éxito.',
             'success'
         );
 

@@ -126,8 +126,17 @@ function renderizarEntregas() {
             const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
             
             const lomasoft = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
-            const labelPteFac = (!esOrdenTratamiento && !esOrdenRetiro ? `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'No posee factura Lomasoft', 'info')">⏳ Pte. Facturación</span>` : '');
-            const badgeLomasoft = lomasoft ? `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Lomasoft: ${lomasoft}</span>` : labelPteFac;
+            let badgeBillingHTML = '';
+            if (!esOrdenTratamiento && !esOrdenRetiro) {
+                if (entrega.esta_facturado || lomasoft || entrega.factura_estado === 'APROBADA') {
+                    badgeBillingHTML = `<span style="font-size: 0.70rem; color: white; background: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: bold;">🧾 Facturado</span>`;
+                } else if (entrega.factura_estado === 'BORRADOR' || entrega.estado === 'Enviado a Facturación') {
+                    badgeBillingHTML = `<span style="font-size: 0.70rem; color: white; background: #f59e0b; padding: 2px 6px; border-radius: 4px; font-weight: bold;">📄 Enviado</span>`;
+                } else {
+                    badgeBillingHTML = `<span style="font-size: 0.70rem; color: white; background: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold; cursor: pointer;" onclick="event.stopPropagation(); Swal.fire('Pendiente', 'Pedido pendiente de facturar', 'info')">⏳ Pte. Facturación</span>`;
+                }
+            }
+            const badgeLomasoft = badgeBillingHTML;
 
             let textoBoton = completado ? (esItemRetiro ? '✓ Retirado' : '✓ Entregado') : (esItemRetiro ? 'Retirar' : 'Entregar');
             let backgroundBoton = completado ? '#dcfce7' : (esItemRetiro ? '#e67e22' : '#2563eb');

@@ -54,6 +54,7 @@ function getCompanyConfig() {
         cbuFmt: '',
         
         alias: process.env.COMPANY_ALIAS || '',
+        inicioActividad: process.env.COMPANY_INICIO_ACTIVIDAD || '01/01/2026',
         
         // Contacto (opcionales)
         email: process.env.COMPANY_EMAIL || '',

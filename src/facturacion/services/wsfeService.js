@@ -5,16 +5,16 @@
 
 const Afip = require('@afipsdk/afip.js');
 const { pool } = require('../config/database');
-const { ENTORNO, CUIT, ALICUOTAS_IVA } = require('../config/afip');
+const { ENTORNO, CUIT, CERTIFICADOS, ALICUOTAS_IVA } = require('../config/afip');
 const path = require('path');
 
 // Inicializar SDK de AFIP
 const afip = new Afip({
-    CUIT: 23248921749,
-    cert: path.resolve(__dirname, '../certs/certificado_homo.crt'),
-    key: path.resolve(__dirname, '../certs/privada_homo.key'),
+    CUIT: parseInt(CUIT, 10),
+    cert: CERTIFICADOS[ENTORNO].CERT,
+    key: CERTIFICADOS[ENTORNO].KEY,
     res_folder: path.resolve(__dirname, '../certs/'),
-    production: false
+    production: ENTORNO === 'PROD'
 });
 
 console.log('🔍 [FACTURACION-WSFE] Cargando servicio WSFE con afip.js...');
@@ -300,7 +300,48 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
         console.log('======================================================');
         console.log(JSON.stringify(payload, null, 2));
 
-        const res = await afip.ElectronicBilling.createVoucher(payload);
+        const lastVoucher = nextVoucher - 1;
+        let usarExistente = false;
+        let caeExistente = null;
+        let caeVtoExistente = null;
+
+        if (lastVoucher > 0) {
+            try {
+                console.log(`🔍 [FACTURACION-WSFE] Verificando si el último comprobante en AFIP (${lastVoucher}) ya fue autorizado para esta factura...`);
+                const voucherInfo = await afip.ElectronicBilling.getVoucherInfo(lastVoucher, factura.pto_vta, factura.tipo_cbte);
+                if (voucherInfo && 
+                    voucherInfo.Resultado === 'A' && 
+                    Number(voucherInfo.ImpTotal) === Number(payload.ImpTotal) && 
+                    Number(voucherInfo.DocNro) === Number(payload.DocNro)) {
+                    
+                    const queryCheckNro = `
+                        SELECT id FROM factura_facturas 
+                        WHERE pto_vta = $1 AND tipo_cbte = $2 AND cbte_nro = $3 AND id != $4 AND estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    `;
+                    const resCheckNro = await pool.query(queryCheckNro, [factura.pto_vta, factura.tipo_cbte, lastVoucher, facturaId]);
+                    
+                    if (resCheckNro.rows.length === 0) {
+                        console.log(`⚠️ [FACTURACION-WSFE] El último comprobante en AFIP (Nº ${lastVoucher}) coincide en totales y DNI, y no está registrado localmente. Reutilizando CAE para evitar duplicados.`);
+                        usarExistente = true;
+                        caeExistente = voucherInfo.CodAutorizacion;
+                        caeVtoExistente = voucherInfo.FchVto;
+                    }
+                }
+            } catch (err) {
+                console.log(`   [FACTURACION-WSFE] No se pudo verificar reutilización de comprobante anterior: ${err.message}`);
+            }
+        }
+
+        let res;
+        if (usarExistente) {
+            res = {
+                CAE: caeExistente,
+                CAEFchVto: caeVtoExistente,
+                _reutilizado: true
+            };
+        } else {
+            res = await afip.ElectronicBilling.createVoucher(payload);
+        }
 
         console.log('\n======================================================');
         console.log('📥 [VIGÍA - PASO 4: RESPUESTA CRUDA (ÉXITO)]');
@@ -312,9 +353,11 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
 
         console.log(`✅ [FACTURACION-WSFE] Respuesta AFIP: CAE=${cae}, Vto=${vto}`);
 
+        const vtoLimpio = String(vto || '').replace(/\D/g, '');
         const resultadoParseado = {
             cae: cae,
-            cae_vto: `${vto.substring(0, 4)}-${vto.substring(4, 6)}-${vto.substring(6, 8)}`,
+            cae_vto: vtoLimpio.length === 8 ? `${vtoLimpio.substring(0, 4)}-${vtoLimpio.substring(4, 6)}-${vtoLimpio.substring(6, 8)}` : vto,
+            cbte_nro: usarExistente ? lastVoucher : nextVoucher,
             resultado: 'A',
             observaciones: []
         };

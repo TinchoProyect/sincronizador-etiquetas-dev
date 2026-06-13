@@ -3,7 +3,7 @@ export const modalIngredienteHTML = `
 <div id="modal-ingrediente" class="modal">
     <div class="modal-content card" style="width: 800px; max-width: 90vw; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); background-color: #ffffff;">
         <div class="modal-header" style="border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-            <h2 id="modal-titulo" style="margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 600;">Nuevo Ingrediente</h2>
+            <h2 id="modal-titulo" style="margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 600;">Nuevo Ingrediente / Insumo</h2>
             <span class="close-modal" style="font-size: 1.5rem; cursor: pointer; color: #64748b; transition: color 0.2s;">&times;</span>
         </div>
         <form id="form-ingrediente" style="display: flex; flex-direction: column; gap: 20px;">
@@ -57,6 +57,14 @@ export const modalIngredienteHTML = `
                     </div>
                 </div>
 
+                <!-- Bloque Insumo Checkbox -->
+                <div class="form-group" style="margin: 0; display: flex; align-items: center; gap: 10px; background-color: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <input type="checkbox" id="es-insumo" style="width: 18px; height: 18px; cursor: pointer;">
+                    <label for="es-insumo" style="font-weight: 500; color: #334155; cursor: pointer; margin: 0; user-select: none;">
+                        📦 ¿Es un Artículo Insumo / Packaging? <span style="font-weight: normal; font-size: 0.8rem; color: #64748b;">(Se medirá en unidades en lugar de kilos)</span>
+                    </label>
+                </div>
+
                 <!-- Bloque 3: Métricas -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
                     <div class="form-group" style="margin: 0;">
@@ -79,7 +87,7 @@ export const modalIngredienteHTML = `
             <!-- Botones de Acción (Formulario Principal) -->
             <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; position: relative; z-index: 100;">
                 <button type="button" id="btn-trazabilidad" style="display: none; padding: 10px 20px; background: #0284c7; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s; margin-right: auto;" onclick="window.abrirTrazabilidadDesdeFicha()">🔄 Trazabilidad en Recetas</button>
-                <button type="submit" class="btn btn-success" style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); transition: all 0.2s; pointer-events: auto;">Guardar Ingrediente</button>
+                <button type="submit" class="btn btn-success" style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); transition: all 0.2s; pointer-events: auto;">Guardar Ingrediente / Insumo</button>
             </div>
         </form>
     </div>
@@ -101,6 +109,19 @@ export async function inicializarModalIngrediente(onSuccessCallback = null) {
     inicializarComboboxCategorias();
     configurarCierreModal();
     configurarSubmitFormulario();
+
+    // Configurar event listener para checkbox es-insumo
+    const checkInsumo = document.getElementById('es-insumo');
+    const inputUnidad = document.getElementById('unidad-medida');
+    if (checkInsumo && inputUnidad) {
+        checkInsumo.addEventListener('change', () => {
+            if (checkInsumo.checked) {
+                inputUnidad.value = 'Unidades';
+            } else {
+                inputUnidad.value = 'Kilo';
+            }
+        });
+    }
 }
 
 export async function cargarCategorias() {
@@ -195,9 +216,7 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
     window.isEditingCategoryModal = isModal;
     const wrapper = document.querySelector('.combobox-wrapper');
     let container = document.getElementById('categoria-form-container');
-    const list = document.getElementById('lista-categorias-resultados');
     
-    // Crear contenedor si no existe (ya no debería ser necesario porque viene en el HTML, pero por si acaso para el modal de gestión)
     if (!container) {
         container = document.createElement('div');
         container.id = 'categoria-form-container';
@@ -217,7 +236,7 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
                 <button type="button" id="btn-cancelar-categoria" style="background: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Cancelar</button>
             </div>
         `;
-        document.body.appendChild(container); // Anclarlo temporalmente
+        document.body.appendChild(container);
     }
 
     if (isModal) {
@@ -227,7 +246,6 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
         if (wrapper) wrapper.parentNode.insertBefore(container, wrapper.nextSibling);
     }
 
-    // El contenedor dropdown custom ya no existe (Option A Nativa)
     if (wrapper && !isModal) wrapper.style.display = 'none';
     
     document.getElementById('cat-form-nombre').value = nombreSugerido;
@@ -288,7 +306,6 @@ export function abrirSubFormularioCategoria(nombreSugerido = '', isModal = false
             if (!isModal && wrapper) {
                 wrapper.style.display = 'flex';
                 const select = document.getElementById('categoria-input');
-                // Agregar la nueva categoría al select si no existe
                 if (!Array.from(select.options).some(opt => opt.value === savedCat.nombre)) {
                     const newOpt = document.createElement('option');
                     newOpt.value = savedCat.nombre;
@@ -326,12 +343,10 @@ function configurarCierreModal() {
         document.getElementById('categoria-id').value = '';
         const btnEdit = document.getElementById('btn-edit-categoria');
         if (btnEdit) btnEdit.style.display = 'none';
-        // Dispatch event para notificar a la vista anfitriona si lo necesita
         window.dispatchEvent(new Event('modal-ingrediente-cerrado'));
     };
 
     closeBtns.forEach(btn => {
-        // Remover listeners anteriores reemplazando el nodo
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
         newBtn.addEventListener('click', closeHandler);
@@ -342,7 +357,6 @@ function configurarSubmitFormulario() {
     const form = document.getElementById('form-ingrediente');
     if (!form) return;
     
-    // Remover listeners anteriores
     const newForm = form.cloneNode(true);
     form.parentNode.replaceChild(newForm, form);
 
@@ -354,11 +368,12 @@ function configurarSubmitFormulario() {
             codigo: document.getElementById('codigo') ? document.getElementById('codigo').value : null,
             nombre: document.getElementById('nombre').value,
             unidad_medida: document.getElementById('unidad-medida').value,
-            categoria_id: document.getElementById('categoria-id').value || null, // Opcional
+            categoria_id: document.getElementById('categoria-id').value || null,
             stock_actual: Number(document.getElementById('stock').value.replace(',', '.')),
             sector_id: document.getElementById('sector').value || null,
             descripcion: document.getElementById('descripcion').value,
-            padre_id: (typeof ingredienteEditando !== 'undefined' && ingredienteEditando) ? ingredienteEditando.padre_id : null
+            padre_id: (typeof ingredienteEditando !== 'undefined' && ingredienteEditando) ? ingredienteEditando.padre_id : null,
+            es_insumo: document.getElementById('es-insumo').checked
         };
 
         try {
@@ -381,7 +396,6 @@ function configurarSubmitFormulario() {
             document.getElementById('modal-ingrediente').style.display = 'none';
             newForm.reset();
             
-            // Callback para la vista anfitriona
             if (onSuccessCallbackGlobal) {
                 onSuccessCallbackGlobal(data);
             }
@@ -396,7 +410,7 @@ function configurarSubmitFormulario() {
 export async function abrirModalNuevoIngrediente() {
     const modal = document.getElementById('modal-ingrediente');
     const modalTitulo = document.getElementById('modal-titulo');
-    if (modalTitulo) modalTitulo.textContent = 'Nuevo Ingrediente';
+    if (modalTitulo) modalTitulo.textContent = 'Nuevo Ingrediente / Insumo';
     
     document.getElementById('form-ingrediente').reset();
     document.getElementById('ingrediente-id').value = '';
@@ -405,6 +419,9 @@ export async function abrirModalNuevoIngrediente() {
     if (btnEdit) btnEdit.style.display = 'none';
     const btnTrazabilidad = document.getElementById('btn-trazabilidad');
     if (btnTrazabilidad) btnTrazabilidad.style.display = 'none';
+    
+    const checkInsumo = document.getElementById('es-insumo');
+    if (checkInsumo) checkInsumo.checked = false;
 
     try {
         const response = await fetch('/api/produccion/ingredientes/nuevo-codigo');
@@ -417,7 +434,7 @@ export async function abrirModalNuevoIngrediente() {
     }
     
     if (modal) {
-        modal.style.display = 'flex'; // Usar flex para consistencia
+        modal.style.display = 'flex';
         modal.style.alignItems = 'center';
         modal.style.justifyContent = 'center';
         modal.style.zIndex = '10050';
@@ -428,57 +445,6 @@ export async function abrirModalNuevoIngrediente() {
     }
 }
 
-// Exportar funciones globales para el auditor
-// ===== GLOBAL EXPORTS PARA ONCLICK EVENTS =====
-// Exponer funcion en window para que el botón onclick="+ Nueva" pueda invocarla en produccion_personal
 window.abrirSubFormularioCategoria = abrirSubFormularioCategoria;
-window.abrirModalNuevoIngrediente = abrirModalNuevoIngrediente;window.inicializarModalIngrediente = inicializarModalIngrediente;
-
-/*
-=============================================================================
-SCRIPT VIGÍA DEPURADOR - TICKET #028
-=============================================================================
-Ejecutar este script en la consola del navegador para auditar empíricamente
-el estado de inyección, binding y conectividad del Combobox de Categorías.
-
-(async function auditarComboboxCategorias() {
-    console.log('%c[VIGÍA] Iniciando Auditoría de Categorías...', 'color: #3b82f6; font-weight: bold;');
-    
-    // 1. Validar DOM
-    const input = document.getElementById('categoria-input');
-    if (!input) {
-        console.error('❌ DOM FAIL: El input de categoría no existe. ¿El modal fue inyectado?');
-        return;
-    }
-    console.log('✅ DOM OK: Input de categoría encontrado.');
-
-    // 2. Verificar Event Listener (Binding)
-    const inicializado = input.dataset.inicializado === 'true';
-    if (!inicializado) {
-        console.warn('⚠️ BINDING WARN: El dataset.inicializado no es true. Los eventos de búsqueda podrían no estar atachados.');
-    } else {
-        console.log('✅ BINDING OK: El input reporta estar inicializado.');
-    }
-
-    // 3. Simular Petición a la API (Conectividad)
-    console.log('%c[VIGÍA] Solicitando categorías a /api/produccion/categorias...', 'color: #8b5cf6;');
-    try {
-        const t0 = performance.now();
-        const resp = await fetch('/api/produccion/categorias');
-        const t1 = performance.now();
-        
-        if (!resp.ok) {
-            console.error(\`❌ API FAIL: HTTP \${resp.status} \${resp.statusText}\`);
-            return;
-        }
-        
-        const data = await resp.json();
-        console.log(\`✅ API OK: \${data.length} categorías recibidas en \${Math.round(t1 - t0)}ms.\`);
-        console.table(data.slice(0, 5)); // Mostrar muestra
-        if(data.length > 5) console.log('... (solo mostrando las primeras 5)');
-    } catch (error) {
-        console.error('❌ API FATAL: Excepción de red o CORS.', error);
-    }
-})();
-=============================================================================
-*/
+window.abrirModalNuevoIngrediente = abrirModalNuevoIngrediente;
+window.inicializarModalIngrediente = inicializarModalIngrediente;

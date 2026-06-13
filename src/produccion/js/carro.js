@@ -758,12 +758,32 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
         return '<p style="text-align:center; padding: 20px; color: #6c757d;">No hay ingredientes asignados al stock personal.</p>';
     }
 
+    const alimentos = ingredientes.filter(ing => !ing.es_insumo);
+    const insumos = ingredientes.filter(ing => !!ing.es_insumo);
+
+    let html = '<div class="dashboard-externo" style="display: flex; flex-direction: column; gap: 20px; padding: 10px;">';
+
+    if (alimentos.length > 0) {
+        html += `<h4 style="margin: 5px 0; font-size: 1.1em; color: #495057; border-left: 3px solid #10b981; padding-left: 8px; font-weight: bold; text-align: left;">Ingredientes Alimenticios</h4>`;
+        html += generarBloqueDashboard(alimentos, false, estadoCarro, carroFinalizado, manualesPorIngrediente);
+    }
+
+    if (insumos.length > 0) {
+        html += `<h4 style="margin: 15px 0 5px 0; font-size: 1.1em; color: #495057; border-left: 3px solid #64748b; padding-left: 8px; font-weight: bold; text-align: left;">Insumos Necesarios</h4>`;
+        html += generarBloqueDashboard(insumos, true, estadoCarro, carroFinalizado, manualesPorIngrediente);
+    }
+
+    html += `</div>`;
+    return html;
+}
+
+function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, manualesPorIngrediente) {
     // Ordenar por nombre
-    ingredientes.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+    lista.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
 
-    let html = `<div class="dashboard-externo" style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">`;
+    let html = `<div style="display: flex; flex-direction: column; gap: 15px;">`;
 
-    ingredientes.forEach(ing => {
+    lista.forEach(ing => {
         const cantidadNecesariaRaw = ing.cantidad;
         let cantidadNecesaria = 0;
         if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined) {
@@ -777,22 +797,18 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
         let suficienciaReal = 0;
 
         if (carroFinalizado) {
-            // Snapshot = Stock original disponible antes de cerrar
             stockOriginal = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
             stockRestante = stockOriginal - cantidadNecesaria;
             suficienciaReal = stockRestante;
-            // No restamos el ingresoManual aquí para el flujo de la barra visual principal
         } else {
             stockOriginal = parseFloat(ing.stock_actual || 0);
-            stockRestante = stockOriginal; // 🎯 FIX: Anulamos el descuento visual anticipado para proteger la UX
-            suficienciaReal = stockOriginal - cantidadNecesaria; // Cálculo matemático invisible para control de seguridad
+            stockRestante = stockOriginal;
+            suficienciaReal = stockOriginal - cantidadNecesaria;
         }
 
         const tieneStock = suficienciaReal >= -0.01;
         
-        // El porcentaje de la barra se calcula sobre la "Capacidad Base" (ej. Bidón de 15kg) para no superar gráficamente el contenedor unitario
         let valorReferenciaParaBarra = ing.capacidad_base ? parseFloat(ing.capacidad_base) : stockOriginal;
-        // Si el valor base es anómalo, recurrir al stockTotal
         if (isNaN(valorReferenciaParaBarra) || valorReferenciaParaBarra <= 0) {
             valorReferenciaParaBarra = stockOriginal;
         }
@@ -801,44 +817,50 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
         const porcentajeVisual = Math.min(100, porcentajeReal);
         const haySobreStock = porcentajeReal > 100;
 
-        let colorBarra = '#28a745'; // Verde
+        let colorBarra = '#28a745';
         if (haySobreStock) {
-            colorBarra = '#19692c'; // Verde más oscuro
+            colorBarra = '#19692c';
         } else if (!tieneStock || porcentajeReal < 20) {
-            colorBarra = '#dc3545'; // Rojo crítico
+            colorBarra = '#dc3545';
         } else if (porcentajeReal < 50) {
-            colorBarra = '#fd7e14'; // Naranja
+            colorBarra = '#fd7e14';
         }
 
-        // Acciones
         let botonesAccion = '';
         if (!carroFinalizado && estadoCarro === 'en_preparacion') {
             const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             const deshabilitado = !carroIdActivo;
             
+            const valAjusteStock = esInsumo ? Math.round(stockOriginal) : stockOriginal;
             const botonAjusteRapido = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero" style="padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
-                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockOriginal}, ${carroIdActivo})" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
+                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${valAjusteStock}, ${carroIdActivo})" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
             
             const botonAbastecer = `<button onclick="window.abrirModalAbastecimientoExterno(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #28a745; border-radius: 4px; background: #e8f5e9; color: #2e7d32; cursor: pointer; margin-left: 8px;">🚚 Abastecer</button>`;
-            
             const botonDesactivar = `<button onclick="window.desactivarIngredienteStockPersonal(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #dc3545; border-radius: 4px; background: #fff5f5; color: #dc3545; cursor: pointer; margin-left: 8px;">🚫 Desactivar</button>`;
             
             botonesAccion = `<div style="margin-top: 8px; text-align: right;">${botonAjusteRapido}${botonAbastecer}${botonDesactivar}</div>`;
         }
 
+        const unidadMedida = esInsumo ? 'u' : (ing.unidad_medida || '');
         let badgeSobreStock = '';
         if (haySobreStock) {
             const excedente = stockRestante - valorReferenciaParaBarra;
-            badgeSobreStock = `<span style="color: #19692c; font-weight: bold; background: #e8f5e9; padding: 2px 6px; border-radius: 4px; border: 1px solid #19692c; font-size: 10px; margin-left: 5px;">📦 SOBRE-STOCK (+${excedente.toFixed(2)} ${ing.unidad_medida})</span>`;
+            const valExcedente = esInsumo ? Math.round(excedente).toString() : excedente.toFixed(2);
+            badgeSobreStock = `<span style="color: #19692c; font-weight: bold; background: #e8f5e9; padding: 2px 6px; border-radius: 4px; border: 1px solid #19692c; font-size: 10px; margin-left: 5px;">📦 SOBRE-STOCK (+${valExcedente} ${unidadMedida})</span>`;
         }
+
+        const valConsumo = esInsumo ? Math.round(consumo).toString() : consumo.toFixed(2);
+        const valStockOriginal = esInsumo ? Math.round(stockOriginal).toString() : stockOriginal.toFixed(2);
+        const valStockRestante = esInsumo ? Math.round(stockRestante).toString() : stockRestante.toFixed(2);
+        const valFaltante = esInsumo ? Math.round(Math.abs(suficienciaReal)).toString() : Math.abs(suficienciaReal).toFixed(2);
 
         html += `
             <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <strong style="color: #343a40; font-size: 15px;">${ing.nombre || 'Desconocido'}</strong>
+                    <strong style="color: #343a40; font-size: 15px; text-align: left;">${ing.nombre || 'Desconocido'}</strong>
                     <span style="font-weight: bold; font-size: 13px; color: ${tieneStock ? '#495057' : '#dc3545'};">
-                        Consumo: ${consumo.toFixed(2)} ${ing.unidad_medida} / Disponible: ${stockOriginal.toFixed(2)} ${ing.unidad_medida}
+                        Consumo: ${valConsumo} ${unidadMedida} / Disponible: ${valStockOriginal} ${unidadMedida}
                     </span>
                 </div>
                 
@@ -847,8 +869,8 @@ function generarDashboardStockPersonal(ingredientes, estadoCarro, carroFinalizad
                 </div>
                 
                 <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #6c757d; align-items: center;">
-                    <span style="display:flex; align-items:center;">${!carroFinalizado && estadoCarro === 'en_preparacion' ? 'Stock Físico / Actual:' : 'Restante tras producción:'} <strong style="color: ${colorBarra}; margin-left:4px;">${stockRestante.toFixed(2)} ${ing.unidad_medida} (${porcentajeReal.toFixed(0)}%)</strong> ${badgeSobreStock}</span>
-                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${Math.abs(suficienciaReal).toFixed(2)})</span>` : ''}
+                    <span style="display:flex; align-items:center;">${!carroFinalizado && estadoCarro === 'en_preparacion' ? 'Stock Físico / Actual:' : 'Restante tras producción:'} <strong style="color: ${colorBarra}; margin-left:4px;">${valStockRestante} ${unidadMedida} (${porcentajeReal.toFixed(0)}%)</strong> ${badgeSobreStock}</span>
+                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${valFaltante})</span>` : ''}
                 </div>
                 
                 ${botonesAccion}
@@ -1408,6 +1430,262 @@ export async function obtenerResumenMixesCarro(carroId, usuarioId) {
 
 // Función para mostrar el resumen de ingredientes en la UI
 import { abrirModalIngresoManual } from './ingresoManual.js';
+// Helper para generar la tabla de resumen de ingredientes o insumos
+function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, estadoCarro, tipoCarro, manualesPorIngrediente) {
+    if (lista.length === 0) {
+        return `
+            <div class="resumen-seccion" style="margin-bottom: 20px;">
+                <h4 style="margin: 15px 0 5px 0; font-size: 1em; color: #495057; border-left: 3px solid ${esSeccionInsumo ? '#64748b' : '#10b981'}; padding-left: 8px; font-weight: bold; text-align: left;">
+                    ${titulo}
+                </h4>
+                <p style="color: #6c757d; font-style: italic; margin-left: 10px; font-size: 0.9em; text-align: left;">No hay registros en esta categoría</p>
+            </div>
+        `;
+    }
+
+    // Ordenar por sector_letra (Sin Sector al final), luego por nombre
+    const listaOrdenada = [...lista].sort((a, b) => {
+        if (a.sector_letra === 'Sin Sector' && b.sector_letra !== 'Sin Sector') return 1;
+        if (a.sector_letra !== 'Sin Sector' && b.sector_letra === 'Sin Sector') return -1;
+        if (a.sector_letra !== b.sector_letra) return String(a.sector_letra || '').localeCompare(String(b.sector_letra || ''));
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    });
+
+    let html = `
+        <div class="resumen-seccion" style="margin-bottom: 20px;">
+            <h4 style="margin: 15px 0 10px 0; font-size: 1em; color: #495057; border-left: 3px solid ${esSeccionInsumo ? '#64748b' : '#10b981'}; padding-left: 8px; font-weight: bold; text-align: left;">
+                ${titulo}
+            </h4>
+    `;
+
+    if (carroFinalizado) {
+        html += `
+            <table class="tabla-resumen tabla-historica">
+                <thead>
+                    <tr>
+                        <th>${esSeccionInsumo ? 'Insumo' : 'Ingrediente'}</th>
+                        <th style="background: #e3f2fd;">Stock Anterior</th>
+                        <th style="background: #fff3e0;">Gestión Manual</th>
+                        <th>Requerido</th>
+                        <th style="background: #f5f5f5;">Nuevo Stock</th>
+                        <th>Unidad</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+    } else {
+        html += `
+            <table class="tabla-resumen">
+                <thead>
+                    <tr>
+                        <th>${esSeccionInsumo ? 'Insumo' : 'Ingrediente'}</th>
+                        <th>Cantidad Necesaria</th>
+                        <th>Stock Actual</th>
+                        <th>Estado</th>
+                        <th>Unidad</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+    }
+
+    let currentSector = null;
+
+    listaOrdenada.forEach((ing) => {
+        const stockFinalRaw = ing.stock_actual;
+        const cantidadNecesariaRaw = ing.cantidad;
+
+        let stockFinal = 0;
+        let cantidadNecesaria = 0;
+
+        if (stockFinalRaw !== null && stockFinalRaw !== undefined && stockFinalRaw !== '') {
+            const stockParsed = parseFloat(stockFinalRaw);
+            stockFinal = isNaN(stockParsed) ? 0 : stockParsed;
+        }
+
+        if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
+            const cantidadParsed = parseFloat(cantidadNecesariaRaw);
+            cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
+        }
+
+        // Separador de sector
+        if (ing.sector_letra !== currentSector) {
+            currentSector = ing.sector_letra;
+            const colSpan = carroFinalizado ? 7 : 6;
+            html += `
+                <tr class="sector-header" style="background-color: #f8f9fa; border-top: 2px solid #dee2e6; border-bottom: 2px solid #dee2e6;">
+                    <td colspan="${colSpan}" style="padding: 10px; font-weight: bold; color: #495057; font-size: 1.1em; text-align: left;">
+                        📍 Sector: <span style="color: #0056b3;">${currentSector}</span>
+                    </td>
+                </tr>
+            `;
+        }
+
+        const unidadDisplay = esSeccionInsumo ? 'u' : (ing.unidad_medida || '');
+
+        if (carroFinalizado) {
+            const stockDisponibleSnapshot = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
+            const ingresoManual = manualesPorIngrediente[ing.id] || 0;
+            const stockAnterior = stockDisponibleSnapshot - ingresoManual;
+            const stockNuevo = stockDisponibleSnapshot - cantidadNecesaria;
+            const colorStockAnterior = stockAnterior < 0 ? '#dc3545' : '#28a745';
+
+            let btnSalvavidas = '';
+            if (estadoCarro === 'preparado') {
+                btnSalvavidas = `<button onclick="window.abrirModalSalvavidas(${ing.id}, '${(ing.nombre || '').replace(/'/g, "\\'")}', ${document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo')}, '${unidadDisplay}')" class="btn-salvavidas" title="Declarar stock fantasma y reponer" style="background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🛟 Salvavidas</button>`;
+            } else {
+                btnSalvavidas = `<span style="color: #6c757d; font-size: 0.9em;">-</span>`;
+            }
+
+            const valStockAnterior = esSeccionInsumo ? Math.round(stockAnterior).toString() : stockAnterior.toFixed(2);
+            const valIngresoManual = ingresoManual > 0 ? (esSeccionInsumo ? `+${Math.round(ingresoManual)}` : `+${ingresoManual.toFixed(2)}`) : '-';
+            const valRequerido = esSeccionInsumo ? Math.round(cantidadNecesaria).toString() : cantidadNecesaria.toFixed(2);
+            const valStockNuevo = esSeccionInsumo ? Math.round(stockNuevo).toString() : stockNuevo.toFixed(2);
+
+            html += `
+                <tr>
+                    <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                    <td style="text-align: center; background: #e3f2fd; color: ${colorStockAnterior}; font-weight: bold;">
+                        ${valStockAnterior}
+                    </td>
+                    <td style="text-align: center; background: #fff3e0;">
+                        ${valIngresoManual}
+                    </td>
+                    <td style="text-align: center;">${valRequerido}</td>
+                    <td style="text-align: center; background: #f5f5f5; font-weight: bold;">
+                        ${valStockNuevo}
+                    </td>
+                    <td style="text-align: center;">${unidadDisplay}</td>
+                    <td style="text-align: center;">${btnSalvavidas}</td>
+                </tr>
+            `;
+        } else {
+            const diferencia = stockFinal - cantidadNecesaria;
+            const tieneStock = diferencia >= -0.01;
+            const faltante = tieneStock ? 0 : Math.abs(diferencia);
+
+            let indicadorEstado = '';
+            if (tieneStock) {
+                indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
+            } else {
+                const valFaltante = esSeccionInsumo ? Math.round(faltante).toString() : faltante.toFixed(2);
+                indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${valFaltante} ${unidadDisplay}</span>`;
+            }
+
+            const esIngredienteVinculado = ing.es_de_articulo_vinculado === true;
+            let mostrarBotones = true;
+
+            if (tipoCarro === 'externa') {
+                if (estadoCarro === 'en_preparacion') {
+                    mostrarBotones = !esIngredienteVinculado;
+                } else if (estadoCarro === 'preparado') {
+                    mostrarBotones = esIngredienteVinculado;
+                } else {
+                    mostrarBotones = false;
+                }
+            } else {
+                mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
+            }
+
+            const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+            const deshabilitado = !carroIdActivo;
+            const botonIngresoManual = deshabilitado
+                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})">Ingreso manual</button>`;
+
+            let botonesAccion = '';
+
+            if (mostrarBotones) {
+                const valStockFinal = esSeccionInsumo ? Math.round(stockFinal) : stockFinal;
+                const botonAjusteRapido = deshabilitado
+                    ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
+                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${valStockFinal}, ${carroIdActivo})" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
+
+                if (tipoCarro === 'externa' && estadoCarro === 'preparado') {
+                    botonesAccion = `
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            ${botonIngresoManual}
+                        </div>
+                    `;
+                } else {
+                    botonesAccion = `
+                        <div style="display: flex; gap: 8px; justify-content: center;">
+                            ${botonIngresoManual}
+                            ${botonAjusteRapido}
+                        </div>
+                    `;
+                }
+            } else {
+                botonesAccion = `
+                    <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+                        ${botonIngresoManual}
+                        <span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>
+                    </div>
+                `;
+            }
+
+            let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
+            if (ing.es_de_articulo_vinculado) {
+                clasesFila += ' ingrediente-vinculado';
+            }
+
+            const claseCeldaSustituible = (!tieneStock) ? 'celda-sustituible' : '';
+            const eventoDblClick = (!tieneStock)
+                ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${unidadDisplay}')"`
+                : '';
+
+            let cajasCerradasHtml = '';
+            if (parseFloat(ing.stock_bultos || 0) > 0) {
+                let botonAbrirCaja = '';
+                if (mostrarBotones && !deshabilitado) {
+                    botonAbrirCaja = `
+                        <button onclick="event.stopPropagation(); window.abrirCajaDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${JSON.stringify(ing.lotes_cajas_cerradas).replace(/"/g, '&quot;')})" 
+                                style="background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: bold; transition: background 0.2s; margin-top: 2px;"
+                                onmouseover="this.style.background='#059669'"
+                                onmouseout="this.style.background='#10b981'"
+                                title="Abrir una caja de este ingrediente">
+                            🔓 Abrir
+                        </button>
+                    `;
+                }
+                cajasCerradasHtml = `
+                    <div class="cajas-cerradas-badge" style="font-size: 0.8em; color: #0284c7; font-weight: bold; margin-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;" title="Cajas Cerradas en Bunker">
+                        <span>📦 ${parseFloat(ing.stock_bultos)} cj</span>
+                        ${botonAbrirCaja}
+                    </div>
+                `;
+            }
+
+            const valRequerido = esSeccionInsumo ? Math.round(cantidadNecesaria).toString() : cantidadNecesaria.toFixed(2);
+            const valStockFinal = esSeccionInsumo ? Math.round(stockFinal).toString() : stockFinal.toFixed(2);
+
+            html += `
+                <tr class="${clasesFila.trim()}">
+                    <td>${ing.nombre || 'Sin nombre'}</td>
+                    <td>${valRequerido}</td>
+                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">
+                        ${valStockFinal}
+                        ${cajasCerradasHtml}
+                    </td>
+                    <td>${indicadorEstado}</td>
+                    <td>${unidadDisplay}</td>
+                    <td>${botonesAccion}</td>
+                </tr>
+            `;
+        }
+    });
+
+    html += `
+            </tbody>
+        </table>
+    </div>
+    `;
+
+    return html;
+}
+
 export async function mostrarResumenIngredientes(ingredientes) {
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (!contenedor) return;
@@ -1422,15 +1700,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
         ingredientes.forEach((ing, index) => {
             const estado = ing.stock_actual >= ing.cantidad ? '✅' : '❌';
             console.log(`${index + 1}. ${ing.nombre} (${ing.unidad_medida}): ${ing.cantidad} - Stock: ${ing.stock_actual} ${estado}`);
-            console.log(`   - Tipo: ${typeof ing.nombre} | Normalizado: ${ing.nombre === ing.nombre?.toLowerCase()?.trim()}`);
-            console.log(`   - Unidad: ${ing.unidad_medida} | Cantidad: ${ing.cantidad} (${typeof ing.cantidad})`);
         });
-
-        console.log('\n✅ CONFIRMACIÓN: Estos son TODOS ingredientes primarios consolidados');
-        console.log('- No contienen mixes intermedios');
-        console.log('- Están normalizados (minúsculas, sin tildes, sin espacios extra)');
-        console.log('- Las cantidades están consolidadas por nombre+unidad');
-        console.log('- Incluyen información de stock actual');
         console.log('==========================================\n');
     } else {
         console.log('⚠️ No hay ingredientes para mostrar en el informe');
@@ -1471,8 +1741,6 @@ export async function mostrarResumenIngredientes(ingredientes) {
         tituloSpan.innerHTML = tipoCarro === 'externa' ? '🏠 Control de Stock Personal / Domicilio' : 'Resumen de Ingredientes Necesarios';
     }
 
-    // 📋 VISTA HISTÓRICA vs VISTA ACTIVA
-    let html = '';
     let manualesPorIngrediente = {};
 
     if (carroFinalizado) {
@@ -1493,39 +1761,6 @@ export async function mostrarResumenIngredientes(ingredientes) {
         } catch (err) {
             console.error('Error recuperando ingresos manuales:', err);
         }
-
-        // 📜 VISTA HISTÓRICA COMPLETA (TRAIMOS LA LÓGICA DEL PDF A LA PANTALLA)
-        html = `
-            <table class="tabla-resumen tabla-historica">
-                <thead>
-                    <tr>
-                        <th>Ingrediente</th>
-                        <th style="background: #e3f2fd;">Stock Anterior</th>
-                        <th style="background: #fff3e0;">Gestión Manual</th>
-                        <th>Requerido</th>
-                        <th style="background: #f5f5f5;">Nuevo Stock</th>
-                        <th>Unidad</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-    } else {
-        // 🔴 VISTA ACTIVA: Tabla standard
-        html = `
-            <table class="tabla-resumen">
-                <thead>
-                    <tr>
-                        <th>Ingrediente</th>
-                        <th>Cantidad Necesaria</th>
-                        <th>Stock Actual</th>
-                        <th>Estado</th>
-                        <th>Unidad</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
     }
 
     // 📍 DEDUPLICACIÓN DE INGREDIENTES PARA EVITAR DUPLICIDAD EN LA UI (Ticket #9A)
@@ -1545,8 +1780,6 @@ export async function mostrarResumenIngredientes(ingredientes) {
             ingredientesUnicos[ing.id].cantidad = cantidadExistente + cantidadNueva;
             
             // 🎯 CORRECCIÓN TICKET #10 RE-OPEN: Salvaguarda para Stock Personal
-            // Solo es estrictamente secundario si TODAS sus instancias lo son.
-            // Si esta instancia o la anterior proceden del stock civil (base), queda como falso.
             if (!esVinculado) {
                 ingredientesUnicos[ing.id].es_de_articulo_vinculado = false;
             }
@@ -1565,222 +1798,21 @@ export async function mostrarResumenIngredientes(ingredientes) {
     if (tipoCarro === 'externa') {
         const dashboardHtml = generarDashboardStockPersonal(ingredientesFiltrados, estadoCarro, carroFinalizado, manualesPorIngrediente);
         contenedor.innerHTML = dashboardHtml;
-        return; // Salimos prematuramente, ya que el dashboard reemplaza la tabla
+        return;
     }
 
-    // Ordenar por sector_letra (Sin Sector al final), luego por nombre
-    ingredientesFiltrados.sort((a, b) => {
-        if (a.sector_letra === 'Sin Sector' && b.sector_letra !== 'Sin Sector') return 1;
-        if (a.sector_letra !== 'Sin Sector' && b.sector_letra === 'Sin Sector') return -1;
-        if (a.sector_letra !== b.sector_letra) return String(a.sector_letra || '').localeCompare(String(b.sector_letra || ''));
-        return String(a.nombre || '').localeCompare(String(b.nombre || ''));
-    });
+    // Separar en Ingredientes Alimenticios e Insumos Necesarios
+    const alimentos = ingredientesFiltrados.filter(ing => !ing.es_insumo);
+    const insumos = ingredientesFiltrados.filter(ing => !!ing.es_insumo);
 
-    let currentSector = null;
-
-    ingredientesFiltrados.forEach((ing, index) => {
-        // Validación robusta
-        const stockFinalRaw = ing.stock_actual; // En carro finalizado, esto es el "Stock Final" (post-producción)
-        const cantidadNecesariaRaw = ing.cantidad;
-
-        // Convertir a números de forma segura
-        let stockFinal = 0;
-        let cantidadNecesaria = 0;
-
-        if (stockFinalRaw !== null && stockFinalRaw !== undefined && stockFinalRaw !== '') {
-            const stockParsed = parseFloat(stockFinalRaw);
-            stockFinal = isNaN(stockParsed) ? 0 : stockParsed;
-        }
-
-        if (cantidadNecesariaRaw !== null && cantidadNecesariaRaw !== undefined && cantidadNecesariaRaw !== '') {
-            const cantidadParsed = parseFloat(cantidadNecesariaRaw);
-            cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
-        }
-
-        // INYECTAR SEPARADOR DE SECTOR SI CAMBIA
-        if (ing.sector_letra !== currentSector) {
-            currentSector = ing.sector_letra;
-            const colSpan = carroFinalizado ? 7 : 6;
-            html += `
-                <tr class="sector-header" style="background-color: #f8f9fa; border-top: 2px solid #dee2e6; border-bottom: 2px solid #dee2e6;">
-                    <td colspan="${colSpan}" style="padding: 10px; font-weight: bold; color: #495057; font-size: 1.1em; text-align: left;">
-                        📍 Sector: <span style="color: #0056b3;">${currentSector}</span>
-                    </td>
-                </tr>
-            `;
-        }
-
-        if (carroFinalizado) {
-            // 🧮 LÓGICA ROBUSTA BASADA EN SNAPSHOT (FWD CALCULATION)
-            // El backend nos envía 'stock_snapshot' (o stock_actual) que representa el stock
-            // que había en el momento EXACTO de "Carro Listo" (incluyendo ingresos manuales previos).
-
-            // 1. Obtener el Snapshot (Stock Disponible al momento de producir)
-            const stockDisponibleSnapshot = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
-
-            // 2. Obtener lo que se gestionó manualmente
-            // Nota: Asegurar comparacion de IDs string vs int
-            const ingresoManual = manualesPorIngrediente[ing.id] || 0;
-
-            // 3. Calcular Stock Anterior (Lo que había antes de meter mano)
-            // Formula: Snapshot - Manual
-            const stockAnterior = stockDisponibleSnapshot - ingresoManual;
-
-            // 4. Calcular Nuevo Stock (Lo que quedó después de consumir)
-            // Formula: Snapshot - Requerido
-            const stockNuevo = stockDisponibleSnapshot - cantidadNecesaria;
-
-            const colorStockAnterior = stockAnterior < 0 ? '#dc3545' : '#28a745';
-
-            let btnSalvavidas = '';
-            if (estadoCarro === 'preparado') {
-                btnSalvavidas = `<button onclick="window.abrirModalSalvavidas(${ing.id}, '${(ing.nombre || '').replace(/'/g, "\\'")}', ${document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo')}, '${ing.unidad_medida || ''}')" class="btn-salvavidas" title="Declarar stock fantasma y reponer" style="background-color: #dc3545; color: white; padding: 4px 8px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">🛟 Salvavidas</button>`;
-            } else {
-                btnSalvavidas = `<span style="color: #6c757d; font-size: 0.9em;">-</span>`;
-            }
-
-            html += `
-                <tr>
-                    <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
-                    <td style="text-align: center; background: #e3f2fd; color: ${colorStockAnterior}; font-weight: bold;">
-                        ${stockAnterior.toFixed(2)}
-                    </td>
-                    <td style="text-align: center; background: #fff3e0;">
-                        ${ingresoManual > 0 ? `+${ingresoManual.toFixed(2)}` : '-'}
-                    </td>
-                    <td style="text-align: center;">${cantidadNecesaria.toFixed(2)}</td>
-                    <td style="text-align: center; background: #f5f5f5; font-weight: bold;">
-                        ${stockNuevo.toFixed(2)}
-                    </td>
-                    <td style="text-align: center;">${ing.unidad_medida || ''}</td>
-                    <td style="text-align: center;">${btnSalvavidas}</td>
-                </tr>
-             `;
-
-        } else {
-            // 🔴 VISTA ACTIVA
-            const diferencia = stockFinal - cantidadNecesaria;
-            const tieneStock = diferencia >= -0.01;
-            const faltante = tieneStock ? 0 : Math.abs(diferencia);
-
-            // Generar indicador de estado
-            let indicadorEstado = '';
-            if (tieneStock) {
-                indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
-            } else {
-                indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${ing.unidad_medida || ''}</span>`;
-            }
-
-            // 🎯 LÓGICA DE PERMISOS PARA BOTONES DE ACCIÓN (Ticket #9B)
-            const esIngredienteVinculado = ing.es_de_articulo_vinculado === true;
-            let mostrarBotones = true;
-
-            if (tipoCarro === 'externa') {
-                if (estadoCarro === 'en_preparacion') {
-                    // Fase 1 y 2: Se gestionan antes de enviar el carro
-                    mostrarBotones = !esIngredienteVinculado;
-                } else if (estadoCarro === 'preparado') {
-                    // Fase 3 (Cierre de carro): Permitir a Matías reabastecer stock de Fase 3
-                    mostrarBotones = esIngredienteVinculado;
-                } else {
-                    mostrarBotones = false;
-                }
-            } else {
-                mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
-            }
-
-            const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
-            const deshabilitado = !carroIdActivo;
-            const botonIngresoManual = deshabilitado
-                ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})">Ingreso manual</button>`;
-
-            let botonesAccion = '';
-
-            if (mostrarBotones) {
-                const botonAjusteRapido = deshabilitado
-                    ? `<button disabled title="Seleccioná un carro primero" class="btn-ajuste-rapido">✎</button>`
-                    : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${stockFinal}, ${carroIdActivo})" class="btn-ajuste-rapido" title="Ajuste rápido de stock">✎</button>`;
-
-                if (tipoCarro === 'externa' && estadoCarro === 'preparado') {
-                    // Pantalla de cierre (externa): solo "Ingreso manual" para inyectar ingredientes (DRY)
-                    botonesAccion = `
-                        <div style="display: flex; gap: 8px; justify-content: center;">
-                            ${botonIngresoManual}
-                        </div>
-                    `;
-                } else {
-                    botonesAccion = `
-                        <div style="display: flex; gap: 8px; justify-content: center;">
-                            ${botonIngresoManual}
-                            ${botonAjusteRapido}
-                        </div>
-                    `;
-                }
-            } else {
-                botonesAccion = `
-                    <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
-                        ${botonIngresoManual}
-                        <span style="color: #6c757d; font-style: italic; font-size: 0.9em;">Solo lectura</span>
-                    </div>
-                `;
-            }
-
-            // Aplicar clases CSS
-            let clasesFila = tieneStock ? 'stock-ok' : 'stock-faltante';
-            if (ing.es_de_articulo_vinculado) {
-                clasesFila += ' ingrediente-vinculado';
-            }
-
-            const claseCeldaSustituible = (!tieneStock) ? 'celda-sustituible' : '';
-            const eventoDblClick = (!tieneStock)
-                ? `ondblclick="abrirModalSustitucion(${ing.id}, ${faltante}, '${ing.nombre.replace(/'/g, "\\'")}', '${ing.unidad_medida || ''}')"`
-                : '';
-
-            let cajasCerradasHtml = '';
-            if (parseFloat(ing.stock_bultos || 0) > 0) {
-                let botonAbrirCaja = '';
-                if (mostrarBotones && !deshabilitado) {
-                    botonAbrirCaja = `
-                        <button onclick="event.stopPropagation(); window.abrirCajaDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${JSON.stringify(ing.lotes_cajas_cerradas).replace(/"/g, '&quot;')})" 
-                                style="background: #10b981; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-weight: bold; transition: background 0.2s; margin-top: 2px;"
-                                onmouseover="this.style.background='#059669'"
-                                onmouseout="this.style.background='#10b981'"
-                                title="Abrir una caja de este ingrediente">
-                            🔓 Abrir
-                        </button>
-                    `;
-                }
-                cajasCerradasHtml = `
-                    <div class="cajas-cerradas-badge" style="font-size: 0.8em; color: #0284c7; font-weight: bold; margin-top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;" title="Cajas Cerradas en Bunker">
-                        <span>📦 ${parseFloat(ing.stock_bultos)} cj</span>
-                        ${botonAbrirCaja}
-                    </div>
-                `;
-            }
-
-            html += `
-                <tr class="${clasesFila.trim()}">
-                    <td>${ing.nombre || 'Sin nombre'}</td>
-                    <td>${cantidadNecesaria.toFixed(2)}</td>
-                    <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">
-                        ${stockFinal.toFixed(2)}
-                        ${cajasCerradasHtml}
-                    </td>
-                    <td>${indicadorEstado}</td>
-                    <td>${ing.unidad_medida || ''}</td>
-                    <td>${botonesAccion}</td>
-                </tr>
-            `;
-        }
-    });
-
-    html += `
-            </tbody>
-        </table>
-    `;
+    let html = '';
+    html += generarTablaResumen(alimentos, 'Ingredientes Alimenticios', false, carroFinalizado, estadoCarro, tipoCarro, manualesPorIngrediente);
+    html += generarTablaResumen(insumos, 'Insumos Necesarios (Packaging)', true, carroFinalizado, estadoCarro, tipoCarro, manualesPorIngrediente);
 
     contenedor.innerHTML = html;
+    // NOTA DE DESARROLLO (Corrección de Anomalía Crítica): 
+    // Se corrigió una llave de cierre duplicada ('}') huérfana en este bloque 
+    // que causaba un fallo de parseo (SyntaxError) en el navegador y congelaba el script.
 }
 
 

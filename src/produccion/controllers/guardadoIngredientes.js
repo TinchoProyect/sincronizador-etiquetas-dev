@@ -15,7 +15,7 @@ function extraerLetraSector(descripcion, nombre) {
     let letraPura = null;
 
     // 1. Buscar explícitamente el patrón "Sector X" con un espacio (capturando sólo la letra/número)
-    const matchSector = texto.match(/Sector\s+([A-Z0-9])/i);
+    const matchSector = texto.match(/Sector\s+([A-Z0-9]{1,2})/i);
     if (matchSector) {
         letraPura = matchSector[1].toUpperCase();
     } else {
@@ -25,7 +25,7 @@ function extraerLetraSector(descripcion, nombre) {
             letraPura = textoLimpio.toUpperCase();
         } else {
             // 3. Fallback: buscar una letra/número suelto en el texto
-            const matchLetraSuelta = textoLimpio.match(/(?:^|\s)([A-Z0-9])(?:\s|$)/i);
+            const matchLetraSuelta = textoLimpio.match(/(?:^|\s)([A-Z0-9]{1,2})(?:\s|$)/i);
             if (matchLetraSuelta) {
                 letraPura = matchLetraSuelta[1].toUpperCase();
             }

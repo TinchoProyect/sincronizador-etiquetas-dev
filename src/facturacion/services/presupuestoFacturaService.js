@@ -69,10 +69,42 @@ async function obtenerDatosPresupuesto(presupuestoId) {
         const presupuesto = presupuestoResult.rows[0];
         console.log(`✅ [PRESUPUESTO-FACTURA] Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
-        // Obtener cliente
+        // Obtener cliente (priorizando datos fiscales de bunker_clientes)
         const clienteQuery = `
-            SELECT * FROM clientes
-            WHERE cliente_id = $1
+            SELECT 
+                c.id,
+                c.cliente_id,
+                c.lista_precios,
+                c.zona,
+                c.vendedor,
+                c.telefono,
+                c.telefono_2,
+                c.celular,
+                c.email,
+                c.limite_cta,
+                c.nacimiento,
+                c.pais,
+                c.dni,
+                c.created_at,
+                c.updated_at,
+                c.modalidad_default,
+                c.dia_preferido_reparto,
+                CASE 
+                    WHEN bc.id IS NOT NULL THEN NULL 
+                    ELSE c.nombre 
+                END as nombre,
+                COALESCE(bc.razon_social, bc.cliente_nombre, c.apellido) as apellido,
+                COALESCE(bc.cuit_cuil, c.cuit) as cuit,
+                COALESCE(bc.condicion_iva, c.condicion_iva) as condicion_iva,
+                COALESCE(bc.domicilio_fiscal, c.domicilio) as domicilio,
+                COALESCE(bc.provincia, c.provincia) as provincia
+            FROM clientes c
+            LEFT JOIN bunker_clientes bc ON 
+                (CASE 
+                    WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer 
+                    ELSE NULL 
+                END) = c.cliente_id
+            WHERE c.cliente_id = $1
         `;
         const clienteResult = await pool.query(clienteQuery, [presupuesto.id_cliente]);
 
@@ -81,7 +113,7 @@ async function obtenerDatosPresupuesto(presupuestoId) {
         }
 
         const cliente = clienteResult.rows[0];
-        console.log(`✅ [PRESUPUESTO-FACTURA] Cliente encontrado: ${cliente.nombre || 'Sin nombre'}`);
+        console.log(`✅ [PRESUPUESTO-FACTURA] Cliente encontrado: ${cliente.apellido || cliente.nombre || 'Sin nombre'}`);
 
         // Obtener detalles con nombre del artículo
         const detallesQuery = `
@@ -369,10 +401,12 @@ async function facturarPresupuesto(presupuestoId) {
         // 1. Obtener datos del presupuesto
         const { presupuesto, cliente, detalles } = await obtenerDatosPresupuesto(presupuestoId);
 
-        // 2. Verificar si ya existe factura para este presupuesto
+        // 2. Verificar si ya existe factura activa para este presupuesto (ignorando anuladas y notas de crédito)
         const existeQuery = `
             SELECT id FROM factura_facturas
             WHERE presupuesto_id = $1
+              AND estado != 'ANULADA'
+              AND tipo_cbte NOT IN (3, 8, 13)
         `;
         const existeResult = await client.query(existeQuery, [presupuestoId]);
 
@@ -487,7 +521,7 @@ async function facturarPresupuesto(presupuestoId) {
 
         const updatePresupuestoQuery = `
             UPDATE presupuestos
-            SET factura_id = $1
+            SET factura_id = $1, estado = 'Enviado a Facturación'
             WHERE id = $2
         `;
 
@@ -536,11 +570,11 @@ async function sincronizarBorrador(presupuestoId) {
         // 1. Obtener datos actuales del presupuesto
         const { presupuesto, cliente, detalles } = await obtenerDatosPresupuesto(presupuestoId);
 
-        // 2. Verificar si existe factura borrador para este presupuesto
+        // 2. Verificar si existe factura borrador activa para este presupuesto
         const existeQuery = `
             SELECT id, estado FROM factura_facturas
-            WHERE presupuesto_id = $1
-            ORDER BY id DESC LIMIT 1
+            WHERE presupuesto_id = $1 AND estado = 'BORRADOR'
+            LIMIT 1
         `;
         const existeResult = await client.query(existeQuery, [presupuestoId]);
 

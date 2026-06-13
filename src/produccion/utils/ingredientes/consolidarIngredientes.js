@@ -66,12 +66,15 @@ function consolidarIngredientes(ingredientes) {
             consolidados[key].cantidad = Number((consolidados[key].cantidad + ing.cantidad).toPrecision(10));
             // Mantener es_primario si alguno de los ingredientes es primario
             consolidados[key].es_primario = consolidados[key].es_primario || ing.es_primario || false;
+            // Mantener es_insumo si alguno de los ingredientes consolidantes lo es
+            consolidados[key].es_insumo = consolidados[key].es_insumo || ing.es_insumo || false;
             // Preservar origen_mix_id (priorizar el existente, luego el nuevo)
             consolidados[key].origen_mix_id = consolidados[key].origen_mix_id || ing.origen_mix_id || null;
             consolidados[key].sector_letra = consolidados[key].sector_letra || ing.sector_letra || null;
             console.log(`➕ SUMANDO cantidades para ID ${key}:`);
             console.log(`   ${anterior} + ${ing.cantidad} = ${consolidados[key].cantidad}`);
             console.log(`   es_primario: ${consolidados[key].es_primario}`);
+            console.log(`   es_insumo: ${consolidados[key].es_insumo}`);
             console.log(`   origen_mix_id: ${consolidados[key].origen_mix_id}`);
         } else {
             console.log(`🆕 NUEVO INGREDIENTE (ID: ${key})`);
@@ -82,6 +85,7 @@ function consolidarIngredientes(ingredientes) {
                 unidad_medida: ing.unidad_medida,
                 cantidad: Number(ing.cantidad.toPrecision(10)),
                 es_primario: ing.es_primario || false,
+                es_insumo: ing.es_insumo || false, // Preservar es_insumo
                 origen_mix_id: ing.origen_mix_id || null, // Preservar origen_mix_id
                 sector_letra: ing.sector_letra || null // Preservar sector_letra
             };

@@ -31,10 +31,17 @@ async function generarQR(req, res) {
 
 async function buscarClientes(req, res) {
     try {
-        const busqueda = req.query.q || '';
-        if (busqueda.length < 2) return res.json({ success: true, data: [] });
+        const busqueda = (req.query.q || '').trim();
+        if (busqueda.length < 1) return res.json({ success: true, data: [] });
 
         const searchWildcard = `%${busqueda}%`;
+        
+        // Determinar si la búsqueda es puramente numérica para priorización
+        const esNumerico = /^\d+$/.test(busqueda);
+        const parsedInt = esNumerico ? parseInt(busqueda, 10) : null;
+        const cleanNumString = esNumerico ? parsedInt.toString() : '';
+        const prefixMatch = esNumerico ? `${cleanNumString}%` : '';
+
         const query = `
             SELECT cliente_id as id, nombre, apellido, otros, telefono 
             FROM clientes 
@@ -42,10 +49,19 @@ async function buscarClientes(req, res) {
                OR apellido ILIKE $1 
                OR otros ILIKE $1 
                OR CAST(cliente_id AS TEXT) ILIKE $1
+               OR ($2::integer IS NOT NULL AND cliente_id = $2)
+            ORDER BY
+               CASE 
+                   WHEN $2::integer IS NOT NULL AND cliente_id = $2 THEN 0
+                   WHEN $2::integer IS NOT NULL AND CAST(cliente_id AS TEXT) LIKE $3 THEN 1
+                   ELSE 2
+               END ASC,
+               apellido ASC, 
+               nombre ASC
             LIMIT 20
         `;
         const { pool } = require('../config/database');
-        const result = await pool.query(query, [searchWildcard]);
+        const result = await pool.query(query, [searchWildcard, parsedInt, prefixMatch]);
         res.json({ success: true, data: result.rows });
     } catch (err) {
         console.error('[TRATAMIENTOS] Error al buscar clientes:', err);

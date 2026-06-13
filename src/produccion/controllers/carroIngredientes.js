@@ -77,11 +77,12 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
                 (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
                 i.sector_id,
                 SUM(ABS(im.kilos)) as cantidad,
-                MAX(im.stock_anterior) as stock_snapshot
+                MAX(im.stock_anterior) as stock_snapshot,
+                COALESCE(i.es_insumo, false) as es_insumo
             FROM ingredientes_movimientos im
             JOIN ingredientes i ON im.ingrediente_id = i.id
             WHERE im.carro_id = $1 AND im.kilos < 0
-            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.sector_id
+            GROUP BY im.ingrediente_id, i.nombre, i.unidad_medida, i.stock_actual, i.sector_id, i.es_insumo
         `;
     } else {
         // Para externa, mirar mezcla de stock_usuarios y movimientos (fallback)
@@ -102,14 +103,15 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
             SUM(sub.cantidad) as cantidad,
             MAX(sub.stock_anterior) as stock_snapshot,
             MAX(sub.capacidad_base) as capacidad_base,
-            sub.origen_mix_id
+            sub.origen_mix_id,
+            COALESCE(i.es_insumo, false) as es_insumo
         FROM (
             SELECT ingrediente_id as id, ABS(cantidad) as cantidad, origen_mix_id, NULL::numeric as stock_anterior, contexto_envase as capacidad_base
             FROM ingredientes_stock_usuarios 
             WHERE origen_carro_id = $1 AND cantidad < 0
         ) sub
             JOIN ingredientes i ON sub.id = i.id
-            GROUP BY sub.id, i.nombre, i.unidad_medida, sub.origen_mix_id, i.sector_id
+            GROUP BY sub.id, i.nombre, i.unidad_medida, sub.origen_mix_id, i.sector_id, i.es_insumo
             `;
     }
 
@@ -400,7 +402,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
             COALESCE(i.unidad_medida, 'Kilo') as unidad_medida,
             i.sector_id,
             (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
-            (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre
+            (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
+            COALESCE(i.es_insumo, false) as es_insumo
                 FROM recetas r
                 JOIN receta_ingredientes ri ON r.id = ri.receta_id
                 LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
@@ -952,7 +955,8 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
             ri.ingrediente_id,
                 CAST(ri.cantidad AS DECIMAL(20, 10)) as cantidad,
                 COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
-                COALESCE(i.unidad_medida, 'Kilo') as unidad_medida
+                COALESCE(i.unidad_medida, 'Kilo') as unidad_medida,
+                COALESCE(i.es_insumo, false) as es_insumo
                     FROM recetas r
                     JOIN receta_ingredientes ri ON r.id = ri.receta_id
                     LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id

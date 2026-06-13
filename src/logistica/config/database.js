@@ -17,7 +17,7 @@ const pool = new Pool({
     // Configuración de pool
     max: 20, // Máximo de conexiones
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000,
 });
 
 // Log de conexión con información del entorno
@@ -52,6 +52,98 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id);
             `);
             console.log('✅ [LOGISTICA] Columna id_domicilio_entrega verificada/agregada a ordenes_tratamiento');
+
+            // Crear tabla de clientes búnker si no existe
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS public.bunker_clientes (
+                    id SERIAL PRIMARY KEY,
+                    codigo_bunker_cliente VARCHAR(50) UNIQUE NOT NULL,
+                    cliente_nombre VARCHAR(255) NOT NULL,
+                    razon_social VARCHAR(255) NOT NULL,
+                    lomas_soft_id VARCHAR(50) UNIQUE DEFAULT NULL,
+                    cuit_cuil VARCHAR(11) UNIQUE DEFAULT NULL,
+                    condicion_iva VARCHAR(100) DEFAULT NULL,
+                    domicilio_fiscal VARCHAR(500) DEFAULT NULL,
+                    provincia VARCHAR(100) DEFAULT NULL,
+                    estado_clave VARCHAR(50) DEFAULT NULL,
+                    categoria_monotributo VARCHAR(100) DEFAULT NULL,
+                    actividad_principal VARCHAR(500) DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_bunker_clientes_busqueda ON public.bunker_clientes(codigo_bunker_cliente, cliente_nombre, lomas_soft_id);
+            `);
+            console.log('✅ [LOGISTICA] Tabla public.bunker_clientes y sus índices verificados/creados');
+
+            // Crear tablas de cuenta corriente si no existen
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS public.factura_cuentas_corrientes (
+                    id SERIAL PRIMARY KEY,
+                    codigo_bunker_cliente VARCHAR(50) NOT NULL REFERENCES public.bunker_clientes(codigo_bunker_cliente) ON DELETE CASCADE,
+                    nombre_cuenta VARCHAR(255) NOT NULL DEFAULT 'Cuenta Principal',
+                    moneda VARCHAR(10) NOT NULL DEFAULT 'ARS',
+                    saldo NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                    estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA',
+                    creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    actualizada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(codigo_bunker_cliente, nombre_cuenta)
+                );
+                CREATE TABLE IF NOT EXISTS public.factura_cuenta_corriente_movimientos (
+                    id SERIAL PRIMARY KEY,
+                    cuenta_corriente_id INTEGER NOT NULL REFERENCES public.factura_cuentas_corrientes(id) ON DELETE CASCADE,
+                    tipo_movimiento VARCHAR(10) NOT NULL,
+                    monto NUMERIC(15, 2) NOT NULL,
+                    saldo_resultante NUMERIC(15, 2) NOT NULL,
+                    tipo_comprobante VARCHAR(50),
+                    comprobante_id bigint REFERENCES public.factura_facturas(id) ON DELETE SET NULL,
+                    presupuesto_id bigint DEFAULT NULL,
+                    descripcion VARCHAR(500) NOT NULL,
+                    fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    metadatos JSONB DEFAULT NULL
+                );
+                CREATE TABLE IF NOT EXISTS public.factura_cuenta_corriente_movimientos_eliminados (
+                    id SERIAL PRIMARY KEY,
+                    original_id INTEGER NOT NULL,
+                    cuenta_corriente_id INTEGER NOT NULL,
+                    tipo_movimiento VARCHAR(10) NOT NULL,
+                    monto NUMERIC(15, 2) NOT NULL,
+                    saldo_resultante NUMERIC(15, 2) NOT NULL,
+                    tipo_comprobante VARCHAR(50),
+                    comprobante_id bigint,
+                    presupuesto_id bigint DEFAULT NULL,
+                    descripcion VARCHAR(500) NOT NULL,
+                    fecha_movimiento TIMESTAMP,
+                    creado_en TIMESTAMP,
+                    eliminado_el TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    motivo_eliminacion TEXT,
+                    metadatos JSONB DEFAULT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_factura_cc_cliente ON public.factura_cuentas_corrientes(codigo_bunker_cliente);
+                CREATE INDEX IF NOT EXISTS idx_factura_cc_movs_cuenta ON public.factura_cuenta_corriente_movimientos(cuenta_corriente_id);
+            `);
+            console.log('✅ [LOGISTICA] Tablas de Cuenta Corriente y movimientos verificadas/creadas');
+
+
+            // ARQUITECTURA FISCAL (Fase 1 y 3): Asegurar columnas fiscales en instalaciones previas
+            await pool.query(`
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS cuit_cuil VARCHAR(11) UNIQUE DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS condicion_iva VARCHAR(100) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS domicilio_fiscal VARCHAR(500) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS provincia VARCHAR(100) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS estado_clave VARCHAR(50) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS categoria_monotributo VARCHAR(100) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ALTER COLUMN categoria_monotributo TYPE VARCHAR(100);
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS actividad_principal VARCHAR(500) DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS whatsapp_facturas TEXT DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ALTER COLUMN whatsapp_facturas TYPE TEXT;
+                
+                ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
+                ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
+                ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
+                ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
+            `);
+            console.log('✅ [LOGISTICA] Columnas fiscales y whatsapp_facturas (TEXT) verificadas/agregadas a bunker_clientes');
 
             // Garantizar la vinculación de artículos hermanos en bunker_articulos para la herencia parental
             await pool.query(`

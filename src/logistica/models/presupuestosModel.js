@@ -22,9 +22,10 @@ async function autoAsignarDomicilios(pool) {
                 INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
                 WHERE 
                     p.secuencia = 'Pedido_Listo'
-                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro')
+                    AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro', 'Facturado', 'Administrativa NC', 'Enviado a Facturación')
                     AND p.activo = true
                     AND p.id_domicilio_entrega IS NULL
+                    AND (p.estado_logistico IS NULL OR p.estado_logistico != 'OMITIDO')
             ),
             domicilios_candidatos AS (
                 SELECT DISTINCT ON (ph.presupuesto_id)
@@ -96,6 +97,8 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.id_cliente,
             p.agente,
             p.nota,
+            p.factura_id,
+            f.estado AS factura_estado,
             
             -- Datos del cliente (JOIN con conversión explícita de tipos TEXT vs INTEGER)
             c.cliente_id,
@@ -137,18 +140,21 @@ async function obtenerPresupuestosDisponibles(pool) {
         -- LEFT JOIN con domicilios (puede no tener domicilio asignado)
         LEFT JOIN clientes_domicilios cd ON cd.id = p.id_domicilio_entrega
         
+        -- LEFT JOIN con facturas
+        LEFT JOIN factura_facturas f ON p.factura_id = f.id
+        
         WHERE 
             -- Filtro 1: Secuencia exacta (valor real en BD)
             p.secuencia = 'Pedido_Listo'
             
             -- Filtro 2: Estado exacto (Whitelisting de estados válidos para reparto)
-            AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro')
+            AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro', 'Facturado', 'Administrativa NC', 'Enviado a Facturación')
             
             -- Filtro 3: Solo activos
             AND p.activo = true
             
-            -- Filtro 4: EXCLUIR mercadería que el cliente traerá directamente al mostrador
-            AND (p.estado_logistico IS NULL OR p.estado_logistico != 'ESPERANDO_MOSTRADOR')
+            -- Filtro 4: EXCLUIR mercadería que el cliente traerá directamente al mostrador o trámites administrativos (sin retiro físico)
+            AND (p.estado_logistico IS NULL OR (p.estado_logistico != 'ESPERANDO_MOSTRADOR' AND p.estado_logistico != 'OMITIDO'))
             
             -- NOTA: Ignoramos id_ruta para mostrar todos (incluso los ya asignados)
             
@@ -226,6 +232,8 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
             p.orden_entrega,
             p.comprobante_lomasoft,
             p.id_factura_lomasoft,
+            p.factura_id,
+            f.estado AS factura_estado,
             NULL as estado_tratamiento,
             
             -- Datos del cliente (cliente_id es el código visual, no el PK)
@@ -246,6 +254,9 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
         INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
         
         LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
+        
+        -- LEFT JOIN con facturas
+        LEFT JOIN factura_facturas f ON p.factura_id = f.id
         
         WHERE p.id_ruta = $1
         

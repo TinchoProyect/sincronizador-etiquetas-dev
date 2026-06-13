@@ -394,7 +394,9 @@ router.get('/ruta-activa', async (req, res) => {
                      FROM presupuestos_detalles pd
                      WHERE pd.id_presupuesto_ext = p.id_presupuesto_ext),
                     0
-                ) as total
+                ) as total,
+                (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
+                EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
             FROM presupuestos p
             INNER JOIN clientes c ON p.id_cliente::text = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
@@ -415,6 +417,8 @@ router.get('/ruta-activa', async (req, res) => {
             comprobante_lomasoft: e.comprobante_lomasoft,
             id_factura_lomasoft: e.id_factura_lomasoft,
             total: e.total,
+            factura_estado: e.factura_estado,
+            esta_facturado: e.esta_facturado,
             cliente: {
                 id: e.cliente_id,
                 nombre: e.cliente_nombre,

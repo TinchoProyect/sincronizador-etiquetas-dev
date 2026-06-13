@@ -10,7 +10,7 @@ console.log('🔍 [FACTURACION-VALIDATION] Cargando middleware de validación...
  * Validar request de crear factura
  * Integración estricta con Presupuestos
  */
-const validarCrearFactura = (req, res, next) => {
+const validarCrearFactura = async (req, res, next) => {
     console.log('🔍 [FACTURACION-VALIDATION] Validando request de crear factura...');
 
     try {
@@ -30,6 +30,50 @@ const validarCrearFactura = (req, res, next) => {
         // VALIDACIONES ESTRICTAS DE INTEGRACIÓN
         // ========================================
         const esNotaCredito = body.es_nota_credito === true;
+
+        if (esNotaCredito && body.factura_asociada_id) {
+            console.log(`🔍 [FACTURACION-VALIDATION] Es Nota de Crédito. Autocompletando datos desde factura original ${body.factura_asociada_id}`);
+            try {
+                const queryOriginal = `
+                    SELECT pto_vta, tipo_cbte, concepto, cliente_id, doc_tipo, doc_nro, condicion_iva_id 
+                    FROM factura_facturas 
+                    WHERE id = $1
+                `;
+                const resOrig = await req.db.query(queryOriginal, [parseInt(body.factura_asociada_id)]);
+                if (resOrig.rows.length > 0) {
+                    const fOrig = resOrig.rows[0];
+                    
+                    // Mapear Factura a NC (1->3, 6->8, 11->13)
+                    let tipoNC = null;
+                    if (fOrig.tipo_cbte === 1) tipoNC = 3;
+                    else if (fOrig.tipo_cbte === 6) tipoNC = 8;
+                    else if (fOrig.tipo_cbte === 11) tipoNC = 13;
+
+                    if (!body.tipo_cbte && tipoNC) body.tipo_cbte = tipoNC;
+                    if (!body.pto_vta) body.pto_vta = fOrig.pto_vta;
+                    if (!body.concepto) body.concepto = fOrig.concepto || 1;
+                    
+                    if (!body.cliente) {
+                        body.cliente = {
+                            cliente_id: fOrig.cliente_id,
+                            doc_tipo: fOrig.doc_tipo,
+                            doc_nro: fOrig.doc_nro,
+                            condicion_iva_id: fOrig.condicion_iva_id
+                        };
+                    } else {
+                        if (!body.cliente.cliente_id) body.cliente.cliente_id = fOrig.cliente_id;
+                        if (!body.cliente.doc_tipo) body.cliente.doc_tipo = fOrig.doc_tipo;
+                        if (!body.cliente.doc_nro) body.cliente.doc_nro = fOrig.doc_nro;
+                        if (!body.cliente.condicion_iva_id) body.cliente.condicion_iva_id = fOrig.condicion_iva_id;
+                    }
+                    console.log(`🔍 [FACTURACION-VALIDATION] Autocompletado exitoso: pto_vta=${body.pto_vta}, tipo_cbte=${body.tipo_cbte}, cliente_id=${body.cliente?.cliente_id}`);
+                } else {
+                    console.warn(`⚠️ [FACTURACION-VALIDATION] No se encontró la factura original con ID ${body.factura_asociada_id}`);
+                }
+            } catch (dbErr) {
+                console.error('❌ [FACTURACION-VALIDATION] Error al autocompletar desde factura original:', dbErr.message);
+            }
+        }
 
         if (!esNotaCredito) {
             // 1. Validar usar_facturador_nuevo (REQUERIDO para facturas)

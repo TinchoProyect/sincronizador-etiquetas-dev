@@ -4,10 +4,10 @@
  * Puerto: 3004
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 
 console.log('🚀 [FACTURACION] =====================================');
 console.log('🚀 [FACTURACION] INICIANDO MÓDULO DE FACTURACIÓN');
@@ -24,6 +24,9 @@ const { infoTimezone } = require('./config/timezone');
 
 // Importar rutas
 const facturasRoutes = require('./routes/facturas');
+const whatsappRoutes = require('./routes/whatsapp');
+const cuentasBancariasRoutes = require('./routes/cuentasBancarias');
+const whatsappService = require('./services/whatsappService');
 
 console.log('🔧 [FACTURACION] Configurando middleware...');
 
@@ -76,7 +79,9 @@ app.get('/', (req, res) => {
 
 // Montar rutas del módulo
 app.use('/facturacion', facturasRoutes);
-console.log('✅ [FACTURACION] Rutas montadas en /facturacion');
+app.use('/facturacion/whatsapp', whatsappRoutes);
+app.use('/facturacion/cuentas-bancarias', cuentasBancariasRoutes);
+console.log('✅ [FACTURACION] Rutas montadas en /facturacion, /facturacion/whatsapp y /facturacion/cuentas-bancarias');
 
 // Ruta de health check general
 app.get('/health', (req, res) => {
@@ -190,6 +195,10 @@ const inicializarServidor = async () => {
             console.log('🎉 [FACTURACION] =====================================');
             console.log('🚀 [FACTURACION] LISTO PARA RECIBIR REQUESTS');
             console.log('🎉 [FACTURACION] =====================================');
+            
+            // Iniciar cliente de WhatsApp Web en segundo plano
+            console.log('🔌 [FACTURACION] Inicializando cliente de WhatsApp...');
+            whatsappService.inicializarWhatsApp();
         });
         
         return server;
@@ -221,21 +230,21 @@ inicializarServidor().then(server => {
     });
     
     // Manejo de cierre graceful
-    process.on('SIGTERM', () => {
-        console.log('🔄 [FACTURACION] Recibida señal SIGTERM, cerrando servidor...');
+    const gracefulShutdown = async (signal) => {
+        console.log(`🔄 [FACTURACION] Recibida señal ${signal}, iniciando apagado graceful...`);
+        try {
+            await whatsappService.shutdown();
+        } catch (err) {
+            console.error('❌ [FACTURACION] Error durante el apagado del servicio de WhatsApp:', err.message);
+        }
         server.close(() => {
-            console.log('✅ [FACTURACION] Servidor cerrado exitosamente');
+            console.log('✅ [FACTURACION] Servidor HTTP cerrado exitosamente');
             process.exit(0);
         });
-    });
-    
-    process.on('SIGINT', () => {
-        console.log('🔄 [FACTURACION] Recibida señal SIGINT, cerrando servidor...');
-        server.close(() => {
-            console.log('✅ [FACTURACION] Servidor cerrado exitosamente');
-            process.exit(0);
-        });
-    });
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     
 }).catch(error => {
     console.error('❌ [FACTURACION] Error fatal al inicializar:', error.message);

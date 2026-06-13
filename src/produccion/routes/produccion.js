@@ -504,7 +504,8 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
                 ic.ingrediente_id,
                 ic.cantidad,
                 i.nombre as nombre_ingrediente,
-                i.unidad_medida
+                i.unidad_medida,
+                COALESCE(i.costo_patron, 0.00) as costo_patron
             FROM ingrediente_composicion ic
             JOIN ingredientes i ON i.id = ic.ingrediente_id
             WHERE ic.mix_id = $1
@@ -512,9 +513,22 @@ router.get('/ingredientes/:id/composicion', async (req, res) => {
         `;
         const composicionResult = await req.db.query(composicionQuery, [mixId]);
 
+        // ✅ CÁLCULO EN VIVO: Rendimiento económico de la fórmula activa (Comentarios en español según políticas)
+        let costoTotalConsolidado = 0;
+        const recetaBaseKg = parseFloat(mixResult.rows[0].receta_base_kg || 1.00) || 1.00;
+        
+        composicionResult.rows.forEach(comp => {
+            const cantidadComp = parseFloat(comp.cantidad || 0);
+            const costoComp = parseFloat(comp.costo_patron || 0);
+            costoTotalConsolidado += cantidadComp * costoComp;
+        });
+
+        const costoFormulaUnitario = costoTotalConsolidado / recetaBaseKg;
+
         res.json({
             mix: mixResult.rows[0],
-            composicion: composicionResult.rows
+            composicion: composicionResult.rows,
+            costoFormulaUnitario: costoFormulaUnitario
         });
     } catch (error) {
         console.error('Error en ruta GET /ingredientes/:id/composicion:', error);
@@ -663,6 +677,138 @@ router.get('/ingredientes/:id', async (req, res) => {
             .json({ error: error.message });
     }
 });
+
+// ✅ BUSCADOR DE ARTÍCULOS BÚNKER (Métrica neta de adquisición sin márgenes ni IVA)
+router.get('/bunker-articulos/buscar', async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.trim() === '') {
+            return res.json([]);
+        }
+
+        const terminos = q.split(' ').filter(t => t.trim() !== '');
+        const whereConds = [];
+        const params = [];
+
+        terminos.forEach((term, index) => {
+            const paramIdx = index + 1;
+            whereConds.push(`(ba.descripcion ILIKE $${paramIdx} OR ba.descripcion_generada ILIKE $${paramIdx} OR ba.articulo_id ILIKE $${paramIdx})`);
+            params.push(`%${term}%`);
+        });
+
+        const filterSQL = whereConds.length > 0 ? whereConds.join(' AND ') : '1=1';
+
+        const query = `
+            SELECT 
+                ba.articulo_id AS codigo,
+                ba.descripcion,
+                COALESCE(
+                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
+                    COALESCE(
+                        NULLIF(
+                            (
+                                SELECT SUM(ri.cantidad * COALESCE(i2.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                FROM public.receta_ingredientes ri
+                                JOIN public.ingredientes i2 ON ri.ingrediente_id = i2.id
+                                WHERE ri.receta_id = (
+                                    SELECT r.id 
+                                    FROM public.recetas r 
+                                    WHERE r.articulo_numero = ba.articulo_id 
+                                    ORDER BY r.fecha_creacion DESC 
+                                    LIMIT 1
+                                )
+                            ),
+                            0.00
+                        ),
+                        pa.costo,
+                        ba.costo_base,
+                        0.00
+                    ) +
+                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
+                    COALESCE(
+                        (
+                            SELECT 
+                                (
+                                    COALESCE(la.costo_tiempo, 0.00) + 
+                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
+                                              FROM public.bunker_lista_insumos li 
+                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
+                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                            FROM public.bunker_lista_articulos la
+                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
+                            ORDER BY la.lista_id ASC
+                            LIMIT 1
+                        ),
+                        0.00
+                    ),
+                    0.00
+                )::numeric(12,2) AS costo_base
+            FROM public.bunker_articulos ba
+            LEFT JOIN public.precios_articulos pa ON ba.articulo_id = pa.articulo
+            WHERE ${filterSQL}
+            ORDER BY ba.descripcion ASC
+            LIMIT 50
+        `;
+
+        const result = await req.db.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Error en GET /bunker-articulos/buscar:', error);
+        res.status(500).json({ error: 'Error al buscar artículos del Búnker' });
+    }
+});
+
+// ✅ VINCULAR ARTÍCULO BÚNKER A UN INGREDIENTE (Soporte multi-vinculación)
+router.post('/ingredientes/:id/bunker-articulos', async (req, res) => {
+    try {
+        const ingredienteId = parseInt(req.params.id);
+        const { bunker_articulo_id } = req.body;
+
+        if (isNaN(ingredienteId) || !bunker_articulo_id) {
+            return res.status(400).json({ error: 'Datos de vinculación inválidos' });
+        }
+
+        const query = `
+            INSERT INTO public.ingrediente_bunker_articulos (ingrediente_id, bunker_articulo_id)
+            VALUES ($1, $2)
+            ON CONFLICT (ingrediente_id, bunker_articulo_id) DO NOTHING
+        `;
+        await req.db.query(query, [ingredienteId, bunker_articulo_id]);
+
+        res.json({ success: true, message: 'Artículo vinculado correctamente' });
+    } catch (error) {
+        console.error('❌ Error en POST /ingredientes/:id/bunker-articulos:', error);
+        res.status(500).json({ error: 'Error al vincular el artículo del Búnker' });
+    }
+});
+
+// ✅ DESVINCULAR ARTÍCULO BÚNKER DE UN INGREDIENTE (Individualizado)
+router.delete('/ingredientes/:id/bunker-articulos/:articulo_id', async (req, res) => {
+    try {
+        const ingredienteId = parseInt(req.params.id);
+        const { articulo_id } = req.params;
+
+        if (isNaN(ingredienteId) || !articulo_id) {
+            return res.status(400).json({ error: 'Datos de desvinculación inválidos' });
+        }
+
+        const query = `
+            DELETE FROM public.ingrediente_bunker_articulos
+            WHERE ingrediente_id = $1 AND bunker_articulo_id = $2
+        `;
+        const result = await req.db.query(query, [ingredienteId, articulo_id]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Vínculo no encontrado' });
+        }
+
+        res.json({ success: true, message: 'Artículo desvinculado correctamente' });
+    } catch (error) {
+        console.error('❌ Error en DELETE /ingredientes/:id/bunker-articulos/:articulo_id:', error);
+        res.status(500).json({ error: 'Error al desvincular el artículo del Búnker' });
+    }
+});
+
 
 router.post('/ingredientes', async (req, res) => {
     try {

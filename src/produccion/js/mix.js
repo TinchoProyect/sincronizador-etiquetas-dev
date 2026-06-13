@@ -145,28 +145,109 @@ let pendientesApi = [];
 
 function renderizarTablaMix(mixId) {
     const modal = document.getElementById('modal-mix');
+    const thead = modal.querySelector('.tabla-mix-ingredientes thead');
     const tbody = modal.querySelector('#tabla-mix-ingredientes-body');
-    if (!tbody) return;
+    const tfoot = modal.querySelector('.tabla-mix-ingredientes tfoot');
+    if (!tbody || !thead || !tfoot) return;
 
-    tbody.innerHTML = composicionVisual.map(item => `
-        <tr>
-            <td style="padding: 12px; font-weight: 500;">${item.nombre_ingrediente}</td>
-            <td style="padding: 12px;">${item.cantidad} ${item.unidad_medida || ''}</td>
-            <td style="text-align: right; padding: 12px;">
-                <button 
-                    onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" 
-                    class="btn-eliminar-ingrediente"
-                    title="Eliminar ingrediente"
-                    style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; transition: transform 0.2s;"
-                    onmouseover="this.style.transform='scale(1.2)'"
-                    onmouseout="this.style.transform='scale(1)'"
-                >❌</button>
-            </td>
-        </tr>
-    `).join('');
+    // Determinar si los precios y valores están habilitados en el sistema (Capa Visual Condicional)
+    const mostrarValores = window.mostrarValoresMonetarios || localStorage.getItem('mostrarValoresMonetarios') === 'true';
 
-    calcularYMostrarTotal();
-    
+    // 1. Renderizar cabecera de la tabla dinámicamente
+    if (mostrarValores) {
+        thead.innerHTML = `
+            <tr>
+                <th style="padding: 12px; text-align: left; color: #64748b; font-weight: 600;">Ingrediente</th>
+                <th style="padding: 12px; text-align: left; color: #64748b; font-weight: 600;">Cantidad</th>
+                <th style="padding: 12px; text-align: right; color: #64748b; font-weight: 600;">Costo Unitario</th>
+                <th style="padding: 12px; text-align: right; color: #64748b; font-weight: 600;">Subtotal</th>
+                <th></th>
+            </tr>
+        `;
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th style="padding: 12px; text-align: left; color: #64748b; font-weight: 600;">Ingrediente</th>
+                <th style="padding: 12px; text-align: left; color: #64748b; font-weight: 600;">Cantidad</th>
+                <th></th>
+            </tr>
+        `;
+    }
+
+    // 2. Renderizar cuerpo de la tabla y calcular subtotales dinámicos
+    const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+    let totalKilos = 0;
+    let totalCosto = 0;
+
+    tbody.innerHTML = composicionVisual.map(item => {
+        const cantidad = parseFloat(item.cantidad) || 0;
+        totalKilos += cantidad;
+
+        if (mostrarValores) {
+            const costoUnitario = parseFloat(item.costo_patron) || 0;
+            const subtotal = cantidad * costoUnitario;
+            totalCosto += subtotal;
+
+            const unitLabel = item.unidad_medida ? `/${item.unidad_medida}` : '';
+            return `
+                <tr>
+                    <td style="padding: 12px; font-weight: 500;">${item.nombre_ingrediente}</td>
+                    <td style="padding: 12px;">${item.cantidad} ${item.unidad_medida || ''}</td>
+                    <td style="padding: 12px; text-align: right; font-family: monospace;">${currencyFormatter.format(costoUnitario)}${unitLabel}</td>
+                    <td style="padding: 12px; text-align: right; font-family: monospace; font-weight: bold; color: #166534;">${currencyFormatter.format(subtotal)}</td>
+                    <td style="text-align: right; padding: 12px;">
+                        <button 
+                            onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" 
+                            class="btn-eliminar-ingrediente"
+                            title="Eliminar ingrediente"
+                            style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; transition: transform 0.2s;"
+                            onmouseover="this.style.transform='scale(1.2)'"
+                            onmouseout="this.style.transform='scale(1)'"
+                        >❌</button>
+                    </td>
+                </tr>
+            `;
+        } else {
+            return `
+                <tr>
+                    <td style="padding: 12px; font-weight: 500;">${item.nombre_ingrediente}</td>
+                    <td style="padding: 12px;">${item.cantidad} ${item.unidad_medida || ''}</td>
+                    <td style="text-align: right; padding: 12px;">
+                        <button 
+                            onclick="window.eliminarIngredienteDeMix(${mixId}, ${item.ingrediente_id})" 
+                            class="btn-eliminar-ingrediente"
+                            title="Eliminar ingrediente"
+                            style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; transition: transform 0.2s;"
+                            onmouseover="this.style.transform='scale(1.2)'"
+                            onmouseout="this.style.transform='scale(1)'"
+                        >❌</button>
+                    </td>
+                </tr>
+            `;
+        }
+    }).join('');
+
+    // 3. Renderizar pie de la tabla con consolidaciones acumuladas
+    if (mostrarValores) {
+        tfoot.innerHTML = `
+            <tr class="fila-total" style="background: #f1f5f9; border-top: 2px solid #e2e8f0;">
+                <td style="padding: 12px;"><strong>TOTALES</strong></td>
+                <td style="padding: 12px;"><strong id="total-kilos-mix" style="color: #3b82f6;">${totalKilos.toFixed(2)} Kilo</strong></td>
+                <td style="padding: 12px; text-align: right;"><span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Costo Total Mix:</span></td>
+                <td style="padding: 12px; text-align: right;"><strong id="total-costo-mix" style="color: #15803d; font-family: monospace; font-size: 1.05rem;">${currencyFormatter.format(totalCosto)}</strong></td>
+                <td></td>
+            </tr>
+        `;
+    } else {
+        tfoot.innerHTML = `
+            <tr class="fila-total" style="background: #f1f5f9; border-top: 2px solid #e2e8f0;">
+                <td style="padding: 12px;"><strong>TOTAL</strong></td>
+                <td style="padding: 12px;"><strong id="total-kilos-mix" style="color: #3b82f6;">${totalKilos.toFixed(2)} Kilo</strong></td>
+                <td></td>
+            </tr>
+        `;
+    }
+
     const btnEliminarFormula = modal.querySelector('#btn-eliminar-formula');
     if (btnEliminarFormula) {
         btnEliminarFormula.style.display = (composicionVisual && composicionVisual.length > 0) ? 'inline-block' : 'none';
@@ -287,12 +368,13 @@ function agregarIngredienteAMixTemp(mixId) {
     const ingDB = ingredientesLista.find(i => i.id === ingredienteSeleccionadoId);
     if (!ingDB) return;
 
-    // Agregar a visual
+    // Agregar a visual (preservando el costo_patron para cálculos dinámicos)
     composicionVisual.push({
         ingrediente_id: ingredienteSeleccionadoId,
         nombre_ingrediente: ingDB.nombre,
         cantidad: cantidad,
-        unidad_medida: ingDB.unidad_medida || 'Kilo'
+        unidad_medida: ingDB.unidad_medida || 'Kilo',
+        costo_patron: parseFloat(ingDB.costo_patron || 0.00)
     });
 
     // Agregar a buffer API

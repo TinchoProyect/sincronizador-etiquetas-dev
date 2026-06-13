@@ -105,8 +105,8 @@ async function recargarDatosMantenendoFiltros() {
 }
 
 // Funciones para gestionar el modal
-async function abrirModal(titulo = 'Nuevo Ingrediente') {
-    if (titulo === 'Nuevo Ingrediente') {
+async function abrirModal(titulo = 'Nuevo Ingrediente / Insumo') {
+    if (titulo === 'Nuevo Ingrediente / Insumo' || titulo === 'Nuevo Ingrediente') {
         abrirModalNuevoIngrediente();
     } else {
         const modal = document.getElementById('modal-ingrediente');
@@ -222,7 +222,8 @@ function inicializarFiltros(ingredientes) {
 
         const tipos = [
             { id: 'simple', label: 'Ingrediente Simple' },
-            { id: 'mix', label: 'Ingrediente Mix' }
+            { id: 'mix', label: 'Ingrediente Mix' },
+            { id: 'insumo', label: 'Insumo / Packaging' }
         ];
 
         tipos.forEach(tipo => {
@@ -408,89 +409,89 @@ window.formatearStock = formatearStock;
 
 // Función para actualizar la tabla según los filtros activos combinados
 async function actualizarTablaFiltrada() {
-    // Solo aplicar filtros en la vista de depósito
-    if (vistaActual === 'deposito') {
-        const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim() || '';
+    const esVistaUsuario = vistaActual.startsWith('usuario-');
+    const sourceList = esVistaUsuario ? (window.ingredientesUsuarioActual || []) : (ingredientesOriginales || []);
+    
+    const nombreFiltro = document.getElementById('filtro-nombre')?.value.trim() || '';
 
-        // Si no hay filtros activos ni búsqueda, mostrar TODOS los ingredientes
-        if (
-            filtrosActivos.size === 0 &&
-            filtrosTipoActivos.size === 0 &&
-            filtrosStockActivos.size === 0 &&
-            filtrosSectorActivos.size === 0 &&
-            !nombreFiltro
-        ) {
-            await actualizarTablaIngredientes(ingredientesOriginales);
-            return;
+    // Si no hay filtros activos ni búsqueda, mostrar TODOS los ingredientes correspondientes
+    if (
+        filtrosActivos.size === 0 &&
+        filtrosTipoActivos.size === 0 &&
+        filtrosStockActivos.size === 0 &&
+        filtrosSectorActivos.size === 0 &&
+        !nombreFiltro
+    ) {
+        await actualizarTablaIngredientes(sourceList, esVistaUsuario);
+        return;
+    }
+
+    // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
+    const ingredientesFiltrados = sourceList.filter(ing => {
+        // ✅ FILTRO POR NOMBRE
+        let pasaNombre = true;
+        if (nombreFiltro) {
+            const terminos = nombreFiltro
+                .split(/\s+/)
+                .filter(t => t.length > 0)
+                .map(t => normalizarTexto(t));
+
+            if (terminos.length > 0) {
+                const nombreItem = ing.nombre_ingrediente || ing.nombre || '';
+                const nombreNormalizado = normalizarTexto(nombreItem);
+                pasaNombre = terminos.every(termino => nombreNormalizado.includes(termino));
+            }
         }
 
-        // Aplicar filtros combinados (AND lógico entre tipos de filtros, OR dentro de cada tipo)
-        const ingredientesFiltrados = ingredientesOriginales.filter(ing => {
-            // ✅ FILTRO POR NOMBRE: Búsqueda multi-término SOLO en nombre (sin descripción ni código)
-            let pasaNombre = true;
-            if (nombreFiltro) {
-                // Dividir el input en términos (separados por espacios)
-                const terminos = nombreFiltro
-                    .split(/\s+/) // Dividir por uno o más espacios
-                    .filter(t => t.length > 0) // Eliminar términos vacíos
-                    .map(t => normalizarTexto(t)); // Normalizar cada término
+        // Filtro por categoría (si hay filtros de categoría activos)
+        const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
 
-                if (terminos.length > 0) {
-                    // Normalizar SOLO el nombre del ingrediente
-                    const nombreNormalizado = normalizarTexto(ing.nombre);
-
-                    // Verificar que TODOS los términos estén presentes en el nombre
-                    pasaNombre = terminos.every(termino => nombreNormalizado.includes(termino));
-                }
+        // Filtro por tipo (si hay filtros de tipo activos)
+        let pasaTipo = filtrosTipoActivos.size === 0;
+        if (filtrosTipoActivos.size > 0) {
+            const esMixIngrediente = ing.esMix || ing.tipo === 'Mix' || ing.tipo_origen === 'Mix';
+            const esInsumo = ing.es_insumo === true;
+            if (filtrosTipoActivos.has('simple') && !esMixIngrediente && !esInsumo) {
+                pasaTipo = true;
             }
-
-            // Filtro por categoría (si hay filtros de categoría activos)
-            const pasaCategoria = filtrosActivos.size === 0 || filtrosActivos.has(ing.categoria);
-
-            // Filtro por tipo (si hay filtros de tipo activos)
-            let pasaTipo = filtrosTipoActivos.size === 0;
-            if (filtrosTipoActivos.size > 0) {
-                const esMixIngrediente = ing.esMix;
-                if (filtrosTipoActivos.has('simple') && !esMixIngrediente) {
-                    pasaTipo = true;
-                }
-                if (filtrosTipoActivos.has('mix') && esMixIngrediente) {
-                    pasaTipo = true;
-                }
+            if (filtrosTipoActivos.has('mix') && esMixIngrediente && !esInsumo) {
+                pasaTipo = true;
             }
-
-            // Filtro por stock (si hay filtros de stock activos)
-            let pasaStock = filtrosStockActivos.size === 0;
-            if (filtrosStockActivos.size > 0) {
-                // Alineación simétrica ABSOLUTA con window.obtenerColorStock para consistencia visual
-                let colorAsignado = window.obtenerColorStock ? window.obtenerColorStock(ing.stock_actual) : '';
-
-                if (filtrosStockActivos.has('con-stock') && colorAsignado === '#16a34a') {
-                    pasaStock = true;
-                }
-                if (filtrosStockActivos.has('sin-stock') && colorAsignado === '#3b82f6') {
-                    pasaStock = true;
-                }
-                if (filtrosStockActivos.has('stock-negativo') && colorAsignado === '#dc2626') {
-                    pasaStock = true;
-                }
+            if (filtrosTipoActivos.has('insumo') && esInsumo) {
+                pasaTipo = true;
             }
+        }
 
-            // Filtro por sector (si hay filtros de sector activos)
-            let pasaSector = filtrosSectorActivos.size === 0;
-            if (filtrosSectorActivos.size > 0) {
-                const sectorId = ing.sector_id ? ing.sector_id.toString() : 'sin-sector';
-                if (filtrosSectorActivos.has(sectorId)) {
-                    pasaSector = true;
-                }
+        // Filtro por stock (si hay filtros de stock activos)
+        let pasaStock = filtrosStockActivos.size === 0;
+        if (filtrosStockActivos.size > 0) {
+            const stockVal = esVistaUsuario ? ing.stock_total : ing.stock_actual;
+            let colorAsignado = window.obtenerColorStock ? window.obtenerColorStock(stockVal) : '';
+
+            if (filtrosStockActivos.has('con-stock') && colorAsignado === '#16a34a') {
+                pasaStock = true;
             }
+            if (filtrosStockActivos.has('sin-stock') && colorAsignado === '#3b82f6') {
+                pasaStock = true;
+            }
+            if (filtrosStockActivos.has('stock-negativo') && colorAsignado === '#dc2626') {
+                pasaStock = true;
+            }
+        }
 
-            // El ingrediente pasa si cumple TODOS los tipos de filtros activos
-            return pasaCategoria && pasaTipo && pasaStock && pasaSector && pasaNombre;
-        });
+        // Filtro por sector (si hay filtros de sector activos)
+        let pasaSector = filtrosSectorActivos.size === 0;
+        if (filtrosSectorActivos.size > 0) {
+            const sectorId = ing.sector_id ? ing.sector_id.toString() : 'sin-sector';
+            if (filtrosSectorActivos.has(sectorId)) {
+                pasaSector = true;
+            }
+        }
 
-        await actualizarTablaIngredientes(ingredientesFiltrados);
-    }
+        return pasaCategoria && pasaTipo && pasaStock && pasaSector && pasaNombre;
+    });
+
+    await actualizarTablaIngredientes(ingredientesFiltrados, esVistaUsuario);
 }
 
 // Función para cargar los ingredientes según la vista actual
@@ -549,12 +550,14 @@ async function cargarIngredientes(usuarioId = null) {
             // RAMA 2: VISTA USUARIO (Stock Personal)
             // ==========================================
 
-            // 🛡️ NO guardar en ingredientesOriginales para evitar contaminación
-            // 🛡️ NO llamar a inicializarFiltros()
-            // 🛡️ NO llamar a actualizarTablaFiltrada()
+            // Guardar en variable global para que el modal de desglose y otras vistas accedan de forma aislada (Comentarios en español)
+            window.ingredientesUsuarioActual = datos;
 
-            // Renderizar directamente la tabla con los datos del usuario
-            await actualizarTablaIngredientes(datos, true);
+            // Inicializar filtros con los datos de stock del usuario (Comentarios en español)
+            inicializarFiltros(datos);
+
+            // Filtrar y renderizar la tabla aplicando cualquier filtro inicial
+            await actualizarTablaFiltrada();
         }
 
     } catch (error) {
@@ -989,6 +992,29 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
 
     container.innerHTML = '';
 
+    // ✅ VALORIZACIÓN: Calcular e inyectar el capital general en depósito o del operario (Comentarios en español)
+    const capitalTotalContainer = document.getElementById('indicador-capital-total');
+    const capitalTotalMonto = document.getElementById('capital-total-monto');
+    if (capitalTotalContainer && capitalTotalMonto) {
+        if (window.mostrarValoresMonetarios) {
+            const totalCapital = ingredientes.reduce((acc, ing) => {
+                const valTotal = esVistaUsuario 
+                    ? (parseFloat(ing.costo_patron || 0) * parseFloat(ing.stock_total || 0)) 
+                    : parseFloat(ing.valorizacion_total || 0);
+                return acc + valTotal;
+            }, 0);
+            capitalTotalMonto.textContent = `$ ${totalCapital.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            
+            const labelCapital = capitalTotalContainer.querySelector('div span');
+            if (labelCapital) {
+                labelCapital.textContent = esVistaUsuario ? 'Capital del Operario' : 'Capital en Depósito';
+            }
+            capitalTotalContainer.style.display = 'flex';
+        } else {
+            capitalTotalContainer.style.display = 'none';
+        }
+    }
+
     if (!ingredientes || ingredientes.length === 0) {
         container.innerHTML = '<div style="text-align:center; padding:2rem; color:#6c757d;">No hay ingredientes disponibles</div>';
         return;
@@ -1002,14 +1028,16 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
 
         ingredientes.forEach(ingrediente => {
             const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
-            const esMix = ingrediente.esMix || ingrediente.tipo_origen === 'Mix';
+            const esMix = ingrediente.esMix || ingrediente.tipo_origen === 'Mix' || ingrediente.tipo === 'Mix';
             const mixButtons = esMix
                 ? `<button class="btn-tarjeta primary" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})">📋 Fórmula</button>`
                 : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`;
                 
             const card = document.createElement('div');
             const isChecked = window.ingredientesAjusteSeleccionados && window.ingredientesAjusteSeleccionados.has(ingredienteIdReal);
-            card.className = `tarjeta-ingrediente ${ingrediente.stock_total <= 0 ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
+            card.className = `tarjeta-ingrediente ${parseFloat(ingrediente.stock_total || 0) <= 0 ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
+            
+            const esInsumo = ingrediente.es_insumo === true;
             
             card.innerHTML = `
             <div class="tarjeta-cuerpo" style="position: relative; padding: 6px 10px;">
@@ -1017,26 +1045,48 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                     <div style="display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden;">
                         <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)" ${isChecked ? "checked" : ""}>
                         <h3 class="tarjeta-titulo" style="margin: 0; font-size: 1rem; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${ingrediente.nombre_ingrediente || ingrediente.nombre}">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
+                        ${esInsumo ? `<span class="badge-insumo" style="background-color: #64748b; color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; flex-shrink: 0; text-transform: uppercase;">📦 Insumo</span>` : ''}
                     </div>
                     <span class="tarjeta-codigo" style="margin: 0 0 0 8px; font-size: 0.8rem; flex-shrink: 0;">${ingrediente.codigo || '-'}</span>
                 </div>
                 ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}" style="margin-bottom: 4px; font-size: 0.75rem; line-height: 1.1;">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="display: none;">-</p>`}
 
-                <div class="tarjeta-stats" style="margin: 0; padding: 0;">
-                    <div class="stat-item ${parseFloat(ingrediente.stock_total) <= 0 ? 'stock-cero' : ''}" style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; margin-bottom: 0px; padding: 2px 4px;">
-                        <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">STOCK ASIGNADO</span>
-                        <span class="stat-value" style="font-size: 1.5rem; font-weight: 900; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
+                <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0;">
+                    <!-- STOCK ASIGNADO -->
+                    <div class="stat-item ${parseFloat(ingrediente.stock_total || 0) <= 0 ? 'stock-cero' : ''}" style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; margin-bottom: 0px; padding: 2px 4px;">
+                        <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">STOCK ASIGNADO</span>
+                        <span class="stat-value" style="font-size: 1.4rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_total) : '#3b82f6'}; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
                             ${window.formatearStock ? window.formatearStock(ingrediente.stock_total) : parseFloat(ingrediente.stock_total).toFixed(3)} 
                             <small style="font-size: 0.85rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
                         </span>
                     </div>
+
+                    <!-- ✅ VALORIZACIÓN: Costo Patrón y Capitalizado del Ingrediente/Insumo (Comentarios en español) -->
+                    ${window.mostrarValoresMonetarios ? `
+                    <div style="display: flex; flex-direction: column; padding: 4px; border-top: 1px dashed #cbd5e1; background: #f0fdf4; border-radius: 4px; margin-top: 4px; margin-bottom: 2px;">
+                        <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <span style="font-size: 0.65rem; color: #047857; font-weight: 700; letter-spacing: 0.5px;">COSTO PATRÓN</span>
+                            <span style="font-size: 0.85rem; font-weight: bold; color: #047857;">
+                                $${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/${ingrediente.unidad_medida === 'Unidad' ? 'u' : 'kg'}
+                            </span>
+                        </div>
+                        <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dotted #bbf7d0; padding-top: 2px;">
+                            <span style="font-size: 0.65rem; color: #065f46; font-weight: 700; letter-spacing: 0.5px;">VALOR CAPITAL</span>
+                            <span style="font-size: 1.05rem; font-weight: 900; color: #10b981;">
+                                $${(parseFloat(ingrediente.costo_patron || 0) * parseFloat(ingrediente.stock_total || 0)).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </span>
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
             
             <div class="tarjeta-footer">
                 ${mixButtons}
-                <button class="btn-tarjeta action" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
-                <button class="btn-tarjeta" style="background:#fef2f2; color:#b91c1c;" onclick="window.iniciarTrasladoIngrediente('${ingredienteIdReal}', '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')" title="Enviar a Cuarentena">🏥 Mover</button>
+                <button class="btn-tarjeta-sector" onclick="if(window.abrirModalSector) abrirModalSector(${ingredienteIdReal}, ${ingrediente.sector_id || 'null'})" title="Cambiar Sector">📍</button>
+                <button class="btn-tarjeta action" onclick="if(window.abrirModalImpresionGeneral) abrirModalImpresionGeneral(${ingredienteIdReal}, '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')">🖨️ Etiquetas</button>
+                <button class="btn-tarjeta action" style="background: #0284c7; color: white;" onclick="window.abrirModalDesglose(${ingredienteIdReal})" title="Auditar Stock y Lotes">🔎 Desglose</button>
+                <button class="btn-tarjeta adjust" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
             </div>`;
             groupContent.appendChild(card);
         });
@@ -1114,21 +1164,25 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                 const isChecked = window.ingredientesAjusteSeleccionados && window.ingredientesAjusteSeleccionados.has(ingredienteIdReal);
                 card.className = `tarjeta-ingrediente ${(ingrediente.stock_actual <= 0 && ingrediente.stock_potencial <= 0) ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
                 
+                const esInsumo = ingrediente.es_insumo === true;
+                const labelStock = esInsumo ? 'UNIDADES LIBRES (SUELTO)' : 'KILOS LIBRES (SUELTO)';
+                
                 card.innerHTML = `
                 <div class="tarjeta-cuerpo" style="position: relative; padding: 6px 10px;">
                     <div class="tarjeta-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; padding: 0;">
                         <div style="display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden;">
                             <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)" ${isChecked ? "checked" : ""}>
                             <h3 class="tarjeta-titulo" style="margin: 0; font-size: 1rem; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${ingrediente.nombre_ingrediente || ingrediente.nombre}">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
+                            ${esInsumo ? `<span class="badge-insumo" style="background-color: #64748b; color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; flex-shrink: 0; text-transform: uppercase;">📦 Insumo</span>` : ''}
                         </div>
                         <span class="tarjeta-codigo" style="margin: 0 0 0 8px; font-size: 0.8rem; flex-shrink: 0;">${ingrediente.codigo || '-'}</span>
                     </div>
                     ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}" style="margin-bottom: 4px; font-size: 0.75rem; line-height: 1.1;">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="display: none;">-</p>`}
 
                     <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0;">
-                        <!-- KILOS LIBRES: Header y Valor Horizontal -->
+                        <!-- KILOS/UNIDADES LIBRES: Header y Valor Horizontal -->
                         <div class="stat-item ${ingrediente.stock_actual < 0 ? 'stock-cero' : ''}" style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; margin-bottom: 0px; padding: 2px 4px;">
-                            <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">KILOS LIBRES (SUELTO)</span>
+                            <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">${labelStock}</span>
                             <span class="stat-value" style="font-size: 1.4rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_actual) : '#3b82f6'}; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
                                 ${window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : ingrediente.stock_actual} 
                                 <small style="font-size: 0.8rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
@@ -1180,6 +1234,24 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
                                 <span style="font-size: 0.70rem; font-weight: 600; color: #94a3b8;">${ingrediente.unidad_medida}</span>
                             </div>
                         </div>
+
+                        <!-- ✅ VALORIZACIÓN: Costo Patrón y Capitalizado del Ingrediente/Insumo (Comentarios en español) -->
+                        ${window.mostrarValoresMonetarios ? `
+                        <div style="display: flex; flex-direction: column; padding: 4px; border-top: 1px dashed #cbd5e1; background: #f0fdf4; border-radius: 4px; margin-top: 4px; margin-bottom: 2px;">
+                            <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                <span style="font-size: 0.65rem; color: #047857; font-weight: 700; letter-spacing: 0.5px;">COSTO PATRÓN</span>
+                                <span style="font-size: 0.85rem; font-weight: bold; color: #047857;">
+                                    $${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/${ingrediente.unidad_medida === 'Unidad' ? 'u' : 'kg'}
+                                </span>
+                            </div>
+                            <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dotted #bbf7d0; padding-top: 2px;">
+                                <span style="font-size: 0.65rem; color: #065f46; font-weight: 700; letter-spacing: 0.5px;">VALOR CAPITAL</span>
+                                <span style="font-size: 1.05rem; font-weight: 900; color: #10b981;">
+                                    $${parseFloat(ingrediente.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                </span>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
                         </div>
@@ -1305,6 +1377,10 @@ async function editarIngrediente(id) {
         document.getElementById('codigo').value = ingrediente.codigo || '';
         document.getElementById('nombre').value = ingrediente.nombre;
         document.getElementById('unidad-medida').value = ingrediente.unidad_medida;
+        const checkInsumo = document.getElementById('es-insumo');
+        if (checkInsumo) {
+            checkInsumo.checked = !!ingrediente.es_insumo;
+        }
         // Soporte para Combobox de categorías
         const catInput = document.getElementById('categoria-input');
         const catId = document.getElementById('categoria-id');
@@ -1329,7 +1405,7 @@ async function editarIngrediente(id) {
             btnTrazabilidad.style.display = 'block';
         }
 
-        abrirModal('Editar Ingrediente');
+        abrirModal('Editar Ingrediente / Insumo');
         actualizarBotonImpresion();
     } catch (error) {
         console.error('Error:', error);
@@ -1536,9 +1612,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         actualizarTablaFiltrada();
     });
 
+    // ✅ VALORIZACIÓN: Inicializar switch y estado desde localStorage (Comentarios en español)
+    const switchValores = document.getElementById('switch-valores-monetarios');
+    window.mostrarValoresMonetarios = localStorage.getItem('mostrarValoresMonetarios') === 'true';
+    if (switchValores) {
+        switchValores.checked = window.mostrarValoresMonetarios;
+        switchValores.addEventListener('change', (e) => {
+            window.mostrarValoresMonetarios = e.target.checked;
+            localStorage.setItem('mostrarValoresMonetarios', window.mostrarValoresMonetarios);
+            
+            // Refrescar la solapa actual del operario o la grilla general sin perder el contexto visual (Comentarios en español)
+            if (vistaActual.startsWith('usuario-')) {
+                const usuarioId = vistaActual.split('-')[1];
+                cargarIngredientes(usuarioId);
+            } else {
+                actualizarTablaFiltrada();
+            }
+        });
+    }
 
     // Cargar sectores disponibles al inicializar
     await cargarSectores();
+    sectoresDisponibles = getSectoresDisponibles();
 
     // Cargar ingredientes al iniciar
     cargarIngredientes();
@@ -1738,6 +1833,10 @@ window.eliminarComposicionMix = eliminarComposicionMix;
 window.cargarIngredientes = cargarIngredientes;
 window.toggleVinculo = toggleVinculo;
 window.abrirTrazabilidadDesdeFicha = abrirTrazabilidadDesdeFicha;
+window.cargarSectores = async () => {
+    await cargarSectores();
+    sectoresDisponibles = getSectoresDisponibles();
+};
 
 // Exponer funciones de Categorías al scope global
 window.abrirModalCategorias = abrirModalCategorias;
@@ -2433,7 +2532,7 @@ window.imprimirCartelSector = (letra, nombre) => {
 // VISOR DE DESGLOSE (DRILL-DOWN) E INTEGRIDAD DE STOCK POR LOTE
 // =========================================================================
 
-function renderDesgloseOfertasReposicion(ofertas, factor) {
+function renderDesgloseOfertasReposicion(ofertas, factor, esMapeado = false) {
     const container = document.getElementById('desglose-ofertas-reposicion-container');
     if (!container) return;
 
@@ -2460,12 +2559,23 @@ function renderDesgloseOfertasReposicion(ofertas, factor) {
             <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
-                    <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
-                        ${badgeText}
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        ${esMapeado ? `
+                            <button onclick="window.desvincularOfertaDirecta(event, '${of.proveedor_id}', '${String(of.sku_proveedor || '').replace(/'/g, "\\'")}')" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#dc2626';" onmouseout="this.style.background='#ef4444';">
+                                🔌 Desvincular
+                            </button>
+                        ` : ''}
+                        <span class="badge" style="font-size: 0.78em; background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                            ${badgeText}
+                        </span>
+                    </div>
+                </div>
+                <!-- 📝 Descripción original proveniente de la Tabla Maestra (Comentarios en español) -->
+                <div style="font-size: 0.76rem; color: #475569; margin: 2px 0; line-height: 1.25; word-break: break-word; font-style: italic; background: #fdfafb; padding: 4px; border-left: 2px solid #c084fc; border-radius: 2px;" title="${of.descripcion || ''}">
+                    📝 ${of.descripcion || 'Sin descripción de origen'}
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 1.15em; border-top: 1px dashed rgba(107, 33, 168, 0.15); padding-top: 4px;">
-                    <span style="color: #64748b;">${costoKilo > 0 ? currencyFormatter.format(costoKilo) + '/kg' : 'N/A'}</span>
+                    <span class="precio-clickeable-repo" data-valor="${costoKilo}" style="color: #64748b; cursor: pointer; text-decoration: underline dashed #cbd5e1;" title="Haz clic para copiar al costo manual">${costoKilo > 0 ? currencyFormatter.format(costoKilo) + '/kg' : 'N/A'}</span>
                     <strong style="color: #6b21a8;">${costoBulto > 0 ? currencyFormatter.format(costoBulto) + '/cj' : 'N/A'}</strong>
                 </div>
             </div>
@@ -2476,10 +2586,28 @@ function renderDesgloseOfertasReposicion(ofertas, factor) {
 }
 
 window.abrirModalDesglose = async function(ingredienteId) {
-    const ingrediente = ingredientesOriginales.find(ing => (ing.ingrediente_id || ing.id) === ingredienteId);
+    // Buscar ingrediente en la memoria local correspondiente a la vista activa (Comentarios en español)
+    let ingrediente = null;
+    if (vistaActual.startsWith('usuario-')) {
+        ingrediente = window.ingredientesUsuarioActual ? window.ingredientesUsuarioActual.find(ing => (ing.ingrediente_id || ing.id) === ingredienteId) : null;
+    }
+    if (!ingrediente) {
+        ingrediente = ingredientesOriginales.find(ing => (ing.ingrediente_id || ing.id) === ingredienteId);
+    }
     if (!ingrediente) {
         console.error("❌ [Drill-Down] Ingrediente no encontrado en la memoria local:", ingredienteId);
         return;
+    }
+
+    // Obtener datos frescos del ingrediente desde el backend para asegurar consistencia (especialmente bunker_articulos y costo_patron)
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
+        if (response.ok) {
+            const freshData = await response.json();
+            ingrediente = { ...ingrediente, ...freshData };
+        }
+    } catch (err) {
+        console.error("❌ Error al obtener datos frescos del ingrediente:", err);
     }
 
     // ✅ [FASE 4 - VINCULACIÓN INGREDIENTES] Preservar contexto global del ingrediente seleccionado
@@ -2497,8 +2625,9 @@ window.abrirModalDesglose = async function(ingredienteId) {
     document.getElementById('desglose-titulo').innerHTML = `🔎 Desglose: ${nombreIngrediente}`;
     document.getElementById('desglose-subtitulo').textContent = `Sector: ${ingrediente.sector_nombre || 'Sin asignar'} | Unidad de Medida: ${ingrediente.unidad_medida}`;
 
-    // Cargar balanzas principales
-    const kilosLibres = window.formatearStock ? window.formatearStock(ingrediente.stock_actual) : parseFloat(ingrediente.stock_actual).toFixed(3);
+    // Cargar balanzas principales (Filtrado para operarios vs depósito central) (Comentarios en español)
+    const kilosLibresVal = vistaActual.startsWith('usuario-') ? ingrediente.stock_total : ingrediente.stock_actual;
+    const kilosLibres = window.formatearStock ? window.formatearStock(kilosLibresVal) : parseFloat(kilosLibresVal).toFixed(3);
     document.getElementById('desglose-kilos-libres').textContent = `${kilosLibres} ${ingrediente.unidad_medida}`;
     document.getElementById('desglose-cajas-cerradas').textContent = `${parseFloat(ingrediente.stock_bultos || 0)} cj`;
 
@@ -2508,7 +2637,150 @@ window.abrirModalDesglose = async function(ingredienteId) {
         reposicionContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-style: italic; font-size: 0.82em; padding: 10px;">Cargando ofertas...</div>';
     }
 
-    const lotes = ingrediente.lotes_cajas_cerradas || [];
+    // Los operarios no tienen cajas cerradas en su posesión física (Comentarios en español)
+    const lotes = vistaActual.startsWith('usuario-') ? [] : (ingrediente.lotes_cajas_cerradas || []);
+    window.activeIngredienteLotes = lotes;
+    
+    // ✅ VALORIZACIÓN: Rellenar la sección de control de costos en el modal desglose (Comentarios en español)
+    const seccionCostos = document.getElementById('desglose-seccion-costos');
+    const gridCostos = document.getElementById('desglose-costos-grid');
+
+    // Limpiar tarjetas antiguas dinámicas del Búnker
+    if (gridCostos) {
+        gridCostos.querySelectorAll('.card-costo-bunker-dinamico').forEach(card => card.remove());
+    }
+
+    const bunkerArticulos = ingrediente.bunker_articulos || [];
+    const mostrarPrecios = window.mostrarValoresMonetarios;
+
+    if (seccionCostos) {
+        if (mostrarPrecios || bunkerArticulos.length > 0) {
+            seccionCostos.style.display = 'block';
+
+            // Tarjetas tradicionales (Lote, Reposición, Costo Manual)
+            const tarjetasTradicionales = gridCostos ? gridCostos.querySelectorAll('div:not(.card-costo-bunker-dinamico):not(#card-costo-formula)') : [];
+            const cardFormula = document.getElementById('card-costo-formula');
+            const bloqueValorizacion = seccionCostos.querySelector('div:last-child'); // El contenedor de costo patrón y valorización
+
+            if (!mostrarPrecios) {
+                // Ocultar tarjetas tradicionales, valorización y fórmula
+                tarjetasTradicionales.forEach(t => t.style.display = 'none');
+                if (cardFormula) cardFormula.style.display = 'none';
+                if (bloqueValorizacion) bloqueValorizacion.style.display = 'none';
+            } else {
+                // Mostrar tarjetas tradicionales
+                tarjetasTradicionales.forEach(t => t.style.display = 'flex');
+                if (bloqueValorizacion) bloqueValorizacion.style.display = 'flex';
+                // La fórmula se manejará asincrónicamente abajo
+            }
+
+            // Inyectar tarjetas dinámicas de artículos del Búnker
+            if (gridCostos) {
+                bunkerArticulos.forEach(art => {
+                    const costo = parseFloat(art.costo_base || 0);
+                    const cardHtml = `
+                        <div class="card-costo-bunker-dinamico" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; position: relative;">
+                            <span style="font-size: 0.70rem; color: #166534; font-weight: 700; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;" title="${art.descripcion}">${art.descripcion}</span>
+                            ${mostrarPrecios ? `
+                                <span class="costo-ref-bunker-clickeable" data-valor="${costo}" style="font-size: 1rem; font-weight: bold; color: #15803d; margin: 4px 0; border-bottom: 1px dashed #15803d; cursor: pointer;" title="Clic para copiar al costo manual">$ ${costo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
+                            ` : ''}
+                            <div style="display: flex; gap: 4px; width: 100%; margin-top: 4px;">
+                                ${mostrarPrecios ? `
+                                    <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #10b981; margin: 0; flex: 1; justify-content: center; height: auto;" onclick="window.fijarCostoPatronValor(${costo})">Fijar</button>
+                                ` : ''}
+                                <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #ef4444; margin: 0; ${mostrarPrecios ? '' : 'flex: 1;'} justify-content: center; height: auto;" title="Desvincular" onclick="window.desvincularArticuloBunker('${art.codigo}')">🔌 Desvincular</button>
+                            </div>
+                        </div>
+                    `;
+                    gridCostos.insertAdjacentHTML('beforeend', cardHtml);
+                });
+            }
+
+            if (mostrarPrecios) {
+                // Referencia A: Último Lote
+                const costoUltimoLote = lotes.length > 0 ? parseFloat(lotes[lotes.length - 1].costo_kilo || 0) : null;
+                const btnFijarLote = document.getElementById('btn-fijar-lote');
+                const labelLote = document.getElementById('costo-ref-lote');
+                if (costoUltimoLote !== null) {
+                    if (labelLote) {
+                        labelLote.textContent = `$ ${costoUltimoLote.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                        labelLote.setAttribute('data-valor', costoUltimoLote);
+                    }
+                    if (btnFijarLote) btnFijarLote.removeAttribute('disabled');
+                } else {
+                    if (labelLote) {
+                        labelLote.textContent = 'N/A';
+                        labelLote.removeAttribute('data-valor');
+                    }
+                    if (btnFijarLote) btnFijarLote.setAttribute('disabled', 'true');
+                }
+                
+                // Referencia B: Reposición (se cargará asincrónicamente después)
+                const labelRepo = document.getElementById('costo-ref-reposicion');
+                if (labelRepo) {
+                    labelRepo.textContent = 'Cargando...';
+                    labelRepo.removeAttribute('data-valor');
+                }
+                const btnFijarRepo = document.getElementById('btn-fijar-reposicion');
+                if (btnFijarRepo) btnFijarRepo.setAttribute('disabled', 'true');
+                window.ultimoCostoReposicionResolved = null;
+
+                // Referencia D: Costo por Fórmula Activa (Comentarios en español)
+                const labelFormula = document.getElementById('costo-ref-formula');
+                const btnFijarFormula = document.getElementById('btn-fijar-formula');
+                if (cardFormula) cardFormula.style.display = 'none';
+                if (labelFormula) {
+                    labelFormula.textContent = 'Cargando...';
+                    labelFormula.removeAttribute('data-valor');
+                }
+                if (btnFijarFormula) btnFijarFormula.setAttribute('disabled', 'true');
+                window.ultimoCostoFormulaResolved = null;
+
+                // Consultar la composición de fórmula/Mix en background
+                fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`)
+                    .then(res => {
+                        if (res.ok) return res.json();
+                        throw new Error('Sin fórmula activa o error de conexión');
+                    })
+                    .then(data => {
+                        if (data && data.composicion && data.composicion.length > 0) {
+                            if (cardFormula) cardFormula.style.display = 'flex';
+                            
+                            const costoFormulaUnitario = typeof data.costoFormulaUnitario === 'number'
+                                ? data.costoFormulaUnitario
+                                : (() => {
+                                    const recetaBase = parseFloat(data.mix?.receta_base_kg || 1.00) || 1.00;
+                                    const totalConsolidado = data.composicion.reduce((acc, comp) => {
+                                        return acc + (parseFloat(comp.cantidad || 0) * parseFloat(comp.costo_patron || 0));
+                                    }, 0);
+                                    return totalConsolidado / recetaBase;
+                                })();
+                            
+                            window.ultimoCostoFormulaResolved = costoFormulaUnitario;
+
+                            if (labelFormula) {
+                                labelFormula.textContent = `$ ${costoFormulaUnitario.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                                labelFormula.setAttribute('data-valor', costoFormulaUnitario);
+                            }
+                            if (btnFijarFormula) btnFijarFormula.removeAttribute('disabled');
+                        }
+                    })
+                    .catch(err => {
+                        console.log("ℹ️ [DESGLOSE-FORMULA] No compuesto o sin fórmula:", err.message);
+                    });
+                
+                // Costo Patrón y Valorización actual
+                document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(ingrediente.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                
+                // Limpiar input manual
+                const inputManual = document.getElementById('input-costo-manual');
+                if (inputManual) inputManual.value = '';
+            }
+        } else {
+            seccionCostos.style.display = 'none';
+        }
+    }
     let skuParaReposicion = null;
     let kilosPorCajaFactor = 1.00;
     
@@ -2537,36 +2809,108 @@ window.abrirModalDesglose = async function(ingredienteId) {
     
     if (skuParaReposicion) {
         try {
-            // 1. Resolver atómicamente el ID de artículo correspondiente en el Búnker
-            const resolveRes = await fetch(`/api/logistica/bunker/reposicion/resolver-articulo?sku=${encodeURIComponent(skuParaReposicion)}&nombre=${encodeURIComponent(nombreIngrediente)}`);
-            let mappedOfertas = null;
+            let targetIdForMapeo = skuParaReposicion;
+            let resolvedEnBunker = false;
             
-            if (resolveRes.ok) {
-                const resolveJson = await resolveRes.json();
-                if (resolveJson.success && resolveJson.articulo_id) {
-                    // 2. Obtener las ofertas unificadas desde el endpoint de finanzas del Búnker
-                    const finanzasRes = await fetch(`/api/logistica/bunker/finanzas/${encodeURIComponent(resolveJson.articulo_id)}`);
+            // 1. Intentar resolver atómicamente el ID de artículo correspondiente en el Búnker
+            try {
+                const resolveRes = await fetch(`/api/logistica/bunker/reposicion/resolver-articulo?sku=${encodeURIComponent(skuParaReposicion)}&nombre=${encodeURIComponent(nombreIngrediente)}`);
+                if (resolveRes.ok) {
+                    const resolveJson = await resolveRes.json();
+                    if (resolveJson.success && resolveJson.articulo_id) {
+                        targetIdForMapeo = resolveJson.articulo_id;
+                        resolvedEnBunker = true;
+                    }
+                }
+            } catch (err) {
+                console.warn("⚠️ [DESGLOSE-REPOSICION] Error al resolver identidad en Búnker:", err);
+            }
+
+            // ✅ [FASE 4 - VINCULACIÓN INGREDIENTES] Preservar el identificador resuelto para desvinculaciones o mapeos
+            window.activeBunkerArticuloId = targetIdForMapeo;
+
+            // 2. Obtener mapeos locales guardados para este identificador (sea Búnker ID o SKU directo)
+            let mappings = [];
+            try {
+                const mapeoRes = await fetch(`/api/logistica/bunker/reposicion/mapeo/${encodeURIComponent(targetIdForMapeo)}`);
+                if (mapeoRes.ok) {
+                    const mapeoJson = await mapeoRes.json();
+                    mappings = mapeoJson.data || [];
+                }
+            } catch (err) {
+                console.warn("⚠️ [DESGLOSE-REPOSICION] Error al recuperar mapeos:", err);
+            }
+
+            let mappedOfertas = null;
+
+            if (resolvedEnBunker) {
+                // Caso A: Artículo registrado en Búnker -> Obtener cotizaciones integradas por finanzas
+                try {
+                    const finanzasRes = await fetch(`/api/logistica/bunker/finanzas/${encodeURIComponent(targetIdForMapeo)}`);
                     if (finanzasRes.ok) {
                         const finanzas = await finanzasRes.json();
                         if (finanzas && Array.isArray(finanzas.reposicion_ofertas) && finanzas.reposicion_ofertas.length > 0) {
                             mappedOfertas = finanzas.reposicion_ofertas;
-                            console.log(`🎯 [DESGLOSE-REPOSICION] Cargadas ${mappedOfertas.length} ofertas unificadas para ArticuloID=${resolveJson.articulo_id}`);
+                            console.log(`🎯 [DESGLOSE-REPOSICION] Cargadas ${mappedOfertas.length} ofertas unificadas para ArticuloID=${targetIdForMapeo}`);
                         }
                     }
+                } catch (err) {
+                    console.error("❌ [DESGLOSE-REPOSICION] Error al consultar finanzas:", err);
+                }
+            }
+
+            // Caso B: Si hay mapeos activos y no se obtuvieron ofertas (o es mapeo directo independiente de Búnker)
+            if (!mappedOfertas && mappings.length > 0) {
+                try {
+                    const todasRes = await fetch('/api/supabase/reposicion/todas');
+                    if (todasRes.ok) {
+                        const todas = await todasRes.json();
+                        mappedOfertas = todas.filter(o => 
+                            mappings.some(m => 
+                                String(m.proveedor_id).trim() === String(o.proveedor_id).trim() && 
+                                String(m.proveedor_producto_codigo).trim().toLowerCase() === String(o.sku_proveedor).trim().toLowerCase()
+                            )
+                        );
+                        console.log(`🎯 [DESGLOSE-REPOSICION-DIRECTO] Mapeadas ${mappedOfertas.length} ofertas manuales para ID Directo=${targetIdForMapeo}`);
+                    }
+                } catch (err) {
+                    console.error("❌ [DESGLOSE-REPOSICION-DIRECTO] Error al realizar cruce de mapeos locales con Supabase:", err);
                 }
             }
 
             // 3. Renderizar las cotizaciones (con fallback al buscador general si no hay mapeos activos)
-            if (mappedOfertas) {
-                renderDesgloseOfertasReposicion(mappedOfertas, kilosPorCajaFactor);
+            if (mappedOfertas && mappedOfertas.length > 0) {
+                renderDesgloseOfertasReposicion(mappedOfertas, kilosPorCajaFactor, true);
+                window.ultimoCostoReposicionResolved = parseFloat(mappedOfertas[0].precio_unitario || 0);
             } else {
                 console.log(`🔍 [DESGLOSE-REPOSICION] Sin mapeos activos. Ejecutando fallback general para SKU=${skuParaReposicion}`);
                 const repoRes = await fetch(`/api/supabase/reposicion/${encodeURIComponent(skuParaReposicion)}`);
                 if (repoRes.ok) {
                     const ofertas = await repoRes.json();
-                    renderDesgloseOfertasReposicion(ofertas, kilosPorCajaFactor);
+                    renderDesgloseOfertasReposicion(ofertas, kilosPorCajaFactor, false);
+                    window.ultimoCostoReposicionResolved = ofertas.length > 0 ? parseFloat(ofertas[0].precio_unitario || 0) : null;
                 } else {
-                    renderDesgloseOfertasReposicion([], kilosPorCajaFactor);
+                    renderDesgloseOfertasReposicion([], kilosPorCajaFactor, false);
+                    window.ultimoCostoReposicionResolved = null;
+                }
+            }
+            
+            // ✅ VALORIZACIÓN: Actualizar UI del panel comparativo con el costo de reposición resuelto (Comentarios en español)
+            if (window.mostrarValoresMonetarios) {
+                const labelRepo = document.getElementById('costo-ref-reposicion');
+                const btnFijarRepo = document.getElementById('btn-fijar-reposicion');
+                if (window.ultimoCostoReposicionResolved !== null) {
+                    if (labelRepo) {
+                        labelRepo.textContent = `$ ${window.ultimoCostoReposicionResolved.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                        labelRepo.setAttribute('data-valor', window.ultimoCostoReposicionResolved);
+                    }
+                    if (btnFijarRepo) btnFijarRepo.removeAttribute('disabled');
+                } else {
+                    if (labelRepo) {
+                        labelRepo.textContent = 'N/A';
+                        labelRepo.removeAttribute('data-valor');
+                    }
+                    if (btnFijarRepo) btnFijarRepo.setAttribute('disabled', 'true');
                 }
             }
         } catch (err) {
@@ -2952,27 +3296,34 @@ window.abrirVinculadorReposicionIngrediente = async function() {
     try {
         // 1. Resolver atómicamente el ID del artículo correspondiente en el Búnker
         const resolveRes = await fetch(`/api/logistica/bunker/reposicion/resolver-articulo?sku=${encodeURIComponent(window.activeIngredienteSku)}&nombre=${encodeURIComponent(window.activeIngredienteNombre)}`);
-        if (!resolveRes.ok) throw new Error('Error de red al resolver la identidad del artículo');
         
-        const resolveJson = await resolveRes.json();
-        if (!resolveJson.success || !resolveJson.articulo_id) {
-            Swal.fire({
-                title: 'Artículo No Enlazado',
-                html: `Este ingrediente (<strong>${window.activeIngredienteNombre}</strong>) no se encuentra registrado en el Búnker. <br><br><small style="color: #64748b;">Debe registrarse con su código/nombre en el listado de logística primero para habilitar vinculaciones de reposición.</small>`,
-                icon: 'warning'
-            });
-            return;
+        let resolvedId = window.activeIngredienteSku;
+        let resolvedDescripcion = window.activeIngredienteNombre;
+        let esMapeoDirecto = true;
+        
+        if (resolveRes.ok) {
+            const resolveJson = await resolveRes.json();
+            if (resolveJson.success && resolveJson.articulo_id) {
+                resolvedId = resolveJson.articulo_id;
+                resolvedDescripcion = resolveJson.descripcion || window.activeIngredienteNombre;
+                esMapeoDirecto = false;
+                console.log(`🎯 [VINCULADOR-INICIO] Resuelto a Búnker ArticuloID=${resolvedId}`);
+            } else {
+                console.log(`⚠️ [VINCULADOR-INICIO] No registrado en Búnker. Usando SKU del ingrediente para mapeo directo: ID=${resolvedId}`);
+            }
+        } else {
+            console.warn(`⚠️ [VINCULADOR-INICIO] Error de respuesta de red. Usando SKU del ingrediente para mapeo directo: ID=${resolvedId}`);
         }
 
-        // Guardar artículo de búnker activo resuelto
-        window.activeBunkerArticuloId = resolveJson.articulo_id;
+        // Guardar artículo de búnker activo (o SKU de ingrediente directo)
+        window.activeBunkerArticuloId = resolvedId;
         
         // Cerrar loader
         Swal.close();
 
         // Setear títulos en el modal
-        document.getElementById('vr-articulo-nombre-titulo').innerText = window.activeIngredienteNombre;
-        document.getElementById('vr-articulo-id-titulo').innerText = window.activeBunkerArticuloId;
+        document.getElementById('vr-articulo-nombre-titulo').innerText = resolvedDescripcion;
+        document.getElementById('vr-articulo-id-titulo').innerText = esMapeoDirecto ? `${resolvedId} (Directo)` : resolvedId;
 
         // Higiene Obligatoria (Clean Slate)
         localStorage.removeItem('lamda_v4_filter_state');
@@ -3209,6 +3560,16 @@ document.addEventListener('click', function(event) {
             dropdown.style.display = 'none';
         }
     }
+
+    // Cerrar menú desplegable de configuración monetaria al hacer clic afuera
+    const configDropdown = document.getElementById('dropdown-config-monetario');
+    if (configDropdown && configDropdown.style.display === 'block') {
+        const gearBtn = event.target.closest('#btn-config-monetario');
+        const container = event.target.closest('#dropdown-config-monetario');
+        if (!container && !gearBtn) {
+            configDropdown.style.display = 'none';
+        }
+    }
 });
 
 window.setExternalFilter = function(filterType) {
@@ -3292,5 +3653,386 @@ window.updateFmtStatusBar = function() {
         txtDate.innerText = '--';
     }
 };
+
+// ✅ COSTO PATRÓN HITL - ACTUALIZACIÓN DE REFERENCIA (Comentarios en español según políticas)
+// Esta función gestiona el guardado interactivo (HITL) de los costos de referencia
+// seleccionados por el usuario desde las tres opciones paralelas del modal.
+window.fijarCostoPatronRef = async function(tipo) {
+    const ingredienteId = window.activeIngredienteId;
+    if (!ingredienteId) return;
+
+    let nuevoCosto = 0;
+    if (tipo === 'lote') {
+        const lotes = window.activeIngredienteLotes || [];
+        if (lotes.length > 0) {
+            nuevoCosto = parseFloat(lotes[lotes.length - 1].costo_kilo || 0);
+        } else {
+            alert('No hay lotes disponibles para este ingrediente.');
+            return;
+        }
+    } else if (tipo === 'reposicion') {
+        if (typeof window.ultimoCostoReposicionResolved === 'number' && window.ultimoCostoReposicionResolved !== null) {
+            nuevoCosto = window.ultimoCostoReposicionResolved;
+        } else {
+            alert('No hay costo de reposición disponible.');
+            return;
+        }
+    } else if (tipo === 'formula') {
+        if (typeof window.ultimoCostoFormulaResolved === 'number' && window.ultimoCostoFormulaResolved !== null) {
+            nuevoCosto = window.ultimoCostoFormulaResolved;
+        } else {
+            alert('No hay costo de fórmula disponible para este ingrediente.');
+            return;
+        }
+    } else if (tipo === 'manual') {
+        const input = document.getElementById('input-costo-manual');
+        nuevoCosto = parseFloat(input.value || 0);
+        if (isNaN(nuevoCosto) || nuevoCosto < 0) {
+            alert('Por favor ingrese un costo manual válido (mayor o igual a 0).');
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ costo_patron: nuevoCosto })
+        });
+
+        if (!response.ok) throw new Error('Error al actualizar el costo patrón');
+
+        // Recargar datos para obtener cálculos dinámicos de valorizacion
+        await recargarDatosMantenendoFiltros();
+
+        // Encontrar ingrediente en los datos recargados
+        const ingredienteActualizado = ingredientesOriginales.find(ing => (ing.ingrediente_id || ing.id) === ingredienteId);
+        if (ingredienteActualizado) {
+            document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(ingredienteActualizado.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(ingredienteActualizado.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+
+        alert('Costo patrón actualizado y valorización recalculada con éxito.');
+    } catch (err) {
+        console.error('Error actualizando costo patrón:', err);
+        alert('No se pudo guardar el costo patrón.');
+    }
+};
+
+// ⚙️ DESPLEGABLE DE CONFIGURACIÓN FINANCIERA (CONMUTADOR DE PRECIOS Y VALORES)
+window.toggleConfigDropdown = function(event) {
+    event.stopPropagation();
+    const dropdown = document.getElementById('dropdown-config-monetario');
+    if (dropdown) {
+        const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+        dropdown.style.display = isHidden ? 'block' : 'none';
+    }
+};
+
+// 🔌 DESVINCULACIÓN DINÁMICA DE OFERTA EN DESGLOSE (Comentarios en español)
+window.desvincularOfertaDirecta = async function(event, proveedorId, skuProveedor) {
+    if (event) event.stopPropagation();
+    if (!window.activeBunkerArticuloId) {
+        Swal.fire('Error', 'No hay un identificador de vinculación activo.', 'error');
+        return;
+    }
+
+    const confirmResult = await Swal.fire({
+        title: '¿Desvincular Oferta?',
+        text: 'Se romperá el vínculo lógico con esta cotización de la Tabla Maestra.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, desvincular',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirmResult.isConfirmed) return;
+
+    try {
+        // 1. Obtener mapeos locales guardados para este identificador
+        const mapeoRes = await fetch(`/api/logistica/bunker/reposicion/mapeo/${encodeURIComponent(window.activeBunkerArticuloId)}`);
+        if (!mapeoRes.ok) throw new Error('Error al recuperar mapeos existentes');
+        const mapeoJson = await mapeoRes.json();
+        const mappings = mapeoJson.data || [];
+
+        // 2. Filtrar el mapeo específico que se quiere eliminar (comparación exacta case-insensitive)
+        const filteredMappings = mappings.filter(m => 
+            !(String(m.proveedor_id).trim() === String(proveedorId).trim() && 
+              String(m.proveedor_producto_codigo).trim().toLowerCase() === String(skuProveedor).trim().toLowerCase())
+        );
+
+        // 3. Enviar de vuelta el array filtrado al servidor
+        const res = await fetch(`/api/logistica/bunker/reposicion/mapeo/${encodeURIComponent(window.activeBunkerArticuloId)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ mapeos: filteredMappings })
+        });
+
+        if (!res.ok) throw new Error('Error al romper la vinculación en el servidor');
+        const resJson = await res.json();
+
+        if (resJson.success) {
+            Swal.fire({
+                title: 'Desvinculado',
+                text: 'La oferta se ha desvinculado con éxito.',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            // Refrescar modal de desglose
+            if (window.activeIngredienteId) {
+                window.abrirModalDesglose(window.activeIngredienteId);
+            }
+        }
+    } catch (err) {
+        console.error("❌ [DESVINCULAR-OFERTA] Error:", err);
+        Swal.fire('Error', 'No se pudo desvincular la oferta: ' + err.message, 'error');
+    }
+};
+
+// ⚡ ACELERADOR DE UX: Autofill por Clic (Macros de Carga Rápida)
+document.addEventListener('click', function(event) {
+    // 1. Clic en costo-ref-lote, costo-ref-reposicion o costo-ref-formula (Comentarios en español)
+    const targetRef = event.target.closest('#costo-ref-lote, #costo-ref-reposicion, #costo-ref-formula');
+    if (targetRef) {
+        const valor = targetRef.getAttribute('data-valor');
+        if (valor) {
+            const inputManual = document.getElementById('input-costo-manual');
+            if (inputManual) {
+                inputManual.value = parseFloat(valor).toFixed(2);
+                console.log(`⚡ [Autofill] Copiado valor de referencia ${valor} al input-costo-manual`);
+            }
+        }
+    }
+
+    // 2. Clic en precio-clickeable-repo (Ofertas)
+    const targetRepo = event.target.closest('.precio-clickeable-repo');
+    if (targetRepo) {
+        const valor = targetRepo.getAttribute('data-valor');
+        if (valor) {
+            const inputManual = document.getElementById('input-costo-manual');
+            if (inputManual) {
+                inputManual.value = parseFloat(valor).toFixed(2);
+                console.log(`⚡ [Autofill] Copiado valor de reposición ${valor} al input-costo-manual`);
+            }
+        }
+    }
+
+    // 3. Clic en costo-ref-bunker-clickeable (Tarjetas dinámicas de Búnker)
+    const targetBunker = event.target.closest('.costo-ref-bunker-clickeable');
+    if (targetBunker) {
+        const valor = targetBunker.getAttribute('data-valor');
+        if (valor) {
+            const inputManual = document.getElementById('input-costo-manual');
+            if (inputManual) {
+                inputManual.value = parseFloat(valor).toFixed(2);
+                console.log(`⚡ [Autofill] Copiado valor de artículo Búnker ${valor} al input-costo-manual`);
+            }
+        }
+    }
+});
+
+// ✅ FIJACIÓN DIRECTA DE COSTO PATRÓN (HITL) DESDE TARJETAS BÚNKER
+window.fijarCostoPatronValor = async function(valor) {
+    const ingredienteId = window.activeIngredienteId;
+    if (!ingredienteId) return;
+
+    const nuevoCosto = parseFloat(valor);
+    if (isNaN(nuevoCosto) || nuevoCosto < 0) {
+        alert('Costo inválido.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ costo_patron: nuevoCosto })
+        });
+
+        if (!response.ok) throw new Error('Error al actualizar el costo patrón');
+
+        // Recargar datos principales para mantener consistencia en la grilla
+        await recargarDatosMantenendoFiltros();
+
+        // Obtener fresh data para actualizar la UI del modal de desglose
+        const freshRes = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
+        if (freshRes.ok) {
+            const freshData = await freshRes.json();
+            document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(freshData.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(freshData.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+
+        alert('Costo patrón actualizado y valorización recalculada con éxito.');
+    } catch (err) {
+        console.error('Error actualizando costo patrón:', err);
+        alert('No se pudo guardar el costo patrón.');
+    }
+};
+
+// ✅ DESVINCULACIÓN INDIVIDUAL DE ARTÍCULO BÚNKER (Relación intermedia)
+window.desvincularArticuloBunker = async function(articuloId) {
+    const ingredienteId = window.activeIngredienteId;
+    if (!ingredienteId || !articuloId) return;
+
+    const confirmResult = await Swal.fire({
+        title: '¿Desvincular artículo?',
+        text: 'Se romperá la asociación con este artículo del catálogo Búnker.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, desvincular',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirmResult.isConfirmed) return;
+
+    try {
+        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/bunker-articulos/${articuloId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Error al desvincular el artículo');
+
+        // Recargar datos y refrescar modal
+        await recargarDatosMantenendoFiltros();
+        await window.abrirModalDesglose(ingredienteId);
+
+        Swal.fire({
+            title: 'Desvinculado',
+            text: 'El artículo Búnker se ha desvinculado con éxito.',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    } catch (err) {
+        console.error('Error al desvincular artículo búnker:', err);
+        Swal.fire('Error', 'No se pudo desvincular el artículo: ' + err.message, 'error');
+    }
+};
+
+// ✅ AUTOCOMPLETE PREDICTIVO EN CALIENTE PARA BÚSQUEDA Y ASOCIACIÓN BÚNKER
+document.addEventListener('DOMContentLoaded', () => {
+    // Usar delegación o inicialización directa sobre elementos del DOM
+    const initAutocomplete = () => {
+        const inputBuscar = document.getElementById('buscar-articulo-bunker');
+        const listaResultados = document.getElementById('lista-resultados-bunker');
+
+        if (!inputBuscar || !listaResultados) return;
+
+        // Limpiar handlers anteriores si se reinicializa
+        const inputClone = inputBuscar.cloneNode(true);
+        inputBuscar.parentNode.replaceChild(inputClone, inputBuscar);
+
+        let timeoutBusqueda = null;
+
+        inputClone.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+
+            clearTimeout(timeoutBusqueda);
+
+            if (query.length < 2) {
+                listaResultados.style.display = 'none';
+                listaResultados.innerHTML = '';
+                return;
+            }
+
+            timeoutBusqueda = setTimeout(async () => {
+                try {
+                    const res = await fetch(`http://localhost:3002/api/produccion/bunker-articulos/buscar?q=${encodeURIComponent(query)}`);
+                    if (!res.ok) throw new Error('Error en búsqueda');
+
+                    const articulos = await res.json();
+                    
+                    if (articulos.length === 0) {
+                        listaResultados.innerHTML = `<div style="padding: 10px; color: #64748b; font-style: italic; font-size: 0.88rem;">No se encontraron artículos.</div>`;
+                        listaResultados.style.display = 'block';
+                        return;
+                    }
+
+                    listaResultados.innerHTML = articulos.map(art => {
+                        const costo = parseFloat(art.costo_base || 0);
+                        return `
+                            <div class="opcion-bunker-resultado" data-codigo="${art.codigo}" data-descripcion="${art.descripcion}" style="padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
+                                <div style="display: flex; flex-direction: column;">
+                                    <span style="font-weight: 700; color: #1e293b;">${art.codigo} - ${art.descripcion}</span>
+                                </div>
+                                <span style="font-weight: bold; color: #166534; font-family: monospace;">$ ${costo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
+                            </div>
+                        `;
+                    }).join('');
+
+                    listaResultados.style.display = 'block';
+
+                    // Agregar listeners a las opciones
+                    listaResultados.querySelectorAll('.opcion-bunker-resultado').forEach(elem => {
+                        elem.addEventListener('click', async () => {
+                            const codigo = elem.getAttribute('data-codigo');
+                            const ingredienteId = window.activeIngredienteId;
+
+                            if (!ingredienteId || !codigo) return;
+
+                            try {
+                                const linkRes = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/bunker-articulos`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ bunker_articulo_id: codigo })
+                                });
+
+                                if (!linkRes.ok) throw new Error('Error al vincular el artículo');
+
+                                inputClone.value = '';
+                                listaResultados.style.display = 'none';
+                                listaResultados.innerHTML = '';
+
+                                // Recargar y refrescar
+                                await recargarDatosMantenendoFiltros();
+                                await window.abrirModalDesglose(ingredienteId);
+
+                                Swal.fire({
+                                    title: 'Vinculado',
+                                    text: 'Artículo del Búnker vinculado correctamente.',
+                                    icon: 'success',
+                                    timer: 1500,
+                                    showConfirmButton: false
+                                });
+                            } catch (err) {
+                                console.error('Error al vincular artículo búnker:', err);
+                                Swal.fire('Error', 'No se pudo vincular el artículo: ' + err.message, 'error');
+                            }
+                        });
+                    });
+
+                } catch (err) {
+                    console.error('Error en autocomplete artículos búnker:', err);
+                }
+            }, 300);
+        });
+
+        // Ocultar lista al hacer clic fuera
+        document.addEventListener('click', (e) => {
+            if (e.target !== inputClone && e.target !== listaResultados && !listaResultados.contains(e.target)) {
+                listaResultados.style.display = 'none';
+            }
+        });
+    };
+
+    // Inicializar al cargar la página
+    initAutocomplete();
+
+    // Re-inicializar cuando se abra el modal para asegurar que el clon de inputs funcione
+    const oldAbrirModalDesglose = window.abrirModalDesglose;
+    window.abrirModalDesglose = async function(ingredienteId) {
+        await oldAbrirModalDesglose(ingredienteId);
+        initAutocomplete();
+    };
+});
+
 
 

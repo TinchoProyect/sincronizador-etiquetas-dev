@@ -226,6 +226,11 @@
             color: #721c24;
         }
 
+        .badge.anulada {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
         .actions {
             display: flex;
             gap: 10px;
@@ -323,6 +328,7 @@
             font-size: 14px;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
@@ -339,11 +345,17 @@
                     onmouseout="this.style.background='transparent';">
                     🏠 Volver a Inicio
                 </button>
+                <button onclick="window.location.href='/pages/whatsapp-config.html'"
+                    style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; backdrop-filter: blur(10px);"
+                    onmouseover="this.style.background='white'; this.style.color='#8b5cf6';"
+                    onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.color='white';">
+                    📱 Vincular WhatsApp
+                </button>
                 <button onclick="window.location.href='/pages/afip-admin.html'"
                     style="background: rgba(255,255,255,0.2); color: white; border: 2px solid white; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; backdrop-filter: blur(10px);"
                     onmouseover="this.style.background='white'; this.style.color='#667eea';"
                     onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.color='white';">
-                    🔐 Administración AFIP
+                    🔐 Administración ARCA
                 </button>
             </div>
         </div>
@@ -370,6 +382,7 @@
                         <option value="APROBADA">Aprobada</option>
                         <option value="APROBADA_LOCAL">Aprobada Local</option>
                         <option value="RECHAZADA">Rechazada</option>
+                        <option value="ANULADA">Anulada</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -394,7 +407,7 @@
                     style="width: 20px; height: 20px; cursor: pointer;">
                 <label for="toggle-pruebas"
                     style="margin-left: 10px; cursor: pointer; font-weight: bold; color: #856404; font-size: 15px;">
-                    Ver facturas de prueba (Homologación AFIP)
+                    Ver facturas de prueba (Homologación ARCA)
                 </label>
             </div>
 
@@ -443,6 +456,11 @@
                         onclick="emitirLoteAFIP()">
                         🚀 Obtener CAE de Seleccionadas
                     </button>
+                    <button id="btn-whatsapp-lote" class="btn btn-primary"
+                        style="display: none; background: #8b5cf6; border: none; box-shadow: 0 4px 6px rgba(139, 92, 246, 0.2); margin-left: 10px;"
+                        onclick="enviarLoteWhatsApp()">
+                        🟢 Enviar por WhatsApp Seleccionadas
+                    </button>
                 </div>
                 <span id="result-count"></span>
             </div>
@@ -486,6 +504,7 @@
         let currentPage = 1;
         let totalPages = 1;
         let currentFilters = {};
+        let facturasActuales = [];
 
         // Cargar facturas al iniciar
         document.addEventListener('DOMContentLoaded', () => {
@@ -547,6 +566,7 @@
         }
 
         function renderizarFacturas(facturas) {
+            facturasActuales = facturas;
             const tbody = document.getElementById('facturas-tbody');
 
             if (!facturas || facturas.length === 0) {
@@ -578,11 +598,26 @@
                 const total = formatMoney(factura.imp_total);
                 const estadoClass = factura.estado.toLowerCase().replace('_', '-');
                 const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip;
+                const puedeEnviarse = factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL';
+
+                const tieneWp = (() => {
+                    const str = (factura.whatsapp_facturas || '').trim();
+                    if (!str) return false;
+                    if (str.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(str);
+                            return Array.isArray(parsed) && parsed.some(c => c.numero && c.numero.trim());
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })();
 
                 return `
                     <tr>
                         <td>
-                            ${puedeEmitirse ? `<input type="checkbox" class="chk-factura" value="${factura.id}" onchange="actualizarBotonLote()">` : ''}
+                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" onchange="actualizarBotonLote()">
                         </td>
                         <td><strong>#${factura.id}</strong></td>
                         <td>${fecha}</td>
@@ -597,6 +632,22 @@
                                 <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
                                     📄 Ver
                                 </button>
+                                ${puedeEnviarse ? (
+                                    tieneWp ? `
+                                    <button class="btn btn-sm" style="background: #10b981; color: white;" onclick="enviarWhatsApp(${factura.id})">
+                                        📱 WhatsApp
+                                    </button>
+                                    ` : `
+                                    <button class="btn btn-sm" style="background: #e2e8f0; color: #94a3b8; border: 1px dashed #cbd5e1; cursor: not-allowed;" title="Cliente sin número de WhatsApp configurado" disabled>
+                                        📱 Sin número
+                                    </button>
+                                    `
+                                ) : ''}
+                                ${[1, 6, 11].includes(parseInt(factura.tipo_cbte)) && (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') ? `
+                                <button class="btn btn-sm" style="background: #ef4444; color: white;" onclick="anularFactura(${factura.id}, '${factura.fecha_emision}')">
+                                    🚫 Anular
+                                </button>
+                                ` : ''}
                                 ${!factura.cae && (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') ? `
                                 <button class="btn btn-sm" style="background: #e74c3c; color: white;" onclick="eliminarFactura(${factura.id})">
                                     🗑️ Eliminar
@@ -658,6 +709,192 @@
             cargarFacturas(1);
         }
 
+        async function enviarWhatsApp(id) {
+            const factura = facturasActuales.find(f => String(f.id) === String(id));
+            if (!factura) {
+                alert('No se encontraron los datos de la factura localmente.');
+                return;
+            }
+
+            const raw = (factura.whatsapp_facturas || '').trim();
+            if (!raw) {
+                alert('Esta factura no tiene números de WhatsApp configurados.');
+                return;
+            }
+
+            let contacts = [];
+            if (raw.startsWith('[')) {
+                try {
+                    contacts = JSON.parse(raw);
+                } catch(e) {}
+            }
+            if (!Array.isArray(contacts) || contacts.length === 0) {
+                // Soporte para formato legado (separado por comas)
+                contacts = raw.split(',').map(num => ({
+                    numero: num.trim(),
+                    nombre: '',
+                    cargo: ''
+                })).filter(c => c.numero);
+            }
+
+            let htmlContent = `
+                <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
+                        Seleccione los destinatarios para enviar la factura:
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px;">
+            `;
+
+            contacts.forEach((c, index) => {
+                const formattedNum = c.numero.replace(/\D/g, '');
+                let displayNum = c.numero;
+                if (formattedNum.length === 10) {
+                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
+                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
+                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
+                }
+                
+                const labelText = c.nombre 
+                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">${c.cargo}</span>` : ''}`
+                    : `Contacto #${index + 1}`;
+
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 13px; color: #1f2937; margin-bottom: 2px;">${labelText}</div>
+                            <div style="font-size: 12px; color: #6b7280;">📱 ${displayNum}</div>
+                        </div>
+                    </label>
+                `;
+            });
+
+            htmlContent += `
+                    </div>
+                </div>
+            `;
+
+            Swal.fire({
+                title: 'Enviar por WhatsApp',
+                html: htmlContent,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: '🟢 Enviar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#6b7280',
+                preConfirm: () => {
+                    const selected = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    if (selected.length === 0) {
+                        Swal.showValidationMessage('Debes seleccionar al menos un contacto.');
+                        return false;
+                    }
+                    return selected;
+                }
+            }).then(async (result) => {
+                if (!result.isConfirmed) return;
+
+                const destinatariosSeleccionados = result.value;
+
+                mostrarLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/whatsapp/facturas/${id}/enviar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ destinatarios: destinatariosSeleccionados })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        Swal.fire({
+                            title: '¡Enviado!',
+                            text: `Factura enviada con éxito a: ${data.data.destinatarios}`,
+                            icon: 'success',
+                            confirmButtonColor: '#10b981'
+                        });
+                    } else {
+                        throw new Error(data.message || data.error || 'No se pudo enviar la factura');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire({
+                        title: 'Error al enviar',
+                        text: error.message,
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                } finally {
+                    mostrarLoading(false);
+                }
+            });
+        }
+
+        async function enviarLoteWhatsApp() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked'))
+                .filter(chk => {
+                    const estado = chk.getAttribute('data-estado');
+                    const hasWp = chk.getAttribute('data-has-wp') === 'true';
+                    return ['APROBADA', 'APROBADA_LOCAL'].includes(estado) && hasWp;
+                })
+                .map(chk => chk.value);
+            
+            if (seleccionadas.length === 0) return;
+
+            if (!confirm(`¿Estás seguro que deseas enviar ${seleccionadas.length} facturas por WhatsApp a sus respectivos clientes?`)) {
+                return;
+            }
+
+            mostrarLoading(true);
+            ocultarError();
+
+            let exitosas = 0;
+            let fallidas = 0;
+            const errores = [];
+            const logElement = document.getElementById('loading').querySelector('p');
+
+            for (let i = 0; i < seleccionadas.length; i++) {
+                const facturaId = seleccionadas[i];
+                logElement.innerText = `Enviando factura ${i + 1} de ${seleccionadas.length}... (ID: ${facturaId})`;
+
+                try {
+                    const response = await fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        exitosas++;
+                    } else {
+                        console.error(`Error enviando factura ${facturaId} por WhatsApp:`, result.message);
+                        fallidas++;
+                        errores.push(`Factura #${facturaId}: ${result.message || result.error || 'Error desconocido'}`);
+                    }
+                } catch (error) {
+                    console.error(`Excepción enviando factura ${facturaId} por WhatsApp:`, error);
+                    fallidas++;
+                    errores.push(`Factura #${facturaId}: ${error.message}`);
+                }
+            }
+
+            mostrarLoading(false);
+
+            if (fallidas === 0) {
+                alert(`✅ Envío finalizado:\n\n${exitosas} facturas enviadas con éxito por WhatsApp.`);
+            } else {
+                const errDetail = errores.slice(0, 5).join('\n');
+                alert(`⚠️ Envío finalizado con algunos errores:\n\n- ${exitosas} enviadas exitosamente\n- ${fallidas} fallaron al enviar\n\nDetalles (primeros 5):\n${errDetail}`);
+            }
+
+            document.getElementById('chk-select-all').checked = false;
+            document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            document.getElementById('btn-emitir-lote').style.display = 'none';
+            cargarFacturas(currentPage);
+        }
+
         function verFactura(id) {
             window.open(`/pages/ver-factura.html?id=${id}`, '_blank');
         }
@@ -686,6 +923,93 @@
             } finally {
                 mostrarLoading(false);
             }
+        }
+
+        async function anularFactura(id, fechaEmisionRaw) {
+            console.log(`🚫 Iniciando anulación de factura #${id}, fecha: ${fechaEmisionRaw}`);
+            
+            // Evaluar límites del período fiscal (Alerta C)
+            let advertenciaPeriodo = '';
+            try {
+                if (fechaEmisionRaw) {
+                    const fechaOrig = new Date(fechaEmisionRaw.includes('T') ? fechaEmisionRaw : fechaEmisionRaw + 'T00:00:00');
+                    const hoy = new Date();
+                    
+                    // Diferencia en días
+                    const diffTime = Math.abs(hoy - fechaOrig);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // Diferencia en meses/período fiscal
+                    const mismoMes = hoy.getFullYear() === fechaOrig.getFullYear() && hoy.getMonth() === fechaOrig.getMonth();
+                    
+                    if (diffDays > 30 || !mismoMes) {
+                        advertenciaPeriodo = `
+                            <div style="margin-top: 15px; padding: 12px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; text-align: left;">
+                                <p style="margin: 0; font-size: 13px; color: #b45309; font-weight: 600;">
+                                    ⚠️ ADVERTENCIA DE PERÍODO FISCAL (ARCA):
+                                </p>
+                                <p style="margin: 4px 0 0 0; font-size: 12px; color: #d97706; line-height: 1.4;">
+                                    La factura original es del **${new Date(fechaOrig).toLocaleDateString('es-AR')}** (${diffDays} días de antigüedad). 
+                                    ARCA restringe o rechaza Notas de Crédito automáticas fuera del período fiscal vigente.
+                                </p>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (e) {
+                console.error("Error evaluando fecha para advertencia fiscal:", e);
+            }
+
+            Swal.fire({
+                title: '¿Confirmar Anulación?',
+                html: `
+                    <p style="font-size: 14px; color: #4b5563;">
+                        Se generará y autorizará una <strong>Nota de Crédito espejo</strong> ante ARCA.
+                        Esto revertirá automáticamente el stock y neteará el saldo de la cuenta corriente.
+                    </p>
+                    ${advertenciaPeriodo}
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, Anular Factura',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#6b7280'
+            }).then(async (result) => {
+                if (!result.isConfirmed) return;
+
+                mostrarLoading(true);
+                try {
+                    const res = await fetch(`${API_URL}/facturas/${id}/anular`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ usuario: 'Operador Lamda' })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        Swal.fire({
+                            title: '¡Anulada!',
+                            text: `Factura anulada con éxito. Nota de Crédito Nº ${data.data.pto_vta}-${data.data.cbte_nro || data.data.nro_interno} emitida.`,
+                            icon: 'success',
+                            confirmButtonColor: '#10b981'
+                        });
+                        cargarFacturas(currentPage);
+                    } else {
+                        throw new Error(data.message || data.error || 'No se pudo anular la factura');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire({
+                        title: 'Error al anular',
+                        text: error.message,
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                } finally {
+                    mostrarLoading(false);
+                }
+            });
         }
 
         function obtenerTipoComprobante(tipo) {
@@ -733,14 +1057,38 @@
         }
 
         function actualizarBotonLote() {
-            const seleccionadas = document.querySelectorAll('.chk-factura:checked').length;
-            const btn = document.getElementById('btn-emitir-lote');
+            const chks = Array.from(document.querySelectorAll('.chk-factura:checked'));
+            const totalSeleccionadas = chks.length;
+            
+            const aEmitir = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                return ['BORRADOR', 'RECHAZADA'].includes(estado);
+            }).length;
 
-            if (seleccionadas > 0) {
-                btn.style.display = 'inline-block';
-                btn.innerHTML = `🚀 Obtener CAE de Seleccionadas (${seleccionadas})`;
+            const aEnviar = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const hasWp = chk.getAttribute('data-has-wp') === 'true';
+                return ['APROBADA', 'APROBADA_LOCAL'].includes(estado) && hasWp;
+            }).length;
+
+            const btnCae = document.getElementById('btn-emitir-lote');
+            const btnWp = document.getElementById('btn-whatsapp-lote');
+
+            if (aEmitir > 0) {
+                btnCae.style.display = 'inline-block';
+                btnCae.innerHTML = `🚀 Obtener CAE de Seleccionadas (${aEmitir})`;
             } else {
-                btn.style.display = 'none';
+                btnCae.style.display = 'none';
+            }
+
+            if (aEnviar > 0) {
+                btnWp.style.display = 'inline-block';
+                btnWp.innerHTML = `🟢 Enviar por WhatsApp (${aEnviar})`;
+            } else {
+                btnWp.style.display = 'none';
+            }
+
+            if (totalSeleccionadas === 0) {
                 document.getElementById('chk-select-all').checked = false;
             }
         }
@@ -749,7 +1097,7 @@
             const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked')).map(chk => chk.value);
             if (seleccionadas.length === 0) return;
 
-            if (!confirm(`¿Estás seguro que deseas solicitar el CAE a AFIP para ${seleccionadas.length} facturas? Este proceso puede demorar unos segundos.`)) {
+            if (!confirm(`¿Estás seguro que deseas solicitar el CAE a ARCA para ${seleccionadas.length} facturas? Este proceso puede demorar unos segundos.`)) {
                 return;
             }
 

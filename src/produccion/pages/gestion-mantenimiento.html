@@ -541,10 +541,15 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="transf-cantidad">Cantidad Real Ingresada (Kg):</label>
-                        <input type="text" inputmode="decimal" id="transf-cantidad" placeholder="Ej: 9.500 o 9,500"
-                            oninput="this.value = this.value.replace(/[^0-9.,]/g, ''); calcularMerma()">
+                    <div class="form-group" style="display: flex; gap: 15px; margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label for="transf-cantidad-unidades"><b>Cantidad Real (Unidades):</b></label>
+                            <input type="number" id="transf-cantidad-unidades" placeholder="Ej: 1" step="any" min="0" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label for="transf-cantidad"><b>Cantidad Real (Kg):</b></label>
+                            <input type="number" id="transf-cantidad" placeholder="Ej: 5.0" step="any" min="0" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
                     </div>
 
                     <div class="info-merma" id="merma-container" style="display:none;">
@@ -1184,6 +1189,61 @@
             }
         }
         
+        function deducirKilosUnidadDesdeNombre(nombre) {
+            if (!nombre) return 1;
+            const norm = nombre.toLowerCase().trim();
+            
+            // 1. Coincidencia del tipo "X x Y litros/l/kg/g/unidades" o "X x Y"
+            const regex1 = /(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(litros|l|kg|g|unidades)?/i;
+            const match1 = norm.match(regex1);
+            if (match1) {
+                const qty = parseFloat(match1[1]);
+                const unitVal = parseFloat(match1[2]);
+                const unitStr = match1[3] || '';
+                
+                let multiplier = 1;
+                if (unitStr.startsWith('g')) {
+                    multiplier = 0.001;
+                }
+                return qty * unitVal * multiplier;
+            }
+
+            // 2. Coincidencia del tipo "x Y litros/l/kg/g"
+            const regex2 = /x\s*(\d+(?:\.\d+)?)\s*(litros|l|kg|g)/i;
+            const match2 = norm.match(regex2);
+            if (match2) {
+                const unitVal = parseFloat(match2[1]);
+                const unitStr = match2[2];
+                let multiplier = 1;
+                if (unitStr.startsWith('g')) {
+                    multiplier = 0.001;
+                }
+                return unitVal * multiplier;
+            }
+
+            // 3. Coincidencia al final del tipo "x Y" (ej. "Avena x 5", "Nuez x 2")
+            const regexEnd = /x\s*(\d+(?:\.\d+)?)\s*$/i;
+            const matchEnd = norm.match(regexEnd);
+            if (matchEnd) {
+                return parseFloat(matchEnd[1]);
+            }
+
+            // 4. Coincidencia del tipo "Y litros/l/kg/g"
+            const regex3 = /(\d+(?:\.\d+)?)\s*(litros|l|kg|g)\b/i;
+            const match3 = norm.match(regex3);
+            if (match3) {
+                const unitVal = parseFloat(match3[1]);
+                const unitStr = match3[2];
+                let multiplier = 1;
+                if (unitStr.startsWith('g')) {
+                    multiplier = 0.001;
+                }
+                return unitVal * multiplier;
+            }
+
+            return 1;
+        }
+
         let articuloAsignarSeleccionado = null;
         let busquedaAsignarTimeout = null;
 
@@ -1221,7 +1281,21 @@
                         
                         <div style="margin-top: 20px;">
                             <label style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad Real / Unidades:</label>
-                            <input type="number" id="asignar-input-cantidad" class="form-control" placeholder="Ej: 15.5" min="0.01" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                            <input type="number" id="asignar-input-cantidad" class="form-control" placeholder="Ej: 15.5" min="0.0001" step="any" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        </div>
+
+                        <!-- CALCULADORA DE KILOS -->
+                        <div id="asignar-calculadora-kilos" style="margin-top: 15px; padding: 12px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px; display: none;">
+                            <span style="font-size: 13px; font-weight: bold; color: #8a6d3b; display: block; margin-bottom: 5px;">⚖️ Calculador de Unidades por Peso (Opcional):</span>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <label style="font-size: 12px; color: #666; display: block; margin-bottom: 3px;">Kilos devueltos/reales:</label>
+                                    <input type="number" id="asignar-input-kilos" class="form-control" placeholder="Ej: 4.785" min="0.0001" step="any" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                                </div>
+                                <div style="flex: 1; padding-top: 15px;">
+                                    <span id="asignar-texto-peso-unitario" style="font-size: 13px; color: #666; font-weight: 500;">Peso unitario: -</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `,
@@ -1231,6 +1305,8 @@
                 didOpen: () => {
                     const inputCodigo = document.getElementById('asignar-input-codigo');
                     const inputDesc = document.getElementById('asignar-input-desc');
+                    const inputCant = document.getElementById('asignar-input-cantidad');
+                    const inputKilos = document.getElementById('asignar-input-kilos');
                     
                     if (inputCodigo) setTimeout(() => inputCodigo.focus(), 100);
                     
@@ -1250,6 +1326,31 @@
                             ejecutarBusquedaAsignar(termino, false);
                         }, 400);
                     });
+
+                    // Sincronización bidireccional
+                    if (inputKilos && inputCant) {
+                        inputKilos.addEventListener('input', function() {
+                            const kilos = parseFloat(inputKilos.value);
+                            const ku = (articuloAsignarSeleccionado && articuloAsignarSeleccionado.kilos_unidad) ? articuloAsignarSeleccionado.kilos_unidad : 0;
+                            if (kilos > 0 && ku > 0) {
+                                const units = kilos / ku;
+                                inputCant.value = Math.round(units * 10000) / 10000;
+                            } else if (inputKilos.value === '') {
+                                inputCant.value = '';
+                            }
+                        });
+                        
+                        inputCant.addEventListener('input', function() {
+                            const units = parseFloat(inputCant.value);
+                            const ku = (articuloAsignarSeleccionado && articuloAsignarSeleccionado.kilos_unidad) ? articuloAsignarSeleccionado.kilos_unidad : 0;
+                            if (units > 0 && ku > 0) {
+                                const kilos = units * ku;
+                                inputKilos.value = Math.round(kilos * 10000) / 10000;
+                            } else if (inputCant.value === '') {
+                                inputKilos.value = '';
+                            }
+                        });
+                    }
                 },
                 preConfirm: () => {
                     const cantInput = document.getElementById('asignar-input-cantidad');
@@ -1376,8 +1477,17 @@
             }
         }
         
-        window.seleccionarArticuloAsignar = function(codigo, descripcion) {
-            articuloAsignarSeleccionado = { codigo, descripcion };
+        window.seleccionarArticuloAsignar = function(codigo, descripcion, kilosUnidad) {
+            let ku = kilosUnidad ? parseFloat(kilosUnidad) : 0;
+            if (!ku || ku <= 0) {
+                ku = deducirKilosUnidadDesdeNombre(descripcion);
+            }
+
+            articuloAsignarSeleccionado = { 
+                codigo, 
+                descripcion,
+                kilos_unidad: ku
+            };
             
             const divSelect = document.getElementById('asignar-articulo-seleccionado');
             const textSelect = document.getElementById('asignar-texto-seleccionado');
@@ -1387,7 +1497,26 @@
             if (divSelect) divSelect.style.display = 'block';
             if (textSelect) textSelect.innerHTML = `${descripcion} <span style="color: #666; font-family: monospace;">(${codigo})</span>`;
             if (resDiv) resDiv.style.display = 'none';
-            if (inputCant) inputCant.focus();
+
+            // Configurar calculadora
+            const divCalc = document.getElementById('asignar-calculadora-kilos');
+            const textPeso = document.getElementById('asignar-texto-peso-unitario');
+            const inputKilos = document.getElementById('asignar-input-kilos');
+
+            if (divCalc) {
+                if (ku > 0) {
+                    divCalc.style.display = 'block';
+                    if (textPeso) textPeso.innerHTML = `Peso unitario: <b>${ku} kg</b>`;
+                    if (inputKilos) inputKilos.value = '';
+                } else {
+                    divCalc.style.display = 'none';
+                }
+            }
+
+            if (inputCant) {
+                inputCant.value = '';
+                inputCant.focus();
+            }
         };
         
         function renderizarResultadosAsignar(articulos) {
@@ -1395,10 +1524,11 @@
             const html = articulos.map((art) => {
                 const cod = art.codigo_barras || art.codigo || art.numero;
                 const desc = art.descripcion || art.nombre;
+                const kilosUnidad = art.kilos_unidad || 0;
                 // Escapamos comillas simples para evitar inyección en el onclick
                 const descEscapada = desc.replace(/'/g, "\\'");
                 return `
-                    <div style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'" onclick="seleccionarArticuloAsignar('${cod}', '${descEscapada}')">
+                    <div style="padding: 10px; border-bottom: 1px solid #eee; cursor: pointer;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'" onclick="seleccionarArticuloAsignar('${cod}', '${descEscapada}', ${kilosUnidad})">
                         <div style="font-weight: 600; color: #333;">${desc}</div>
                         <div style="font-size: 12px; color: #6c757d; font-family: monospace;">Código: ${cod}</div>
                     </div>
@@ -3150,7 +3280,7 @@
 
             document.getElementById('transf-cliente-id').value = clienteId;
             document.getElementById('transf-articulo').value = articulo;
-            document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3).replace('.', ',');
+            document.getElementById('transf-peso-original').value = pesoTotal.toFixed(3);
             
             // Inyectamos unidades originales y el Ingrediente de origen (si aplica) para backend
             let reqUnid = document.getElementById('transf-unidades-origen');
@@ -3195,12 +3325,24 @@
             document.getElementById('transf-articulo-display').value =
                 `${articulo} (${cantUnidades} u. × ${factorKilos} kg = ${pesoTotal.toFixed(3).replace('.', ',')} kg)`;
 
-            document.getElementById('transf-cantidad').value = '';
+            const inputUnidades = document.getElementById('transf-cantidad-unidades');
+            const inputKilos = document.getElementById('transf-cantidad');
+
+            if (inputUnidades) {
+                inputUnidades.value = cantUnidades.toFixed(4).replace(/\.?0+$/, '');
+                inputUnidades.dataset.factorKilos = factorKilos;
+            }
+            if (inputKilos) {
+                inputKilos.value = pesoTotal.toFixed(3).replace(/\.?0+$/, '');
+                inputKilos.dataset.factorKilos = factorKilos;
+            }
             document.getElementById('transf-obs').value = '';
 
             // Reset UI Buscador
             limpiarSeleccionIngrediente();
-            document.getElementById('merma-container').style.display = 'none';
+            
+            // Calculamos merma inicial
+            calcularMerma();
 
             document.getElementById('modal-transferencia').style.display = 'block';
 
@@ -3211,7 +3353,8 @@
         }
 
         function calcularMerma() {
-            const pesoOrig = parseFloat(document.getElementById('transf-peso-original').value) || 0;
+            const valOrig = document.getElementById('transf-peso-original').value || '0';
+            const pesoOrig = parseFloat(valOrig.replace(',', '.')) || 0;
             const strReal = document.getElementById('transf-cantidad').value.replace(',', '.');
             const pesoReal = parseFloat(strReal) || 0;
             const merma = pesoOrig - pesoReal;
@@ -3241,7 +3384,7 @@
             const obs = document.getElementById('transf-obs').value;
             let respVal = document.getElementById('transf-responsable')?.value;
             const responsableSeleccionado = respVal === '-1' ? '' : respVal;
-            const unidadesOrigen = document.getElementById('transf-unidades-origen').value;
+            const unidadesOrigen = document.getElementById('transf-cantidad-unidades').value;
             const origenIngredienteId = document.getElementById('transf-origen-ingrediente-id') ? document.getElementById('transf-origen-ingrediente-id').value : '';
             const movimientoId = document.getElementById('transf-movimiento-id') ? document.getElementById('transf-movimiento-id').value : '';
 
@@ -4392,6 +4535,28 @@
 
                 document.addEventListener('click', function(e) {
                     if(e.target !== buscadorRetorno) listaRetorno.style.display = 'none';
+                });
+            }
+
+            // Sincronización bidireccional en el modal de transferencia a ingredientes
+            const inputTransfUnidades = document.getElementById('transf-cantidad-unidades');
+            const inputTransfKilos = document.getElementById('transf-cantidad');
+
+            if (inputTransfUnidades && inputTransfKilos) {
+                inputTransfUnidades.addEventListener('input', function() {
+                    const units = parseFloat(this.value) || 0;
+                    const fk = parseFloat(this.dataset.factorKilos) || 1;
+                    const resKilos = units * fk;
+                    inputTransfKilos.value = resKilos > 0 ? resKilos.toFixed(3) : '';
+                    calcularMerma();
+                });
+
+                inputTransfKilos.addEventListener('input', function() {
+                    const kilos = parseFloat(this.value) || 0;
+                    const fk = parseFloat(this.dataset.factorKilos) || 1;
+                    const resUnits = fk > 0 ? (kilos / fk) : 0;
+                    inputTransfUnidades.value = resUnits > 0 ? resUnits.toFixed(4) : '';
+                    calcularMerma();
                 });
             }
         });

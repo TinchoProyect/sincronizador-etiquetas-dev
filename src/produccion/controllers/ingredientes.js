@@ -122,6 +122,18 @@ async function obtenerIngredientes() {
                     ),
                     i.stock_actual
                 ) as stock_potencial,
+                -- ✅ VALORIZACIÓN DINÁMICA EN CALIENTE (Costo Patrón * Stock Potencial)
+                -- Multiplica el costo patrón guardado manualmente por el stock potencial consolidado al segundo.
+                COALESCE(i.costo_patron, 0.00) * COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM((d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) * (COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0))), 0)
+                        FROM public.bunker_lotes_destinos d
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text
+                    ),
+                    i.stock_actual
+                ) as valorizacion_total,
+                COALESCE(i.costo_patron, 0.00) as costo_patron,
             -- ✅ CONTADOR DE VÍNCULOS ACTIVOS
                 (
                     SELECT COUNT(*)::integer
@@ -134,7 +146,65 @@ async function obtenerIngredientes() {
                     CASE WHEN EXISTS (
                         SELECT 1 FROM ingrediente_composicion ic WHERE ic.mix_id = i.id
                     ) AND i.padre_id IS NULL THEN true ELSE false END
-                ) as es_mix
+                ) as es_mix,
+                i.es_insumo,
+                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición)
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'codigo', iba.bunker_articulo_id,
+                                'descripcion', ba.descripcion,
+                                'costo_base', COALESCE(
+                                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
+                                    COALESCE(
+                                        NULLIF(
+                                            (
+                                                SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                                FROM public.receta_ingredientes ri2
+                                                JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
+                                                WHERE ri2.receta_id = (
+                                                    SELECT r2.id 
+                                                    FROM public.recetas r2 
+                                                    WHERE r2.articulo_numero = ba.articulo_id 
+                                                    ORDER BY r2.fecha_creacion DESC 
+                                                    LIMIT 1
+                                                )
+                                            ),
+                                            0.00
+                                        ),
+                                        pa.costo,
+                                        ba.costo_base,
+                                        0.00
+                                    ) +
+                                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
+                                    COALESCE(
+                                        (
+                                            SELECT 
+                                                (
+                                                    COALESCE(la.costo_tiempo, 0.00) + 
+                                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
+                                                              FROM public.bunker_lista_insumos li 
+                                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
+                                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                            FROM public.bunker_lista_articulos la
+                                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
+                                            ORDER BY la.lista_id ASC
+                                            LIMIT 1
+                                        ),
+                                        0.00
+                                    ),
+                                    0.00
+                                )::numeric(12,2)
+                            ) ORDER BY ba.descripcion ASC
+                        )
+                        FROM public.ingrediente_bunker_articulos iba
+                        JOIN public.bunker_articulos ba ON iba.bunker_articulo_id = ba.articulo_id
+                        LEFT JOIN public.precios_articulos pa ON iba.bunker_articulo_id = pa.articulo
+                        WHERE iba.ingrediente_id = i.id
+                    ),
+                    '[]'::json
+                ) AS bunker_articulos
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
@@ -274,7 +344,86 @@ async function obtenerIngrediente(id) {
                 i.receta_base_kg,
                 i.sector_id,
                 s.nombre as sector_nombre,
-                s.descripcion as sector_descripcion
+                s.descripcion as sector_descripcion,
+                i.es_insumo,
+                -- ✅ CÁLCULO DE STOCK POTENCIAL (Dinámico y en caliente)
+                COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM((d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) * (COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0))), 0)
+                        FROM public.bunker_lotes_destinos d
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text
+                    ),
+                    i.stock_actual
+                ) as stock_potencial,
+                -- ✅ VALORIZACIÓN DINÁMICA EN CALIENTE (Costo Patrón * Stock Potencial)
+                COALESCE(i.costo_patron, 0.00) * COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM((d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) * (COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0))), 0)
+                        FROM public.bunker_lotes_destinos d
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text
+                    ),
+                    i.stock_actual
+                ) as valorizacion_total,
+                COALESCE(i.costo_patron, 0.00) as costo_patron,
+                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición)
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'codigo', iba.bunker_articulo_id,
+                                'descripcion', ba.descripcion,
+                                'costo_base', COALESCE(
+                                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
+                                    COALESCE(
+                                        NULLIF(
+                                            (
+                                                SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                                FROM public.receta_ingredientes ri2
+                                                JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
+                                                WHERE ri2.receta_id = (
+                                                    SELECT r2.id 
+                                                    FROM public.recetas r2 
+                                                    WHERE r2.articulo_numero = ba.articulo_id 
+                                                    ORDER BY r2.fecha_creacion DESC 
+                                                    LIMIT 1
+                                                )
+                                            ),
+                                            0.00
+                                        ),
+                                        pa.costo,
+                                        ba.costo_base,
+                                        0.00
+                                    ) +
+                                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
+                                    COALESCE(
+                                        (
+                                            SELECT 
+                                                (
+                                                    COALESCE(la.costo_tiempo, 0.00) + 
+                                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
+                                                              FROM public.bunker_lista_insumos li 
+                                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
+                                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                            FROM public.bunker_lista_articulos la
+                                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
+                                            ORDER BY la.lista_id ASC
+                                            LIMIT 1
+                                        ),
+                                        0.00
+                                    ),
+                                    0.00
+                                )::numeric(12,2)
+                            ) ORDER BY ba.descripcion ASC
+                        )
+                        FROM public.ingrediente_bunker_articulos iba
+                        JOIN public.bunker_articulos ba ON iba.bunker_articulo_id = ba.articulo_id
+                        LEFT JOIN public.precios_articulos pa ON iba.bunker_articulo_id = pa.articulo
+                        WHERE iba.ingrediente_id = i.id
+                    ),
+                    '[]'::json
+                ) AS bunker_articulos
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
@@ -304,7 +453,7 @@ async function obtenerIngrediente(id) {
  */
 async function crearIngrediente(datos) {
     try {
-        const { nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sector_id } = datos;
+        const { nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sector_id, es_insumo } = datos;
 
         // Verificar si ya existe un ingrediente con el mismo nombre (sin distinguir mayúsculas/minúsculas)
         const checkQuery = 'SELECT id FROM ingredientes WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1))';
@@ -334,14 +483,16 @@ async function crearIngrediente(datos) {
                 categoria_id,
                 stock_actual,
                 padre_id,
-                sector_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                sector_id,
+                es_insumo
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *;
         `;
 
         // Convertir sector_id vacío a null
         const sectorIdFinal = (sector_id === '' || sector_id === undefined) ? null : sector_id;
-        const values = [codigo, nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sectorIdFinal];
+        const esInsumoFinal = es_insumo === true || es_insumo === 'true';
+        const values = [codigo, nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, sectorIdFinal, esInsumoFinal];
         const result = await pool.query(query, values);
 
         return result.rows[0];
@@ -367,6 +518,8 @@ async function actualizarIngrediente(id, datos) {
         const stock_actual = (datos.stock_actual === undefined) ? existing.stock_actual : datos.stock_actual;
         const padre_id = (datos.padre_id === undefined) ? existing.padre_id : datos.padre_id;
         const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
+        const es_insumo = (datos.es_insumo === undefined) ? existing.es_insumo : (datos.es_insumo === true || datos.es_insumo === 'true');
+        const costo_patron = (datos.costo_patron === undefined) ? existing.costo_patron : parseFloat(datos.costo_patron || 0);
 
         // Manejar sector_id con compatibilidad para null
         let sector_id;
@@ -397,12 +550,14 @@ async function actualizarIngrediente(id, datos) {
             stock_actual = $5,
             padre_id = $6,
             receta_base_kg = $7,
-            sector_id = $8
-            WHERE id = $9
+            sector_id = $8,
+            es_insumo = $9,
+            costo_patron = $10
+            WHERE id = $11
             RETURNING *;
         `;
 
-        const values = [nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, receta_base_kg, sector_id, id];
+        const values = [nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, receta_base_kg, sector_id, es_insumo, costo_patron, id];
         const result = await pool.query(query, values);
 
         if (result.rows.length === 0) {
@@ -472,6 +627,8 @@ async function obtenerUsuariosConStock() {
  */
 async function obtenerStockPorUsuario(usuarioId) {
     try {
+        // Consulta SQL para obtener los ingredientes asignados a un operario
+        // con su costo patrón vigente y valorización total calculada (comentarios en español)
         const query = `
             SELECT 
                 i.id as ingrediente_id,
@@ -482,6 +639,8 @@ async function obtenerStockPorUsuario(usuarioId) {
                 c.nombre as categoria,
                 i.categoria_id,
                 COALESCE(SUM(isu.cantidad), 0) as stock_total,
+                COALESCE(i.costo_patron, 0.00) as costo_patron,
+                (COALESCE(i.costo_patron, 0.00) * COALESCE(SUM(isu.cantidad), 0)) as valorizacion_total,
                 (
                     SELECT contexto_envase
                     FROM ingredientes_stock_usuarios 
@@ -499,7 +658,7 @@ async function obtenerStockPorUsuario(usuarioId) {
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
-            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre, i.costo_patron
             ORDER BY i.nombre ASC;
         `;
 

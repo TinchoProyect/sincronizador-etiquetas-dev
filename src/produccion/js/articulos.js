@@ -1107,11 +1107,17 @@ function agregarIngredienteATabla(ingrediente, index) {
     const tbody = document.querySelector('#tabla-ingredientes tbody');
     if (!tbody) return;
 
+    const esInsumo = ingrediente.unidad_medida === 'unidades' || ingrediente.unidad_medida === 'u' || 
+                     (ingrediente.ingrediente_id && (ingredientesDisponibles || []).some(i => i.id === ingrediente.ingrediente_id && i.es_insumo));
+
+    const unidadMedida = esInsumo ? 'unidades' : ingrediente.unidad_medida;
+    const cantidadFormateada = esInsumo ? Math.round(ingrediente.cantidad).toString() : Number(ingrediente.cantidad).toFixed(10);
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>${ingrediente.nombre_ingrediente}</td>
-        <td>${ingrediente.unidad_medida}</td>
-        <td>${Number(ingrediente.cantidad).toFixed(10)}</td>
+        <td>${unidadMedida}</td>
+        <td>${cantidadFormateada}</td>
         <td>
             <button class="btn-eliminar-ingrediente" data-index="${index ?? state.ingredientesCargados.length - 1}"
                     style="background-color: #dc3545; color: white; border: none; 
@@ -1149,13 +1155,14 @@ function manejarBusquedaIngredienteReceta(e) {
     if (resultados.length > 0) {
         resultados.slice(0, 50).forEach(ing => {
             const li = document.createElement('li');
+            const badgeInsumo = ing.es_insumo ? `<span style="background-color: #64748b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; font-weight: bold;">Insumo</span>` : '';
             const sectorDisplay = ing.sector_letra ? ` [Sector ${ing.sector_letra}]` : '';
             
             const stockActual = parseFloat(ing.stock_actual || 0);
             const colorStock = stockActual <= 0 ? '#dc3545' : '#6c757d';
             const stockDisplay = `<span style="float: right; color: ${colorStock}; font-weight: bold;">[Stock: ${stockActual}]</span>`;
             
-            li.innerHTML = `<span>${ing.nombre} (${ing.unidad_medida})${sectorDisplay}</span> ${stockDisplay}`;
+            li.innerHTML = `<span>${badgeInsumo}${ing.nombre} (${ing.unidad_medida})${sectorDisplay}</span> ${stockDisplay}`;
 
             li.addEventListener('click', () => {
                 hiddenInput.value = ing.id;
@@ -1397,12 +1404,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const ingredienteSeleccionado = ingredientesDisponibles.find(i => i.id === parseInt(ingredienteId));
+                let cantidadFinal = cantidad;
+                let unidadMedidaFinal = ingredienteSeleccionado.unidad_medida;
+
+                if (ingredienteSeleccionado.es_insumo) {
+                    cantidadFinal = Math.round(cantidad);
+                    unidadMedidaFinal = 'unidades';
+                }
 
                 const ingrediente = {
                     ingrediente_id: ingredienteSeleccionado.id,
                     nombre_ingrediente: ingredienteSeleccionado.nombre,
-                    unidad_medida: ingredienteSeleccionado.unidad_medida,
-                    cantidad: cantidad
+                    unidad_medida: unidadMedidaFinal,
+                    cantidad: cantidadFinal
                 };
 
                 state.ingredientesCargados.push(ingrediente);

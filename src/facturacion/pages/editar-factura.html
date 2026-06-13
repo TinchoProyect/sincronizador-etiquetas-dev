@@ -357,7 +357,7 @@
                     <div class="form-group">
                         <div class="checkbox-group">
                             <input type="checkbox" id="requiere_afip" checked>
-                            <label for="requiere_afip">Requiere AFIP (Factura Electrónica)</label>
+                            <label for="requiere_afip">Requiere ARCA (Factura Electrónica)</label>
                         </div>
                         <p class="help-text">Si no está marcado, será una factura interna sin CAE</p>
                     </div>
@@ -398,7 +398,7 @@
                                 <option value="2">2 - Responsable no Inscripto</option>
                                 <option value="3">3 - No Responsable</option>
                             </select>
-                            <p class="help-text">⚠️ Obligatorio para AFIP. Se ajusta automáticamente según tipo de
+                            <p class="help-text">⚠️ Obligatorio para ARCA. Se ajusta automáticamente según tipo de
                                 documento</p>
                         </div>
                     </div>
@@ -738,7 +738,7 @@
         }
 
         async function obtenerCAE() {
-            if (!confirm('¿Guardar cambios y obtener CAE de AFIP?')) return;
+            if (!confirm('¿Guardar cambios y obtener CAE de ARCA?')) return;
 
             // Primero guardar
             await guardarFactura();

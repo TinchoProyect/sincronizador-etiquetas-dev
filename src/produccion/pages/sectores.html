@@ -194,9 +194,10 @@
                         <input type="text" id="nombre" required placeholder="Ej: Zona Fracc, Sector A, Depósito...">
                     </div>
                     <div class="form-group">
-                        <label for="descripcion">Descripción:</label>
-                        <textarea id="descripcion" rows="3" placeholder="Descripción opcional del sector"></textarea>
+                        <label for="sector-letra-input">Identificador de Sector (Letra):</label>
+                        <input type="text" id="sector-letra-input" required placeholder="Ej: A, B, AA" style="text-transform: uppercase;">
                     </div>
+                    <div id="alerta-colision-sector" style="display: none; color: #dc3545; font-size: 0.9em; margin-top: -10px; margin-bottom: 15px; font-weight: 500;"></div>
                     <div class="form-actions">
                         <button type="submit" class="btn-agregar">Guardar</button>
                         <button type="button" id="btn-cancelar" class="btn-eliminar">Cancelar</button>

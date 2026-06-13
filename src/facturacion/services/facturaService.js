@@ -10,6 +10,8 @@ const { comaAPunto, redondear, calcularIVA } = require('../utils/decimales');
 const { validarFacturaCompleta, puedeEmitirse } = require('../utils/validaciones');
 const { nextAfip, nextInterno } = require('./numeroService');
 const { solicitarCAE } = require('./wsfeService');
+const { COMPANY_CONFIG } = require('../config/company');
+const cuentaCorrienteService = require('./cuentaCorrienteService');
 
 console.log('🔍 [FACTURACION-SERVICE] Cargando servicio de facturación...');
 
@@ -233,7 +235,22 @@ const emitirAfip = async (factura) => {
             const resultadoCAE = await solicitarCAE(factura.id, ENTORNO);
             console.log(`✅ [FACTURACION-SERVICE] CAE obtenido: ${resultadoCAE.cae}`);
 
-            // 3. Actualizar factura
+            // 3. Usar el número oficial de comprobante de AFIP si fue aprobada
+            const cbteNroOficial = resultadoCAE.resultado === 'A' ? resultadoCAE.cbte_nro : cbteNro;
+            console.log(`🔢 [FACTURACION-SERVICE] Número final a guardar: ${cbteNroOficial}`);
+
+            // 4. Autocorrección de numeración local
+            if (resultadoCAE.resultado === 'A') {
+                await client.query(`
+                    INSERT INTO factura_numeracion_afip (pto_vta, tipo_cbte, ultimo_cbte_afip, actualizado_en)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (pto_vta, tipo_cbte)
+                    DO UPDATE SET ultimo_cbte_afip = EXCLUDED.ultimo_cbte_afip, actualizado_en = NOW()
+                `, [factura.pto_vta, factura.tipo_cbte, cbteNroOficial]);
+                console.log(`🔄 [FACTURACION-SERVICE] Contador local sincronizado en ${cbteNroOficial}`);
+            }
+
+            // 5. Actualizar factura
             const queryUpdate = `
                 UPDATE factura_facturas
                 SET 
@@ -250,7 +267,7 @@ const emitirAfip = async (factura) => {
             const estado = resultadoCAE.resultado === 'A' ? 'APROBADA' : 'RECHAZADA';
 
             const resultado = await client.query(queryUpdate, [
-                cbteNro,
+                cbteNroOficial,
                 resultadoCAE.cae,
                 desdeFormatoAFIP(resultadoCAE.cae_vto),
                 resultadoCAE.resultado,
@@ -260,6 +277,42 @@ const emitirAfip = async (factura) => {
             ]);
 
             console.log(`✅ [FACTURACION-SERVICE] Factura actualizada - Estado: ${estado}`);
+
+            if (estado === 'APROBADA') {
+                await cuentaCorrienteService.registrarFactura(resultado.rows[0], client);
+                
+                // Si es del puesto 32, mover stock
+                if (resultado.rows[0].pto_vta === 32) {
+                    await registrarMovimientosStockFactura(resultado.rows[0], client);
+                }
+                
+                const isNotaCredito = [3, 8, 13].includes(parseInt(resultado.rows[0].tipo_cbte));
+
+                if (isNotaCredito && resultado.rows[0].factura_asociada_id) {
+                    // 1. Marcar la factura asociada como ANULADA
+                    await client.query(
+                        `UPDATE factura_facturas SET estado = 'ANULADA', updated_at = NOW() WHERE id = $1`,
+                        [resultado.rows[0].factura_asociada_id]
+                    );
+                    console.log(`❌ [FACTURACION-SERVICE] Factura original ID ${resultado.rows[0].factura_asociada_id} marcada como ANULADA`);
+
+                    // 2. Desvincular el presupuesto de origen y volver a poner en estado 'Presupuesto/Orden'
+                    if (resultado.rows[0].presupuesto_id) {
+                        await client.query(
+                            `UPDATE public.presupuestos SET factura_id = NULL, estado = 'Presupuesto/Orden' WHERE id = $1`,
+                            [resultado.rows[0].presupuesto_id]
+                        );
+                        console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} desvinculado de factura y restaurado a 'Presupuesto/Orden'`);
+                    }
+                } else if (resultado.rows[0].presupuesto_id) {
+                    // Actualizar estado de presupuesto de origen a 'Facturado'
+                    await client.query(
+                        `UPDATE public.presupuestos SET estado = 'Facturado' WHERE id = $1`,
+                        [resultado.rows[0].presupuesto_id]
+                    );
+                    console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} actualizado a 'Facturado'`);
+                }
+            }
 
             return resultado.rows[0];
         });
@@ -310,6 +363,41 @@ const emitirInterna = async (factura) => {
             ]);
 
             console.log(`✅ [FACTURACION-SERVICE] Factura interna emitida`);
+
+            await cuentaCorrienteService.registrarFactura(resultado.rows[0], client);
+
+            // Si es del puesto 32, mover stock
+            if (resultado.rows[0].pto_vta === 32) {
+                await registrarMovimientosStockFactura(resultado.rows[0], client);
+            }
+
+            // Si es Nota de Crédito, anular la factura asociada y desvincular presupuesto
+            const isNotaCredito = [3, 8, 13].includes(parseInt(resultado.rows[0].tipo_cbte));
+
+            if (isNotaCredito && resultado.rows[0].factura_asociada_id) {
+                // 1. Marcar la factura asociada como ANULADA
+                await client.query(
+                    `UPDATE factura_facturas SET estado = 'ANULADA', updated_at = NOW() WHERE id = $1`,
+                    [resultado.rows[0].factura_asociada_id]
+                );
+                console.log(`❌ [FACTURACION-SERVICE] Factura original ID ${resultado.rows[0].factura_asociada_id} marcada como ANULADA (Emisión Interna)`);
+
+                // 2. Desvincular el presupuesto de origen y volver a poner en estado 'Presupuesto/Orden'
+                if (resultado.rows[0].presupuesto_id) {
+                    await client.query(
+                        `UPDATE public.presupuestos SET factura_id = NULL, estado = 'Presupuesto/Orden' WHERE id = $1`,
+                        [resultado.rows[0].presupuesto_id]
+                    );
+                    console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} desvinculado de factura y restaurado a 'Presupuesto/Orden' (Emisión Interna)`);
+                }
+            } else if (resultado.rows[0].presupuesto_id) {
+                // Actualizar estado de presupuesto de origen a 'Facturado'
+                await client.query(
+                    `UPDATE public.presupuestos SET estado = 'Facturado' WHERE id = $1`,
+                    [resultado.rows[0].presupuesto_id]
+                );
+                console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} actualizado a 'Facturado' (Emisión Interna)`);
+            }
 
             return resultado.rows[0];
         });
@@ -406,14 +494,24 @@ const obtenerPorId = async (id) => {
     console.log(`🔍 [FACTURACION-SERVICE] Obteniendo factura ID: ${id}`);
 
     try {
-        // Obtener factura con datos del cliente (apellido = razón social) y descuento del presupuesto
+        // Obtener factura con datos del cliente (priorizando Búnker) y descuento del presupuesto
         const queryFactura = `
             SELECT 
                 f.*,
-                c.apellido as razon_social,
-                COALESCE(p.descuento, 0) as descuento
+                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
+                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
+                COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
+                COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
+                COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
+                COALESCE(p.descuento, 0) as descuento,
+                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas
             FROM factura_facturas f
             LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
+            LEFT JOIN bunker_clientes bc ON 
+                (CASE 
+                    WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer 
+                    ELSE NULL 
+                END) = f.cliente_id
             LEFT JOIN presupuestos p ON f.presupuesto_id = p.id
             WHERE f.id = $1
         `;
@@ -465,10 +563,355 @@ const obtenerPorId = async (id) => {
         console.log(`   - Items: ${factura.items.length}`);
         console.log(`   - Descuento: ${(parseFloat(factura.descuento) * 100).toFixed(2)}%`);
 
+        // Calcular código de barras y URL de código QR si tiene CAE
+        if (factura.cae) {
+            try {
+                const { buildBarcodePayload } = require('../utils/afip-barcode');
+                const { generateQrUrl } = require('../utils/afip-qr');
+
+                const caeVtoStr = factura.cae_vto instanceof Date 
+                    ? factura.cae_vto.toISOString().split('T')[0].replace(/-/g, '')
+                    : String(factura.cae_vto).replace(/-/g, '');
+
+                factura.barcode_value = buildBarcodePayload({
+                    cuit11: COMPANY_CONFIG.cuitRaw,
+                    cbteTipo3: factura.tipo_cbte,
+                    ptoVta5: factura.pto_vta,
+                    cae14: factura.cae,
+                    caeVto8: caeVtoStr
+                });
+
+                const fechaStr = factura.fecha_emision instanceof Date
+                    ? factura.fecha_emision.toISOString().split('T')[0]
+                    : String(factura.fecha_emision).split('T')[0];
+
+                factura.qr_url = generateQrUrl({
+                    ver: 1,
+                    fecha: fechaStr,
+                    cuit: COMPANY_CONFIG.cuitRaw,
+                    ptoVta: factura.pto_vta,
+                    tipoCmp: factura.tipo_cbte,
+                    nroCmp: factura.cbte_nro,
+                    importe: factura.imp_total,
+                    moneda: factura.moneda || 'PES',
+                    ctz: factura.mon_cotiz || 1,
+                    tipoDocRec: factura.doc_tipo,
+                    nroDocRec: factura.doc_nro,
+                    tipoCodAut: 'E',
+                    codAut: factura.cae
+                });
+                
+                console.log('✅ [FACTURACION-SERVICE] barcode_value y qr_url calculados y anexados');
+            } catch (err) {
+                console.warn('⚠️ [FACTURACION-SERVICE] Error al calcular barcode/qr en obtenerPorId:', err.message);
+            }
+        }
+
         return factura;
 
     } catch (error) {
         console.error('❌ [FACTURACION-SERVICE] Error obteniendo factura:', error.message);
+        throw error;
+    }
+};
+
+/**
+ * Registra los movimientos de stock en la base de datos para los ítems de una factura aprobada.
+ * Solo aplicable para el puesto de venta 32.
+ * @param {Object} factura - La factura aprobada (debe incluir items o se cargarán de la BD).
+ * @param {Object} client - Conexión de base de datos activa dentro de la transacción.
+ */
+const registrarMovimientosStockFactura = async (factura, client) => {
+    console.log(`📦 [FACTURACION-SERVICE] Registrando movimientos de stock para factura ID: ${factura.id} (${factura.pto_vta}-${factura.cbte_nro || factura.nro_interno || ''})`);
+
+    const esNotaCredito = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
+    const esFactura = [1, 6, 11].includes(parseInt(factura.tipo_cbte));
+
+    // Si no es factura ni nota de crédito, no movemos stock
+    if (!esFactura && !esNotaCredito) {
+        console.log(`ℹ️ [FACTURACION-SERVICE] Comprobante tipo ${factura.tipo_cbte} no requiere movimiento de stock.`);
+        return;
+    }
+
+    // Cargar ítems si no están ya en el objeto factura
+    const items = factura.items || (await client.query(
+        `SELECT * FROM factura_factura_items WHERE factura_id = $1 ORDER BY orden ASC`,
+        [factura.id]
+    )).rows;
+
+    console.log(`🔍 [FACTURACION-SERVICE] Procesando ${items.length} ítems para stock...`);
+
+    const { recalcularStockConsolidado } = require('../../produccion/utils/recalcularStock');
+
+    for (const item of items) {
+        let resolvedArt = null;
+
+        // 1. Coincidencia exacta por nombre
+        const artByName = await client.query(`
+            SELECT numero, nombre, codigo_barras 
+            FROM public.articulos 
+            WHERE UPPER(TRIM(nombre)) = UPPER(TRIM($1))
+            LIMIT 1
+        `, [item.descripcion]);
+
+        if (artByName.rows.length > 0) {
+            resolvedArt = artByName.rows[0];
+        }
+
+        // 2. Coincidencia a través del presupuesto original
+        if (!resolvedArt && factura.presupuesto_id) {
+            const budgetRes = await client.query(`
+                SELECT pd.articulo as barcode, a.numero as articulo_numero, a.nombre as articulo_nombre, pd.cantidad, pd.valor1
+                FROM public.presupuestos_detalles pd
+                LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                WHERE pd.id_presupuesto = $1
+            `, [factura.presupuesto_id]);
+
+            // Coincidir por nombre
+            let budgetMatch = budgetRes.rows.find(bd => 
+                bd.articulo_nombre && 
+                bd.articulo_nombre.toUpperCase().trim() === item.descripcion.toUpperCase().trim()
+            );
+
+            // Coincidir por precio y cantidad
+            if (!budgetMatch) {
+                budgetMatch = budgetRes.rows.find(bd => 
+                    parseFloat(bd.cantidad) === parseFloat(item.qty) && 
+                    parseFloat(bd.valor1) === parseFloat(item.p_unit)
+                );
+            }
+
+            if (budgetMatch && budgetMatch.articulo_numero) {
+                resolvedArt = {
+                    numero: budgetMatch.articulo_numero,
+                    codigo_barras: budgetMatch.barcode
+                };
+            }
+        }
+
+        // 3. Coincidencia parcial por ILIKE en nombre
+        if (!resolvedArt) {
+            const artByNameLike = await client.query(`
+                SELECT numero, nombre, codigo_barras 
+                FROM public.articulos 
+                WHERE nombre ILIKE $1 
+                   OR nombre ILIKE $2
+                LIMIT 1
+            `, [item.descripcion, `%${item.descripcion}%`]);
+
+            if (artByNameLike.rows.length > 0) {
+                resolvedArt = artByNameLike.rows[0];
+            }
+        }
+
+        if (!resolvedArt) {
+            console.warn(`⚠️ [FACTURACION-SERVICE] No se pudo resolver el artículo para el ítem: "${item.descripcion}". Se saltará el movimiento de stock para este ítem.`);
+            continue;
+        }
+
+        const articuloNumero = resolvedArt.numero || resolvedArt.articulo_numero;
+        const codigoBarras = resolvedArt.codigo_barras || null;
+        const qty = parseFloat(item.qty);
+
+        // Formatear observaciones descriptivas
+        let letra = 'A';
+        if ([6, 7, 8].includes(parseInt(factura.tipo_cbte))) letra = 'B';
+        if ([11, 12, 13].includes(parseInt(factura.tipo_cbte))) letra = 'C';
+
+        const nroComprobante = factura.cbte_nro || factura.nro_interno || '';
+        const esInterna = !factura.requiere_afip;
+        
+        let docDesc = '';
+        if (esNotaCredito) {
+            docDesc = esInterna ? 'Nota de Crédito Interna' : `Nota de Crédito ${letra}`;
+        } else {
+            docDesc = esInterna ? 'Factura Interna' : `Factura ${letra}`;
+        }
+        
+        const obs = `${docDesc} #32-${nroComprobante}`;
+        const tipoMov = esNotaCredito ? 'ingreso' : 'egreso';
+        const qtyDelta = esNotaCredito ? qty : -qty;
+
+        console.log(`   - Resolvió: "${item.descripcion}" -> Código: ${articuloNumero} (${codigoBarras}) | Cantidad: ${qty} | Mov: ${tipoMov}`);
+
+        // Insertar en stock_ventas_movimientos
+        const insertMovQuery = `
+            INSERT INTO public.stock_ventas_movimientos (
+                articulo_numero, codigo_barras, kilos, cantidad,
+                carro_id, usuario_id, fecha, tipo, observaciones, origen_ingreso
+            ) VALUES ($1, $2, 0, $3, NULL, NULL, NOW(), $4, $5, 'facturacion')
+        `;
+        await client.query(insertMovQuery, [
+            articuloNumero,
+            codigoBarras,
+            qty,
+            tipoMov,
+            obs
+        ]);
+
+        // Insertar/Actualizar en stock_real_consolidado
+        const updateStockQuery = `
+            INSERT INTO public.stock_real_consolidado (
+                articulo_numero, stock_movimientos, stock_ajustes, es_pack, ultima_actualizacion
+            )
+            VALUES ($1, $2, 0, FALSE, NOW())
+            ON CONFLICT (articulo_numero) 
+            DO UPDATE SET 
+                stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                ultima_actualizacion = NOW()
+        `;
+        await client.query(updateStockQuery, [
+            articuloNumero,
+            qtyDelta
+        ]);
+
+        // Recalcular stock_consolidado
+        await recalcularStockConsolidado(client, articuloNumero);
+        console.log(`   ✅ Movimiento e incremento/decremento completado para artículo: ${articuloNumero}`);
+    }
+};
+
+/**
+ * Anular factura: crea un borrador de Nota de Crédito espejo
+ * @param {number} facturaId - ID de la factura a anular
+ * @param {string} usuario - Usuario que realiza la acción
+ * @returns {Promise<number>} ID del borrador de la Nota de Crédito creada
+ */
+const anular = async (facturaId, usuario) => {
+    console.log(`🚫 [FACTURACION-SERVICE] Iniciando anulación para factura ID: ${facturaId} por usuario: ${usuario}`);
+
+    try {
+        return await ejecutarTransaccion(async (client) => {
+            // 1. Obtener y bloquear la factura original
+            const queryFactura = `
+                SELECT * FROM factura_facturas 
+                WHERE id = $1 
+                FOR UPDATE
+            `;
+            const resFactura = await client.query(queryFactura, [facturaId]);
+            if (resFactura.rows.length === 0) {
+                throw new Error(`Factura ID ${facturaId} no encontrada.`);
+            }
+
+            const facturaOrig = resFactura.rows[0];
+
+            // 2. Validar que la factura original esté en estado APROBADA o APROBADA_LOCAL
+            if (facturaOrig.estado !== 'APROBADA' && facturaOrig.estado !== 'APROBADA_LOCAL') {
+                throw new Error(`Solo se pueden anular facturas en estado APROBADA o APROBADA_LOCAL. Estado actual: ${facturaOrig.estado}`);
+            }
+
+            // 3. Validar que no sea ya una Nota de Crédito
+            const tipoCbteInt = parseInt(facturaOrig.tipo_cbte);
+            if ([3, 8, 13].includes(tipoCbteInt)) {
+                throw new Error(`No se puede anular una Nota de Crédito (Tipo ${facturaOrig.tipo_cbte}).`);
+            }
+
+            // 4. Validar que no haya sido anulada anteriormente (que no tenga una NC aprobada o borrador)
+            const queryNCExistente = `
+                SELECT id, estado, cbte_nro, nro_interno 
+                FROM factura_facturas 
+                WHERE factura_asociada_id = $1 AND estado != 'RECHAZADA'
+                LIMIT 1
+            `;
+            const resNCExistente = await client.query(queryNCExistente, [facturaId]);
+            if (resNCExistente.rows.length > 0) {
+                const nc = resNCExistente.rows[0];
+                throw new Error(`Esta factura ya tiene un proceso de anulación asociado (NC ID ${nc.id}, Estado: ${nc.estado}).`);
+            }
+
+            // 5. Determinar el tipo de Nota de Crédito
+            let tipoNC;
+            if (tipoCbteInt === 1) { // Factura A
+                tipoNC = 3; // Nota de Crédito A
+            } else if (tipoCbteInt === 6) { // Factura B
+                tipoNC = 8; // Nota de Crédito B
+            } else if (tipoCbteInt === 11) { // Factura C
+                tipoNC = 13; // Nota de Crédito C
+            } else {
+                throw new Error(`Tipo de comprobante ${facturaOrig.tipo_cbte} no soportado para anulación automática.`);
+            }
+
+            // 6. Obtener ítems de la factura original
+            const queryItems = `
+                SELECT * FROM factura_factura_items 
+                WHERE factura_id = $1 
+                ORDER BY orden ASC
+            `;
+            const resItems = await client.query(queryItems, [facturaId]);
+            const items = resItems.rows;
+
+            if (items.length === 0) {
+                throw new Error(`La factura original no tiene ítems.`);
+            }
+
+            // 7. Crear cabecera de la Nota de Crédito (Borrador)
+            const queryInsertNC = `
+                INSERT INTO factura_facturas (
+                    tipo_cbte, pto_vta, concepto, fecha_emision,
+                    cliente_id, doc_tipo, doc_nro, condicion_iva_id,
+                    moneda, mon_cotiz,
+                    imp_neto, imp_iva, imp_trib, imp_total,
+                    estado, requiere_afip, serie_interna, presupuesto_id,
+                    factura_asociada_id,
+                    emitida_en, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7, $8, $9,
+                    $10, $11, $12, $13, 'BORRADOR', $14, $15, $16, $17,
+                    NOW(), NOW(), NOW()
+                )
+                RETURNING id
+            `;
+
+            const resInsertNC = await client.query(queryInsertNC, [
+                tipoNC,
+                facturaOrig.pto_vta,
+                facturaOrig.concepto,
+                facturaOrig.cliente_id,
+                facturaOrig.doc_tipo,
+                facturaOrig.doc_nro,
+                facturaOrig.condicion_iva_id,
+                facturaOrig.moneda,
+                facturaOrig.mon_cotiz,
+                facturaOrig.imp_neto,
+                facturaOrig.imp_iva,
+                facturaOrig.imp_trib,
+                facturaOrig.imp_total,
+                facturaOrig.requiere_afip,
+                facturaOrig.serie_interna,
+                facturaOrig.presupuesto_id,
+                facturaOrig.id // factura_asociada_id
+            ]);
+
+            const ncId = resInsertNC.rows[0].id;
+            console.log(`✅ [FACTURACION-SERVICE] Cabecera de Nota de Crédito Borrador creada - ID: ${ncId}`);
+
+            // 8. Insertar ítems en la Nota de Crédito
+            const queryInsertItem = `
+                INSERT INTO factura_factura_items (
+                    factura_id, descripcion, qty, p_unit, alic_iva_id,
+                    imp_neto, imp_iva, orden, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            `;
+
+            for (const item of items) {
+                await client.query(queryInsertItem, [
+                    ncId,
+                    item.descripcion,
+                    item.qty,
+                    item.p_unit,
+                    item.alic_iva_id,
+                    item.imp_neto,
+                    item.imp_iva,
+                    item.orden
+                ]);
+            }
+
+            console.log(`✅ [FACTURACION-SERVICE] ${items.length} ítems copiados a la Nota de Crédito ID: ${ncId}`);
+
+            return ncId;
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-SERVICE] Error en anular:', error.message);
         throw error;
     }
 };
@@ -479,5 +922,7 @@ module.exports = {
     crearBorrador,
     emitir,
     obtenerPorId,
-    calcularTotales
+    calcularTotales,
+    registrarMovimientosStockFactura,
+    anular
 };

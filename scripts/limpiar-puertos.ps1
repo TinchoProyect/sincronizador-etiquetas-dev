@@ -45,6 +45,22 @@ foreach ($puerto in $puertos) {
     }
 }
 
+# Detener procesos huérfanos de Puppeteer/Chromium para liberar bloqueos de sesión
+Write-Host "Verificando procesos huérfanos de Puppeteer (Chromium)..." -ForegroundColor Yellow
+$puppeteerChromium = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" | Where-Object { 
+    $_.Path -like "*\.cache\puppeteer\*" -or $_.CommandLine -like "*\.cache\puppeteer\*"
+}
+
+if ($puppeteerChromium) {
+    foreach ($proc in $puppeteerChromium) {
+        Write-Host "  -> Deteniendo proceso Chromium huérfano (PID: $($proc.ProcessId))" -ForegroundColor Red
+        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "  [OK] Procesos de Chromium huérfanos liberados" -ForegroundColor Green
+} else {
+    Write-Host "  [OK] No se detectaron procesos de Chromium huérfanos" -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "  Limpieza completada" -ForegroundColor Cyan

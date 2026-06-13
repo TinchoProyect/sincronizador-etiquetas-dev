@@ -1,3 +1,5 @@
+const { supabaseFetch } = require('../../produccion/utils/supabaseHelper');
+
 /**
  * Servicio de Búnker (Core Financiero)
  * Maneja la lógica de negocio y base de datos para los artículos del Búnker
@@ -500,6 +502,53 @@ class BunkerService {
     }
 
     /**
+     * Resuelve de forma recursiva el costo patrón de un ingrediente.
+     * Si el ingrediente es de tipo "Mix" (posee composición), sumará el costo compuesto de sus
+     * subcomponentes y lo dividirá por su receta_base_kg.
+     * Incluye control de ciclos para evitar bucles.
+     * (Comentarios en español)
+     */
+    static async resolverCostoIngrediente(db, ingredienteId, visited = new Set()) {
+        if (!ingredienteId) return 0;
+        const idStr = String(ingredienteId);
+        if (visited.has(idStr)) {
+            // Control de ciclos: retornar costo_patron directo de la BD para romper el bucle
+            const ingRes = await db.query('SELECT costo_patron FROM public.ingredientes WHERE id = $1', [ingredienteId]);
+            return ingRes.rows.length > 0 ? parseFloat(ingRes.rows[0].costo_patron || 0) : 0;
+        }
+        visited.add(idStr);
+
+        // 1. Obtener costo_patron y receta_base_kg
+        const ingRes = await db.query(
+            'SELECT id, costo_patron, receta_base_kg FROM public.ingredientes WHERE id = $1',
+            [ingredienteId]
+        );
+        if (ingRes.rows.length === 0) return 0;
+        const ingrediente = ingRes.rows[0];
+
+        // 2. Verificar si es Mix (tiene componentes en la tabla ingrediente_composicion)
+        const compRes = await db.query(
+            'SELECT ingrediente_id, cantidad FROM public.ingrediente_composicion WHERE mix_id = $1',
+            [ingredienteId]
+        );
+
+        if (compRes.rows.length === 0) {
+            // No es Mix: retornar costo_patron directo
+            return parseFloat(ingrediente.costo_patron || 0);
+        }
+
+        // Es Mix: calcular costo compuesto de forma recursiva
+        let total = 0;
+        for (const comp of compRes.rows) {
+            const costoComp = await this.resolverCostoIngrediente(db, comp.ingrediente_id, new Set(visited));
+            total += parseFloat(comp.cantidad || 0) * costoComp;
+        }
+
+        const baseKg = parseFloat(ingrediente.receta_base_kg || 1);
+        return baseKg > 0 ? (total / baseKg) : total;
+    }
+
+    /**
      * Helper de alto rendimiento para resolver costos "En Vivo" por receta, lote o manual
      */
     static async resolverCostosEnVivo(db) {
@@ -581,14 +630,69 @@ class BunkerService {
             ingredientesPorReceta.get(ri.receta_id).push(ri);
         });
 
-        return { preciosMap, lotesMap, recetaMap, ingredientesPorReceta };
+        // 5. Cargar ingredientes y composiciones en memoria para resolver costo_patron dinámico (Comentarios en español)
+        const resIng = await db.query("SELECT id, costo_patron, receta_base_kg FROM public.ingredientes");
+        const resComp = await db.query("SELECT mix_id, ingrediente_id, cantidad FROM public.ingrediente_composicion");
+
+        const ingredientsMap = new Map();
+        resIng.rows.forEach(r => {
+            ingredientsMap.set(String(r.id), {
+                costo_patron: parseFloat(r.costo_patron || 0),
+                receta_base_kg: parseFloat(r.receta_base_kg || 1),
+                resolved_cost: null
+            });
+        });
+
+        const compositionsMap = new Map();
+        resComp.rows.forEach(r => {
+            const mixId = String(r.mix_id);
+            if (!compositionsMap.has(mixId)) {
+                compositionsMap.set(mixId, []);
+            }
+            compositionsMap.get(mixId).push({
+                ingrediente_id: String(r.ingrediente_id),
+                cantidad: parseFloat(r.cantidad || 0)
+            });
+        });
+
+        function resolveCost(idStr, visited = new Set()) {
+            const ing = ingredientsMap.get(idStr);
+            if (!ing) return 0;
+            if (ing.resolved_cost !== null) return ing.resolved_cost;
+
+            if (visited.has(idStr)) {
+                // Control de ciclos en memoria
+                return ing.costo_patron;
+            }
+            visited.add(idStr);
+
+            const components = compositionsMap.get(idStr);
+            if (!components || components.length === 0) {
+                ing.resolved_cost = ing.costo_patron;
+            } else {
+                let total = 0;
+                components.forEach(comp => {
+                    total += comp.cantidad * resolveCost(comp.ingrediente_id, new Set(visited));
+                });
+                const baseKg = ing.receta_base_kg || 1;
+                ing.resolved_cost = baseKg > 0 ? (total / baseKg) : total;
+            }
+            return ing.resolved_cost;
+        }
+
+        const resolvedCostsMap = new Map();
+        for (const idStr of ingredientsMap.keys()) {
+            resolvedCostsMap.set(idStr, resolveCost(idStr));
+        }
+
+        return { preciosMap, lotesMap, recetaMap, ingredientesPorReceta, resolvedCostsMap };
     }
 
     /**
      * Calcula el costo de ingrediente en vivo basándose en recetas o lotes vinculados (Estrictamente POR KILOGRAMO)
      */
     static calcularCostoIngredienteEnVivo(articulo_id, pack_hijo_codigo, costo_base_manual, context, kilos_unidad = 1) {
-        const { lotesMap, recetaMap, ingredientesPorReceta } = context;
+        const { lotesMap, recetaMap, ingredientesPorReceta, resolvedCostsMap } = context;
         const codigoBase = pack_hijo_codigo || articulo_id;
         const recetaId = recetaMap.get(codigoBase);
         const factor = parseFloat(kilos_unidad) > 0 ? parseFloat(kilos_unidad) : 1;
@@ -598,9 +702,9 @@ class BunkerService {
             let costoTotalReceta = 0;
             ingredientes.forEach(ing => {
                 const ingIdStr = String(ing.ingrediente_id);
-                const loteIng = lotesMap.get(ingIdStr);
-                const costoKilo = loteIng ? loteIng.costo_kilo : 0;
-                costoTotalReceta += parseFloat(ing.cantidad) * costoKilo;
+                // Usar el costo_patron resolved (de ingredientes) en lugar de lote
+                const costoPatron = resolvedCostsMap ? (resolvedCostsMap.get(ingIdStr) || 0) : 0;
+                costoTotalReceta += parseFloat(ing.cantidad) * costoPatron;
             });
             if (costoTotalReceta > 0) {
                 // La receta representa la producción del bulto total, por ende la dividimos por el factor para tener el costo por kilo
@@ -777,7 +881,8 @@ class BunkerService {
                 la.modo_calculo,
                 COALESCE(la.modo_iva, 'COMPLETO') as modo_iva,
                 COALESCE(la.es_patron, false) as es_patron,
-                COALESCE(la.disponible, true) as disponible
+                COALESCE(la.disponible, true) as disponible,
+                COALESCE(la.exencion_operativa, false) as exencion_operativa
             FROM public.bunker_lista_articulos la
         `;
         const resLA = await db.query(queryLA);
@@ -894,7 +999,8 @@ class BunkerService {
                         es_patron: la.es_patron,
                         margen_patron_heredado: margenHeredado,
                         descripcion_patron: descripcionPatron,
-                        disponible: la.disponible
+                        disponible: la.disponible,
+                        exencion_operativa: la.exencion_operativa === true || la.exencion_operativa === 'true'
                     };
                 } else {
                     // Si no tiene configuración en la nueva lista, intentar heredar del fallback
@@ -927,7 +1033,8 @@ class BunkerService {
                             es_patron: false,
                             margen_patron_heredado: margenHeredado,
                             descripcion_patron: descripcionPatron,
-                            disponible: true
+                            disponible: true,
+                            exencion_operativa: false
                         };
                     } else {
                         // Intentar heredar de la configuración de Lista 1 (Lista Nico) si existe
@@ -977,7 +1084,8 @@ class BunkerService {
                                 es_patron: false,
                                 margen_patron_heredado: margenHeredado,
                                 descripcion_patron: descripcionPatron,
-                                disponible: true
+                                disponible: true,
+                                exencion_operativa: laL1.exencion_operativa === true || laL1.exencion_operativa === 'true'
                             };
                         } else {
                             // Fallback por defecto usando margen 0%
@@ -1009,7 +1117,8 @@ class BunkerService {
                                 es_patron: false,
                                 margen_patron_heredado: margenHeredado,
                                 descripcion_patron: descripcionPatron,
-                                disponible: true
+                                disponible: true,
+                                exencion_operativa: false
                             };
                         }
                     }
@@ -1053,7 +1162,8 @@ class BunkerService {
                 COALESCE(la.modo_calculo, 'AUTOMATIC') as modo_calculo,
                 COALESCE(la.modo_iva, 'COMPLETO') as modo_iva,
                 COALESCE(la.es_patron, false) as es_patron,
-                COALESCE(la.disponible, true) as disponible
+                COALESCE(la.disponible, true) as disponible,
+                COALESCE(la.exencion_operativa, false) as exencion_operativa
             FROM public.bunker_listas_precios lp
             LEFT JOIN public.bunker_lista_articulos la ON la.lista_id = lp.id AND la.articulo_numero = $1
             WHERE lp.activa = true
@@ -1103,7 +1213,7 @@ class BunkerService {
                 const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
                 const queryUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,nombre_proveedor,datos_maestros&id=in.(${[...new Set(allUuidInsumos)].join(',')})`;
                 
-                const resBatch = await fetch(queryUrl, { headers });
+                const resBatch = await supabaseFetch(queryUrl, { headers });
                 if (resBatch.ok) {
                     const data = await resBatch.json();
                     data.forEach(item => {
@@ -1252,6 +1362,10 @@ class BunkerService {
                     ORDER BY ri.id ASC
                 `;
                 const resIngredientes = await db.query(queryIngredientes, [recetaId]);
+                // Resolver el costo_patron dinámico para cada ingrediente (Comentarios en español)
+                for (const row of resIngredientes.rows) {
+                    row.costo_patron = await this.resolverCostoIngrediente(db, row.ingrediente_id);
+                }
                 receta_ingredientes = resIngredientes.rows;
 
                 const queryArticulos = `
@@ -1333,7 +1447,7 @@ class BunkerService {
                     const inList = uniqueCodes.map(c => `"${c.replace(/"/g, '\\"')}"`).join(',');
                     const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&datos_maestros->>_estado_delta=neq.BAJA&or=(datos_maestros->>codigo.in.(${inList}),datos_maestros->>sku.in.(${inList}),datos_maestros->>código.in.(${inList}))`;
 
-                    const response = await fetch(url, { headers });
+                    const response = await supabaseFetch(url, { headers });
                     if (response.ok) {
                         const cotizaciones = await response.json();
 
@@ -1342,7 +1456,7 @@ class BunkerService {
                         let excepciones = [];
                         if (proveedoresIds.length > 0) {
                             const excUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/curaduria_excepciones?select=proveedor_id,producto_codigo,unidad_fijada&proveedor_id=in.(${proveedoresIds.join(',')})`;
-                            const excRes = await fetch(excUrl, { headers });
+                            const excRes = await supabaseFetch(excUrl, { headers });
                             if (excRes.ok) {
                                 excepciones = await excRes.json();
                             }
@@ -1535,8 +1649,11 @@ class BunkerService {
                         insumos,
                         modo_iva,
                         es_patron,
-                        fuente_costo_default
+                        fuente_costo_default,
+                        exencion_operativa
                     } = conf;
+
+                    const exencionOperativa = exencion_operativa === true || exencion_operativa === 'true';
 
                     // Si se está seteando este artículo como patrón, limpiar el flag de los hermanos en la lista
                     if (es_patron === true || es_patron === 'true') {
@@ -1562,9 +1679,9 @@ class BunkerService {
                     const queryLA = `
                         INSERT INTO public.bunker_lista_articulos (
                             lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, 
-                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible, updated_at
+                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible, exencion_operativa, updated_at
                         ) VALUES (
-                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, true), CURRENT_TIMESTAMP
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, true), $13, CURRENT_TIMESTAMP
                         ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
                             margen_ganancia = EXCLUDED.margen_ganancia,
                             costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
@@ -1576,6 +1693,7 @@ class BunkerService {
                             es_patron = EXCLUDED.es_patron,
                             fuente_costo_default = EXCLUDED.fuente_costo_default,
                             disponible = COALESCE(EXCLUDED.disponible, bunker_lista_articulos.disponible),
+                            exencion_operativa = EXCLUDED.exencion_operativa,
                             updated_at = CURRENT_TIMESTAMP
                         RETURNING id
                     `;
@@ -1591,7 +1709,8 @@ class BunkerService {
                         modo_iva || 'COMPLETO',
                         es_patron === true || es_patron === 'true',
                         fuente_costo_default || null,
-                        conf.disponible !== undefined ? (conf.disponible === true || conf.disponible === 'true') : null
+                        conf.disponible !== undefined ? (conf.disponible === true || conf.disponible === 'true') : null,
+                        exencionOperativa
                     ]);
 
                     const listaArticuloId = resLA.rows[0].id;
@@ -1614,6 +1733,52 @@ class BunkerService {
                                 ins.costo_unitario_capturado || 0,
                                 ins.incluido === true || ins.incluido === 'true'
                             ]);
+                        }
+                    }
+                }
+
+                // PROPAGACIÓN/REPLICACIÓN DE COSTOS OPERATIVOS UNIVERSALES
+                // Encontrar la primera configuración en el payload que NO esté exenta
+                const masterConf = configs.find(c => !(c.exencion_operativa === true || c.exencion_operativa === 'true'));
+                if (masterConf) {
+                    const masterCostoTiempo = parseFloat(masterConf.costo_tiempo) || 0;
+                    const masterInsumos = masterConf.insumos || [];
+
+                    // Buscar todos los registros de listas de artículos de este producto que NO estén exentos
+                    const resNoExempt = await client.query(
+                        `SELECT id, lista_id FROM public.bunker_lista_articulos 
+                         WHERE articulo_numero = $1 AND COALESCE(exencion_operativa, false) = false`,
+                        [articulo_id]
+                    );
+
+                    for (const row of resNoExempt.rows) {
+                        const targetId = row.id;
+
+                        // 1. Actualizar costo_tiempo
+                        await client.query(
+                            `UPDATE public.bunker_lista_articulos 
+                             SET costo_tiempo = $1, updated_at = CURRENT_TIMESTAMP 
+                             WHERE id = $2`,
+                            [masterCostoTiempo, targetId]
+                        );
+
+                        // 2. Purgar e insertar insumos master
+                        await client.query(`DELETE FROM public.bunker_lista_insumos WHERE lista_articulo_id = $1`, [targetId]);
+                        if (masterInsumos.length > 0) {
+                            for (const ins of masterInsumos) {
+                                await client.query(
+                                    `INSERT INTO public.bunker_lista_insumos (
+                                        lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido
+                                     ) VALUES ($1, $2, $3, $4, $5)`,
+                                    [
+                                        targetId,
+                                        ins.insumo_articulo_numero,
+                                        ins.cantidad || 1.0000,
+                                        ins.costo_unitario_capturado || 0,
+                                        ins.incluido === true || ins.incluido === 'true'
+                                    ]
+                                );
+                            }
                         }
                     }
                 }
@@ -1658,24 +1823,270 @@ class BunkerService {
     }
 
     /**
+     * Obtener costos operativos universales de un artículo (mano de obra e insumos de la primera lista no exenta)
+     */
+    static async obtenerCostosUniversalesDeArticulo(db, articuloId) {
+        const query = `
+            SELECT id, costo_tiempo 
+            FROM public.bunker_lista_articulos 
+            WHERE articulo_numero = $1 AND COALESCE(exencion_operativa, false) = false
+            ORDER BY lista_id ASC
+            LIMIT 1
+        `;
+        const res = await db.query(query, [articuloId]);
+        if (res.rows.length > 0) {
+            const row = res.rows[0];
+            const resIns = await db.query(
+                `SELECT insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido 
+                 FROM public.bunker_lista_insumos 
+                 WHERE lista_articulo_id = $1`,
+                [row.id]
+            );
+            return {
+                costo_tiempo: parseFloat(row.costo_tiempo) || 0,
+                insumos: resIns.rows
+            };
+        }
+        return null;
+    }
+
+    /**
      * Actualiza la disponibilidad de un artículo para una lista de precios específica
      */
     static async actualizarDisponibilidadArticulo(db, articuloId, listaId, disponible) {
-        const query = `
-            INSERT INTO public.bunker_lista_articulos (
-                lista_id, 
-                articulo_numero, 
-                disponible,
-                updated_at
-            ) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-            ON CONFLICT (lista_id, articulo_numero) 
-            DO UPDATE SET 
-                disponible = EXCLUDED.disponible,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *
-        `;
-        const result = await db.query(query, [listaId, articuloId, disponible]);
-        return result.rows[0];
+        // Verificar si ya existe la configuración
+        const resExist = await db.query(
+            `SELECT id FROM public.bunker_lista_articulos WHERE lista_id = $1 AND articulo_numero = $2`,
+            [listaId, articuloId]
+        );
+
+        if (resExist.rows.length === 0) {
+            // No existe, buscar costos universales no exentos
+            const universalCostObj = await this.obtenerCostosUniversalesDeArticulo(db, articuloId);
+            const cTiempo = universalCostObj ? universalCostObj.costo_tiempo : 0.00;
+            
+            const queryInsert = `
+                INSERT INTO public.bunker_lista_articulos (
+                    lista_id, 
+                    articulo_numero, 
+                    disponible,
+                    costo_tiempo,
+                    updated_at
+                ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                RETURNING *
+            `;
+            const result = await db.query(queryInsert, [listaId, articuloId, disponible, cTiempo]);
+            const newLA = result.rows[0];
+
+            // Insertar insumos heredados
+            if (universalCostObj && universalCostObj.insumos && universalCostObj.insumos.length > 0) {
+                for (const ins of universalCostObj.insumos) {
+                    await db.query(
+                        `INSERT INTO public.bunker_lista_insumos (
+                            lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido
+                         ) VALUES ($1, $2, $3, $4, $5)`,
+                        [
+                            newLA.id,
+                            ins.insumo_articulo_numero,
+                            ins.cantidad || 1.0000,
+                            ins.costo_unitario_capturado || 0,
+                            ins.incluido === true || ins.incluido === 'true'
+                        ]
+                    );
+                }
+            }
+            return newLA;
+        } else {
+            // Ya existe, solo actualizar disponible
+            const queryUpdate = `
+                UPDATE public.bunker_lista_articulos 
+                SET disponible = $3, updated_at = CURRENT_TIMESTAMP 
+                WHERE lista_id = $1 AND articulo_numero = $2
+                RETURNING *
+            `;
+            const result = await db.query(queryUpdate, [listaId, articuloId, disponible]);
+            return result.rows[0];
+        }
+    }
+
+    /**
+     * Actualiza en masa el margen de ganancia para un conjunto de artículos en una lista de precios específica,
+     * recalculando de manera exacta los precios correspondientes y conservando las configuraciones preexistentes.
+     * Soporta opcionalmente la actualización en masa del tratamiento de IVA (nuevoModoIva).
+     */
+    static async actualizarMargenesEnMasa(db, listaId, articuloIds, nuevoMargen, nuevoModoIva = null) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Obtener contexto de costos en vivo
+            const context = await this.resolverCostosEnVivo(client);
+
+            // 2. Iterar sobre cada artículo y recalcular el precio final
+            for (const articuloId of articuloIds) {
+                // Obtener datos estructurales del artículo
+                const resArt = await client.query(
+                    `SELECT articulo_id, costo_base, porcentaje_iva, kilos_unidad, pack_hijo_codigo 
+                     FROM public.bunker_articulos 
+                     WHERE articulo_id = $1`,
+                    [articuloId]
+                );
+
+                if (resArt.rows.length === 0) {
+                    continue;
+                }
+
+                const art = resArt.rows[0];
+                const factor = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
+
+                // Obtener la configuración actual para esta lista (si existe)
+                const resLA = await client.query(
+                    `SELECT id, costo_base_sobrescrito, costo_tiempo, iva, modo_iva, modo_calculo, es_patron, fuente_costo_default, disponible 
+                     FROM public.bunker_lista_articulos 
+                     WHERE lista_id = $1 AND articulo_numero = $2`,
+                    [listaId, articuloId]
+                );
+
+                let la = resLA.rows[0] || {};
+                
+                // Resolver el costo base
+                const liveIngredienteCost = this.calcularCostoIngredienteEnVivo(
+                    art.articulo_id, 
+                    art.pack_hijo_codigo, 
+                    art.costo_base, 
+                    context, 
+                    factor
+                );
+
+                const cBase = la.costo_base_sobrescrito !== null && la.costo_base_sobrescrito !== undefined
+                    ? parseFloat(la.costo_base_sobrescrito)
+                    : liveIngredienteCost;
+
+                // Resolver costo de insumos secundarios
+                let cInsumos = 0;
+                let cTiempo = 0;
+                let universalCostObj = null;
+
+                if (la.id) {
+                    const resIns = await client.query(
+                        `SELECT insumo_articulo_numero, cantidad, incluido 
+                         FROM public.bunker_lista_insumos 
+                         WHERE lista_articulo_id = $1`,
+                        [la.id]
+                    );
+                    cInsumos = this.calcularCostoInsumosEnVivo(resIns.rows, context);
+                    cTiempo = la.costo_tiempo !== undefined && la.costo_tiempo !== null ? parseFloat(la.costo_tiempo) : 0;
+                } else {
+                    // Si no existe, heredar costos universales
+                    universalCostObj = await this.obtenerCostosUniversalesDeArticulo(client, articuloId);
+                    if (universalCostObj) {
+                        cTiempo = universalCostObj.costo_tiempo;
+                        cInsumos = this.calcularCostoInsumosEnVivo(universalCostObj.insumos, context);
+                    }
+                }
+
+                const ivaValDefault = art.porcentaje_iva || 21.00;
+                const ivaVal = la.iva !== undefined && la.iva !== null ? parseFloat(la.iva) : ivaValDefault;
+                
+                // Asignar modo_iva: si viene un valor nuevo y no es MANTENER, lo aplicamos; de lo contrario mantenemos el actual
+                const modoIva = (nuevoModoIva && nuevoModoIva !== 'MANTENER') ? nuevoModoIva : (la.modo_iva || 'COMPLETO');
+
+                // Costo Total del Bulto Integrado (Costo Kilo * Factor + Insumos Secundarios)
+                const cBulto = (cBase * factor) + cInsumos;
+
+                // Calcular IVA real aplicado
+                let ivaAplicado = ivaVal;
+                if (modoIva === 'MEDIO') {
+                    ivaAplicado = ivaVal / 2;
+                } else if (modoIva === 'SIN') {
+                    ivaAplicado = 0;
+                }
+                const ivaCoeff = 1 + (ivaAplicado / 100);
+
+                // Calcular precio final
+                // Precio Final del Bulto = [ Costo Total Bulto * (1 + Margen/100) + Costo Tiempo ] * (1 + IVA)
+                const precioS_ivaBase = cBulto * (1 + (nuevoMargen / 100)) + cTiempo;
+                const precioFinal = precioS_ivaBase * ivaCoeff;
+
+                // Upsert
+                const queryUpsert = `
+                    INSERT INTO public.bunker_lista_articulos (
+                        lista_id, 
+                        articulo_numero, 
+                        margen_ganancia, 
+                        costo_base_sobrescrito, 
+                        costo_tiempo, 
+                        iva, 
+                        precio_final, 
+                        modo_calculo, 
+                        modo_iva, 
+                        es_patron, 
+                        fuente_costo_default, 
+                        disponible, 
+                        updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP
+                    ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
+                        margen_ganancia = EXCLUDED.margen_ganancia,
+                        precio_final = EXCLUDED.precio_final,
+                        modo_iva = EXCLUDED.modo_iva,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id
+                `;
+
+                const resUpsert = await client.query(queryUpsert, [
+                    listaId,
+                    articuloId,
+                    nuevoMargen,
+                    la.costo_base_sobrescrito !== undefined && la.costo_base_sobrescrito !== null ? la.costo_base_sobrescrito : null,
+                    cTiempo,
+                    ivaVal,
+                    precioFinal,
+                    la.modo_calculo || 'AUTOMATIC',
+                    modoIva,
+                    la.es_patron || false,
+                    la.fuente_costo_default || null,
+                    la.disponible !== undefined ? la.disponible : true
+                ]);
+
+                const targetId = resUpsert.rows[0].id;
+
+                // Si se creó un nuevo registro, heredar también las asociaciones de insumos
+                if (resLA.rows.length === 0 && universalCostObj && universalCostObj.insumos && universalCostObj.insumos.length > 0) {
+                    for (const ins of universalCostObj.insumos) {
+                        await client.query(
+                            `INSERT INTO public.bunker_lista_insumos (
+                                lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido
+                             ) VALUES ($1, $2, $3, $4, $5)`,
+                            [
+                                targetId,
+                                ins.insumo_articulo_numero,
+                                ins.cantidad || 1.0000,
+                                ins.costo_unitario_capturado || 0,
+                                ins.incluido === true || ins.incluido === 'true'
+                            ]
+                        );
+                    }
+                }
+
+                // For legacy compatibility
+                const queryLegacy = `
+                    INSERT INTO public.bunker_margenes (articulo_id, lista_id, margen_porcentaje)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (articulo_id, lista_id) 
+                    DO UPDATE SET margen_porcentaje = EXCLUDED.margen_porcentaje
+                `;
+                await client.query(queryLegacy, [articuloId, listaId, nuevoMargen]);
+            }
+
+            await client.query('COMMIT');
+            return true;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 }
 

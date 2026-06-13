@@ -390,6 +390,74 @@
                 opacity: 0;
             }
         }
+
+        /* Switch V2 Moderno para Valorización */
+        .switch-v2 {
+            position: relative;
+            display: inline-block;
+            width: 42px;
+            height: 22px;
+        }
+
+        .switch-v2 input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-v2 {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider-v2:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+
+        .switch-v2 input:checked + .slider-v2 {
+            background-color: #10b981;
+        }
+
+        .switch-v2 input:checked + .slider-v2:before {
+            transform: translateX(20px);
+        }
+
+        /* Estilos para el botón discreto de configuración y el dropdown */
+        .btn-config-gear:hover {
+            background-color: rgba(255, 255, 255, 0.15) !important;
+        }
+        .btn-config-gear:active {
+            background-color: rgba(255, 255, 255, 0.25) !important;
+        }
+        .dropdown-config-menu {
+            transform-origin: top right;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
     </style>
 
     <!-- SweetAlert2 -->
@@ -416,9 +484,32 @@
                 <!-- Resizer Handle -->
                 <div class="panel-resizer" id="panel-resizer"></div>
 
-                <div class="config-header">
-                    <h2>⚙️ Filtros y Configuración</h2>
-                    <p>Personaliza la vista de ingredientes</p>
+                <div class="config-header" style="position: relative; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h2 style="margin: 0; font-size: 1.3em; color: white;">⚙️ Filtros y Configuración</h2>
+                        <p style="margin: 5px 0 0 0; font-size: 0.85em; opacity: 0.9; color: white;">Personaliza la vista de ingredientes</p>
+                    </div>
+                    <!-- Botón discreto de engranaje en el sector derecho -->
+                    <div style="position: relative;">
+                        <button id="btn-config-monetario" class="btn-config-gear" style="background: transparent; border: none; color: white; font-size: 1.4rem; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background-color 0.2s;" title="Configuración Financiera" onclick="window.toggleConfigDropdown(event)">
+                            ⚙️
+                        </button>
+                        <!-- Menú desplegable oculto -->
+                        <div id="dropdown-config-monetario" class="dropdown-config-menu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 8px; width: 260px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); padding: 15px; z-index: 1000; animation: fadeIn 0.2s ease;">
+                            <div style="font-weight: bold; font-size: 0.82rem; color: #64748b; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;">
+                                Configuración Financiera
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-weight: bold; font-size: 0.88rem; color: #334155; display: flex; align-items: center; gap: 6px;">
+                                    💵 Mostrar Precios/Valores
+                                </span>
+                                <label class="switch-v2">
+                                    <input type="checkbox" id="switch-valores-monetarios">
+                                    <span class="slider-v2"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="config-body">
@@ -751,6 +842,70 @@
                         <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; text-align: center;">
                             <span style="font-size: 0.75rem; color: #0369a1; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Cajas Cerradas (Trazables)</span>
                             <h3 style="font-size: 1.8rem; font-weight: 900; color: #0369a1; margin: 6px 0 0 0;" id="desglose-cajas-cerradas">0 cj</h3>
+                        </div>
+                    </div>
+                    
+                    <!-- 🔍 Buscador Autocomplete de Artículos Búnker (Multi-Vinculación) -->
+                    <div id="seccion-buscar-bunker" style="margin-bottom: 18px; position: relative;">
+                        <label for="buscar-articulo-bunker" style="font-size: 0.78rem; font-weight: 700; color: #475569; display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            🔌 Vincular con Artículos Búnker (Depósito / Venta)
+                        </label>
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <span style="position: absolute; left: 10px; color: #94a3b8; font-size: 1rem;">🔍</span>
+                            <input type="text" id="buscar-articulo-bunker" placeholder="Buscar por código o descripción en el catálogo Búnker..." 
+                                   style="width: 100%; padding: 8px 12px 8px 32px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s;" 
+                                   onfocus="this.style.borderColor='#10b981'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.15)';" 
+                                   onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none';" 
+                                   autocomplete="off">
+                            <div id="lista-resultados-bunker" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; z-index: 10100; margin-top: 4px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- 💰 Control de Costo Patrón y Valorización (HITL) -->
+                    <div id="desglose-seccion-costos" style="display: none; margin-top: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(22, 163, 74, 0.05);">
+                        <h4 style="font-size: 0.95rem; font-weight: 700; color: #166534; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
+                            💰 Control de Costo Patrón (HITL) y Valorización
+                        </h4>
+                        <div id="desglose-costos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                            <!-- Referencia A: Último Lote -->
+                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Último Lote</span>
+                                <span id="costo-ref-lote" style="font-size: 1rem; font-weight: bold; color: #334155; margin: 4px 0; border-bottom: 1px dashed #cbd5e1; cursor: pointer;" title="Clic para Autofill">N/A</span>
+                                <button type="button" id="btn-fijar-lote" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #10b981; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('lote')">Fijar</button>
+                            </div>
+                            <!-- Referencia B: Reposición Maestra -->
+                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Reposición</span>
+                                <span id="costo-ref-reposicion" style="font-size: 1rem; font-weight: bold; color: #334155; margin: 4px 0; border-bottom: 1px dashed #cbd5e1; cursor: pointer;" title="Clic para Autofill">Cargando...</span>
+                                <button type="button" id="btn-fijar-reposicion" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #10b981; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('reposicion')">Fijar</button>
+                            </div>
+                            <!-- Referencia D: Costo por Fórmula Activa (Cargado dinámicamente si posee composición/Mix) -->
+                            <div id="card-costo-formula" style="display: none; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Fórmula Activa</span>
+                                <span id="costo-ref-formula" style="font-size: 1rem; font-weight: bold; color: #166534; margin: 4px 0; border-bottom: 1px dashed #cbd5e1; cursor: pointer;" title="Clic para Autofill">Cargando...</span>
+                                <button type="button" id="btn-fijar-formula" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #10b981; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('formula')">Fijar</button>
+                            </div>
+                            <!-- Referencia C: Ingreso Arbitrario Manual -->
+                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
+                                <span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Costo Manual</span>
+                                <div style="display: flex; align-items: center; gap: 2px; margin: 4px 0;">
+                                    <span style="font-size: 0.85rem; font-weight: bold; color: #475569;">$</span>
+                                    <input type="number" id="input-costo-manual" step="0.01" min="0" placeholder="0.00" style="width: 65px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8rem; font-weight: bold; text-align: right;">
+                                </div>
+                                <button type="button" id="btn-guardar-manual" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #3b82f6; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('manual')">💾 Guardar</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Bloque de cálculo dinámico informativo -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-radius: 6px; border: 1px solid #dcfce7; font-size: 0.9rem;">
+                            <div>
+                                <span style="color: #475569;">Costo Patrón Activo:</span>
+                                <span id="desglose-costo-patron-activo" style="font-weight: bold; color: #15803d; font-family: monospace; font-size: 0.95rem;">$ 0.00</span>
+                            </div>
+                            <div>
+                                <span style="color: #475569;">Valorización Total:</span>
+                                <span id="desglose-valorizacion-total" style="font-weight: 800; color: #166534; font-family: monospace; font-size: 1.05rem;">$ 0.00</span>
+                            </div>
                         </div>
                     </div>
 
@@ -1102,9 +1257,8 @@
             }
         }
 
-        // Función para activar tab de usuario
+        // Función para activar tab de usuario (unificado con ingredientes.js)
         async function activarTabUsuario(usuarioId) {
-
             tabActiva = `usuario-${usuarioId}`;
 
             // Actualizar encabezado de columna
@@ -1113,96 +1267,10 @@
                 columnaDinamica.textContent = 'Stock Personal';
             }
 
-            // Cargar stock del usuario
-            await cargarStockUsuario(usuarioId);
-        }
-
-        // Función para cargar stock de usuario
-        async function cargarStockUsuario(usuarioId) {
-            try {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
-
-                if (!response.ok) {
-                    throw new Error('Error al cargar stock del usuario');
-                }
-
-                const stockUsuario = await response.json();
-
-                // Renderizar tabla
-                renderizarTablaUsuario(stockUsuario);
-
-                // Limpiar filtros
-                limpiarFiltros();
-
-            } catch (error) {
-                console.error(`❌ Error al cargar stock del usuario ${usuarioId}:`, error);
-                mostrarError('No se pudo cargar el stock del usuario');
+            // Cargar stock del usuario mediante el helper global
+            if (window.cargarIngredientes) {
+                await window.cargarIngredientes(usuarioId);
             }
-        }
-
-        // Función para renderizar tabla de usuario
-        function renderizarTablaUsuario(stockUsuario) {
-            const tbody = document.getElementById('tabla-ingredientes-body');
-            if (!tbody) return;
-
-            tbody.innerHTML = '';
-
-            if (!stockUsuario || stockUsuario.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center">Este usuario no tiene stock de ingredientes</td></tr>';
-                return;
-            }
-
-            stockUsuario.forEach(item => {
-                const row = document.createElement('tr');
-
-                let tipoOrigen = 'Simple';
-                if (item.origen_mix_id !== null && item.origen_mix_id !== undefined) {
-                    tipoOrigen = 'Sobrante de Mix';
-                }
-
-                // 🔍 DEBUG: Ver qué ID tiene el item
-                const ingredienteId = item.ingrediente_id || item.id;
-
-                row.innerHTML = `
-                    <td>${item.nombre_ingrediente}</td>
-                    <td>${item.unidad_medida || '-'}</td>
-                    <td>${item.categoria || '-'}</td>
-                    <td>${parseFloat(item.stock_total).toFixed(3)}</td>
-                    <td>-</td>
-                    <td>${item.descripcion || '-'}</td>
-                    <td>${tipoOrigen}</td>
-                    <td>-</td>
-                    
-                    <td style="text-align: center;">
-                        <button class="btn-icon" 
-                                onclick="window.abrirModalAjusteDesdeTabla(null, '${item.nombre_ingrediente.replace(/'/g, "\\'")}', ${item.stock_total}, ${ingredienteId})"
-                                title="Ajuste Rápido"
-                                style="cursor:pointer; background:none; border:none; font-size:1.2em;">
-                            
-                              ✏️
-                        </button>
-                    </td>
-                `;
-
-                tbody.appendChild(row);
-            });
-        }
-
-        // Función para limpiar filtros
-        function limpiarFiltros() {
-            const containers = [
-                'filtros-categorias-container',
-                'filtros-tipo-container',
-                'filtros-stock-container',
-                'filtros-sectores-container'
-            ];
-
-            containers.forEach(containerId => {
-                const container = document.getElementById(containerId);
-                if (container) {
-                    container.innerHTML = '<p class="text-muted">Los filtros no están disponibles en la vista de usuario</p>';
-                }
-            });
         }
 
         // Función para mostrar errores

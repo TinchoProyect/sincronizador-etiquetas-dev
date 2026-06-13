@@ -1087,5 +1087,44 @@ exports.imprimirEtiquetaDobleBunker = async (req, res) => {
     }
 };
 
+exports.actualizarMargenesEnMasa = async (req, res) => {
+    try {
+        const db = req.db;
+        const { lista_id, articulo_ids, margen_ganancia, modo_iva, porcentaje_iva } = req.body;
+
+        if (!lista_id || !articulo_ids || !Array.isArray(articulo_ids) || articulo_ids.length === 0 || margen_ganancia === undefined || margen_ganancia === null) {
+            return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos o formato inválido.' });
+        }
+
+        const margenVal = parseFloat(margen_ganancia);
+        if (isNaN(margenVal)) {
+            return res.status(400).json({ success: false, error: 'El margen debe ser un valor numérico.' });
+        }
+
+        // Mapear y sanitizar parámetro impositivo opcional (modo_iva o porcentaje_iva)
+        let modoIvaMapped = 'MANTENER';
+        const inputIva = modo_iva !== undefined && modo_iva !== null ? modo_iva : porcentaje_iva;
+        if (inputIva !== undefined && inputIva !== null) {
+            const s = String(inputIva).trim().toUpperCase();
+            if (s === '100' || s === '100%' || s === 'COMPLETO') {
+                modoIvaMapped = 'COMPLETO';
+            } else if (s === '50' || s === '50%' || s === 'MEDIO') {
+                modoIvaMapped = 'MEDIO';
+            } else if (s === '0' || s === '0%' || s === 'SIN' || s === 'EXENTO') {
+                modoIvaMapped = 'SIN';
+            } else if (s === 'MANTENER' || s === 'MANTENER ACTUAL' || s === 'KEEP') {
+                modoIvaMapped = 'MANTENER';
+            }
+        }
+
+        await BunkerService.actualizarMargenesEnMasa(db, parseInt(lista_id, 10), articulo_ids, margenVal, modoIvaMapped);
+
+        res.json({ success: true, message: 'Márgenes actualizados en masa exitosamente.' });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error en actualización en masa de márgenes:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno al actualizar márgenes en masa.' });
+    }
+};
+
 console.log('✅ [BUNKER-CONTROLLER] Controlador de búnker configurado');
 

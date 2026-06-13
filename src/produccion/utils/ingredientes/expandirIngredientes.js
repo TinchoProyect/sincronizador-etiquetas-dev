@@ -77,7 +77,7 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
     // Primero verificar si es un número de artículo y obtener su ingrediente asociado
     try {
         const ingredienteQuery = `
-            SELECT i.id, i.nombre, i.unidad_medida
+            SELECT i.id, i.nombre, i.unidad_medida, COALESCE(i.es_insumo, false) as es_insumo
             FROM ingredientes i
             JOIN articulos a ON a.ingrediente_id = i.id
             WHERE a.numero = $1
@@ -92,7 +92,8 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
                 nombre: ingrediente.nombre,
                 unidad_medida: ingrediente.unidad_medida,
                 cantidad: cantidadBase,
-                es_primario: true
+                es_primario: true,
+                es_insumo: ingrediente.es_insumo
             }];
         }
     } catch (error) {
@@ -119,7 +120,8 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
                     unidad_medida,
                     sector_id,
                     (SELECT descripcion FROM sectores_ingredientes WHERE id = ingredientes.sector_id LIMIT 1) as sector_descripcion,
-                    (SELECT nombre FROM sectores_ingredientes WHERE id = ingredientes.sector_id LIMIT 1) as sector_nombre
+                    (SELECT nombre FROM sectores_ingredientes WHERE id = ingredientes.sector_id LIMIT 1) as sector_nombre,
+                    COALESCE(es_insumo, false) as es_insumo
                 FROM ingredientes
                 WHERE id = $1
             `;
@@ -138,6 +140,7 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
                 unidad_medida: row.unidad_medida,
                 cantidad: cantidadBase,
                 es_primario: true,  // Marcar como ingrediente primario
+                es_insumo: row.es_insumo,
                 origen_mix_id: origenMixId,  // Propagar origen del mix
                 sector_letra: sectorLetra // Agregar la letra del sector
             };
