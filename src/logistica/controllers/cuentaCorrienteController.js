@@ -590,7 +590,48 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
     const clienteBoxWidth = 320;
     const balanceBoxWidth = contentWidth - clienteBoxWidth - 10; // 515 - 320 - 10 = 185
     const balanceBoxX = leftColumn + clienteBoxWidth + 10; // 40 + 320 + 10 = 370
-    const boxHeight = 58;
+
+    // Configuración de columnas internas para evitar solapamientos
+    const colLeftX = leftColumn + 12;
+    const colWidthLeft = 145; // colRightX (165) - 12 - 8 (gap) = 145 pt
+    const colRightX = leftColumn + 165;
+    const colWidthRight = clienteBoxWidth - 165 - 12; // 143 pt
+
+    // Formatear valores de cliente
+    let cuitRaw = clienteObj.cuit_cuil || '';
+    let cuitFmt = cuitRaw;
+    if (cuitRaw.length === 11) {
+        cuitFmt = `${cuitRaw.substring(0, 2)}-${cuitRaw.substring(2, 10)}-${cuitRaw.substring(10)}`;
+    }
+    let lomasId = clienteObj.lomas_soft_id || '';
+    let codigoHistorico = 'S/D';
+    if (lomasId) {
+        codigoHistorico = String(parseInt(lomasId)).padStart(3, '0');
+    }
+
+    const razonSocialText = clienteObj.razon_social || 'S/D';
+    const condicionIvaText = clienteObj.condicion_iva || 'Consumidor Final';
+    const domicilioFiscalText = clienteObj.domicilio_fiscal || 'S/D';
+    const cuitText = cuitFmt || 'S/D';
+    const codigoHistoricoText = codigoHistorico;
+    const codigoClienteText = clienteObj.codigo_bunker_cliente || 'S/D';
+
+    // Medir alturas de textos para cálculo dinámico de boxHeight (usando Helvetica-Bold de forma conservadora)
+    doc.fontSize(8).font('Helvetica-Bold');
+    const hRazonSocial = doc.heightOfString(`Razón Social: ${razonSocialText}`, { width: colWidthLeft });
+    const hCondicionIva = doc.heightOfString(`Condición IVA: ${condicionIvaText}`, { width: colWidthLeft });
+    const hDomicilioFiscal = doc.heightOfString(`Domicilio Fiscal: ${domicilioFiscalText}`, { width: colWidthLeft });
+
+    const hCuit = doc.heightOfString(`CUIT: ${cuitText}`, { width: colWidthRight });
+    const hCodigoHistorico = doc.heightOfString(`Código Histórico: ${codigoHistoricoText}`, { width: colWidthRight });
+    const hCodigoCliente = doc.heightOfString(`Código Cliente: ${codigoClienteText}`, { width: colWidthRight });
+
+    // Altura total de datos (con 3pt de espaciado entre filas)
+    const totalLeftHeight = hRazonSocial + 3 + hCondicionIva + 3 + hDomicilioFiscal;
+    const totalRightHeight = hCuit + 3 + hCodigoHistorico + 3 + hCodigoCliente;
+    
+    // Altura final del box con padding (18pt arriba, 5pt abajo)
+    const boxHeight = Math.max(58, 18 + Math.max(totalLeftHeight, totalRightHeight) + 5);
 
     // A. Recuadro Datos Cliente
     doc.save();
@@ -600,40 +641,34 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
     
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#8e4785').text('DATOS FORMALES DEL CLIENTE', leftColumn + 12, yPos + 6);
     
-    const clientY = yPos + 18;
-    doc.fontSize(8.5).font('Helvetica').fillColor('#1e293b');
+    // Renderizado Columna Izquierda con saltos de línea dinámicos (8pt)
+    let yLeft = yPos + 18;
+    doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
     
-    // Columna Izquierda (Cliente)
-    doc.font('Helvetica-Bold').text('Razón Social: ', leftColumn + 12, clientY, { continued: true })
-       .font('Helvetica').text(clienteObj.razon_social || 'S/D');
-       
-    doc.font('Helvetica-Bold').text('Condición IVA: ', leftColumn + 12, clientY + 12, { continued: true })
-       .font('Helvetica').text(clienteObj.condicion_iva || 'Consumidor Final');
-
-    doc.font('Helvetica-Bold').text('Domicilio Fiscal: ', leftColumn + 12, clientY + 24, { continued: true })
-       .font('Helvetica').text(clienteObj.domicilio_fiscal || 'S/D');
-       
-    // Columna Derecha (Cliente)
-    const colRightX = leftColumn + 165;
+    doc.font('Helvetica-Bold').text('Razón Social: ', colLeftX, yLeft, { continued: true, width: colWidthLeft })
+       .font('Helvetica').text(razonSocialText);
+    yLeft += hRazonSocial + 3;
     
-    let cuitRaw = clienteObj.cuit_cuil || '';
-    let cuitFmt = cuitRaw;
-    if (cuitRaw.length === 11) {
-        cuitFmt = `${cuitRaw.substring(0, 2)}-${cuitRaw.substring(2, 10)}-${cuitRaw.substring(10)}`;
-    }
-    doc.font('Helvetica-Bold').text('CUIT: ', colRightX, clientY, { continued: true })
-       .font('Helvetica').text(cuitFmt || 'S/D');
+    doc.font('Helvetica-Bold').text('Condición IVA: ', colLeftX, yLeft, { continued: true, width: colWidthLeft })
+       .font('Helvetica').text(condicionIvaText);
+    yLeft += hCondicionIva + 3;
+    
+    doc.font('Helvetica-Bold').text('Domicilio Fiscal: ', colLeftX, yLeft, { continued: true, width: colWidthLeft })
+       .font('Helvetica').text(domicilioFiscalText);
        
-    let lomasId = clienteObj.lomas_soft_id || '';
-    let codigoHistorico = 'S/D';
-    if (lomasId) {
-        codigoHistorico = String(parseInt(lomasId)).padStart(3, '0');
-    }
-    doc.font('Helvetica-Bold').text('Código Histórico: ', colRightX, clientY + 12, { continued: true })
-       .font('Helvetica').text(codigoHistorico);
-       
-    doc.font('Helvetica-Bold').text('Código Cliente: ', colRightX, clientY + 24, { continued: true })
-       .font('Helvetica').text(clienteObj.codigo_bunker_cliente || 'S/D');
+    // Renderizado Columna Derecha con saltos de línea dinámicos (8pt)
+    let yRight = yPos + 18;
+    
+    doc.font('Helvetica-Bold').text('CUIT: ', colRightX, yRight, { continued: true, width: colWidthRight })
+       .font('Helvetica').text(cuitText);
+    yRight += hCuit + 3;
+    
+    doc.font('Helvetica-Bold').text('Código Histórico: ', colRightX, yRight, { continued: true, width: colWidthRight })
+       .font('Helvetica').text(codigoHistoricoText);
+    yRight += hCodigoHistorico + 3;
+    
+    doc.font('Helvetica-Bold').text('Código Cliente: ', colRightX, yRight, { continued: true, width: colWidthRight })
+       .font('Helvetica').text(codigoClienteText);
 
     // B. Recuadro Balance Consolidado (Encabezado)
     doc.save();
@@ -656,7 +691,7 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
     doc.fontSize(8).font('Helvetica-Bold').fillColor(labelColor).text(labelDeuda.toUpperCase(), balanceBoxX + 12, yPos + 18);
     doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(`BALANCE: ${formatCurrency(finalSaldo)}`, balanceBoxX + 12, yPos + 30);
 
-    yPos += 72;
+    yPos += boxHeight + 14;
     
     // 3. TABLA DE MOVIMIENTOS (Encabezados de grilla)
     doc.save();
