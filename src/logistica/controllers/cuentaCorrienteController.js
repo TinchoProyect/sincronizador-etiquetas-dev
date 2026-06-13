@@ -776,7 +776,10 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
                     console.error('Error al parsear metadatos del recibo en PDF:', e);
                 }
             }
-            desc = `Recibo de Pago - ${tipoPago}`;
+            desc = `Rec/Pago - ${tipoPago}`;
+        } else {
+            desc = desc.replace(/^Factura Puesto 007 - Nro\s+/, 'Fac ');
+            desc = desc.replace(/^Cobro Banc?[ao]rio?\s+/, 'Bco ');
         }
         if (desc.length > 38) {
             desc = desc.substring(0, 35) + '...';

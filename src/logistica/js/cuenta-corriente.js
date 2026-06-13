@@ -247,9 +247,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const meta = typeof mov.metadatos === 'string' ? JSON.parse(mov.metadatos) : mov.metadatos;
                         if (meta && meta.tipo_pago) {
                             if (meta.tipo_pago === 'Efectivo') {
-                                descText = 'Recibo de Pago - Efectivo';
+                                descText = 'Rec/Pago - Efectivo';
                             } else if (meta.tipo_pago === 'Transferencia') {
-                                descText = `Recibo de Pago - Transferencia (${meta.banco_origen || ''} - Ref: ${meta.nro_operacion || ''})`;
+                                descText = `Rec/Pago - Transferencia (${meta.banco_origen || ''} - Ref: ${meta.nro_operacion || ''})`;
                             } else if (meta.tipo_pago === 'Cheque') {
                                 let fechaVtoFmt = '';
                                 if (meta.fecha_vencimiento) {
@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         fechaVtoFmt = meta.fecha_vencimiento;
                                     }
                                 }
-                                descText = `Recibo de Pago - Cheque (Nro: ${meta.nro_cheque || ''} - Banco: ${meta.banco_emisor || ''} - Vto: ${fechaVtoFmt})`;
+                                descText = `Rec/Pago - Cheque (Nro: ${meta.nro_cheque || ''} - Banco: ${meta.banco_emisor || ''} - Vto: ${fechaVtoFmt})`;
                             }
                             
                             if (mov.descripcion && mov.descripcion.trim()) {
@@ -269,8 +269,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {
                         console.error('Error al parsear metadatos en renderizado:', e);
+                        descText = 'Rec/Pago - Recibo';
                     }
+                } else {
+                    descText = 'Rec/Pago - Recibo';
                 }
+            } else {
+                descText = descText.replace(/^Factura Puesto 007 - Nro\s+/, 'Fac ');
+                descText = descText.replace(/^Cobro Banc?[ao]rio?\s+/, 'Bco ');
             }
 
             tr.innerHTML = `
