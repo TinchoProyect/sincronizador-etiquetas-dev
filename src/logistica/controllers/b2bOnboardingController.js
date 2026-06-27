@@ -46,7 +46,7 @@ function verificarCoincidenciaTelefono(rawContactos, numeroIngresado) {
  */
 exports.invitarCliente = async (req, res) => {
     try {
-        const { cliente_id, canal, destino } = req.body;
+        const { cliente_id, canal, destino, mensajeTexto } = req.body;
         if (!cliente_id) {
             return res.status(400).json({ success: false, error: 'Datos incompletos', message: 'El ID de cliente es obligatorio.' });
         }
@@ -135,6 +135,20 @@ exports.invitarCliente = async (req, res) => {
         
         if (canalSeleccionado === 'email') {
             console.log(`✉️ [B2B-ONBOARDING] Despachando mensaje de invitación por Email a: ${emailDestino}`);
+            
+            // Usar el texto editado o fallback con reemplazo de placeholder
+            let textoCuerpo = mensajeTexto ? mensajeTexto.trim() : '';
+            if (textoCuerpo) {
+                if (textoCuerpo.includes('[Enlace_Al_Portal]')) {
+                    textoCuerpo = textoCuerpo.replace(/\[Enlace_Al_Portal\]/g, linkOnboarding);
+                } else {
+                    textoCuerpo = textoCuerpo + `\n\nEntrá acá: ${linkOnboarding}`;
+                }
+            } else {
+                textoCuerpo = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+            }
+            const formattedHtmlBody = textoCuerpo.replace(/\n/g, '<br/>');
+
             const emailService = require('../../facturacion/services/emailService');
             await emailService.enviarEmail({
                 to: emailDestino,
@@ -146,10 +160,7 @@ exports.invitarCliente = async (req, res) => {
                         </div>
                         <p style="font-size: 16px; line-height: 1.6; margin-bottom: 16px; color: #334155;">¡Hola, <strong>${cliente.razon_social}</strong>!</p>
                         <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
-                            Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo.
-                        </p>
-                        <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
-                            Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente botón:
+                            ${formattedHtmlBody}
                         </p>
                         <div style="text-align: center; margin-bottom: 30px;">
                             <a href="${linkOnboarding}" style="background-color: #8e4785; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 15px;">Activar Cuenta</a>
@@ -162,8 +173,17 @@ exports.invitarCliente = async (req, res) => {
                 `
             });
         } else {
-            // Plantilla solicitada por ticket
-            const mensajeTexto = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+            // Usar el texto editado o fallback con reemplazo de placeholder
+            let textoFinal = mensajeTexto ? mensajeTexto.trim() : '';
+            if (textoFinal) {
+                if (textoFinal.includes('[Enlace_Al_Portal]')) {
+                    textoFinal = textoFinal.replace(/\[Enlace_Al_Portal\]/g, linkOnboarding);
+                } else {
+                    textoFinal = textoFinal + `\n\nEntrá acá: ${linkOnboarding}`;
+                }
+            } else {
+                textoFinal = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+            }
 
             console.log(`📱 [B2B-ONBOARDING] Despachando mensaje de invitación por WhatsApp a: ${whatsappDestino}`);
             
@@ -172,7 +192,7 @@ exports.invitarCliente = async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     destinatarios: whatsappDestino,
-                    mensajeTexto: mensajeTexto
+                    mensajeTexto: textoFinal
                 })
             });
 

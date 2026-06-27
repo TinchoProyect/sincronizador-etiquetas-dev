@@ -26,6 +26,17 @@ export default function App() {
 
   const [path, setPath] = useState(getRoutePath());
 
+  // PWA beforeinstallprompt listener
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      window.deferredPrompt = e;
+      console.log('📌 [B2B-PORTAL] Evento beforeinstallprompt capturado y guardado en window.deferredPrompt');
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
   // Sync route status with history buttons (back/forward)
   useEffect(() => {
     const handlePopState = () => {

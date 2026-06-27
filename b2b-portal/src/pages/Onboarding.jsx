@@ -7,9 +7,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005
 
 export default function Onboarding({ onNavigate }) {
   const [token, setToken] = useState('');
-  const [validating, setValidating] = useState(true);
+  const [validating, setValidating] = useState(false);
   const [isValid, setIsValid] = useState(false);
   const [clientData, setClientData] = useState(null);
+  const [step, setStep] = useState(1); // Paso 1: Validar código, Paso 2: Datos y Contraseña
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +40,7 @@ export default function Onboarding({ onNavigate }) {
     setEmail(current);
   };
 
-  // Leer token de URL en el montaje
+  // Leer token de la URL en el montaje
   useEffect(() => {
     let urlToken = null;
     const params = new URLSearchParams(window.location.search);
@@ -51,34 +52,19 @@ export default function Onboarding({ onNavigate }) {
       urlToken = hashParams.get('token');
     }
     
-    if (!urlToken) {
-      setValidating(false);
-      setIsValid(false);
-      Swal.fire({
-        title: 'Token Ausente',
-        text: 'No se especificó un token de activación en el enlace.',
-        icon: 'error',
-        confirmButtonText: 'Ir a Activación',
-        confirmButtonColor: 'var(--accent)',
-        background: 'hsl(222, 47%, 11%)',
-        color: 'var(--text-primary)',
-      }).then(() => {
-        onNavigate('/activar');
-      });
-      return;
+    if (urlToken) {
+      setToken(urlToken);
     }
-
-    setToken(urlToken);
-    validarTokenInvitacion(urlToken);
   }, []);
 
   const validarTokenInvitacion = async (tokenParaValidar) => {
+    setValidating(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/validar-token?token=${tokenParaValidar}`);
       const resJson = await response.json();
 
       if (!response.ok || !resJson.success) {
-        throw new Error(resJson.message || 'El enlace de invitación no es válido o ha expirado.');
+        throw new Error(resJson.message || 'El código de activación no es válido o ha expirado.');
       }
 
       setClientData(resJson.data);
@@ -101,20 +87,20 @@ export default function Onboarding({ onNavigate }) {
         }
       }
       setIsValid(true);
+      setStep(2); // Avanzar al paso de contraseña
 
     } catch (err) {
       console.error('Error validando token:', err.message);
       Swal.fire({
-        title: 'Enlace Inválido',
+        title: 'Código Inválido',
         text: err.message,
         icon: 'error',
-        confirmButtonText: 'Obtener nuevo código',
+        confirmButtonText: 'Entendido',
         confirmButtonColor: 'var(--accent)',
         background: 'hsl(222, 47%, 11%)',
         color: 'var(--text-primary)',
-      }).then(() => {
-        onNavigate('/activar');
       });
+      setIsValid(false);
     } finally {
       setValidating(false);
     }
@@ -195,49 +181,113 @@ export default function Onboarding({ onNavigate }) {
         throw new Error(resJson.message || 'Ocurrió un error al registrar la cuenta comercial.');
       }
 
-      // Guardar en localStorage por si acaso se requiera manual en algún momento (Opción B)
       localStorage.setItem('prefilled_email', email.trim());
 
-      // Logueo Directo (Opción A): Intentamos iniciar sesión automáticamente en Supabase Auth
+      // Autologin en Supabase Auth
       console.log('☁️  [Onboarding] Autologin iniciado...');
+      let loginSuccess = false;
       try {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password,
         });
         if (authError) throw authError;
-
-        Swal.fire({
-          title: '¡Cuenta Activada!',
-          text: 'Su cuenta ha sido activada y se ha iniciado sesión de forma automática.',
-          icon: 'success',
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 3000,
-          background: 'hsl(222, 47%, 11%)',
-          color: 'var(--text-primary)',
-          iconColor: 'var(--success)',
-        });
-        
-        onNavigate('/');
-        return; // Éxito completo con autologin
+        loginSuccess = true;
       } catch (authErr) {
-        console.warn('⚠️  Autologin falló, redirigiendo a login manual:', authErr.message);
+        console.warn('⚠️ Autologin falló, redirigiendo a login manual:', authErr.message);
       }
 
-      // Fallback si falla autologin
-      Swal.fire({
-        title: '¡Activación Exitosa!',
-        text: 'Su cuenta ha sido vinculada correctamente. Ingrese su contraseña para acceder.',
-        icon: 'success',
-        confirmButtonText: 'Ingresar al Portal',
-        confirmButtonColor: 'var(--accent)',
-        background: 'hsl(222, 47%, 11%)',
-        color: 'var(--text-primary)',
-      }).then(() => {
+      // Detectar si el dispositivo es un iPhone / iPad (iOS Safari)
+      const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+      if (loginSuccess) {
+        if (isiOS) {
+          // Guía manual premium de instalación para iOS/Safari
+          await Swal.fire({
+            title: '¡Bienvenido a LAMDA!',
+            html: `
+              <div style="text-align: left; font-size: 14px; line-height: 1.6; color: var(--text-primary); font-family: sans-serif;">
+                <p style="margin-top: 0; margin-bottom: 12px;">Tu cuenta ha sido activada y se inició sesión automáticamente.</p>
+                <div style="background: rgba(142, 71, 133, 0.15); padding: 12px; border-radius: 8px; border-left: 4px solid var(--accent); margin-bottom: 12px;">
+                  <p style="font-weight: bold; color: var(--accent); margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
+                    📲 Acceso Directo en tu iPhone
+                  </p>
+                  <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">
+                    Para abrir el portal al instante como una aplicación:
+                  </p>
+                  <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; color: var(--text-primary);">
+                    <li style="margin-bottom: 4px;">Tocá el botón <strong>Compartir</strong> 📤 en Safari.</li>
+                    <li>Elegí la opción <strong>"Agregar a inicio"</strong> ➕.</li>
+                  </ol>
+                </div>
+              </div>
+            `,
+            icon: 'success',
+            confirmButtonText: 'Entrar al Portal',
+            confirmButtonColor: 'var(--accent)',
+            background: 'hsl(222, 47%, 11%)',
+            color: 'var(--text-primary)',
+            iconColor: 'var(--success)'
+          });
+        } else if (window.deferredPrompt) {
+          // Promoción de instalación automatizada para Android/PC (bypasseando fricciones)
+          const promptResult = await Swal.fire({
+            title: '¡Bienvenido a LAMDA!',
+            html: `
+              <div style="text-align: left; font-size: 14px; line-height: 1.6; color: var(--text-primary); font-family: sans-serif;">
+                <p style="margin-top: 0; margin-bottom: 12px;">Tu cuenta ha sido activada y se inició sesión automáticamente.</p>
+                <p style="font-weight: 600; color: var(--accent); margin-bottom: 6px;">📲 ¿Querés crear un acceso directo en tu celular?</p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Esto instalará el portal de LAMDA en tu pantalla de inicio para un acceso 100% directo y sin demoras.</p>
+              </div>
+            `,
+            icon: 'success',
+            showCancelButton: true,
+            confirmButtonText: '📲 Crear Acceso Directo',
+            cancelButtonText: 'Ahora no',
+            confirmButtonColor: 'var(--accent)',
+            cancelButtonColor: '#64748b',
+            background: 'hsl(222, 47%, 11%)',
+            color: 'var(--text-primary)',
+            iconColor: 'var(--success)'
+          });
+
+          if (promptResult.isConfirmed && window.deferredPrompt) {
+            const promptEvent = window.deferredPrompt;
+            promptEvent.prompt();
+            const { outcome } = await promptEvent.userChoice;
+            console.log(`[PWA] Install prompt outcome: ${outcome}`);
+            window.deferredPrompt = null;
+          }
+        } else {
+          // Fallback Toast
+          Swal.fire({
+            title: '¡Cuenta Activada!',
+            text: 'Su cuenta ha sido activada y se ha iniciado sesión automáticamente.',
+            icon: 'success',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            background: 'hsl(222, 47%, 11%)',
+            color: 'var(--text-primary)',
+            iconColor: 'var(--success)',
+          });
+        }
         onNavigate('/');
-      });
+      } else {
+        // Redirigir a login manual si falló autologin
+        Swal.fire({
+          title: '¡Activación Exitosa!',
+          text: 'Su cuenta ha sido vinculada correctamente. Ingrese con su correo y contraseña.',
+          icon: 'success',
+          confirmButtonText: 'Ingresar al Portal',
+          confirmButtonColor: 'var(--accent)',
+          background: 'hsl(222, 47%, 11%)',
+          color: 'var(--text-primary)',
+        }).then(() => {
+          onNavigate('/');
+        });
+      }
 
     } catch (err) {
       console.error('Error al registrar usuario:', err.message);
@@ -260,16 +310,100 @@ export default function Onboarding({ onNavigate }) {
       <div className="login-wrapper">
         <div className="login-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
           <Loader2 className="spinner" style={{ width: '40px', height: '40px', color: 'var(--accent)', marginBottom: '1.5rem' }} />
-          <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Validando enlace de activación...</p>
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>Procesando código de activación...</p>
         </div>
       </div>
     );
   }
 
-  if (!isValid) {
-    return null; // Redirige en useEffect
+  // Paso 1: Introducir / Confirmar el Código de Acceso
+  if (step === 1) {
+    return (
+      <div className="login-wrapper">
+        <div className="login-card">
+          <div className="login-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '2.5rem' }}>
+            <img src="/logo_LAMDA.png" alt="LAMDA Logo" style={{ maxHeight: '54px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>activación de cuenta</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+              <h3 style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontWeight: '700' }}>
+                Ingresá tu Código de Acceso
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Introducí la clave de invitación recibida por WhatsApp o Correo para comenzar la activación.
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="token-input">Código de Activación</label>
+              <div className="input-wrapper">
+                <Lock className="input-icon" size={18} />
+                <input
+                  id="token-input"
+                  type="text"
+                  required
+                  className="form-input"
+                  placeholder="Ingrese el código de seguridad"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  style={{ textTransform: 'none' }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!token.trim()) {
+                  Swal.fire({
+                    title: 'Código Requerido',
+                    text: 'Por favor, ingrese el código de activación.',
+                    icon: 'warning',
+                    confirmButtonColor: 'var(--accent)',
+                    background: 'hsl(222, 47%, 11%)',
+                    color: 'var(--text-primary)',
+                  });
+                  return;
+                }
+                validarTokenInvitacion(token.trim());
+              }}
+              className="btn-primary"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.5rem' }}
+            >
+              <span>Validar Código y Continuar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigate('/')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginTop: '0.5rem',
+                textDecoration: 'none'
+              }}
+              onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
+              onMouseOut={(e) => e.target.style.color = 'var(--text-secondary)'}
+            >
+              <ArrowLeft size={16} />
+              Cancelar y volver
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
+  // Paso 2: Completar Datos y Crear Contraseña
   const isReactivation = !!(clientData && clientData.email_portal);
 
   return (
@@ -277,8 +411,8 @@ export default function Onboarding({ onNavigate }) {
       <div className="login-card">
         {/* Encabezado */}
         <div className="login-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem' }}>
-          <img src="/logo_LAMDA.png" alt="LAMDA Logo" style={{ height: '54px', width: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>{isReactivation ? 'restablecer contraseña b2b' : 'configurar credenciales b2b'}</span>
+          <img src="/logo_LAMDA.png" alt="LAMDA Logo" style={{ maxHeight: '54px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>{isReactivation ? 'restablecer contraseña' : 'configurar credenciales'}</span>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -346,7 +480,7 @@ export default function Onboarding({ onNavigate }) {
             )}
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
               {isReactivation 
-                ? 'Este correo ya está registrado y se utilizará para ingresar al portal B2B.'
+                ? 'Este correo ya está registrado y se utilizará para ingresar al portal.'
                 : 'Este correo será su usuario para iniciar sesión en el portal.'}
             </span>
           </div>
@@ -411,8 +545,13 @@ export default function Onboarding({ onNavigate }) {
             </div>
           )}
 
+          {/* Advertencia Humana de Encriptación y Seguridad */}
+          <div style={{ background: 'rgba(142, 71, 133, 0.1)', borderLeft: '4px solid var(--accent)', padding: '12px', borderRadius: '6px', fontSize: '0.85rem', lineHeight: '1.45', color: 'var(--text-primary)', fontFamily: 'sans-serif' }}>
+            Establecé tu contraseña. Esta clave es absolutamente personal, está encriptada de forma segura y nadie (ni en LAMDA, ni en ninguna parte del mundo) puede verla.
+          </div>
+
           <div className="form-group">
-            <label className="form-label" htmlFor="password">Crea tu nueva contraseña para el portal</label>
+            <label className="form-label" htmlFor="password">Crea tu contraseña para el portal</label>
             <div className="input-wrapper" style={{ position: 'relative' }}>
               <Lock className="input-icon" size={18} />
               <input
@@ -451,7 +590,7 @@ export default function Onboarding({ onNavigate }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="confirmPassword">Repite tu nueva contraseña</label>
+            <label className="form-label" htmlFor="confirmPassword">Repite tu contraseña</label>
             <div className="input-wrapper" style={{ position: 'relative' }}>
               <Lock className="input-icon" size={18} />
               <input
@@ -501,13 +640,13 @@ export default function Onboarding({ onNavigate }) {
                 <span>{isReactivation ? 'Actualizando...' : 'Registrando...'}</span>
               </>
             ) : (
-              <span>{isReactivation ? 'Actualizar mi Cuenta B2B' : 'Activar mi Cuenta B2B'}</span>
+              <span>{isReactivation ? 'Actualizar mi Cuenta B2B' : 'Activar mi Cuenta'}</span>
             )}
           </button>
 
           <button
             type="button"
-            onClick={() => onNavigate('/')}
+            onClick={() => setStep(1)}
             style={{
               background: 'transparent',
               border: 'none',
@@ -525,7 +664,7 @@ export default function Onboarding({ onNavigate }) {
             onMouseOut={(e) => e.target.style.color = 'var(--text-secondary)'}
           >
             <ArrowLeft size={16} />
-            Cancelar y volver
+            Volver al código
           </button>
         </form>
       </div>
