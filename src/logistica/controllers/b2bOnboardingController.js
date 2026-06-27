@@ -46,13 +46,14 @@ function verificarCoincidenciaTelefono(rawContactos, numeroIngresado) {
  */
 exports.invitarCliente = async (req, res) => {
     try {
-        const { cliente_id } = req.body;
+        const { cliente_id, canal, destino } = req.body;
         if (!cliente_id) {
             return res.status(400).json({ success: false, error: 'Datos incompletos', message: 'El ID de cliente es obligatorio.' });
         }
         const clienteIdStr = String(cliente_id).trim();
+        const canalSeleccionado = (canal === 'email') ? 'email' : 'whatsapp';
 
-        console.log(`📡 [B2B-ONBOARDING] Generando invitación para cliente: ${clienteIdStr}`);
+        console.log(`📡 [B2B-ONBOARDING] Generando invitación para cliente: ${clienteIdStr} | Canal: ${canalSeleccionado}`);
 
         // 1. Buscar cliente en la base de datos local
         const queryCliente = `
@@ -70,33 +71,50 @@ exports.invitarCliente = async (req, res) => {
 
         const cliente = resCliente.rows[0];
 
-        // 2. Extraer destino de WhatsApp
+        // 2. Extraer destino según el canal
         let whatsappDestino = '';
-        if (cliente.whatsapp_facturas && cliente.whatsapp_facturas.trim()) {
-            const val = cliente.whatsapp_facturas.trim();
-            if (val.startsWith('[')) {
-                try {
-                    const contactos = JSON.parse(val);
-                    // Buscar default para resúmenes
-                    const defaultContact = contactos.find(c => c.default_resumen === true) || 
-                                           contactos.find(c => c.default === true) || 
-                                           contactos[0];
-                    if (defaultContact) whatsappDestino = defaultContact.numero;
-                } catch (e) {
-                    whatsappDestino = val;
-                }
-            } else {
-                whatsappDestino = val;
-            }
-        }
+        let emailDestino = '';
 
-        whatsappDestino = sanitizarNumero(whatsappDestino);
-        if (!whatsappDestino) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Sin contacto móvil', 
-                message: 'El cliente no posee un número de WhatsApp configurado en su ficha. Agréguelo en el panel de clientes.' 
-            });
+        if (canalSeleccionado === 'email') {
+            emailDestino = String(destino || cliente.email_portal || '').trim();
+            if (!emailDestino) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Sin contacto email', 
+                    message: 'La dirección de correo electrónico es obligatoria para enviar la invitación por Email.' 
+                });
+            }
+        } else {
+            // Canal WhatsApp
+            if (destino) {
+                whatsappDestino = sanitizarNumero(destino);
+            } else {
+                if (cliente.whatsapp_facturas && cliente.whatsapp_facturas.trim()) {
+                    const val = cliente.whatsapp_facturas.trim();
+                    if (val.startsWith('[')) {
+                        try {
+                            const contactos = JSON.parse(val);
+                            const defaultContact = contactos.find(c => c.default_resumen === true) || 
+                                                   contactos.find(c => c.default === true) || 
+                                                   contactos[0];
+                            if (defaultContact) whatsappDestino = defaultContact.numero;
+                        } catch (e) {
+                            whatsappDestino = val;
+                        }
+                    } else {
+                        whatsappDestino = val;
+                    }
+                }
+            }
+
+            whatsappDestino = sanitizarNumero(whatsappDestino);
+            if (!whatsappDestino) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Sin contacto móvil', 
+                    message: 'El cliente no posee un número de WhatsApp configurado en su ficha.' 
+                });
+            }
         }
 
         // 3. Generar token de 64 caracteres y expiración de 72 horas
@@ -110,40 +128,65 @@ exports.invitarCliente = async (req, res) => {
             [token, cliente.codigo_bunker_cliente, expiresAt]
         );
 
-        // 5. Enviar mensaje de invitación por WhatsApp
+        // 5. Enviar mensaje de invitación por el canal seleccionado
         const portalUrl = process.env.B2B_PORTAL_URL || 'http://localhost:5173';
         const linkOnboarding = `${portalUrl}/onboarding?token=${token}`;
         
-        const mensajeTexto = `📦 *Portal B2B LAMDA*
-¡Hola, ${cliente.razon_social}! Le invitamos a activar su cuenta de autogestión para seguir sus pedidos y saldos en tiempo real.
+        if (canalSeleccionado === 'email') {
+            console.log(`✉️ [B2B-ONBOARDING] Despachando mensaje de invitación por Email a: ${emailDestino}`);
+            const emailService = require('../../facturacion/services/emailService');
+            await emailService.enviarEmail({
+                to: emailDestino,
+                subject: 'Invitación al Portal B2B - LAMDA',
+                htmlBody: `
+                    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e293b; background-color: #ffffff;">
+                        <div style="text-align: center; margin-bottom: 24px; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px;">
+                            <h2 style="color: #8e4785; margin: 0; font-size: 24px; font-weight: bold;">Portal B2B LAMDA</h2>
+                        </div>
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 16px; color: #334155;">¡Hola, <strong>${cliente.razon_social}</strong>!</p>
+                        <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
+                            Le damos la bienvenida al nuevo Portal B2B de LAMDA. Desde hoy puede autogestionar sus pedidos, consultar su cuenta corriente en tiempo real y descargar todos sus comprobantes de forma rápida y 100% online desde cualquier dispositivo.
+                        </p>
+                        <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
+                            Para ingresar por primera vez y activar su cuenta, haga clic en el siguiente botón:
+                        </p>
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <a href="${linkOnboarding}" style="background-color: #8e4785; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 15px;">Activar Cuenta</a>
+                        </div>
+                        <p style="font-size: 13px; color: #64748b; margin-bottom: 0; border-top: 1px solid #f1f5f9; padding-top: 16px; line-height: 1.5;">
+                            Este enlace tiene una validez de 72 horas. Si el botón no funciona, copie y pegue el siguiente enlace en su navegador: <br/>
+                            <a href="${linkOnboarding}" style="color: #8e4785; word-break: break-all;">${linkOnboarding}</a>
+                        </p>
+                    </div>
+                `
+            });
+        } else {
+            const mensajeTexto = `¡Hola! Te damos la bienvenida al nuevo Portal B2B de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
 
-Configure su correo de acceso y contraseña aquí:
-🔗 ${linkOnboarding}
+            console.log(`📱 [B2B-ONBOARDING] Despachando mensaje de invitación por WhatsApp a: ${whatsappDestino}`);
+            
+            const responseWp = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    destinatarios: whatsappDestino,
+                    mensajeTexto: mensajeTexto
+                })
+            });
 
-_Este enlace tiene una validez de 72 horas._`;
-
-        console.log(`📱 [B2B-ONBOARDING] Despachando mensaje de invitación a: ${whatsappDestino}`);
-        
-        const responseWp = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                destinatarios: whatsappDestino,
-                mensajeTexto: mensajeTexto
-            })
-        });
-
-        const resJson = await responseWp.json();
-        if (!responseWp.ok || !resJson.success) {
-            throw new Error(resJson.error || 'Falla del microservicio de mensajería (3004).');
+            const resJson = await responseWp.json();
+            if (!responseWp.ok || !resJson.success) {
+                throw new Error(resJson.error || 'Falla del microservicio de mensajería (3004).');
+            }
         }
 
         res.json({
             success: true,
-            message: 'Invitación generada y despachada por WhatsApp con éxito.',
+            message: `Invitación generada y despachada por ${canalSeleccionado === 'email' ? 'Email' : 'WhatsApp'} con éxito.`,
             data: {
                 cliente_id: cliente.codigo_bunker_cliente,
-                whatsapp: whatsappDestino,
+                canal: canalSeleccionado,
+                destino: canalSeleccionado === 'email' ? emailDestino : whatsappDestino,
                 expires_at: expiresAt,
                 token: token,
                 link: linkOnboarding

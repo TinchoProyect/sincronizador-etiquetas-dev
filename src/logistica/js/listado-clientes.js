@@ -1138,6 +1138,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
+            const wpAttr = encodeURIComponent(JSON.stringify(contactosWp));
+            const mailAttr = encodeURIComponent(JSON.stringify(contactosEmail));
+
             tr.innerHTML = `
                 <td style="text-align: center; vertical-align: middle;">${cellSeleccion}</td>
                 <td class="col-codigo" style="font-weight: 700; color: #475569;">${cliente.codigo_bunker_cliente}</td>
@@ -1149,7 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="col-acciones" style="text-align: center;">
                     <div style="display: flex; gap: 6px; justify-content: center;">
                         <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
-                        <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Invitar al Portal B2B (WhatsApp)">✉️</button>
+                        <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
                         <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
                         <button class="btn-action btn-delete" data-id="${cliente.id}" title="Eliminar cliente permanentemente">🗑️</button>
@@ -1173,23 +1176,111 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.addEventListener('click', async (e) => {
                 const codigo = btn.getAttribute('data-codigo');
                 const nombre = btn.getAttribute('data-nombre');
+                
+                let wpContacts = [];
+                let emailContacts = [];
+                try {
+                    wpContacts = JSON.parse(decodeURIComponent(btn.getAttribute('data-whatsapp') || '[]'));
+                    emailContacts = JSON.parse(decodeURIComponent(btn.getAttribute('data-emails') || '[]'));
+                } catch (err) {
+                    console.error('Error parseando contactos en invitacion:', err);
+                }
+
+                if (wpContacts.length === 0 && emailContacts.length === 0) {
+                    Swal.fire({
+                        title: 'Sin Contactos',
+                        text: 'El cliente no posee contactos de WhatsApp o Email configurados en su ficha. Por favor, edítela primero.',
+                        icon: 'warning',
+                        confirmButtonColor: 'var(--purple-primary)'
+                    });
+                    return;
+                }
+
+                const hasWp = wpContacts.length > 0;
+                const hasEmail = emailContacts.length > 0;
+                
+                const defaultCanal = hasWp ? 'whatsapp' : 'email';
+
+                const selectorHtml = `
+                    <div style="text-align: left; font-family: 'Outfit', sans-serif; font-size: 15px; color: #334155;">
+                        <p style="margin: 0 0 10px 0; font-weight: 600; color: #475569;">1. Seleccione el Canal de Envío:</p>
+                        <div style="display: flex; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+                                <input type="radio" name="canal-invite" value="whatsapp" ${defaultCanal === 'whatsapp' ? 'checked' : ''} ${!hasWp ? 'disabled' : ''} style="accent-color: var(--purple-primary); width: 16px; height: 16px;">
+                                <span style="${!hasWp ? 'opacity: 0.5;' : ''}">📱 WhatsApp</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+                                <input type="radio" name="canal-invite" value="email" ${defaultCanal === 'email' ? 'checked' : ''} ${!hasEmail ? 'disabled' : ''} style="accent-color: var(--purple-primary); width: 16px; height: 16px;">
+                                <span style="${!hasEmail ? 'opacity: 0.5;' : ''}">✉️ Email / Correo</span>
+                            </label>
+                        </div>
+                        <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">2. Seleccione el Destinatario:</p>
+                        <select id="select-destinatario-invite" class="swal2-select" style="width: 100%; margin: 0; box-sizing: border-box; display: block; height: 38px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; color: #1e293b; background: #ffffff; padding: 0 8px;"></select>
+                    </div>
+                `;
 
                 const result = await Swal.fire({
-                    title: 'Invitar al Portal B2B',
-                    text: `¿Desea generar la invitación para el cliente ${nombre} (${codigo}) y abrir WhatsApp para enviársela?`,
-                    icon: 'question',
+                    title: `<span style="color: var(--purple-primary); font-weight: 700; font-family: 'Outfit'; font-size: 1.35rem;">Invitar al Portal B2B</span>`,
+                    html: selectorHtml,
                     showCancelButton: true,
                     confirmButtonColor: 'var(--purple-primary)',
                     cancelButtonColor: '#64748b',
-                    confirmButtonText: 'Sí, generar e invitar',
-                    cancelButtonText: 'Cancelar'
+                    confirmButtonText: '🚀 Enviar Invitación',
+                    cancelButtonText: 'Cancelar',
+                    didOpen: () => {
+                        const selectEl = document.getElementById('select-destinatario-invite');
+                        const radios = document.getElementsByName('canal-invite');
+                        
+                        const updateSelect = (canal) => {
+                            selectEl.innerHTML = '';
+                            if (canal === 'whatsapp') {
+                                wpContacts.forEach(c => {
+                                    const opt = document.createElement('option');
+                                    opt.value = c.numero;
+                                    opt.text = `[WhatsApp] ${c.numero} ${c.nombre ? `(${c.nombre} - ${c.cargo || 'Contacto'})` : ''}`;
+                                    selectEl.appendChild(opt);
+                                });
+                            } else {
+                                emailContacts.forEach(e => {
+                                    const opt = document.createElement('option');
+                                    opt.value = e.email;
+                                    opt.text = `[Email] ${e.email} ${e.nombre ? `(${e.nombre} - ${e.cargo || 'Contacto'})` : ''}`;
+                                    selectEl.appendChild(opt);
+                                });
+                            }
+                        };
+
+                        // Initial populating
+                        updateSelect(defaultCanal);
+
+                        // Event listeners for radio switch
+                        radios.forEach(radio => {
+                            radio.addEventListener('change', (e) => {
+                                updateSelect(e.target.value);
+                            });
+                        });
+                    },
+                    preConfirm: () => {
+                        const checkedRadio = document.querySelector('input[name="canal-invite"]:checked');
+                        if (!checkedRadio) {
+                            Swal.showValidationMessage('Debe seleccionar un canal de envío');
+                            return false;
+                        }
+                        const canal = checkedRadio.value;
+                        const destino = document.getElementById('select-destinatario-invite').value;
+                        if (!destino) {
+                            Swal.showValidationMessage('Debe seleccionar un destinatario válido');
+                            return false;
+                        }
+                        return { canal, destino };
+                    }
                 });
 
                 if (!result.isConfirmed) return;
 
                 Swal.fire({
-                    title: 'Generando Invitación...',
-                    html: 'Por favor, espere...',
+                    title: 'Enviando Invitación...',
+                    html: 'Procesando el envío en segundo plano...',
                     allowOutsideClick: false,
                     didOpen: () => {
                         Swal.showLoading();
@@ -1202,36 +1293,30 @@ document.addEventListener('DOMContentLoaded', () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ cliente_id: codigo })
+                        body: JSON.stringify({ 
+                            cliente_id: codigo,
+                            canal: result.value.canal,
+                            destino: result.value.destino
+                        })
                     });
 
                     const resData = await response.json();
                     if (!response.ok || !resData.success) {
-                        throw new Error(resData.message || 'Error al generar la invitación.');
+                        throw new Error(resData.message || 'Error al enviar la invitación.');
                     }
 
-                    const linkOnboarding = resData.data.link;
-                    const whatsappDestino = resData.data.whatsapp;
-
-                    // Plantilla solicitada por ticket
-                    const mensajeTexto = `¡Hola! Te damos la bienvenida al nuevo Portal B2B de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
-
-                    const textEncoded = encodeURIComponent(mensajeTexto);
-                    
                     Swal.fire({
-                        title: 'Invitación Generada',
-                        text: 'La invitación se registró con éxito en la base de datos. Se abrirá WhatsApp para despachar el mensaje.',
+                        title: '¡Invitación Enviada!',
+                        text: `La invitación al portal B2B para ${nombre} ha sido enviada con éxito por ${result.value.canal === 'email' ? 'Email' : 'WhatsApp'} a ${result.value.destino}.`,
                         icon: 'success',
                         confirmButtonColor: 'var(--purple-primary)'
-                    }).then(() => {
-                        window.open(`https://api.whatsapp.com/send?phone=${whatsappDestino}&text=${textEncoded}`, '_blank');
                     });
 
                 } catch (err) {
-                    console.error('Error invitando cliente:', err);
+                    console.error('Error enviando invitacion:', err);
                     Swal.fire({
-                        title: 'Error',
-                        text: err.message || 'Ocurrió un error inesperado al generar la invitación.',
+                        title: 'Error de Envío',
+                        text: err.message || 'Ocurrió un error inesperado al procesar la invitación.',
                         icon: 'error',
                         confirmButtonColor: '#ef4444'
                     });
