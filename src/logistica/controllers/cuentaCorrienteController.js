@@ -267,7 +267,17 @@ exports.enviarReporteWhatsapp = async (req, res) => {
 
         // 4. Resolver números telefónicos de WhatsApp en la ficha del cliente
         let whatsappDestinos = '';
-        if (clienteObj.whatsapp_facturas) {
+        let tieneDestinatariosBody = false;
+        if (req.body && req.body.destinatarios !== undefined) {
+            tieneDestinatariosBody = true;
+            if (Array.isArray(req.body.destinatarios)) {
+                whatsappDestinos = req.body.destinatarios.filter(n => n && String(n).trim()).join(', ');
+            } else {
+                whatsappDestinos = String(req.body.destinatarios).trim();
+            }
+        }
+
+        if (!tieneDestinatariosBody && clienteObj.whatsapp_facturas) {
             const val = clienteObj.whatsapp_facturas.trim();
             if (val.startsWith('[')) {
                 try {
@@ -283,6 +293,13 @@ exports.enviarReporteWhatsapp = async (req, res) => {
         }
 
         if (!whatsappDestinos || !whatsappDestinos.trim()) {
+            if (tieneDestinatariosBody) {
+                return res.json({
+                    success: true,
+                    message: 'No se seleccionaron destinatarios de WhatsApp. Envío omitido.',
+                    data: { destinatarios: '' }
+                });
+            }
             return res.status(400).json({
                 success: false,
                 error: 'Sin contacto',
@@ -303,14 +320,30 @@ exports.enviarReporteWhatsapp = async (req, res) => {
 
         try {
             console.log(`📱 [CC-CONTROLLER] Invocando microservicio de WhatsApp para enviar reporte a: ${whatsappDestinos}`);
+            
+            const ultimoMov = movimientosOrdenados[0];
+            const esChequeReciente = ultimoMov && (
+                ultimoMov.tipo_comprobante === 'COBRO_CHEQUE' ||
+                obtenerMedioPago(ultimoMov) === 'Cheque'
+            );
+
+            let filename = `cuenta_corriente_${clienteObj.codigo_bunker_cliente}.pdf`;
+            const transferInfo = '\n\n*Datos para transferencia:*\n*Banco:* Galicia\n*DU:* 24892174\n*Cuenta (CTA):* 4007844-1 373-4\n*CBU:* 0070373230004007844141\n*CUIL:* 23248921749\n*ALIAS:* LAMDA.SER.MARTIN';
+            let mensajeTexto = `Hola! Te enviamos adjunto el extracto de tu Cuenta Corriente emitido por LAMDA. Saludos y muchas gracias.` + transferInfo;
+
+            if (esChequeReciente) {
+                filename = `comprobante_cheque_${clienteObj.codigo_bunker_cliente}.pdf`;
+                mensajeTexto = `Hola! Te enviamos adjunto el comprobante de validación/entrega de Cheque en tu Cuenta Corriente. Saludos y muchas gracias.` + transferInfo;
+            }
+
             const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-documento', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     destinatarios: whatsappDestinos,
                     pdfBase64: pdfBase64,
-                    filename: `cuenta_corriente_${clienteObj.codigo_bunker_cliente}.pdf`,
-                    mensajeTexto: `Hola! Te enviamos adjunto el extracto de tu Cuenta Corriente emitido por LAMDA. Saludos y muchas gracias.`
+                    filename,
+                    mensajeTexto
                 }),
                 signal: controller.signal
             });
@@ -362,26 +395,184 @@ exports.enviarReporteWhatsapp = async (req, res) => {
     }
 };
 
+exports.enviarReporteEmail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const detallado = req.query.detallado === 'true' || req.body.detallado === 'true';
+        
+        console.log(`📧 [CC-CONTROLLER] Petición de envío de Email para CC ID: ${id} (Detallado: ${detallado})`);
+
+        // 1. Obtener datos de la cuenta corriente
+        const ccRes = await pool.query(
+            'SELECT * FROM public.factura_cuentas_corrientes WHERE id = $1',
+            [parseInt(id)]
+        );
+        if (ccRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Cuenta corriente no encontrada.' });
+        }
+        const cuentaObj = ccRes.rows[0];
+        
+        // 2. Obtener movimientos
+        const movimientos = await CuentaCorrienteService.obtenerMovimientos(parseInt(id));
+        const movimientosOrdenados = [...movimientos].sort((a, b) => {
+            const dateDiff = new Date(b.fecha_movimiento) - new Date(a.fecha_movimiento);
+            if (dateDiff !== 0) return dateDiff;
+            return b.id - a.id;
+        });
+
+        if (detallado) {
+            await cargarDetallesMovimientos(movimientosOrdenados);
+        }
+        
+        // 3. Obtener cliente
+        const clienteObj = await ClientesBunkerModel.obtenerPorCodigoBunker(cuentaObj.codigo_bunker_cliente);
+        if (!clienteObj) {
+            return res.status(404).json({ success: false, error: 'Cliente no encontrado.' });
+        }
+
+        // 4. Resolver destinatarios de Correo Electrónico
+        let emailDestinos = '';
+        let tieneDestinatariosBody = false;
+        if (req.body && req.body.destinatarios !== undefined) {
+            tieneDestinatariosBody = true;
+            if (Array.isArray(req.body.destinatarios)) {
+                emailDestinos = req.body.destinatarios.filter(n => n && String(n).trim()).join(', ');
+            } else {
+                emailDestinos = String(req.body.destinatarios).trim();
+            }
+        }
+
+        if (!tieneDestinatariosBody && clienteObj.email_facturas) {
+            const val = clienteObj.email_facturas.trim();
+            if (val.startsWith('[')) {
+                try {
+                    const contactos = JSON.parse(val);
+                    emailDestinos = contactos.map(c => c.email).filter(e => e && e.trim()).join(', ');
+                } catch (err) {
+                    console.error('❌ [CC-CONTROLLER] Error parseando JSON de contactos email:', err.message);
+                    emailDestinos = val;
+                }
+            } else {
+                emailDestinos = val;
+            }
+        }
+
+        if (!emailDestinos || !emailDestinos.trim()) {
+            if (tieneDestinatariosBody) {
+                return res.json({
+                    success: true,
+                    message: 'No se seleccionaron destinatarios de correo. Envío omitido.',
+                    data: { destinatarios: '' }
+                });
+            }
+            return res.status(400).json({
+                success: false,
+                error: 'Sin contacto de correo',
+                message: 'El cliente no tiene direcciones de correo configuradas en su ficha. Edite los contactos en el panel de clientes.'
+            });
+        }
+
+        // 5. Generar PDF en Buffer
+        console.log(`📄 [CC-CONTROLLER] Generando PDF de cuenta corriente en memoria para ${clienteObj.codigo_bunker_cliente}...`);
+        const pdfBuffer = await generarPdfBuffer(cuentaObj, movimientosOrdenados, clienteObj, detallado);
+        const pdfBase64 = pdfBuffer.toString('base64');
+
+        // 6. Enviar al microservicio en Facturación con timeout controlado de 10 segundos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+        }, 10000);
+
+        try {
+            console.log(`📧 [CC-CONTROLLER] Invocando microservicio de Correo para enviar reporte a: ${emailDestinos}`);
+            
+            const fechaCorte = new Date().toLocaleDateString('es-AR');
+            const saldoActual = parseFloat(cuentaObj.saldo || 0);
+
+            const response = await fetch('http://localhost:3004/facturacion/email/cuentas-corrientes/enviar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cliente: {
+                        cliente_nombre: clienteObj.cliente_nombre,
+                        razon_social: clienteObj.razon_social,
+                        codigo_bunker_cliente: clienteObj.codigo_bunker_cliente
+                    },
+                    destinatarios: emailDestinos,
+                    pdfBase64: pdfBase64,
+                    fechaCorte,
+                    saldoActual
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                return res.status(response.status || 502).json({
+                    success: false,
+                    error: data.error || 'Falla del microservicio de correo',
+                    message: data.message || 'No se pudo enviar el reporte por Correo Electrónico.'
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'El reporte de cuenta corriente ha sido enviado por Correo Electrónico con éxito.',
+                data: data.data
+            });
+
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            console.error('❌ [CC-CONTROLLER] Error en llamada interna de Correo:', fetchError.message);
+            
+            if (fetchError.name === 'AbortError') {
+                return res.status(504).json({
+                    success: false,
+                    error: 'Servicio de correo no disponible',
+                    message: 'La petición de envío de correo excedió el tiempo límite de espera (timeout de 10s).'
+                });
+            }
+
+            res.status(503).json({
+                success: false,
+                error: 'Servicio de correo no disponible',
+                message: 'El servicio de correo electrónico no se encuentra disponible. Verifique que el módulo de Facturación esté corriendo.'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ [CC-CONTROLLER] Error general en enviarReporteEmail:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor',
+            message: error.message
+        });
+    }
+};
+
 /**
- * Listar presupuestos pendientes del Puesto 007 para incorporar
+ * Listar presupuestos pendientes de Lomasoft para incorporar
  */
-exports.listarPresupuestosPendientes007 = async (req, res) => {
+exports.listarPresupuestosPendientesLomasoft = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id) {
             return res.status(400).json({ success: false, error: 'El ID de la cuenta corriente es obligatorio.' });
         }
-        console.log(`🔍 [CC-CONTROLLER] Buscando presupuestos 007 pendientes para CC ID: ${id}`);
-        const presupuestos = await CuentaCorrienteService.obtenerPresupuestosPendientes007(parseInt(id));
+        console.log(`🔍 [CC-CONTROLLER] Buscando presupuestos Lomasoft pendientes para CC ID: ${id}`);
+        const presupuestos = await CuentaCorrienteService.obtenerPresupuestosPendientesLomasoft(parseInt(id));
         res.json({ success: true, data: presupuestos });
     } catch (error) {
-        console.error('❌ [CC-CONTROLLER] Error al listar presupuestos 007:', error);
+        console.error('❌ [CC-CONTROLLER] Error al listar presupuestos Lomasoft:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
 
 /**
- * Incorporar manualmente un presupuesto del Puesto 007
+ * Incorporar manualmente un presupuesto de Lomasoft
  */
 exports.incorporarPresupuesto = async (req, res) => {
     try {
@@ -396,7 +587,7 @@ exports.incorporarPresupuesto = async (req, res) => {
         }
 
         console.log(`➕ [CC-CONTROLLER] Incorporando presupuesto ${presupuesto_id} en CC ID: ${id}`);
-        const movimiento = await CuentaCorrienteService.incorporarPresupuesto007(parseInt(id), parseInt(presupuesto_id));
+        const movimiento = await CuentaCorrienteService.incorporarPresupuestoLomasoft(parseInt(id), parseInt(presupuesto_id));
         res.status(201).json({ success: true, data: movimiento, message: 'Presupuesto incorporado con éxito.' });
     } catch (error) {
         console.error('❌ [CC-CONTROLLER] Error al incorporar presupuesto:', error);
@@ -435,12 +626,12 @@ exports.eliminarMovimiento = async (req, res) => {
  */
 async function cargarDetallesMovimientos(movimientos) {
     for (const mov of movimientos) {
-        if (mov.tipo_comprobante === 'FACTURA') {
+        if (mov.tipo_comprobante === 'FACTURA' || (mov.tipo_comprobante && mov.tipo_comprobante.startsWith('FACTURA_'))) {
             if (mov.comprobante_id) {
                 try {
                     // 1. Obtener items
                     const itemsRes = await pool.query(
-                        'SELECT descripcion, qty, p_unit, imp_neto FROM public.factura_factura_items WHERE factura_id = $1 ORDER BY orden ASC',
+                        'SELECT descripcion, qty, p_unit, imp_neto, imp_iva FROM public.factura_factura_items WHERE factura_id = $1 ORDER BY orden ASC',
                         [mov.comprobante_id]
                     );
                     mov.items = itemsRes.rows;
@@ -480,9 +671,16 @@ async function cargarDetallesMovimientos(movimientos) {
                 }
             } else if (mov.presupuesto_id) {
                 try {
-                    // 1. Obtener items desde presupuestos_detalles
+                    // 1. Obtener items desde presupuestos_detalles resolviendo la descripción del artículo
                     const itemsRes = await pool.query(
-                        'SELECT articulo AS descripcion, cantidad AS qty, precio1 AS p_unit, (cantidad * precio1) AS imp_neto FROM public.presupuestos_detalles WHERE id_presupuesto = $1',
+                        `SELECT 
+                            COALESCE(a.nombre, pd.articulo) AS descripcion, 
+                            pd.cantidad AS qty, 
+                            pd.precio1 AS p_unit, 
+                            (pd.cantidad * pd.precio1) AS imp_neto 
+                         FROM public.presupuestos_detalles pd
+                         LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
+                         WHERE pd.id_presupuesto = $1`,
                         [mov.presupuesto_id]
                     );
                     mov.items = itemsRes.rows;
@@ -680,16 +878,18 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
     let labelDeuda = 'Al día / Sin deuda';
     let labelColor = '#047857';
     if (finalSaldo > 0) {
-        labelDeuda = 'Saldo Deudor ⚠️';
+        labelDeuda = 'Saldo Deudor';
         labelColor = '#b91c1c';
     } else if (finalSaldo < 0) {
-        labelDeuda = 'Saldo a Favor 💰';
+        labelDeuda = 'Saldo a Favor';
         labelColor = '#047857';
     }
 
     doc.fontSize(7).font('Helvetica-Bold').fillColor('#8e4785').text('ESTADO CONSOLIDADO', balanceBoxX + 12, yPos + 6);
     doc.fontSize(8).font('Helvetica-Bold').fillColor(labelColor).text(labelDeuda.toUpperCase(), balanceBoxX + 12, yPos + 18);
-    doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(`BALANCE: ${formatCurrency(finalSaldo)}`, balanceBoxX + 12, yPos + 30);
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785');
+    doc.text('BALANCE: ', balanceBoxX + 12, yPos + 30, { continued: true });
+    doc.fillColor(labelColor).text(formatCurrency(finalSaldo));
 
     yPos += boxHeight + 14;
     
@@ -710,8 +910,51 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
     
     doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
     
+    let lastMonthYear = null;
+    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
     for (let index = 0; index < movimientos.length; index++) {
         const mov = movimientos[index];
+        
+        // Detectar cambio de mes/año
+        const dateObj = new Date(mov.fecha_movimiento);
+        const currentMonthYear = `${dateObj.getMonth()}-${dateObj.getFullYear()}`;
+        
+        if (currentMonthYear !== lastMonthYear) {
+            const nombreMes = meses[dateObj.getMonth()];
+            const textHeader = `${nombreMes} ${dateObj.getFullYear()}`;
+            
+            // Control de salto de página antes del encabezado mensual
+            if (yPos > doc.page.height - 85 - 20) {
+                doc.addPage();
+                yPos = 40;
+                
+                doc.save();
+                doc.rect(leftColumn, yPos, contentWidth, 14).fillColor('#8e4785').fill();
+                doc.restore();
+                
+                doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+                doc.text('Fecha', leftColumn + 8, yPos + 3);
+                doc.text('Concepto / Descripción', leftColumn + 80, yPos + 3);
+                doc.text('Tipo', leftColumn + 270, yPos + 3);
+                doc.text('Débito (+)', leftColumn + 330, yPos + 3, { width: 60, align: 'right' });
+                doc.text('Crédito (-)', leftColumn + 395, yPos + 3, { width: 60, align: 'right' });
+                doc.text('Saldo Acum.', leftColumn + 460, yPos + 3, { width: 50, align: 'right' });
+                yPos += 19;
+            }
+            
+            // Dibujar banda del separador mensual estilizado (fondo gris/atenuado con bordes suaves)
+            doc.save();
+            doc.rect(leftColumn, yPos, contentWidth, 15).fillColor('#f1f5f9').fill(); // Gris azulado atenuado #f1f5f9
+            doc.restore();
+            
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#8e4785');
+            doc.text(textHeader.toUpperCase(), leftColumn + 8, yPos + 3.5);
+            
+            yPos += 19;
+            lastMonthYear = currentMonthYear;
+        }
+
         const fechaStr = formatDate(mov.fecha_movimiento);
         
         const esDebito = mov.tipo_movimiento === 'DEBITO';
@@ -726,20 +969,40 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
             tipoComp = 'Factura';
         } else if (mov.tipo_comprobante === 'NOTA_CREDITO') {
             tipoComp = 'N. Crédito';
-        } else if (mov.tipo_comprobante === 'RECIBO_PAGO') {
-            tipoComp = 'Pago';
         } else if (mov.tipo_comprobante === 'AJUSTE_MANUAL') {
             tipoComp = 'Ajuste';
         } else if (mov.tipo_comprobante === 'AJUSTE_AUTOMATICO') {
             tipoComp = 'Ajuste Aut.';
+        } else {
+            const medioPago = obtenerMedioPago(mov);
+            if (medioPago) {
+                tipoComp = medioPago;
+            }
         }
+
+        let desc = mov.descripcion || 'Sin concepto';
+        desc = desc.replace(/\r/g, '').trim();
+        if (mov.tipo_comprobante === 'RECIBO_PAGO') {
+            const medioPago = obtenerMedioPago(mov) || 'Efectivo';
+            desc = `Rec/Pago - ${medioPago}`;
+        } else {
+            desc = desc.replace(/^Factura Puesto 007 - Nro\s+/, 'Fac ');
+            desc = desc.replace(/^Cobro Banc?[ao]rio?\s+/, 'Bco ');
+            desc = desc.replace(/-\s+Concepto:\s+/i, '- cpto.: ');
+        }
+
+        // Calcular altura dinámica del renglón según el concepto
+        doc.font('Helvetica-Bold');
+        const descHeight = doc.heightOfString(desc, { width: 180 });
+        doc.font('Helvetica');
+        const rowHeight = Math.max(14, descHeight) + 2;
 
         // Calcular altura de la caja detallada si corresponde
         const esDetalladoFactura = detallado && mov.tipo_comprobante === 'FACTURA';
-        const detailedBoxHeight = esDetalladoFactura ? (45 + (mov.items ? mov.items.length * 13 : 13) + 35) : 0;
+        const detailedBoxHeight = esDetalladoFactura ? (45 + (mov.items && mov.items.length > 0 ? mov.items.length * 13 + 17 : 13) + 35) : 0;
         
         // Control de salto de página antes de renderizar la fila para mantener el bloque unido
-        if (yPos > doc.page.height - 85 - detailedBoxHeight) {
+        if (yPos > doc.page.height - 85 - detailedBoxHeight - rowHeight) {
             doc.addPage();
             yPos = 40;
             
@@ -763,28 +1026,8 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
         doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
         doc.text(fechaStr, leftColumn + 8, yPos);
         
-        let desc = mov.descripcion || 'Sin concepto';
-        if (mov.tipo_comprobante === 'RECIBO_PAGO') {
-            let tipoPago = 'Efectivo';
-            if (mov.metadatos) {
-                try {
-                    const meta = typeof mov.metadatos === 'string' ? JSON.parse(mov.metadatos) : mov.metadatos;
-                    if (meta && meta.tipo_pago) {
-                        tipoPago = meta.tipo_pago;
-                    }
-                } catch (e) {
-                    console.error('Error al parsear metadatos del recibo en PDF:', e);
-                }
-            }
-            desc = `Rec/Pago - ${tipoPago}`;
-        } else {
-            desc = desc.replace(/^Factura Puesto 007 - Nro\s+/, 'Fac ');
-            desc = desc.replace(/^Cobro Banc?[ao]rio?\s+/, 'Bco ');
-        }
-        if (desc.length > 38) {
-            desc = desc.substring(0, 35) + '...';
-        }
-        doc.font('Helvetica-Bold').text(desc, leftColumn + 80, yPos).font('Helvetica');
+        // Escribir el concepto con wrap y ancho limitado
+        doc.font('Helvetica-Bold').text(desc, leftColumn + 80, yPos, { width: 180 }).font('Helvetica');
         
         doc.text(tipoComp, leftColumn + 270, yPos);
         
@@ -807,7 +1050,7 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
         doc.fillColor('#1e293b');
         doc.text(formatCurrency(saldoRes), leftColumn + 430, yPos, { width: 80, align: 'right' });
         
-        yPos += 14;
+        yPos += rowHeight;
 
         // Renderizar caja detallada si corresponde
         if (esDetalladoFactura) {
@@ -829,13 +1072,36 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
             boxYPos += 22;
             doc.font('Helvetica').fontSize(7).fillColor('#334155');
             if (mov.items && mov.items.length > 0) {
+                let totalQty = 0;
+                let totalSubtotal = 0;
                 mov.items.forEach(item => {
+                    const pUnit = (parseInt(mov.pto_vta) === 90) 
+                        ? ((parseFloat(item.imp_neto) + parseFloat(item.imp_iva || 0)) / (parseFloat(item.qty) || 1))
+                        : parseFloat(item.p_unit);
+                    const subtotal = (parseInt(mov.pto_vta) === 90)
+                        ? (parseFloat(item.imp_neto) + parseFloat(item.imp_iva || 0))
+                        : parseFloat(item.imp_neto);
+
+                    totalQty += parseFloat(item.qty) || 0;
+                    totalSubtotal += subtotal;
+
                     doc.text(item.descripcion, leftColumn + 25, boxYPos);
                     doc.text(parseFloat(item.qty).toFixed(0), leftColumn + 260, boxYPos, { width: 30, align: 'right' });
-                    doc.text(formatCurrency(parseFloat(item.p_unit)), leftColumn + 300, boxYPos, { width: 60, align: 'right' });
-                    doc.text(formatCurrency(parseFloat(item.imp_neto)), leftColumn + 370, boxYPos, { width: 60, align: 'right' });
+                    doc.text(formatCurrency(pUnit), leftColumn + 300, boxYPos, { width: 60, align: 'right' });
+                    doc.text(formatCurrency(subtotal), leftColumn + 370, boxYPos, { width: 60, align: 'right' });
                     boxYPos += 13;
                 });
+
+                // Línea de totales
+                doc.moveTo(leftColumn + 25, boxYPos).lineTo(leftColumn + 430, boxYPos).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+                boxYPos += 4;
+
+                // Escribir totales
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#334155');
+                doc.text('TOTAL:', leftColumn + 25, boxYPos);
+                doc.text(totalQty.toFixed(0), leftColumn + 260, boxYPos, { width: 30, align: 'right' });
+                doc.text(formatCurrency(totalSubtotal), leftColumn + 370, boxYPos, { width: 60, align: 'right' });
+                boxYPos += 13;
             } else {
                 doc.text('No hay ítems registrados para esta factura.', leftColumn + 25, boxYPos);
                 boxYPos += 13;
@@ -901,6 +1167,45 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
            .stroke();
     }
     
+    // 4. FILA DE SALDO DE APERTURA (Inicio de la cuenta)
+    const saldoApertura = parseFloat(cuentaObj.saldo_apertura) || 0;
+    
+    if (yPos > doc.page.height - 85 - 18) {
+        doc.addPage();
+        yPos = 40;
+        
+        doc.save();
+        doc.rect(leftColumn, yPos, contentWidth, 14).fillColor('#8e4785').fill();
+        doc.restore();
+        
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+        doc.text('Fecha', leftColumn + 8, yPos + 3);
+        doc.text('Concepto / Descripción', leftColumn + 80, yPos + 3);
+        doc.text('Tipo', leftColumn + 270, yPos + 3);
+        doc.text('Débito (+)', leftColumn + 330, yPos + 3, { width: 60, align: 'right' });
+        doc.text('Crédito (-)', leftColumn + 395, yPos + 3, { width: 60, align: 'right' });
+        doc.text('Saldo Acum.', leftColumn + 460, yPos + 3, { width: 50, align: 'right' });
+        yPos += 19;
+    }
+    
+    doc.fontSize(8).font('Helvetica').fillColor('#64748b');
+    const fechaApertura = '-';
+    doc.text(fechaApertura, leftColumn + 8, yPos);
+    
+    doc.font('Helvetica-Oblique').text('Saldo de Apertura / Ajuste Inicial', leftColumn + 80, yPos).font('Helvetica');
+    doc.text('Apertura', leftColumn + 270, yPos);
+    doc.text('-', leftColumn + 310, yPos, { width: 80, align: 'right' });
+    doc.text('-', leftColumn + 375, yPos, { width: 80, align: 'right' });
+    doc.text(formatCurrency(saldoApertura), leftColumn + 430, yPos, { width: 80, align: 'right' });
+    
+    yPos += 18;
+    
+    doc.moveTo(leftColumn, yPos - 2)
+       .lineTo(pageWidth - pageMargin, yPos - 2)
+       .strokeColor('#e2e8f0')
+       .lineWidth(0.5)
+       .stroke();
+    
     yPos += 10;
     
     // 5. PIE DE PÁGINA INFORMATIVO
@@ -933,4 +1238,342 @@ const formatDate = (date) => {
         month: '2-digit',
         year: 'numeric'
     });
+};
+
+/**
+ * Determina el medio de pago real basado en los metadatos, tipo de comprobante y descripción
+ */
+const obtenerMedioPago = (mov) => {
+    if (mov.tipo_comprobante === 'COBRO_CHEQUE') {
+        return 'Cheque';
+    }
+    if (mov.metadatos) {
+        try {
+            const meta = typeof mov.metadatos === 'string' ? JSON.parse(mov.metadatos) : mov.metadatos;
+            if (meta && meta.tipo_pago) {
+                const tp = String(meta.tipo_pago).trim();
+                if (['Transferencia', 'Cheque', 'Efectivo'].some(m => m.toLowerCase() === tp.toLowerCase())) {
+                    return tp.charAt(0).toUpperCase() + tp.slice(1).toLowerCase();
+                }
+                return tp;
+            }
+        } catch (e) {
+            console.error('Error parseando metadatos para medio de pago:', e);
+        }
+    }
+
+    if (mov.tipo_comprobante === 'COBRO_BANCARIO' || mov.tipo_comprobante === 'PAGO_BANCARIO') {
+        return 'Transferencia';
+    }
+
+    const desc = (mov.descripcion || '').toLowerCase();
+    if (desc.includes('transferencia') || desc.includes('banco') || desc.includes('galicia') || desc.includes('bco') || desc.includes('cbu') || desc.includes('alias')) {
+        return 'Transferencia';
+    }
+    if (desc.includes('cheque') || desc.includes('chq')) {
+        return 'Cheque';
+    }
+    if (desc.includes('efectivo') || desc.includes('contado') || desc.includes('caja')) {
+        return 'Efectivo';
+    }
+
+    if (mov.tipo_comprobante === 'RECIBO_PAGO') {
+        return 'Efectivo';
+    }
+
+    return null;
+};
+
+/**
+ * Actualiza el saldo de apertura (ajuste inicial) y recalcula los saldos de la cuenta
+ */
+exports.actualizarSaldoApertura = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { saldo_apertura } = req.body;
+
+        if (!id) {
+            return res.status(400).json({ success: false, error: 'El ID de la cuenta corriente es obligatorio.' });
+        }
+
+        const saldoAperturaNum = parseFloat(saldo_apertura);
+        if (isNaN(saldoAperturaNum)) {
+            return res.status(400).json({ success: false, error: 'El saldo de apertura debe ser un número válido.' });
+        }
+
+        console.log(`📝 [CC-CONTROLLER] Actualizando saldo de apertura para CC ID: ${id} a $${saldoAperturaNum}`);
+        
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // 1. Actualizar saldo_apertura
+            await client.query(
+                `UPDATE public.factura_cuentas_corrientes 
+                 SET saldo_apertura = $1 
+                 WHERE id = $2`,
+                [saldoAperturaNum, id]
+            );
+
+            // 2. Recalcular saldos de la cuenta
+            await CuentaCorrienteService.recalcularSaldos(id, client);
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        // Obtener cuenta actualizada
+        const ccRes = await pool.query(
+            `SELECT id, codigo_bunker_cliente, nombre_cuenta, moneda, saldo, saldo_apertura, estado, creada_en, actualizada_en 
+             FROM public.factura_cuentas_corrientes 
+             WHERE id = $1`,
+            [id]
+        );
+
+        res.json({
+            success: true,
+            data: ccRes.rows[0],
+            message: 'Saldo de apertura actualizado y movimientos recalculados con éxito.'
+        });
+    } catch (error) {
+        console.error(`❌ [CC-CONTROLLER] Error al actualizar saldo de apertura para CC ID ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: 'Error al actualizar el saldo de apertura.' });
+    }
+};
+
+/**
+ * Generar comprobante PDF individual de un movimiento (Factura/Nota de Crédito/Recibo)
+ * GET /api/logistica/bunker/cuentas-corrientes/movimientos/:movimientoId/pdf
+ */
+exports.generarComprobantePdf = async (req, res) => {
+    try {
+        const { movimientoId } = req.params;
+        console.log(`📄 [CC-CONTROLLER] Petición de generación de PDF para movimiento ID: ${movimientoId}`);
+
+        // 1. Buscar el movimiento en la base de datos
+        const queryMov = `
+            SELECT m.*, cc.codigo_bunker_cliente, bc.razon_social, bc.cuit_cuil AS cuit 
+            FROM public.factura_cuenta_corriente_movimientos m
+            JOIN public.factura_cuentas_corrientes cc ON m.cuenta_corriente_id = cc.id
+            LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = cc.codigo_bunker_cliente
+            WHERE m.id = $1
+        `;
+        const resMov = await pool.query(queryMov, [parseInt(movimientoId)]);
+
+        if (resMov.rows.length === 0) {
+            return res.status(404).send('Movimiento no encontrado.');
+        }
+
+        const mov = resMov.rows[0];
+
+        // 2. Determinar si es un comprobante de facturación (FC, NC, ND) o de pago (RC)
+        const isFactura = ['FACTURA', 'FACTURA_A', 'NOTA_CREDITO', 'NOTA_DEBITO'].includes(mov.tipo_comprobante);
+
+        if (isFactura && mov.comprobante_id) {
+            // Es una factura o nota de crédito/débito. Llamamos al microservicio de facturación para obtener el PDF
+            console.log(`🔄 [CC-CONTROLLER] Reenviando solicitud de PDF para Factura ID: ${mov.comprobante_id} al módulo de Facturación...`);
+            try {
+                const response = await fetch(`http://localhost:3004/facturacion/facturas/${mov.comprobante_id}/pdf`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="comprobante_${mov.numero_comprobante || mov.id}.pdf"`);
+                return res.send(buffer);
+            } catch (err) {
+                console.error(`❌ [CC-CONTROLLER] Error al obtener PDF de facturación para ID ${mov.comprobante_id}:`, err.message);
+                return res.status(502).send('Error al comunicarse con el módulo de Facturación para generar el PDF.');
+            }
+        } else {
+            // Es un recibo de pago o cobro (RECIBO_PAGO, COBRO_BANCARIO, COBRO_CHEQUE, AJUSTE_MANUAL, AJUSTE_AUTOMATICO, etc.)
+            console.log(`📄 [CC-CONTROLLER] Generando recibo PDF en caliente para Movimiento ID: ${mov.id}`);
+            
+            const doc = new PDFDocument({
+                size: 'A4',
+                margins: { top: 40, bottom: 25, left: 40, right: 40 },
+                info: {
+                    Title: `Recibo de Pago - ${mov.numero_comprobante || mov.id}`,
+                    Author: 'LAMDA'
+                }
+            });
+
+            const fechaArchivo = new Date(mov.fecha_movimiento).toISOString().split('T')[0].replace(/-/g, '');
+            const filename = `recibo-${mov.id}-${fechaArchivo}.pdf`;
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            
+            doc.pipe(res);
+
+            // === DIBUJAR CONTENIDO DEL RECIBO ===
+            const pageWidth = doc.page.width;
+            const leftColumn = 40;
+            const contentWidth = pageWidth - 80;
+
+            // 1. Cargar Logo
+            const logoPath = path.join(__dirname, '../../facturacion/img/logo_LAMDA_grande.png');
+            let hasLogo = false;
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, leftColumn, 40, { width: 90 });
+                hasLogo = true;
+            }
+
+            // Datos de la empresa debajo del logo
+            let companyY = 40 + (hasLogo ? 38 : 0);
+            doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
+            doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+            doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
+            doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+
+            // Letra R en recuadro para Recibo/Comprobante de Pago
+            const boxWidth = 32;
+            const boxHeight = 32;
+            const boxX = (pageWidth / 2) - (boxWidth / 2);
+            const boxY = 40;
+            doc.save();
+            doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#8e4785').fill();
+            doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('R', boxX, boxY + 6, { width: boxWidth, align: 'center' });
+            doc.restore();
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('COMPROBANTE', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+
+            // Línea divisoria vertical
+            doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
+               .lineTo(pageWidth / 2, 40 + 82)
+               .strokeColor('#e2e8f0')
+               .lineWidth(1)
+               .stroke();
+
+            // Columna Derecha - Datos del Comprobante
+            let rightY = 40;
+            const esAjuste = ['AJUSTE_MANUAL', 'AJUSTE_AUTOMATICO'].includes(mov.tipo_comprobante);
+            const labelTitulo = esAjuste ? 'COMPROBANTE DE AJUSTE' : 'RECIBO DE PAGO';
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 20, rightY);
+            
+            const nroComprobanteStr = mov.numero_comprobante ? mov.numero_comprobante : `REC-PAGO-${String(mov.id).padStart(8, '0')}`;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 20, rightY + 14);
+            
+            const fechaFmt = new Date(mov.fecha_movimiento).toLocaleDateString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+            doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
+            doc.text(`Hora registro: ${new Date(mov.fecha_movimiento).toLocaleTimeString()}`, (pageWidth / 2) + 20, rightY + 35);
+            doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 20, rightY + 44);
+
+            // Línea divisoria horizontal debajo de la cabecera
+            let lineY = Math.max(companyY + 32, rightY + 56);
+            doc.moveTo(leftColumn, lineY)
+               .lineTo(pageWidth - leftColumn, lineY)
+               .strokeColor('#8e4785')
+               .lineWidth(1.5)
+               .stroke();
+
+            // Bloque del Cliente
+            let clientY = lineY + 12;
+            doc.save();
+            doc.rect(leftColumn, clientY, contentWidth, 54).fillColor('#f8fafc').fill();
+            doc.rect(leftColumn, clientY, contentWidth, 54).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+            doc.restore();
+
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('DATOS DEL CLIENTE', leftColumn + 8, clientY + 6);
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(mov.razon_social || 'Cliente sin Razón Social', leftColumn + 8, clientY + 16);
+            doc.fontSize(8).font('Helvetica').fillColor('#475569').text(`Código Búnker: ${mov.codigo_bunker_cliente || 'N/D'}`, leftColumn + 8, clientY + 28);
+            if (mov.cuit) {
+                doc.text(`CUIT: ${mov.cuit}`, leftColumn + 8, clientY + 38);
+            }
+
+            // Datos del Recibo
+            let detailY = clientY + 70;
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#8e4785').text('Detalle del Movimiento', leftColumn, detailY);
+
+            // Concepto y Monto
+            const conceptoStr = mov.descripcion ? mov.descripcion : (esAjuste ? 'Ajuste de saldo de cuenta corriente' : 'Pago recibido - Cuenta Corriente');
+            const conceptoHeight = doc.heightOfString(conceptoStr, { width: contentWidth - 140 });
+
+            // Dibujar recuadro de detalles (altura dinámica)
+            let tableTop = detailY + 16;
+            let tableHeight = Math.max(90, 64 + conceptoHeight);
+            doc.save();
+            doc.rect(leftColumn, tableTop, contentWidth, tableHeight).fillColor('#ffffff').fill();
+            doc.rect(leftColumn, tableTop, contentWidth, tableHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+            doc.restore();
+
+            // Dibujar cabecera de la tabla
+            doc.save();
+            doc.rect(leftColumn, tableTop, contentWidth, 18).fillColor('#8e4785').fill();
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+            doc.text('Concepto / Razón del Movimiento', leftColumn + 8, tableTop + 5);
+            doc.text('Monto', pageWidth - leftColumn - 108, tableTop + 5, { width: 100, align: 'right' });
+            doc.restore();
+
+            let rowY = tableTop + 24;
+            doc.fontSize(9).font('Helvetica').fillColor('#1e293b').text(conceptoStr, leftColumn + 8, rowY, { width: contentWidth - 140 });
+
+            const formatCurrency = (val) => {
+                return new Intl.NumberFormat('es-AR', {
+                    style: 'currency',
+                    currency: 'ARS'
+                }).format(val);
+            };
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#16a34a').text(formatCurrency(mov.monto), pageWidth - leftColumn - 108, rowY, { width: 100, align: 'right' });
+
+            // Métodos de pago (si existen metadatos) con posicionamiento dinámico para evitar solapamientos
+            let metaY = rowY + Math.max(conceptoHeight + 8, 30);
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('INFORMACIÓN DE COBRO:', leftColumn + 8, metaY);
+            
+            // Determinar forma de cobro por defecto según el tipo de comprobante
+            let defaultTipo = 'Efectivo';
+            if (mov.tipo_comprobante === 'COBRO_BANCARIO') defaultTipo = 'Transferencia';
+            else if (mov.tipo_comprobante === 'COBRO_CHEQUE') defaultTipo = 'Cheque';
+            else if (mov.tipo_comprobante === 'AJUSTE_MANUAL' || mov.tipo_comprobante === 'AJUSTE_AUTOMATICO') defaultTipo = 'Ajuste de Saldo';
+
+            let metaText = `Forma de cobro: ${defaultTipo}`;
+            if (mov.metadatos) {
+                const meta = typeof mov.metadatos === 'string' ? JSON.parse(mov.metadatos) : mov.metadatos;
+                const tipoPago = meta.tipo_pago || defaultTipo;
+                metaText = `Forma de cobro: ${tipoPago}`;
+                if (meta.banco_origen) metaText += ` | Banco de origen: ${meta.banco_origen}`;
+                if (meta.nro_operacion) metaText += ` | Operación Nro: ${meta.nro_operacion}`;
+            }
+            doc.fontSize(8).font('Helvetica').fillColor('#475569').text(metaText, leftColumn + 8, metaY + 10);
+
+            // Cuadro de Totales y Saldo
+            let totalsY = tableTop + tableHeight + 16;
+            
+            // Saldo de Cuenta
+            doc.save();
+            doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).fillColor('#f1f5f9').fill();
+            doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+            doc.restore();
+
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#475569').text('SALDO DE CUENTA RESULTANTE', pageWidth - leftColumn - 172, totalsY + 8);
+            doc.fontSize(13).font('Helvetica-Bold').fillColor('#1e293b').text(formatCurrency(mov.saldo_resultante), pageWidth - leftColumn - 172, totalsY + 22, { width: 164, align: 'left' });
+
+            // Leyenda de firmas/validez
+            let footerY = totalsY + 80;
+            doc.fontSize(7).font('Helvetica-Oblique').fillColor('#64748b').text(
+                'Este documento sirve como constancia oficial de recepción de fondos en el sistema administrativo de la distribuidora. Generado desde el Portal de Clientes B2B.',
+                leftColumn,
+                footerY,
+                { align: 'center', width: contentWidth }
+            );
+
+            doc.end();
+        }
+    } catch (error) {
+        console.error(`❌ [CC-CONTROLLER] Error al generar PDF para movimiento ID ${req.params.movimientoId}:`, error);
+        res.status(500).send('Error interno al generar el PDF del comprobante.');
+    }
 };

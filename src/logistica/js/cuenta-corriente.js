@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let cuentasDelCliente = [];
     let cuentaSeleccionada = null;
     let umbralAjusteMinimo = 50.00;
+    let cliente = null;
 
 
     // --- CARGAR DATOS GENERALES DEL CLIENTE Y SUS CUENTAS ---
@@ -64,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Pintar cabecera de filiación del cliente
-            const cliente = data.cliente;
+            cliente = data.cliente;
             lblClienteNombre.textContent = cliente.cliente_nombre || 'Sin nombre';
             lblRazonSocial.textContent = cliente.razon_social || 'Sin razón social';
             
@@ -192,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderizarMovimientos(movimientos) {
+        window.currentMovimientos = movimientos;
         if (!movimientos || movimientos.length === 0) {
             cuerpoTablaMovimientos.innerHTML = `
                 <tr>
@@ -235,6 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (!mov.comprobante_id && mov.tipo_comprobante === 'FACTURA') {
                 // Factura Puesto 007 manual / presupuesto incorporado
                 badgeComprobante = '<span class="badge-comp" style="background-color: #e0f2fe; color: #0369a1; border-color: #7dd3fc;">Puesto 007 📄</span>';
+            } else if (['RECIBO_PAGO', 'COBRO_BANCARIO', 'COBRO_CHEQUE', 'AJUSTE_MANUAL'].includes(mov.tipo_comprobante)) {
+                // Recibo de pago o ajuste manual - Abre modal interactivo de previsualización
+                badgeComprobante = `<a href="javascript:void(0)" onclick="mostrarModalRecibo(${mov.id})" class="badge-comp has-link" title="Ver comprobante de pago oficial de LAMDA">🔍 Ver Comp.</a>`;
             } else if (mov.tipo_comprobante === 'AJUSTE_AUTOMATICO') {
                 badgeComprobante = '<span class="badge-comp" style="background-color: #fef3c7; color: #d97706; border-color: #fcd34d;">Auto ⚡</span>';
             }
@@ -754,8 +759,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="checkbox" id="swal-chk-detallado" ${esDetallado ? 'checked' : ''} style="cursor: pointer; width: 13px; height: 13px; accent-color: var(--purple-primary);">
                             Detallado
                         </label>
-                        <button id="swal-btn-whatsapp" class="btn-premium btn-green" style="padding: 6px 12px; font-size: 0.55em; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
-                            💬 WhatsApp
+                        <button id="swal-btn-whatsapp" class="btn-premium btn-purple" style="padding: 6px 12px; font-size: 0.55em; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);">
+                            📤 Enviar
                         </button>
                         <button id="swal-btn-download" class="btn-premium btn-blue" style="padding: 6px 12px; font-size: 0.55em; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
                             📥 Descargar
@@ -840,8 +845,277 @@ document.addEventListener('DOMContentLoaded', () => {
     async function enviarReportePorWhatsApp(detallado = false) {
         if (!cuentaSeleccionada) return;
 
+        // Recuperar y parsear contactos de WhatsApp
+        let contacts = [];
+        const rawWp = (cliente.whatsapp_facturas || '').trim();
+        if (rawWp.startsWith('[')) {
+            try {
+                contacts = JSON.parse(rawWp);
+            } catch(e) {}
+        }
+        if (!Array.isArray(contacts) || contacts.length === 0) {
+            const rawPhone = rawWp || cliente.celular || cliente.telefono || '';
+            contacts = rawPhone.split(',').map(num => ({
+                numero: num.trim(),
+                nombre: '',
+                cargo: '',
+                default_resumen: true
+            })).filter(c => c.numero);
+        }
+        contacts = contacts.map(c => ({
+            numero: c.numero ? c.numero.replace(/\D/g, '') : '',
+            nombre: c.nombre || '',
+            cargo: c.cargo || '',
+            default_resumen: c.default_resumen === true || c.default === true
+        })).filter(c => c.numero.length > 0);
+
+        // Recuperar y parsear contactos de Email
+        let emails = [];
+        const rawEmail = (cliente.email_facturas || '').trim();
+        if (rawEmail.startsWith('[')) {
+            try {
+                emails = JSON.parse(rawEmail);
+            } catch(e) {}
+        }
+        if (!Array.isArray(emails) || emails.length === 0) {
+            if (rawEmail) {
+                emails = rawEmail.split(',').map(e => ({
+                    email: e.trim(),
+                    nombre: '',
+                    cargo: '',
+                    default_factura: true
+                })).filter(e => e.email);
+            }
+        }
+        emails = emails.map(e => ({
+            email: e.email ? e.email.trim() : '',
+            nombre: e.nombre || '',
+            cargo: e.cargo || '',
+            default_factura: e.default_factura !== false
+        })).filter(e => e.email.length > 0);
+
+        if (contacts.length === 0 && emails.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Sin contactos',
+                text: 'El cliente no tiene números de WhatsApp ni direcciones de correo configuradas en su ficha.',
+                confirmButtonColor: '#6b21a8'
+            }).then(() => {
+                abrirPrevisualizador(detallado);
+            });
+            return;
+        }
+
+        // Construir contenido HTML de selección
+        let htmlContent = `
+            <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
+                    Seleccione los destinatarios para enviar el reporte de cuenta corriente:
+                </p>
+        `;
+
+        // Sección WhatsApp
+        htmlContent += `
+            <div style="margin-bottom: 15px;">
+                <div style="font-size: 12px; font-weight: 600; color: #10b981; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                    <span>📱 WhatsApp</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 120px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+        `;
+
+        if (contacts.length === 0) {
+            htmlContent += `
+                <div style="padding: 8px; font-size: 11px; color: #94a3b8; text-align: center;">
+                    No hay contactos de WhatsApp cargados para este cliente.
+                </div>
+            `;
+        } else {
+            contacts.forEach((c, index) => {
+                const isChecked = c.default_resumen === true;
+                const formattedNum = c.numero.replace(/\D/g, '');
+                let displayNum = c.numero;
+                if (formattedNum.length === 10) {
+                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
+                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
+                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
+                }
+
+                const labelText = c.nombre 
+                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                    : `Contacto #${index + 1}`;
+
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-cc-contacto-wp-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                            <div style="font-size: 11px; color: #6b7280;">📱 ${displayNum}</div>
+                        </div>
+                    </label>
+                `;
+            });
+        }
+
+        htmlContent += `
+                </div>
+            </div>
+        `;
+
+        // Sección Email
+        htmlContent += `
+            <div style="margin-bottom: 15px;">
+                <div style="font-size: 12px; font-weight: 600; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
+                    <span>📧 Correo Electrónico</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 120px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+        `;
+
+        if (emails.length === 0) {
+            htmlContent += `
+                <div style="padding: 8px; font-size: 11px; color: #94a3b8; text-align: center;">
+                    No hay contactos de correo cargados para este cliente.
+                </div>
+            `;
+        } else {
+            emails.forEach((e, index) => {
+                const isChecked = e.default_factura === true;
+                const labelText = e.nombre 
+                    ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
+                    : `Contacto #${index + 1}`;
+
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-cc-contacto-email-chk" value="${e.email}" ${isChecked ? 'checked' : ''} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                            <div style="font-size: 11px; color: #6b7280; word-break: break-all;">📧 ${e.email}</div>
+                        </div>
+                    </label>
+                `;
+            });
+        }
+
+        htmlContent += `
+                </div>
+            </div>
+        `;
+
+        // Otro número u otro correo (opcional)
+        htmlContent += `
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                        Otro número (opcional):
+                    </label>
+                    <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                        Otro correo (opcional):
+                    </label>
+                    <input type="email" id="swal-custom-email" placeholder="Ej: admin@mail.com" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                </div>
+            </div>
+        `;
+
+        if (cliente && cliente.id) {
+            htmlContent += `
+                <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 12px; color: #475569;">
+                    <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
+                    <span>Guardar selección como contactos predeterminados</span>
+                </label>
+            `;
+        }
+
+        htmlContent += `</div>`;
+
+        const { value: modalResult } = await Swal.fire({
+            title: 'Despacho de Reporte',
+            html: htmlContent,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '📤 Enviar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#7c3aed',
+            cancelButtonColor: '#6b7280',
+            preConfirm: () => {
+                const selectedWps = Array.from(document.querySelectorAll('.swal-cc-contacto-wp-chk:checked')).map(el => el.value);
+                const selectedEmails = Array.from(document.querySelectorAll('.swal-cc-contacto-email-chk:checked')).map(el => el.value);
+                const customPhone = document.getElementById('swal-custom-phone').value.trim();
+                const customEmail = document.getElementById('swal-custom-email').value.trim();
+                const saveDefaultCheckbox = document.getElementById('swal-save-default');
+                const saveDefault = saveDefaultCheckbox ? saveDefaultCheckbox.checked : false;
+
+                if (customPhone) {
+                    const cleaned = customPhone.replace(/[^\d,]/g, '');
+                    if (cleaned) {
+                        cleaned.split(',').forEach(num => {
+                            if (num.trim()) selectedWps.push(num.trim());
+                        });
+                    }
+                }
+                if (customEmail) {
+                    customEmail.split(',').forEach(em => {
+                        if (em.trim() && em.includes('@')) selectedEmails.push(em.trim());
+                    });
+                }
+
+                return {
+                    whatsapp: selectedWps,
+                    email: selectedEmails,
+                    saveDefault: saveDefault
+                };
+            }
+        });
+
+        if (!modalResult) {
+            abrirPrevisualizador(detallado);
+            return;
+        }
+
+        // Guardar por defecto si se requiere
+        if (modalResult.saveDefault && cliente && cliente.id) {
+            try {
+                const updatedWps = contacts.map(c => ({
+                    ...c,
+                    default_resumen: modalResult.whatsapp.includes(c.numero)
+                }));
+                const updatedEmails = emails.map(e => ({
+                    ...e,
+                    default_factura: modalResult.email.includes(e.email)
+                }));
+
+                cliente.whatsapp_facturas = JSON.stringify(updatedWps);
+                cliente.email_facturas = JSON.stringify(updatedEmails);
+
+                await fetch(`/api/logistica/bunker/clientes/${cliente.id}/whatsapp-contacts`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        whatsapp_facturas: cliente.whatsapp_facturas,
+                        email_facturas: cliente.email_facturas
+                    })
+                });
+                console.log('✅ [CC-FRONT] Contactos predeterminados actualizados.');
+            } catch (err) {
+                console.error('❌ [CC-FRONT] Error al guardar contactos predeterminados:', err);
+            }
+        }
+
+        const sendWp = modalResult.whatsapp.length > 0;
+        const sendEmail = modalResult.email.length > 0;
+
+        if (!sendWp && !sendEmail) {
+            descargarReportePdf(detallado);
+            abrirPrevisualizador(detallado);
+            return;
+        }
+
+        // Mostrar cargando
         Swal.fire({
-            title: 'Enviando por WhatsApp...',
+            title: 'Procesando Envío...',
             text: 'Por favor, espere mientras se despacha el reporte.',
             allowOutsideClick: false,
             allowEscapeKey: false,
@@ -851,30 +1125,53 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        try {
+        const attempts = [];
+        if (sendWp) {
             const queryParam = detallado ? '?detallado=true' : '';
             const url = `/api/logistica/bunker/cuentas-corrientes/${cuentaSeleccionada.id}/whatsapp${queryParam}`;
-            const response = await fetch(url, { method: 'POST' });
-            const data = await response.json();
+            attempts.push(fetch(url, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destinatarios: modalResult.whatsapp.join(', ') })
+            }).then(async r => {
+                const data = await r.json();
+                if (!r.ok || !data.success) throw new Error(data.message || data.error || 'WhatsApp');
+                return 'WhatsApp';
+            }));
+        }
+        if (sendEmail) {
+            const queryParam = detallado ? '?detallado=true' : '';
+            const url = `/api/logistica/bunker/cuentas-corrientes/${cuentaSeleccionada.id}/email${queryParam}`;
+            attempts.push(fetch(url, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destinatarios: modalResult.email.join(', ') })
+            }).then(async r => {
+                const data = await r.json();
+                if (!r.ok || !data.success) throw new Error(data.message || data.error || 'Correo');
+                return 'Correo';
+            }));
+        }
 
-            if (!data.success) {
-                throw new Error(data.message || data.error || 'Error desconocido.');
-            }
-
+        try {
+            const results = await Promise.all(attempts);
             Swal.fire({
                 icon: 'success',
                 title: 'Envío Exitoso',
-                text: 'El reporte de cuenta corriente se ha enviado por WhatsApp correctamente.',
+                text: `El reporte se ha enviado correctamente a través de: ${results.join(' y ')}.`,
                 confirmButtonColor: '#6b21a8'
+            }).then(() => {
+                abrirPrevisualizador(detallado);
             });
-
         } catch (error) {
-            console.error('❌ [CC-FRONT] Error al enviar WhatsApp:', error);
+            console.error('❌ [CC-FRONT] Error al enviar reporte:', error);
             Swal.fire({
                 icon: 'error',
-                title: 'Falla de Mensajería',
-                text: error.message || 'No se pudo enviar el reporte por WhatsApp en este momento.',
+                title: 'Falla al Enviar',
+                text: error.message || 'No se pudo enviar el reporte en este momento.',
                 confirmButtonColor: '#6b21a8'
+            }).then(() => {
+                abrirPrevisualizador(detallado);
             });
         }
     }
@@ -969,58 +1266,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- NUEVO: COMPROBANTES PUESTO 007 ---
     const cardIncorporar007 = document.getElementById('card-incorporar-007');
-    const comboPresupuestos007 = document.getElementById('combo-presupuestos-007');
-    const btnIncorporar007 = document.getElementById('btn-incorporar-007');
+    const tbodyPresupuestosPendientes = document.getElementById('tbody-presupuestos-pendientes');
 
     async function cargarPresupuestosPendientes007(cuentaId) {
         try {
-            comboPresupuestos007.innerHTML = '<option value="">Cargando comprobantes disponibles...</option>';
+            if (!tbodyPresupuestosPendientes) return;
+            tbodyPresupuestosPendientes.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; color: #94a3b8; padding: 16px;">
+                        ⏳ Cargando comprobantes disponibles...
+                    </td>
+                </tr>
+            `;
             const res = await fetch(`/api/logistica/bunker/cuentas-corrientes/${cuentaId}/presupuestos-pendientes`);
             const data = await res.json();
 
             if (!data.success) throw new Error(data.error);
 
             const presupuestos = data.data;
-            comboPresupuestos007.innerHTML = '';
+            tbodyPresupuestosPendientes.innerHTML = '';
 
             if (!presupuestos || presupuestos.length === 0) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = 'No hay comprobantes del Puesto 007 para incorporar';
-                comboPresupuestos007.appendChild(opt);
+                tbodyPresupuestosPendientes.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #94a3b8; padding: 16px;">
+                            No hay comprobantes de Lomasoft pendientes para incorporar
+                        </td>
+                    </tr>
+                `;
                 cardIncorporar007.style.display = 'none';
                 return;
             }
 
-            // Población del combo
+            // Población de la tabla
             presupuestos.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #e2e8f0';
+                
                 const fechaStr = new Date(p.fecha).toLocaleDateString('es-AR');
-                opt.textContent = `${fechaStr} - Comp. ${p.comprobante_lomasoft} (Monto: ${formatCurrency(p.total)})`;
-                comboPresupuestos007.appendChild(opt);
+                
+                tr.innerHTML = `
+                    <td style="padding: 10px 12px; color: #334155;">${fechaStr}</td>
+                    <td style="padding: 10px 12px; text-align: center; font-weight: bold; color: #475569;">${p.letra || '-'}</td>
+                    <td style="padding: 10px 12px; text-align: center; color: #475569;">${p.puesto || '-'}</td>
+                    <td style="padding: 10px 12px; color: #475569; font-family: monospace; font-weight: bold;">${p.numero || '-'}</td>
+                    <td style="padding: 10px 12px; text-align: right; font-weight: bold; color: #0f172a;">${formatCurrency(p.total)}</td>
+                    <td style="padding: 6px 12px; text-align: center;">
+                        <button class="btn-premium btn-incorporar-presupuesto" data-id="${p.id}" style="padding: 6px 12px; font-size: 0.8em; margin: 0; background-color: var(--purple-primary, #6b21a8); color: white; border: none; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            🔗 Incorporar
+                        </button>
+                    </td>
+                `;
+                tbodyPresupuestosPendientes.appendChild(tr);
+            });
+
+            // Asignar listeners a los botones recién creados
+            tbodyPresupuestosPendientes.querySelectorAll('.btn-incorporar-presupuesto').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const presupuestoId = e.currentTarget.getAttribute('data-id');
+                    await ejecutarIncorporacion(presupuestoId);
+                });
             });
 
             cardIncorporar007.style.display = 'block';
 
         } catch (err) {
             console.error('Error al cargar presupuestos del puesto 007:', err);
-            comboPresupuestos007.innerHTML = '<option value="">Error al obtener comprobantes</option>';
+            if (tbodyPresupuestosPendientes) {
+                tbodyPresupuestosPendientes.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #dc2626; padding: 16px; font-weight: bold;">
+                            ⚠️ Error al obtener comprobantes: ${err.message}
+                        </td>
+                    </tr>
+                `;
+            }
             cardIncorporar007.style.display = 'none';
         }
     }
 
-    btnIncorporar007.addEventListener('click', async () => {
-        const presupuestoId = comboPresupuestos007.value;
-        if (!presupuestoId) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Seleccione un comprobante',
-                text: 'Debe elegir un comprobante del listado para incorporarlo.',
-                confirmButtonColor: '#6b21a8'
-            });
-            return;
-        }
+    async function ejecutarIncorporacion(presupuestoId) {
+        if (!presupuestoId) return;
 
         Swal.fire({
             title: 'Incorporando Comprobante...',
@@ -1063,7 +1389,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 confirmButtonColor: '#6b21a8'
             });
         }
-    });
+    }
 
     // --- NUEVO: ELIMINACIÓN DE MOVIMIENTOS ---
     function confirmarEliminarMovimiento(movId) {
@@ -1121,6 +1447,149 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // --- INICIALIZACIÓN ---
+    inicializar();
+
+    // Modal de Previsualización Interactivo de Recibo de Pago (RC) o Ajuste
+    window.mostrarModalRecibo = (id) => {
+        const mov = window.currentMovimientos ? window.currentMovimientos.find(m => m.id === id) : null;
+        if (!mov) {
+            Swal.fire('Error', 'No se encontró el movimiento.', 'error');
+            return;
+        }
+
+        const isDebe = mov.tipo_movimiento === 'DEBITO';
+        const montoDisplay = formatCurrency(parseFloat(mov.monto));
+        
+        const tipoLabel = mov.tipo_comprobante === 'RECIBO_PAGO' ? 'Recibo de Pago' :
+                          mov.tipo_comprobante === 'COBRO_BANCARIO' ? 'Cobro Bancario' :
+                          mov.tipo_comprobante === 'COBRO_CHEQUE' ? 'Cobro con Cheque' :
+                          mov.tipo_comprobante === 'AJUSTE_MANUAL' ? 'Ajuste de Saldo' : 'Comprobante de Pago';
+        
+        // Determinar forma de cobro por defecto según el tipo de comprobante
+        let defaultTipo = 'Efectivo';
+        if (mov.tipo_comprobante === 'COBRO_BANCARIO') defaultTipo = 'Transferencia';
+        else if (mov.tipo_comprobante === 'COBRO_CHEQUE') defaultTipo = 'Cheque';
+        else if (mov.tipo_comprobante === 'AJUSTE_MANUAL' || mov.tipo_comprobante === 'AJUSTE_AUTOMATICO') defaultTipo = 'Ajuste de Saldo';
+
+        let tipoPago = defaultTipo;
+        let banco = '';
+        let operacion = '';
+
+        if (mov.metadatos) {
+            try {
+                const meta = typeof mov.metadatos === 'string' ? JSON.parse(mov.metadatos) : mov.metadatos;
+                if (meta) {
+                    tipoPago = meta.tipo_pago || defaultTipo;
+                    if (meta.banco_origen) banco = `<div style="margin-top: 0.35rem;"><span style="color: #64748b; font-weight: 600;">Banco de Origen:</span> ${meta.banco_origen}</div>`;
+                    if (meta.nro_operacion) operacion = `<div style="margin-top: 0.35rem;"><span style="color: #64748b; font-weight: 600;">Operación:</span> #${meta.nro_operacion}</div>`;
+                }
+            } catch(e) {}
+        }
+
+        let metadataHtml = `
+            <div style="background: #f8fafc; border-radius: 6px; padding: 0.65rem 0.85rem; font-size: 0.85rem; color: #475569; border: 1px solid #e2e8f0; margin-bottom: 1.25rem; text-align: left;">
+                <div style="font-weight: 700; color: #8e4785; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Información del Pago</div>
+                <div><span style="color: #64748b; font-weight: 600;">Método:</span> ${tipoPago}</div>
+                ${banco}
+                ${operacion}
+            </div>
+        `;
+
+        const pdfUrl = `/api/logistica/bunker/cuentas-corrientes/movimientos/${mov.id}/pdf`;
+
+        Swal.fire({
+            title: `<span style="color: #8e4785; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.35rem;">Detalle de Comprobante</span>`,
+            html: `
+                <div style="text-align: left; font-family: 'Inter', sans-serif; color: #1e293b; padding: 0.25rem;">
+                    <div style="background: hsl(185, 68%, 20%); color: white; padding: 1.15rem; border-radius: 8px; margin-bottom: 1.25rem; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                        <div style="font-size: 0.8rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">${tipoLabel}</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem;">${mov.numero_comprobante || `REC-PAGO-${String(mov.id).padStart(8, '0')}`}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; font-size: 0.85rem;">
+                        <div>
+                            <span style="color: #64748b; display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.15rem;">FECHA EMISIÓN</span>
+                            <strong style="color: #1e293b;">${new Date(mov.fecha_movimiento).toLocaleDateString('es-AR')}</strong>
+                        </div>
+                        <div>
+                            <span style="color: #64748b; display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.15rem;">CÓDIGO CLIENTE</span>
+                            <strong style="color: #1e293b;">${cliente ? cliente.codigo_bunker_cliente : 'N/D'}</strong>
+                        </div>
+                    </div>
+                    ${metadataHtml}
+                    <div style="border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: 1rem 0; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="color: #64748b; display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Monto Recibido</span>
+                            <span style="font-size: 1.4rem; font-weight: 750; color: #16a34a">${montoDisplay}</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="color: #64748b; display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem;">Saldo de Cuenta</span>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: #1e293b">${formatCurrency(parseFloat(mov.saldo_resultante))}</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #64748b; text-align: center; line-height: 1.45; background: #f8fafc; border-radius: 6px; padding: 0.65rem; margin-bottom: 1.25rem;">
+                        Este documento está almacenado en el sistema de administración LAMDA.
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; border-top: 1px solid #e2e8f0; padding-top: 1.15rem;">
+                        <button id="btn-swal-wa" class="swal-action-button wa-btn" style="display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.65rem 0.5rem; border-radius: 6px; border: none; background: #25d366; color: white; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.5.953c-5.44 0-9.866 4.372-9.87 9.802 0 1.696.463 3.35 1.337 4.79L1.93 21.02l5.717-1.866zM17.487 14.39c-.3-.15-1.774-.875-2.05-.975-.275-.1-.475-.15-.675.15-.2.3-.775.975-.95 1.175-.175.2-.35.225-.65.075-.3-.15-1.267-.467-2.413-1.49-.893-.797-1.496-1.782-1.67-2.083-.175-.3-.018-.463.13-.612.135-.133.3-.35.45-.525.15-.175.2-.3.3-.5s.05-.375-.025-.525c-.075-.15-.675-1.625-.925-2.225-.244-.589-.492-.51-.675-.518-.173-.008-.373-.01-.573-.01-.2 0-.525.075-.8.375-.275.3-1.05 1.025-1.05 2.5s1.025 2.9 1.175 3.1c.15.2 2.013 3.074 4.877 4.31.683.295 1.218.472 1.635.604.686.218 1.312.187 1.806.114.55-.082 1.774-.725 2.025-1.425.25-.7.25-1.3 0-1.425-.075-.125-.275-.2-.575-.35z"/></svg>
+                            <span>WhatsApp</span>
+                        </button>
+                        <button id="btn-swal-print" class="swal-action-button print-btn" style="display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.65rem 0.5rem; border-radius: 6px; border: none; background: #0284c7; color: white; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                            <span>Imprimir</span>
+                        </button>
+                        <button id="btn-swal-download" class="swal-action-button dl-btn" style="display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.65rem 0.5rem; border-radius: 6px; border: none; background: #8e4785; color: white; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>Descargar</span>
+                        </button>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar',
+            cancelButtonColor: '#475569',
+            background: '#ffffff',
+            color: '#1e293b',
+            customClass: {
+                popup: 'swal-b2b-popup',
+                cancelButton: 'swal-b2b-btn'
+            },
+            didOpen: () => {
+                const btnWa = document.getElementById('btn-swal-wa');
+                const btnPrint = document.getElementById('btn-swal-print');
+                const btnDownload = document.getElementById('btn-swal-download');
+
+                if (btnWa) {
+                    btnWa.addEventListener('click', () => {
+                        const cloudPdfUrl = `https://zysyxtbcvgswancxtpib.supabase.co/storage/v1/object/public/comprobantes/comprobante_${mov.id}.pdf`;
+                        const text = encodeURIComponent(`Hola! Comparto el comprobante de pago de mi cuenta corriente en LAMDA: ${cloudPdfUrl}`);
+                        window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+                    });
+                }
+
+                if (btnPrint) {
+                    btnPrint.addEventListener('click', () => {
+                        window.open(pdfUrl, '_blank');
+                    });
+                }
+
+                if (btnDownload) {
+                    btnDownload.addEventListener('click', () => {
+                        const link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = `recibo-${mov.id}.pdf`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    });
+                }
+            }
+        });
+    };
 
     // --- INICIALIZACIÓN ---
     inicializar();

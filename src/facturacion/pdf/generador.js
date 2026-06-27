@@ -5,6 +5,7 @@
 
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
+const { Pool } = require('pg');
 const { formatearFecha } = require('../config/timezone');
 const { formatearMoneda } = require('../utils/decimales');
 const { COMPANY_CONFIG } = require('../config/company');
@@ -13,6 +14,14 @@ const { generateQrUrl } = require('../utils/afip-qr');
 const { buildBarcodePayload } = require('../utils/afip-barcode');
 const { generateBarcodeImage } = require('../utils/barcode-image');
 const { obtenerAlicuota, formatearPorcentaje, normalizarCodigo } = require('../utils/iva-helper');
+
+const pool = new Pool({
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'etiquetas',
+  password: process.env.DB_PASSWORD || 'ta3Mionga',
+  port: parseInt(process.env.DB_PORT || '5432'),
+});
 
 console.log('🔍 [FACTURACION-PDF] Cargando generador de PDF...');
 
@@ -112,6 +121,24 @@ const construirPDF = async (doc, factura, items) => {
     const leftColumn = pageMargin;
     const middleColumn = pageMargin + (contentWidth / 2);
     
+    // NUEVO: Definición de columnas adaptables para Puesto 90 (sin IVA, con precios finales)
+    const isPuesto90 = parseInt(factura.pto_vta || 0, 10) === 90;
+    
+    const colDescX = leftColumn + 8;
+    const colDescW = isPuesto90 ? (middleColumn - leftColumn - 60) : (middleColumn - leftColumn - 100);
+    
+    const colCantX = isPuesto90 ? (middleColumn - 60) : (middleColumn - 80);
+    const colCantW = 60;
+    
+    const colPrecioX = isPuesto90 ? middleColumn : (middleColumn - 20);
+    const colPrecioW = isPuesto90 ? 100 : 80;
+    
+    const colIvaX = middleColumn + 60;
+    const colIvaW = 40;
+    
+    const colSubtotalX = middleColumn + 100;
+    const colSubtotalW = 80;
+    
     // Función auxiliar para dibujar la cabecera repetible y el bloque del cliente en cada página
     const dibujarHeaderYCliente = async (esPrimera) => {
         let localY = pageMargin;
@@ -138,7 +165,7 @@ const construirPDF = async (doc, factura, items) => {
         
         // 2. Recuadro del Tipo de Comprobante (Letra Central AFIP)
         const tipoCbte = parseInt(factura.tipo_cbte);
-        const letra = obtenerLetraComprobante(tipoCbte);
+        const letra = isPuesto90 ? 'R' : obtenerLetraComprobante(tipoCbte);
         
         const boxWidth = 32;
         const boxHeight = 32;
@@ -151,11 +178,16 @@ const construirPDF = async (doc, factura, items) => {
         doc.restore();
         
         // Código del comprobante AFIP debajo del recuadro
-        const codigoCbte = String(tipoCbte).padStart(3, '0');
-        doc.fontSize(7).font('Helvetica-Bold').fillColor('#8e4785').text(`COD. ${codigoCbte}`, (pageWidth / 2) - 50, boxY + boxHeight + 3, { width: 100, align: 'center' });
+        if (isPuesto90) {
+            // Desplazar "DOC. INTERNO" hacia abajo para evitar superposición
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('DOC. INTERNO', (pageWidth / 2) - 50, boxY + boxHeight + 6, { width: 100, align: 'center' });
+        } else {
+            const codigoCbte = String(tipoCbte).padStart(3, '0');
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#8e4785').text(`COD. ${codigoCbte}`, (pageWidth / 2) - 50, boxY + boxHeight + 3, { width: 100, align: 'center' });
+        }
         
         // Línea divisoria vertical
-        doc.moveTo(pageWidth / 2, boxY + boxHeight + 12)
+        doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
            .lineTo(pageWidth / 2, localY + 82)
            .strokeColor('#e2e8f0')
            .lineWidth(1)
@@ -163,27 +195,34 @@ const construirPDF = async (doc, factura, items) => {
         
         // 3. Columna Derecha - Datos del Comprobante
         let rightY = localY;
-        const tipoDesc = TIPOS_COMPROBANTE[factura.tipo_cbte] || 'Comprobante';
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(tipoDesc.toUpperCase(), middleColumn + 20, rightY);
+        let tipoDesc = TIPOS_COMPROBANTE[factura.tipo_cbte] || 'Comprobante';
+        if (isPuesto90) {
+            const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
+            tipoDesc = esNC ? 'Remito de Entrega' : 'Presupuesto Aprobado';
+        }
+        // Desplazar a middleColumn + 28 para dar más margen y evitar colisiones
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(tipoDesc.toUpperCase(), middleColumn + 28, rightY);
         
         rightY += 15;
         
         // Número formateado
         let compNum = '';
-        if (factura.cbte_nro) {
+        if (isPuesto90) {
+            compNum = `0090 - ${String(factura.nro_interno || factura.cbte_nro || '0').padStart(8, '0')}`;
+        } else if (factura.cbte_nro) {
             compNum = `${String(factura.pto_vta).padStart(5, '0')} - ${String(factura.cbte_nro).padStart(8, '0')}`;
         } else if (factura.nro_interno) {
             compNum = `${factura.serie_interna || 'B'} - ${String(factura.nro_interno).padStart(8, '0')}`;
         }
         
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nº ${compNum}`, middleColumn + 20, rightY);
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nº ${compNum}`, middleColumn + 28, rightY);
         
         rightY += 14;
         doc.fontSize(8).font('Helvetica').fillColor('#475569');
-        doc.text(`Fecha de Emisión: ${formatearFecha(factura.fecha_emision)}`, middleColumn + 20, rightY);
-        doc.text(`CUIT: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 20, rightY + 9);
-        doc.text(`Ingresos Brutos: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 20, rightY + 18);
-        doc.text(`Inicio de Actividades: ${COMPANY_CONFIG.inicioActividad || '01/01/2026'}`, middleColumn + 20, rightY + 27);
+        doc.text(`Fecha de Emisión: ${formatearFecha(factura.fecha_emision)}`, middleColumn + 28, rightY);
+        doc.text(`CUIT: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 28, rightY + 9);
+        doc.text(`Ingresos Brutos: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 28, rightY + 18);
+        doc.text(`Inicio de Actividades: ${COMPANY_CONFIG.inicioActividad || '01/01/2026'}`, middleColumn + 28, rightY + 27);
         
         // Separador de cabecera
         localY = localY + 80;
@@ -212,11 +251,14 @@ const construirPDF = async (doc, factura, items) => {
         doc.text(`${tipoDoc}: ${factura.cliente_cuit || factura.doc_nro || 'S/D'}`, middleColumn + 10, clientY);
         
         // Condición IVA
-        const condicion = factura.cliente_condicion_iva || CONDICIONES_IVA[factura.condicion_iva_id] || 'Consumidor Final';
-        doc.text(`Condición IVA: ${condicion}`, middleColumn + 10, clientY + 12);
-        
-        // Provincia
-        doc.text(`Provincia: ${factura.cliente_provincia || 'S/D'}`, middleColumn + 10, clientY + 24);
+        if (!isPuesto90) {
+            const condicion = factura.cliente_condicion_iva || CONDICIONES_IVA[factura.condicion_iva_id] || 'Consumidor Final';
+            doc.text(`Condición IVA: ${condicion}`, middleColumn + 10, clientY + 12);
+            doc.text(`Provincia: ${factura.cliente_provincia || 'S/D'}`, middleColumn + 10, clientY + 24);
+        } else {
+            // Para puesto 90 (documento comercial interno) omitimos Condición IVA y subimos Provincia
+            doc.text(`Provincia: ${factura.cliente_provincia || 'S/D'}`, middleColumn + 10, clientY + 12);
+        }
         
         localY += 60;
         
@@ -226,11 +268,13 @@ const construirPDF = async (doc, factura, items) => {
         doc.restore();
         
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
-        doc.text('Descripción', leftColumn + 8, localY + 2.5);
-        doc.text('Cant', middleColumn - 80, localY + 2.5, { width: 60, align: 'right' });
-        doc.text('Precio Unit.', middleColumn - 20, localY + 2.5, { width: 80, align: 'right' });
-        doc.text('IVA', middleColumn + 60, localY + 2.5, { width: 40, align: 'right' });
-        doc.text('Subtotal', middleColumn + 100, localY + 2.5, { width: 80, align: 'right' });
+        doc.text('Descripción', colDescX, localY + 2.5);
+        doc.text('Cant', colCantX, localY + 2.5, { width: colCantW, align: 'right' });
+        doc.text('Precio Unit.', colPrecioX, localY + 2.5, { width: colPrecioW, align: 'right' });
+        if (!isPuesto90) {
+            doc.text('IVA', colIvaX, localY + 2.5, { width: colIvaW, align: 'right' });
+        }
+        doc.text('Subtotal', colSubtotalX, localY + 2.5, { width: colSubtotalW, align: 'right' });
         
         return localY + 15;
     };
@@ -244,16 +288,23 @@ const construirPDF = async (doc, factura, items) => {
     doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
     for (let index = 0; index < items.length; index++) {
         const item = items[index];
-        const subtotal = (item.qty || 0) * (item.p_unit || 0);
         const codigoNormalizado = normalizarCodigo(item.alic_iva_id);
         const ivaLabel = formatearPorcentaje(codigoNormalizado);
         
-        // Escribir contenido del item
-        doc.text(item.descripcion || 'Sin descripción', leftColumn + 8, yPos, { width: middleColumn - leftColumn - 100 });
-        doc.text(String(item.qty || 0), middleColumn - 80, yPos, { width: 60, align: 'right' });
-        doc.text(formatearMoneda(item.p_unit), middleColumn - 20, yPos, { width: 80, align: 'right' });
-        doc.text(ivaLabel, middleColumn + 60, yPos, { width: 40, align: 'right' });
-        doc.text(formatearMoneda(subtotal), middleColumn + 100, yPos, { width: 80, align: 'right' });
+        // Si es Puesto 90, mostrar el precio unitario final (con IVA incluido) y calcular subtotal final
+        const alicuota = obtenerAlicuota(codigoNormalizado);
+        const ivaFactor = alicuota ? alicuota.factor : 0.21;
+        const pUnitFinal = isPuesto90 ? (item.p_unit * (1 + ivaFactor)) : item.p_unit;
+        const subtotalFinal = (item.qty || 0) * pUnitFinal;
+        
+        // Escribir contenido del item utilizando columnas dinámicas
+        doc.text(item.descripcion || 'Sin descripción', colDescX, yPos, { width: colDescW });
+        doc.text(String(item.qty || 0), colCantX, yPos, { width: colCantW, align: 'right' });
+        doc.text(formatearMoneda(pUnitFinal), colPrecioX, yPos, { width: colPrecioW, align: 'right' });
+        if (!isPuesto90) {
+            doc.text(ivaLabel, colIvaX, yPos, { width: colIvaW, align: 'right' });
+        }
+        doc.text(formatearMoneda(subtotalFinal), colSubtotalX, yPos, { width: colSubtotalW, align: 'right' });
         
         yPos += 13; // Espaciado vertical reducido de 16 a 13 (sándwich de jamón)
         
@@ -273,6 +324,7 @@ const construirPDF = async (doc, factura, items) => {
     }
     
     yPos += 5;
+
     
     // ===========================================
     // TOTALES Y RESUMEN FINANCIERO (Al final del doc)
@@ -315,7 +367,8 @@ const construirPDF = async (doc, factura, items) => {
     totalRows += Object.keys(ivasPorAlicuota).length;
     if (factura.imp_trib > 0) totalRows += 1;
     
-    const cardHeight = (totalRows * 10) + 18; // Cada fila toma 10 pt
+    // Si es Puesto 90, solo se renderiza la línea de TOTAL, por lo que la altura es fija de 28 pt
+    const cardHeight = isPuesto90 ? 28 : ((totalRows * 10) + 18);
     
     // Validar si los totales, el bloque de autorización AFIP y los datos bancarios caben en la página actual
     const espacioAutorizacion = factura.cae ? 132 : 40;
@@ -327,6 +380,7 @@ const construirPDF = async (doc, factura, items) => {
         doc.addPage();
         yPos = await dibujarHeaderYCliente(false);
     }
+
     
     // Dibujar tarjeta del resumen de totales
     doc.save();
@@ -337,57 +391,59 @@ const construirPDF = async (doc, factura, items) => {
     let localY = yPos;
     doc.fontSize(8).font('Helvetica').fillColor('#475569');
     
-    if (descuento > 0) {
-        doc.text('Subtotal:', totalsX, localY);
-        doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(subtotalAntesDescuento), totalsX + 70, localY, { width: 70, align: 'right' });
-        doc.font('Helvetica').fillColor('#475569');
-        localY += 10;
-        
-        const montoDescuento = subtotalAntesDescuento * descuento;
-        const porcentajeDesc = (descuento * 100).toFixed(2).replace('.', ',');
-        doc.text(`Desc. (${porcentajeDesc}%):`, totalsX, localY);
-        doc.font('Helvetica-Bold').fillColor('#ef4444').text(`-${formatearMoneda(montoDescuento)}`, totalsX + 70, localY, { width: 70, align: 'right' });
-        doc.font('Helvetica').fillColor('#475569');
-        localY += 10;
-    }
-    
-    if (netoGravado > 0) {
-        doc.text('Neto Gravado:', totalsX, localY);
-        doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(netoGravado), totalsX + 70, localY, { width: 70, align: 'right' });
-        doc.font('Helvetica').fillColor('#475569');
-        localY += 10;
-    }
-    
-    if (netoExento > 0) {
-        doc.text('Neto Exento:', totalsX, localY);
-        doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(netoExento), totalsX + 70, localY, { width: 70, align: 'right' });
-        doc.font('Helvetica').fillColor('#475569');
-        localY += 10;
-    }
-    
-    const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
-    if (codigosOrdenados.length > 0) {
-        codigosOrdenados.forEach(codigo => {
-            const montoIva = ivasPorAlicuota[codigo];
-            const etiqueta = formatearPorcentaje(codigo);
-            
-            doc.text(`IVA ${etiqueta}:`, totalsX, localY);
-            doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(montoIva), totalsX + 70, localY, { width: 70, align: 'right' });
+    if (!isPuesto90) {
+        if (descuento > 0) {
+            doc.text('Subtotal:', totalsX, localY);
+            doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(subtotalAntesDescuento), totalsX + 70, localY, { width: 70, align: 'right' });
             doc.font('Helvetica').fillColor('#475569');
             localY += 10;
-        });
+            
+            const montoDescuento = subtotalAntesDescuento * descuento;
+            const porcentajeDesc = (descuento * 100).toFixed(2).replace('.', ',');
+            doc.text(`Desc. (${porcentajeDesc}%):`, totalsX, localY);
+            doc.font('Helvetica-Bold').fillColor('#ef4444').text(`-${formatearMoneda(montoDescuento)}`, totalsX + 70, localY, { width: 70, align: 'right' });
+            doc.font('Helvetica').fillColor('#475569');
+            localY += 10;
+        }
+        
+        if (netoGravado > 0) {
+            doc.text('Neto Gravado:', totalsX, localY);
+            doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(netoGravado), totalsX + 70, localY, { width: 70, align: 'right' });
+            doc.font('Helvetica').fillColor('#475569');
+            localY += 10;
+        }
+        
+        if (netoExento > 0) {
+            doc.text('Neto Exento:', totalsX, localY);
+            doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(netoExento), totalsX + 70, localY, { width: 70, align: 'right' });
+            doc.font('Helvetica').fillColor('#475569');
+            localY += 10;
+        }
+        
+        const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
+        if (codigosOrdenados.length > 0) {
+            codigosOrdenados.forEach(codigo => {
+                const montoIva = ivasPorAlicuota[codigo];
+                const etiqueta = formatearPorcentaje(codigo);
+                
+                doc.text(`IVA ${etiqueta}:`, totalsX, localY);
+                doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(montoIva), totalsX + 70, localY, { width: 70, align: 'right' });
+                doc.font('Helvetica').fillColor('#475569');
+                localY += 10;
+            });
+        }
+        
+        if (factura.imp_trib > 0) {
+            doc.text('Otros Tributos:', totalsX, localY);
+            doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(factura.imp_trib), totalsX + 70, localY, { width: 70, align: 'right' });
+            doc.font('Helvetica').fillColor('#475569');
+            localY += 10;
+        }
+        
+        // Separador total
+        doc.moveTo(totalsX - 5, localY + 1).lineTo(totalsX + totalsWidth, localY + 1).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+        localY += 4;
     }
-    
-    if (factura.imp_trib > 0) {
-        doc.text('Otros Tributos:', totalsX, localY);
-        doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(factura.imp_trib), totalsX + 70, localY, { width: 70, align: 'right' });
-        doc.font('Helvetica').fillColor('#475569');
-        localY += 10;
-    }
-    
-    // Separador total
-    doc.moveTo(totalsX - 5, localY + 1).lineTo(totalsX + totalsWidth, localY + 1).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-    localY += 4;
     
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#8e4785');
     doc.text('TOTAL:', totalsX, localY);
@@ -410,10 +466,10 @@ const construirPDF = async (doc, factura, items) => {
         
         const qrStartY = yPos + 16;
         
-        // Renderizar Código QR
+        // Renderizar Código QR (tamaño original de 72x72 pt, centrado verticalmente en la caja)
         try {
             const qrBuffer = await generarQR(factura);
-            doc.image(qrBuffer, leftColumn + 10, qrStartY, { width: 85, height: 85 }); // Redimensionado de 72 a 85 pt
+            doc.image(qrBuffer, leftColumn + 10, qrStartY + 6, { width: 72, height: 72 });
         } catch (error) {
             console.warn('⚠️ [FACTURACION-PDF] No se pudo generar QR:', error.message);
         }
@@ -440,32 +496,75 @@ const construirPDF = async (doc, factura, items) => {
                 margin: 1
             });
             
-            const barcodeX = leftColumn + 110;
+            const barcodeX = leftColumn + 105;
             doc.image(barcodeBuffer, barcodeX, qrStartY + 10, { width: 250, height: 45 }); // Centrado y espaciado
             
         } catch (error) {
             console.warn('⚠️ [FACTURACION-PDF] No se pudo generar código de barras:', error.message);
         }
         
-        // Leyenda de autorización AFIP
+        // Leyenda de autorización AFIP (alineada a la derecha de la caja sin superposición)
         doc.fontSize(7.5).font('Helvetica').fillColor('#475569');
-        doc.text(`CAE: ${factura.cae}`, middleColumn + 85, qrStartY + 62, { align: 'right' });
-        doc.text(`Vencimiento CAE: ${formatearFecha(factura.cae_vto)}`, middleColumn + 85, qrStartY + 72, { align: 'right' });
+        doc.text(`CAE: ${factura.cae}`, leftColumn, qrStartY + 62, { align: 'right', width: contentWidth - 15 });
+        doc.text(`Vencimiento CAE: ${formatearFecha(factura.cae_vto)}`, leftColumn, qrStartY + 72, { align: 'right', width: contentWidth - 15 });
         
         yPos += 120;
     }
     
     // ===========================================
-    // PIE DE PÁGINA - DATOS BANCARIOS (SI APLICA)
+    // PIE DE PÁGINA - PORTAL B2B & DATOS BANCARIOS
     // ===========================================
-    if (COMPANY_CONFIG.bank || COMPANY_CONFIG.cbuFmt) {
-        if (yPos < doc.page.height - 95) {
-            yPos = doc.page.height - 95;
+    if (yPos < doc.page.height - 110) {
+        yPos = doc.page.height - 110;
+    }
+    
+    doc.moveTo(leftColumn, yPos).lineTo(pageWidth - pageMargin, yPos).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+    yPos += 6;
+
+    // 1. Dibujar QR del Portal B2B (Condicionado a validación fiscal real - factura.cae)
+    let localMovimientoId = null;
+    if (factura.cae && factura.id) {
+        try {
+            const resMov = await pool.query(
+                `SELECT id FROM public.factura_cuenta_corriente_movimientos 
+                 WHERE comprobante_id = $1 AND tipo_comprobante IN ('FACTURA', 'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO') 
+                 LIMIT 1`,
+                [factura.id]
+            );
+            if (resMov.rows.length > 0) {
+                localMovimientoId = resMov.rows[0].id;
+            }
+        } catch (err) {
+            console.error('⚠️ Error al buscar local_movimiento_id para el QR B2B:', err.message);
         }
-        
-        doc.moveTo(leftColumn, yPos).lineTo(pageWidth - pageMargin, yPos).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-        yPos += 6;
-        
+    }
+
+    if (factura.cae) {
+        try {
+            const portalBaseUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+            const b2bUrl = localMovimientoId 
+                ? `${portalBaseUrl}?action=view-doc&doc_id=${localMovimientoId}`
+                : portalBaseUrl;
+            
+            const b2bQrBuffer = await QRCode.toBuffer(b2bUrl, {
+                errorCorrectionLevel: 'M',
+                type: 'png',
+                width: 110
+            });
+            
+            const b2bQrX = 315;
+            const b2bQrY = yPos - 2;
+            doc.image(b2bQrBuffer, b2bQrX, b2bQrY, { width: 52, height: 52 });
+            
+            doc.fontSize(6).font('Helvetica-Bold').fillColor('#8e4785');
+            doc.text('ACCESO PORTAL B2B', b2bQrX - 10, b2bQrY + 54, { width: 72, align: 'center' });
+        } catch (error) {
+            console.warn('⚠️ [FACTURACION-PDF] No se pudo generar QR de B2B:', error.message);
+        }
+    }
+
+    // 2. Dibujar Datos Bancarios (Si están configurados)
+    if (COMPANY_CONFIG.bank || COMPANY_CONFIG.cbuFmt) {
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#8e4785').text('MEDIOS DE PAGO / TRANSFERENCIA', leftColumn, yPos);
         yPos += 10;
         
