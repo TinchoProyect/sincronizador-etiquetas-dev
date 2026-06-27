@@ -56,7 +56,8 @@ export default function CuentaCorriente({ profile, highlightDocId, onClearHighli
     const tipoLabel = mov.tipo_comprobante === 'FC' ? 'Factura' : 
                       mov.tipo_comprobante === 'NC' ? 'Nota de Crédito' : 
                       mov.tipo_comprobante === 'RC' ? 'Recibo' : 
-                      mov.tipo_comprobante === 'ND' ? 'Nota de Débito' : 'Documento';
+                      mov.tipo_comprobante === 'ND' ? 'Nota de Débito' : 
+                      mov.tipo_comprobante === 'AP' ? 'Ajuste de Apertura' : 'Documento';
 
     let metadataHtml = '';
     if (mov.tipo_comprobante === 'RC' && mov.metadatos) {

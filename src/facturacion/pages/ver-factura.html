@@ -601,6 +601,8 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const facturaId = urlParams.get('id');
+        const presupuestoId = urlParams.get('presupuesto_id');
+        const numeroFactura = urlParams.get('numero_factura') || 'Factura Histórica';
 
         // Constante para la URL base de la API
         const API_URL = 'http://localhost:3004/facturacion';
@@ -624,10 +626,41 @@
                 console.warn('⚠️ No se pudo obtener la configuración corporativa:', err.message);
             }
 
-            if (!facturaId) {
-                mostrarError('No se especificó el ID de la factura');
-            } else {
+            if (!facturaId && !presupuestoId) {
+                mostrarError('No se especificó el ID de la factura o del presupuesto');
+            } else if (facturaId) {
                 cargarFactura(facturaId);
+            } else if (presupuestoId) {
+                cargarFacturaHeredada(presupuestoId, numeroFactura);
+            }
+        }
+
+        async function cargarFacturaHeredada(pId, numFact) {
+            try {
+                console.log('🔍 Cargando factura heredada (presupuesto ID):', pId);
+
+                const response = await fetch(`${API_URL}/facturas/heredadas/${pId}`);
+                const result = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const errorMsg = result ? (result.message || result.error) : response.statusText;
+                    throw new Error(`Error ${response.status}: ${errorMsg}`);
+                }
+
+                console.log('✅ Factura heredada cargada:', result);
+
+                if (result && result.success && result.data) {
+                    if (numFact) {
+                        result.data.descripcion_lomasoft = numFact;
+                    }
+                    renderizarFactura(result.data);
+                } else {
+                    throw new Error(result.message || 'Error al cargar la factura heredada');
+                }
+
+            } catch (error) {
+                console.error('❌ Error:', error);
+                mostrarError(error.message);
             }
         }
 
@@ -692,7 +725,13 @@
                 13: 'Nota de Crédito C'
             };
 
-            const tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
+            const isPuesto90 = parseInt(factura.pto_vta || 0, 10) === 90;
+            
+            let tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
+            if (isPuesto90) {
+                const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
+                tipoComprobante = esNC ? 'Remito Entrega (NC)' : 'Presupuesto Aprobado';
+            }
 
             const obtenerLetra = (tipo) => {
                 const t = parseInt(tipo);
@@ -702,8 +741,8 @@
                 return 'X';
             };
 
-            const letra = obtenerLetra(factura.tipo_cbte);
-            const codigoCbte = String(factura.tipo_cbte).padStart(3, '0');
+            const letra = factura.es_heredada ? 'X' : (isPuesto90 ? 'R' : obtenerLetra(factura.tipo_cbte));
+            const codigoCbteText = factura.es_heredada ? 'DOC. DE CONTROL' : (isPuesto90 ? 'DOC. INTERNO' : `COD. ${String(factura.tipo_cbte).padStart(3, '0')}`);
             const numFactura = formatNumeroFactura(factura);
 
             // Cargar datos de emisor desde la configuración del servidor, o usar valores por defecto (con el celular 221-6615746)
@@ -732,7 +771,7 @@
                     
                     <div class="letter-box-container">
                         <div class="letter-box">${letra}</div>
-                        <div class="letter-code">COD. ${codigoCbte}</div>
+                        <div class="letter-code">${codigoCbteText}</div>
                         <div class="vertical-divider"></div>
                     </div>
                     
@@ -973,6 +1012,22 @@
                         </div>
                         <div style="font-size: 9.5px; font-weight: bold; color: #64748b; border: 1.5px solid #64748b; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
                             Interno
+                        </div>
+                    </div>
+                `;
+            } else if (factura.es_heredada) {
+                html += `
+                    <div class="cae-section" style="border-color: #475569; background-color: #f8fafc;">
+                        <div style="background-color: #475569; color: white; padding: 8px 12px; border-radius: 4px; font-weight: bold; font-size: 16px;">
+                            📜
+                        </div>
+                        <div class="cae-details" style="align-items: flex-start; text-align: left;">
+                            <div class="cae-title" style="color: #475569;">Factura Histórica de Control Comercial</div>
+                            <div class="cae-value" style="font-size: 13px;">ID Presupuesto: ${factura.presupuesto_id}</div>
+                            <div class="cae-vto">Sin validez fiscal actual (Información de Origen Lomasoft)</div>
+                        </div>
+                        <div style="font-size: 9.5px; font-weight: bold; color: #475569; border: 1.5px solid #475569; padding: 3px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Lomasoft
                         </div>
                     </div>
                 `;
@@ -1227,6 +1282,9 @@
         }
 
         function formatNumeroFactura(factura) {
+            if (factura.descripcion_lomasoft) {
+                return factura.descripcion_lomasoft.replace(/^Fac\s+/, '');
+            }
             if (factura.cbte_nro) {
                 const ptoVta = String(factura.pto_vta || 0).padStart(5, '0');
                 const numero = String(factura.cbte_nro).padStart(8, '0');
@@ -1350,6 +1408,9 @@
                 })).filter(c => c.numero);
             }
 
+            const hasTypeDefault = contacts.some(c => c.default_factura === true);
+            const hasGeneralDefault = !hasTypeDefault && contacts.some(c => c.default === true);
+
             let htmlContent = `
                 <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
@@ -1359,6 +1420,7 @@
             `;
 
             contacts.forEach((c, index) => {
+                const isChecked = hasTypeDefault ? (c.default_factura === true) : (hasGeneralDefault ? (c.default === true) : true);
                 const formattedNum = c.numero.replace(/\D/g, '');
                 let displayNum = c.numero;
                 if (formattedNum.length === 10) {
@@ -1375,7 +1437,7 @@
 
                 htmlContent += `
                     <label style="display: flex; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
-                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
+                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
                         <div style="flex: 1;">
                             <div style="font-size: 13px; color: #1f2937; margin-bottom: 2px;">${labelText}</div>
                             <div style="font-size: 12px; color: #6b7280;">📱 ${displayNum}</div>
@@ -1386,8 +1448,24 @@
 
             htmlContent += `
                     </div>
-                </div>
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                            Otro número (opcional):
+                        </label>
+                        <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; box-sizing: border-box;">
+                    </div>
             `;
+
+            if (currentFactura && currentFactura.bunker_cliente_id) {
+                htmlContent += `
+                    <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 13px; color: #475569;">
+                        <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
+                        <span>Guardar esta selección como contactos predeterminados para facturas</span>
+                    </label>
+                `;
+            }
+
+            htmlContent += `</div>`;
 
             Swal.fire({
                 title: 'Enviar por WhatsApp',
@@ -1400,16 +1478,59 @@
                 cancelButtonColor: '#6b7280',
                 preConfirm: () => {
                     const selected = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    const customPhone = document.getElementById('swal-custom-phone').value.trim();
+                    const saveDefaultCheckbox = document.getElementById('swal-save-default');
+                    const saveDefault = saveDefaultCheckbox ? saveDefaultCheckbox.checked : false;
+
+                    if (customPhone) {
+                        const cleaned = customPhone.replace(/[^\d,]/g, '');
+                        if (cleaned) {
+                            cleaned.split(',').forEach(num => {
+                                if (num.trim()) selected.push(num.trim());
+                            });
+                        }
+                    }
+
                     if (selected.length === 0) {
-                        Swal.showValidationMessage('Debes seleccionar al menos un contacto.');
+                        Swal.showValidationMessage('Debes seleccionar o ingresar al menos un número.');
                         return false;
                     }
-                    return selected;
+
+                    return {
+                        destinatarios: selected,
+                        saveDefault: saveDefault
+                    };
                 }
             }).then(async (result) => {
                 if (!result.isConfirmed) return;
 
-                const destinatariosSeleccionados = result.value;
+                const modalResult = result.value;
+
+                // Si se marca guardar por defecto, actualizar en base de datos
+                if (modalResult.saveDefault && currentFactura && currentFactura.bunker_cliente_id) {
+                    try {
+                        const updatedContacts = contacts.map(c => {
+                            const isSelected = modalResult.destinatarios.includes(c.numero);
+                            return {
+                                ...c,
+                                default_factura: isSelected
+                            };
+                        });
+
+                        currentFactura.whatsapp_facturas = JSON.stringify(updatedContacts);
+
+                        await fetch(`/api/logistica/bunker/clientes/${currentFactura.bunker_cliente_id}/whatsapp-contacts`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ whatsapp_facturas: currentFactura.whatsapp_facturas })
+                        });
+                        console.log('✅ [WHATSAPP-FRONT] Contactos predeterminados de WhatsApp actualizados (Facturas).');
+                    } catch (err) {
+                        console.error('❌ [WHATSAPP-FRONT] Error al guardar contactos predeterminados:', err);
+                    }
+                }
+
+                const destinatariosSeleccionados = modalResult.destinatarios;
 
                 Swal.fire({
                     title: 'Enviando...',

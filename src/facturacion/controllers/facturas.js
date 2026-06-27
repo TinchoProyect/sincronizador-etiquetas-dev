@@ -305,6 +305,7 @@ const listarFacturas = async (req, res) => {
             tipo_cbte,
             cliente_id,
             cliente,
+            tipo_circuito,
             limit = 50,
             offset = 0
         } = req.query;
@@ -313,12 +314,15 @@ const listarFacturas = async (req, res) => {
         let query = `
             SELECT 
                 f.*,
+                bc.id as bunker_cliente_id,
                 COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
                 COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
                 COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
                 COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
                 COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
-                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas
+                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas,
+                bc.email_facturas as email_facturas,
+                COALESCE(bc.canal_envio_preferido, 'whatsapp') as canal_envio_preferido
             FROM factura_facturas f
             LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
             LEFT JOIN bunker_clientes bc ON 
@@ -338,6 +342,16 @@ const listarFacturas = async (req, res) => {
             // "Ocultar pruebas": solo mostrar facturas con id > 100 
             // (Ajustar este número al momento de salir a PROD real, ej: id > 150)
             query += ` AND f.id > 100`;
+        }
+
+        // Filtro por tipo de circuito
+        if (tipo_circuito) {
+            if (tipo_circuito === 'oficial') {
+                query += ` AND f.pto_vta != 90`;
+            } else if (tipo_circuito === 'interno') {
+                query += ` AND f.pto_vta = 90`;
+            }
+            console.log(`   - Filtro tipo_circuito: ${tipo_circuito}`);
         }
 
         // Filtro por presupuesto_id (para verificar si ya existe factura)
@@ -450,9 +464,25 @@ const generarPDF = async (req, res) => {
 
         // Obtener items de la factura
         const itemsQuery = `
-            SELECT * FROM factura_factura_items
-            WHERE factura_id = $1
-            ORDER BY id ASC
+            SELECT 
+                i.id, 
+                i.factura_id, 
+                i.qty, 
+                i.p_unit, 
+                i.alic_iva_id, 
+                i.imp_neto, 
+                i.imp_iva, 
+                i.orden, 
+                i.created_at,
+                COALESCE(
+                    a.nombre, 
+                    (SELECT nombre FROM public.articulos WHERE codigo_barras = REPLACE(i.descripcion, 'Devolución: ', '') OR numero = REPLACE(i.descripcion, 'Devolución: ', '') LIMIT 1),
+                    i.descripcion
+                ) as descripcion
+            FROM public.factura_factura_items i
+            LEFT JOIN public.articulos a ON (a.codigo_barras = i.descripcion OR a.numero = i.descripcion)
+            WHERE i.factura_id = $1
+            ORDER BY i.id ASC
         `;
         const itemsResult = await pool.query(itemsQuery, [parseInt(id)]);
         const items = itemsResult.rows;
@@ -701,8 +731,9 @@ const eliminarBorrador = async (req, res) => {
         if (f.cae) {
             return res.status(400).json({ success: false, error: 'Rechazado: La factura ya posee CAE y valor fiscal.' });
         }
-        if (f.estado !== 'BORRADOR' && f.estado !== 'RECHAZADA') {
-            return res.status(400).json({ success: false, error: 'Solo se pueden eliminar facturas en estado BORRADOR o RECHAZADA.' });
+        const estadosPermitidos = ['BORRADOR', 'RECHAZADA', 'ANULADA', 'APROBADA_LOCAL'];
+        if (!estadosPermitidos.includes(f.estado)) {
+            return res.status(400).json({ success: false, error: 'Solo se pueden eliminar facturas en estado BORRADOR, RECHAZADA, ANULADA o comprobantes locales.' });
         }
 
         // Obtener el presupuesto_id antes de eliminar para restaurar su estado
@@ -768,14 +799,158 @@ const anularFactura = async (req, res) => {
     }
 };
 
+/**
+ * Facturar presupuesto local (nace emitido localmente con Puesto 90 y sin AFIP)
+ * POST /facturacion/presupuestos/:id/facturar-local
+ */
+const facturarPresupuestoLocal = async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔄 [FACTURACION-CTRL] POST /presupuestos/${id}/facturar-local - Crear borrador local (Puesto 90)`);
+
+    try {
+        // 1. Crear borrador de factura con pto_vta: 90 y requiere_afip: false
+        const resultado = await presupuestoFacturaService.facturarPresupuesto(parseInt(id), 90, false);
+        console.log(`✅ [FACTURACION-CTRL] Factura local borrador creada con ID: ${resultado.facturaId}`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Borrador de presupuesto aprobado interno creado exitosamente',
+            data: {
+                factura_id: resultado.facturaId,
+                presupuesto_id: resultado.presupuestoId,
+                totales: resultado.totales,
+                items_count: resultado.itemsCount
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error facturando presupuesto local:', error.message);
+        console.error('❌ [FACTURACION-CTRL] Stack:', error.stack);
+
+        if (error.message.includes('Ya existe una factura')) {
+            return res.status(409).json({
+                success: false,
+                error: 'Factura duplicada',
+                message: error.message
+            });
+        }
+
+        res.status(400).json({
+            success: false,
+            error: 'Error facturando presupuesto local',
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Obtener factura heredada (Lomasoft) mapeada desde presupuesto
+ * GET /facturacion/facturas/heredadas/:presupuestoId
+ */
+const obtenerFacturaHeredada = async (req, res) => {
+    const { presupuestoId } = req.params;
+    console.log(`🔍 [FACTURACION-CTRL] GET /facturas/heredadas/${presupuestoId} - Obtener factura heredada`);
+
+    try {
+        const pId = parseInt(presupuestoId);
+        
+        // 1. Obtener cabecera de presupuesto y datos del cliente
+        const queryHeader = `
+            SELECT 
+                p.id, p.fecha, p.id_cliente, p.nota,
+                bc.razon_social, bc.cuit_cuil, bc.codigo_bunker_cliente, bc.condicion_iva, bc.domicilio_fiscal, bc.provincia
+            FROM public.presupuestos p
+            LEFT JOIN public.bunker_clientes bc ON CAST(bc.lomas_soft_id AS INTEGER) = CAST(p.id_cliente AS INTEGER)
+            WHERE p.id = $1
+        `;
+        const resHeader = await pool.query(queryHeader, [pId]);
+        if (resHeader.rows.length === 0) {
+            throw new Error(`Presupuesto heredado ID ${pId} no encontrado`);
+        }
+        const budget = resHeader.rows[0];
+
+        // 2. Obtener items
+        const queryItems = `
+            SELECT 
+                d.id,
+                d.articulo as codigo_barras,
+                d.cantidad as qty,
+                d.valor1 as imp_neto,
+                d.precio1 as imp_total,
+                d.iva1 as imp_iva,
+                COALESCE(art.nombre, 'Artículo ' || d.articulo) as descripcion
+            FROM public.presupuestos_detalles d
+            LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+            WHERE d.id_presupuesto = $1
+        `;
+        const resItems = await pool.query(queryItems, [pId]);
+        const items = resItems.rows;
+
+        // Calcular totales de la factura
+        let impNeto = 0;
+        let impIva = 0;
+        let impTotal = 0;
+        
+        items.forEach(item => {
+            impNeto += parseFloat(item.imp_neto) || 0;
+            impIva += parseFloat(item.imp_iva) || 0;
+            impTotal += parseFloat(item.imp_total) || 0;
+            const quantity = parseFloat(item.qty) || 1;
+            item.p_unit = (parseFloat(item.imp_neto) || 0) / quantity;
+        });
+
+        // 3. Estructurar el objeto factura mock
+        const factura = {
+            id: `heredada-${budget.id}`,
+            presupuesto_id: budget.id,
+            cliente_id: budget.id_cliente,
+            razon_social: budget.razon_social || 'Cliente Histórico Lomasoft',
+            cliente_cuit: budget.cuit_cuil || 'N/D',
+            cliente_domicilio: budget.domicilio_fiscal || 'Sin Dirección',
+            cliente_provincia: budget.provincia || 'Provincia',
+            cliente_condicion_iva: budget.condicion_iva || 'Consumidor Final',
+            fecha: budget.fecha,
+            creado_en: budget.fecha,
+            pto_vta: 90, 
+            tipo_cbte: 11, 
+            nro_cbte: budget.id,
+            estado: 'APROBADA_LOCAL', 
+            observaciones: 'Comprobante histórico migrado de Lomasoft',
+            descuento: 0,
+            imp_neto: impNeto,
+            imp_iva: impIva,
+            imp_total: impTotal,
+            cae: null,
+            cae_vto: null,
+            items: items,
+            es_heredada: true 
+        };
+
+        res.status(200).json({
+            success: true,
+            data: factura
+        });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error obteniendo factura heredada:', error.message);
+        res.status(404).json({
+            success: false,
+            error: 'Factura heredada no encontrada',
+            message: error.message
+        });
+    }
+};
+
 module.exports = {
     crearFactura,
     actualizarFactura,
     emitirFactura,
     obtenerFactura,
+    obtenerFacturaHeredada,
     listarFacturas,
     generarPDF,
     facturarPresupuesto,
+    facturarPresupuestoLocal,
     sincronizarBorrador,
     validarFacturaAfip,
     buscarDevoluciones,

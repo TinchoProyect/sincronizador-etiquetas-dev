@@ -79,6 +79,13 @@ router.delete('/facturas/:id', facturasController.eliminarBorrador);
 router.get('/facturas/:id', facturasController.obtenerFactura);
 
 /**
+ * @route GET /facturacion/facturas/heredadas/:presupuestoId
+ * @desc Obtener factura heredada por ID de presupuesto
+ * @access Privado
+ */
+router.get('/facturas/heredadas/:presupuestoId', facturasController.obtenerFacturaHeredada);
+
+/**
  * @route GET /facturacion/facturas
  * @desc Listar facturas con filtros
  * @access Privado
@@ -92,12 +99,14 @@ router.get('/facturas', facturasController.listarFacturas);
  */
 router.post('/facturas/:id/pdf', facturasController.generarPDF);
 
+router.post('/presupuestos/:id/facturar', facturasController.facturarPresupuesto);
+
 /**
- * @route POST /facturacion/presupuestos/:id/facturar
- * @desc Crear factura BORRADOR desde presupuesto
+ * @route POST /facturacion/presupuestos/:id/facturar-local
+ * @desc Crear y emitir factura local (Puesto 90, sin AFIP) desde presupuesto
  * @access Privado
  */
-router.post('/presupuestos/:id/facturar', facturasController.facturarPresupuesto);
+router.post('/presupuestos/:id/facturar-local', facturasController.facturarPresupuestoLocal);
 
 /**
  * @route POST /facturacion/presupuestos/:id/sincronizar

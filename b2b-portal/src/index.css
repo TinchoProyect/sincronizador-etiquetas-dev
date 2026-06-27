@@ -602,6 +602,8 @@ body {
 .doc-badge.rc { background: rgba(16, 185, 129, 0.15); color: hsl(142, 76%, 45%); }
 .doc-badge.nc { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
 .doc-badge.nd { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.doc-badge.ap { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+
 
 .btn-action-icon {
   background: transparent;

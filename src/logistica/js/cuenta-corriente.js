@@ -130,6 +130,20 @@ document.addEventListener('DOMContentLoaded', () => {
             ccBalanceTitle.textContent = `Estado de Cuenta: ${cuentaSeleccionada.nombre_cuenta}`;
             ccBalanceValue.textContent = formatCurrency(saldo);
 
+            // Mostrar u ocultar información del saldo de apertura en la tarjeta
+            const saldoApertura = parseFloat(cuentaSeleccionada.saldo_apertura) || 0;
+            const divSaldoAperturaInfo = document.querySelector('.saldo-apertura-info');
+            const valSaldoApertura = document.getElementById('cc-saldo-apertura-val');
+            
+            if (divSaldoAperturaInfo && valSaldoApertura) {
+                if (saldoApertura !== 0) {
+                    valSaldoApertura.textContent = formatCurrency(saldoApertura);
+                    divSaldoAperturaInfo.style.display = 'block';
+                } else {
+                    divSaldoAperturaInfo.style.display = 'none';
+                }
+            }
+
             // Ajustar visual basado en saldo deudor
             if (saldo > 0) {
                 ccBalanceCard.className = 'balance-hero-card in-debt';
@@ -234,6 +248,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const factId = mov.comprobante_id;
                 const factUrl = `http://localhost:3004/pages/ver-factura.html?id=${factId}`;
                 badgeComprobante = `<a href="${factUrl}" target="_blank" class="badge-comp has-link" title="Ver comprobante oficial de AFIP / LAMDA">🔍 Ver Comp.</a>`;
+            } else if (!mov.comprobante_id && mov.presupuesto_id && (mov.tipo_comprobante === 'FACTURA' || mov.tipo_comprobante === 'FACTURA_A' || mov.tipo_comprobante === 'FACTURA_B')) {
+                // Factura histórica (Lomasoft) vinculada a un presupuesto
+                const pId = mov.presupuesto_id;
+                const factUrl = `http://localhost:3004/pages/ver-factura.html?presupuesto_id=${pId}&numero_factura=${encodeURIComponent(mov.descripcion)}`;
+                badgeComprobante = `<a href="${factUrl}" target="_blank" class="badge-comp has-link" title="Ver desglose de factura histórica Lomasoft">🔍 Ver Comp.</a>`;
             } else if (!mov.comprobante_id && mov.tipo_comprobante === 'FACTURA') {
                 // Factura Puesto 007 manual / presupuesto incorporado
                 badgeComprobante = '<span class="badge-comp" style="background-color: #e0f2fe; color: #0369a1; border-color: #7dd3fc;">Puesto 007 📄</span>';
@@ -242,6 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 badgeComprobante = `<a href="javascript:void(0)" onclick="mostrarModalRecibo(${mov.id})" class="badge-comp has-link" title="Ver comprobante de pago oficial de LAMDA">🔍 Ver Comp.</a>`;
             } else if (mov.tipo_comprobante === 'AJUSTE_AUTOMATICO') {
                 badgeComprobante = '<span class="badge-comp" style="background-color: #fef3c7; color: #d97706; border-color: #fcd34d;">Auto ⚡</span>';
+            } else if (mov.tipo_comprobante === 'AJUSTE_APERTURA') {
+                badgeComprobante = '<span class="badge-comp" style="background-color: #dbeafe; color: #1e40af; border-color: #bfdbfe;">Apertura 🔑</span>';
             }
 
 
@@ -284,6 +305,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 descText = descText.replace(/^Cobro Banc?[ao]rio?\s+/, 'Bco ');
             }
 
+            const esApertura = String(mov.id).startsWith('apertura-');
+            const celdaAccion = esApertura ? `
+                <span title="Saldo de apertura virtual (No editable desde la grilla)" style="font-size: 1.1em; color: #94a3b8; cursor: default;">🔒</span>
+            ` : `
+                <button class="btn-premium btn-red btn-eliminar-mov" data-id="${mov.id}" style="padding: 4px 8px; font-size: 0.8em; margin: 0; background-color: #dc2626; box-shadow: none; border: none; border-radius: 4px; color: white;">
+                    🗑️
+                </button>
+            `;
+
             tr.innerHTML = `
                 <td style="color: #475569; font-size: 0.9em;">${fechaStr}</td>
                 <td style="font-weight: 600;">${descText}</td>
@@ -292,9 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="text-align: right;" class="monto-credito">${!esDebito ? `-${creditoStr}` : '-'}</td>
                 <td style="text-align: right;" class="saldo-resultante">${formatCurrency(parseFloat(mov.saldo_resultante))}</td>
                 <td style="text-align: center;">
-                    <button class="btn-premium btn-red btn-eliminar-mov" data-id="${mov.id}" style="padding: 4px 8px; font-size: 0.8em; margin: 0; background-color: #dc2626; box-shadow: none; border: none; border-radius: 4px; color: white;">
-                        🗑️
-                    </button>
+                    ${celdaAccion}
                 </td>
             `;
             cuerpoTablaMovimientos.appendChild(tr);
@@ -1590,6 +1618,92 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     };
+
+    // --- APERTURA DE CUENTA: EDITAR SALDO INICIAL ---
+    async function abrirModalAjustarApertura() {
+        if (!cuentaSeleccionada) {
+            Swal.fire('Error', 'Seleccione una cuenta corriente primero.', 'error');
+            return;
+        }
+        
+        const saldoActualApertura = parseFloat(cuentaSeleccionada.saldo_apertura) || 0;
+        
+        const { value: nuevoSaldo } = await Swal.fire({
+            title: '🔑 Ajustar Saldo de Apertura',
+            html: `
+                <div style="text-align: left; font-family: 'Inter', sans-serif;">
+                    <p style="font-size: 0.9em; color: #475569; margin-bottom: 12px; line-height: 1.4;">
+                        Establezca el saldo inicial con el que comienza la cuenta corriente. Todos los saldos acumulados de los movimientos posteriores se recalcularán cronológicamente de forma automática.
+                    </p>
+                    <label style="display: block; font-size: 0.8em; font-weight: 600; color: #64748b; margin-bottom: 4px;">Monto Saldo Inicial ($)</label>
+                    <input type="number" id="swal-saldo-apertura" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box;" step="0.01" value="${saldoActualApertura}">
+                </div>
+            `,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Guardar Ajuste',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            preConfirm: () => {
+                const val = parseFloat(document.getElementById('swal-saldo-apertura').value);
+                if (isNaN(val)) {
+                    Swal.showValidationMessage('Debe ingresar un monto numérico válido');
+                    return false;
+                }
+                return val;
+            }
+        });
+        
+        if (nuevoSaldo !== undefined) {
+            try {
+                Swal.fire({
+                    title: 'Procesando...',
+                    text: 'Recalculando la cuenta contable...',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+                
+                const res = await fetch(`/api/logistica/bunker/cuentas-corrientes/${cuentaSeleccionada.id}/saldo-apertura`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ saldo_apertura: nuevoSaldo })
+                });
+                
+                const data = await res.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'No se pudo guardar el saldo de apertura.');
+                }
+                
+                await Swal.fire({
+                    icon: 'success',
+                    title: '¡Ajuste Guardado!',
+                    text: 'El saldo de apertura y el historial fueron recalculados con éxito.',
+                    confirmButtonColor: '#6b21a8'
+                });
+                
+                // Recargar el cliente seleccionado para pintar los nuevos saldos
+                window.location.reload();
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', err.message, 'error');
+            }
+        }
+    }
+
+    // Vincular botones de apertura
+    const btnAjustarApertura = document.getElementById('btn-ajustar-apertura');
+    const lnkEditarSaldoApertura = document.getElementById('lnk-editar-saldo-apertura');
+    if (btnAjustarApertura) btnAjustarApertura.addEventListener('click', abrirModalAjustarApertura);
+    if (lnkEditarSaldoApertura) {
+        lnkEditarSaldoApertura.addEventListener('click', (e) => {
+            e.preventDefault();
+            abrirModalAjustarApertura();
+        });
+    }
 
     // --- INICIALIZACIÓN ---
     inicializar();

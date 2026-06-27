@@ -268,6 +268,197 @@ function generarComprobantePdfBuffer(mov) {
   });
 }
 
+// Genera el buffer de PDF para una factura heredada de Lomasoft reconstruida
+async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante) {
+  const pId = parseInt(presupuestoId);
+  const headerQuery = `
+    SELECT 
+      p.id, p.fecha, p.id_cliente, p.nota,
+      bc.razon_social, bc.cuit_cuil, bc.codigo_bunker_cliente, bc.condicion_iva, bc.domicilio_fiscal
+    FROM public.presupuestos p
+    LEFT JOIN public.bunker_clientes bc ON CAST(bc.lomas_soft_id AS INTEGER) = CAST(p.id_cliente AS INTEGER)
+    WHERE p.id = $1
+  `;
+  const headerRes = await localPool.query(headerQuery, [pId]);
+  if (headerRes.rows.length === 0) {
+    throw new Error(`No se encontró el presupuesto ID ${pId}`);
+  }
+  const budget = headerRes.rows[0];
+
+  const detailsQuery = `
+    SELECT 
+      d.articulo as codigo_barras, d.cantidad, d.valor1 as precio_neto, d.precio1 as precio_total, d.iva1 as monto_iva,
+      COALESCE(art.numero, '') as articulo_numero,
+      COALESCE(art.nombre, 'Artículo ' || d.articulo) as articulo_nombre
+    FROM public.presupuestos_detalles d
+    LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+    WHERE d.id_presupuesto = $1
+  `;
+  const detailsRes = await localPool.query(detailsQuery, [pId]);
+  const items = detailsRes.rows;
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 40, bottom: 40, left: 40, right: 40 },
+        info: {
+          Title: `Factura Heredada - ${numeroComprobante || budget.id}`,
+          Author: 'LAMDA'
+        }
+      });
+
+      const chunks = [];
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', err => reject(err));
+
+      const pageWidth = doc.page.width;
+      const leftColumn = 40;
+      const contentWidth = pageWidth - 80;
+
+      const logoPath = path.join(__dirname, '..', 'facturacion', 'img', 'logo_LAMDA_grande.png');
+      let hasLogo = false;
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, leftColumn, 40, { width: 90 });
+        hasLogo = true;
+      }
+
+      let companyY = 40 + (hasLogo ? 38 : 0);
+      doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
+      doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+      doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
+      doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+
+      const boxWidth = 32;
+      const boxHeight = 32;
+      const boxX = (pageWidth / 2) - (boxWidth / 2);
+      const boxY = 40;
+      doc.save();
+      doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#475569').fill();
+      doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('X', boxX, boxY + 6, { width: boxWidth, align: 'center' });
+      doc.restore();
+      doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569').text('DOC. DE CONTROL', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+
+      doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
+         .lineTo(pageWidth / 2, 40 + 82)
+         .strokeColor('#e2e8f0')
+         .lineWidth(1)
+         .stroke();
+
+      let rightY = 40;
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('FACTURA HISTÓRICA', (pageWidth / 2) + 20, rightY);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text(`Nro: ${numeroComprobante || 'Sin Número'}`, (pageWidth / 2) + 20, rightY + 14);
+      
+      const fechaFmt = new Date(budget.fecha).toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+      doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
+      doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 20, rightY + 35);
+      doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 20, rightY + 44);
+
+      let lineY = Math.max(companyY + 32, rightY + 56);
+      doc.moveTo(leftColumn, lineY)
+         .lineTo(pageWidth - leftColumn, lineY)
+         .strokeColor('#475569')
+         .lineWidth(1.5)
+         .stroke();
+
+      let clientY = lineY + 12;
+      doc.save();
+      doc.rect(leftColumn, clientY, contentWidth, 54).fillColor('#f8fafc').fill();
+      doc.rect(leftColumn, clientY, contentWidth, 54).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+      doc.restore();
+
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('DATOS DEL CLIENTE', leftColumn + 8, clientY + 6);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(budget.razon_social || 'Cliente de Lomasoft', leftColumn + 8, clientY + 16);
+      doc.fontSize(8).font('Helvetica').fillColor('#475569').text(`Código Búnker: ${budget.codigo_bunker_cliente || 'N/D'} (Lomasoft ID: ${budget.id_cliente})`, leftColumn + 8, clientY + 28);
+      const cuitStr = budget.cuit_cuil ? `CUIT: ${budget.cuit_cuil}` : 'CUIT: N/D';
+      doc.text(cuitStr, leftColumn + 8, clientY + 38);
+
+      let tableTop = clientY + 70;
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('Detalle de Artículos Facturados', leftColumn, tableTop);
+      
+      let gridTop = tableTop + 14;
+      doc.save();
+      doc.rect(leftColumn, gridTop, contentWidth, 18).fillColor('#475569').fill();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+      doc.text('Cód. Barra', leftColumn + 8, gridTop + 5, { width: 70 });
+      doc.text('Descripción Artículo', leftColumn + 85, gridTop + 5, { width: 200 });
+      doc.text('Cant.', leftColumn + 290, gridTop + 5, { width: 35, align: 'right' });
+      doc.text('Prec. Unit (Neto)', leftColumn + 335, gridTop + 5, { width: 75, align: 'right' });
+      doc.text('Total con IVA', pageWidth - leftColumn - 88, gridTop + 5, { width: 80, align: 'right' });
+      doc.restore();
+
+      let yPos = gridTop + 18;
+      let netTotal = 0;
+      let vatTotal = 0;
+      let grandTotal = 0;
+
+      items.forEach((item, index) => {
+        const cant = parseFloat(item.cantidad) || 0;
+        const netPrice = parseFloat(item.precio_neto) || 0;
+        const totalPrice = parseFloat(item.precio_total) || 0;
+        const ivaVal = parseFloat(item.monto_iva) || 0;
+
+        netTotal += netPrice;
+        vatTotal += ivaVal;
+        grandTotal += totalPrice;
+
+        const rowBg = index % 2 === 0 ? '#f8fafc' : '#ffffff';
+        doc.save();
+        doc.rect(leftColumn, yPos, contentWidth, 16).fillColor(rowBg).fill();
+        doc.restore();
+
+        doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
+        doc.text(item.codigo_barras || '', leftColumn + 8, yPos + 4, { width: 70, lineBreak: false });
+        doc.text(item.articulo_nombre || '', leftColumn + 85, yPos + 4, { width: 200, lineBreak: false });
+        doc.text(String(cant), leftColumn + 290, yPos + 4, { width: 35, align: 'right' });
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netPrice / cant), leftColumn + 335, yPos + 4, { width: 75, align: 'right' });
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalPrice), pageWidth - leftColumn - 88, yPos + 4, { width: 80, align: 'right' });
+
+        yPos += 16;
+      });
+
+      doc.rect(leftColumn, gridTop, contentWidth, (yPos - gridTop)).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+
+      let totalsY = yPos + 12;
+      doc.save();
+      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).fillColor('#f8fafc').fill();
+      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+      doc.restore();
+
+      doc.fontSize(8).font('Helvetica').fillColor('#475569');
+      doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, totalsY + 6);
+      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, totalsY + 6, { width: 85, align: 'right' });
+
+      doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, totalsY + 18);
+      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatTotal), pageWidth - leftColumn - 95, totalsY + 18, { width: 85, align: 'right' });
+
+      doc.font('Helvetica-Bold').fillColor('#1e293b');
+      doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, totalsY + 32);
+      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 32, { width: 85, align: 'right' });
+
+      let footerY = doc.page.height - 90;
+      doc.moveTo(leftColumn, footerY - 5)
+         .lineTo(pageWidth - leftColumn, footerY - 5)
+         .strokeColor('#e2e8f0')
+         .lineWidth(0.5)
+         .stroke();
+
+      doc.fontSize(7).font('Helvetica-Oblique').fillColor('#64748b');
+      doc.text('Documento emitido históricamente por el sistema Lomasoft. Este documento no constituye una factura comercial válida actual frente a AFIP, se expone con fines informativos de cuenta corriente comercial.', leftColumn, footerY, { width: contentWidth, align: 'center' });
+      doc.text('LAMDA - Prolijidad y Calidad en Gestión', leftColumn, footerY + 16, { width: contentWidth, align: 'center' });
+
+      doc.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 async function sincronizarB2BCuentas() {
   let localClient;
 
@@ -282,6 +473,7 @@ async function sincronizarB2BCuentas() {
           cc.codigo_bunker_cliente as cliente_id,
           m.fecha_movimiento::date as fecha,
           m.comprobante_id,
+          m.presupuesto_id,
           bc.razon_social,
           bc.cuit_cuil AS cuit,
           m.fecha_movimiento AS fecha_registro,
@@ -316,6 +508,39 @@ async function sincronizarB2BCuentas() {
     // Procesar PDFs y subirlos a Supabase Storage antes del Upsert en base de datos
     console.log('⚡ Procesando y asegurando comprobantes PDF en Supabase Storage...');
     const payloads = [];
+
+    // Inyectar saldos de apertura de las cuentas como movimientos virtuales (tipo AP)
+    try {
+      console.log('🔍 Consultando saldos de apertura de cuentas para inyección virtual...');
+      const ccRes = await localClient.query(`
+        SELECT id, codigo_bunker_cliente, saldo_apertura, creada_en 
+        FROM public.factura_cuentas_corrientes
+        WHERE saldo_apertura != 0
+      `);
+      console.log(`📊 Cuentas con saldo de apertura encontradas: ${ccRes.rows.length}`);
+      
+      ccRes.rows.forEach(cc => {
+        const saldoApertura = parseFloat(cc.saldo_apertura) || 0;
+        const debeVal = saldoApertura > 0 ? saldoApertura : 0.00;
+        const haberVal = saldoApertura < 0 ? Math.abs(saldoApertura) : 0.00;
+        
+        payloads.push({
+          local_movimiento_id: -cc.id, // ID negativo para evitar colisión
+          cliente_id: String(cc.codigo_bunker_cliente).trim(),
+          fecha: cc.creada_en || new Date(),
+          tipo_comprobante: 'AP', // Apertura
+          numero_comprobante: 'Saldo Inicial / Ajuste de Apertura',
+          debe: debeVal,
+          haber: haberVal,
+          saldo: saldoApertura,
+          comprobante_url: null,
+          metadatos: null
+        });
+        console.log(`➕ [APERTURA-SYNC] Inyectado movimiento virtual AP para cliente ${cc.codigo_bunker_cliente} ($${saldoApertura})`);
+      });
+    } catch (err) {
+      console.error('❌ [APERTURA-SYNC] Error al consultar o inyectar saldos de apertura:', err.message);
+    }
 
     for (let i = 0; i < resLocal.rows.length; i++) {
       const row = resLocal.rows[i];
@@ -355,6 +580,12 @@ async function sincronizarB2BCuentas() {
                 }
               } catch (err) {
                 console.warn(`⚠️ [PDF-SYNC] Error conectando a facturación en puerto 3004: ${err.message}`);
+              }
+            } else if (['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && !row.comprobante_id && row.presupuesto_id) {
+              try {
+                pdfBuffer = await generarFacturaHeredadaPdfBuffer(row.presupuesto_id, row.numero_comprobante);
+              } catch (err) {
+                console.error(`❌ [PDF-SYNC] Error generando PDF de factura heredada para ID ${row.local_movimiento_id}:`, err.message);
               }
             } else if (row.tipo_comprobante === 'RC') {
               try {
