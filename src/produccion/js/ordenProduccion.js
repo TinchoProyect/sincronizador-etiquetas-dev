@@ -418,15 +418,27 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
                     padding: 0;
                 }
                 .header { 
-                    text-align: center; 
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
                     border-bottom: 2px solid #000; 
                     padding-bottom: 6px; 
                     margin-bottom: 10px;
+                }
+                .header-title-container {
+                    text-align: left;
                 }
                 .header h1 { 
                     margin: 0; 
                     font-size: 16px; 
                     font-weight: bold;
+                }
+                .empresa-logo-L {
+                    width: 35px;
+                    height: 35px;
+                    object-fit: contain;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
                 }
                 .info-carro { 
                     margin-bottom: 10px; 
@@ -502,8 +514,11 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
         </head>
         <body>
             <div class="header">
-                <h1>${tituloOrden}</h1>
-                ${tipoCarro === 'externa' ? '<p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">Producción realizada fuera del taller</p>' : ''}
+                <div class="header-title-container">
+                    <h1>${tituloOrden}</h1>
+                    ${tipoCarro === 'externa' ? '<p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">Producción realizada fuera del taller</p>' : ''}
+                </div>
+                <img src="../img/isotipo_L_LAMDA.png" class="empresa-logo-L" alt="L">
             </div>
             
             <div class="info-carro">
@@ -695,9 +710,9 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
             let htmlIngredientes = '';
 
             if (resumenIngredientes && resumenIngredientes.length > 0) {
-                // Separar ingredientes según si son de artículos vinculados o no
-                const ingredientesPersonales = resumenIngredientes.filter(ing => !ing.es_de_articulo_vinculado);
-                const ingredientesLocales = resumenIngredientes.filter(ing => ing.es_de_articulo_vinculado);
+                // Separar ingredientes según si son de artículos vinculados o no (excluyendo insumos de packaging)
+                const ingredientesPersonales = resumenIngredientes.filter(ing => !ing.es_de_articulo_vinculado && !ing.es_insumo);
+                const ingredientesLocales = resumenIngredientes.filter(ing => ing.es_de_articulo_vinculado && !ing.es_insumo);
 
                 if (tipoCarro === 'externa') {
                     // 🚚 CARRO EXTERNO: Mostrar stock personal del operario
@@ -862,6 +877,53 @@ function generarHTMLOrden({ carroId, operario, articulos, mixes, ingresos, resum
             }
 
             return htmlIngredientes;
+        })()}
+
+        ${(() => {
+            // 📦 SECCIÓN DE INSUMOS NECESARIOS (PACKAGING)
+            const insumos = resumenIngredientes ? resumenIngredientes.filter(ing => !!ing.es_insumo) : [];
+            if (insumos.length === 0) return '';
+
+            return `
+                <div class="seccion">
+                    <h2>📦 INSUMOS NECESARIOS (PACKAGING)</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th style="text-align: center;">Cantidad Necesaria</th>
+                                <th style="text-align: center;">Stock Actual</th>
+                                <th style="text-align: center;">Estado</th>
+                                <th style="text-align: center;">Unidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${insumos.map(ing => {
+                                const cantidadNecesaria = parseFloat(ing.cantidad || 0);
+                                const stockActual = parseFloat(ing.stock_actual || 0);
+                                const diferencia = stockActual - cantidadNecesaria;
+                                const tieneStock = diferencia >= -0.01;
+                                const faltante = tieneStock ? 0 : Math.abs(diferencia);
+                                const unidadDisplay = ing.unidad_medida || 'u';
+
+                                return `
+                                    <tr>
+                                        <td><strong>${ing.nombre || 'Sin nombre'}</strong></td>
+                                        <td style="text-align: center; font-weight: bold; font-size: 11px;">${cantidadNecesaria.toFixed(0)}</td>
+                                        <td style="text-align: center; font-weight: bold; font-size: 11px; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                            ${stockActual.toFixed(0)}
+                                        </td>
+                                        <td style="text-align: center; ${tieneStock ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                            ${tieneStock ? '✅ Suficiente' : `❌ Faltan ${faltante.toFixed(0)}`}
+                                        </td>
+                                        <td style="text-align: center;">${unidadDisplay}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         })()}
 
             ${(() => {

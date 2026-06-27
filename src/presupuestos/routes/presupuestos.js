@@ -118,6 +118,26 @@ router.get('/:id/pdf', validatePermissions('presupuestos.read'), async (req, res
 });
 
 /**
+ * @route POST /api/presupuestos/:id/whatsapp
+ * @desc Generar PDF del presupuesto en el backend y enviarlo vía WhatsApp por el puerto 3004
+ * @access Privado
+ */
+router.post('/:id/whatsapp', validatePermissions('presupuestos.read'), async (req, res) => {
+    const { enviarPDFPresupuestoWhatsApp } = require('../controllers/pdfGenerator');
+    await enviarPDFPresupuestoWhatsApp(req, res);
+});
+
+/**
+ * @route POST /api/presupuestos/:id/email
+ * @desc Generar PDF del presupuesto en el backend y enviarlo vía Email por el puerto 3004
+ * @access Privado
+ */
+router.post('/:id/email', validatePermissions('presupuestos.read'), async (req, res) => {
+    const { enviarPDFPresupuestoEmail } = require('../controllers/pdfGenerator');
+    await enviarPDFPresupuestoEmail(req, res);
+});
+
+/**
  * @route GET /api/presupuestos
  * @desc Obtener todos los presupuestos con filtros avanzados
  * @access Privado
@@ -1276,6 +1296,48 @@ router.get('/sync/health', validatePermissions('presupuestos.read'), async (req,
         res.status(500).json({
             success: false,
             error: 'Error interno al obtener estado de salud del autosync',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route PUT /api/presupuestos/clientes/:clienteId/preferencia-facturacion
+ * @desc Actualizar la preferencia de facturación del cliente
+ * @access Privado
+ */
+router.put('/clientes/:clienteId/preferencia-facturacion', validatePermissions('presupuestos.write'), async (req, res) => {
+    const { clienteId } = req.params;
+    const { preferencia_facturacion } = req.body;
+
+    console.log(`[CLIENTES] Ruta PUT /clientes/${clienteId}/preferencia-facturacion - preferencia: ${preferencia_facturacion}`);
+
+    try {
+        const query = `
+            UPDATE public.clientes 
+            SET preferencia_facturacion = $1 
+            WHERE cliente_id = $2
+            RETURNING cliente_id, preferencia_facturacion
+        `;
+        const result = await req.db.query(query, [preferencia_facturacion, parseInt(clienteId, 10)]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Cliente no encontrado en la base de datos'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Preferencia de facturación actualizada con éxito',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ [CLIENTES] Error actualizando preferencia:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al actualizar preferencia de facturación',
             message: error.message
         });
     }

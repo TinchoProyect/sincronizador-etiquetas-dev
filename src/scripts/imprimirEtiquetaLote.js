@@ -55,19 +55,19 @@ async function main() {
 
       const etiqueta1 = `${fuenteDescripcion}
 ^FO23,20^FD${desc}^FS
-^BY3,2,60
-^FO23,70^BCN,60,N,N,N
-^FD${id}^FS
 ^CF0,25
-^FO120,140^FDLOTE: ${id}^FS`;
+^FO23,55^FDL: ${id}^FS
+^BY3,2,55
+^FO23,85^BCN,55,N,N,N
+^FD${id}^FS`;
 
       const etiqueta2 = `${fuenteDescripcion}
 ^FO443,20^FD${desc}^FS
-^BY3,2,60
-^FO443,70^BCN,60,N,N,N
-^FD${id}^FS
 ^CF0,25
-^FO540,140^FDLOTE: ${id}^FS`;
+^FO443,55^FDL: ${id}^FS
+^BY3,2,55
+^FO443,85^BCN,55,N,N,N
+^FD${id}^FS`;
 
       return `^XA
 ^LH0,0

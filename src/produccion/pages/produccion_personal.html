@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Espacio de Trabajo - Producción</title>
@@ -309,6 +310,14 @@
                             <button id="imprimir-etiquetas" class="btn btn-secondary" style="display: none;"
                                 onclick="imprimirEtiquetasCarro()">Imprimir
                                 etiquetas</button>
+
+                            <button id="imprimir-etiquetas-lote" class="btn btn-info" style="display: none; background-color: #6f42c1; border-color: #6f42c1; color: white;"
+                                onclick="imprimirEtiquetasCarroConLote()">Imprimir con lote</button>
+
+                            <div id="check-fechas-lote-container" style="display: none; align-items: center; gap: 6px; margin: 0 10px; vertical-align: middle;">
+                                <input type="checkbox" id="check-fechas-lote" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="check-fechas-lote" style="margin: 0; font-size: 0.9em; cursor: pointer; color: #495057; font-weight: 500; user-select: none;">Con Vencimiento</label>
+                            </div>
 
                             <button id="guardado-ingredientes" class="btn btn-success" style="display: none;"
                                 onclick="abrirModalGuardadoIngredientes(sessionStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦

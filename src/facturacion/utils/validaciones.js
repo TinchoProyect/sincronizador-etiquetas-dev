@@ -404,12 +404,13 @@ const puedeEmitirse = (factura) => {
         return { valido: true, esReproceso: true };
     }
     
-    // Para BORRADOR, validar que no tenga CAE ni número
+    // Para BORRADOR, validar que no tenga CAE
     if (factura.cae) {
         errores.push('Factura ya tiene CAE asignado');
     }
     
-    if (factura.cbte_nro) {
+    // Solo validar cbte_nro si no es borrador
+    if (factura.cbte_nro && factura.estado !== 'BORRADOR') {
         errores.push('Factura ya tiene número de comprobante asignado');
     }
     

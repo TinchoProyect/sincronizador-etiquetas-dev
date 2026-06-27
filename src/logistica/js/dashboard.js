@@ -93,6 +93,58 @@ window.descartarRetiro = async (idOrden) => {
 }
 
 /**
+ * Revertir Envío de Orden de Tratamiento a Mantenimiento
+ */
+window.revertirEnvioTratamiento = async (idOrden) => {
+    const idReal = String(idOrden).replace('RT-', '');
+    
+    // Alerta de confirmación de reversión de envío
+    const result = await Swal.fire({
+        title: '¿Revertir Envío?',
+        text: `El pedido RT-${idReal} se retirará de Logística y regresará al Almacén de Mantenimiento en su estado original.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, revertir',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await fetch(`/api/logistica/tratamientos/${idReal}/revertir-envio`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            await Swal.fire({
+                title: 'Revertido con Éxito',
+                text: data.message,
+                icon: 'success',
+                confirmButtonColor: '#3b82f6'
+            });
+            await cargarPedidos();
+        } else {
+            throw new Error(data.error || 'Error al procesar la reversión.');
+        }
+    } catch (error) {
+        console.error('[DASHBOARD] Error revertirEnvioTratamiento:', error);
+        Swal.fire({
+            title: 'Error',
+            text: error.message,
+            icon: 'error',
+            confirmButtonColor: '#ef4444'
+        });
+    }
+}
+
+/**
  * FEATURE FASE 3: Generar QR (Asistente en PC)
  */
 window.abrirAsistenteInmunizacionOficina = () => {
@@ -354,6 +406,7 @@ function obtenerPedidoHtml(pedido) {
              ondragstart="handleDragStart(event)" 
              ondragend="handleDragEnd(event)"
              oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')"
+             onclick="toggleSeleccionPedido(event, '${pedido.id}')"
              style="${estiloCard}">
             
             <!-- Indicador visual de domicilio -->
@@ -405,6 +458,7 @@ function obtenerPedidoHtml(pedido) {
                     ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
                     ${esTratamiento && pedido.tiene_checkin && !esDevolucion ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
                     ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
+                    ${esDevolucion ? `<button onclick="event.stopPropagation(); window.revertirEnvioTratamiento('${pedido.id}')" class="btn-sm btn-warning" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ea580c; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Retrotraer Envío al Almacén de Mantenimiento">↩️ Devolver a Mantenimiento</button>` : ''}
                     <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                 </div>
             </div>
@@ -452,6 +506,18 @@ function actualizarSeleccionPedidos() {
     const totalCount = selectors.length;
     const selectedCount = checkedSelectors.length;
 
+    // Sincronizar la clase visual 'seleccionado' en cada tarjeta
+    selectors.forEach(checkbox => {
+        const card = checkbox.closest('.pedido-card');
+        if (card) {
+            if (checkbox.checked) {
+                card.classList.add('seleccionado');
+            } else {
+                card.classList.remove('seleccionado');
+            }
+        }
+    });
+
     // Actualizar el checkbox general en la cabecera
     const selectAllCheckbox = document.getElementById('select-all-pedidos');
     if (selectAllCheckbox) {
@@ -472,6 +538,31 @@ function actualizarSeleccionPedidos() {
         }
     }
 }
+
+/**
+ * Alternar selección de un pedido al hacer clic en su tarjeta
+ */
+window.toggleSeleccionPedido = function(event, pedidoId) {
+    // Evitar disparar si el clic fue en un botón, un input, un badge o un elemento interactivo
+    const target = event.target;
+    if (
+        target.tagName === 'BUTTON' || 
+        target.tagName === 'INPUT' || 
+        target.tagName === 'A' || 
+        target.closest('button') || 
+        target.closest('a') || 
+        target.classList.contains('pedido-badge') || 
+        target.closest('.pedido-badge')
+    ) {
+        return;
+    }
+
+    const checkbox = document.querySelector(`.pedidos-list .pedido-selector[data-id="${pedidoId}"]`);
+    if (checkbox && !checkbox.disabled) {
+        checkbox.checked = !checkbox.checked;
+        actualizarSeleccionPedidos();
+    }
+};
 
 /**
  * Seleccionar o deseleccionar todos los pedidos visibles y habilitados

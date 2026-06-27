@@ -458,11 +458,14 @@ footer {
   margin-bottom: 5px;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   width: 100%;
   padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
+  background-color: #fff;
+  box-sizing: border-box;
 }
 
 .mensaje-error {

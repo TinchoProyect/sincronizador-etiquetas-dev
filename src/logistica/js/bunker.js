@@ -119,6 +119,11 @@ async function seleccionarArticuloConsolidado(item) {
     document.getElementById('bunker_id_pivote').value = item.id;
     document.getElementById('bunker_codigo_barras').value = item.codigo_barras || item.id;
     
+    const descLegacyEl = document.getElementById('bunker_id_pivote_desc');
+    if (descLegacyEl) {
+        descLegacyEl.innerText = item.descripcion ? `Legacy: ${item.descripcion}` : '';
+    }
+    
     try {
         const res = await fetch(`/api/logistica/bunker/articulos/${encodeURIComponent(item.id)}`);
         const data = await res.json();
@@ -147,6 +152,8 @@ function limpiarSeleccionConsolidado() {
     document.getElementById('buscador_consolidado').value = '';
     document.getElementById('bunker_id_pivote').value = 'Generado Automáticamente';
     document.getElementById('bunker_codigo_barras').value = 'Generado Automáticamente';
+    const descLegacyEl = document.getElementById('bunker_id_pivote_desc');
+    if (descLegacyEl) descLegacyEl.innerText = '';
     // Limpiar form visual
     document.getElementById('costo_base').value = '';
     document.querySelectorAll('.input-margen-dinamico').forEach(i => i.value = '');
@@ -512,6 +519,36 @@ function terminoYaAsignado(inputId, query) {
     return prop && prop.termino.toLowerCase() === query.toLowerCase();
 }
 
+window.conmutarModoUnidades = function() {
+    const kilosEl = document.getElementById('kilos_unidad');
+    const gramosEl = document.getElementById('expresar_gramos');
+    const unidadesEl = document.getElementById('expresar_unidades');
+    const enUnidades = unidadesEl ? unidadesEl.checked : false;
+
+    if (enUnidades) {
+        if (gramosEl) {
+            gramosEl.checked = false;
+            gramosEl.disabled = true;
+        }
+        if (kilosEl) {
+            kilosEl.value = '0.000';
+            kilosEl.disabled = true;
+            kilosEl.style.backgroundColor = '#e2e8f0';
+            kilosEl.style.cursor = 'not-allowed';
+        }
+    } else {
+        if (gramosEl) {
+            gramosEl.disabled = false;
+        }
+        if (kilosEl) {
+            kilosEl.disabled = false;
+            kilosEl.style.backgroundColor = '';
+            kilosEl.style.cursor = '';
+        }
+    }
+    actualizarLivePreview();
+};
+
 function actualizarLivePreview() {
     let parts = [];
     if (dictLocal.principal && (dictLocal.principal.termino || dictLocal.principal.abreviatura)) {
@@ -530,9 +567,18 @@ function actualizarLivePreview() {
     const cantEl  = document.getElementById('cantidad_pack');
     const gramosEl = document.getElementById('expresar_gramos');
     const enGramos = gramosEl ? gramosEl.checked : false;
+    const unidadesEl = document.getElementById('expresar_unidades');
+    const enUnidades = unidadesEl ? unidadesEl.checked : false;
 
-    if (kilosEl && cantEl) {
-        const kilos = parseFloat(kilosEl.value) || 0;
+    if (enUnidades && cantEl) {
+        const cantidad = parseInt(cantEl.value) || 1;
+        if (cantidad === 1) {
+            sufijoFisico = ` x 1 unidad`;
+        } else {
+            sufijoFisico = ` x ${cantidad} unidades`;
+        }
+    } else if (kilosEl && cantEl) {
+        const kilos = parseInputValue(kilosEl) || 0;
         const cantidad = parseInt(cantEl.value) || 1;
         
         if (kilos > 0) {
@@ -844,11 +890,11 @@ async function cargarListasDinamicas() {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${lista.nombre}</td>
-                <td><input type="number" step="0.01" class="input-margen-dinamico" data-listaid="${lista.id}" value="0.00" placeholder="0.00" oninput="recalcularFilaPorMargen(${lista.id})"></td>
+                <td><input type="text" class="input-margen-dinamico" data-listaid="${lista.id}" value="0,00" placeholder="0,00" oninput="recalcularFilaPorMargen(${lista.id})" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this)" data-decimals="2"></td>
                 <td id="s_iva_${lista.id}">$ 0,00</td>
                 <td id="iibb_${lista.id}">$ 0,00</td>
                 <td id="neta_${lista.id}" style="color: #15803d; font-weight: bold;">$ 0,00</td>
-                <td><input type="text" class="input-precio-final" id="precio_final_${lista.id}" data-listaid="${lista.id}" value="0,00" placeholder="0,00" oninput="recalcularFilaPorPrecioFinal(${lista.id})" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this)"></td>
+                <td><input type="text" class="input-precio-final" id="precio_final_${lista.id}" data-listaid="${lista.id}" value="0,00" placeholder="0,00" oninput="recalcularFilaPorPrecioFinal(${lista.id})" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this)" data-decimals="2"></td>
                 <td style="text-align: center;"><button type="button" class="btn-icon" style="color: #ef4444; font-size: 1.2em; border: none; background: transparent; cursor: pointer;" title="Resetear Valores" onclick="limpiarFilaFinanciera(${lista.id})">🗑️</button></td>
             `;
             tbody.appendChild(tr);
@@ -878,6 +924,11 @@ window.hidratarFormularioEdicion = async function(id) {
         document.getElementById('bunker_id_pivote').value = art.articulo_id;
         document.getElementById('bunker_codigo_barras').value = art.codigo_barras || art.articulo_id;
         
+        const descLegacyEl = document.getElementById('bunker_id_pivote_desc');
+        if (descLegacyEl) {
+            descLegacyEl.innerText = art.descripcion_legacy ? `Legacy: ${art.descripcion_legacy}` : '';
+        }
+        
         // Trick to enable UPDATE branch when saving
         articuloConsolidadoSeleccionado = { id: art.articulo_id, codigo_barras: art.codigo_barras || art.articulo_id }; 
         
@@ -900,13 +951,26 @@ window.hidratarFormularioEdicion = async function(id) {
         }
         
         // 3. Financial and Reglas
-        document.getElementById('costo_base').value = parseFloat(art.costo_base || 0).toFixed(2);
-        document.getElementById('porcentaje_iva').value = parseFloat(art.porcentaje_iva || 21).toFixed(2);
-        document.getElementById('kilos_unidad').value = parseFloat(art.kilos_unidad || 0).toFixed(3);
+        const costoBaseEl = document.getElementById('costo_base');
+        costoBaseEl.value = parseFloat(art.costo_base || 0).toFixed(2);
+        aplicarFormatoInputBlur(costoBaseEl);
+
+        const porcentajeIvaEl = document.getElementById('porcentaje_iva');
+        porcentajeIvaEl.value = parseFloat(art.porcentaje_iva || 21).toFixed(2);
+        aplicarFormatoInputBlur(porcentajeIvaEl);
+
+        const kilosUnidadEl = document.getElementById('kilos_unidad');
+        kilosUnidadEl.value = parseFloat(art.kilos_unidad || 0).toFixed(3);
+        aplicarFormatoInputBlur(kilosUnidadEl);
         document.getElementById('cantidad_pack').value = art.pack_unidades || 1;
         if (document.getElementById('expresar_gramos')) {
             document.getElementById('expresar_gramos').checked = art.expresado_en_gramos || false;
         }
+        if (document.getElementById('expresar_unidades')) {
+            document.getElementById('expresar_unidades').checked = art.expresado_en_unidades || false;
+        }
+        conmutarModoUnidades();
+        
         document.getElementById('moneda').value = art.moneda || '($)Pesos';
         
         if (art.rubro) {
@@ -927,6 +991,7 @@ window.hidratarFormularioEdicion = async function(id) {
                 const inputMargen = document.querySelector(`.input-margen-dinamico[data-listaid="${m.lista_id}"]`);
                 if (inputMargen) {
                     inputMargen.value = parseFloat(m.margen_porcentaje).toFixed(2);
+                    aplicarFormatoInputBlur(inputMargen);
                 }
             });
         }
@@ -936,14 +1001,17 @@ window.hidratarFormularioEdicion = async function(id) {
         // Note: Some properties might have been auto-added by `obtenerPlantillaParaArticulo`. We must map them.
         const propsJSON = art.propiedades_dinamicas || {};
         
-        // Extraer claves y ordenarlas por el atributo interno 'orden' para mantener la estructura de la Nomenclatura
-        const keys = Object.keys(propsJSON).sort((a, b) => {
-            const propA = propsJSON[a];
-            const propB = propsJSON[b];
-            const ordA = (typeof propA === 'object' && propA !== null && propA.orden !== undefined) ? propA.orden : 99;
-            const ordB = (typeof propB === 'object' && propB !== null && propB.orden !== undefined) ? propB.orden : 99;
-            return ordA - ordB;
-        });
+        // Extraer claves y ordenarlas por el atributo interno 'orden' para mantener la estructura de la Nomenclatura.
+        // Excluimos las claves técnicas del asistente de mano de obra.
+        const keys = Object.keys(propsJSON)
+            .filter(key => !key.startsWith('asistente_'))
+            .sort((a, b) => {
+                const propA = propsJSON[a];
+                const propB = propsJSON[b];
+                const ordA = (typeof propA === 'object' && propA !== null && propA.orden !== undefined) ? propA.orden : 99;
+                const ordB = (typeof propB === 'object' && propB !== null && propB.orden !== undefined) ? propB.orden : 99;
+                return ordA - ordB;
+            });
         
         for (const cat of keys) {
             const propData = propsJSON[cat];
@@ -971,8 +1039,9 @@ window.hidratarFormularioEdicion = async function(id) {
             // At this point, the innerHTML is either a text input or a Smart <select>
             // Let's attempt to look up its historical Abbreviation since it's missing from JSONB mapping
             let abrevReconstructed = 'XXX';
-            if (window.diccionarioCategorizado) {
-                 const matchDict = window.diccionarioCategorizado.find(d => d.termino.toLowerCase() === val.toLowerCase());
+            if (window.diccionarioCategorizado && val) {
+                 const valStr = String(val).toLowerCase();
+                 const matchDict = window.diccionarioCategorizado.find(d => d.termino && d.termino.toLowerCase() === valStr);
                  if (matchDict) abrevReconstructed = matchDict.abreviatura;
             }
 
@@ -1042,9 +1111,25 @@ window.parseInputValue = function(inputEl) {
     if (!inputEl) return 0;
     let valStr = inputEl.value;
     if (!valStr || valStr.trim() === "") return NaN; // distinguish empty from 0
-    if (inputEl.type === 'text') {
-        valStr = valStr.replace(/\$/g, '').replace(/\./g, '').replace(',', '.').trim();
+    
+    // Clean string: remove $, spaces
+    valStr = valStr.replace(/\$/g, '').trim();
+    
+    // Check if there is both dot and comma
+    const hasComma = valStr.includes(',');
+    const hasDot = valStr.includes('.');
+    
+    if (hasComma && hasDot) {
+        // Assume standard format: dots are thousands, comma is decimal (e.g. 1.234,56)
+        valStr = valStr.replace(/\./g, '').replace(',', '.');
+    } else if (hasComma) {
+        // Only comma: it is the decimal separator (e.g. 12,34)
+        valStr = valStr.replace(',', '.');
+    } else {
+        // Only dot or neither: it is the decimal separator (e.g. 12.34 or 12)
+        // Keep it as is ( parseFloat accepts dot )
     }
+    
     return parseFloat(valStr);
 };
 
@@ -1052,15 +1137,16 @@ window.aplicarFormatoInputBlur = function(inputEl) {
     let val = parseInputValue(inputEl);
     if (isNaN(val)) return;
     inputEl.type = 'text';
-    inputEl.value = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    let decimals = parseInt(inputEl.getAttribute('data-decimals')) || 2;
+    inputEl.value = new Intl.NumberFormat('es-AR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(val);
 };
 
 window.limpiarFormatoInputFocus = function(inputEl) {
-    if (inputEl.type === 'number') return;
     let val = parseInputValue(inputEl);
-    inputEl.type = 'number';
-    inputEl.step = '0.01';
-    inputEl.value = isNaN(val) ? "" : val.toFixed(2);
+    // Keep type="text" to allow typing point or comma fluently
+    inputEl.type = 'text';
+    let decimals = parseInt(inputEl.getAttribute('data-decimals')) || 2;
+    inputEl.value = isNaN(val) ? "" : val.toFixed(decimals).replace('.', ',');
 };
 
 window.limpiarFilaFinanciera = function(listaId) {
@@ -1069,11 +1155,11 @@ window.limpiarFilaFinanciera = function(listaId) {
     
     // Hard UI Reset to 0
     if (margenInput) {
-        margenInput.type = 'number';
-        margenInput.value = '0.00';
+        margenInput.type = 'text';
+        margenInput.value = '0,00';
     }
     if (precioInput) {
-        precioInput.type = 'number';
+        precioInput.type = 'text';
         precioInput.value = '';
     }
     
@@ -1090,13 +1176,12 @@ window.recalcularTodaLaGrilla = function() {
 };
 
 window.recalcularFilaPorMargen = function(listaId) {
-    const costoBase = parseFloat(document.getElementById('costo_base').value) || 0;
-    const ivaPct = parseFloat(document.getElementById('porcentaje_iva').value) || 0;
+    const costoBase = parseInputValue(document.getElementById('costo_base')) || 0;
+    const ivaPct = parseInputValue(document.getElementById('porcentaje_iva')) || 0;
     
     const margenInput = document.querySelector(`.input-margen-dinamico[data-listaid="${listaId}"]`);
     if (!margenInput) return;
     
-    const margenText = (margenInput.type === 'text') ? margenInput.value.trim() : margenInput.value;
     let margen = parseInputValue(margenInput);
 
     if (isNaN(margen) || margen === 0) {
@@ -1105,7 +1190,7 @@ window.recalcularFilaPorMargen = function(listaId) {
         document.getElementById(`neta_${listaId}`).innerText = formatCurrencyARG(0);
         const precioInput = document.getElementById(`precio_final_${listaId}`);
         if (precioInput) {
-            precioInput.type = 'number';
+            precioInput.type = 'text';
             precioInput.value = '';
         }
         return;
@@ -1122,17 +1207,14 @@ window.recalcularFilaPorMargen = function(listaId) {
     
     const precioInput = document.getElementById(`precio_final_${listaId}`);
     if (precioInput) {
-        if (precioInput.type === 'text') {
-            precioInput.value = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(precio_c_iva);
-        } else {
-            precioInput.value = precio_c_iva.toFixed(2);
-        }
+        precioInput.type = 'text';
+        precioInput.value = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(precio_c_iva);
     }
 };
 
 window.recalcularFilaPorPrecioFinal = function(listaId) {
-    const costoBase = parseFloat(document.getElementById('costo_base').value) || 0;
-    const ivaPct = parseFloat(document.getElementById('porcentaje_iva').value) || 0;
+    const costoBase = parseInputValue(document.getElementById('costo_base')) || 0;
+    const ivaPct = parseInputValue(document.getElementById('porcentaje_iva')) || 0;
     
     const precioInput = document.getElementById(`precio_final_${listaId}`);
     if (!precioInput) return;
@@ -1145,8 +1227,8 @@ window.recalcularFilaPorPrecioFinal = function(listaId) {
         document.getElementById(`neta_${listaId}`).innerText = formatCurrencyARG(0);
         const margenInput = document.querySelector(`.input-margen-dinamico[data-listaid="${listaId}"]`);
         if (margenInput) {
-            margenInput.type = 'number';
-            margenInput.value = '0.00';
+            margenInput.type = 'text';
+            margenInput.value = '0,00';
         }
         return;
     }
@@ -1161,12 +1243,13 @@ window.recalcularFilaPorPrecioFinal = function(listaId) {
     
     const margenInput = document.querySelector(`.input-margen-dinamico[data-listaid="${listaId}"]`);
     if (margenInput) {
+        margenInput.type = 'text';
         if (costoBase <= 0) {
-            margenInput.value = '0.00';
+            margenInput.value = '0,00';
             return;
         }
         let nuevoMargen = ((precio_s_iva / costoBase) - 1) * 100;
-        margenInput.value = nuevoMargen.toFixed(2);
+        margenInput.value = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(nuevoMargen);
     }
 };
 
@@ -1229,11 +1312,12 @@ async function guardarArticuloBunker(event) {
         descripcion: dictLocal.principal.termino,
         descripcion_abreviada: desc_abreviada,
         propiedades_dinamicas: propsJSON,
-        costo_base: parseFloat(document.getElementById('costo_base').value) || 0,
-        porcentaje_iva: parseFloat(document.getElementById('porcentaje_iva').value) || 21,
-        kilos_unidad: parseFloat(document.getElementById('kilos_unidad').value) || 0,
+        costo_base: parseInputValue(document.getElementById('costo_base')) || 0,
+        porcentaje_iva: parseInputValue(document.getElementById('porcentaje_iva')) || 21,
+        kilos_unidad: parseInputValue(document.getElementById('kilos_unidad')) || 0,
         pack_unidades: parseInt(document.getElementById('cantidad_pack').value) || 1,
         expresado_en_gramos: document.getElementById('expresar_gramos') ? document.getElementById('expresar_gramos').checked : false,
+        expresado_en_unidades: document.getElementById('expresar_unidades') ? document.getElementById('expresar_unidades').checked : false,
         moneda: document.getElementById('moneda').value,
         rubro: document.getElementById('rubro').value.trim(),
         sub_rubro: document.getElementById('sub_rubro').value.trim(),
@@ -1248,7 +1332,7 @@ async function guardarArticuloBunker(event) {
     inputsMargen.forEach(input => {
         listasMargenes.push({
             lista_id: parseInt(input.getAttribute('data-listaid')),
-            margen_porcentaje: parseFloat(input.value) || 0
+            margen_porcentaje: parseInputValue(input) || 0
         });
     });
 

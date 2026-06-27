@@ -793,6 +793,7 @@ async function handleSubmit(event) {
             origen_facturacion: origenFacturacionValor, // NUEVO FASE 2
             origen_punto_venta: origenPuntoVentaValor,
             origen_numero_factura: origenNumeroFacturaValor,
+            usar_precios_bunker: document.getElementById('usar_precios_bunker')?.checked || false,
 
             nota: (formData.get('nota') || '').toString(),
             punto_entrega: puntoEntregaValor,
@@ -1376,7 +1377,141 @@ function seleccionarCliente(element) {
 
     // ✅ NUEVO: Cargar historial de entregas del cliente
     cargarHistorialEntregas(clienteId);
+
+    // Verificar si el cliente tiene listas de precios Bunker (Fase 3)
+    (async () => {
+        try {
+            const res = await fetch(`/api/presupuestos/clientes/${clienteId}`);
+            if (res.ok) {
+                const body = await res.json();
+                const wrapper = document.getElementById('bunker-switch-wrapper');
+                const switchInput = document.getElementById('usar_precios_bunker');
+                const label = document.getElementById('bunker-switch-label');
+                if (body?.data?.tiene_listas_bunker) {
+                    if (wrapper) wrapper.style.display = 'inline-flex';
+                    if (switchInput) switchInput.disabled = false;
+                } else {
+                    if (wrapper) wrapper.style.display = 'none';
+                    if (switchInput) {
+                        switchInput.checked = false;
+                        switchInput.disabled = true;
+                    }
+                    if (label) {
+                        label.innerText = 'Inactivo';
+                        label.style.color = '#475569';
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error al verificar listas Bunker del cliente:', err);
+        }
+    })();
 }
+
+// Nueva función de conmutación del Modo Bunker
+// Nueva función de conmutación del Modo Bunker - Recálculo dinámico en caliente (sin vaciar grilla)
+window.conmutarModoBunker = async function() {
+    const switchInput = document.getElementById('usar_precios_bunker');
+    const label = document.getElementById('bunker-switch-label');
+    
+    if (!switchInput) return;
+    
+    const usarPreciosBunker = switchInput.checked;
+    
+    if (label) {
+        label.innerText = usarPreciosBunker ? 'Activo' : 'Inactivo';
+        label.style.color = usarPreciosBunker ? '#166534' : '#475569';
+    }
+
+    const clienteIdInput = document.getElementById('id_cliente');
+    const clienteId = clienteIdInput ? parseInt(clienteIdInput.value, 10) || 0 : 0;
+    if (clienteId <= 0) return;
+
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr[id^="detalle-"]'));
+    if (rows.length === 0) return;
+
+    console.log(`🛡️ [PRESUPUESTOS] Recalculando grilla globalmente en Modo ${usarPreciosBunker ? 'Búnker' : 'Legacy'}`);
+
+    // Limpiar caché local de búsqueda para forzar refresco
+    window.__articulosSearchCache = {};
+
+    // Mostrar loader o aviso visual si es necesario (ej. cambiar opacidad temporalmente)
+    tbody.style.opacity = '0.6';
+
+    const promises = rows.map(async (row) => {
+        const artInput = row.querySelector('input[name*="[articulo]"]');
+        if (!artInput || !artInput.value.trim()) return;
+
+        const codigoBarras = artInput.dataset.codigoBarras || artInput.dataset.articuloNumero || '';
+        const description = artInput.value.trim();
+
+        let valor = 0;
+        let iva = 21;
+        
+        try {
+            const p = new URLSearchParams({ cliente_id: String(clienteId) });
+            if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            else if (description) p.set('descripcion', description);
+            
+            if (usarPreciosBunker) p.set('usar_precios_bunker', 'true');
+
+            const url = `/api/presupuestos/precios?${p.toString()}`;
+            const res = await fetch(url).then(r => r.json());
+            if (res.success && res.data) {
+                valor = Number(res.data.valor1) || 0;
+                iva = Number(res.data.iva) || 21;
+            }
+        } catch (e) {
+            console.error(`Error al recuperar precio para la fila:`, e);
+        }
+
+        // Recuperar la descripción amistosa asociada al modo
+        let friendlyDesc = description;
+        if (codigoBarras) {
+            try {
+                let sugUrl = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=1&cliente_id=${clienteId}`;
+                if (usarPreciosBunker) sugUrl += '&usar_precios_bunker=true';
+                
+                const sugRes = await fetch(sugUrl).then(r => r.json());
+                const arr = Array.isArray(sugRes) ? sugRes : (sugRes.data || sugRes.items || []);
+                if (arr.length > 0) {
+                    friendlyDesc = arr[0].descripcion || arr[0].nombre || description;
+                }
+            } catch (e) {
+                console.error(`Error al recuperar descripción amistosa:`, e);
+            }
+        }
+
+        const valor1Input = row.querySelector('input[name*="[valor1]"]');
+        const iva1Input = row.querySelector('input[name*="[iva1]"]');
+        const cantidadInput = row.querySelector('input[name*="[cantidad]"]');
+        const detalleId = getDetalleIdFromInput(cantidadInput || artInput);
+
+        artInput.value = friendlyDesc;
+        
+        if (valor1Input) setNumeric(valor1Input, valor, 2, 0);
+        if (iva1Input) {
+            iva1Input.dataset.ivaBase = String(iva);
+            const tipoSel = document.getElementById('tipo_comprobante');
+            const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+            setNumeric(iva1Input, visibleIva, 2, 21);
+        }
+
+        if (detalleId != null) {
+            calcularPrecio(detalleId);
+        }
+    });
+
+    await Promise.all(promises);
+    tbody.style.opacity = '1';
+
+    if (typeof recalcTotales === 'function') {
+        recalcTotales();
+    }
+};
 
 /**
  * Formatear número de cliente con ceros
@@ -1663,7 +1798,12 @@ const handleArticuloInput = debounce(async function (event) {
                     const controller = new AbortController();
                     window.__articulosCurrentRequest = controller;
 
-                    const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`, {
+                    const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+                    const clienteId = getClienteIdActivo() || 0;
+                    let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500&cliente_id=${clienteId}`;
+                    if (usarPreciosBunker) url += '&usar_precios_bunker=true';
+                    
+                    const response = await fetch(url, {
                         signal: controller.signal
                     });
                     
@@ -1912,7 +2052,12 @@ async function buscarArticuloPorCodigoExacto(codigoBarras) {
     console.log('[MODO-CODIGO] Buscando artículo por código exacto:', codigoBarras);
 
     try {
-        const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=100`);
+        const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+        const clienteId = getClienteIdActivo() || 0;
+        let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=100&cliente_id=${clienteId}`;
+        if (usarPreciosBunker) url += '&usar_precios_bunker=true';
+        
+        const response = await fetch(url);
 
         if (!response.ok) {
             throw new Error(`Error HTTP ${response.status}`);
@@ -2521,11 +2666,14 @@ function seleccionarArticulo(input, element) {
     (async () => {
         let valor, iva;
 
+        const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+
         // 1) por código de barras
         try {
             const p = new URLSearchParams();
             p.set('cliente_id', String(clienteId));
             if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            if (usarPreciosBunker) p.set('usar_precios_bunker', 'true');
             let body = await fetchPrecios(p);
             valor = Number(body?.data?.valor1);
             iva = Number(body?.data?.iva);
@@ -2539,6 +2687,7 @@ function seleccionarArticulo(input, element) {
                 const p2 = new URLSearchParams();
                 p2.set('cliente_id', String(clienteId));
                 if (description) p2.set('descripcion', description);
+                if (usarPreciosBunker) p2.set('usar_precios_bunker', 'true');
                 const body2 = await fetchPrecios(p2);
                 valor = Number(body2?.data?.valor1);
                 iva = Number(body2?.data?.iva);
@@ -2630,6 +2779,20 @@ function activarModoRetiro() {
 
     const panelOpciones = document.getElementById('contenedor-opciones-retiro');
     if (panelOpciones) panelOpciones.style.display = 'block';
+
+    const panelFecha = document.getElementById('fecha-retiro-container');
+    if (panelFecha) panelFecha.style.display = 'block';
+
+    const fechaComprobante = document.getElementById('fecha_comprobante');
+    const fechaInput = document.getElementById('fecha');
+    const today = new Date().toISOString().split('T')[0];
+    if (fechaComprobante && fechaInput) {
+        fechaComprobante.value = fechaInput.value || today;
+        fechaComprobante.addEventListener('change', () => {
+            fechaInput.value = fechaComprobante.value;
+            fechaInput.dispatchEvent(new Event('change'));
+        });
+    }
 
     const panelAdmin = document.getElementById('admin-retiro-container');
     if (panelAdmin) panelAdmin.style.display = 'block';
@@ -2995,7 +3158,10 @@ async function confirmarImportacion(idPresupuesto, descuentoPorcentaje = 0) {
                     // Es de Lomasoft
                     origenFactSelect.value = 'LOMASOFT';
                     const partes = String(compLomasoft).split('-');
-                    if (partes.length === 2) {
+                    if (partes.length === 3) {
+                        origenPuntoVentaInput.value = parseInt(partes[1], 10);
+                        origenNumFacturaInput.value = parseInt(partes[2], 10);
+                    } else if (partes.length === 2) {
                         origenPuntoVentaInput.value = parseInt(partes[0], 10);
                         origenNumFacturaInput.value = parseInt(partes[1], 10);
                     }
@@ -3442,7 +3608,10 @@ function seleccionarOrigenConfirmed(precioHistorico, descuentoPorcentaje = 0, or
                 // Es de Lomasoft ("0004-00001234")
                 origenFactSelect.value = 'LOMASOFT';
                 const partes = String(comprobanteLomasoft).split('-');
-                if (partes.length === 2) {
+                if (partes.length === 3) {
+                    origenPuntoVentaInput.value = parseInt(partes[1], 10);
+                    origenNumFacturaInput.value = parseInt(partes[2], 10);
+                } else if (partes.length === 2) {
                     origenPuntoVentaInput.value = parseInt(partes[0], 10);
                     origenNumFacturaInput.value = parseInt(partes[1], 10);
                 }

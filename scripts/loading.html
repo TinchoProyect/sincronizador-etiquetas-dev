@@ -1,81 +1,387 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <link rel="icon" type="image/png" href="../src/app-etiquetas/favicon.ico?v=2" />
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciando LAMDA...</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color-1: #0c0a12;
+            --bg-color-2: #161224;
+            --primary-color: #8e4785; /* Violeta institucional */
+            --primary-light: #b05fa7;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --success: #10b981; /* Esmeralda */
+            --warning: #f59e0b; /* Ámbar */
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            background-color: #f0f2f5;
+            min-height: 100vh;
+            background: radial-gradient(circle at center, var(--bg-color-2) 0%, var(--bg-color-1) 100%);
             margin: 0;
-            flex-direction: column;
-            text-align: center;
+            padding: 20px;
+            color: var(--text-main);
+            overflow: hidden;
         }
+
+        /* Efecto de luz difusa de fondo */
+        .ambient-glow {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(142, 71, 133, 0.15) 0%, rgba(0,0,0,0) 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            pointer-events: none;
+            filter: blur(50px);
+        }
+
         .loader-container {
-            background: white;
-            padding: 45px 65px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            position: relative;
+            z-index: 10;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
             display: flex;
             flex-direction: column;
             align-items: center;
+            width: 100%;
+            max-width: 480px;
+            animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
         }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
         .logo {
-            max-width: 240px;
+            max-width: 180px;
             height: auto;
-            margin-bottom: 30px;
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.08));
-            animation: fadeIn 1.2s ease-in-out;
+            margin-bottom: 25px;
+            filter: drop-shadow(0 8px 16px rgba(142, 71, 133, 0.2));
+            animation: float 4s ease-in-out infinite;
         }
-        .loader {
-            border: 5px solid #f1f5f9;
-            border-top: 5px solid #8e4785; /* Violeta institucional del logo */
-            border-radius: 50%;
-            width: 44px;
-            height: 44px;
-            animation: spin 0.8s linear infinite;
-            margin-bottom: 20px;
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+
         h2 {
-            color: #1e293b;
-            margin-top: 10px;
-            margin-bottom: 8px;
+            font-size: 1.6rem;
             font-weight: 600;
-            font-size: 1.5em;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-        p {
-            color: #64748b;
-            margin: 0;
-            font-size: 0.95em;
+
+        .subtitle {
+            color: var(--text-muted);
+            margin: 0 0 30px 0;
+            font-size: 0.95rem;
+            font-weight: 400;
+        }
+
+        /* Barra de progreso global */
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-light) 100%);
+            border-radius: 10px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(142, 71, 133, 0.5);
+        }
+
+        /* Lista de servicios */
+        .services-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: all 0.3s ease;
+        }
+
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .status-indicator.pending {
+            background-color: #475569;
+            box-shadow: 0 0 0 0 rgba(71, 85, 105, 0);
+        }
+
+        .status-indicator.checking {
+            background-color: var(--warning);
+            box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+            animation: pulse-warn 1.5s infinite;
+        }
+
+        .status-indicator.ready {
+            background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        @keyframes pulse-warn {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+
+        .service-name {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #cbd5e1;
+        }
+
+        .service-port {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge.pending {
+            background: rgba(148, 163, 184, 0.1);
+            color: var(--text-muted);
+        }
+
+        .status-badge.online {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* Botón de omisión por si se traba algún módulo no crítico */
+        .bypass-container {
+            margin-top: 20px;
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+            width: 100%;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .bypass-btn {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .bypass-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.2);
         }
     </style>
-    <script>
-        // Al ejecutar desde file://, los navegadores bloquean "fetch" por políticas CORS.
-        // En su lugar, daremos un tiempo prudencial (6.5 segundos) para que npm start levante
-        // todos los servicios y luego redirigimos directo al puerto 3000.
-        setTimeout(function() {
-            window.location.replace('http://localhost:3000/');
-        }, 6500);
-    </script>
 </head>
 <body>
+    <div class="ambient-glow"></div>
+    
     <div class="loader-container">
         <img src="img/logo_LAMDA_grande.png" alt="LAMDA Logo" class="logo">
-        <div class="loader"></div>
-        <h2>Iniciando sistema...</h2>
-        <p>Cargando componentes...</p>
+        <h2 id="main-title">Iniciando LAMDA</h2>
+        <p class="subtitle" id="main-subtitle">Verificando estado de los servicios...</p>
+        
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
+
+        <div class="services-list" id="services-list">
+            <!-- Los elementos se renderizan dinámicamente -->
+        </div>
+
+        <div class="bypass-container" id="bypass-container">
+            <button class="bypass-btn" onclick="bypassAndRedirect()">
+                Bypass: Abrir sistema ahora
+            </button>
+        </div>
     </div>
+
+    <script>
+        const services = [
+            { id: 'etiquetas', name: 'Sistema Etiquetas (Core)', port: 3000, critical: true },
+            { id: 'produccion', name: 'Módulo Producción', port: 3002, critical: true },
+            { id: 'presupuestos', name: 'Módulo Presupuestos', port: 3003, critical: true },
+            { id: 'facturacion', name: 'Módulo Facturación', port: 3004, critical: true },
+            { id: 'logistica', name: 'Módulo Logística (Búnker)', port: 3005, critical: true }
+        ];
+
+        // Inicializar la interfaz con los items correspondientes
+        const listContainer = document.getElementById('services-list');
+        services.forEach(s => {
+            const div = document.createElement('div');
+            div.className = 'service-item';
+            div.id = `item-${s.id}`;
+            div.innerHTML = `
+                <div class="service-info">
+                    <div class="status-indicator pending" id="ind-${s.id}"></div>
+                    <div>
+                        <span class="service-name">${s.name}</span>
+                        <span class="service-port">:${s.port}</span>
+                    </div>
+                </div>
+                <div class="status-badge pending" id="badge-${s.id}">Espere</div>
+            `;
+            listContainer.appendChild(div);
+        });
+
+        // Función para validar la disponibilidad del puerto de forma asincrónica
+        async function checkService(port) {
+            try {
+                // Timeout corto de 600ms para evitar esperas largas
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 600);
+                
+                // Realizamos una llamada con no-cors. Si el servidor responde
+                // (aunque sea con error HTTP o CORS), el TCP handshake se realiza
+                // y la promesa se resuelve. Si está apagado, tira error de conexión.
+                await fetch(`http://localhost:${port}/`, {
+                    mode: 'no-cors',
+                    signal: controller.signal,
+                    cache: 'no-store'
+                });
+                clearTimeout(timeoutId);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        let checksCount = 0;
+        let isRedirecting = false;
+
+        async function poll() {
+            if (isRedirecting) return;
+            checksCount++;
+
+            // Realizamos la validación en paralelo
+            const results = await Promise.all(
+                services.map(async (s) => {
+                    const isUp = await checkService(s.port);
+                    return { id: s.id, isUp };
+                })
+            );
+
+            let allReady = true;
+            let readyCount = 0;
+
+            results.forEach(res => {
+                const indicator = document.getElementById(`ind-${res.id}`);
+                const badge = document.getElementById(`badge-${res.id}`);
+                
+                if (res.isUp) {
+                    indicator.className = 'status-indicator ready';
+                    badge.textContent = 'Listo';
+                    badge.className = 'status-badge online';
+                    readyCount++;
+                } else {
+                    indicator.className = 'status-indicator checking';
+                    badge.textContent = 'Iniciando';
+                    badge.className = 'status-badge pending';
+                    allReady = false;
+                }
+            });
+
+            // Actualizar la barra de progreso
+            const progressPercent = Math.round((readyCount / services.length) * 100);
+            document.getElementById('progress-bar-fill').style.width = `${progressPercent}%`;
+
+            if (allReady) {
+                isRedirecting = true;
+                document.getElementById('main-subtitle').innerHTML = '<span style="color: var(--success)">¡Todo listo! Conectando...</span>';
+                setTimeout(() => {
+                    window.location.replace('http://localhost:3000/');
+                }, 800);
+            } else {
+                // Si el puerto principal de etiquetas (3000) ya está activo, y llevamos
+                // más de 12 segundos, ofrecemos al usuario un botón de bypass.
+                const etiquetasOnline = results.find(r => r.id === 'etiquetas')?.isUp;
+                if (checksCount > 10 && etiquetasOnline) {
+                    document.getElementById('bypass-container').style.display = 'block';
+                }
+                
+                // Volver a consultar en 800ms
+                setTimeout(poll, 800);
+            }
+        }
+
+        function bypassAndRedirect() {
+            isRedirecting = true;
+            window.location.replace('http://localhost:3000/');
+        }
+
+        // Iniciar el chequeo
+        poll();
+    </script>
 </body>
 </html>

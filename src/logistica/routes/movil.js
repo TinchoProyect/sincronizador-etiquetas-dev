@@ -398,7 +398,7 @@ router.get('/ruta-activa', async (req, res) => {
                 (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
                 EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
             FROM presupuestos p
-            INNER JOIN clientes c ON p.id_cliente::text = c.cliente_id::text
+            INNER JOIN clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
             WHERE p.id_ruta = $1
             ORDER BY COALESCE(p.orden_entrega, 999) ASC
@@ -1201,7 +1201,7 @@ router.get('/rutas/:id/detalle-completo', validarTokenMovil, async (req, res) =>
             COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
             COALESCE( (SELECT SUM(pd.cantidad * pd.precio1) FROM presupuestos_detalles pd WHERE pd.id_presupuesto = p.id), 0) as total_monto
             FROM presupuestos p 
-            INNER JOIN clientes c ON p.id_cliente::text = c.cliente_id::text 
+            INNER JOIN clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text 
             WHERE p.id_ruta = $1
             ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC`;
         const resultPresupuestos = await req.db.query(queryPresupuestos, [id]);

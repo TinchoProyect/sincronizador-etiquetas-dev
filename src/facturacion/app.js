@@ -26,6 +26,7 @@ const { infoTimezone } = require('./config/timezone');
 const facturasRoutes = require('./routes/facturas');
 const whatsappRoutes = require('./routes/whatsapp');
 const cuentasBancariasRoutes = require('./routes/cuentasBancarias');
+const emailRoutes = require('./routes/email');
 const whatsappService = require('./services/whatsappService');
 
 console.log('🔧 [FACTURACION] Configurando middleware...');
@@ -81,7 +82,27 @@ app.get('/', (req, res) => {
 app.use('/facturacion', facturasRoutes);
 app.use('/facturacion/whatsapp', whatsappRoutes);
 app.use('/facturacion/cuentas-bancarias', cuentasBancariasRoutes);
-console.log('✅ [FACTURACION] Rutas montadas en /facturacion, /facturacion/whatsapp y /facturacion/cuentas-bancarias');
+app.use('/facturacion/email', emailRoutes);
+console.log('✅ [FACTURACION] Rutas montadas en /facturacion, /facturacion/whatsapp, /facturacion/cuentas-bancarias y /facturacion/email');
+
+// Proxy manual para actualizar destinatarios en el módulo de logística (puerto 3005)
+const axios = require('axios');
+app.patch('/api/logistica/bunker/clientes/:id/whatsapp-contacts', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(`🔄 [FACTURACION-PROXY] Reenviando actualización de contactos del cliente ID ${id} a Logística...`);
+        const targetUrl = `http://localhost:3005/api/logistica/bunker/clientes/${id}/whatsapp-contacts`;
+        const response = await axios.patch(targetUrl, req.body);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ [FACTURACION-PROXY] Error al reenviar actualización a Logística:', error.message);
+        if (error.response) {
+            res.status(error.response.status).json(error.response.data);
+        } else {
+            res.status(500).json({ success: false, error: 'Servidor de logística no disponible' });
+        }
+    }
+});
 
 // Ruta de health check general
 app.get('/health', (req, res) => {

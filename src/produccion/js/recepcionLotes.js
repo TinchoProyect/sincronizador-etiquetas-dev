@@ -49,9 +49,12 @@ window.cargarLotes = async function() {
     try {
         let lotes = await window.SupabaseService.fetchUltimosLotes();
         
-        // Purgado de SKUs residuales o defectuosos
+        // Purgado de SKUs residuales o defectuosos y lotes con bultos <= 0
         if (lotes && lotes.length > 0) {
-            lotes = lotes.filter(i => i.pedidos_b2b_items?.producto_codigo !== 'LMD-MAN-B0B5BF36-OLD');
+            lotes = lotes.filter(i => 
+                i.pedidos_b2b_items?.producto_codigo !== 'LMD-MAN-B0B5BF36-OLD' &&
+                (parseFloat(i.cantidad_recibida) || 0) > 0
+            );
         }
 
         container.innerHTML = ''; // Limpiar
@@ -151,6 +154,9 @@ window.cargarLotes = async function() {
                     const cabecera = lote.recepciones_fisicas_cabecera || {};
                     const item = lote.pedidos_b2b_items || {};
                     const proveedor = cabecera.pedidos_b2b_cabecera?.proveedores?.nombre || 'Proveedor Sin Asignar';
+                    const safeDesc = item.producto_descripcion 
+                        ? item.producto_descripcion.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ') 
+                        : '';
                     
                     const timeStr = lote.fechaRaw.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
                     
@@ -216,6 +222,35 @@ window.cargarLotes = async function() {
                         ? `<input type="checkbox" class="lote-select-chk" data-lote-id="${fullId}" data-proveedor-id="${providerId}" onchange="window.onLoteSelectChange(this)" style="transform: scale(1.3); margin-right: 12px; cursor: pointer;" title="Seleccionar lote para vincular en bloque">`
                         : '';
 
+                    const btnVincular = isPending 
+                        ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #10b981, #059669); margin-left: 10px;" onclick='BunkerModal.abrir(${JSON.stringify(lote).replace(/'/g, "&apos;")})' title="Vincular al Búnker">
+                               🔗 Vincular
+                           </button>`
+                        : '';
+
+                    const btnDesvincular = (!isPending)
+                        ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #ef4444, #dc2626); margin-left: 10px;" onclick="window.retrotraerVinculacion('${fullId}', '${idCorto}')" title="Retrotraer / Desvincular Lote">↩️ Desvincular</button>`
+                        : '';
+
+                    let btnImprimirText = '🖨️ Imp. Par';
+                    if (!isPending) {
+                        const loteTrazabilidad = estadosLotes[fullId];
+                        const destinosLote = loteTrazabilidad ? (loteTrazabilidad.destinos || []) : [];
+                        const tieneArticulo = destinosLote.some(d => d.tipo === 'ARTICULO_BUNKER');
+                        const tieneIngrediente = destinosLote.some(d => d.tipo === 'INGREDIENTE_PRODUCCION');
+                        if (tieneArticulo && !tieneIngrediente) {
+                            btnImprimirText = '🖨️ Imp. Art + Lote';
+                        } else if (tieneIngrediente && !tieneArticulo) {
+                            btnImprimirText = '🖨️ Imp. Ing + Lote';
+                        } else if (tieneIngrediente && tieneArticulo) {
+                            btnImprimirText = '🖨️ Imp. Mult + Lote';
+                        }
+                    }
+
+                    const btnImprimirArtLote = (!isPending)
+                        ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #6366f1, #4f46e5); margin-left: 10px;" onclick="window.imprimirArticuloYLote('${fullId}', '${idCorto}', ${lote.cantidad_recibida})" title="Imprimir Par (Destino y Lote)">${btnImprimirText}</button>`
+                        : '';
+
                     filasHtml += `
                         <div class="lote-card">
                             <div class="lote-card-header">
@@ -226,19 +261,13 @@ window.cargarLotes = async function() {
                                     ${estadoBadge}
                                     ${warningBadge}
                                 </div>
-                                ${(() => {
-                                    const safeDesc = item.producto_descripcion 
-                                        ? item.producto_descripcion.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ') 
-                                        : '';
-                                    return `
-                                    <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${safeDesc}', ${lote.cantidad_recibida})" title="Imprimir Etiqueta">
-                                        🖨️ Imprimir
-                                    </button>
-                                    <button class="btn-imprimir" style="background: linear-gradient(to right, #10b981, #059669); margin-left: 10px;" onclick='BunkerModal.abrir(${JSON.stringify(lote).replace(/'/g, "&apos;")})' title="Vincular al Búnker">
-                                        🔗 Vincular
-                                    </button>
-                                    ${btnTrazabilidad}`;
-                                })()}
+                                <button class="btn-imprimir" onclick="imprimirEtiquetaLote('${idCorto}', '${safeDesc}', ${lote.cantidad_recibida})" title="Imprimir Etiqueta del Lote">
+                                    🖨️ Imp. Lote
+                                </button>
+                                ${btnImprimirArtLote}
+                                ${btnVincular}
+                                ${btnTrazabilidad}
+                                ${btnDesvincular}
                             </div>
                             <div class="lote-card-body">
                                 <div class="lote-section-maestra">
@@ -252,7 +281,10 @@ window.cargarLotes = async function() {
                                     </div>
                                     <div>
                                         <div class="lote-label">Presentación (Bultos x Cant)</div>
-                                        <div class="lote-value"><span class="badge" style="background:${isInconsistent ? '#fee2e2' : '#e2e3e5'}; color:${isInconsistent ? '#b91c1c' : '#383d41'}; padding:3px 6px; border-radius:4px; font-weight:${isInconsistent ? 'bold' : 'normal'}; border:${isInconsistent ? '1px solid #fca5a5' : 'none'};">${desglose}</span></div>
+                                        <div class="lote-value" style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="badge" style="background:${isInconsistent ? '#fee2e2' : '#e2e3e5'}; color:${isInconsistent ? '#b91c1c' : '#383d41'}; padding:3px 6px; border-radius:4px; font-weight:${isInconsistent ? 'bold' : 'normal'}; border:${isInconsistent ? '1px solid #fca5a5' : 'none'};">${desglose}</span>
+                                            ${isPending ? `<button class="btn-imprimir" style="padding: 2px 6px; font-size: 0.75em; background: linear-gradient(to right, #6c757d, #495057); margin-left: 0; min-height: unset; height: 22px; display: inline-flex; align-items: center; justify-content: center;" onclick="corregirPresentacion('${fullId}', ${bult}, ${val}, '${safeDesc}')" title="Corregir presentación manualmente">✏️</button>` : ''}
+                                        </div>
                                     </div>
                                     <div>
                                         <div class="lote-label">Cantidad Recibida</div>
@@ -701,4 +733,257 @@ window.abrirModalVincularBatch = function() {
     // Iniciar y abrir el Modal Batch
     window.BunkerModalBatch.abrir(lotesSeleccionados);
 };
+
+/**
+ * Corrige manualmente la presentación (Bultos x Cantidad) de un lote y actualiza la base local.
+ */
+window.corregirPresentacion = async function(loteId, currentBult, currentValor, desc) {
+    const { value: formValues } = await Swal.fire({
+        title: '✏️ Corregir Presentación',
+        html:
+            `<div style="text-align: left; font-size: 13px; color: #475569; margin-bottom: 15px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; line-height: 1.4;"><b>Producto:</b><br>${desc}</div>` +
+            '<div style="display: flex; flex-direction: column; gap: 10px; text-align: left;">' +
+            '  <div>' +
+            '    <label style="font-weight: bold; font-size: 12px; color: #475569; display: block; margin-bottom: 4px;">Bultos (Factor de conversión):</label>' +
+            `    <input id="swal-input-bult" class="swal2-input" type="number" step="any" value="${currentBult}" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 14px; padding: 8px;">` +
+            '  </div>' +
+            '  <div>' +
+            '    <label style="font-weight: bold; font-size: 12px; color: #475569; display: block; margin-bottom: 4px;">Cantidad por Bulto (Kg / Unidades):</label>' +
+            `    <input id="swal-input-valor" class="swal2-input" type="number" step="any" value="${currentValor}" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 14px; padding: 8px;">` +
+            '  </div>' +
+            '</div>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '💾 Guardar',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const b = parseFloat(document.getElementById('swal-input-bult').value);
+            const v = parseFloat(document.getElementById('swal-input-valor').value);
+            if (isNaN(b) || b <= 0) {
+                Swal.showValidationMessage('El factor de bultos debe ser mayor a 0');
+                return false;
+            }
+            if (isNaN(v) || v <= 0) {
+                Swal.showValidationMessage('La cantidad por bulto debe ser mayor a 0');
+                return false;
+            }
+            return { cant_bult: b, cant_valor: v };
+        }
+    });
+
+    if (formValues) {
+        Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        try {
+            const res = await fetch('/api/supabase/lotes/override', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lote_id_supabase: loteId,
+                    cant_bult: formValues.cant_bult,
+                    cant_valor: formValues.cant_valor
+                })
+            });
+            const result = await res.json();
+            if (res.ok && result.success) {
+                Swal.fire('Guardado', 'Presentación corregida con éxito.', 'success');
+                // Recargar grilla para reflejar los cambios
+                await cargarLotes();
+            } else {
+                throw new Error(result.error || 'Error al guardar overrides');
+            }
+        } catch (e) {
+            Swal.fire('Error', e.message, 'error');
+        }
+    }
+};
+
+/**
+ * Retrotrae la vinculación de un lote, con opción de revertir o no el stock en las tablas Legacy.
+ */
+window.retrotraerVinculacion = async function(loteId, idCorto) {
+    const confirm = await Swal.fire({
+        title: '↩️ Desvincular Lote',
+        html: `
+            <div style="text-align: left; font-size: 14px; color: #374151; line-height: 1.5; margin-bottom: 15px;">
+                ¿Estás seguro de que deseas retrotraer la vinculación del lote <b>${idCorto}</b>?<br>
+                El lote volverá a quedar en estado <b>Pendiente</b>.
+            </div>
+            <div style="text-align: left; background-color: #f3f4f6; padding: 12px; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold; color: #1f2937; font-size: 14px;">
+                    <input type="checkbox" id="swal-revertir-stock" checked style="transform: scale(1.2); cursor: pointer;">
+                    Revertir stock y movimientos
+                </label>
+                <div style="font-size: 12px; color: #6b7280; margin-top: 4px; margin-left: 22px;">
+                    Si se desmarca, se eliminará el vínculo pero <b>no se modificará el stock real consolidado ni los ingredientes</b> (útil si la vinculación original no sumó stock).
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, desvincular',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const revertirStock = document.getElementById('swal-revertir-stock').checked;
+            return { revertirStock };
+        }
+    });
+
+    if (confirm.isConfirmed) {
+        Swal.fire({
+            title: 'Desvinculando...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        try {
+            const res = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/desvincular', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lote_id_supabase: loteId,
+                    revertir_stock: confirm.value.revertirStock
+                })
+            });
+
+            const result = await res.json();
+            if (res.ok && result.success) {
+                await Swal.fire(
+                    'Desvinculado',
+                    `La vinculación del lote ${idCorto} ha sido retrotraída con éxito.`,
+                    'success'
+                );
+                await cargarLotes();
+            } else {
+                throw new Error(result.error || 'Error al intentar desvincular el lote.');
+            }
+        } catch (e) {
+            Swal.fire('Error', e.message || 'Error de conexión', 'error');
+        }
+    }
+};
+
+/**
+ * Solicita confirmación y cantidad para imprimir par (Artículo y Lote) en impresora Zebra
+ */
+window.imprimirArticuloYLote = async function(loteId, idCorto, cantidadDefault) {
+    if (!window.LotesTrazabilidadCache || !window.LotesTrazabilidadCache[loteId]) {
+        Swal.fire('Atención', 'No hay datos de trazabilidad para este lote.', 'info');
+        return;
+    }
+
+    const datos = window.LotesTrazabilidadCache[loteId];
+    const destinos = datos.destinos || [];
+
+    if (destinos.length === 0) {
+        Swal.fire('Atención', 'Este lote no está vinculado a ningún destino.', 'warning');
+        return;
+    }
+
+    let destinoSeleccionado = destinos[0];
+
+    if (destinos.length > 1) {
+        // Múltiples destinos: pedir al usuario que seleccione cuál imprimir
+        const optionsHtml = destinos.map((d, index) => {
+            const tipoLabel = d.tipo === 'ARTICULO_BUNKER' ? 'Artículo' : 'Ingrediente';
+            return `<option value="${index}">${tipoLabel}: ${d.descripcion} (ID: ${d.id}) - ${d.cantidad_bultos} bultos</option>`;
+        }).join('');
+
+        const selectConfirm = await Swal.fire({
+            title: 'Seleccionar Destino',
+            text: 'El lote está vinculado a más de un destino. Por favor, selecciona cuál deseas imprimir:',
+            html: `
+                <select id="swal-select-articulo-print" class="swal2-select" style="margin: 10px 0; width: 100%;">
+                    ${optionsHtml}
+                </select>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Siguiente',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const idx = parseInt(document.getElementById('swal-select-articulo-print').value, 10);
+                return destinos[idx];
+            }
+        });
+
+        if (!selectConfirm.isConfirmed) return;
+        destinoSeleccionado = selectConfirm.value;
+    }
+
+    // Pedir la cantidad de bultos/pares
+    const defaultBultos = parseInt(destinoSeleccionado.cantidad_bultos, 10) || cantidadDefault || 1;
+    const esArticulo = destinoSeleccionado.tipo === 'ARTICULO_BUNKER';
+
+    const qtyConfirm = await Swal.fire({
+        title: esArticulo ? 'Imprimir Etiquetas (Artículo + Lote)' : 'Imprimir Etiquetas (Ingrediente + Lote)',
+        html: `
+            <div style="text-align: left; font-size: 14px; margin-bottom: 15px; color: #374151;">
+                <b>${esArticulo ? 'Artículo' : 'Ingrediente'}:</b> ${destinoSeleccionado.descripcion}<br>
+                <b>Lote:</b> ${idCorto}
+            </div>
+            <div style="text-align: left;">
+                <label style="font-weight: bold; font-size: 12px; color: #475569; display: block; margin-bottom: 4px;">Cantidad de cajas (Pares de etiquetas):</label>
+                <input id="swal-input-cajas-print" class="swal2-input" type="number" step="1" min="1" value="${defaultBultos}" style="margin: 0; width: 100%; box-sizing: border-box; font-size: 14px; padding: 8px;">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '🖨️ Imprimir',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const val = parseInt(document.getElementById('swal-input-cajas-print').value, 10);
+            if (isNaN(val) || val <= 0) {
+                Swal.showValidationMessage('La cantidad debe ser mayor a 0');
+                return false;
+            }
+            return val;
+        }
+    });
+
+    if (qtyConfirm.isConfirmed) {
+        const cajas = qtyConfirm.value;
+        const totalEtiquetas = cajas * 2; // Cada caja lleva 1 par (2 etiquetas físicas en la Zebra)
+
+        Swal.fire({
+            title: 'Enviando a impresora Zebra...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        try {
+            // Decidir URL del endpoint según el tipo de destino
+            const endpointSubPath = esArticulo ? 'articulos' : 'ingredientes';
+            const res = await fetch(`http://localhost:3005/api/logistica/bunker/${endpointSubPath}/${destinoSeleccionado.id}/imprimir`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lote_id_supabase: loteId,
+                    lote_codigo_corto: idCorto,
+                    cantidad: totalEtiquetas
+                })
+            });
+
+            const result = await res.json();
+            if (res.ok && result.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Impresión Enviada!',
+                    text: `Se enviaron ${cajas} pares a la Zebra.`,
+                    timer: 2500,
+                    showConfirmButton: false
+                });
+            } else {
+                throw new Error(result.error || 'Error al intentar enviar la impresión.');
+            }
+        } catch (e) {
+            Swal.fire('Error', e.message || 'Error de conexión', 'error');
+        }
+    }
+};
+
+
 

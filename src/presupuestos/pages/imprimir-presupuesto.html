@@ -5,9 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Imprimir Presupuesto - Gestiones Lamda</title>
     <link rel="stylesheet" href="../css/imprimir-presupuesto.css">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
     <!-- JsBarcode para generar códigos de barras -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- SweetAlert2 para alertas elegantes -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        .btn-enviar {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+            color: white !important;
+        }
+        .btn-enviar:hover {
+            background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(124, 58, 237, 0.4);
+        }
+    </style>
 </head>
 <body>
     <!-- Botones de acción (no se imprimen) -->
@@ -41,6 +54,13 @@
             <input type="checkbox" id="chk-faltantes" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleFaltantes()" checked>
         </div>
         
+        <button id="btn-enviar" class="btn btn-enviar" onclick="enviarPresupuestoOmnicanal()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send" viewBox="0 0 16 16" style="margin-right: 4px;">
+                <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576zm6.787-8.201L1.591 6.602l4.339 2.76z"/>
+            </svg>
+            📤 Enviar
+        </button>
+        
         <button id="btn-imprimir" class="btn btn-primary" onclick="imprimirPresupuesto()">
             Imprimir / Guardar PDF
         </button>
@@ -59,13 +79,16 @@
             <!-- Encabezado de la empresa -->
             <div class="empresa-header">
                 <div class="empresa-principal">
-                    <h1>LAMDA</h1>
-                    <p class="empresa-fecha">Fecha: <span id="presupuesto-fecha">-</span></p>
+                    <h1 id="cabecera-titulo">PRESUPUESTO</h1>
                 </div>
-                <div class="empresa-datos-grupo">
-                    <p class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</p>
-                    <p class="empresa-dato">CUIT: 23-24892174-9</p>
-                    <p class="empresa-dato">WhatsApp: (221) 6615746</p>
+                <div class="empresa-datos-grupo-nuevo">
+                    <div class="empresa-datos-texto">
+                        <p class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</p>
+                        <p class="empresa-dato">CUIT: 23-24892174-9</p>
+                        <p class="empresa-dato">WhatsApp: (221) 6615746</p>
+                        <p class="empresa-fecha">Fecha: <span id="presupuesto-fecha">-</span></p>
+                    </div>
+                    <img src="../img/isotipo_L_LAMDA.png" class="empresa-logo-L" alt="L">
                 </div>
             </div>
 

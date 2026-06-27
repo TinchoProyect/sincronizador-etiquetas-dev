@@ -2521,6 +2521,7 @@ router.get('/carro/:id/estado', async (req, res) => {
             confirmado: confirmado,
             tipo_carro: tipoCarro,
             fase_actual: faseActual,
+            usuario_id: carro.usuario_id,
             mostrar_artículos_padres: faseActual === 'articulos_padres',
             mostrar_artículos_secundarios: faseActual === 'articulos_secundarios'
         });

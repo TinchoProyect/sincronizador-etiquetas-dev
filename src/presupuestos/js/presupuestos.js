@@ -1692,6 +1692,28 @@ async function toggleDetalles(presupuestoId) {
         if (data.success) {
             console.log(`✅[PRESUPUESTOS - JS] Detalles cargados: ${data.data.total_articulos} artículos`);
 
+            // Fallback robusto en frontend: si viene código crudo, buscar descripción en sugerencias
+            const detalles = data.data.detalles || [];
+            for (const item of detalles) {
+                const desc = item.descripcion_articulo || item.descripcion || item.articulo || '';
+                const esCodigoCrudo = desc === item.codigo_barras || desc === item.articulo || desc === item.articulo_numero;
+                if ((!desc || esCodigoCrudo) && item.codigo_barras) {
+                    try {
+                        const sugResponse = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(item.codigo_barras)}&limit=1`);
+                        const sugResult = await sugResponse.json();
+                        if (sugResponse.ok && sugResult.success && sugResult.data && sugResult.data.length > 0) {
+                            const friendlyDesc = sugResult.data[0].descripcion || sugResult.data[0].nombre || '';
+                            if (friendlyDesc) {
+                                item.descripcion_articulo = friendlyDesc;
+                                item.descripcion = friendlyDesc;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error fetching friendly description for list view:', e);
+                    }
+                }
+            }
+
             // Renderizar detalles
             container.innerHTML = renderDetallesArticulos(data.data);
             container.dataset.loaded = 'true';
@@ -2672,37 +2694,126 @@ async function ejecutarSincronizacionBorrador(presupuestoId) {
     }
 }
 
-window.crearFacturaBorrador = function (presupuestoId) {
+window.crearFacturaBorrador = async function (presupuestoId) {
     if (!presupuestoId) return;
 
+    let preferencia = 'PREGUNTAR';
+    let clienteId = null;
+    let clienteNombre = '';
+
+    // 1. Mostrar loader de obtención de datos
     if (typeof Swal !== 'undefined') {
         Swal.fire({
-            title: '¿Enviar a Facturación?',
-            text: "Se generará un borrador de factura para este presupuesto.",
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#3498db',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Sí, enviar',
-            cancelButtonText: 'Cancelar'
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                ejecutarFacturacionBorrador(presupuestoId);
+            title: 'Obteniendo datos...',
+            text: 'Consultando preferencias del cliente.',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
             }
         });
+    }
+
+    try {
+        // Obtener datos del presupuesto y su cliente
+        const response = await fetch(URLS.PRESUPUESTO(presupuestoId));
+        if (response.ok) {
+            const resData = await response.json();
+            if (resData.success && resData.data) {
+                preferencia = resData.data.preferencia_facturacion || 'PREGUNTAR';
+                clienteId = resData.data.id_cliente;
+                clienteNombre = resData.data.concepto || 'Cliente';
+            }
+        }
+    } catch (err) {
+        console.error('⚠️ [PRESUPUESTOS] Error al obtener datos de facturación del presupuesto:', err);
+    }
+
+    // Cerrar loader anterior si existe
+    if (typeof Swal !== 'undefined') {
+        Swal.close();
+    }
+
+    // 2. Evaluar preferencia
+    if (preferencia === 'ARCA') {
+        ejecutarFacturacionBorrador(presupuestoId, 'arca');
+    } else if (preferencia === 'INTERNO') {
+        ejecutarFacturacionBorrador(presupuestoId, 'interno');
     } else {
-        if (confirm("¿Enviar a Facturación? Se generará un borrador de factura para este presupuesto.")) {
-            ejecutarFacturacionBorrador(presupuestoId);
+        // Si es PREGUNTAR o cualquier otra cosa, preguntar al usuario
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: '¿Cómo deseas facturar?',
+                html: `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <p style="margin-bottom: 15px; font-size: 1.05em;">Selecciona el destino para el presupuesto de <strong>${clienteNombre}</strong>:</p>
+                        
+                        <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" id="fact-dest-arca" name="fact-dest" value="arca" checked style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="fact-dest-arca" style="cursor: pointer; font-weight: 600; font-size: 1em;">Verificador de Arca (Oficial)</label>
+                        </div>
+                        <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" id="fact-dest-interno" name="fact-dest" value="interno" style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em;">Presupuestos Aprobados (Interno)</label>
+                        </div>
+                        
+                        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
+                        
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                            <input type="checkbox" id="fact-remember" style="cursor: pointer; width: 16px; height: 16px;">
+                            <label for="fact-remember" style="cursor: pointer; font-size: 0.9em; color: var(--text-muted, #888);">Establecer como opción predeterminada para este cliente</label>
+                        </div>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3498db',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Continuar',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const selectedDest = document.querySelector('input[name="fact-dest"]:checked').value;
+                    const remember = document.getElementById('fact-remember').checked;
+                    return { selectedDest, remember };
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const { selectedDest, remember } = result.value;
+                    if (remember && clienteId) {
+                        try {
+                            const prefValue = selectedDest === 'arca' ? 'ARCA' : 'INTERNO';
+                            await fetch(`/api/presupuestos/clientes/${clienteId}/preferencia-facturacion`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ preferencia_facturacion: prefValue })
+                            });
+                        } catch (err) {
+                            console.error('Error al guardar preferencia del cliente:', err);
+                        }
+                    }
+                    ejecutarFacturacionBorrador(presupuestoId, selectedDest);
+                }
+            });
+        } else {
+            // Fallback con confirm tradicional
+            if (confirm(`¿Enviar presupuesto de ${clienteNombre} a Factura Oficial Arca? (Aceptar = Oficial, Cancelar = Interno/Presupuesto Aprobado)`)) {
+                ejecutarFacturacionBorrador(presupuestoId, 'arca');
+            } else {
+                ejecutarFacturacionBorrador(presupuestoId, 'interno');
+            }
         }
     }
 };
 
-async function ejecutarFacturacionBorrador(presupuestoId) {
+async function ejecutarFacturacionBorrador(presupuestoId, tipoFactura) {
+    const isInterno = tipoFactura === 'interno';
+    const endpoint = isInterno ? 'facturar-local' : 'facturar';
+    const textLoading = isInterno ? 'Generando borrador local...' : 'Generando factura borrador...';
+
     try {
         if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title: 'Procesando...',
-                text: 'Generando factura borrador.',
+                text: textLoading,
                 allowOutsideClick: false,
                 didOpen: () => {
                     Swal.showLoading();
@@ -2710,7 +2821,7 @@ async function ejecutarFacturacionBorrador(presupuestoId) {
             });
         }
 
-        const response = await fetch(`http://localhost:3004/facturacion/presupuestos/${presupuestoId}/facturar`, {
+        const response = await fetch(`http://localhost:3004/facturacion/presupuestos/${presupuestoId}/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -2721,14 +2832,18 @@ async function ejecutarFacturacionBorrador(presupuestoId) {
             throw new Error(data.message || data.error || `Error HTTP ${response.status}`);
         }
 
+        const successMsg = isInterno 
+            ? 'El borrador se envió correctamente al buzón de Presupuestos Aprobados (Interno).' 
+            : 'El borrador se envió correctamente al buzón de Comprobantes Oficiales (ARCA).';
+
         if (typeof Swal !== 'undefined') {
             Swal.fire(
                 '¡Enviado!',
-                'El borrador se generó correctamente.',
+                successMsg,
                 'success'
             );
         } else {
-            alert('¡Enviado! El borrador se generó correctamente.');
+            alert('¡Enviado! ' + successMsg);
         }
 
         // Recargar tabla
@@ -2739,7 +2854,7 @@ async function ejecutarFacturacionBorrador(presupuestoId) {
         }
 
     } catch (error) {
-        console.error('❌ [SMART-SYNC] Error al crear borrador:', error);
+        console.error('❌ [SMART-SYNC] Error al enviar a facturación:', error);
         if (typeof Swal !== 'undefined') {
             Swal.fire(
                 'Error',

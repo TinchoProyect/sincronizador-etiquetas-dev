@@ -251,7 +251,8 @@ const validarActualizarPresupuesto = (req, res, next) => {
       'origen_punto_venta',
       'origen_numero_factura',
       'metodo_retiro',
-      'detalles_sin_stock'
+      'detalles_sin_stock',
+      'usar_precios_bunker'
     ];
     const body = req.body || {};
     const keys = Object.keys(body);
@@ -320,6 +321,12 @@ const validarActualizarPresupuesto = (req, res, next) => {
     if (body.fecha !== undefined && body.fecha !== null && body.fecha !== '') {
       if (!isYYYYMMDD(String(body.fecha))) {
         errores.push("El campo 'fecha' debe tener formato YYYY-MM-DD.");
+      }
+    }
+
+    if (body.usar_precios_bunker !== undefined && body.usar_precios_bunker !== null) {
+      if (typeof body.usar_precios_bunker !== 'boolean' && body.usar_precios_bunker !== 'true' && body.usar_precios_bunker !== 'false') {
+        errores.push("El campo 'usar_precios_bunker' debe ser booleano.");
       }
     }
 

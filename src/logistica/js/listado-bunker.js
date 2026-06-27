@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await cargarDataGrid();
     initScannerExpressListener();
     initTableResizableColumns('tabla-bunker');
+    await cargarColaboradoresAsistente();
 });
 
 // Click outside to close column settings dropdown
@@ -187,7 +188,7 @@ function renderizarGrid(articulos) {
             if (keys.length > 0) {
                 if (keys.length === 1) {
                     const rawVal = art.propiedades_dinamicas[keys[0]];
-                    const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+                    const valStr = (rawVal && typeof rawVal === 'object') ? rawVal.valor : (rawVal || '');
                     propSummary = `<span style="font-size: 0.9em;">${keys[0].toUpperCase()}: ${valStr}</span>`;
                 } else {
                     propSummary = `<span style="font-size: 0.9em;">[ ${keys.length} Propiedades ]</span>`;
@@ -196,8 +197,8 @@ function renderizarGrid(articulos) {
                 let badgesHtml = '';
                 keys.forEach((key, index) => {
                     const rawVal = art.propiedades_dinamicas[key];
-                    const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
-                    const isVisible = typeof rawVal === 'object' ? (rawVal.visible !== false) : true;
+                    const valStr = (rawVal && typeof rawVal === 'object') ? rawVal.valor : (rawVal || '');
+                    const isVisible = (rawVal && typeof rawVal === 'object') ? (rawVal.visible !== false) : true;
                     const eyeIcon = isVisible ? '' : ' 🙈';
                     const colorClass = `color-${index % 6}`;
                     badgesHtml += `<span class="badge ${colorClass}">
@@ -891,7 +892,36 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 }
             }
             
+            window.gp_receta_id_existente = data.receta_id || null;
+
+            // Poblar campos del asistente desde propiedades_dinamicas
+            const props = data.propiedades_dinamicas || {};
+            const colabSelect = document.getElementById('gp-asistente-colaborador');
+            const minutosInput = document.getElementById('gp-asistente-minutos');
+            if (colabSelect) {
+                colabSelect.value = props.asistente_colaborador_id !== undefined && props.asistente_colaborador_id !== null ? props.asistente_colaborador_id : '';
+            }
+            if (minutosInput) {
+                minutosInput.value = props.asistente_minutos !== undefined && props.asistente_minutos !== null ? props.asistente_minutos : '';
+            }
+
             gp_listasFinancieras = data.listas_margenes;
+
+            // Pre-calcular flag asistente_override
+            let colabId = props.asistente_colaborador_id;
+            let minutos = parseFloat(props.asistente_minutos) || 0;
+            let tarifa = colabId ? (window.gp_colaboradores_tarifas_map[colabId] || 0) : 0;
+            let calculatedCost = (tarifa * minutos) / 60;
+
+            gp_listasFinancieras.forEach(l => {
+                let costTiempo = parseFloat(l.costo_tiempo) || 0;
+                if (calculatedCost > 0) {
+                    l.asistente_override = (Math.abs(costTiempo - calculatedCost) > 0.01);
+                } else {
+                    l.asistente_override = (costTiempo > 0);
+                }
+            });
+
             renderTabs();
             
             // Sincronizar solapa con la lista activa en la grilla principal (listaSeleccionadaGlobal)
@@ -1762,6 +1792,26 @@ window.actualizarPorCostoTiempo = function(val) {
     if (!list) return;
     
     list.costo_tiempo = parseFloat(val) || 0;
+    
+    // Validar si el cambio fue manual o vino del calculador asistido
+    const select = document.getElementById('gp-asistente-colaborador');
+    const inputMinutos = document.getElementById('gp-asistente-minutos');
+    let calculated = -1;
+    if (select && inputMinutos) {
+        const selectedOpt = select.options[select.selectedIndex];
+        if (selectedOpt && selectedOpt.value) {
+            const tarifaHoraria = parseFloat(selectedOpt.dataset.tarifa) || 0;
+            const minutos = parseFloat(inputMinutos.value) || 0;
+            calculated = (tarifaHoraria * minutos) / 60;
+        }
+    }
+    
+    if (calculated !== -1 && Math.abs(list.costo_tiempo - calculated) < 0.01) {
+        list.asistente_override = false;
+    } else {
+        list.asistente_override = true;
+    }
+    
     propagarCostosOperativos();
     debouncedRecalcular();
 };
@@ -1812,6 +1862,12 @@ window.sincronizarCostoAlerta = function() {
 window.guardarEstructuraFinanciera = async function() {
     const articulo_id = document.getElementById('gp-articulo-id').value;
     
+    // Obtener campos del asistente
+    const colabSelect = document.getElementById('gp-asistente-colaborador');
+    const minutosInput = document.getElementById('gp-asistente-minutos');
+    const asistente_colaborador_id = colabSelect && colabSelect.value ? parseInt(colabSelect.value) : null;
+    const asistente_minutos = minutosInput && minutosInput.value ? parseFloat(minutosInput.value) : null;
+
     // Mapear configuraciones completas para backend
     const configsPayload = gp_listasFinancieras.map(l => {
         // Sincronizar insumos a enviar
@@ -1845,7 +1901,11 @@ window.guardarEstructuraFinanciera = async function() {
         const res = await fetch(`/api/logistica/bunker/finanzas/${encodeURIComponent(articulo_id)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ configs: configsPayload })
+            body: JSON.stringify({ 
+                configs: configsPayload,
+                asistente_colaborador_id,
+                asistente_minutos
+            })
         });
         const result = await res.json();
         
@@ -4460,7 +4520,7 @@ window.renderizarCheckboxesCapa = function(capaId, articulos) {
     dataset.forEach(art => {
         if (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object') {
             const rawVal = art.propiedades_dinamicas[prop];
-            const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+            const valStr = (rawVal && typeof rawVal === 'object') ? rawVal.valor : (rawVal || '');
             if (valStr !== undefined && valStr !== null && String(valStr).trim() !== '') {
                 mapaValores.add(String(valStr).trim());
             }
@@ -4531,7 +4591,7 @@ window.actualizarCheckboxesTodasLasCapas = function() {
             articulosSurviving = articulosSurviving.filter(art => {
                 if (!art.propiedades_dinamicas) return true;
                 const rawVal = art.propiedades_dinamicas[prop];
-                const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+                const valStr = (rawVal && typeof rawVal === 'object') ? rawVal.valor : (rawVal || '');
                 if (valStr !== undefined && valStr !== null) {
                     const valTrimmed = String(valStr).trim();
                     if (capa.exclusions.includes(valTrimmed)) {
@@ -4583,7 +4643,7 @@ window.aplicarFiltrosYOrdenamiento = function() {
             if (!art.propiedades_dinamicas) return true; // Si no posee atributos, no es excluido por valor específico
 
             const rawVal = art.propiedades_dinamicas[prop];
-            const valStr = typeof rawVal === 'object' ? rawVal.valor : rawVal;
+            const valStr = (rawVal && typeof rawVal === 'object') ? rawVal.valor : (rawVal || '');
             if (valStr !== undefined && valStr !== null) {
                 const valTrimmed = String(valStr).trim();
                 if (capa.exclusions.includes(valTrimmed)) {
@@ -4706,7 +4766,9 @@ function propagarCostosOperativos() {
 
     gp_listasFinancieras.forEach((l, idx) => {
         if (idx !== gp_activeTabIdx && !l.exencion_operativa) {
-            l.costo_tiempo = activeList.costo_tiempo;
+            if (!l.asistente_override) {
+                l.costo_tiempo = activeList.costo_tiempo;
+            }
             // Clonar profundamente insumos para evitar referencias compartidas
             l.insumos = JSON.parse(JSON.stringify(activeList.insumos || []));
             recalcularValoresDeListaEnMemoria(l);
@@ -5064,6 +5126,318 @@ window.abrirMinimodalMargenesMasa = function() {
             }
         }
     });
+};
+
+/**
+ * Carga la lista de colaboradores y sus tarifas horarias para el asistente
+ */
+window.gp_colaboradores_tarifas_map = {};
+window.cargarColaboradoresAsistente = async function() {
+    try {
+        const res = await fetch('/api/logistica/usuarios/tarifas');
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const result = await res.json();
+        
+        const select = document.getElementById('gp-asistente-colaborador');
+        if (select) {
+            select.innerHTML = '<option value="">-- Seleccionar --</option>';
+            if (result.success && result.data && result.data.length > 0) {
+                result.data.forEach(c => {
+                    window.gp_colaboradores_tarifas_map[c.usuario_id] = parseFloat(c.valor_hora) || 0;
+                    const opt = document.createElement('option');
+                    opt.value = c.usuario_id;
+                    const tarifa = parseFloat(c.valor_hora) || 0;
+                    opt.dataset.tarifa = tarifa;
+                    opt.textContent = `${c.nombre_completo} ($${tarifa.toLocaleString('es-AR')}/h)`;
+                    select.appendChild(opt);
+                });
+            }
+        }
+    } catch(e) {
+        console.error('Error al cargar colaboradores para asistente:', e);
+    }
+};
+
+/**
+ * Realiza el cálculo del asistente e inyecta el valor en el input de costo tiempo
+ */
+window.calcularCostoAsistente = function() {
+    const select = document.getElementById('gp-asistente-colaborador');
+    const inputMinutos = document.getElementById('gp-asistente-minutos');
+    const inputCostoTiempo = document.getElementById('gp-costo-tiempo');
+    
+    if (!select || !inputMinutos || !inputCostoTiempo) return;
+    
+    const selectedOpt = select.options[select.selectedIndex];
+    if (!selectedOpt || !selectedOpt.value) {
+        return; // No hay colaborador seleccionado
+    }
+    
+    const tarifaHoraria = parseFloat(selectedOpt.dataset.tarifa) || 0;
+    const minutos = parseFloat(inputMinutos.value) || 0;
+    
+    // Formula: (Tarifa Horaria * Minutos) / 60
+    const costoCalculado = (tarifaHoraria * minutos) / 60;
+    
+    // Asignar el costo calculado al input principal redondeado a 2 decimales
+    inputCostoTiempo.value = costoCalculado.toFixed(2);
+    
+    // Actualizar todas las listas en memoria que no tengan override manual
+    gp_listasFinancieras.forEach((l, idx) => {
+        if (idx === gp_activeTabIdx) {
+            l.costo_tiempo = costoCalculado;
+            l.asistente_override = false;
+        } else if (!l.exencion_operativa && !l.asistente_override) {
+            l.costo_tiempo = costoCalculado;
+            recalcularValoresDeListaEnMemoria(l);
+        }
+    });
+    
+    propagarCostosOperativos();
+    debouncedRecalcular();
+};
+
+/* ==========================================================================
+   MÓDULO INTEGRADO: EDITOR DE RECETAS EN EL BÚNKER (PUERTO 3005)
+   ========================================================================== */
+
+window.gp_receta_id_existente = null;
+window.gp_receta_modal_state = [];
+window.gp_ingredientes_disponibles = [];
+
+window.abrirModalRecetaBunker = async function() {
+    const artId = document.getElementById('gp-articulo-id').value;
+    const artNombre = document.getElementById('gp-producto').innerText;
+    
+    document.getElementById('gp-receta-modal-articulo-nombre').innerText = artNombre;
+    window.gp_receta_modal_state = [];
+    window.gp_ingredientes_disponibles = [];
+    
+    // Resetear inputs de carga
+    document.getElementById('gp-receta-modal-selected-id').value = '';
+    document.getElementById('gp-receta-modal-selected-nombre').value = '';
+    document.getElementById('gp-receta-modal-selected-unidad').value = '';
+    document.getElementById('gp-receta-modal-buscar-input').value = '';
+    document.getElementById('gp-receta-modal-cantidad-input').value = '';
+    
+    const tbody = document.getElementById('gp-receta-modal-tbody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 15px; color: #64748b; font-style: italic;">Cargando ingredientes...</td></tr>';
+    }
+    
+    document.getElementById('gp-modal-receta').style.display = 'flex';
+    
+    try {
+        // 1. Cargar ingredientes y packaging disponibles
+        const resIng = await fetch('/api/produccion/ingredientes');
+        if (!resIng.ok) throw new Error('No se pudieron cargar los ingredientes disponibles');
+        window.gp_ingredientes_disponibles = await resIng.json();
+        
+        // 2. Cargar receta si existe
+        if (window.gp_receta_id_existente) {
+            const resReceta = await fetch(`/api/produccion/recetas/${encodeURIComponent(artId)}`);
+            if (resReceta.ok) {
+                const receta = await resReceta.json();
+                window.gp_receta_modal_state = receta.ingredientes || [];
+            }
+        }
+        
+        window.renderRecetaModalTable();
+    } catch (err) {
+        console.error('[RECETA-MODAL] Error al abrir modal:', err);
+        Swal.fire('Error', err.message || 'Error al preparar modal de recetas', 'error');
+        window.cerrarModalRecetaBunker();
+    }
+};
+
+window.cerrarModalRecetaBunker = function() {
+    document.getElementById('gp-modal-receta').style.display = 'none';
+};
+
+window.buscarIngredienteModalInput = function(val) {
+    const listEl = document.getElementById('gp-receta-modal-resultados');
+    if (!listEl) return;
+    if (!val || !val.trim()) {
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+    const cleanVal = val.toLowerCase().trim();
+    const matches = (window.gp_ingredientes_disponibles || []).filter(i => 
+        i.nombre.toLowerCase().includes(cleanVal) || 
+        String(i.id).includes(cleanVal)
+    ).slice(0, 15); // Límite de 15 coincidencias para optimizar UI
+
+    if (matches.length === 0) {
+        listEl.innerHTML = '<li style="padding: 8px; color: #94a3b8; font-style: italic; font-size: 0.9em;">Sin resultados</li>';
+        listEl.style.display = 'block';
+        return;
+    }
+
+    listEl.innerHTML = matches.map(c => `
+        <li style="padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 0.9em; transition: background 0.2s;" 
+            onmouseover="this.style.background='#f1f5f9'" 
+            onmouseout="this.style.background='white'"
+            onclick="window.seleccionarIngredienteModal(${c.id}, '${c.nombre.replace(/'/g, "\\'")}', '${c.unidad_medida}')">
+            ${c.nombre} <span style="font-size: 0.8em; color: #94a3b8; font-family: monospace;">(${c.unidad_medida})</span>
+        </li>
+    `).join('');
+    listEl.style.display = 'block';
+};
+
+window.seleccionarIngredienteModal = function(id, nombre, unidad) {
+    document.getElementById('gp-receta-modal-selected-id').value = id;
+    document.getElementById('gp-receta-modal-selected-nombre').value = nombre;
+    document.getElementById('gp-receta-modal-selected-unidad').value = unidad;
+    
+    document.getElementById('gp-receta-modal-buscar-input').value = nombre;
+    
+    const listEl = document.getElementById('gp-receta-modal-resultados');
+    if (listEl) {
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+    }
+    
+    const cantInput = document.getElementById('gp-receta-modal-cantidad-input');
+    if (cantInput) {
+        cantInput.focus();
+    }
+};
+
+window.agregarIngredienteAlLocalState = function() {
+    const id = document.getElementById('gp-receta-modal-selected-id').value;
+    const nombre = document.getElementById('gp-receta-modal-selected-nombre').value;
+    const unidad = document.getElementById('gp-receta-modal-selected-unidad').value;
+    const inputCant = document.getElementById('gp-receta-modal-cantidad-input');
+    
+    if (!id || !nombre) {
+        Swal.fire('Error', 'Debe seleccionar un ingrediente válido del buscador', 'error');
+        return;
+    }
+    
+    const cantidad = parseFloat(inputCant.value) || 0;
+    if (cantidad <= 0) {
+        Swal.fire('Error', 'La cantidad debe ser mayor a cero', 'error');
+        return;
+    }
+    
+    const exists = window.gp_receta_modal_state.some(ing => Number(ing.ingrediente_id) === Number(id));
+    if (exists) {
+        Swal.fire('Error', 'El ingrediente ya se encuentra en la receta', 'error');
+        return;
+    }
+    
+    window.gp_receta_modal_state.push({
+        ingrediente_id: parseInt(id),
+        nombre_ingrediente: nombre,
+        unidad_medida: unidad,
+        cantidad: cantidad
+    });
+    
+    // Limpiar inputs
+    document.getElementById('gp-receta-modal-selected-id').value = '';
+    document.getElementById('gp-receta-modal-selected-nombre').value = '';
+    document.getElementById('gp-receta-modal-selected-unidad').value = '';
+    document.getElementById('gp-receta-modal-buscar-input').value = '';
+    inputCant.value = '';
+    
+    window.renderRecetaModalTable();
+};
+
+window.actualizarCantidadIngrediente = function(index, val) {
+    const qty = parseFloat(val) || 0;
+    if (qty > 0 && window.gp_receta_modal_state[index]) {
+        window.gp_receta_modal_state[index].cantidad = qty;
+    }
+};
+
+window.eliminarIngredienteModal = function(index) {
+    if (window.gp_receta_modal_state[index]) {
+        window.gp_receta_modal_state.splice(index, 1);
+        window.renderRecetaModalTable();
+    }
+};
+
+window.renderRecetaModalTable = function() {
+    const tbody = document.getElementById('gp-receta-modal-tbody');
+    if (!tbody) return;
+    
+    if (!window.gp_receta_modal_state || window.gp_receta_modal_state.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 15px; color: #94a3b8; font-style: italic;">Sin ingredientes en la receta</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = window.gp_receta_modal_state.map((ing, index) => `
+        <tr style="border-bottom: 1px solid #cbd5e1;">
+            <td style="padding: 8px 10px; color: #1e293b; font-weight: 500;">${ing.nombre_ingrediente}</td>
+            <td style="padding: 8px 10px; text-align: center;">
+                <input type="number" step="0.0001" min="0.0001" value="${ing.cantidad}" oninput="window.actualizarCantidadIngrediente(${index}, this.value)" style="width: 90px; text-align: center; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace;">
+            </td>
+            <td style="padding: 8px 10px; text-align: center; color: #64748b; font-size: 0.9em; font-weight: bold;">${ing.unidad_medida}</td>
+            <td style="padding: 8px 10px; text-align: center;">
+                <button type="button" onclick="window.eliminarIngredienteModal(${index})" style="background: transparent; border: none; color: #ef4444; font-size: 1.1em; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='transparent'">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+};
+
+window.guardarRecetaBunker = async function() {
+    const artId = document.getElementById('gp-articulo-id').value;
+    const artNombre = document.getElementById('gp-producto').innerText;
+    
+    if (!artId) {
+        Swal.fire('Error', 'ID de artículo no encontrado', 'error');
+        return;
+    }
+    
+    if (!window.gp_receta_modal_state || window.gp_receta_modal_state.length === 0) {
+        Swal.fire('Error', 'Debe agregar al menos un ingrediente o packaging a la receta', 'error');
+        return;
+    }
+    
+    Swal.fire({ title: 'Guardando Receta...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    
+    try {
+        const datos = {
+            articulo_numero: artId,
+            descripcion: 'Receta de Búnker para ' + artNombre,
+            ingredientes: window.gp_receta_modal_state.map(ing => ({
+                ingrediente_id: ing.ingrediente_id,
+                nombre_ingrediente: ing.nombre_ingrediente,
+                unidad_medida: ing.unidad_medida,
+                cantidad: Number(ing.cantidad)
+            })),
+            articulos: [],
+            esProduccionExternaConArticuloPrincipal: false
+        };
+        
+        const url = window.gp_receta_id_existente
+            ? `/api/produccion/recetas/${encodeURIComponent(artId)}`
+            : '/api/produccion/recetas';
+        const method = window.gp_receta_id_existente ? 'PUT' : 'POST';
+        
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(datos)
+        });
+        
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Error al guardar la receta');
+        }
+        
+        Swal.fire('Guardado Exitoso', 'La receta se ha guardado correctamente.', 'success');
+        window.cerrarModalRecetaBunker();
+        
+        // Sincroniza y recarga el Gestor de Precios actual en caliente
+        const ivaVal = window.gp_ivaGlobal || 21;
+        await window.abrirGestorPrecios(artId, artNombre, ivaVal);
+        
+    } catch (err) {
+        console.error('[RECETA-MODAL] Error al guardar receta:', err);
+        Swal.fire('Error', err.message || 'Error al guardar la receta', 'error');
+    }
 };
 
 

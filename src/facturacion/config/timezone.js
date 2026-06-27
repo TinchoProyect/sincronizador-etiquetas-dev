@@ -58,16 +58,22 @@ const formatoAFIP = (fecha) => {
  * @returns {string} Fecha en formato ISO
  */
 const desdeFormatoAFIP = (fechaAFIP) => {
-    if (!fechaAFIP || fechaAFIP.length !== 8) {
-        console.warn('⚠️ [FACTURACION-TZ] Fecha AFIP inválida:', fechaAFIP);
-        return null;
+    if (!fechaAFIP) return null;
+    
+    const clean = String(fechaAFIP).replace(/\D/g, '');
+    if (clean.length === 8) {
+        const year = clean.substring(0, 4);
+        const month = clean.substring(4, 6);
+        const day = clean.substring(6, 8);
+        return `${year}-${month}-${day}`;
     }
     
-    const year = fechaAFIP.substring(0, 4);
-    const month = fechaAFIP.substring(4, 6);
-    const day = fechaAFIP.substring(6, 8);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaAFIP)) {
+        return fechaAFIP;
+    }
     
-    return `${year}-${month}-${day}`;
+    console.warn('⚠️ [FACTURACION-TZ] Fecha AFIP inválida:', fechaAFIP);
+    return null;
 };
 
 /**

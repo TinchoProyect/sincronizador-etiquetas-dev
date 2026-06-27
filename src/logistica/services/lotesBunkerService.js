@@ -493,10 +493,14 @@ class LotesBunkerService {
                     WHEN d.tipo_destino = 'ARTICULO_BUNKER' THEN b.descripcion_generada
                     WHEN d.tipo_destino = 'INGREDIENTE_PRODUCCION' THEN i.nombre
                     ELSE d.destino_id
-                END as descripcion_destino
+                END as descripcion_destino,
+                i.codigo as ingrediente_codigo,
+                s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion
             FROM public.bunker_lotes_destinos d
             LEFT JOIN public.bunker_articulos b ON d.tipo_destino = 'ARTICULO_BUNKER' AND d.destino_id = b.articulo_id
             LEFT JOIN public.ingredientes i ON d.tipo_destino = 'INGREDIENTE_PRODUCCION' AND d.destino_id = i.id::text
+            LEFT JOIN public.sectores_ingredientes s ON i.sector_id = s.id
             WHERE d.vinculo_id = ANY($1)
         `;
         const resDestinos = await db.query(sqlDestinos, [vinculosIds]);
@@ -531,7 +535,10 @@ class LotesBunkerService {
                     descripcion: d.descripcion_destino || d.destino_id,
                     cantidad_bultos: parseFloat(d.cantidad_asignada || 0),
                     cantidad_kilos: parseFloat(d.kilos_asignados || 0),
-                    cantidad_abierta: parseFloat(d.cantidad_abierta || 0)
+                    cantidad_abierta: parseFloat(d.cantidad_abierta || 0),
+                    codigo: d.ingrediente_codigo || '',
+                    sector_nombre: d.sector_nombre || '',
+                    sector_descripcion: d.sector_descripcion || ''
                 }))
             };
         });
@@ -560,6 +567,93 @@ class LotesBunkerService {
             throw new Error('No se pudo generar un alias de lote único después de 100 intentos.');
         }
         return alias;
+    }
+
+    /**
+     * Retrotrae/desvincula un lote registrado, con la opción de revertir el stock afectado.
+     */
+    static async desvincularLote(db, lote_id_supabase, revertir_stock) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Obtener la cabecera del vínculo para verificar si existe
+            const resVinculo = await client.query(
+                'SELECT id FROM public.bunker_lotes_vinculos WHERE lote_id_supabase = $1',
+                [lote_id_supabase]
+            );
+            if (resVinculo.rows.length === 0) {
+                throw new Error('No se encontró ningún vínculo registrado para este lote.');
+            }
+            const vinculoId = resVinculo.rows[0].id;
+
+            // 2. Obtener todos los destinos asociados a este vínculo
+            const resDestinos = await client.query(
+                'SELECT id, tipo_destino, destino_id, cantidad_asignada, kilos_asignados FROM public.bunker_lotes_destinos WHERE vinculo_id = $1',
+                [vinculoId]
+            );
+
+            // 3. Revertir el stock para cada destino si está habilitada la bandera
+            if (revertir_stock) {
+                console.log(` Revertiendo stock de los destinos del vínculo ${vinculoId}...`);
+                for (const dest of resDestinos.rows) {
+                    if (dest.tipo_destino === 'ARTICULO_BUNKER') {
+                        const legacyCode = dest.destino_id;
+
+                        // A. Eliminar el movimiento de stock_ventas_movimientos
+                        await client.query(
+                            `DELETE FROM public.stock_ventas_movimientos 
+                             WHERE articulo_numero = $1 AND tipo = 'ingreso_lote' AND origen_ingreso = $2`,
+                            [legacyCode, lote_id_supabase]
+                        );
+
+                        // B. Restar de stock_real_consolidado.stock_movimientos
+                        await client.query(
+                            `UPDATE public.stock_real_consolidado 
+                             SET stock_movimientos = COALESCE(stock_movimientos, 0) - $2,
+                                 ultima_actualizacion = NOW()
+                             WHERE articulo_numero = $1`,
+                            [legacyCode, parseFloat(dest.cantidad_asignada)]
+                        );
+
+                        // C. Recalcular stock_consolidado
+                        await client.query(
+                            `UPDATE public.stock_real_consolidado
+                             SET stock_consolidado = COALESCE(stock_lomasoft, 0) + 
+                                                     COALESCE(stock_movimientos, 0) + 
+                                                     COALESCE(stock_ajustes, 0),
+                                 ultima_actualizacion = NOW()
+                             WHERE articulo_numero = $1`,
+                            [legacyCode]
+                        );
+                    } else if (dest.tipo_destino === 'INGREDIENTE_PRODUCCION') {
+                        // A. Eliminar el movimiento de ingredientes_movimientos
+                        // La eliminación disparará trigger_actualizar_stock que restará automáticamente del stock de ingredientes
+                        await client.query(
+                            `DELETE FROM public.ingredientes_movimientos 
+                             WHERE ingrediente_id = $1 AND tipo = 'ingreso' AND observaciones = $2`,
+                            [parseInt(dest.destino_id), 'Ingreso por vinculación de lote: ' + lote_id_supabase]
+                        );
+                    }
+                }
+            } else {
+                console.log(` Desvinculando lote ${lote_id_supabase} SIN revertir stock.`);
+            }
+
+            // 4. Eliminar el vínculo de la cabecera (destinos se borrarán en cascada por FK ON DELETE CASCADE)
+            await client.query(
+                'DELETE FROM public.bunker_lotes_vinculos WHERE id = $1',
+                [vinculoId]
+            );
+
+            await client.query('COMMIT');
+            return { success: true };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 }
 

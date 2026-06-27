@@ -30,8 +30,9 @@ async function getStockMantenimiento(req, res) {
                     mm.id as id_movimiento,
                     mm.id_presupuesto_origen,
                     CASE 
-                        WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 'LOMASOFT'
-                        WHEN p_padre.comprobante_lomasoft IS NOT NULL AND TRIM(p_padre.comprobante_lomasoft) != '' THEN 'LOMASOFT'
+                        WHEN (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
+                             OR (p_padre.comprobante_lomasoft IS NOT NULL AND TRIM(p_padre.comprobante_lomasoft) != '') THEN 'LOMASOFT'
+                        WHEN p.factura_id IS NOT NULL OR p_padre.factura_id IS NOT NULL THEN 'LAMDA'
                         ELSE COALESCE(p.origen_facturacion, p_padre.origen_facturacion)
                     END as origen_facturacion,
                     mm.articulo_numero,
@@ -122,9 +123,16 @@ async function getStockMantenimiento(req, res) {
                     ff.cae AS fact_cae
                 FROM public.mantenimiento_movimientos mm_nc
                 LEFT JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
-                WHERE mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen
-                  AND mm_nc.articulo_numero = sc.articulo_numero
+                WHERE sc.id_presupuesto_origen IS NOT NULL
+                  AND mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen
+                  AND (
+                      mm_nc.articulo_numero = sc.articulo_numero 
+                      OR mm_nc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = sc.articulo_numero LIMIT 1)
+                      OR sc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = mm_nc.articulo_numero LIMIT 1)
+                  )
                   AND mm_nc.tipo_movimiento = 'EMISION_NC'
+                  AND mm_nc.estado IS DISTINCT FROM 'ANULADO'
+                  AND mm_nc.estado IS DISTINCT FROM 'REVERTIDO'
                 ORDER BY mm_nc.fecha_movimiento DESC
                 LIMIT 1
             ) nc_estado ON true
@@ -1406,8 +1414,9 @@ async function trazarFacturaOriginal(req, res) {
             JOIN public.presupuestos_detalles pd
               ON f.presupuesto_id = pd.id_presupuesto
                  AND (
-                    pd.articulo = $1 
-                    OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = $1)
+                     COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                     =
+                     COALESCE((SELECT numero FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1), $1)
                  )
             WHERE f.cliente_id::text = $2::text
               AND f.estado = 'APROBADA'
@@ -1429,17 +1438,12 @@ async function trazarFacturaOriginal(req, res) {
             WITH quarantine_stock AS (
                 SELECT 
                     mm.articulo_numero,
-                    SUM(CASE 
-                        WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                        WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
-                        ELSE 0 
-                    END) AS stock_actual
+                    SUM(mm.cantidad) AS stock_actual
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
                 WHERE p.id_cliente::text = $1::text
-                  AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
-                  AND mm.estado IS DISTINCT FROM 'FINALIZADO'
-                  AND mm.estado IS DISTINCT FROM 'ANULADO'
+                  AND mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
+                  AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
                   AND mm.articulo_numero NOT IN (
                       -- Exclude items already conciliated with an ARCA Credit Note
                       SELECT mci.articulo_numero 
@@ -1448,11 +1452,7 @@ async function trazarFacturaOriginal(req, res) {
                       WHERE mc.id_cliente::text = $1::text
                   )
                 GROUP BY mm.articulo_numero
-                HAVING SUM(CASE 
-                    WHEN mm.tipo_movimiento = 'INGRESO' THEN mm.cantidad 
-                    WHEN mm.tipo_movimiento IN ('LIBERACION', 'TRANSF_INGREDIENTE') THEN -mm.cantidad
-                    ELSE 0 
-                END) > 0
+                HAVING SUM(mm.cantidad) > 0
             )
             SELECT 
                 qs.articulo_numero,
@@ -1466,10 +1466,14 @@ async function trazarFacturaOriginal(req, res) {
             -- Join with original invoice details to get the historical price for EVERY returned item
             JOIN public.presupuestos_detalles pd 
               ON pd.id_presupuesto = $2
-              AND (pd.articulo = qs.articulo_numero OR pd.articulo IN (SELECT codigo_barras FROM public.articulos WHERE numero = qs.articulo_numero))
+              AND (
+                  COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                  =
+                  COALESCE((SELECT numero FROM public.articulos WHERE numero = qs.articulo_numero OR codigo_barras = qs.articulo_numero LIMIT 1), qs.articulo_numero)
+              )
             JOIN public.factura_facturas f ON f.presupuesto_id = pd.id_presupuesto
             JOIN public.presupuestos p ON p.id = f.presupuesto_id
-            LEFT JOIN public.articulos a ON a.numero = qs.articulo_numero
+            LEFT JOIN public.articulos a ON (a.numero = qs.articulo_numero OR a.codigo_barras = qs.articulo_numero)
             ORDER BY qs.articulo_numero ASC
         `;
         const resultItems = await pool.query(queryItems, [cliente_id, factura.presupuesto_id]);
@@ -2208,10 +2212,14 @@ const iniciarTratamiento = async (req, res) => {
             const kg = parseFloat(item.cantidad || item.descuento_kilos || 0);
 
             let kilosUnidad = 1;
+            let canonicalArticulo = item.articulo_numero;
             if (item.articulo_numero) {
-                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
-                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
-                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                const artQ = await client.query('SELECT articulo_numero, kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR codigo_barras = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0) {
+                    canonicalArticulo = artQ.rows[0].articulo_numero;
+                    if (artQ.rows[0].kilos_unidad) {
+                        kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                    }
                 }
             }
             const cantidadEnUnidades = kg / kilosUnidad;
@@ -2223,7 +2231,7 @@ const iniciarTratamiento = async (req, res) => {
             `;
             await client.query(insertItem, [
                 tratamientoId, 
-                item.articulo_numero, 
+                canonicalArticulo, 
                 item.ingrediente_id || null, 
                 item.cliente_origen || null, 
                 kg, 
@@ -2237,7 +2245,7 @@ const iniciarTratamiento = async (req, res) => {
                     ultima_actualizacion = NOW()
                 WHERE articulo_numero = $2
             `;
-            await client.query(updateStock, [cantidadEnUnidades, item.articulo_numero]);
+            await client.query(updateStock, [cantidadEnUnidades, canonicalArticulo]);
 
             // Mutar el movimiento original para apagar el Bulto Listado
             if (item.id) {
@@ -2255,9 +2263,9 @@ const iniciarTratamiento = async (req, res) => {
                 : `[ENVIO CARPA #${tratamientoId}] ${tipo_tratamiento}`;
                 
             await client.query(insertAuditoria, [
-                item.articulo_numero || null,
+                canonicalArticulo || null,
                 item.ingrediente_id || null,
-                item.articulo_numero ? cantidadEnUnidades : kg,
+                canonicalArticulo ? cantidadEnUnidades : kg,
                 usuario,
                 obsConCliente
             ]);
@@ -2446,12 +2454,16 @@ const finalizarTratamiento = async (req, res) => {
             // Recuperar kilos_unidad y convertir a unidades
             const kg = parseFloat(item.kilos_ingresados);
             let kilosUnidad = 1;
+            let canonicalArticulo = item.articulo_numero;
             const esArticulo = !!item.articulo_numero;
             
             if (esArticulo) {
-                const artQ = await client.query('SELECT kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
-                if (artQ.rows.length > 0 && artQ.rows[0].kilos_unidad) {
-                    kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                const artQ = await client.query('SELECT articulo_numero, kilos_unidad FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR codigo_barras = $1', [item.articulo_numero]);
+                if (artQ.rows.length > 0) {
+                    canonicalArticulo = artQ.rows[0].articulo_numero;
+                    if (artQ.rows[0].kilos_unidad) {
+                        kilosUnidad = parseFloat(artQ.rows[0].kilos_unidad);
+                    }
                 }
             }
             const cantidadEnUnidades = kg / kilosUnidad;
@@ -2459,7 +2471,7 @@ const finalizarTratamiento = async (req, res) => {
             // --- VIGÍA DE AUDITORÍA QA ---
             console.log(`\n============== [QA VIGIA] REINGRESO (BOLSA #${id}) ==============`);
             console.log(`| ITEM TIPO    : ${esArticulo ? 'ARTICULO COMERCIAL' : 'INGREDIENTE (GRANEL)'}`);
-            console.log(`| ID DETECTADO : ${item.articulo_numero || 'Ing.#: ' + item.ingrediente_id}`);
+            console.log(`| ID DETECTADO : ${canonicalArticulo || 'Ing.#: ' + item.ingrediente_id}`);
             console.log(`| BOLSÓN NETO  : ${kg} kg`);
             if (esArticulo) {
                 console.log(`| MAPEO        : División Comercial -> DIVISOR: ${kilosUnidad}`);
@@ -2477,7 +2489,7 @@ const finalizarTratamiento = async (req, res) => {
                 (articulo_numero, ingrediente_id, id_presupuesto_origen, id_orden_tratamiento, cantidad, usuario, tipo_movimiento, estado, observaciones, historial_tratamientos)
                 VALUES ($1, $2, $3, $4, $5, $6, 'RETORNO_TRATAMIENTO', 'PENDIENTE', $7, $8::jsonb)
             `, [
-                item.articulo_numero, 
+                canonicalArticulo, 
                 item.ingrediente_id || null,
                 idPresupuestoOrigen, 
                 idOrdenTratamiento,
@@ -2498,13 +2510,13 @@ const finalizarTratamiento = async (req, res) => {
             }
 
             // 3.3 Devolver el stock a mantenimiento consolidado
-            if (item.articulo_numero) {
+            if (canonicalArticulo) {
                 await client.query(`
                     UPDATE public.stock_real_consolidado
                     SET stock_mantenimiento = stock_mantenimiento + $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
-                `, [cantidadEnUnidades, item.articulo_numero]);
+                `, [cantidadEnUnidades, canonicalArticulo]);
             }
 
             kilosDevueltosTotales += kg;

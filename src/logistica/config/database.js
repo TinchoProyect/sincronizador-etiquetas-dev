@@ -61,7 +61,7 @@ pool.query('SELECT NOW()', async (err, res) => {
                     cliente_nombre VARCHAR(255) NOT NULL,
                     razon_social VARCHAR(255) NOT NULL,
                     lomas_soft_id VARCHAR(50) UNIQUE DEFAULT NULL,
-                    cuit_cuil VARCHAR(11) UNIQUE DEFAULT NULL,
+                    cuit_cuil VARCHAR(11) DEFAULT NULL,
                     condicion_iva VARCHAR(100) DEFAULT NULL,
                     domicilio_fiscal VARCHAR(500) DEFAULT NULL,
                     provincia VARCHAR(100) DEFAULT NULL,
@@ -83,6 +83,7 @@ pool.query('SELECT NOW()', async (err, res) => {
                     nombre_cuenta VARCHAR(255) NOT NULL DEFAULT 'Cuenta Principal',
                     moneda VARCHAR(10) NOT NULL DEFAULT 'ARS',
                     saldo NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                    saldo_apertura NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
                     estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA',
                     creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     actualizada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -127,7 +128,7 @@ pool.query('SELECT NOW()', async (err, res) => {
 
             // ARQUITECTURA FISCAL (Fase 1 y 3): Asegurar columnas fiscales en instalaciones previas
             await pool.query(`
-                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS cuit_cuil VARCHAR(11) UNIQUE DEFAULT NULL;
+                ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS cuit_cuil VARCHAR(11) DEFAULT NULL;
                 ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS condicion_iva VARCHAR(100) DEFAULT NULL;
                 ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS domicilio_fiscal VARCHAR(500) DEFAULT NULL;
                 ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS provincia VARCHAR(100) DEFAULT NULL;
@@ -138,12 +139,15 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ALTER TABLE public.bunker_clientes ADD COLUMN IF NOT EXISTS whatsapp_facturas TEXT DEFAULT NULL;
                 ALTER TABLE public.bunker_clientes ALTER COLUMN whatsapp_facturas TYPE TEXT;
                 
+                ALTER TABLE public.factura_cuentas_corrientes ADD COLUMN IF NOT EXISTS saldo_apertura NUMERIC(15, 2) DEFAULT 0.00;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
+                
+                ALTER TABLE public.bunker_articulos ADD COLUMN IF NOT EXISTS expresado_en_unidades BOOLEAN DEFAULT FALSE;
             `);
-            console.log('✅ [LOGISTICA] Columnas fiscales y whatsapp_facturas (TEXT) verificadas/agregadas a bunker_clientes');
+            console.log('✅ [LOGISTICA] Columnas fiscales, saldo_apertura, whatsapp_facturas y expresado_en_unidades verificadas/agregadas');
 
             // Garantizar la vinculación de artículos hermanos en bunker_articulos para la herencia parental
             await pool.query(`

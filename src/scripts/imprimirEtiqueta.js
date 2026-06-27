@@ -29,6 +29,7 @@ async function main() {
     articulo = datos.articulo || datos;
     cantidad = parseInt(process.argv[2], 10);
     fechas = datos.fechas || null;
+    const lote = datos.lote || null;
     
     if (isNaN(cantidad) || cantidad < 1) {
       throw new Error('Cantidad inválida');
@@ -72,8 +73,9 @@ async function main() {
     const nombreImpresora = 'Zebra';
     const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
 
-    const generarParEtiquetas = (datos) => {
-      const { nombre, numero, codigo_barras, fechas } = datos;
+    const generarParEtiquetas = (datos, lote = null) => {
+      const { nombre, numero, codigo_barras } = datos;
+      const tieneFechas = datos.fechas || fechas || null;
       let fuenteDescripcion = '^CF0,40'; // fuente grande por defecto
 
       if (nombre.length > 30) {
@@ -82,15 +84,32 @@ async function main() {
         fuenteDescripcion = '^CF0,30'; // fuente mediana
       }
 
-      // Ajustar altura del código de barras si hay fechas
-      const alturaCodigoBarras = fechas ? 60 : 80;
+      // Función para calcular X centrado del código de barras en BY2 (ancho estimado)
+      const getBarcodeX = (text, startX, labelWidth = 360) => {
+        const n = String(text).length;
+        const width = 22 * n + 110; // Ancho estimado en BY2
+        const leftover = labelWidth - width;
+        return Math.max(startX, Math.round(startX + leftover / 2));
+      };
+
+      // Ajustar Y y altura del código de barras según presencia de fechas
+      const yBarcode = tieneFechas ? 90 : 75;
+      const alturaCodigoBarras = tieneFechas ? 50 : 60;
       
+      const barcodeX1 = getBarcodeX(codigo_barras, 23);
+      const barcodeX2 = lote ? getBarcodeX(lote, 443) : getBarcodeX(codigo_barras, 443);
+
       // Generar línea de fechas si están presentes
       let lineaFechas = '';
-      if (fechas) {
-        lineaFechas = `\n^CF0,20
-^FO23,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS
-^FO443,70^FDENV: ${fechas.elaboracion}  VTO: ${fechas.vencimiento}^FS`;
+      if (tieneFechas) {
+        if (lote) {
+          lineaFechas = `\n^CF0,20
+^FO23,68^FDENV: ${tieneFechas.elaboracion}  VTO: ${tieneFechas.vencimiento}^FS`;
+        } else {
+          lineaFechas = `\n^CF0,20
+^FO23,68^FDENV: ${tieneFechas.elaboracion}  VTO: ${tieneFechas.vencimiento}^FS
+^FO443,68^FDENV: ${tieneFechas.elaboracion}  VTO: ${tieneFechas.vencimiento}^FS`;
+        }
       }
 
       const etiqueta1 = `${fuenteDescripcion}
@@ -98,16 +117,27 @@ async function main() {
 ^CF0,20
 ^FO23,45^FD${numero}^FS
 ^BY2,2,40
-^FO23,90^BCN,${alturaCodigoBarras},Y,N,N
+^FO${barcodeX1},${yBarcode}^BCN,${alturaCodigoBarras},Y,N,N
 ^FD${codigo_barras}^FS`;
 
-      const etiqueta2 = `${fuenteDescripcion}
+      let etiqueta2;
+      if (lote) {
+        // Etiqueta derecha es el lote interno (código de lote centrado arriba y código de barras centrado abajo)
+        etiqueta2 = `^CF0,40
+^FO443,30^FB360,1,0,C,0^FD${lote}^FS
+^BY2,2,40
+^FO${barcodeX2},80^BCN,60,Y,N,N
+^FD${lote}^FS`;
+      } else {
+        // Duplicación normal del artículo
+        etiqueta2 = `${fuenteDescripcion}
 ^FO443,10^FD${nombre}^FS
 ^CF0,20
 ^FO443,45^FD${numero}^FS
 ^BY2,2,40
-^FO443,90^BCN,${alturaCodigoBarras},Y,N,N
+^FO${barcodeX2},${yBarcode}^BCN,${alturaCodigoBarras},Y,N,N
 ^FD${codigo_barras}^FS`;
+      }
 
       return `^XA
 ^LH0,0
@@ -119,9 +149,9 @@ ${etiqueta2}${lineaFechas}
 
     // Generar contenido ZPL
     let contenido = '';
-    const paresNecesarios = Math.ceil(cantidadPar / 2);
+    const paresNecesarios = lote ? cantidad : Math.ceil(cantidadPar / 2);
     for (let i = 0; i < paresNecesarios; i++) {
-      contenido += generarParEtiquetas(articulo);
+      contenido += generarParEtiquetas(articulo, lote);
     }
 
     // Escribir archivo

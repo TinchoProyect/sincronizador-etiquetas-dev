@@ -72,7 +72,7 @@ class RutasModel {
         if (busqueda) {
             query += ` AND EXISTS (
                 SELECT 1 FROM presupuestos p_search
-                LEFT JOIN clientes c_search ON p_search.id_cliente = c_search.cliente_id::text
+                LEFT JOIN clientes c_search ON ltrim(p_search.id_cliente, '0') = c_search.cliente_id::text
                 LEFT JOIN presupuestos_detalles pd_search ON pd_search.id_presupuesto = p_search.id
                 WHERE p_search.id_ruta = r.id
                 AND (
@@ -166,7 +166,7 @@ class RutasModel {
                 (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
                 EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
             FROM presupuestos p
-            INNER JOIN clientes c ON p.id_cliente = c.cliente_id::text
+            INNER JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
             WHERE p.id_ruta = $1
             ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC

@@ -1355,7 +1355,7 @@ async function actualizarPresupuestoLocal(presupuesto, db) {
             cliente_nuevo_id = $10,
             punto_entrega = $11,
             descuento = $12,
-            secuencia = $13,
+            secuencia = COALESCE(secuencia, $13),
             activo = $14,
             fecha_actualizacion = $15
         WHERE id_presupuesto_ext = $1

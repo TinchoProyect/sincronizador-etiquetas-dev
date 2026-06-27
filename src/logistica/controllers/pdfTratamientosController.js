@@ -156,14 +156,33 @@ async function imprimirPDF(req, res) {
             }
         }
 
-        // Footer
+        // Footer & B2B QR Code
         const oldBottomMargin = doc.page.margins.bottom;
         doc.page.margins.bottom = 0;
-        doc.fontSize(9).fillColor('#94a3b8').text(
+
+        try {
+            const QRCode = require('qrcode');
+            const b2bUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+            const b2bQrBuffer = await QRCode.toBuffer(b2bUrl, {
+                errorCorrectionLevel: 'M',
+                type: 'png',
+                width: 100
+            });
+            const b2bQrX = 460;
+            const b2bQrY = doc.page.height - 105;
+            doc.image(b2bQrBuffer, b2bQrX, b2bQrY, { width: 50, height: 50 });
+            
+            doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#8e4785');
+            doc.text('ACCESO PORTAL B2B', b2bQrX - 10, b2bQrY + 52, { width: 70, align: 'center' });
+        } catch (error) {
+            console.warn('⚠️ [LOGISTICA-PDF] No se pudo generar QR de B2B:', error.message);
+        }
+
+        doc.fontSize(8.5).font('Helvetica').fillColor('#94a3b8').text(
             'El presente documento certifica la recolección, mantenimiento y/o devolución de mercadería según el protocolo del sistema de trazabilidad de LAMDA. Su generación es acumulativa por hitos y garantiza la integridad de los registros.', 
             50, 
             doc.page.height - 100, 
-            { align: 'justify', width: 500 }
+            { align: 'justify', width: 395 }
         );
         doc.page.margins.bottom = oldBottomMargin;
 

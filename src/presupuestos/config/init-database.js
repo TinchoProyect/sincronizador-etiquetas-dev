@@ -154,11 +154,19 @@ const crearTablas = async () => {
                 ) THEN
                     ALTER TABLE presupuestos_config ADD COLUMN cutoff_at TIMESTAMP DEFAULT (NOW() - INTERVAL '30 days');
                 END IF;
+
+                -- usar_precios_bunker (Fase 3 Transición Bunker)
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'presupuestos' AND column_name = 'usar_precios_bunker'
+                ) THEN
+                    ALTER TABLE presupuestos ADD COLUMN usar_precios_bunker BOOLEAN DEFAULT false;
+                END IF;
             END $$;
         `;
         
         await pool.query(agregarCamposAutosync);
-        console.log('[PRESUPUESTOS-BACK] ✅ Campos de autosync verificados/agregados');
+        console.log('[PRESUPUESTOS-BACK] ✅ Campos de autosync y usar_precios_bunker verificados/agregados');
         
         // Insertar configuración por defecto si no existe
         const verificarConfig = `

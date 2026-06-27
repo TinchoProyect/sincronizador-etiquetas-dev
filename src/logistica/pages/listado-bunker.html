@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Artículos - Datos Transaccionales</title>
-    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <link rel="icon" type="image/x-icon" href="../favicon.ico?v=2">
     <link rel="stylesheet" href="../css/dashboard.css">
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -776,6 +776,26 @@
                     <!-- 3. Costo Operativo / Tiempo -->
                     <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px;">
                         <h4 style="margin-top: 0; margin-bottom: 4px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; font-weight: 600;">3. Mano de Obra / Costo de Proceso</h4>
+                        
+                        <!-- Asistente de Cálculo -->
+                        <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+                            <span style="font-size: 0.78em; font-weight: bold; color: #475569; display: flex; align-items: center; gap: 4px;">
+                                🧮 Asistente de Mano de Obra
+                            </span>
+                            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 8px;">
+                                <div style="display: flex; flex-direction: column; gap: 3px;">
+                                    <span style="font-size: 0.72em; color: #64748b; font-weight: 600;">Colaborador:</span>
+                                    <select id="gp-asistente-colaborador" style="width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8em; background: white;" onchange="calcularCostoAsistente()">
+                                        <option value="">-- Seleccionar --</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 3px;">
+                                    <span style="font-size: 0.72em; color: #64748b; font-weight: 600;">Tiempo (Minutos):</span>
+                                    <input type="number" id="gp-asistente-minutos" min="0" placeholder="Minutos" style="width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8em; font-family: monospace;" oninput="calcularCostoAsistente()">
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="display: flex; flex-direction: column; gap: 4px;">
                             <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo Tiempo / Operario ($):</span>
                             <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
@@ -915,6 +935,11 @@
                 </h4>
                 <div id="gp-receta-ingredientes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px;">
                     <!-- Rendered by JS -->
+                </div>
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                    <button type="button" id="gp-btn-editar-receta" class="btn-primary" onclick="abrirModalRecetaBunker()" style="padding: 6px 12px; font-size: 0.85em; border-radius: 4px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        ✏️ Editar Receta
+                    </button>
                 </div>
             </div>
 
@@ -1161,6 +1186,70 @@
         </div>
     </div>
 
-    <script src="../js/listado-bunker.js?v=1.5.2"></script>
+    <!-- Modal Editor de Recetas Búnker -->
+    <div id="gp-modal-receta" class="modal-trazabilidad" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 1200; align-items: center; justify-content: center;">
+        <div id="gp-modal-receta-content" class="trazabilidad-content" style="background: white; border-radius: 12px; width: 95%; max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 20px; border: 1px solid #e2e8f0; margin: 0; animation: modalFadeIn 0.25s ease-out; overflow-y: auto;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 15px;">
+                <div>
+                    <h3 style="margin: 0; color: #0284c7; display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: 800;">
+                        🥣 Editar Receta / Insumos
+                    </h3>
+                    <span style="font-size: 0.88em; color: #64748b; font-weight: 500; margin-top: 4px; display: inline-block;">
+                        Artículo: <strong id="gp-receta-modal-articulo-nombre" style="color: #1e293b;">-</strong>
+                    </span>
+                </div>
+                <button type="button" onclick="cerrarModalRecetaBunker()" style="background: #f1f5f9; border: none; font-size: 1.25em; cursor: pointer; color: #64748b; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">✖</button>
+            </div>
+
+            <!-- Contenido del Modal -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 15px;">
+                <!-- Tabla de ingredientes agregados -->
+                <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #f8fafc; max-height: 300px; overflow-y: auto;">
+                    <table id="gp-receta-modal-tabla" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #e2e8f0; border-bottom: 1px solid #cbd5e1; position: sticky; top: 0; z-index: 10;">
+                                <th style="text-align: left; padding: 10px; font-size: 0.85em; color: #475569; font-weight: bold;">Ingrediente / Insumo</th>
+                                <th style="text-align: center; padding: 10px; width: 120px; font-size: 0.85em; color: #475569; font-weight: bold;">Cantidad</th>
+                                <th style="text-align: center; padding: 10px; width: 90px; font-size: 0.85em; color: #475569; font-weight: bold;">Unidad</th>
+                                <th style="text-align: center; padding: 10px; width: 70px; font-size: 0.85em; color: #475569; font-weight: bold;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gp-receta-modal-tbody">
+                            <!-- JS Injected Rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Buscador para Agregar nuevos ingredientes -->
+                <div style="background: #f1f5f9; border-radius: 8px; padding: 12px; border: 1px solid #e2e8f0;">
+                    <h5 style="margin: 0 0 8px 0; color: #334155; font-size: 0.9em; font-weight: bold;">➕ Añadir Ingrediente / Packaging</h5>
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                        <div style="position: relative; flex: 1;">
+                            <input type="text" id="gp-receta-modal-buscar-input" oninput="buscarIngredienteModalInput(this.value)" placeholder="Escriba para buscar ingrediente o packaging..." autocomplete="off" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-size: 0.9em;">
+                            <ul id="gp-receta-modal-resultados" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); list-style: none; padding: 0; margin: 4px 0 0 0; max-height: 200px; overflow-y: auto; z-index: 100;">
+                                <!-- Resultados búsqueda -->
+                            </ul>
+                            <input type="hidden" id="gp-receta-modal-selected-id">
+                            <input type="hidden" id="gp-receta-modal-selected-nombre">
+                            <input type="hidden" id="gp-receta-modal-selected-unidad">
+                        </div>
+                        <div style="width: 100px;">
+                            <input type="number" id="gp-receta-modal-cantidad-input" step="0.0001" min="0.0001" placeholder="Cant." style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-size: 0.9em;">
+                        </div>
+                        <button type="button" onclick="agregarIngredienteAlLocalState()" style="padding: 8px 16px; border-radius: 4px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 0.9em;">Añadir</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Buttons -->
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+                <button type="button" class="btn-secondary" onclick="cerrarModalRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
+                <button type="button" class="btn-submit" onclick="guardarRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; background: #10b981; color: white; border: none; font-weight: bold; cursor: pointer;">💾 Confirmar Receta</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/listado-bunker.js?v=1.5.3"></script>
 </body>
 </html>

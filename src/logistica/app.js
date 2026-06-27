@@ -41,11 +41,13 @@ const allowedOrigins = [
     'http://localhost:3003',
     'http://localhost:3004',
     'http://localhost:3005',
+    'http://localhost:5173',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3002',
     'http://127.0.0.1:3003',
     'http://127.0.0.1:3004',
     'http://127.0.0.1:3005',
+    'http://127.0.0.1:5173',
     // --- Acceso por IP local (dispositivos móviles en la misma red LAN) ---
     'http://192.168.1.178:3000',
     'http://192.168.1.178:3002',
@@ -143,6 +145,20 @@ app.use('/api/supabase', createProxyMiddleware({
     }
 }));
 
+// Proxy para las transacciones API de Producción (puerto 3002)
+app.use('/api/produccion', createProxyMiddleware({
+    target: 'http://localhost:3002',
+    changeOrigin: true,
+    pathRewrite: (path, req) => {
+        return '/api/produccion' + req.url; 
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Producción (API):', err.message);
+        res.status(503).json({ error: 'Módulo de producción fuera de línea.' });
+    }
+}));
+
+
 // Proxy para las transacciones API de Facturación (puerto 3004)
 app.use('/api/facturacion', createProxyMiddleware({
     target: 'http://localhost:3004',
@@ -231,6 +247,10 @@ console.log('[LOGISTICA] ✅ Rutas de Móvil montadas en /api/logistica/movil');
 // Rutas de Diagnóstico (desarrollo)
 app.use('/api/logistica/diagnostico', require('./routes/diagnostico-secuencia'));
 console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/diagnostico');
+
+// Rutas de Onboarding B2B
+app.use('/api/logistica/b2b-onboarding', require('./routes/b2bOnboarding'));
+console.log('[LOGISTICA] ✅ Rutas de Onboarding B2B montadas en /api/logistica/b2b-onboarding');
 
 // Rutas de Tratamientos e Inmunización (Retiros Fase 1 y 2)
 app.use('/api/logistica/tratamientos', require('./routes/tratamientos'));

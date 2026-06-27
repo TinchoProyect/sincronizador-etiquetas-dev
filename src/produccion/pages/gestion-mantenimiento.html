@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Mantenimiento - Producción</title>
@@ -873,20 +874,18 @@
             try {
                 parsed = JSON.parse(obsText);
             } catch (e) {
-                try {
-                    const firstBracket = obsText.indexOf('[');
-                    if (firstBracket !== -1) {
-                        for (let i = firstBracket + 1; i < obsText.length; i++) {
-                            if (obsText[i] === ']') {
-                                try {
-                                    const candidate = obsText.substring(firstBracket, i + 1);
-                                    parsed = JSON.parse(candidate);
-                                    break;
-                                } catch (err) {}
-                            }
+                let index = -1;
+                while ((index = obsText.indexOf('[', index + 1)) !== -1) {
+                    for (let i = index + 1; i < obsText.length; i++) {
+                        if (obsText[i] === ']') {
+                            try {
+                                const candidate = obsText.substring(index, i + 1);
+                                parsed = JSON.parse(candidate);
+                                if (parsed) return parsed;
+                            } catch (err) {}
                         }
                     }
-                } catch (err) {}
+                }
             }
             return parsed;
         }
@@ -1969,13 +1968,17 @@
                 const pesoTotal = realKilos > 0 ? realKilos : (cantidad * kilosUnidad);
 
                 let tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
-                let nombreMapeadoLocal = '';
+                if (item.id_orden_tratamiento) {
+                    tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">RT-${item.id_orden_tratamiento}</b> - ${tituloPrincipal}`;
+                }
+                let nombreMapeadoLocal = item.id_orden_tratamiento ? `RT-${item.id_orden_tratamiento}` : '';
                 let labelBultosLocal = '';
 
                 // Determinar contenido de la celda de acción
                 const esLomasoftOK = (item.estado === 'CONCILIADO');
                 const esArcaOK = (item.estado_nc === 'COMPLETADO');
                 const esArcaBorrador = (item.estado_nc === 'BORRADOR');
+                const esConsolidado = (item.origen_facturacion === 'LAMDA') ? esArcaOK : esLomasoftOK;
                 const esRetornoLogistica = (item.tipo_movimiento === 'RETORNO_TRATAMIENTO' && item.id_orden_tratamiento != null);
                 const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) && !esRetornoLogistica;
 
@@ -1997,6 +2000,12 @@
                          <div class="dropdown-content">
                              <button onclick="enviarALogistica(${item.id}, ${item.id_orden_tratamiento})" style="color: #fff; background-color: #28a745; font-weight: bold; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                  📦 Enviar a Logística (Pendientes)
+                             </button>
+                             <button onclick="abrirModalTransferencia('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
+                                 🧪 Enviar a Ingredientes
+                             </button>
+                             <button onclick="liberarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, 'Transformación de semillas concluida', '${item.usuario_id || ''}', ${item.id})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
+                                 📦 Convertir a Artículo
                              </button>
                              <button onclick="limpiarRegistroMantenimiento(${item.id}, 'Retorno')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                  🧹 Limpiar Registro (Visual)
@@ -2103,12 +2112,16 @@
                     } else {
                         // Registro completamente enriquecido y vinculado
                         if (item.origen_facturacion === 'LAMDA' && !esArcaOK) {
-                            let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
-                            innerActions += `
-                             <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
-                                 🧾 Emitir NC ARCA
-                             </button>`;
-                            statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
+                            if (esArcaBorrador) {
+                                statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #ffc107; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">⚠️ Enviado a Facturación</span>`;
+                            } else {
+                                let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
+                                innerActions += `
+                                 <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
+                                     🧾 Emitir NC ARCA
+                                 </button>`;
+                                statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
+                            }
                         } else if ((item.origen_facturacion || '').includes('LOMASOFT') && !esLomasoftOK) {
                             // [TICKET 17] Inyectar dinámicamente la opción de Conciliar Lomas Soft para devoluciones logísticas
                             let lomasoftDisabled = btnDisabled ? 'disabled' : '';
@@ -2178,7 +2191,7 @@
                         ${statusTags}
                     </div>
                     `;
-                } else if (esLomasoftOK || esArcaOK) {
+                } else if (esConsolidado) {
                     let comprobanteInfo = '';
                     if (esLomasoftOK && item.nc_nro) {
                         const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
@@ -2220,7 +2233,7 @@
                     let eliminarDisabled = btnDisabled ? 'disabled' : '';
 
                     if (esArcaBorrador) {
-                        ncActionHtml = `<span style="font-size: 0.85em; background-color: #ffc107; color: #856404; padding: 5px 8px; border-radius: 4px; text-align: center; font-weight: bold; border: 1px solid #ffeeba;">⏳ Borrador ARCA</span>`;
+                        ncActionHtml = `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #ffc107; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">⚠️ Enviado a Facturación</span>`;
                         eliminarDisabled = 'disabled';
                     } else if (item.articulo_numero && !item.id_presupuesto_origen && item.cliente_id) {
                         // Caso "Bulto" enriquecido: Tiene Artículo y Cliente, pero AÚN no tiene un Documento Origen Vinculado.
@@ -2400,6 +2413,21 @@
             if (window.mantenimientoStockData && movimientoId) {
                 const item = window.mantenimientoStockData.find(a => a.id === movimientoId);
                 if (item) {
+                    if (item.estado_nc === 'BORRADOR') {
+                        const confirmacionAdmin = await Swal.fire({
+                            title: '⚠️ Trámite Administrativo Pendiente',
+                            text: 'Este lote tiene una Nota de Crédito en estado BORRADOR (pendiente de facturación oficial ante AFIP). ¿Desea continuar con el egreso físico del stock de todas formas?',
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonText: 'Sí, continuar',
+                            cancelButtonText: 'No, cancelar',
+                            confirmButtonColor: '#f8c86c',
+                            cancelButtonColor: '#d33'
+                        });
+                        if (!confirmacionAdmin.isConfirmed) {
+                            return;
+                        }
+                    }
                     nombreArtOrigen = item.descripcion;
                     kilosUnidad = parseFloat(item.kilos_unidad) || 1;
                     
@@ -3271,7 +3299,26 @@
         // ==========================================
         // Modal Transferencia
         // ==========================================
-        function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId, origenIngredienteId = null, movimientoId = null) {
+        async function abrirModalTransferencia(clienteId, articulo, unidades, kilosPorUnidad, usuarioOriginalId, origenIngredienteId = null, movimientoId = null) {
+            if (window.mantenimientoStockData && movimientoId) {
+                const item = window.mantenimientoStockData.find(a => a.id === movimientoId);
+                if (item && item.estado_nc === 'BORRADOR') {
+                    const confirmacionAdmin = await Swal.fire({
+                        title: '⚠️ Trámite Administrativo Pendiente',
+                        text: 'Este lote tiene una Nota de Crédito en estado BORRADOR (pendiente de facturación oficial ante AFIP). ¿Desea continuar con el egreso físico del stock de todas formas?',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, continuar',
+                        cancelButtonText: 'No, cancelar',
+                        confirmButtonColor: '#f8c86c',
+                        cancelButtonColor: '#d33'
+                    });
+                    if (!confirmacionAdmin.isConfirmed) {
+                        return;
+                    }
+                }
+            }
+
             // Asegurar tipos numéricos
             const cantUnidades = parseFloat(unidades) || 0;
             const factorKilos = parseFloat(kilosPorUnidad) || 1;
@@ -3752,7 +3799,7 @@
                 if (precio > 0) {
                     payloadItems.push({
                         articulo: chk.dataset.articulo,
-                        descripcion: `Devolución: ${chk.dataset.articulo}`,
+                        descripcion: chk.dataset.descripcion || chk.dataset.articulo,
                         qty: devuelto,
                         p_unit: precio,
                         alic_iva_id: parseInt(chk.dataset.iva) || 1
@@ -3793,7 +3840,7 @@
                     concepto: 1, // 1 = Productos
                     precio_modo: 'NETO', // Precios históricos (pd.valor1) están en neto
                     tipo_cbte: tipoCbte,
-                    pto_vta: 4, // Electrónica por defecto o asimilable
+                    pto_vta: 32, // Puesto oficial homologado de LAMDA (0032)
                     items: payloadItems
                 };
 

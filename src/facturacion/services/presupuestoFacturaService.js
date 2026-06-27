@@ -239,21 +239,29 @@ function mapearAlicuotaIva(ivaPresupuesto) {
 /**
  * Mapear cabecera de factura con todos los campos obligatorios para AFIP
  */
-function mapearCabecera(presupuesto, cliente) {
+function mapearCabecera(presupuesto, cliente, requiereAfip = true) {
     console.log(`📋 [PRESUPUESTO-FACTURA] Mapeando cabecera...`);
 
     const condicionIva = cliente.condicion_iva || 'Consumidor Final';
     const tipoCbte = determinarTipoComprobante(condicionIva);
     const condicionIvaId = determinarCondicionIvaAfip(condicionIva);
-    const { docTipo, docNro } = determinarDocumento(cliente);
+    let { docTipo, docNro } = determinarDocumento(cliente);
 
-    // Validar datos obligatorios del receptor
-    if (!docTipo || !docNro || docNro === '0') {
-        throw new Error(`Cliente sin documento válido. CUIT/CUIL/DNI requerido para facturación AFIP`);
-    }
+    // Si no requiere AFIP, flexibilizar o dar fallbacks seguros
+    if (!requiereAfip) {
+        if (!docTipo || !docNro || docNro === '0') {
+            docTipo = 99; // Consumidor Final
+            docNro = '0';
+        }
+    } else {
+        // Validar datos obligatorios del receptor
+        if (!docTipo || !docNro || docNro === '0') {
+            throw new Error(`Cliente sin documento válido. CUIT/CUIL/DNI requerido para facturación AFIP`);
+        }
 
-    if (!condicionIvaId) {
-        throw new Error(`Condición IVA inválida para el cliente`);
+        if (!condicionIvaId) {
+            throw new Error(`Condición IVA inválida para el cliente`);
+        }
     }
 
     // Construir razón social desde nombre y apellido
@@ -276,7 +284,16 @@ function mapearCabecera(presupuesto, cliente) {
     const concepto = 1;
 
     // Fecha de emisión válida (formato YYYY-MM-DD)
-    const fechaEmision = fechaActual();
+    let fechaEmision = fechaActual();
+    if (presupuesto && (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC') && presupuesto.fecha) {
+        const dateObj = new Date(presupuesto.fecha);
+        if (!isNaN(dateObj.getTime())) {
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            fechaEmision = `${year}-${month}-${day}`;
+        }
+    }
 
     // Fechas de servicio: solo si concepto es 2 o 3
     let fchServDesde = null;
@@ -304,7 +321,7 @@ function mapearCabecera(presupuesto, cliente) {
         condicion_iva_id: condicionIvaId,
         moneda: 'PES',
         mon_cotiz: 1.0000, // Siempre 1 para pesos
-        requiere_afip: true,
+        requiere_afip: requiereAfip,
         presupuesto_id: presupuesto.id,
         estado: 'BORRADOR',
         fch_serv_desde: fchServDesde,
@@ -387,9 +404,9 @@ function calcularTotales(items) {
 }
 
 /**
- * Facturar presupuesto (crear factura lista para CAE)
+ * Facturar presupuesto (crear factura lista para CAE o local)
  */
-async function facturarPresupuesto(presupuestoId) {
+async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = null) {
     console.log(`🔄 [PRESUPUESTO-FACTURA] Iniciando facturación del presupuesto ${presupuestoId}...`);
 
     const client = await pool.connect();
@@ -414,8 +431,15 @@ async function facturarPresupuesto(presupuestoId) {
             throw new Error(`Ya existe una factura para el presupuesto ${presupuestoId} (ID: ${existeResult.rows[0].id})`);
         }
 
-        // 3. Mapear cabecera (valida datos obligatorios)
-        const cabecera = mapearCabecera(presupuesto, cliente);
+        // 3. Mapear cabecera (valida datos obligatorios si requiereAfip es true)
+        const cabecera = mapearCabecera(presupuesto, cliente, requiereAfip !== false);
+
+        if (ptoVta !== null) {
+            cabecera.pto_vta = ptoVta;
+        }
+        if (requiereAfip !== null) {
+            cabecera.requiere_afip = requiereAfip;
+        }
 
         // 4. Obtener descuento del presupuesto (fracción decimal, ej. 0.05 = 5%)
         const descuentoFraccional = parseFloat(presupuesto.descuento) || 0;
@@ -439,7 +463,7 @@ async function facturarPresupuesto(presupuestoId) {
         console.log(`💰 [PRESUPUESTO-FACTURA] Totales validados - Total: $${totales.imp_total.toFixed(2)}`);
 
         // 8. Insertar factura lista para CAE (SIN número todavía)
-        console.log(`📝 [PRESUPUESTO-FACTURA] Creando factura BORRADOR (número se asignará al obtener CAE)...`);
+        console.log(`📝 [PRESUPUESTO-FACTURA] Creando factura BORRADOR...`);
 
         const insertFacturaQuery = `
             INSERT INTO factura_facturas (
@@ -481,13 +505,11 @@ async function facturarPresupuesto(presupuestoId) {
             cabecera.fch_serv_hasta,   // $19
             cabecera.fch_vto_pago,     // $20
             descuentoFraccional        // $21
-            // Total: 21 parámetros para 21 columnas
         ]);
 
         const facturaId = facturaResult.rows[0].id;
         console.log(`✅ [PRESUPUESTO-FACTURA] Factura BORRADOR creada con ID: ${facturaId}`);
         console.log(`   - Tipo/PV: ${cabecera.tipo_cbte}/${cabecera.pto_vta}`);
-        console.log(`   - Número: Se asignará al obtener CAE`);
         console.log(`   - Total: $${totales.imp_total.toFixed(2)}`);
 
         // 9. Insertar items
@@ -516,24 +538,26 @@ async function facturarPresupuesto(presupuestoId) {
 
         console.log(`✅ [PRESUPUESTO-FACTURA] ${items.length} items insertados`);
 
-        // 10. VINCULAR BIDIRECCIONAL: Actualizar presupuesto con factura_id
+        // 10. VINCULAR BIDIRECCIONAL: Actualizar presupuesto con factura_id y estado correspondiente
         console.log(`🔗 [PRESUPUESTO-FACTURA] Actualizando presupuestos.factura_id = ${facturaId}...`);
 
-        const updatePresupuestoQuery = `
+        let updatePresupuestoQuery = '';
+        let queryParams = [];
+
+        // Para cualquier puesto (incluyendo 90), al crear el borrador solo marcamos "Enviado a Facturación"
+        // El estado final de entrega del Puesto 90 se aplicará atómicamente al EMITIR la factura.
+        updatePresupuestoQuery = `
             UPDATE presupuestos
             SET factura_id = $1, estado = 'Enviado a Facturación'
             WHERE id = $2
         `;
+        queryParams = [facturaId, presupuestoId];
 
-        await client.query(updatePresupuestoQuery, [facturaId, presupuestoId]);
-        console.log(`✅ [PRESUPUESTO-FACTURA] Vinculación bidireccional completada`);
-        console.log(`   - presupuestos.factura_id → ${facturaId}`);
-        console.log(`   - factura_facturas.presupuesto_id → ${presupuestoId}`);
+        await client.query(updatePresupuestoQuery, queryParams);
+        console.log(`✅ [PRESUPUESTO-FACTURA] Vinculación bidireccional y actualización de estado completada`);
 
         await client.query('COMMIT');
         console.log('✅ [PRESUPUESTO-FACTURA] Transacción confirmada');
-        console.log('🎯 [PRESUPUESTO-FACTURA] Factura BORRADOR lista para solicitar CAE');
-        console.log('💡 [PRESUPUESTO-FACTURA] El número se asignará automáticamente al obtener CAE');
 
         return {
             facturaId,

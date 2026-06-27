@@ -50,7 +50,7 @@ class AuditoriasModel {
                    p.estado as estado_presupuesto
             FROM rutas_auditorias_tramos t
             LEFT JOIN presupuestos p ON t.id_presupuesto = p.id
-            LEFT JOIN clientes c ON p.id_cliente::text = c.cliente_id::text
+            LEFT JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             WHERE t.id_auditoria = $1
             ORDER BY t.hora_inicio ASC
         `;

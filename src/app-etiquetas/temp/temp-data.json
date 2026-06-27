@@ -1,8 +1,10 @@
 {
   "articulo": {
-    "numero": "AATGX5",
-    "nombre": "Avena/Arroll/Trad/Gru x 5",
-    "codigo_barras": "3256419852"
+    "numero": "SBX5",
+    "nombre": "Sesamo Blanco x 5",
+    "codigo_barras": "256362258"
   },
-  "cantidad": "1.00"
+  "cantidad": "5.00",
+  "lote": "L-2618",
+  "fechas": null
 }

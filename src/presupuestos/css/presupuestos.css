@@ -2517,10 +2517,60 @@ footer {
     z-index: 10;
 }
 
-/* Modificaci�n para integrar filtros con solapas */
+/* Modificacin para integrar filtros con solapas */
 .filters-section-compact {
     border-top: 2px solid var(--secondary-color);
     border-radius: 0 8px 8px 8px;
     margin-top: 0;
     z-index: 5;
+}
+
+/* ===================================
+   ESTILOS PARA SELECTOR DE PRECIOS HIBRIDO (BADGES)
+   =================================== */
+.price-source-badge {
+    cursor: pointer;
+    margin-left: 8px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.price-source-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+.price-source-badge.badge-bunker {
+    background-color: #e6f4ea;
+    color: #137333;
+    border: 1px solid #c2e7c9;
+}
+
+.price-source-badge.badge-bunker:hover {
+    background-color: #d2ebd9;
+}
+
+.price-source-badge.badge-legacy {
+    background-color: #e8f0fe;
+    color: #1a73e8;
+    border: 1px solid #fad2cf;
+}
+
+.price-source-badge.badge-legacy:hover {
+    background-color: #d2e3fc;
+}
+
+.price-source-loading {
+    opacity: 0.6;
+    cursor: wait;
 }

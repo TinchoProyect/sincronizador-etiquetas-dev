@@ -369,7 +369,8 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     // Datos del snapshot (vienen en cada artículo, tomar del primero)
                     snapshot_motivo: articulo.snapshot_motivo,
                     snapshot_numero_impresion: articulo.snapshot_numero_impresion,
-                    snapshot_secuencia: articulo.snapshot_secuencia
+                    snapshot_secuencia: articulo.snapshot_secuencia,
+                    presupuesto_estado: articulo.presupuesto_estado
                 });
             }
             presupuestosMap.get(presupId).articulos.push(articulo);
@@ -544,6 +545,57 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     await revertirRetiraDeposito(presupuesto.presupuesto_id, cliente.cliente_id);
                 });
                 botonesPresupuesto.appendChild(btnVolverReparto);
+
+                // NUEVO: Botón "Facturación Local" (con lógica condicional según estado del presupuesto)
+                const estadoLower = (presupuesto.presupuesto_estado || '').toLowerCase().trim();
+                
+                if (estadoLower === 'facturado' || estadoLower === 'entregado' || estadoLower === 'retirado') {
+                    // Si ya está facturado, mostramos badge inerte
+                    const badgeFacturado = document.createElement('span');
+                    badgeFacturado.textContent = '🟢 Facturado';
+                    badgeFacturado.style.padding = '6px 12px';
+                    badgeFacturado.style.fontSize = '12px';
+                    badgeFacturado.style.fontWeight = 'bold';
+                    badgeFacturado.style.color = '#047857';
+                    badgeFacturado.style.backgroundColor = '#ecfdf5';
+                    badgeFacturado.style.border = '1px solid #10b981';
+                    badgeFacturado.style.borderRadius = '4px';
+                    badgeFacturado.style.marginLeft = '8px';
+                    badgeFacturado.style.display = 'inline-flex';
+                    badgeFacturado.style.alignItems = 'center';
+                    botonesPresupuesto.appendChild(badgeFacturado);
+                } else if (estadoLower === 'enviado a facturación' || estadoLower === 'enviado a facturacion') {
+                    // Si ya fue enviado a facturación, mostramos badge inerte
+                    const badgeEnviado = document.createElement('span');
+                    badgeEnviado.textContent = '⏳ Enviado a Facturación';
+                    badgeEnviado.style.padding = '6px 12px';
+                    badgeEnviado.style.fontSize = '12px';
+                    badgeEnviado.style.fontWeight = 'bold';
+                    badgeEnviado.style.color = '#1d4ed8';
+                    badgeEnviado.style.backgroundColor = '#eff6ff';
+                    badgeEnviado.style.border = '1px solid #3b82f6';
+                    badgeEnviado.style.borderRadius = '4px';
+                    badgeEnviado.style.marginLeft = '8px';
+                    badgeEnviado.style.display = 'inline-flex';
+                    badgeEnviado.style.alignItems = 'center';
+                    botonesPresupuesto.appendChild(badgeEnviado);
+                } else {
+                    // Si no, mostramos el botón interactivo de "Facturación Local"
+                    const btnFacturaLocal = document.createElement('button');
+                    btnFacturaLocal.textContent = '🧾 Facturación Local';
+                    btnFacturaLocal.className = 'admin-button';
+                    btnFacturaLocal.style.padding = '6px 12px';
+                    btnFacturaLocal.style.fontSize = '12px';
+                    btnFacturaLocal.style.background = '#8e4785'; // Púrpura
+                    btnFacturaLocal.style.color = '#fff';
+                    btnFacturaLocal.style.marginLeft = '8px'; // Separación
+                    btnFacturaLocal.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const idPresupuesto = presupuesto.id_presupuesto_local || presupuesto.presupuesto_id;
+                        await enviarAFacturacionLocal(idPresupuesto, cliente.cliente_id);
+                    });
+                    botonesPresupuesto.appendChild(btnFacturaLocal);
+                }
 
                 // NUEVO: Botón "Entregado" (solo en acordeón "Retira por Depósito")
                 const btnEntregado = document.createElement('button');
@@ -2373,8 +2425,56 @@ async function marcarPresupuestoEntregado(presupuestoId, clienteId) {
     }
 }
 
+/**
+ * Envía un presupuesto al circuito de facturación interna (local, puesto 90)
+ */
+async function enviarAFacturacionLocal(presupuestoId, clienteId) {
+    if (!confirm(`¿Enviar el presupuesto #${presupuestoId} a Facturación Local (Interna)?`)) {
+        return;
+    }
+
+    try {
+        // Encontrar o fabricar un loading indicator
+        const container = document.getElementById('pedidos-retira');
+        if (container) {
+            container.innerHTML = '<p class="mensaje-info">Procesando facturación local...</p>';
+        }
+
+        // Llamar al microservicio de facturación (Puerto 3004) para facturar local
+        const port = '3004';
+        const hostname = window.location.hostname;
+        const factBase = `http://${hostname}:${port}/facturacion`;
+
+        console.log(`📡 [LOGISTICA] Enviando presupuesto #${presupuestoId} a facturación local: ${factBase}`);
+        
+        const responseFact = await fetch(`${factBase}/presupuestos/${presupuestoId}/facturar-local`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const dataFact = await responseFact.json();
+
+        if (!responseFact.ok) {
+            throw new Error(dataFact.message || 'Error al emitir comprobante local');
+        }
+
+        console.log('✅ [LOGISTICA] Factura local emitida y presupuesto actualizado:', dataFact);
+        mostrarToast('✅ Borrador local de factura generado con éxito', 'success');
+
+        // Recargar la lista de pedidos
+        await cargarPedidosPorCliente();
+    } catch (error) {
+        console.error('❌ [LOGISTICA] Error en el flujo de facturación local:', error);
+        alert('Error: ' + error.message);
+        await cargarPedidosPorCliente(); // Recargar para restaurar estado
+    }
+}
+
 // Exponer la función globalmente
 window.marcarPresupuestoEntregado = marcarPresupuestoEntregado;
+window.enviarAFacturacionLocal = enviarAFacturacionLocal;
 
 console.log('✅ [RETIRA-DEPOSITO] Módulo de "Retira por Depósito" cargado');
 
@@ -2721,3 +2821,223 @@ window.gestionarPerfilImpresionCliente = async function(clienteId, clienteNombre
         }
     };
 };
+
+// Función para consultar trazabilidad de un lote
+async function consultarTrazabilidadLote() {
+    try {
+        const { value: loteCode } = await Swal.fire({
+            title: '🔍 Consultar Trazabilidad de Lote',
+            input: 'text',
+            inputLabel: 'Escanee o ingrese el código de lote (ej: L-245)',
+            inputPlaceholder: 'L-XXXX',
+            showCancelButton: true,
+            confirmButtonColor: '#6f42c1',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Consultar',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'Debe ingresar un código de lote';
+                }
+            }
+        });
+
+        if (!loteCode) return; // Se canceló
+
+        const match = loteCode.trim().match(/^L-?(\d+)$/i);
+        if (!match) {
+            Swal.fire('Código Inválido', 'El formato del lote debe ser L-[número de carro] (ej: L-245)', 'error');
+            return;
+        }
+
+        const carroId = parseInt(match[1], 10);
+
+        // Mostrar cargando
+        Swal.fire({
+            title: 'Consultando lote...',
+            html: 'Buscando datos de trazabilidad en el servidor...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        // 1. Obtener estado del carro
+        const stateRes = await fetch(`/api/produccion/carro/${carroId}/estado`);
+        if (!stateRes.ok) {
+            if (stateRes.status === 404) {
+                Swal.fire('No Encontrado', 'El código de lote no corresponde a ninguna producción registrada.', 'error');
+            } else {
+                Swal.fire('Error', `Error al consultar el lote (HTTP ${stateRes.status})`, 'error');
+            }
+            return;
+        }
+
+        const stateData = await stateRes.json();
+
+        // 2. Obtener artículos
+        const artRes = await fetch(`/api/produccion/carro/${carroId}/articulos-etiquetas`);
+        const articles = artRes.ok ? await artRes.json() : [];
+
+        // 3. Obtener operario
+        let operarioNombre = 'No disponible';
+        if (stateData.usuario_id) {
+            try {
+                const usersRes = await fetch('/api/produccion/operarios');
+                if (usersRes.ok) {
+                    const users = await usersRes.json();
+                    const userObj = users.find(u => u.id === stateData.usuario_id);
+                    if (userObj) {
+                        operarioNombre = userObj.nombre_completo || userObj.nombre || 'No disponible';
+                    }
+                }
+            } catch (e) {
+                console.warn('No se pudo obtener la lista de usuarios:', e);
+            }
+        }
+
+        // 4. Obtener ingredientes y packaging consumidos
+        let ingredientes = [];
+        if (stateData.usuario_id) {
+            try {
+                const ingRes = await fetch(`/api/produccion/carro/${carroId}/ingredientes?usuarioId=${stateData.usuario_id}`);
+                if (ingRes.ok) {
+                    ingredientes = await ingRes.json();
+                }
+            } catch (e) {
+                console.warn('No se pudieron obtener los ingredientes:', e);
+            }
+        }
+
+        // 5. Obtener ingresos manuales
+        let ingresosManuales = [];
+        try {
+            const manualRes = await fetch(`/api/produccion/carro/${carroId}/ingresos-manuales`);
+            if (manualRes.ok) {
+                ingresosManuales = await manualRes.json();
+            }
+        } catch (e) {
+            console.warn('No se pudieron obtener los ingresos manuales:', e);
+        }
+
+        // Armar el contenido del reporte de trazabilidad
+        const fechaProd = stateData.fecha_confirmacion 
+            ? new Date(stateData.fecha_confirmacion).toLocaleString('es-AR') 
+            : 'No asentada';
+            
+        const fechaInicio = stateData.fecha_inicio 
+            ? new Date(stateData.fecha_inicio).toLocaleString('es-AR') 
+            : 'No disponible';
+
+        let htmlContent = `
+            <div style="text-align: left; font-size: 0.95em; max-height: 50vh; overflow-y: auto; padding-right: 5px;">
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #6f42c1;">
+                    <p style="margin: 0 0 6px 0;"><strong>📦 Identificador de Lote:</strong> <span style="font-family: monospace; font-size: 1.1em; color: #6f42c1; font-weight: bold;">L-${carroId}</span></p>
+                    <p style="margin: 0 0 6px 0;"><strong>👤 Operario:</strong> ${operarioNombre}</p>
+                    <p style="margin: 0 0 6px 0;"><strong>🏭 Tipo de Producción:</strong> ${stateData.tipo_carro === 'externa' ? '🚚 Externa' : '🏭 Interna'}</p>
+                    <p style="margin: 0 0 6px 0;"><strong>📅 Fecha de Inicio:</strong> ${fechaInicio}</p>
+                    <p style="margin: 0;"><strong>✅ Asentado el:</strong> <span style="color: #28a745; font-weight: bold;">${fechaProd}</span></p>
+                </div>
+                
+                <h4 style="margin: 15px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; color: #1e293b; font-size: 1.1em;">📋 Artículos Producidos</h4>
+        `;
+
+        if (articles.length === 0) {
+            htmlContent += `<p style="color: #64748b; font-style: italic;">No se registraron artículos producidos.</p>`;
+        } else {
+            htmlContent += `
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 0.9em;">
+                    <thead>
+                        <tr style="background: #f1f5f9; text-align: left;">
+                            <th style="padding: 8px; border: 1px solid #e2e8f0;">SKU</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0;">Descripción</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">Cantidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            articles.forEach(art => {
+                htmlContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; font-family: monospace;">${art.articulo_numero}</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0;">${art.descripcion}</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${art.cantidad}</td>
+                    </tr>
+                `;
+            });
+            htmlContent += `</tbody></table>`;
+        }
+
+        // Mostrar Ingredientes Utilizados
+        htmlContent += `<h4 style="margin: 15px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; color: #1e293b; font-size: 1.1em;">🌿 Ingredientes Consumidos</h4>`;
+        
+        if (ingredientes.length === 0) {
+            htmlContent += `<p style="color: #64748b; font-style: italic;">No hay registro de ingredientes consumidos.</p>`;
+        } else {
+            htmlContent += `
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 0.9em;">
+                    <thead>
+                        <tr style="background: #f1f5f9; text-align: left;">
+                            <th style="padding: 8px; border: 1px solid #e2e8f0;">Ingrediente</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">Cantidad Usada</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0;">Sector</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            ingredientes.forEach(ing => {
+                const esInsumo = ing.es_insumo ? ' 📦' : '';
+                htmlContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0;">${ing.nombre}${esInsumo}</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${Math.abs(parseFloat(ing.cantidad)).toFixed(2)} ${ing.unidad_medida || 'kg'}</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; color: #64748b; font-size: 0.95em;">${ing.sector_nombre || 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            htmlContent += `</tbody></table>`;
+        }
+
+        // Mostrar Ingresos manuales si los hay
+        if (ingresosManuales.length > 0) {
+            htmlContent += `<h4 style="margin: 15px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; color: #1e293b; font-size: 1.1em;">➕ Adiciones / Ingresos Manuales</h4>`;
+            htmlContent += `
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 0.9em;">
+                    <thead>
+                        <tr style="background: #f1f5f9; text-align: left;">
+                            <th style="padding: 8px; border: 1px solid #e2e8f0;">Artículo</th>
+                            <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">Cantidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            ingresosManuales.forEach(ing => {
+                htmlContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0;">${ing.articulo_descripcion || ing.articulo_numero}</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: bold;">${parseFloat(ing.kilos || ing.kilos_totales).toFixed(2)} kg</td>
+                    </tr>
+                `;
+            });
+            htmlContent += `</tbody></table>`;
+        }
+
+        htmlContent += `</div>`;
+
+        // Cerrar loading y abrir reporte de trazabilidad
+        Swal.fire({
+            title: `📋 Trazabilidad del Lote L-${carroId}`,
+            html: htmlContent,
+            width: '700px',
+            confirmButtonColor: '#6f42c1',
+            confirmButtonText: 'Aceptar'
+        });
+
+    } catch (error) {
+        console.error('Error al consultar trazabilidad de lote:', error);
+        Swal.fire('Error', 'Ocurrió un error inesperado al buscar los datos: ' + error.message, 'error');
+    }
+}
+
+window.consultarTrazabilidadLote = consultarTrazabilidadLote;
+

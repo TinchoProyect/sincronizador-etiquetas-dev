@@ -4,8 +4,8 @@
   "description": "Sistema de sincronización e impresión de etiquetas",
   "main": "index.js",
   "scripts": {
-    "start": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,LOGISTICA,CLOUDFLARED\" -c \"blue,green,yellow,magenta,cyan,white\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"node src/logistica/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\"",
-    "start:local": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,LOGISTICA\" -c \"blue,green,yellow,magenta,cyan\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"node src/logistica/app.js\"",
+    "start": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,LOGISTICA,CLOUDFLARED,B2B_DAEMON,B2B_PORTAL\" -c \"blue,green,yellow,magenta,cyan,white,gray,red\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"node src/logistica/app.js\" \"C:\\\\Cloudflared\\\\cloudflared.exe tunnel run d72f6c10-9fdc-4130-a0fb-ebadefb7006b\" \"node src/actualizaPrecios/daemonB2B.js\" \"npm run b2b:dev\"",
+    "start:local": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS,PRODUCCION,PRESUPUESTOS,FACTURACION,LOGISTICA,B2B_DAEMON,B2B_PORTAL\" -c \"blue,green,yellow,magenta,cyan,gray,red\" \"node src/app-etiquetas/server.js\" \"node src/produccion/app.js\" \"node src/presupuestos/app.js\" \"node src/facturacion/app.js\" \"node src/logistica/app.js\" \"node src/actualizaPrecios/daemonB2B.js\" \"npm run b2b:dev\"",
     "start:test": "node -r dotenv/config src/app-etiquetas/server.js dotenv_config_path=.env.test",
     "produccion:test": "node -r dotenv/config src/produccion/app.js dotenv_config_path=.env.test",
     "presupuestos:test": "node -r dotenv/config src/presupuestos/app.js dotenv_config_path=.env.test",
@@ -13,6 +13,8 @@
     "logistica:test": "node -r dotenv/config src/logistica/app.js dotenv_config_path=.env.test",
     "start:test:all": "powershell -ExecutionPolicy Bypass -File scripts/limpiar-puertos.ps1 && concurrently --kill-others-on-fail --names \"ETIQUETAS-TEST,PRODUCCION-TEST,PRESUPUESTOS-TEST,FACTURACION-TEST,LOGISTICA-TEST\" -c \"blue,green,yellow,magenta,cyan\" \"npm run start:test\" \"npm run produccion:test\" \"npm run presupuestos:test\" \"npm run facturacion:test\" \"npm run logistica:test\"",
     "dev": "cd src/app-etiquetas && vite",
+    "b2b:dev": "cd b2b-portal && npm run dev",
+    "b2b:build": "cd b2b-portal && npm run build",
     "sync": "node src/actualizaArticulos/syncEtiquetas.js",
     "sync:articulos:test": "node -r dotenv/config src/actualizaArticulos/syncEtiquetas.js dotenv_config_path=.env.test",
     "sync:clientes:test": "node -r dotenv/config src/actualizaClientes/syncClientes.js dotenv_config_path=.env.test",
@@ -25,7 +27,7 @@
     "facturacion": "node src/facturacion/app.js",
     "logistica": "node src/logistica/app.js",
     "db:check": "node -e \"require('dotenv').config(); console.log('📊 Base de datos actual:', process.env.DB_NAME || 'etiquetas'); console.log('🌍 Entorno:', process.env.NODE_ENV || 'production');\"",
-    "kill-ports": "npx kill-port 3000 3002 3003 3004 3005"
+    "kill-ports": "npx kill-port 3000 3002 3003 3004 3005 5173"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

@@ -44,11 +44,9 @@ async function main() {
 
       // Etiqueta 1 (Izquierda): Identidad Comercial
       const etiqueta1 = `${fuenteDescripcion}
-^FO23,10^FD${descripcion_generada}^FS
-^CF0,20
-^FO23,45^FD${articulo_id}^FS
+^FO23,15^FD${descripcion_generada}^FS
 ^BY2,2,40
-^FO23,90^BCN,80,Y,N,N
+^FO23,55^BCN,65,Y,N,N
 ^FD${codigo_barras || '0000000000'}^FS`;
 
       // Etiqueta 2 (Derecha): Trazabilidad de Lote
@@ -58,21 +56,19 @@ async function main() {
       const loteImprimir = lote_codigo_corto || lote_id;
 
       if (loteImprimir) {
-        // Lote activo: dibujar código de barras lineal Code 128 y texto legible
+        // Lote activo: dibujar código de barras lineal Code 128 (sin texto abajo para evitar duplicados)
         barcodeZplRight = `^BY2,2,40
-^FO443,90^BCN,80,Y,N,N
+^FO443,55^BCN,65,N,N,N
 ^FD${loteImprimir}^FS`;
-        textSecondaryRight = `^CF0,20
-^FO443,45^FD${loteImprimir}^FS`;
+        textSecondaryRight = `^CF0,25
+^FO443,20^FDL: ${loteImprimir}^FS`;
       } else {
-        // Sin lote: código de barras vacío/en blanco y texto de advertencia
+        // Sin lote: texto de advertencia
         textSecondaryRight = `^CF0,20
-^FO443,45^FDSIN LOTE VINCULADO^FS`;
+^FO443,20^FDSIN LOTE VINCULADO^FS`;
       }
 
-      const etiqueta2 = `^CF0,40
-^FO443,10^FDLOTE:^FS
-${textSecondaryRight}
+      const etiqueta2 = `${textSecondaryRight}
 ${barcodeZplRight}`;
 
       return `^XA

@@ -1009,7 +1009,37 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
             : `WHERE ${whereParts.join(' AND ')}`;
 
-        const sql = `
+        let sql;
+        const usarBunker = (req.query.usar_precios_bunker === 'true' || req.query.usar_precios_bunker === true) && clienteId > 0;
+
+        if (usarBunker) {
+            p += 1;
+            params.push(String(clienteId).padStart(4, '0'));
+            const clientPId = p;
+
+            sql = `
+      SELECT
+        src.codigo_barras,
+        src.articulo_numero,
+        COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) AS descripcion,
+        COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
+        COALESCE(bla.precio_final / (1 + COALESCE(bla.iva, pa.iva, 21) / 100.0), ${colPrecio}, 0) AS precio_venta,
+        COALESCE(bla.iva, pa.iva, 21) AS iva
+      FROM public.stock_real_consolidado src
+      LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
+      LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = $${clientPId}
+      LEFT JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
+      LEFT JOIN public.bunker_lista_articulos bla ON bla.lista_id = bclp.bunker_lista_precio_id 
+        AND (bla.articulo_numero = src.articulo_numero OR bla.articulo_numero = src.codigo_barras)
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
+      ${whereClause}
+      ORDER BY
+        CASE WHEN COALESCE(src.stock_consolidado,0) > 0 THEN 0 ELSE 1 END ASC,
+        COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) ASC
+      LIMIT $${p + 1}
+    `;
+        } else {
+            sql = `
       SELECT
         src.codigo_barras,
         src.articulo_numero,
@@ -1025,6 +1055,7 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         src.descripcion ASC
       LIMIT $${p + 1}
     `;
+        }
         params.push(limit);
 
         console.log('📋 [PRESUPUESTOS] Query artículos:', sql);
@@ -1087,7 +1118,62 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
             });
         }
 
-        // 1) Lista de precios del cliente (default 1)
+        // 1) Búnker price lookup if active
+        const usarPreciosBunker = req.query.usar_precios_bunker === 'true' || req.query.usar_precios_bunker === true;
+        if (usarPreciosBunker && idCliente > 0) {
+            console.log(`🛡️ [PRESUPUESTOS] Buscando precio Búnker para cliente ${idCliente}, código: ${codigoBarras}, desc: ${descripcion}`);
+            try {
+                const queryBunker = `
+                    SELECT 
+                        bla.precio_final,
+                        bla.iva,
+                        COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion_resuelta
+                    FROM public.bunker_lista_articulos bla
+                    JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_lista_precio_id = bla.lista_id
+                    JOIN public.bunker_clientes bc ON bc.id = bclp.bunker_cliente_id
+                    LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = bla.articulo_numero
+                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = bla.articulo_numero
+                    WHERE bc.lomas_soft_id = LPAD($1, 4, '0')
+                      AND (
+                        bla.articulo_numero = $2 
+                        OR src.codigo_barras = $2
+                        OR LOWER(ba.descripcion) = LOWER($3)
+                        OR LOWER(ba.descripcion_generada) = LOWER($3)
+                        OR LOWER(src.descripcion) = LOWER($3)
+                      )
+                    LIMIT 1
+                `;
+                const rBunker = await req.db.query(queryBunker, [
+                    String(idCliente), 
+                    codigoBarras || '', 
+                    descripcion || ''
+                ]);
+
+                if (rBunker.rows.length > 0) {
+                    const row = rBunker.rows[0];
+                    const ivaRate = Number(row.iva) || 21;
+                    const finalPrice = Number(row.precio_final) || 0;
+                    const netPrice = finalPrice / (1 + ivaRate / 100);
+                    console.log(`✅ [PRESUPUESTOS] Encontrado precio Búnker: ${finalPrice}, IVA: ${ivaRate}, Neto: ${netPrice}`);
+                    return res.json({
+                        success: true,
+                        data: {
+                            valor1: Number(netPrice.toFixed(4)) || 0,
+                            iva: ivaRate,
+                            lista_precios: 'Búnker',
+                            descripcion_resuelta: row.descripcion_resuelta || descripcion
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    console.log(`⚠️ [PRESUPUESTOS] No se encontró precio Búnker para item. Usando fallback de Legacy.`);
+                }
+            } catch (err) {
+                console.error('❌ [PRESUPUESTOS] Error al buscar precio Búnker:', err);
+            }
+        }
+
+        // 2) Lista de precios del cliente (default 1) - Legacy Fallback
         let lista = 1;
         if (idCliente > 0) {
             try {
@@ -1107,7 +1193,7 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
         // 2) Si no vino descripción y sí código de barras, resolverla
         if (!descripcion && codigoBarras) {
             const rDesc = await req.db.query(
-                'SELECT descripcion FROM public.stock_real_consolidado WHERE codigo_barras = $1 LIMIT 1',
+                'SELECT descripcion FROM public.stock_real_consolidado WHERE codigo_barras = $1 OR articulo_numero = $1 LIMIT 1',
                 [codigoBarras]
             );
             if (rDesc.rows.length) descripcion = rDesc.rows[0].descripcion;
@@ -1422,9 +1508,10 @@ const obtenerPresupuestoPorId = async (req, res) => {
                     ) THEN true
                     ELSE false
                 END AS esta_facturado,
-                p.origen_facturacion,
+                 p.origen_facturacion,
                 p.origen_punto_venta,
                 p.origen_numero_factura,
+                COALESCE(p.usar_precios_bunker, false) AS usar_precios_bunker,
                 (
                     SELECT f.id FROM public.factura_facturas f
                     WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
@@ -1960,7 +2047,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(a.nombre, pd.articulo) as descripcion_articulo,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
@@ -1974,7 +2061,8 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
                 ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
@@ -2248,12 +2336,18 @@ const obtenerDatosCliente = async (req, res) => {
 
         const query = `
             SELECT 
-                cliente_id as id_cliente,
-                nombre,
-                apellido,
-                condicion_iva
-            FROM public.clientes
-            WHERE cliente_id = $1
+                c.cliente_id as id_cliente,
+                c.nombre,
+                c.apellido,
+                c.condicion_iva,
+                EXISTS (
+                    SELECT 1 
+                    FROM public.bunker_clientes bc
+                    JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
+                    WHERE bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0')
+                ) as tiene_listas_bunker
+            FROM public.clientes c
+            WHERE c.cliente_id = $1
             LIMIT 1
         `;
 
@@ -2326,7 +2420,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             SELECT 
                 pd.articulo as codigo_barras,
                 pd.articulo as articulo_numero,
-                COALESCE(a.nombre, pd.articulo) as descripcion,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, pd.articulo) as descripcion,
                 pd.cantidad,
                 COALESCE(p.fecha_entrega, p.fecha) as fecha_entrega,
                 p.id as presupuesto_id,
@@ -2386,8 +2480,8 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                                             CASE 
                                                 WHEN COALESCE(
                                                     (SELECT potencial_total 
-                                                     FROM v_potencial_ingredientes_simples 
-                                                     WHERE ingrediente_id = ri.ingrediente_id),
+                                                      FROM v_potencial_ingredientes_simples 
+                                                      WHERE ingrediente_id = ri.ingrediente_id),
                                                     0
                                                 ) >= ri.cantidad THEN 1
                                             END
@@ -2399,8 +2493,8 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                                             CASE 
                                                 WHEN COALESCE(
                                                     (SELECT MIN(kilos_mix_posibles) 
-                                                     FROM v_producibilidad_componentes_mix 
-                                                     WHERE mix_id = ri.ingrediente_id),
+                                                      FROM v_producibilidad_componentes_mix 
+                                                      WHERE mix_id = ri.ingrediente_id),
                                                     0
                                                 ) >= ri.cantidad THEN 1
                                             END
@@ -2419,10 +2513,11 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 
             FROM public.presupuestos p
             INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
-            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
-            LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(a.nombre)
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(COALESCE(a.nombre, ba.descripcion))
+            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = COALESCE(a.numero, ba.articulo_id) OR src.codigo_barras = pd.articulo)
             LEFT JOIN public.stock_real_consolidado src_hijo ON src.pack_hijo_codigo = src_hijo.codigo_barras
             WHERE p.id_cliente = $1
               AND p.activo = true
@@ -3251,10 +3346,11 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                     SELECT 
                         pd.id_presupuesto,
                         pd.articulo as codigo,
-                        COALESCE(a.nombre, pd.articulo) as nombre,
+                        COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, pd.articulo) as nombre,
                         pd.cantidad
                     FROM public.presupuestos_detalles pd
                     LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                    LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                     WHERE pd.id_presupuesto = ANY($1)
                 `;
                 const itemsResult = await req.db.query(itemsQuery, [budgetIds]);

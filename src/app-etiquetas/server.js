@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, fork } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { createProxyMiddleware } = require('http-proxy-middleware');
@@ -336,6 +336,59 @@ router.post('/etiquetas/tratamiento', (req, res) => {
     }
     console.log(`Etiquetas de TRATAMIENTO enviadas a Zebra (Cant: ${matrizEtiquetas.length}).`);
     res.json({ message: 'Etiquetas enviadas a imprimir', total: matrizEtiquetas.length });
+  });
+});
+
+let isSyncingB2B = false;
+
+router.post('/sync-b2b', (req, res) => {
+  if (isSyncingB2B) {
+    return res.status(409).json({ error: 'Ya hay una sincronización en curso. Por favor, espere.' });
+  }
+
+  isSyncingB2B = true;
+  const scriptPath = path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js');
+  console.log(`🚀 [MANUAL-SYNC] Lanzando syncB2BPrecios.js...`);
+
+  const child = fork(scriptPath, [], {
+    env: { ...process.env, NODE_ENV: 'production' }
+  });
+
+  child.on('close', (code) => {
+    isSyncingB2B = false;
+    if (code === 0) {
+      console.log('✅ [MANUAL-SYNC] Sincronización manual completada con éxito.');
+      res.json({ success: true, message: 'La sincronización de catálogo y precios se completó exitosamente.' });
+    } else {
+      console.error(`❌ [MANUAL-SYNC] Sincronización manual falló con código ${code}.`);
+      res.status(500).json({ error: `La sincronización falló con código ${code}.` });
+    }
+  });
+
+  child.on('error', (err) => {
+    isSyncingB2B = false;
+    console.error('💥 [MANUAL-SYNC] Error en fork:', err.message);
+    res.status(500).json({ error: `Error al iniciar el proceso: ${err.message}` });
+  });
+});
+
+
+// NUEVO: Endpoint para abrir la carpeta b2b-portal/dist/ en el Explorador de Archivos de Windows
+app.get('/api/open-dist', (req, res) => {
+  const distPath = path.resolve(__dirname, '../../b2b-portal/dist');
+  console.log(`📂 [ETIQUETAS-SERVER] Solicitud para abrir carpeta dist: ${distPath}`);
+  
+  if (!fs.existsSync(distPath)) {
+    return res.status(400).json({ error: 'La carpeta dist/ no existe. Por favor, corre npm run b2b:build primero.' });
+  }
+
+  const command = `explorer.exe "${distPath}"`;
+  exec(command, (error) => {
+    if (error) {
+      console.error('Error al abrir explorador:', error);
+      return res.status(500).json({ error: 'No se pudo abrir el explorador de archivos' });
+    }
+    res.json({ success: true, message: 'Explorador de archivos abierto.' });
   });
 });
 

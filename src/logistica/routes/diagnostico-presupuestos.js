@@ -35,7 +35,7 @@ router.get('/presupuestos-pedido-listo', async (req, res) => {
                 p.activo,
                 c.nombre as cliente_nombre
             FROM presupuestos p
-            LEFT JOIN clientes c ON p.id_cliente = c.cliente_id::text
+            LEFT JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             WHERE p.secuencia = 'Pedido_Listo'
               AND p.activo = true
             ORDER BY p.fecha DESC
@@ -58,7 +58,7 @@ router.get('/presupuestos-pedido-listo', async (req, res) => {
                 p.id_cliente,
                 c.nombre as cliente_nombre
             FROM presupuestos p
-            INNER JOIN clientes c ON p.id_cliente = c.cliente_id::text
+            INNER JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             WHERE 
                 p.secuencia = 'Pedido_Listo'
                 AND p.activo = true

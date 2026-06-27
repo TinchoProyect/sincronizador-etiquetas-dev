@@ -35,7 +35,8 @@ const BunkerModal = {
         if (warningDiv) {
             if (isInconsistent) {
                 warningDiv.style.display = 'block';
-                warningDiv.innerHTML = `⚠️ ADVERTENCIA CRÍTICA: Se ha detectado una inconsistencia flagrante de factor de conversión (1x1) en este artículo mayorista premium ($ ${vu.toLocaleString('es-AR')}/kg). Por favor, verifique el maestro de conversión antes de vincular para evitar balances de inventario erróneos.`;
+                const safeDescEscaped = (item.producto_descripcion || 'Sin descripción').replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ');
+                warningDiv.innerHTML = `⚠️ ADVERTENCIA CRÍTICA: Se ha detectado una inconsistencia de factor de conversión (1x1) en este artículo mayorista premium ($ ${vu.toLocaleString('es-AR')}/kg).<br>Por favor, <a href="#" onclick="BunkerModal.cerrar(); window.corregirPresentacion('${lote.id}', ${bult}, ${val}, '${safeDescEscaped}'); return false;" style="color: #ef4444; font-weight: bold; text-decoration: underline;">corrija la presentación manualmente aquí</a> antes de vincular para evitar balances de inventario erróneos.`;
             } else {
                 warningDiv.style.display = 'none';
             }
@@ -304,6 +305,9 @@ const BunkerModal = {
             if (res.ok && result.success) {
                 Swal.fire('Vínculo Creado', 'El lote fue ingresado al ecosistema Búnker en modo sombra.', 'success');
                 this.cerrar();
+                if (window.cargarLotes) {
+                    window.cargarLotes();
+                }
             } else {
                 throw new Error(result.error);
             }

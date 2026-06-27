@@ -6,8 +6,14 @@ export async function actualizarVisibilidadBotones() {
     const btnFinalizarProduccion = document.getElementById('finalizar-produccion');
     const btnAgregarArticulo = document.getElementById('agregar-articulo');
     const btnImprimirEtiquetas = document.getElementById('imprimir-etiquetas');
+    const btnImprimirEtiquetasLote = document.getElementById('imprimir-etiquetas-lote');
     const btnImprimirOrden = document.getElementById('imprimir-orden-produccion');
     const btnGuardadoIngredientes = document.getElementById('guardado-ingredientes');
+
+    // Ocultar por defecto al iniciar chequeo
+    if (btnImprimirEtiquetasLote) btnImprimirEtiquetasLote.style.display = 'none';
+    const checkFechasLoteContainer = document.getElementById('check-fechas-lote-container');
+    if (checkFechasLoteContainer) checkFechasLoteContainer.style.display = 'none';
 
     if (!carroId) {
         // No hay carro activo - ocultar todos los botones de acción
@@ -245,6 +251,13 @@ export async function actualizarVisibilidadBotones() {
                     if (data.tipo_carro === 'interna') {
                         btnImprimirEtiquetas.style.display = 'inline-block';
                         console.log('✅ Botón "Imprimir Etiquetas" mostrado para carro interno confirmado');
+                        
+                        // Mostrar también botón de etiquetas con lote
+                        if (btnImprimirEtiquetasLote) {
+                            btnImprimirEtiquetasLote.style.display = 'inline-block';
+                            const checkFechasLoteContainer = document.getElementById('check-fechas-lote-container');
+                            if (checkFechasLoteContainer) checkFechasLoteContainer.style.display = 'inline-flex';
+                        }
 
                         // LIMPIAR BOTONES ANTERIORES DE PADRES para evitar duplicados
                         document.querySelectorAll('.btn-imprimir-padre').forEach(btn => btn.remove());
@@ -1377,3 +1390,107 @@ async function calcularMermaProduccion(carroId) {
 // Hacer la función disponible globalmente
 window.calcularMermaProduccion = calcularMermaProduccion;
 window.revertirCarroPreparado = revertirCarroPreparado;
+
+// Función para imprimir etiquetas con Lote del carro
+export async function imprimirEtiquetasCarroConLote(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+
+    if (!carroId || carroId === 'null' || carroId === 'undefined') {
+        console.error('No hay carro seleccionado (Dual-State)');
+        return;
+    }
+
+    const btnImprimirEtiquetasLote = document.getElementById('imprimir-etiquetas-lote');
+    if (!btnImprimirEtiquetasLote) return;
+
+    try {
+        // Deshabilitar el botón y mostrar estado de procesamiento
+        btnImprimirEtiquetasLote.disabled = true;
+        btnImprimirEtiquetasLote.classList.add('procesando');
+        btnImprimirEtiquetasLote.textContent = 'Imprimiendo...';
+
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+
+        if (!colaborador || !colaborador.id) {
+            throw new Error('No se encontró información del colaborador activo');
+        }
+
+        // Obtener los artículos del carro para imprimir etiquetas
+        const response = await fetch(`/api/produccion/carro/${carroId}/articulos-etiquetas`);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Error HTTP ${response.status}`);
+        }
+
+        const articulos = await response.json();
+
+        const checkFechasLote = document.getElementById('check-fechas-lote');
+        const incluirFechas = checkFechasLote ? checkFechasLote.checked : false;
+        
+        let fechasPayload = null;
+        if (incluirFechas) {
+            // Calcular fechas (Elaboración: hoy, Vencimiento: hoy + 8 meses)
+            const d = new Date();
+            const dia = String(d.getDate()).padStart(2, '0');
+            const mes = String(d.getMonth() + 1).padStart(2, '0');
+            const año = d.getFullYear();
+            const elaboracion = `${dia}/${mes}/${año}`;
+            
+            const v = new Date();
+            v.setMonth(v.getMonth() + 8);
+            const diaV = String(v.getDate()).padStart(2, '0');
+            const mesV = String(v.getMonth() + 1).padStart(2, '0');
+            const añoV = v.getFullYear();
+            const vencimiento = `${diaV}/${mesV}/${añoV}`;
+            
+            fechasPayload = {
+                elaboracion: elaboracion,
+                vencimiento: vencimiento
+            };
+            console.log('📅 Fechas calculadas para impresión con lote:', fechasPayload);
+        }
+
+        // Imprimir etiquetas para cada artículo según su cantidad con lote
+        for (const articulo of articulos) {
+            const imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    articulo: {
+                        numero: articulo.articulo_numero,
+                        nombre: articulo.descripcion,
+                        codigo_barras: articulo.codigo_barras
+                    },
+                    cantidad: articulo.cantidad,
+                    lote: `L-${carroId}`,
+                    fechas: fechasPayload
+                })
+            });
+
+            if (!imprimirResponse.ok) {
+                throw new Error(`Error al imprimir etiqueta para ${articulo.descripcion}`);
+            }
+        }
+
+        // Mostrar notificación de éxito
+        mostrarNotificacion('Etiquetas impresas con lote correctamente');
+
+    } catch (error) {
+        console.error('Error al imprimir etiquetas con lote:', error);
+        mostrarNotificacion(`Error: ${error.message}`, true);
+    } finally {
+        // Restaurar el botón
+        if (btnImprimirEtiquetasLote) {
+            btnImprimirEtiquetasLote.disabled = false;
+            btnImprimirEtiquetasLote.classList.remove('procesando');
+            btnImprimirEtiquetasLote.textContent = 'Imprimir con lote';
+        }
+    }
+}
+
+window.imprimirEtiquetasCarroConLote = imprimirEtiquetasCarroConLote;
+

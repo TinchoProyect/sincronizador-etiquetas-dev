@@ -274,6 +274,81 @@ async function asignarDomicilio(req, res) {
     }
 }
 
+async function revertirEnvio(req, res) {
+    const { pool } = require('../config/database');
+    const client = await pool.connect();
+    try {
+        const { id } = req.params; // ID de la orden de tratamiento (ej. 21)
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ success: false, error: 'ID de orden de tratamiento inválido o no provisto' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Validar que la orden existe y está en estado PENDIENTE_CLIENTE con estado_tratamiento = COMPLETADO (ya devuelta a logística)
+        const checkQuery = `
+            SELECT id, estado_logistico, estado_tratamiento 
+            FROM public.ordenes_tratamiento 
+            WHERE id = $1 FOR UPDATE
+        `;
+        const checkRes = await client.query(checkQuery, [id]);
+        if (checkRes.rows.length === 0) {
+            throw new Error(`La Orden de Tratamiento #${id} no existe.`);
+        }
+        
+        // 2. Buscar el último movimiento de RETORNO_TRATAMIENTO que esté FINALIZADO para esta orden
+        const movQuery = `
+            SELECT id, observaciones 
+            FROM public.mantenimiento_movimientos 
+            WHERE id_orden_tratamiento = $1 AND tipo_movimiento = 'RETORNO_TRATAMIENTO' AND estado = 'FINALIZADO'
+            ORDER BY id DESC LIMIT 1 FOR UPDATE
+        `;
+        const movRes = await client.query(movQuery, [id]);
+        if (movRes.rows.length === 0) {
+            throw new Error(`No se encontró un movimiento de retorno finalizado para la Orden de Tratamiento #${id}.`);
+        }
+        
+        const mov = movRes.rows[0];
+        
+        // 3. Retrotraer el movimiento en Mantenimiento: volverlo a PENDIENTE y quitar el sufijo " -> [Devuelto a Logística]"
+        const cleanObs = mov.observaciones.replace(' -> [Devuelto a Logística]', '');
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET estado = 'PENDIENTE',
+                observaciones = $1
+            WHERE id = $2
+        `, [cleanObs, mov.id]);
+
+        // 4. Retrotraer el estado de la Orden de Tratamiento en Logística
+        // Debe reestablecerse en el almacén de mantenimiento (estado_logistico = 'INGRESADO_LOCAL', estado_tratamiento = 'RETIRO_PENDIENTE')
+        await client.query(`
+            UPDATE public.ordenes_tratamiento
+            SET estado_logistico = 'INGRESADO_LOCAL',
+                estado_tratamiento = 'RETIRO_PENDIENTE',
+                id_ruta = NULL,
+                orden_entrega = 999
+            WHERE id = $1
+        `, [id]);
+
+        await client.query('COMMIT');
+        
+        console.log(`[TRATAMIENTOS-LOG] ✅ Envío de Orden de Tratamiento #${id} revertido con éxito.`);
+        res.json({
+            success: true,
+            message: `El envío de la orden RT-${id} ha sido revertido con éxito, retornando al almacén de mantenimiento.`
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[TRATAMIENTOS-LOG] Error en revertirEnvio:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Error interno al revertir el envío'
+        });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     generarQR,
     buscarClientes,
@@ -281,5 +356,6 @@ module.exports = {
     obtenerSesion,
     procesarPreCheckin,
     checkInChofer,
-    asignarDomicilio
+    asignarDomicilio,
+    revertirEnvio
 };

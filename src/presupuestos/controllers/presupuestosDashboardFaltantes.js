@@ -28,7 +28,7 @@ const getDashboardFaltantesController = async (req, res) => {
                 ) as detalles
             FROM presupuestos_articulos_sin_stock s
             JOIN presupuestos p ON s.id_presupuesto = p.id
-            LEFT JOIN clientes c ON CAST(NULLIF(TRIM(p.id_cliente), '') AS integer) = c.cliente_id
+            LEFT JOIN clientes c ON (CASE WHEN p.id_cliente ~ '^[0-9]+$' THEN p.id_cliente::integer ELSE NULL END) = c.cliente_id
             GROUP BY s.articulo
             ORDER BY cantidad_total DESC;
         `;

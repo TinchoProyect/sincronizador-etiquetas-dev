@@ -13,35 +13,39 @@
     /**
      * Buscar descripciÄ‚Å‚n de artÄ‚Â­culo por cÄ‚Å‚digo de barras
      */
-    async function buscarDescripcionPorCodigo(codigoBarras) {
-        if (!codigoBarras || !codigoBarras.trim()) return null;
+    async function buscarDescripcionPorCodigo(codigo, clienteId = 0, usarPreciosBunker = false) {
+        if (!codigo || !codigo.trim()) return null;
 
-        // Verificar cache primero
-        if (descripcionCache.has(codigoBarras)) {
-            console.log(`Ä‘ÂŸÂ“Â‹ [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n cacheada para cÄ‚Å‚digo: ${codigoBarras}`);
-            return descripcionCache.get(codigoBarras);
+        const cacheKey = `${codigo}_${clienteId}_${usarPreciosBunker}`;
+        if (descripcionCache.has(cacheKey)) {
+            console.log(`📦 [PRESUPUESTOS-EDIT] Descripción cacheada para clave: ${cacheKey}`);
+            return descripcionCache.get(cacheKey);
         }
 
         try {
-            console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando descripciÄ‚Å‚n para cÄ‚Å‚digo: ${codigoBarras}`);
-            const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=1`);
+            console.log(`🔍 [PRESUPUESTOS-EDIT] Buscando descripción para código: ${codigo} (cliente=${clienteId}, bunker=${usarPreciosBunker})`);
+            let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigo)}&limit=1`;
+            if (clienteId > 0) url += `&cliente_id=${clienteId}`;
+            if (usarPreciosBunker) url += `&usar_precios_bunker=true`;
+
+            const response = await fetch(url);
             const result = await response.json();
 
             if (response.ok && result.success && result.data && result.data.length > 0) {
                 const articulo = result.data[0];
                 const descripcion = articulo.descripcion || articulo.nombre || '';
                 // Guardar en cache
-                descripcionCache.set(codigoBarras, descripcion);
-                console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n encontrada: ${descripcion}`);
+                descripcionCache.set(cacheKey, descripcion);
+                console.log(`✅ [PRESUPUESTOS-EDIT] Descripción encontrada: ${descripcion}`);
                 return descripcion;
             } else {
-                console.log(`Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No se encontrÄ‚Å‚ descripciÄ‚Å‚n para cÄ‚Å‚digo: ${codigoBarras}`);
+                console.log(`⚠️ [PRESUPUESTOS-EDIT] No se encontró descripción para código: ${codigo}`);
                 // Guardar null en cache para evitar bÄ‚ÅŸsquedas repetidas
-                descripcionCache.set(codigoBarras, null);
+                descripcionCache.set(cacheKey, null);
                 return null;
             }
         } catch (error) {
-            console.error(`Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Error al buscar descripciÄ‚Å‚n para cÄ‚Å‚digo ${codigoBarras}:`, error);
+            console.error(`❌ [PRESUPUESTOS-EDIT] Error al buscar descripción para código ${codigo}:`, error);
             return null;
         }
     }
@@ -451,6 +455,50 @@
         document.getElementById('estado').value = presupuestoData.estado || 'Presupuesto/Orden';
         document.getElementById('agente').value = presupuestoData.agente || '';
 
+        // Inicializar switch de precios Búnker desde el presupuesto cargado
+        const usarPreciosBunker = presupuestoData.usar_precios_bunker === true || presupuestoData.usar_precios_bunker === 'true';
+        const switchInput = document.getElementById('usar_precios_bunker');
+        const label = document.getElementById('bunker-switch-label');
+        if (switchInput) {
+            switchInput.checked = usarPreciosBunker;
+            if (label) {
+                label.innerText = usarPreciosBunker ? 'Activo' : 'Inactivo';
+                label.style.color = usarPreciosBunker ? '#166534' : '#475569';
+            }
+        }
+
+        // Verificar si el cliente tiene listas de precios Búnker para mostrar/ocultar el switch
+        const clienteIdForBunker = parseInt(presupuestoData.id_cliente, 10) || 0;
+        if (clienteIdForBunker > 0) {
+            (async () => {
+                try {
+                    const res = await fetch(`/api/presupuestos/clientes/${clienteIdForBunker}`);
+                    if (res.ok) {
+                        const body = await res.json();
+                        const wrapper = document.getElementById('bunker-switch-wrapper');
+                        const switchInputEl = document.getElementById('usar_precios_bunker');
+                        const labelEl = document.getElementById('bunker-switch-label');
+                        if (body?.data?.tiene_listas_bunker || usarPreciosBunker) {
+                            if (wrapper) wrapper.style.display = 'inline-flex';
+                            if (switchInputEl) switchInputEl.disabled = false;
+                        } else {
+                            if (wrapper) wrapper.style.display = 'none';
+                            if (switchInputEl) {
+                                switchInputEl.checked = false;
+                                switchInputEl.disabled = true;
+                            }
+                            if (labelEl) {
+                                labelEl.innerText = 'Inactivo';
+                                labelEl.style.color = '#475569';
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error al verificar listas Bunker del cliente:', err);
+                }
+            })();
+        }
+
         // Secuencia - SIEMPRE forzar "Imprimir" (campo no editable)
         document.getElementById('secuencia').value = 'Imprimir';
         console.log('[PRESUPUESTO-EDIT] Campo secuencia fijado en "Imprimir" (no editable por usuario)');
@@ -539,25 +587,32 @@
             const valorInput = row.querySelector(`input[name="detalles[${idx}][valor1]"]`);
             const ivaInput = row.querySelector(`input[name="detalles[${idx}][iva1]"]`);
 
-            // Mostrar DESCRIPCIÄ‚Â“N al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
+            // Mostrar DESCRIPCION al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
             if (artInput) {
-                let descripcionVisible = det.descripcion || '';
+                let descripcionVisible = (det.descripcion || '').trim();
+                const searchCode = (det.codigo_barras || det.articulo_numero || det.articulo || '').trim();
+                
+                const isRaw = !descripcionVisible ||
+                    descripcionVisible === det.codigo_barras ||
+                    descripcionVisible === det.articulo ||
+                    descripcionVisible === det.articulo_numero ||
+                    /^[A-Z0-9]+$/i.test(descripcionVisible);
 
-                // Si no hay descripciÄ‚Å‚n pero sÄ‚Â­ hay cÄ‚Å‚digo de barras, buscar descripciÄ‚Å‚n
-                if (!descripcionVisible && det.codigo_barras) {
-                    console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando descripciÄ‚Å‚n para cÄ‚Å‚digo: ${det.codigo_barras}`);
-                    const descripcionEncontrada = await buscarDescripcionPorCodigo(det.codigo_barras);
+                if (isRaw && searchCode) {
+                    console.log(`🔍 [PRESUPUESTOS-EDIT] Detectado código crudo: "${descripcionVisible || searchCode}". Buscando descripción friendly...`);
+                    const clienteId = parseInt(presupuestoData.id_cliente, 10) || 0;
+                    const switchInput = document.getElementById('usar_precios_bunker');
+                    const usarPreciosBunker = switchInput ? switchInput.checked : false;
+                    
+                    const descripcionEncontrada = await buscarDescripcionPorCodigo(searchCode, clienteId, usarPreciosBunker);
                     if (descripcionEncontrada) {
                         descripcionVisible = descripcionEncontrada;
-                        console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] DescripciÄ‚Å‚n encontrada: ${descripcionVisible}`);
+                        console.log(`✅ [PRESUPUESTOS-EDIT] Reemplazo exitoso: ${descripcionVisible}`);
                     } else {
-                        // Si no se encuentra descripciÄ‚Å‚n, mostrar el cÄ‚Å‚digo de barras
-                        descripcionVisible = det.codigo_barras;
-                        console.log(`Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Usando cÄ‚Å‚digo de barras como descripciÄ‚Å‚n: ${descripcionVisible}`);
+                        descripcionVisible = searchCode;
                     }
                 } else if (!descripcionVisible) {
-                    // Si no hay ni descripciÄ‚Å‚n ni cÄ‚Å‚digo, usar cÄ‚Å‚digo de barras como fallback
-                    descripcionVisible = det.codigo_barras || '';
+                    descripcionVisible = searchCode;
                 }
 
                 artInput.value = descripcionVisible;
@@ -1133,6 +1188,7 @@
                 secuencia: (data.estado === 'Orden de Retiro' || new URLSearchParams(window.location.search).get('modo') === 'retiro')
                     ? 'Pedido_Listo'
                     : 'Imprimir', // REQ: "Pedido_Listo" si es Retiro, sino "Imprimir"
+                usar_precios_bunker: document.getElementById('usar_precios_bunker')?.checked || false,
 
                 // Detalles
                 detalles: detalles,

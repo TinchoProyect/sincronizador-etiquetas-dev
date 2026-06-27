@@ -283,7 +283,8 @@ class BunkerService {
                 pack_hijo_codigo,
                 descripcion_abreviada,
                 propiedades_dinamicas,
-                expresado_en_gramos
+                expresado_en_gramos,
+                expresado_en_unidades
             } = articuloData;
 
             // 1. Guardar términos nuevos "On-The-Fly"
@@ -300,13 +301,48 @@ class BunkerService {
 
             // 2. Insertar o Actualizar en la tabla core del búnker: `bunker_articulos` (Shadow Mode FASE 5)
             const descFinal = descripcion_abreviada || descripcion;
+
+            let finalProps = propiedades_dinamicas || {};
+            if (typeof finalProps === 'string') {
+                try {
+                    finalProps = JSON.parse(finalProps);
+                } catch (e) {
+                    finalProps = {};
+                }
+            }
+
+            // Preservar metadatos técnicos del asistente desde la base de datos si ya existen
+            try {
+                const resExisting = await client.query(
+                    `SELECT propiedades_dinamicas FROM public.bunker_articulos WHERE articulo_id = $1`,
+                    [articulo_id]
+                );
+                if (resExisting.rows.length > 0) {
+                    let existingProps = resExisting.rows[0].propiedades_dinamicas || {};
+                    if (typeof existingProps === 'string') {
+                        try {
+                            existingProps = JSON.parse(existingProps);
+                        } catch (e) {
+                            existingProps = {};
+                        }
+                    }
+                    for (const key of Object.keys(existingProps)) {
+                        if (key.startsWith('asistente_')) {
+                            finalProps[key] = existingProps[key];
+                        }
+                    }
+                }
+            } catch (errDb) {
+                console.error('⚠️ [BUNKER-SERVICE] Error recuperando propiedades existentes para fusionar asistente:', errDb);
+            }
+
             const queryBunker = `
                 INSERT INTO public.bunker_articulos (
                     articulo_id, descripcion, descripcion_generada, costo_base, porcentaje_iva, moneda, redondeo, mantener_utilidad,
                     rubro, sub_rubro, no_producido_por_lambda, kilos_unidad, es_pack, pack_hijo_codigo,
-                    propiedades_dinamicas, expresado_en_gramos
+                    propiedades_dinamicas, expresado_en_gramos, expresado_en_unidades
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
                 )
                 ON CONFLICT (articulo_id) DO UPDATE SET
                     descripcion = EXCLUDED.descripcion,
@@ -323,17 +359,19 @@ class BunkerService {
                     es_pack = EXCLUDED.es_pack,
                     pack_hijo_codigo = EXCLUDED.pack_hijo_codigo,
                     propiedades_dinamicas = EXCLUDED.propiedades_dinamicas,
-                    expresado_en_gramos = EXCLUDED.expresado_en_gramos
+                    expresado_en_gramos = EXCLUDED.expresado_en_gramos,
+                    expresado_en_unidades = EXCLUDED.expresado_en_unidades
             `;
             await client.query(queryBunker, [
                 articulo_id, descripcion, descFinal, costo_base || 0, porcentaje_iva || 21.00, moneda || '($)Pesos', redondeo || 'Ninguno',
                 mantener_utilidad || false, rubro || null, sub_rubro || null, no_producido_por_lambda || false,
                 kilos_unidad || 0, es_pack || false, pack_hijo_codigo || null,
-                propiedades_dinamicas ? JSON.stringify(propiedades_dinamicas) : '{}',
-                expresado_en_gramos || false
+                JSON.stringify(finalProps),
+                expresado_en_gramos || false,
+                expresado_en_unidades || false
             ]);
 
-            // 4. Upsert Iterativo en los márgenes: `bunker_margenes`
+            // 4. Upsert Iterativo en los márgenes: `bunker_margenes` y `bunker_lista_articulos`
             if (listasMargenes && Array.isArray(listasMargenes)) {
                 for (const item of listasMargenes) {
                     const queryMargen = `
@@ -343,8 +381,94 @@ class BunkerService {
                         DO UPDATE SET margen_porcentaje = EXCLUDED.margen_porcentaje
                     `;
                     await client.query(queryMargen, [articulo_id, item.lista_id, item.margen_porcentaje]);
+
+                    // Guardar/Actualizar en bunker_lista_articulos con cálculo automático
+                    const queryExist = `
+                        SELECT id, costo_base_sobrescrito, costo_tiempo, iva, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible
+                        FROM public.bunker_lista_articulos
+                        WHERE lista_id = $1 AND articulo_numero = $2
+                    `;
+                    const resExist = await client.query(queryExist, [item.lista_id, articulo_id]);
+                    
+                    let costoBaseSobrescrito = null;
+                    let costoTiempo = 0;
+                    let ivaVal = porcentaje_iva !== undefined && porcentaje_iva !== null ? parseFloat(porcentaje_iva) : 21.00;
+                    let modoCalculo = 'AUTOMATIC';
+                    let modoIva = 'COMPLETO';
+                    let esPatron = false;
+                    let fuenteCostoDefault = null;
+                    let disponible = true;
+
+                    if (resExist.rows.length > 0) {
+                        const existing = resExist.rows[0];
+                        costoBaseSobrescrito = existing.costo_base_sobrescrito;
+                        costoTiempo = parseFloat(existing.costo_tiempo) || 0;
+                        ivaVal = existing.iva !== null && existing.iva !== undefined ? parseFloat(existing.iva) : ivaVal;
+                        modoCalculo = existing.modo_calculo || 'AUTOMATIC';
+                        modoIva = existing.modo_iva || 'COMPLETO';
+                        esPatron = existing.es_patron || false;
+                        fuenteCostoDefault = existing.fuente_costo_default;
+                        disponible = existing.disponible !== undefined ? existing.disponible : true;
+                    }
+
+                    const cBase = costoBaseSobrescrito !== null ? parseFloat(costoBaseSobrescrito) : (parseFloat(costo_base) || 0);
+                    const nuevoMargen = parseFloat(item.margen_porcentaje) || 0;
+
+                    let ivaAplicado = ivaVal;
+                    if (modoIva === 'MEDIO') {
+                        ivaAplicado = ivaVal / 2;
+                    } else if (modoIva === 'SIN') {
+                        ivaAplicado = 0;
+                    }
+                    const ivaCoeff = 1 + (ivaAplicado / 100);
+
+                    let precioFinal = 0;
+                    if (modoCalculo === 'AUTOMATIC') {
+                        precioFinal = (cBase * (1 + (nuevoMargen / 100)) + costoTiempo) * ivaCoeff;
+                    } else {
+                        if (resExist.rows.length > 0) {
+                            precioFinal = parseFloat(resExist.rows[0].precio_final) || 0;
+                        } else {
+                            precioFinal = (cBase * (1 + (nuevoMargen / 100)) + costoTiempo) * ivaCoeff;
+                        }
+                    }
+
+                    const queryLA = `
+                        INSERT INTO public.bunker_lista_articulos (
+                            lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, 
+                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible, updated_at
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP
+                        ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
+                            margen_ganancia = EXCLUDED.margen_ganancia,
+                            costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
+                            costo_tiempo = EXCLUDED.costo_tiempo,
+                            iva = EXCLUDED.iva,
+                            precio_final = EXCLUDED.precio_final,
+                            modo_calculo = EXCLUDED.modo_calculo,
+                            modo_iva = EXCLUDED.modo_iva,
+                            es_patron = EXCLUDED.es_patron,
+                            fuente_costo_default = EXCLUDED.fuente_costo_default,
+                            disponible = EXCLUDED.disponible,
+                            updated_at = CURRENT_TIMESTAMP
+                    `;
+                    await client.query(queryLA, [
+                        item.lista_id,
+                        articulo_id,
+                        nuevoMargen,
+                        costoBaseSobrescrito,
+                        costoTiempo,
+                        ivaVal,
+                        precioFinal,
+                        modoCalculo,
+                        modoIva,
+                        esPatron,
+                        fuenteCostoDefault,
+                        disponible
+                    ]);
                 }
             }
+
 
             await client.query('COMMIT');
             return {
@@ -390,9 +514,11 @@ class BunkerService {
         const queryLegacy = `SELECT descripcion, codigo_barras FROM public.stock_real_consolidado WHERE articulo_numero = $1`;
         const resLegacy = await db.query(queryLegacy, [articulo_id]);
         if (resLegacy.rows.length > 0) {
+            articulo.descripcion_legacy = resLegacy.rows[0].descripcion;
             if (!articulo.descripcion) articulo.descripcion = resLegacy.rows[0].descripcion;
             articulo.codigo_barras = resLegacy.rows[0].codigo_barras;
         } else {
+            articulo.descripcion_legacy = null;
             let props = articulo.propiedades_dinamicas;
             if (typeof props === 'string') {
                 try {
@@ -453,7 +579,21 @@ class BunkerService {
                 kilos_unidad, es_pack, pack_hijo_codigo
             ]);
 
-            // Upsert en bunker_margenes
+            // Obtener el artículo actual para tener costo_base y porcentaje_iva actualizados
+            const resArt = await client.query(
+                `SELECT costo_base, porcentaje_iva FROM public.bunker_articulos WHERE articulo_id = $1`,
+                [articulo_id]
+            );
+            let currentCostoBase = 0;
+            let currentPorcentajeIva = 21.00;
+            if (resArt.rows.length > 0) {
+                currentCostoBase = parseFloat(resArt.rows[0].costo_base) || 0;
+                currentPorcentajeIva = parseFloat(resArt.rows[0].porcentaje_iva) || 21.00;
+            }
+            const finalCostoBase = costo_base !== undefined && costo_base !== null ? parseFloat(costo_base) : currentCostoBase;
+            const finalPorcentajeIva = porcentaje_iva !== undefined && porcentaje_iva !== null ? parseFloat(porcentaje_iva) : currentPorcentajeIva;
+
+            // Upsert en bunker_margenes y bunker_lista_articulos
             if (listasMargenes && Array.isArray(listasMargenes)) {
                 for (const item of listasMargenes) {
                     const queryMargen = `
@@ -463,6 +603,91 @@ class BunkerService {
                         DO UPDATE SET margen_porcentaje = EXCLUDED.margen_porcentaje
                     `;
                     await client.query(queryMargen, [articulo_id, item.lista_id, item.margen_porcentaje]);
+
+                    // Guardar/Actualizar en bunker_lista_articulos con cálculo automático
+                    const queryExist = `
+                        SELECT id, costo_base_sobrescrito, costo_tiempo, iva, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible
+                        FROM public.bunker_lista_articulos
+                        WHERE lista_id = $1 AND articulo_numero = $2
+                    `;
+                    const resExist = await client.query(queryExist, [item.lista_id, articulo_id]);
+                    
+                    let costoBaseSobrescrito = null;
+                    let costoTiempo = 0;
+                    let ivaVal = finalPorcentajeIva;
+                    let modoCalculo = 'AUTOMATIC';
+                    let modoIva = 'COMPLETO';
+                    let esPatron = false;
+                    let fuenteCostoDefault = null;
+                    let disponible = true;
+
+                    if (resExist.rows.length > 0) {
+                        const existing = resExist.rows[0];
+                        costoBaseSobrescrito = existing.costo_base_sobrescrito;
+                        costoTiempo = parseFloat(existing.costo_tiempo) || 0;
+                        ivaVal = existing.iva !== null && existing.iva !== undefined ? parseFloat(existing.iva) : ivaVal;
+                        modoCalculo = existing.modo_calculo || 'AUTOMATIC';
+                        modoIva = existing.modo_iva || 'COMPLETO';
+                        esPatron = existing.es_patron || false;
+                        fuenteCostoDefault = existing.fuente_costo_default;
+                        disponible = existing.disponible !== undefined ? existing.disponible : true;
+                    }
+
+                    const cBase = costoBaseSobrescrito !== null ? parseFloat(costoBaseSobrescrito) : finalCostoBase;
+                    const nuevoMargen = parseFloat(item.margen_porcentaje) || 0;
+
+                    let ivaAplicado = ivaVal;
+                    if (modoIva === 'MEDIO') {
+                        ivaAplicado = ivaVal / 2;
+                    } else if (modoIva === 'SIN') {
+                        ivaAplicado = 0;
+                    }
+                    const ivaCoeff = 1 + (ivaAplicado / 100);
+
+                    let precioFinal = 0;
+                    if (modoCalculo === 'AUTOMATIC') {
+                        precioFinal = (cBase * (1 + (nuevoMargen / 100)) + costoTiempo) * ivaCoeff;
+                    } else {
+                        if (resExist.rows.length > 0) {
+                            precioFinal = parseFloat(resExist.rows[0].precio_final) || 0;
+                        } else {
+                            precioFinal = (cBase * (1 + (nuevoMargen / 100)) + costoTiempo) * ivaCoeff;
+                        }
+                    }
+
+                    const queryLA = `
+                        INSERT INTO public.bunker_lista_articulos (
+                            lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, 
+                            costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, fuente_costo_default, disponible, updated_at
+                        ) VALUES (
+                            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP
+                        ) ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
+                            margen_ganancia = EXCLUDED.margen_ganancia,
+                            costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
+                            costo_tiempo = EXCLUDED.costo_tiempo,
+                            iva = EXCLUDED.iva,
+                            precio_final = EXCLUDED.precio_final,
+                            modo_calculo = EXCLUDED.modo_calculo,
+                            modo_iva = EXCLUDED.modo_iva,
+                            es_patron = EXCLUDED.es_patron,
+                            fuente_costo_default = EXCLUDED.fuente_costo_default,
+                            disponible = EXCLUDED.disponible,
+                            updated_at = CURRENT_TIMESTAMP
+                    `;
+                    await client.query(queryLA, [
+                        item.lista_id,
+                        articulo_id,
+                        nuevoMargen,
+                        costoBaseSobrescrito,
+                        costoTiempo,
+                        ivaVal,
+                        precioFinal,
+                        modoCalculo,
+                        modoIva,
+                        esPatron,
+                        fuenteCostoDefault,
+                        disponible
+                    ]);
                 }
             }
 
@@ -757,6 +982,7 @@ class BunkerService {
                 b.sub_rubro,
                 b.pack_hijo_codigo,
                 b.kilos_unidad,
+                b.expresado_en_unidades,
                 CASE 
                     WHEN b.kilos_unidad > 0 THEN 
                         COALESCE(
@@ -1583,6 +1809,15 @@ class BunkerService {
             }
         }
 
+        let props = articulo.propiedades_dinamicas || {};
+        if (typeof props === 'string') {
+            try {
+                props = JSON.parse(props);
+            } catch (e) {
+                props = {};
+            }
+        }
+
         return {
             articulo_id,
             codigo_barras: articulo.codigo_barras || null,
@@ -1609,7 +1844,8 @@ class BunkerService {
             parent_costo_lomasoft,
             parent_iva_lomasoft,
             parent_descripcion,
-            parent_kilos_unidad
+            parent_kilos_unidad,
+            propiedades_dinamicas: props
         };
     }
 
@@ -1621,14 +1857,41 @@ class BunkerService {
         try {
             await client.query('BEGIN');
 
-            const { costo_base, margenes, configs } = payload;
+            const { costo_base, margenes, configs, asistente_colaborador_id, asistente_minutos } = payload;
 
-            // Obtener el pack_hijo_codigo de este articulo
+            // Obtener el pack_hijo_codigo y propiedades_dinamicas de este articulo
             const resArtInfo = await client.query(
-                `SELECT pack_hijo_codigo FROM public.bunker_articulos WHERE articulo_id = $1`,
+                `SELECT pack_hijo_codigo, propiedades_dinamicas FROM public.bunker_articulos WHERE articulo_id = $1`,
                 [articulo_id]
             );
             const packHijoCodigo = resArtInfo.rows.length > 0 ? resArtInfo.rows[0].pack_hijo_codigo : null;
+
+            // Actualizar propiedades_dinamicas con el asistente si viene
+            if (asistente_colaborador_id !== undefined || asistente_minutos !== undefined) {
+                let props = {};
+                if (resArtInfo.rows.length > 0 && resArtInfo.rows[0].propiedades_dinamicas) {
+                    props = resArtInfo.rows[0].propiedades_dinamicas;
+                    if (typeof props === 'string') {
+                        try {
+                            props = JSON.parse(props);
+                        } catch (e) {
+                            props = {};
+                        }
+                    }
+                }
+                
+                if (asistente_colaborador_id !== undefined) {
+                    props.asistente_colaborador_id = asistente_colaborador_id;
+                }
+                if (asistente_minutos !== undefined) {
+                    props.asistente_minutos = asistente_minutos;
+                }
+                
+                await client.query(
+                    `UPDATE public.bunker_articulos SET propiedades_dinamicas = $2 WHERE articulo_id = $1`,
+                    [articulo_id, JSON.stringify(props)]
+                );
+            }
 
             // 1. Actualizar el costo_base manual en bunker_articulos si viene
             if (costo_base !== undefined) {

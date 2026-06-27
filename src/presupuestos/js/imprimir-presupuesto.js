@@ -137,6 +137,15 @@ async function cargarPresupuesto(id) {
             }
         }
 
+        // Override: Modo Faltantes Automático (Default es true en HTML, se puede desactivar con ?faltantes=false)
+        if (urlParamsOverride.get('faltantes') === 'false') {
+            const chk = document.getElementById('chk-faltantes');
+            if(chk) {
+                chk.checked = false;
+                if(typeof window.toggleFaltantes === 'function') window.toggleFaltantes();
+            }
+        }
+
     } catch (error) {
         console.error('❌ [IMPRIMIR-PRESUPUESTO] Error al cargar presupuesto:', error);
         mostrarError(`Error al cargar el presupuesto: ${error.message}`);
@@ -337,13 +346,20 @@ function renderizarPresupuesto(data) {
         : 'PRESUPUESTO';
 
     const docTipoEl = document.getElementById('documento-tipo');
-    docTipoEl.textContent = tituloDoc;
+    if (docTipoEl) docTipoEl.textContent = tituloDoc;
+
+    const cabeceraTituloEl = document.getElementById('cabecera-titulo');
+    if (cabeceraTituloEl) {
+        cabeceraTituloEl.textContent = tituloDoc;
+    }
 
     // Opcional: Estilo diferenciado
     if (presupuesto.estado === 'Orden de Retiro') {
-        docTipoEl.style.color = '#d35400'; // Naranja oscuro para diferenciar
+        if (docTipoEl) docTipoEl.style.color = '#d35400'; // Naranja oscuro para diferenciar
+        if (cabeceraTituloEl) cabeceraTituloEl.style.color = '#d35400';
     } else {
-        docTipoEl.style.color = ''; // Reset
+        if (docTipoEl) docTipoEl.style.color = ''; // Reset
+        if (cabeceraTituloEl) cabeceraTituloEl.style.color = ''; // Reset (use CSS Petrol default)
     }
 
     // NUEVO: Actualizar título del documento para nombre de archivo PDF
@@ -1001,5 +1017,437 @@ function escapeHtml(text) {
 window.imprimirPresupuesto = imprimirPresupuesto;
 window.volverALista = volverALista;
 window.cambiarFormato = cambiarFormato;
+window.enviarPresupuestoWhatsApp = enviarPresupuestoOmnicanal;
+window.enviarPresupuestoOmnicanal = enviarPresupuestoOmnicanal;
 
-console.log('✅ [IMPRIMIR-PRESUPUESTO] Módulo de impresión inicializado con sistema de formatos');
+/**
+ * Resuelve el teléfono de WhatsApp del cliente
+ */
+function resolverTelefonoCliente(presupuesto) {
+    let telefono = '';
+    
+    // 1. Preferir whatsapp configurado en Bunker
+    if (presupuesto.whatsapp_bunker) {
+        telefono = presupuesto.whatsapp_bunker;
+    } else {
+        // 2. Si no, celular o telefono de lomasoft
+        telefono = presupuesto.celular || presupuesto.telefono || '';
+    }
+
+    // 3. Si es un JSON array de contactos múltiples
+    if (telefono && telefono.trim().startsWith('[')) {
+        try {
+            const contactos = JSON.parse(telefono);
+            telefono = contactos.map(c => c.numero || c.celular || '').filter(n => n && n.trim()).join(', ');
+        } catch (e) {
+            console.error('Error parseando JSON de contactos:', e);
+        }
+    }
+
+    return telefono.trim();
+}
+
+/**
+ * Genera el PDF del presupuesto en el backend y lo envía por WhatsApp y/o Email usando los servicios del puerto 3004/3003
+ */
+async function enviarPresupuestoOmnicanal() {
+    console.log('📤 [OMNICANAL-FRONT] Iniciando flujo de despacho omnicanal...');
+
+    if (!presupuestoData || !presupuestoData.presupuesto) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No hay datos de presupuesto cargados'
+        });
+        return;
+    }
+
+    const presupuesto = presupuestoData.presupuesto;
+
+    // 1. Recuperar y parsear contactos de WhatsApp
+    let contacts = [];
+    const rawWp = (presupuesto.whatsapp_bunker || '').trim();
+    if (rawWp.startsWith('[')) {
+        try {
+            contacts = JSON.parse(rawWp);
+        } catch(e) {}
+    }
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+        const rawPhone = rawWp || presupuesto.celular || presupuesto.telefono || '';
+        contacts = rawPhone.split(',').map(num => ({
+            numero: num.trim(),
+            nombre: '',
+            cargo: ''
+        })).filter(c => c.numero);
+    }
+
+    // 2. Recuperar y parsear contactos de Email
+    let emails = [];
+    const rawEmail = (presupuesto.email_bunker || '').trim();
+    if (rawEmail.startsWith('[')) {
+        try {
+            emails = JSON.parse(rawEmail);
+        } catch(e) {}
+    }
+    if (!Array.isArray(emails) || emails.length === 0) {
+        const rawEmailStr = rawEmail || presupuesto.email || '';
+        emails = rawEmailStr.split(',').map(em => ({
+            email: em.trim(),
+            nombre: '',
+            cargo: ''
+        })).filter(e => e.email);
+    }
+
+    // 3. Evaluar destinatarios predeterminados para el tildado inicial
+    const hasTypeDefaultWp = contacts.some(c => c.default_presupuesto === true);
+    const hasGeneralDefaultWp = !hasTypeDefaultWp && contacts.some(c => c.default === true);
+
+    const hasTypeDefaultEmail = emails.some(e => e.default_presupuesto === true);
+    const hasGeneralDefaultEmail = !hasTypeDefaultEmail && emails.some(e => e.default === true);
+
+    // 4. Construir contenido HTML de selección (Diseño doble columna indexado por checkboxes)
+    let htmlContent = `
+        <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+            <p style="margin-bottom: 15px; font-size: 14px; color: #4b5563; font-weight: 500;">
+                Seleccione los canales y destinatarios para enviar el presupuesto:
+            </p>
+            <div style="display: flex; gap: 20px; margin-bottom: 15px;">
+                <!-- Columna WhatsApp -->
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 12px; font-weight: 700; color: #10b981; text-transform: uppercase; margin-bottom: 8px; border-bottom: 2px solid #10b981; padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <span>📱 WhatsApp</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
+    `;
+
+    if (contacts.length === 0) {
+        htmlContent += `
+            <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                No hay contactos de WhatsApp cargados.
+            </div>
+        `;
+    } else {
+        contacts.forEach((c, index) => {
+            const isChecked = hasTypeDefaultWp ? (c.default_presupuesto === true) : (hasGeneralDefaultWp ? (c.default === true) : true);
+            const formattedNum = c.numero.replace(/\D/g, '');
+            let displayNum = c.numero;
+            if (formattedNum.length === 10) {
+                displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+            } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
+            }
+            
+            const labelText = c.nombre 
+                ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                : `Contacto #${index + 1}`;
+
+            htmlContent += `
+                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; cursor: pointer; margin-bottom: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <input type="checkbox" class="swal-contact-wp-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 12px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${labelText}</div>
+                        <div style="font-size: 11px; color: #6b7280;">📱 ${displayNum}</div>
+                    </div>
+                </label>
+            `;
+        });
+    }
+
+    htmlContent += `
+                    </div>
+                </div>
+                
+                <!-- Columna Correo -->
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 12px; font-weight: 700; color: #6366f1; text-transform: uppercase; margin-bottom: 8px; border-bottom: 2px solid #6366f1; padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <span>📧 Correo</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
+    `;
+
+    if (emails.length === 0) {
+        htmlContent += `
+            <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                No hay correos cargados.
+            </div>
+        `;
+    } else {
+        emails.forEach((e, index) => {
+            const isChecked = hasTypeDefaultEmail ? (e.default_presupuesto === true) : (hasGeneralDefaultEmail ? (e.default === true) : true);
+            const labelText = e.nombre 
+                ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #e0e7ff; color: #4338ca; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
+                : `Correo #${index + 1}`;
+
+            htmlContent += `
+                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; cursor: pointer; margin-bottom: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <input type="checkbox" class="swal-contact-email-chk" value="${e.email}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 12px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${labelText}</div>
+                        <div style="font-size: 11px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📧 ${e.email}</div>
+                    </div>
+                </label>
+            `;
+        });
+    }
+
+    htmlContent += `
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Campos adicionales -->
+            <div style="display: flex; gap: 20px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                        Otro número (opcional):
+                    </label>
+                    <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                        Otro correo (opcional):
+                    </label>
+                    <input type="text" id="swal-custom-email" placeholder="Ej: admin@cliente.com" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                </div>
+            </div>
+            
+            <p style="margin-top: 8px; font-size: 10.5px; color: #94a3b8; font-style: italic; line-height: 1.2; margin-bottom: 0;">
+                * Si no selecciona ningún destinatario, se procederá con la descarga local directa del documento.
+            </p>
+    `;
+
+    if (presupuesto && presupuesto.bunker_cliente_id) {
+        htmlContent += `
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 12px; color: #475569;">
+                <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
+                <span>Guardar esta selección como contactos predeterminados para presupuestos</span>
+            </label>
+        `;
+    }
+
+    htmlContent += `</div>`;
+
+    // 5. Mostrar SweetAlert2 Modal
+    const { value: modalResult } = await Swal.fire({
+        title: 'Enviar Presupuesto',
+        html: htmlContent,
+        icon: 'question',
+        width: '650px',
+        showCancelButton: true,
+        confirmButtonText: '📤 Enviar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#6366f1',
+        cancelButtonColor: '#6b7280',
+        preConfirm: () => {
+            const selectedWp = Array.from(document.querySelectorAll('.swal-contact-wp-chk:checked')).map(el => el.value);
+            const selectedEmail = Array.from(document.querySelectorAll('.swal-contact-email-chk:checked')).map(el => el.value);
+            const customPhone = document.getElementById('swal-custom-phone').value.trim();
+            const customEmail = document.getElementById('swal-custom-email').value.trim();
+            const saveDefaultCheckbox = document.getElementById('swal-save-default');
+            const saveDefault = saveDefaultCheckbox ? saveDefaultCheckbox.checked : false;
+
+            const finalWp = [...selectedWp];
+            if (customPhone) {
+                const cleaned = customPhone.replace(/[^\d,]/g, '');
+                if (cleaned) {
+                    cleaned.split(',').forEach(num => {
+                        if (num.trim()) finalWp.push(num.trim());
+                    });
+                }
+            }
+
+            const finalEmail = [...selectedEmail];
+            if (customEmail) {
+                customEmail.split(',').forEach(em => {
+                    if (em.trim()) finalEmail.push(em.trim());
+                });
+            }
+
+            return {
+                destinatariosWp: finalWp,
+                destinatariosEmail: finalEmail,
+                saveDefault,
+                selectedWpRaw: selectedWp,
+                selectedEmailRaw: selectedEmail
+            };
+        }
+    });
+
+    if (!modalResult) return;
+
+    const { destinatariosWp, destinatariosEmail, saveDefault, selectedWpRaw, selectedEmailRaw } = modalResult;
+
+    // 6. Si no hay destinatarios seleccionados, descargar localmente
+    if (destinatariosWp.length === 0 && destinatariosEmail.length === 0) {
+        console.log('📥 [OMNICANAL-FRONT] Sin destinatarios. Iniciando descarga local...');
+        Swal.fire({
+            icon: 'info',
+            title: 'Descarga Local',
+            text: 'Preparando la impresión/descarga del documento...',
+            timer: 1500,
+            showConfirmButton: false
+        });
+        imprimirPresupuesto();
+        return;
+    }
+
+    // 7. Si se marca guardar por defecto, actualizar en base de datos
+    if (saveDefault && presupuesto && presupuesto.bunker_cliente_id) {
+        try {
+            const updatedWpContacts = contacts.map(c => {
+                const isSelected = selectedWpRaw.includes(c.numero);
+                return {
+                    ...c,
+                    default_presupuesto: isSelected
+                };
+            });
+            presupuesto.whatsapp_bunker = JSON.stringify(updatedWpContacts);
+
+            const updatedEmailContacts = emails.map(e => {
+                const isSelected = selectedEmailRaw.includes(e.email);
+                return {
+                    ...e,
+                    default_presupuesto: isSelected
+                };
+            });
+            presupuesto.email_bunker = JSON.stringify(updatedEmailContacts);
+
+            await fetch(`/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    whatsapp_facturas: presupuesto.whatsapp_bunker,
+                    email_facturas: presupuesto.email_bunker
+                })
+            });
+            console.log('✅ [OMNICANAL-FRONT] Contactos predeterminados de WhatsApp y Email actualizados.');
+        } catch (err) {
+            console.error('❌ [OMNICANAL-FRONT] Error al guardar contactos predeterminados:', err);
+        }
+    }
+
+    // 8. Despachar a los servicios
+    const destinatariosWpStr = destinatariosWp.join(', ');
+    const destinatariosEmailStr = destinatariosEmail.join(', ');
+
+    // Mostrar spinner de carga
+    Swal.fire({
+        title: 'Generando y enviando...',
+        text: 'Por favor espera un momento.',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    let wpOk = false;
+    let emailOk = false;
+    let wpAttempted = destinatariosWp.length > 0;
+    let emailAttempted = destinatariosEmail.length > 0;
+    let errors = [];
+
+    const sololista = document.getElementById('chk-solo-lista')?.checked || false;
+    const faltantes = document.getElementById('chk-faltantes')?.checked || false;
+
+    // A. Enviar por WhatsApp
+    if (wpAttempted) {
+        try {
+            console.log(`📱 [OMNICANAL-FRONT] Despachando WhatsApp a: ${destinatariosWpStr}`);
+            const response = await fetch(`/api/presupuestos/${presupuestoId}/whatsapp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    destinatarios: destinatariosWpStr,
+                    formato: formatoActual,
+                    sololista: sololista,
+                    faltantes: faltantes,
+                    nombreCliente: presupuesto.nombre_cliente || presupuesto.concepto || '',
+                    estado: presupuesto.estado
+                })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                wpOk = true;
+            } else {
+                errors.push(`WhatsApp: ${data.message || data.error || 'Error desconocido'}`);
+            }
+        } catch (err) {
+            console.error('❌ [OMNICANAL-FRONT] Error en WhatsApp:', err);
+            errors.push(`WhatsApp: ${err.message}`);
+        }
+    }
+
+    // B. Enviar por Email
+    if (emailAttempted) {
+        try {
+            console.log(`📧 [OMNICANAL-FRONT] Despachando Email a: ${destinatariosEmailStr}`);
+            const response = await fetch(`/api/presupuestos/${presupuestoId}/email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    destinatarios: destinatariosEmailStr,
+                    formato: formatoActual,
+                    sololista: sololista,
+                    faltantes: faltantes
+                })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                emailOk = true;
+            } else {
+                errors.push(`Correo: ${data.message || data.error || 'Error desconocido'}`);
+            }
+        } catch (err) {
+            console.error('❌ [OMNICANAL-FRONT] Error en Email:', err);
+            errors.push(`Correo: ${err.message}`);
+        }
+    }
+
+    // 9. Informar al usuario
+    const totalAttempted = (wpAttempted ? 1 : 0) + (emailAttempted ? 1 : 0);
+    const totalSuccess = (wpOk ? 1 : 0) + (emailOk ? 1 : 0);
+
+    if (totalSuccess === totalAttempted) {
+        let msgExito = 'El presupuesto fue enviado con éxito ';
+        if (wpOk && emailOk) {
+            msgExito += `por WhatsApp (${destinatariosWpStr}) y Correo (${destinatariosEmailStr}).`;
+        } else if (wpOk) {
+            msgExito += `por WhatsApp a: ${destinatariosWpStr}`;
+        } else {
+            msgExito += `por Correo a: ${destinatariosEmailStr}`;
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: '¡Enviado!',
+            text: msgExito,
+            confirmButtonColor: '#334155'
+        });
+        console.log('✅ [OMNICANAL-FRONT] Envío omnicanal completado con éxito.');
+    } else if (totalSuccess > 0) {
+        let partialMsg = 'Envío parcial:\n';
+        if (wpOk) partialMsg += `✅ WhatsApp: Enviado a ${destinatariosWpStr}\n`;
+        else if (wpAttempted) partialMsg += `❌ WhatsApp: Falló (${errors.filter(e => e.startsWith('WhatsApp')).join(', ')})\n`;
+        
+        if (emailOk) partialMsg += `✅ Correo: Enviado a ${destinatariosEmailStr}\n`;
+        else if (emailAttempted) partialMsg += `❌ Correo: Falló (${errors.filter(e => e.startsWith('Correo')).join(', ')})\n`;
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Envío Parcial',
+            text: partialMsg,
+            confirmButtonColor: '#f59e0b'
+        });
+        console.warn('⚠️ [OMNICANAL-FRONT] Envío parcial registrado:', errors);
+    } else {
+        Swal.fire({
+            icon: 'error',
+            title: 'Fallo al enviar',
+            text: 'No se pudo enviar por ningún canal. Detalles de errores:\n' + errors.join('\n'),
+            confirmButtonColor: '#e74c3c'
+        });
+        console.error('❌ [OMNICANAL-FRONT] Envío fallido totalmente:', errors);
+    }
+}
+
+console.log('✅ [IMPRIMIR-PRESUPUESTO] Módulo de impresión inicializado con sistema de formatos e indexación omnicanal');

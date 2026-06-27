@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Facturas - Sistema LAMDA</title>
@@ -120,6 +121,17 @@
 
         .btn-secondary:hover {
             background: #5a6268;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
         }
 
         .stats {
@@ -327,6 +339,37 @@
             color: #666;
             font-size: 14px;
         }
+
+        /* Circuit Tabs CSS */
+        .circuit-tabs {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 5px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            border: none;
+            background: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .tab-btn:hover {
+            color: #764ba2;
+        }
+
+        .tab-btn.active {
+            color: #764ba2;
+            border-bottom: 3px solid #764ba2;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
@@ -362,6 +405,16 @@
     </div>
 
     <div class="container">
+        <!-- Tabs de Circuito -->
+        <div class="circuit-tabs">
+            <button id="tab-oficiales" class="tab-btn active" onclick="switchCircuito('oficiales')">
+                📄 Comprobantes Oficiales (ARCA)
+            </button>
+            <button id="tab-internos" class="tab-btn" onclick="switchCircuito('internos')">
+                🏢 Presupuestos Aprobados (Interno)
+            </button>
+        </div>
+
         <!-- Filtros -->
         <div class="filters">
             <h3>🔍 Filtros de Búsqueda</h3>
@@ -458,8 +511,13 @@
                     </button>
                     <button id="btn-whatsapp-lote" class="btn btn-primary"
                         style="display: none; background: #8b5cf6; border: none; box-shadow: 0 4px 6px rgba(139, 92, 246, 0.2); margin-left: 10px;"
-                        onclick="enviarLoteWhatsApp()">
-                        🟢 Enviar por WhatsApp Seleccionadas
+                        onclick="enviarLoteOmnicanal()">
+                        ⚡ Despachar Seleccionadas
+                    </button>
+                    <button id="btn-eliminar-lote" class="btn btn-danger"
+                        style="display: none; border: none; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2); margin-left: 10px;"
+                        onclick="eliminarLoteSeleccionado()">
+                        🗑️ Eliminar Seleccionados
                     </button>
                 </div>
                 <span id="result-count"></span>
@@ -505,6 +563,7 @@
         let totalPages = 1;
         let currentFilters = {};
         let facturasActuales = [];
+        let circuitoSeleccionado = 'oficiales';
 
         // Cargar facturas al iniciar
         document.addEventListener('DOMContentLoaded', () => {
@@ -521,6 +580,12 @@
                 const queryParams = new URLSearchParams();
                 queryParams.append('page', page);
                 queryParams.append('limit', 50);
+
+                if (circuitoSeleccionado === 'oficiales') {
+                    queryParams.append('tipo_circuito', 'oficial');
+                } else if (circuitoSeleccionado === 'internos') {
+                    queryParams.append('tipo_circuito', 'interno');
+                }
 
                 const fechaDesde = document.getElementById('fecha-desde').value;
                 const fechaHasta = document.getElementById('fecha-hasta').value;
@@ -566,6 +631,14 @@
         }
 
         function renderizarFacturas(facturas) {
+            // Desmarcar selecciones previas al renderizar nuevos datos
+            document.getElementById('chk-select-all').checked = false;
+            document.getElementById('btn-emitir-lote').style.display = 'none';
+            document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            if (document.getElementById('btn-eliminar-lote')) {
+                document.getElementById('btn-eliminar-lote').style.display = 'none';
+            }
+
             facturasActuales = facturas;
             const tbody = document.getElementById('facturas-tbody');
 
@@ -593,11 +666,13 @@
                     }
                 }
 
-                const tipo = obtenerTipoComprobante(factura.tipo_cbte);
-                const numero = `${factura.pto_vta || '-'}-${factura.cbte_nro || factura.nro_interno || '-'}`;
+                const tipo = obtenerTipoComprobante(factura.tipo_cbte, factura.pto_vta);
+                const ptoVtaPad = String(factura.pto_vta || '0').padStart(4, '0');
+                const cbtePad = String(factura.cbte_nro || factura.nro_interno || '0').padStart(8, '0');
+                const numero = `${ptoVtaPad}-${cbtePad}`;
                 const total = formatMoney(factura.imp_total);
                 const estadoClass = factura.estado.toLowerCase().replace('_', '-');
-                const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip;
+                const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA');
                 const puedeEnviarse = factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL';
 
                 const tieneWp = (() => {
@@ -614,16 +689,38 @@
                     return true;
                 })();
 
+                const tieneEmail = (() => {
+                    const str = (factura.email_facturas || '').trim();
+                    if (!str) return false;
+                    if (str.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(str);
+                            return Array.isArray(parsed) && parsed.some(c => c.email && c.email.trim());
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })();
+                let contactsButtonHTML = '';
+                if (factura.bunker_cliente_id) {
+                    contactsButtonHTML = `
+                        <button type="button" class="btn btn-sm btn-link" style="padding: 2px 4px; font-size: 1.1em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle; background: none; border: none; cursor: pointer; color: #4f46e5;" title="Configurar destinatarios de facturación" onclick="abrirConfiguracionContactosFactura(${factura.id})">
+                            👥
+                        </button>
+                    `;
+                }
+
                 return `
                     <tr>
                         <td>
-                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" onchange="actualizarBotonLote()">
+                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" data-has-email="${tieneEmail ? 'true' : 'false'}" data-has-cae="${factura.cae ? 'true' : 'false'}" onchange="actualizarBotonLote()">
                         </td>
                         <td><strong>#${factura.id}</strong></td>
                         <td>${fecha}</td>
                         <td>${tipo}</td>
                         <td>${numero}</td>
-                        <td>${factura.razon_social || 'Cliente'}</td>
+                        <td>${factura.razon_social || 'Cliente'}${contactsButtonHTML}</td>
                         <td><strong>${total}</strong></td>
                         <td><span class="badge ${estadoClass}">${factura.estado}</span></td>
                         <td>${(factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') && factura.cae ? `<strong>${factura.cae}</strong>` : '-'}</td>
@@ -632,23 +729,27 @@
                                 <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
                                     📄 Ver
                                 </button>
-                                ${puedeEnviarse ? (
-                                    tieneWp ? `
-                                    <button class="btn btn-sm" style="background: #10b981; color: white;" onclick="enviarWhatsApp(${factura.id})">
-                                        📱 WhatsApp
-                                    </button>
-                                    ` : `
-                                    <button class="btn btn-sm" style="background: #e2e8f0; color: #94a3b8; border: 1px dashed #cbd5e1; cursor: not-allowed;" title="Cliente sin número de WhatsApp configurado" disabled>
-                                        📱 Sin número
-                                    </button>
-                                    `
-                                ) : ''}
+                                ${puedeEnviarse ? (() => {
+                                    if (tieneWp || tieneEmail) {
+                                        return `
+                                        <button class="btn btn-sm" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white;" onclick="abrirModalDespachoFactura(${factura.id})" title="Enviar comprobante por WhatsApp y/o Email">
+                                            📤 Enviar
+                                        </button>
+                                        `;
+                                    } else {
+                                        return `
+                                        <button class="btn btn-sm" style="background: #e2e8f0; color: #94a3b8; border: 1px dashed #cbd5e1; cursor: not-allowed;" title="Cliente sin destinatarios configurados de WhatsApp ni Correo" disabled>
+                                            📤 Enviar
+                                        </button>
+                                        `;
+                                    }
+                                })() : ''}
                                 ${[1, 6, 11].includes(parseInt(factura.tipo_cbte)) && (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') ? `
                                 <button class="btn btn-sm" style="background: #ef4444; color: white;" onclick="anularFactura(${factura.id}, '${factura.fecha_emision}')">
                                     🚫 Anular
                                 </button>
                                 ` : ''}
-                                ${!factura.cae && (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') ? `
+                                ${!factura.cae && ['BORRADOR', 'RECHAZADA', 'ANULADA', 'APROBADA_LOCAL'].includes(factura.estado) ? `
                                 <button class="btn btn-sm" style="background: #e74c3c; color: white;" onclick="eliminarFactura(${factura.id})">
                                     🗑️ Eliminar
                                 </button>
@@ -709,140 +810,407 @@
             cargarFacturas(1);
         }
 
-        async function enviarWhatsApp(id) {
-            const factura = facturasActuales.find(f => String(f.id) === String(id));
+        async function abrirConfiguracionContactosFactura(facturaId) {
+            const factura = facturasActuales.find(f => String(f.id) === String(facturaId));
             if (!factura) {
-                alert('No se encontraron los datos de la factura localmente.');
+                console.warn('⚠️ [BILLING-CONFIG] No se encontró la factura en facturasActuales:', facturaId);
                 return;
             }
 
-            const raw = (factura.whatsapp_facturas || '').trim();
-            if (!raw) {
-                alert('Esta factura no tiene números de WhatsApp configurados.');
-                return;
-            }
+            const bunkerClienteId = factura.bunker_cliente_id;
+            const clienteNombre = factura.razon_social || 'Cliente';
 
+            // 1. Obtener y parsear contactos de WhatsApp
+            const rawWp = (factura.whatsapp_facturas || '').trim();
             let contacts = [];
-            if (raw.startsWith('[')) {
-                try {
-                    contacts = JSON.parse(raw);
-                } catch(e) {}
-            }
-            if (!Array.isArray(contacts) || contacts.length === 0) {
-                // Soporte para formato legado (separado por comas)
-                contacts = raw.split(',').map(num => ({
-                    numero: num.trim(),
-                    nombre: '',
-                    cargo: ''
-                })).filter(c => c.numero);
+            if (rawWp) {
+                if (rawWp.startsWith('[')) {
+                    try {
+                        contacts = JSON.parse(rawWp);
+                    } catch (e) {
+                        console.error('Error parseando contactos WhatsApp:', e);
+                    }
+                } else {
+                    contacts = rawWp.split(',').map(n => ({ numero: n.trim(), nombre: '', cargo: '', default_factura: true }));
+                }
             }
 
+            // 2. Obtener y parsear contactos de Email
+            const rawEmail = (factura.email_facturas || '').trim();
+            let emails = [];
+            if (rawEmail) {
+                if (rawEmail.startsWith('[')) {
+                    try {
+                        emails = JSON.parse(rawEmail);
+                    } catch (e) {
+                        console.error('Error parseando contactos Email:', e);
+                    }
+                } else {
+                    emails = rawEmail.split(',').map(e => ({ email: e.trim(), nombre: '', cargo: '', default_factura: true }));
+                }
+            }
+
+            // 3. Generar HTML del modal con el diseño indexado por checkboxes
             let htmlContent = `
                 <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
-                        Seleccione los destinatarios para enviar la factura:
+                        Seleccione los destinatarios que se procesarán por defecto para <strong>${clienteNombre}</strong>:
                     </p>
-                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px;">
             `;
 
-            contacts.forEach((c, index) => {
-                const formattedNum = c.numero.replace(/\D/g, '');
-                let displayNum = c.numero;
-                if (formattedNum.length === 10) {
-                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
-                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
-                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
-                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
-                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
-                }
-                
-                const labelText = c.nombre 
-                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">${c.cargo}</span>` : ''}`
-                    : `Contacto #${index + 1}`;
+            // Sección WhatsApp
+            htmlContent += `
+                <div style="margin-bottom: 15px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #10b981; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                        <span>📱 WhatsApp</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+            `;
 
+            if (contacts.length === 0) {
                 htmlContent += `
-                    <label style="display: flex; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
-                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
-                        <div style="flex: 1;">
-                            <div style="font-size: 13px; color: #1f2937; margin-bottom: 2px;">${labelText}</div>
-                            <div style="font-size: 12px; color: #6b7280;">📱 ${displayNum}</div>
-                        </div>
-                    </label>
+                    <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                        No hay contactos de WhatsApp cargados para este cliente.
+                    </div>
                 `;
-            });
+            } else {
+                contacts.forEach((c, index) => {
+                    const isChecked = c.default_factura === true;
+                    const formattedNum = c.numero.replace(/\D/g, '');
+                    let displayNum = c.numero;
+                    if (formattedNum.length === 10) {
+                        displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+                    } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                        displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
+                    } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
+                        displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
+                    }
+
+                    const labelText = c.nombre 
+                        ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                        : `Contacto #${index + 1}`;
+
+                    htmlContent += `
+                        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                            <input type="checkbox" class="swal-contact-config-wp-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                                <div style="font-size: 11px; color: #6b7280;">📱 ${displayNum}</div>
+                            </div>
+                        </label>
+                    `;
+                });
+            }
 
             htmlContent += `
                     </div>
                 </div>
             `;
 
+            // Sección Email
+            htmlContent += `
+                <div style="margin-bottom: 15px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
+                        <span>📧 Correo Electrónico</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+            `;
+
+            if (emails.length === 0) {
+                htmlContent += `
+                    <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                        No hay contactos de correo cargados para este cliente.
+                    </div>
+                `;
+            } else {
+                emails.forEach((c, index) => {
+                    const isChecked = c.default_factura === true;
+                    const labelText = c.nombre 
+                        ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                        : `Contacto #${index + 1}`;
+
+                    htmlContent += `
+                        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
+                            <input type="checkbox" class="swal-contact-config-email-chk" value="${c.email}" ${isChecked ? 'checked' : ''} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                                <div style="font-size: 11px; color: #6b7280; word-break: break-all;">📧 ${c.email}</div>
+                            </div>
+                        </label>
+                    `;
+                });
+            }
+
+            htmlContent += `
+                    </div>
+                </div>
+                </div>
+            `;
+
             Swal.fire({
-                title: 'Enviar por WhatsApp',
+                title: 'Destinatarios de Facturación',
                 html: htmlContent,
-                icon: 'question',
+                icon: 'info',
                 showCancelButton: true,
-                confirmButtonText: '🟢 Enviar',
+                confirmButtonText: '💾 Guardar',
                 cancelButtonText: 'Cancelar',
-                confirmButtonColor: '#10b981',
+                confirmButtonColor: '#4f46e5',
                 cancelButtonColor: '#6b7280',
                 preConfirm: () => {
-                    const selected = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
-                    if (selected.length === 0) {
-                        Swal.showValidationMessage('Debes seleccionar al menos un contacto.');
-                        return false;
-                    }
-                    return selected;
+                    const selectedWps = Array.from(document.querySelectorAll('.swal-contact-config-wp-chk:checked')).map(el => el.value);
+                    const selectedEmails = Array.from(document.querySelectorAll('.swal-contact-config-email-chk:checked')).map(el => el.value);
+                    return {
+                        selectedWps,
+                        selectedEmails
+                    };
                 }
             }).then(async (result) => {
                 if (!result.isConfirmed) return;
 
-                const destinatariosSeleccionados = result.value;
+                const { selectedWps, selectedEmails } = result.value;
 
-                mostrarLoading(true);
+                try {
+                    const updatedContacts = contacts.map(c => ({
+                        ...c,
+                        default_factura: selectedWps.includes(c.numero)
+                    }));
+
+                    const updatedEmails = emails.map(e => ({
+                        ...e,
+                        default_factura: selectedEmails.includes(e.email)
+                    }));
+
+                    const updatedWpJson = JSON.stringify(updatedContacts);
+                    const updatedEmailJson = JSON.stringify(updatedEmails);
+
+                    // Llamar a la API
+                    const response = await fetch(`/api/logistica/bunker/clientes/${bunkerClienteId}/whatsapp-contacts`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            whatsapp_facturas: updatedWpJson,
+                            email_facturas: updatedEmailJson
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Fallo al guardar en el servidor local.');
+                    }
+
+                    // Actualizar todas las facturas localmente que compartan el cliente (solo tras éxito del fetch)
+                    facturasActuales.forEach(f => {
+                        if (f.bunker_cliente_id && bunkerClienteId && String(f.bunker_cliente_id) === String(bunkerClienteId)) {
+                            f.whatsapp_facturas = updatedWpJson;
+                            f.email_facturas = updatedEmailJson;
+                        }
+                    });
+
+                    // Re-renderizar
+                    renderizarFacturas(facturasActuales);
+
+                    Swal.fire({
+                        title: '¡Guardado!',
+                        text: 'Destinatarios predeterminados guardados correctamente.',
+                        icon: 'success',
+                        confirmButtonColor: '#10b981'
+                    });
+
+                } catch (err) {
+                    console.error('Error al guardar contactos predeterminados:', err);
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'No se pudieron guardar los destinatarios.',
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                }
+            });
+        }
+        window.abrirConfiguracionContactosFactura = abrirConfiguracionContactosFactura;
+
+        function obtenerDestinatariosPredeterminados(factura) {
+            if (!factura) return { whatsapp: [], email: [] };
+
+            // 1. WhatsApp
+            const rawWp = (factura.whatsapp_facturas || '').trim();
+            let contacts = [];
+            if (rawWp.startsWith('[')) {
+                try {
+                    contacts = JSON.parse(rawWp);
+                } catch(e) {}
+            } else if (rawWp) {
+                contacts = rawWp.split(',').map(num => ({ numero: num.trim(), default_factura: true }));
+            }
+
+            const hasTypeDefaultWp = contacts.some(c => c.default_factura === true);
+            const hasGeneralDefaultWp = !hasTypeDefaultWp && contacts.some(c => c.default === true);
+            const hasWpConfig = contacts.some(c => c.default_factura !== undefined);
+            
+            let destinatariosWp = [];
+            if (hasTypeDefaultWp) {
+                destinatariosWp = contacts.filter(c => c.default_factura === true).map(c => c.numero);
+            } else if (hasWpConfig) {
+                destinatariosWp = [];
+            } else if (hasGeneralDefaultWp) {
+                destinatariosWp = contacts.filter(c => c.default === true).map(c => c.numero);
+            } else {
+                destinatariosWp = contacts.map(c => c.numero);
+            }
+
+            // 2. Email
+            const rawEmails = (factura.email_facturas || '').trim();
+            let emails = [];
+            if (rawEmails.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(rawEmails);
+                    if (Array.isArray(parsed)) {
+                        emails = parsed;
+                    }
+                } catch (e) {
+                    console.error('Error parsing email_facturas JSON:', e);
+                }
+            } else if (rawEmails) {
+                emails = rawEmails.split(',').map(email => ({ email: email.trim(), default_factura: true }));
+            }
+
+            const hasTypeDefaultEmail = emails.some(e => e.default_factura === true);
+            const hasEmailConfig = emails.some(e => e.default_factura !== undefined);
+            
+            let destinatariosEmail = [];
+            if (hasTypeDefaultEmail) {
+                destinatariosEmail = emails.filter(e => e.default_factura === true).map(e => e.email);
+            } else if (hasEmailConfig) {
+                destinatariosEmail = [];
+            } else {
+                destinatariosEmail = emails.map(e => e.email);
+            }
+
+            return {
+                whatsapp: destinatariosWp,
+                email: destinatariosEmail
+            };
+        }
+
+        async function abrirModalDespachoFactura(id) {
+            const factura = facturasActuales.find(f => String(f.id) === String(id));
+            if (!factura) {
+                alert('No se encontraron los datos de la factura localmente.');
+                return;
+            }
+
+            const { whatsapp: destinatariosWp, email: destinatariosEmail } = obtenerDestinatariosPredeterminados(factura);
+
+            // 3. Validar si existen destinatarios predeterminados para despachar
+            if (destinatariosWp.length === 0 && destinatariosEmail.length === 0) {
+                Swal.fire({
+                    title: 'Sin destinatarios predeterminados',
+                    text: 'Este cliente no tiene ningún contacto de WhatsApp ni correo electrónico configurado por defecto. Por favor, configúrelos primero haciendo clic en el icono 👥 del cliente.',
+                    icon: 'warning',
+                    confirmButtonColor: '#6b7280'
+                });
+                return;
+            }
+
+            // 4. Despacho directo mostrando el loading state
+            mostrarLoading(true);
+            let wsOk = false;
+            let mailOk = false;
+            let wsAttempted = destinatariosWp.length > 0;
+            let mailAttempted = destinatariosEmail.length > 0;
+            let errors = [];
+
+            if (wsAttempted) {
                 try {
                     const res = await fetch(`${API_URL}/whatsapp/facturas/${id}/enviar`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ destinatarios: destinatariosSeleccionados })
+                        body: JSON.stringify({ destinatarios: destinatariosWp })
                     });
                     const data = await res.json();
-
                     if (data.success) {
-                        Swal.fire({
-                            title: '¡Enviado!',
-                            text: `Factura enviada con éxito a: ${data.data.destinatarios}`,
-                            icon: 'success',
-                            confirmButtonColor: '#10b981'
-                        });
+                        wsOk = true;
                     } else {
-                        throw new Error(data.message || data.error || 'No se pudo enviar la factura');
+                        errors.push(`WhatsApp: ${data.message || data.error}`);
                     }
                 } catch (error) {
-                    console.error(error);
-                    Swal.fire({
-                        title: 'Error al enviar',
-                        text: error.message,
-                        icon: 'error',
-                        confirmButtonColor: '#ef4444'
-                    });
-                } finally {
-                    mostrarLoading(false);
+                    errors.push(`WhatsApp: ${error.message}`);
                 }
-            });
+            }
+
+            if (mailAttempted) {
+                try {
+                    const res = await fetch(`/facturacion/email/facturas/${id}/enviar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ destinatarios: destinatariosEmail })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        mailOk = true;
+                    } else {
+                        errors.push(`Email: ${data.message || data.error}`);
+                    }
+                } catch (error) {
+                    errors.push(`Email: ${error.message}`);
+                }
+            }
+
+            mostrarLoading(false);
+
+            // 5. Evaluar resultados del envío
+            const totalAttempted = (wsAttempted ? 1 : 0) + (mailAttempted ? 1 : 0);
+            const totalSuccess = (wsOk ? 1 : 0) + (mailOk ? 1 : 0);
+
+            if (totalSuccess === totalAttempted) {
+                Swal.fire({
+                    title: '¡Despachado!',
+                    text: 'Comprobante enviado con éxito a los destinatarios preconfigurados.',
+                    icon: 'success',
+                    confirmButtonColor: '#10b981'
+                });
+            } else if (totalSuccess > 0) {
+                let msg = '';
+                if (wsOk) msg += '✅ WhatsApp enviado. ';
+                if (mailOk) msg += '✅ Email enviado. ';
+                msg += '\n❌ Errores:\n' + errors.join('\n');
+
+                Swal.fire({
+                    title: 'Envío parcial',
+                    text: msg,
+                    icon: 'warning',
+                    confirmButtonColor: '#f59e0b'
+                });
+            } else {
+                Swal.fire({
+                    title: 'Error en el envío',
+                    text: errors.join('\n'),
+                    icon: 'error',
+                    confirmButtonColor: '#ef4444'
+                });
+            }
         }
 
-        async function enviarLoteWhatsApp() {
+        async function enviarLoteOmnicanal() {
             const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked'))
                 .filter(chk => {
                     const estado = chk.getAttribute('data-estado');
-                    const hasWp = chk.getAttribute('data-has-wp') === 'true';
-                    return ['APROBADA', 'APROBADA_LOCAL'].includes(estado) && hasWp;
-                })
-                .map(chk => chk.value);
-            
-            if (seleccionadas.length === 0) return;
+                    if (!['APROBADA', 'APROBADA_LOCAL'].includes(estado)) return false;
+                    
+                    const facturaId = chk.value;
+                    const factura = facturasActuales.find(f => String(f.id) === String(facturaId));
+                    if (!factura) return false;
 
-            if (!confirm(`¿Estás seguro que deseas enviar ${seleccionadas.length} facturas por WhatsApp a sus respectivos clientes?`)) {
+                    const { whatsapp, email } = obtenerDestinatariosPredeterminados(factura);
+                    return whatsapp.length > 0 || email.length > 0;
+                });
+            
+            if (seleccionadas.length === 0) {
+                alert('No hay facturas seleccionadas que tengan al menos un canal de contacto configurado.');
+                return;
+            }
+
+            if (!confirm(`¿Estás seguro que deseas despachar ${seleccionadas.length} facturas de forma automática por WhatsApp y/o Email según corresponda?`)) {
                 return;
             }
 
@@ -855,38 +1223,77 @@
             const logElement = document.getElementById('loading').querySelector('p');
 
             for (let i = 0; i < seleccionadas.length; i++) {
-                const facturaId = seleccionadas[i];
-                logElement.innerText = `Enviando factura ${i + 1} de ${seleccionadas.length}... (ID: ${facturaId})`;
+                const chk = seleccionadas[i];
+                const facturaId = chk.value;
+                const factura = facturasActuales.find(f => String(f.id) === String(facturaId));
+                
+                logElement.innerText = `Despachando factura ${i + 1} de ${seleccionadas.length}... (ID: ${facturaId})`;
 
-                try {
-                    const response = await fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+                let factOk = true;
+                let currentErrors = [];
 
-                    const result = await response.json();
+                if (!factura) {
+                    factOk = false;
+                    currentErrors.push('No se encontraron los datos de la factura localmente.');
+                } else {
+                    const { whatsapp: destinatariosWp, email: destinatariosEmail } = obtenerDestinatariosPredeterminados(factura);
+                    
+                    let runWp = destinatariosWp.length > 0;
+                    let runEmail = destinatariosEmail.length > 0;
 
-                    if (result.success) {
-                        exitosas++;
-                    } else {
-                        console.error(`Error enviando factura ${facturaId} por WhatsApp:`, result.message);
-                        fallidas++;
-                        errores.push(`Factura #${facturaId}: ${result.message || result.error || 'Error desconocido'}`);
+                    if (runWp) {
+                        try {
+                            const response = await fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ destinatarios: destinatariosWp })
+                            });
+                            const result = await response.json();
+                            if (!result.success) {
+                                factOk = false;
+                                currentErrors.push(`WhatsApp: ${result.message || result.error}`);
+                            }
+                        } catch (error) {
+                            factOk = false;
+                            currentErrors.push(`WhatsApp: ${error.message}`);
+                        }
                     }
-                } catch (error) {
-                    console.error(`Excepción enviando factura ${facturaId} por WhatsApp:`, error);
+
+                    if (runEmail) {
+                        try {
+                            const response = await fetch(`/facturacion/email/facturas/${facturaId}/enviar`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ destinatarios: destinatariosEmail })
+                            });
+                            const result = await response.json();
+                            if (!result.success) {
+                                factOk = false;
+                                currentErrors.push(`Email: ${result.message || result.error}`);
+                            }
+                        } catch (error) {
+                            factOk = false;
+                            currentErrors.push(`Email: ${error.message}`);
+                        }
+                    }
+                }
+
+                if (factOk) {
+                    exitosas++;
+                } else {
+                    console.error(`Error despachando factura ${facturaId}:`, currentErrors.join(' | '));
                     fallidas++;
-                    errores.push(`Factura #${facturaId}: ${error.message}`);
+                    errores.push(`Factura #${facturaId}: ${currentErrors.join(' y ')}`);
                 }
             }
 
             mostrarLoading(false);
 
             if (fallidas === 0) {
-                alert(`✅ Envío finalizado:\n\n${exitosas} facturas enviadas con éxito por WhatsApp.`);
+                alert(`✅ Despacho en lote finalizado:\n\n${exitosas} facturas enviadas con éxito.`);
             } else {
                 const errDetail = errores.slice(0, 5).join('\n');
-                alert(`⚠️ Envío finalizado con algunos errores:\n\n- ${exitosas} enviadas exitosamente\n- ${fallidas} fallaron al enviar\n\nDetalles (primeros 5):\n${errDetail}`);
+                alert(`⚠️ Despacho en lote finalizado con algunos errores:\n\n- ${exitosas} enviadas exitosamente\n- ${fallidas} fallaron\n\nDetalles (primeros 5):\n${errDetail}`);
             }
 
             document.getElementById('chk-select-all').checked = false;
@@ -1012,7 +1419,29 @@
             });
         }
 
-        function obtenerTipoComprobante(tipo) {
+        function switchCircuito(circuito) {
+            circuitoSeleccionado = circuito;
+            
+            // Actualizar clases activas en los botones de pestañas
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            if (circuito === 'oficiales') {
+                document.getElementById('tab-oficiales').classList.add('active');
+            } else {
+                document.getElementById('tab-internos').classList.add('active');
+            }
+            
+            // Recargar grilla en página 1
+            cargarFacturas(1);
+        }
+
+        function obtenerTipoComprobante(tipo, pto_vta) {
+            if (pto_vta === 90) {
+                const esNC = [3, 8, 13].includes(parseInt(tipo));
+                return esNC ? 'Remito Entrega (NC)' : 'Presupuesto Aprobado';
+            }
             const tipos = {
                 1: 'Factura A',
                 6: 'Factura B',
@@ -1067,23 +1496,48 @@
 
             const aEnviar = chks.filter(chk => {
                 const estado = chk.getAttribute('data-estado');
-                const hasWp = chk.getAttribute('data-has-wp') === 'true';
-                return ['APROBADA', 'APROBADA_LOCAL'].includes(estado) && hasWp;
+                if (!['APROBADA', 'APROBADA_LOCAL'].includes(estado)) return false;
+
+                const facturaId = chk.value;
+                const factura = facturasActuales.find(f => String(f.id) === String(facturaId));
+                if (!factura) return false;
+
+                const { whatsapp, email } = obtenerDestinatariosPredeterminados(factura);
+                return whatsapp.length > 0 || email.length > 0;
+            }).length;
+
+            const aEliminar = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const hasCae = chk.getAttribute('data-has-cae') === 'true';
+                return !hasCae && ['BORRADOR', 'RECHAZADA', 'ANULADA', 'APROBADA_LOCAL'].includes(estado);
             }).length;
 
             const btnCae = document.getElementById('btn-emitir-lote');
             const btnWp = document.getElementById('btn-whatsapp-lote');
+            const btnEliminar = document.getElementById('btn-eliminar-lote');
 
             if (aEmitir > 0) {
                 btnCae.style.display = 'inline-block';
-                btnCae.innerHTML = `🚀 Obtener CAE de Seleccionadas (${aEmitir})`;
+                const textoBoton = circuitoSeleccionado === 'internos'
+                    ? `🚀 Emitir Seleccionados (${aEmitir})`
+                    : `🚀 Obtener CAE de Seleccionadas (${aEmitir})`;
+                btnCae.innerHTML = textoBoton;
             } else {
                 btnCae.style.display = 'none';
             }
 
+            if (aEliminar > 0) {
+                if (btnEliminar) {
+                    btnEliminar.style.display = 'inline-block';
+                    btnEliminar.innerHTML = `🗑️ Eliminar Seleccionados (${aEliminar})`;
+                }
+            } else {
+                if (btnEliminar) btnEliminar.style.display = 'none';
+            }
+
             if (aEnviar > 0) {
                 btnWp.style.display = 'inline-block';
-                btnWp.innerHTML = `🟢 Enviar por WhatsApp (${aEnviar})`;
+                btnWp.innerHTML = `⚡ Despachar Seleccionadas (${aEnviar})`;
             } else {
                 btnWp.style.display = 'none';
             }
@@ -1097,7 +1551,12 @@
             const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked')).map(chk => chk.value);
             if (seleccionadas.length === 0) return;
 
-            if (!confirm(`¿Estás seguro que deseas solicitar el CAE a ARCA para ${seleccionadas.length} facturas? Este proceso puede demorar unos segundos.`)) {
+            const esInterno = circuitoSeleccionado === 'internos';
+            const msgConfirm = esInterno
+                ? `¿Estás seguro que deseas emitir internamente ${seleccionadas.length} presupuestos aprobados?`
+                : `¿Estás seguro que deseas solicitar el CAE a ARCA para ${seleccionadas.length} facturas? Este proceso puede demorar unos segundos.`;
+
+            if (!confirm(msgConfirm)) {
                 return;
             }
 
@@ -1108,7 +1567,7 @@
             let fallidas = 0;
             const logElement = document.getElementById('loading').querySelector('p');
 
-            // CRÍTICO: Procesar SECUENCIALMENTE para evitar colisiones en numeración AFIP
+            // CRÍTICO: Procesar SECUENCIALMENTE para evitar colisiones en numeración
             for (let i = 0; i < seleccionadas.length; i++) {
                 const facturaId = seleccionadas[i];
                 logElement.innerText = `Procesando factura ${i + 1} de ${seleccionadas.length}... (ID: ${facturaId})`;
@@ -1137,14 +1596,81 @@
 
             // Mostrar resumen
             if (fallidas === 0) {
-                alert(`✅ Proceso finalizado:\n\n${exitosas} facturas aprobadas exitosamente.`);
+                const msgExito = esInterno
+                    ? `✅ Proceso finalizado:\n\n${exitosas} presupuestos aprobados emitidos internamente exitosamente.`
+                    : `✅ Proceso finalizado:\n\n${exitosas} facturas aprobadas exitosamente.`;
+                alert(msgExito);
             } else {
-                alert(`⚠️ Proceso finalizado con errores:\n\n- ${exitosas} aprobadas exitosamente\n- ${fallidas} fallaron al emitir\n\nRevisa el detalle de las fallidas (Estado RECHAZADA) para ver el motivo.`);
+                const msgError = esInterno
+                    ? `⚠️ Proceso finalizado con algunos errores:\n\n- ${exitosas} emitidos exitosamente\n- ${fallidas} fallaron al emitir`
+                    : `⚠️ Proceso finalizado con errores:\n\n- ${exitosas} aprobadas exitosamente\n- ${fallidas} fallaron al emitir\n\nRevisa el detalle de las fallidas (Estado RECHAZADA) para ver el motivo.`;
+                alert(msgError);
             }
 
             // Recargar tabla formatea checkboxes
             document.getElementById('chk-select-all').checked = false;
             document.getElementById('btn-emitir-lote').style.display = 'none';
+            document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            if (document.getElementById('btn-eliminar-lote')) {
+                document.getElementById('btn-eliminar-lote').style.display = 'none';
+            }
+            cargarFacturas(currentPage);
+        }
+
+        async function eliminarLoteSeleccionado() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura:checked'))
+                .filter(chk => {
+                    const estado = chk.getAttribute('data-estado');
+                    const hasCae = chk.getAttribute('data-has-cae') === 'true';
+                    return !hasCae && ['BORRADOR', 'RECHAZADA', 'ANULADA', 'APROBADA_LOCAL'].includes(estado);
+                })
+                .map(chk => chk.value);
+            
+            if (seleccionadas.length === 0) return;
+
+            if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente los ${seleccionadas.length} comprobantes seleccionados?\n\nEsta acción no se puede deshacer.`)) {
+                return;
+            }
+
+            mostrarLoading(true);
+            ocultarError();
+
+            let exitosas = 0;
+            let fallidas = 0;
+
+            for (let i = 0; i < seleccionadas.length; i++) {
+                const facturaId = seleccionadas[i];
+                try {
+                    const res = await fetch(`${API_URL}/facturas/${facturaId}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        exitosas++;
+                    } else {
+                        console.error(`Error al eliminar borrador ${facturaId}:`, data.error);
+                        fallidas++;
+                    }
+                } catch (error) {
+                    console.error(`Excepción al eliminar borrador ${facturaId}:`, error);
+                    fallidas++;
+                }
+            }
+
+            mostrarLoading(false);
+
+            if (fallidas === 0) {
+                alert(`✅ Comprobantes eliminados exitosamente: ${exitosas} comprobantes eliminados.`);
+            } else {
+                alert(`⚠️ Proceso finalizado con algunos errores:\n\n- ${exitosas} eliminados exitosamente\n- ${fallidas} fallaron al eliminar`);
+            }
+
+            document.getElementById('chk-select-all').checked = false;
+            document.getElementById('btn-emitir-lote').style.display = 'none';
+            document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            if (document.getElementById('btn-eliminar-lote')) {
+                document.getElementById('btn-eliminar-lote').style.display = 'none';
+            }
             cargarFacturas(currentPage);
         }
     </script>

@@ -47,8 +47,11 @@ router.post('/articulos/actualizar-margenes-masa', bunkerController.actualizarMa
 // Eliminar un artículo exclusivamente del Búnker
 router.delete('/articulos/:id', bunkerController.eliminarArticulo);
 
-// Imprimir etiqueta doble asimétrica Zebra
+// Imprimir etiqueta doble asimétrica Zebra (Artículos)
 router.post('/articulos/:id/imprimir', bunkerController.imprimirEtiquetaDobleBunker);
+
+// Imprimir etiqueta doble asimétrica Zebra (Ingredientes)
+router.post('/ingredientes/:id/imprimir', bunkerController.imprimirEtiquetaDobleIngrediente);
 
 // --- GESTOR DE PRECIOS PARALELO ---
 router.get('/finanzas/:id', bunkerController.obtenerRadiografiaFinanciera);
@@ -69,6 +72,7 @@ router.get('/destinos/buscar', lotesBunkerController.buscarDestinos);
 
 // Guardar vinculación (Split Lotes)
 router.post('/lotes_vinculos', lotesBunkerController.vincularLote);
+router.post('/lotes_vinculos/desvincular', lotesBunkerController.desvincularLote);
 
 // Consultar estado de asignación múltiple (Trazabilidad)
 router.post('/lotes_vinculos/estados', lotesBunkerController.consultarEstadosLotes);

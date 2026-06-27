@@ -184,6 +184,29 @@ const inicializarTablasBancarias = async () => {
             CREATE INDEX IF NOT EXISTS idx_fin_movs_cliente ON public.fin_movimientos_bancarios(cliente_id);
         `);
 
+        // 3b. Crear tabla local para registrar los cheques vinculados manualmente
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.fin_cheques_vinculados (
+                id SERIAL PRIMARY KEY,
+                cheque_id UUID UNIQUE NOT NULL,
+                cliente_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
+                numero_cheque VARCHAR(100) NOT NULL,
+                importe NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                fecha_pago DATE NOT NULL,
+                banco_emisor VARCHAR(255) NOT NULL,
+                librador_razon_social VARCHAR(255),
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_cheques_cheque_id ON public.fin_cheques_vinculados(cheque_id);
+        `);
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_fin_cheques_cliente ON public.fin_cheques_vinculados(cliente_id);
+        `);
+
         // 4. Sembrado (Seed) de la cuenta Galicia por defecto
         const checkCuenta = await client.query('SELECT COUNT(*) FROM public.fin_cuentas_bancarias');
         if (parseInt(checkCuenta.rows[0].count) === 0) {
@@ -249,7 +272,8 @@ const verificarTablas = async () => {
         'factura_numeracion_afip',
         'factura_numeracion_interna',
         'fin_cuentas_bancarias',
-        'fin_movimientos_bancarios'
+        'fin_movimientos_bancarios',
+        'fin_cheques_vinculados'
     ];
 
     const resultado = {

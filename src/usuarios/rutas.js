@@ -10,6 +10,95 @@ const { autenticarToken } = require('./middleware');
 router.post('/login', login);
 router.get('/usuarios/me', autenticarToken, usuarioActual);
 
+// --- OBTENER TARIFAS VIGENTES DE COLABORADORES ---
+router.get('/usuarios/tarifas', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id as usuario_id, u.nombre_completo, u.usuario, u.activo as usuario_activo,
+             t.valor_hora, t.fecha_desde
+      FROM public.usuarios u
+      LEFT JOIN public.colaboradores_tarifas t ON u.id = t.usuario_id AND t.activo = true
+      WHERE u.activo = true
+      ORDER BY u.nombre_completo ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener tarifas de colaboradores:', error);
+    res.status(500).json({ error: 'Error interno al obtener tarifas' });
+  }
+});
+
+// --- OBTENER HISTORIAL DE TARIFAS DE UN COLABORADOR ---
+router.get('/usuarios/:id/tarifas/historial', async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const result = await pool.query(`
+      SELECT id, valor_hora, fecha_desde, fecha_hasta, activo, creado_en
+      FROM public.colaboradores_tarifas
+      WHERE usuario_id = $1
+      ORDER BY fecha_desde DESC, id DESC
+    `, [userId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener historial de tarifas:', error);
+    res.status(500).json({ error: 'Error interno al obtener historial de tarifas' });
+  }
+});
+
+// --- ACTUALIZAR TARIFA DE UN COLABORADOR (CREANDO HISTORIAL) ---
+router.post('/usuarios/:id/tarifas', async (req, res) => {
+  const userId = req.params.id;
+  const { valor_hora } = req.body;
+
+  if (valor_hora === undefined || isNaN(parseFloat(valor_hora)) || parseFloat(valor_hora) < 0) {
+    return res.status(400).json({ error: 'El valor de la hora debe ser un número mayor o igual a cero' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Obtener la tarifa activa actual
+    const currentActiveRes = await client.query(`
+      SELECT id, valor_hora 
+      FROM public.colaboradores_tarifas 
+      WHERE usuario_id = $1 AND activo = true
+    `, [userId]);
+
+    if (currentActiveRes.rowCount > 0) {
+      const activeTarifa = currentActiveRes.rows[0];
+      
+      // Si el valor es idéntico, no hacemos nada
+      if (parseFloat(activeTarifa.valor_hora) === parseFloat(valor_hora)) {
+        await client.query('COMMIT');
+        return res.json({ success: true, message: 'La tarifa ya tiene este valor.', unchanged: true });
+      }
+
+      // 2. Desactivar la tarifa actual
+      await client.query(`
+        UPDATE public.colaboradores_tarifas 
+        SET activo = false, fecha_hasta = CURRENT_TIMESTAMP 
+        WHERE id = $1
+      `, [activeTarifa.id]);
+    }
+
+    // 3. Insertar la nueva tarifa
+    await client.query(`
+      INSERT INTO public.colaboradores_tarifas (usuario_id, valor_hora, fecha_desde, activo)
+      VALUES ($1, $2, CURRENT_TIMESTAMP, true)
+    `, [userId, valor_hora]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Tarifa actualizada correctamente y registrada en el historial' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al actualizar tarifa de colaborador:', error);
+    res.status(500).json({ error: 'Error interno al actualizar tarifa' });
+  } finally {
+    client.release();
+  }
+});
+
 // --- OBTENER USUARIO POR ID ---
 router.get('/usuarios/:id', async (req, res) => {
   const userId = req.params.id;

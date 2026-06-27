@@ -81,10 +81,34 @@ const crearBorrador = async (datos) => {
 
         // 6. Crear factura en transacción
         const factura = await ejecutarTransaccion(async (client) => {
+            // Calcular número secuencial para el borrador
+            let cbteNro = datos.cbte_nro || null;
+            if (!cbteNro && datos.pto_vta && datos.tipo_cbte) {
+                const resNum = await client.query(
+                    `SELECT COALESCE(MAX(cbte_nro), 0) as max_nro 
+                     FROM factura_facturas 
+                     WHERE pto_vta = $1 AND tipo_cbte = $2`,
+                    [datos.pto_vta, datos.tipo_cbte]
+                );
+                
+                const resAfipNum = await client.query(
+                    `SELECT ultimo_cbte_afip 
+                     FROM factura_numeracion_afip 
+                     WHERE pto_vta = $1 AND tipo_cbte = $2`,
+                    [datos.pto_vta, datos.tipo_cbte]
+                );
+                
+                let maxNro = parseInt(resNum.rows[0]?.max_nro || 0);
+                let afipNro = parseInt(resAfipNum.rows[0]?.ultimo_cbte_afip || 0);
+                
+                cbteNro = Math.max(maxNro, afipNro) + 1;
+                console.log(`🔢 [FACTURACION-SERVICE] Pre-asignando número secuencial borrador: ${cbteNro}`);
+            }
+
             // Insertar cabecera
             const queryCabecera = `
                 INSERT INTO factura_facturas (
-                    tipo_cbte, pto_vta, concepto, fecha_emision,
+                    tipo_cbte, pto_vta, cbte_nro, concepto, fecha_emision,
                     cliente_id, doc_tipo, doc_nro, condicion_iva_id,
                     moneda, mon_cotiz,
                     imp_neto, imp_iva, imp_trib, imp_total,
@@ -94,7 +118,7 @@ const crearBorrador = async (datos) => {
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                     $11, $12, $13, $14, $15, $16, $17, $18,
-                    $19, $20, $21, $22
+                    $19, $20, $21, $22, $23
                 )
                 RETURNING *
             `;
@@ -102,6 +126,7 @@ const crearBorrador = async (datos) => {
             const resultadoCabecera = await client.query(queryCabecera, [
                 datos.tipo_cbte,
                 datos.pto_vta,
+                cbteNro,
                 datos.concepto,
                 datos.fecha_emision || fechaActual(),
                 cliente.cliente_id || null,
@@ -118,10 +143,10 @@ const crearBorrador = async (datos) => {
                 datos.requiere_afip !== false, // Por defecto true
                 datos.serie_interna || null,
                 datos.presupuesto_id || null,
-                datos.factura_asociada_id || null, // $19
-                paraBD(), // $20
+                datos.factura_asociada_id || null, // $20
                 paraBD(), // $21
-                paraBD() // $22
+                paraBD(), // $22
+                paraBD() // $23
             ]);
 
             const facturaCreada = resultadoCabecera.rows[0];
@@ -281,8 +306,8 @@ const emitirAfip = async (factura) => {
             if (estado === 'APROBADA') {
                 await cuentaCorrienteService.registrarFactura(resultado.rows[0], client);
                 
-                // Si es del puesto 32, mover stock
-                if (resultado.rows[0].pto_vta === 32) {
+                // Si es del puesto 32 o 90, mover stock
+                if (resultado.rows[0].pto_vta === 32 || resultado.rows[0].pto_vta === 90) {
                     await registrarMovimientosStockFactura(resultado.rows[0], client);
                 }
                 
@@ -341,8 +366,9 @@ const emitirInterna = async (factura) => {
     try {
         return await ejecutarTransaccion(async (client) => {
             // 1. Obtener siguiente número interno
-            const nroInterno = await nextInterno(factura.serie_interna);
-            console.log(`🔢 [FACTURACION-SERVICE] Número interno asignado: ${factura.serie_interna}-${nroInterno}`);
+            const serie = factura.serie_interna || (factura.pto_vta === 90 ? 'X' : 'I');
+            const nroInterno = await nextInterno(serie);
+            console.log(`🔢 [FACTURACION-SERVICE] Número interno asignado: ${serie}-${nroInterno}`);
 
             // 2. Actualizar factura
             const queryUpdate = `
@@ -350,8 +376,9 @@ const emitirInterna = async (factura) => {
                 SET 
                     nro_interno = $1,
                     estado = $2,
-                    updated_at = $3
-                WHERE id = $4
+                    updated_at = $3,
+                    serie_interna = $4
+                WHERE id = $5
                 RETURNING *
             `;
 
@@ -359,6 +386,7 @@ const emitirInterna = async (factura) => {
                 nroInterno,
                 'APROBADA_LOCAL',
                 paraBD(),
+                serie,
                 factura.id
             ]);
 
@@ -366,8 +394,8 @@ const emitirInterna = async (factura) => {
 
             await cuentaCorrienteService.registrarFactura(resultado.rows[0], client);
 
-            // Si es del puesto 32, mover stock
-            if (resultado.rows[0].pto_vta === 32) {
+            // Si es del puesto 32 o 90, mover stock
+            if (resultado.rows[0].pto_vta === 32 || resultado.rows[0].pto_vta === 90) {
                 await registrarMovimientosStockFactura(resultado.rows[0], client);
             }
 
@@ -391,7 +419,7 @@ const emitirInterna = async (factura) => {
                     console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} desvinculado de factura y restaurado a 'Presupuesto/Orden' (Emisión Interna)`);
                 }
             } else if (resultado.rows[0].presupuesto_id) {
-                // Actualizar estado de presupuesto de origen a 'Facturado'
+                // Actualizar estado de presupuesto de origen a 'Facturado' (incluso para Puesto 90, la entrega se controla de forma manual en el depósito)
                 await client.query(
                     `UPDATE public.presupuestos SET estado = 'Facturado' WHERE id = $1`,
                     [resultado.rows[0].presupuesto_id]
@@ -498,13 +526,16 @@ const obtenerPorId = async (id) => {
         const queryFactura = `
             SELECT 
                 f.*,
+                bc.id as bunker_cliente_id,
                 COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
                 COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
                 COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
                 COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
                 COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
                 COALESCE(p.descuento, 0) as descuento,
-                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas
+                COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas,
+                bc.email_facturas as email_facturas,
+                COALESCE(bc.canal_envio_preferido, 'whatsapp') as canal_envio_preferido
             FROM factura_facturas f
             LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
             LEFT JOIN bunker_clientes bc ON 
@@ -527,10 +558,22 @@ const obtenerPorId = async (id) => {
         // Obtener items de la factura con nombre del artículo
         const queryItems = `
             SELECT 
-                i.*,
-                COALESCE(a.nombre, i.descripcion) as descripcion
-            FROM factura_factura_items i
-            LEFT JOIN articulos a ON a.codigo_barras = i.descripcion
+                i.id, 
+                i.factura_id, 
+                i.qty, 
+                i.p_unit, 
+                i.alic_iva_id, 
+                i.imp_neto, 
+                i.imp_iva, 
+                i.orden, 
+                i.created_at,
+                COALESCE(
+                    a.nombre, 
+                    (SELECT nombre FROM public.articulos WHERE codigo_barras = REPLACE(i.descripcion, 'Devolución: ', '') OR numero = REPLACE(i.descripcion, 'Devolución: ', '') LIMIT 1),
+                    i.descripcion
+                ) as descripcion
+            FROM public.factura_factura_items i
+            LEFT JOIN public.articulos a ON (a.codigo_barras = i.descripcion OR a.numero = i.descripcion)
             WHERE i.factura_id = $1
             ORDER BY i.orden ASC
         `;
@@ -728,11 +771,52 @@ const registrarMovimientosStockFactura = async (factura, client) => {
             docDesc = esInterna ? 'Factura Interna' : `Factura ${letra}`;
         }
         
-        const obs = `${docDesc} #32-${nroComprobante}`;
+        const obs = `${docDesc} #${factura.pto_vta}-${nroComprobante}`;
         const tipoMov = esNotaCredito ? 'ingreso' : 'egreso';
         const qtyDelta = esNotaCredito ? qty : -qty;
 
         console.log(`   - Resolvió: "${item.descripcion}" -> Código: ${articuloNumero} (${codigoBarras}) | Cantidad: ${qty} | Mov: ${tipoMov}`);
+
+        // Verificar si el artículo resuelto es un pack en public.stock_real_consolidado
+        const packConfigRes = await client.query(`
+            SELECT es_pack, pack_hijo_codigo, pack_unidades 
+            FROM public.stock_real_consolidado 
+            WHERE articulo_numero = $1
+        `, [articuloNumero]);
+
+        let targetArticuloNumero = articuloNumero;
+        let targetCodigoBarras = codigoBarras;
+        let targetQty = qty;
+        let targetQtyDelta = qtyDelta;
+        let targetObs = obs;
+
+        if (packConfigRes.rows.length > 0) {
+            const packRow = packConfigRes.rows[0];
+            if (packRow.es_pack && packRow.pack_hijo_codigo && parseInt(packRow.pack_unidades, 10) > 0) {
+                const packHijoCodigo = packRow.pack_hijo_codigo;
+                const packUnidades = parseInt(packRow.pack_unidades, 10);
+
+                // Buscar el artículo hijo en public.articulos
+                const childArtRes = await client.query(`
+                    SELECT numero, nombre, codigo_barras 
+                    FROM public.articulos 
+                    WHERE codigo_barras = $1 OR numero = $1
+                    LIMIT 1
+                `, [packHijoCodigo]);
+
+                if (childArtRes.rows.length > 0) {
+                    const childArt = childArtRes.rows[0];
+                    targetArticuloNumero = childArt.numero;
+                    targetCodigoBarras = childArt.codigo_barras || null;
+                    targetQty = qty * packUnidades;
+                    targetQtyDelta = esNotaCredito ? targetQty : -targetQty;
+                    targetObs = `${obs} (Componente de Pack: ${resolvedArt.nombre || item.descripcion})`;
+                    console.log(`   📦 [FACTURACION-SERVICE] Detectado artículo pack. Derivando a artículo hijo: "${childArt.nombre}" (${targetArticuloNumero}) | Cantidad total: ${targetQty}`);
+                } else {
+                    console.warn(`⚠️ [FACTURACION-SERVICE] El artículo "${articuloNumero}" está marcado como pack pero no se encontró el artículo hijo con código/número "${packHijoCodigo}". Se descontará del pack directamente.`);
+                }
+            }
+        }
 
         // Insertar en stock_ventas_movimientos
         const insertMovQuery = `
@@ -742,11 +826,11 @@ const registrarMovimientosStockFactura = async (factura, client) => {
             ) VALUES ($1, $2, 0, $3, NULL, NULL, NOW(), $4, $5, 'facturacion')
         `;
         await client.query(insertMovQuery, [
-            articuloNumero,
-            codigoBarras,
-            qty,
+            targetArticuloNumero,
+            targetCodigoBarras,
+            targetQty,
             tipoMov,
-            obs
+            targetObs
         ]);
 
         // Insertar/Actualizar en stock_real_consolidado
@@ -761,13 +845,13 @@ const registrarMovimientosStockFactura = async (factura, client) => {
                 ultima_actualizacion = NOW()
         `;
         await client.query(updateStockQuery, [
-            articuloNumero,
-            qtyDelta
+            targetArticuloNumero,
+            targetQtyDelta
         ]);
 
         // Recalcular stock_consolidado
-        await recalcularStockConsolidado(client, articuloNumero);
-        console.log(`   ✅ Movimiento e incremento/decremento completado para artículo: ${articuloNumero}`);
+        await recalcularStockConsolidado(client, targetArticuloNumero);
+        console.log(`   ✅ Movimiento e incremento/decremento completado para artículo: ${targetArticuloNumero}`);
     }
 };
 

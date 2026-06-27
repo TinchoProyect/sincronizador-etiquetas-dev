@@ -173,7 +173,8 @@ const crearPresupuesto = async (req, res) => {
             origen_facturacion, // NUEVO FASE 2: Ruta Inversa
             origen_punto_venta,
             origen_numero_factura,
-            detalles_sin_stock = []
+            detalles_sin_stock = [],
+            usar_precios_bunker = false
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Datos recibidos:`, {
@@ -294,8 +295,8 @@ const crearPresupuesto = async (req, res) => {
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion, origen_punto_venta, origen_numero_factura)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16, $17, $18)
+                nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion, origen_punto_venta, origen_numero_factura, usar_precios_bunker)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16, $17, $18, $19)
                 RETURNING *
             `;
 
@@ -317,7 +318,8 @@ const crearPresupuesto = async (req, res) => {
                 estado_logistico || null, // NUEVO: Se guarda lo que viene del front
                 resolvedOrigenFacturacion, // NUEVO FASE 2: Resuelto iterativamente
                 pVentaStr,
-                nFacturaStr
+                nFacturaStr,
+                usar_precios_bunker === true || usar_precios_bunker === 'true'
             ]);
 
             const presupuestoBD = headerResult.rows[0];
@@ -571,7 +573,8 @@ const editarPresupuesto = async (req, res) => {
             origen_numero_factura, // NUEVO FASE 2
             metodo_retiro, // NUEVO FASE 2
             chk_tramite_administrativo, // NUEVO FASE 2
-            detalles_sin_stock = []
+            detalles_sin_stock = [],
+            usar_precios_bunker
         } = req.body;
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - Editando presupuesto ID: ${id}`);
@@ -808,6 +811,12 @@ const editarPresupuesto = async (req, res) => {
                 paramCount++;
                 updates.push(`metodo_retiro = $${paramCount}`);
                 params.push(metodo_retiro);
+            }
+
+            if (usar_precios_bunker !== undefined) {
+                paramCount++;
+                updates.push(`usar_precios_bunker = $${paramCount}`);
+                params.push(usar_precios_bunker === true || usar_precios_bunker === 'true');
             }
 
             // CORRECCIÓN: Respetar secuencia si viene en el payload (no forzar Imprimir ciegamente)

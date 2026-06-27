@@ -19,7 +19,7 @@ async function autoAsignarDomicilios(pool) {
                     p.id_cliente,
                     c.id as cliente_id_interno
                 FROM presupuestos p
-                INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
+                INNER JOIN clientes c ON c.cliente_id::text = ltrim(p.id_cliente, '0')
                 WHERE 
                     p.secuencia = 'Pedido_Listo'
                     AND p.estado IN ('Presupuesto/Orden', 'Orden de Tratamiento', 'Orden de Retiro', 'Facturado', 'Administrativa NC', 'Enviado a Facturación')
@@ -135,7 +135,7 @@ async function obtenerPresupuestosDisponibles(pool) {
         FROM presupuestos p
         
         -- JOIN con clientes: conversión explícita de tipos (cliente_id es INTEGER, id_cliente es TEXT)
-        INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
+        INNER JOIN clientes c ON c.cliente_id::text = ltrim(p.id_cliente, '0')
         
         -- LEFT JOIN con domicilios (puede no tener domicilio asignado)
         LEFT JOIN clientes_domicilios cd ON cd.id = p.id_domicilio_entrega
@@ -251,7 +251,7 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
         FROM presupuestos p
         
         -- JOIN con clientes: conversión explícita de tipos (cliente_id es INTEGER, id_cliente es TEXT)
-        INNER JOIN clientes c ON c.cliente_id::text = p.id_cliente
+        INNER JOIN clientes c ON c.cliente_id::text = ltrim(p.id_cliente, '0')
         
         LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
         

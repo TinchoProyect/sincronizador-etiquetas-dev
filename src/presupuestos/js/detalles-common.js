@@ -24,7 +24,9 @@ window.Detalles = {
     setupArticuloAutocomplete: setupArticuloAutocomplete,
     toggleSinStock: toggleSinStock,
     toggleClearButton: toggleClearButton,
-    limpiarInputArticulo: limpiarInputArticulo
+    limpiarInputArticulo: limpiarInputArticulo,
+    renderPriceBadge: renderPriceBadge,
+    togglePriceSource: togglePriceSource
 };
 
 // === Modo IVA según tipo de comprobante ===
@@ -98,6 +100,7 @@ function agregarDetalle() {
                             style="position: absolute; right: 5px; background: none; border: none; font-size: 18px; cursor: pointer; color: #999; display: none;"
                             title="Limpiar campo">&times;</button>
                     </div>
+                    <div class="price-source-container" id="price-source-container-${window.Detalles.detalleCounter}" style="margin-top: 4px; display: none;"></div>
                 </td>
                 <td>
                     <input type="number" name="detalles[${window.Detalles.detalleCounter}][cantidad]"
@@ -225,7 +228,7 @@ function calcularPrecio(detalleId) {
     const cantidadInput = document.querySelector(`input[name="detalles[${detalleId}][cantidad]"]`);
     const valor1Input = document.querySelector(`input[name="detalles[${detalleId}][valor1]"]`);
     const iva1Input = document.querySelector(`input[name="detalles[${detalleId}][iva1]"]`);
-    const precio1Input = document.querySelector(`input[name="detalles[${detalleId}][precio1]`);
+    const precio1Input = document.querySelector(`input[name="detalles[${detalleId}][precio1]"]`);
 
     if (!cantidadInput || !valor1Input || !iva1Input || !precio1Input) return;
 
@@ -902,10 +905,16 @@ const handleArticuloInput = debounce(async function(event) {
         } else {
             console.log(`[ARTICULOS] Fetch para servidor: "${queryParaServidor}".`);
 
+            const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+            const clienteIdInput = document.getElementById('id_cliente');
+            const clienteId = clienteIdInput ? parseInt(clienteIdInput.value, 10) || 0 : 0;
+            let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500&cliente_id=${clienteId}`;
+            if (usarPreciosBunker) url += '&usar_precios_bunker=true';
+            
             const controller = new AbortController();
             window.__articulosCurrentRequest = controller;
 
-            const response = await fetch(`/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500`, {
+            const response = await fetch(url, {
                 signal: controller.signal
             });
             
@@ -1261,47 +1270,81 @@ function seleccionarArticulo(input, element) {
     return r.json();
   };
 
+  const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+
   (async () => {
     let valor, iva;
+    let valorBunker = null, ivaBunker = null;
+    let valorLegacy = null, ivaLegacy = null;
 
-    // 1) por código de barras
     try {
-      const p = new URLSearchParams();
-      p.set('cliente_id', String(clienteId));
-      if (codigoBarras) p.set('codigo_barras', codigoBarras);
-      let body = await fetchPrecios(p);
-      valor = Number(body?.data?.valor1);
-      iva   = Number(body?.data?.iva);
-    } catch (e1) {
-      console.warn('⚠️ [ARTICULOS] No respondió por código de barras. Probando por descripción…', e1);
-    }
-
-    // 2) fallback por descripción (si aún no tengo datos válidos)
-    if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
-      try {
-        const p2 = new URLSearchParams();
-        p2.set('cliente_id', String(clienteId));
-        if (description) p2.set('descripcion', description);
-        const body2 = await fetchPrecios(p2);
-        valor = Number(body2?.data?.valor1);
-        iva   = Number(body2?.data?.iva);
-      } catch (e2) {
-        console.warn('⚠️ [ARTICULOS] Tampoco por descripción:', e2);
+      const pBunker = new URLSearchParams({ cliente_id: String(clienteId), usar_precios_bunker: 'true' });
+      const pLegacy = new URLSearchParams({ cliente_id: String(clienteId) });
+      if (codigoBarras) {
+        pBunker.set('codigo_barras', codigoBarras);
+        pLegacy.set('codigo_barras', codigoBarras);
+      } else if (description) {
+        pBunker.set('descripcion', description);
+        pLegacy.set('descripcion', description);
       }
+
+      const [resBunker, resLegacy] = await Promise.all([
+        fetchPrecios(pBunker).catch(e => { console.warn('Bunker price fetch failed:', e); return null; }),
+        fetchPrecios(pLegacy).catch(e => { console.warn('Legacy price fetch failed:', e); return null; })
+      ]);
+
+      if (resBunker && resBunker.data) {
+        valorBunker = Number(resBunker.data.valor1);
+        ivaBunker = Number(resBunker.data.iva);
+      }
+      if (resLegacy && resLegacy.data) {
+        valorLegacy = Number(resLegacy.data.valor1);
+        ivaLegacy = Number(resLegacy.data.iva);
+      }
+    } catch (e) {
+      console.error('Error fetching prices in parallel:', e);
     }
 
-    // setear si hay datos
+    const activeSource = usarPreciosBunker ? 'bunker' : 'legacy';
+    if (row) {
+      row.dataset.priceBunker = valorBunker !== null ? String(valorBunker) : '';
+      row.dataset.ivaBunker = ivaBunker !== null ? String(ivaBunker) : '21';
+      row.dataset.priceLegacy = valorLegacy !== null ? String(valorLegacy) : '';
+      row.dataset.ivaLegacy = ivaLegacy !== null ? String(ivaLegacy) : '21';
+      row.dataset.priceSource = activeSource;
+    }
+
+    valor = activeSource === 'bunker' ? valorBunker : valorLegacy;
+    iva = activeSource === 'bunker' ? ivaBunker : ivaLegacy;
+
+    // Fallback si el precio activo no tiene valor
+    if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'bunker' && valorLegacy > 0) {
+      valor = valorLegacy;
+      iva = ivaLegacy;
+      if (row) row.dataset.priceSource = 'legacy';
+    } else if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'legacy' && valorBunker > 0) {
+      valor = valorBunker;
+      iva = ivaBunker;
+      if (row) row.dataset.priceSource = 'bunker';
+    }
+
+    if (valor === null || isNaN(valor)) {
+      valor = 0;
+      iva = 21;
+    }
+
     if (Number.isFinite(valor) && valor1Input) setNumeric(valor1Input, valor, 2, 0);
     if (Number.isFinite(iva) && iva1Input) {
-        // guardar la base real del IVA que vino del backend
-        iva1Input.dataset.ivaBase = String(iva);
-        // mostrar mitad si el tipo es Remito-Efectivo
-        const tipoSel = document.getElementById('tipo_comprobante');
-        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
-        setNumeric(iva1Input, visibleIva, 2, 21);
-        }
+      iva1Input.dataset.ivaBase = String(iva);
+      const tipoSel = document.getElementById('tipo_comprobante');
+      const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+      setNumeric(iva1Input, visibleIva, 2, 21);
+    }
 
-    if (detalleId != null) calcularPrecio(detalleId);
+    if (detalleId != null) {
+      renderPriceBadge(detalleId);
+      calcularPrecio(detalleId);
+    }
     setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
   })();
 }
@@ -1379,3 +1422,210 @@ document.addEventListener('DOMContentLoaded', initDetallesCommon);
 window.initDetallesCommon = initDetallesCommon;
 
 console.log('📦 [DETALLES-COMMON] Módulo cargado correctamente');
+
+/**
+ * Dibujar el badge de origen de precio para un renglón
+ */
+function renderPriceBadge(detalleId) {
+    const row = document.getElementById(`detalle-${detalleId}`);
+    if (!row) return;
+
+    const container = document.getElementById(`price-source-container-${detalleId}`);
+    if (!container) return;
+
+    const source = row.dataset.priceSource || 'bunker';
+    const isBunker = source === 'bunker';
+    
+    const priceBunker = parseFloat(row.dataset.priceBunker) || 0;
+    const priceLegacy = parseFloat(row.dataset.priceLegacy) || 0;
+    
+    container.innerHTML = `
+        <span class="price-source-badge ${isBunker ? 'badge-bunker' : 'badge-legacy'}" 
+              onclick="window.Detalles.togglePriceSource(this)" 
+              title="Click para cambiar a lista ${isBunker ? 'Legacy' : 'Búnker'} (Búnker: $${priceBunker.toFixed(2)} | Legacy: $${priceLegacy.toFixed(2)})">
+            ${isBunker ? 'Búnker' : 'Legacy'}
+        </span>
+    `;
+    container.style.display = 'none';
+}
+
+/**
+ * Alternar origen de precios de la fila
+ */
+async function togglePriceSource(badgeElement) {
+    const row = badgeElement.closest('tr');
+    if (!row) return;
+
+    const id = getDetalleIdFromInput(row.querySelector('input[name*="[cantidad]"]'));
+    if (id === null) return;
+
+    const currentSource = row.dataset.priceSource || 'bunker';
+    const nextSource = currentSource === 'bunker' ? 'legacy' : 'bunker';
+
+    let priceBunker = parseFloat(row.dataset.priceBunker);
+    let priceLegacy = parseFloat(row.dataset.priceLegacy);
+    let ivaBunker = parseFloat(row.dataset.ivaBunker);
+    let ivaLegacy = parseFloat(row.dataset.ivaLegacy);
+
+    if (isNaN(priceBunker) || isNaN(priceLegacy)) {
+        badgeElement.classList.add('price-source-loading');
+        badgeElement.innerText = 'Cargando...';
+
+        const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+        const codigoBarras = row.querySelector('input[name*="[articulo]"]')?.dataset.codigoBarras || '';
+        const description = row.querySelector('input[name*="[articulo]"]')?.value || '';
+
+        try {
+            const pBunker = new URLSearchParams({ cliente_id: String(clienteId), usar_precios_bunker: 'true' });
+            const pLegacy = new URLSearchParams({ cliente_id: String(clienteId) });
+            if (codigoBarras) {
+                pBunker.set('codigo_barras', codigoBarras);
+                pLegacy.set('codigo_barras', codigoBarras);
+            } else if (description) {
+                pBunker.set('descripcion', description);
+                pLegacy.set('descripcion', description);
+            }
+
+            const [resBunker, resLegacy] = await Promise.all([
+                fetch(`/api/presupuestos/precios?${pBunker.toString()}`).then(r => r.json()).catch(() => null),
+                fetch(`/api/presupuestos/precios?${pLegacy.toString()}`).then(r => r.json()).catch(() => null)
+            ]);
+
+            priceBunker = resBunker?.data?.valor1 !== undefined ? Number(resBunker.data.valor1) : 0;
+            ivaBunker = resBunker?.data?.iva !== undefined ? Number(resBunker.data.iva) : 21;
+            priceLegacy = resLegacy?.data?.valor1 !== undefined ? Number(resLegacy.data.valor1) : 0;
+            ivaLegacy = resLegacy?.data?.iva !== undefined ? Number(resLegacy.data.iva) : 21;
+
+            row.dataset.priceBunker = String(priceBunker);
+            row.dataset.ivaBunker = String(ivaBunker);
+            row.dataset.priceLegacy = String(priceLegacy);
+            row.dataset.ivaLegacy = String(ivaLegacy);
+        } catch (err) {
+            console.error('Error fetching alternative prices:', err);
+            badgeElement.classList.remove('price-source-loading');
+            renderPriceBadge(id);
+            return;
+        }
+        badgeElement.classList.remove('price-source-loading');
+    }
+
+    row.dataset.priceSource = nextSource;
+    const nextPrice = nextSource === 'bunker' ? priceBunker : priceLegacy;
+    const nextIva = nextSource === 'bunker' ? ivaBunker : ivaLegacy;
+
+    const valor1Input = row.querySelector('input[name*="[valor1]"]');
+    const iva1Input = row.querySelector('input[name*="[iva1]"]');
+
+    if (valor1Input) setNumeric(valor1Input, nextPrice, 2, 0);
+    if (iva1Input) {
+        iva1Input.dataset.ivaBase = String(nextIva);
+        const tipoSel = document.getElementById('tipo_comprobante');
+        const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (nextIva / 2) : nextIva;
+        setNumeric(iva1Input, visibleIva, 2, 21);
+    }
+
+    renderPriceBadge(id);
+    calcularPrecio(id);
+    recalcTotales();
+}
+
+// Función global de conmutación de Modo Bunker para Edición
+window.conmutarModoBunker = async function() {
+    const switchInput = document.getElementById('usar_precios_bunker');
+    const label = document.getElementById('bunker-switch-label');
+    
+    if (!switchInput) return;
+    
+    const usarPreciosBunker = switchInput.checked;
+    
+    if (label) {
+        label.innerText = usarPreciosBunker ? 'Activo' : 'Inactivo';
+        label.style.color = usarPreciosBunker ? '#166534' : '#475569';
+    }
+
+    const clienteIdInput = document.getElementById('id_cliente');
+    const clienteId = clienteIdInput ? parseInt(clienteIdInput.value, 10) || 0 : 0;
+    if (clienteId <= 0) return;
+
+    const tbody = document.getElementById('detalles-tbody');
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr[id^="detalle-"]'));
+    if (rows.length === 0) return;
+
+    console.log(`🛡️ [PRESUPUESTOS-COMMON] Recalculando grilla globalmente en Modo ${usarPreciosBunker ? 'Búnker' : 'Legacy'}`);
+
+    // Limpiar caché local de búsqueda si existiera
+    window.__articulosSearchCache = {};
+
+    tbody.style.opacity = '0.6';
+
+    const promises = rows.map(async (row) => {
+        const artInput = row.querySelector('input[name*="[articulo]"]');
+        if (!artInput || !artInput.value.trim()) return;
+
+        const codigoBarras = artInput.dataset.codigoBarras || artInput.dataset.articuloNumero || '';
+        const description = artInput.value.trim();
+
+        let valor = 0;
+        let iva = 21;
+        
+        try {
+            const p = new URLSearchParams({ cliente_id: String(clienteId) });
+            if (codigoBarras) p.set('codigo_barras', codigoBarras);
+            else if (description) p.set('descripcion', description);
+            
+            if (usarPreciosBunker) p.set('usar_precios_bunker', 'true');
+
+            const url = `/api/presupuestos/precios?${p.toString()}`;
+            const res = await fetch(url).then(r => r.json());
+            if (res.success && res.data) {
+                valor = Number(res.data.valor1) || 0;
+                iva = Number(res.data.iva) || 21;
+            }
+        } catch (e) {
+            console.error(`Error al recuperar precio para la fila:`, e);
+        }
+
+        // Recuperar descripción según el modo (Búnker o Legacy)
+        let friendlyDesc = description;
+        if (codigoBarras) {
+            try {
+                let sugUrl = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(codigoBarras)}&limit=1&cliente_id=${clienteId}`;
+                if (usarPreciosBunker) sugUrl += '&usar_precios_bunker=true';
+                
+                const sugRes = await fetch(sugUrl).then(r => r.json());
+                const arr = Array.isArray(sugRes) ? sugRes : (sugRes.data || sugRes.items || []);
+                if (arr.length > 0) {
+                    friendlyDesc = arr[0].descripcion || arr[0].nombre || description;
+                }
+            } catch (e) {
+                console.error(`Error al recuperar descripción amistosa:`, e);
+            }
+        }
+
+        const valor1Input = row.querySelector('input[name*="[valor1]"]');
+        const iva1Input = row.querySelector('input[name*="[iva1]"]');
+        const cantidadInput = row.querySelector('input[name*="[cantidad]"]');
+        const detalleId = getDetalleIdFromInput(cantidadInput || artInput);
+
+        artInput.value = friendlyDesc;
+        
+        if (valor1Input) setNumeric(valor1Input, valor, 2, 0);
+        if (iva1Input) {
+            iva1Input.dataset.ivaBase = String(iva);
+            const tipoSel = document.getElementById('tipo_comprobante');
+            const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (iva / 2) : iva;
+            setNumeric(iva1Input, visibleIva, 2, 21);
+        }
+
+        if (detalleId != null) {
+            calcularPrecio(detalleId);
+        }
+    });
+
+    await Promise.all(promises);
+    tbody.style.opacity = '1';
+
+    recalcTotales();
+};

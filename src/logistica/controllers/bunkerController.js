@@ -53,11 +53,14 @@ exports.obtenerPlantillaPorTermino = async (req, res) => {
         }
 
         const db = req.db;
-        
         const sqlPlantilla = `
-            SELECT jsonb_object_keys(propiedades_dinamicas) as categoria, count(*) as uso
-            FROM public.bunker_articulos
-            WHERE descripcion ILIKE $1 OR descripcion_generada ILIKE $1
+            SELECT categoria, count(*) as uso
+            FROM (
+                SELECT jsonb_object_keys(propiedades_dinamicas) as categoria
+                FROM public.bunker_articulos
+                WHERE descripcion ILIKE $1 OR descripcion_generada ILIKE $1
+            ) sub
+            WHERE categoria NOT LIKE 'asistente_%'
             GROUP BY categoria
             ORDER BY uso DESC
         `;
@@ -67,7 +70,7 @@ exports.obtenerPlantillaPorTermino = async (req, res) => {
         const sqlDict = `
             SELECT categoria, termino, abreviatura 
             FROM public.bunker_diccionario 
-            WHERE categoria NOT IN ('general', 'articulo_principal', '')
+            WHERE categoria NOT IN ('general', 'articulo_principal', '') AND categoria NOT LIKE 'asistente_%'
             ORDER BY categoria, termino
         `;
         const resultDict = await db.query(sqlDict);
@@ -281,9 +284,15 @@ exports.obtenerRadiografiaFinanciera = async (req, res) => {
 exports.actualizarEstructuraFinanciera = async (req, res) => {
     try {
         const { id } = req.params;
-        const { costo_base, margenes, configs } = req.body;
+        const { costo_base, margenes, configs, asistente_colaborador_id, asistente_minutos } = req.body;
         
-        await BunkerService.actualizarEstructuraFinancieraTransaccional(req.db, id, { costo_base, margenes, configs });
+        await BunkerService.actualizarEstructuraFinancieraTransaccional(req.db, id, { 
+            costo_base, 
+            margenes, 
+            configs, 
+            asistente_colaborador_id, 
+            asistente_minutos 
+        });
         res.json({ success: true, message: 'Estructura financiera actualizada exitosamente' });
     } catch (error) {
         console.error(`❌ [BUNKER] Error actualizando finanzas ${req.params.id}:`, error);
@@ -1021,18 +1030,25 @@ exports.imprimirEtiquetaDobleBunker = async (req, res) => {
 
         const articulo = artRes.rows[0];
 
-        // B. Consultar el último lote activo
-        const loteQuery = `
-            SELECT v.lote_id_supabase, v.lote_codigo_corto
-            FROM public.bunker_lotes_destinos d
-            JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
-            WHERE d.destino_id = $1 AND d.tipo_destino = 'ARTICULO_BUNKER'
-            ORDER BY v.fecha_vinculacion DESC
-            LIMIT 1
-        `;
-        const loteRes = await db.query(loteQuery, [id]);
-        const loteId = loteRes.rows.length > 0 ? loteRes.rows[0].lote_id_supabase : null;
-        const loteCodigoCorto = loteRes.rows.length > 0 ? loteRes.rows[0].lote_codigo_corto : null;
+        // B. Consultar el lote a utilizar (si viene en req.body usar ese, si no consultar el último lote activo)
+        const { lote_id_supabase, lote_codigo_corto, cantidad } = req.body || {};
+
+        let loteId = lote_id_supabase;
+        let loteCodigoCorto = lote_codigo_corto;
+
+        if (!loteId) {
+            const loteQuery = `
+                SELECT v.lote_id_supabase, v.lote_codigo_corto
+                FROM public.bunker_lotes_destinos d
+                JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                WHERE d.destino_id = $1 AND d.tipo_destino = 'ARTICULO_BUNKER'
+                ORDER BY v.fecha_vinculacion DESC
+                LIMIT 1
+            `;
+            const loteRes = await db.query(loteQuery, [id]);
+            loteId = loteRes.rows.length > 0 ? loteRes.rows[0].lote_id_supabase : null;
+            loteCodigoCorto = loteRes.rows.length > 0 ? loteRes.rows[0].lote_codigo_corto : null;
+        }
 
         // C. Invocar el script de impresión
         const { exec } = require('child_process');
@@ -1059,8 +1075,8 @@ exports.imprimirEtiquetaDobleBunker = async (req, res) => {
 
         fs.writeFileSync(tempDataPath, JSON.stringify(datosImpresion, null, 2));
 
-        // Por defecto imprimimos 2 copias (representando 1 par de etiquetas físicas en la Zebra)
-        const command = `cd "${path.dirname(path.dirname(__dirname))}" && node "${scriptPath}" 2 "${tempDataPath}"`;
+        const cantidadImpresion = parseInt(cantidad, 10) || 2;
+        const command = `cd "${path.dirname(path.dirname(__dirname))}" && node "${scriptPath}" ${cantidadImpresion} "${tempDataPath}"`;
 
         exec(command, (error, stdout, stderr) => {
             // Limpieza
@@ -1083,6 +1099,119 @@ exports.imprimirEtiquetaDobleBunker = async (req, res) => {
 
     } catch (error) {
         console.error('❌ Error en imprimirEtiquetaDobleBunker:', error);
+        res.status(500).json({ success: false, error: 'Error interno del servidor procesando la impresión' });
+    }
+};
+
+// 🖨️ [FASE 4 - IMPRESIÓN ASIMÉTRICA] Invocación directa del motor Zebra para etiqueta doble (ingrediente + lote)
+exports.imprimirEtiquetaDobleIngrediente = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = req.db;
+
+        console.log(`🖨️ [BUNKER-IMPRIMIR-ING] Solicitud recibida para ingrediente: ${id}`);
+
+        // A. Consultar los datos del ingrediente y su sector
+        const ingQuery = `
+            SELECT i.id, i.nombre, i.codigo, s.nombre as sector_nombre, s.descripcion as sector_descripcion
+            FROM public.ingredientes i
+            LEFT JOIN public.sectores_ingredientes s ON i.sector_id = s.id
+            WHERE i.id = $1
+        `;
+        const ingRes = await db.query(ingQuery, [id]);
+        if (ingRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Ingrediente no encontrado' });
+        }
+
+        const ingrediente = ingRes.rows[0];
+
+        // B. Consultar el lote a utilizar (si viene en req.body usar ese, si no consultar el último lote activo)
+        const { lote_id_supabase, lote_codigo_corto, cantidad } = req.body || {};
+
+        let loteId = lote_id_supabase;
+        let loteCodigoCorto = lote_codigo_corto;
+
+        if (!loteId) {
+            const loteQuery = `
+                SELECT v.lote_id_supabase, v.lote_codigo_corto
+                FROM public.bunker_lotes_destinos d
+                JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                WHERE d.destino_id = $1 AND d.tipo_destino = 'INGREDIENTE_PRODUCCION'
+                ORDER BY v.fecha_vinculacion DESC
+                LIMIT 1
+            `;
+            const loteRes = await db.query(loteQuery, [id]);
+            loteId = loteRes.rows.length > 0 ? loteRes.rows[0].lote_id_supabase : null;
+            loteCodigoCorto = loteRes.rows.length > 0 ? loteRes.rows[0].lote_codigo_corto : null;
+        }
+
+        // C. Normalizar la letra del sector
+        let sectorLetra = '';
+        const descSector = ingrediente.sector_descripcion || ingrediente.sector_nombre || '';
+        if (descSector) {
+            const match = descSector.match(/["']([^"']+)["']/);
+            if (match) {
+                sectorLetra = match[1];
+            } else if (descSector.includes('Sector')) {
+                sectorLetra = descSector.replace('Sector', '').replace(/["']/g, '').trim();
+            } else {
+                sectorLetra = descSector;
+            }
+        }
+        if (sectorLetra && sectorLetra.includes('-')) {
+            sectorLetra = sectorLetra.split('-')[0].trim();
+        }
+        sectorLetra = sectorLetra.toUpperCase();
+
+        // D. Invocar el script de impresión
+        const { exec } = require('child_process');
+        const path = require('path');
+        const fs = require('fs');
+
+        const scriptPath = path.resolve(__dirname, '../../scripts/imprimirEtiquetaIngredienteLote.js');
+        const tempDir = path.resolve(__dirname, '../../app-etiquetas/temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        const uniqueId = Date.now() + Math.random().toString(36).substring(7);
+        const tempFileName = `temp-ingrediente-lote-${uniqueId}.json`;
+        const tempDataPath = path.join(tempDir, tempFileName);
+
+        const datosImpresion = {
+            nombre: ingrediente.nombre || 'Sin Descripción',
+            codigo: ingrediente.codigo || '',
+            sector: sectorLetra,
+            lote_id: loteId,
+            lote_codigo_corto: loteCodigoCorto
+        };
+
+        fs.writeFileSync(tempDataPath, JSON.stringify(datosImpresion, null, 2));
+
+        const cantidadImpresion = parseInt(cantidad, 10) || 2;
+        const command = `cd "${path.dirname(path.dirname(__dirname))}" && node "${scriptPath}" ${cantidadImpresion} "${tempDataPath}"`;
+
+        exec(command, (error, stdout, stderr) => {
+            // Limpieza
+            try {
+                if (fs.existsSync(tempDataPath)) {
+                    fs.unlinkSync(tempDataPath);
+                }
+            } catch (e) {
+                console.error("Error eliminando temporal:", e);
+            }
+
+            if (error) {
+                console.error('❌ Error al ejecutar script de impresión de ingrediente+lote:', error);
+                return res.status(500).json({ success: false, error: 'Error al enviar orden a la impresora' });
+            }
+
+            console.log(`✅ Impresión enviada con éxito para ingrediente: ${id}`);
+            res.json({ success: true, message: 'Impresión de etiqueta doble de ingrediente enviada a la Zebra con éxito' });
+        });
+
+    } catch (error) {
+        console.error('❌ Error en imprimirEtiquetaDobleIngrediente:', error);
         res.status(500).json({ success: false, error: 'Error interno del servidor procesando la impresión' });
     }
 };

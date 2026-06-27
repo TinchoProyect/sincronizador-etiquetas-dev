@@ -60,6 +60,41 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * @route GET /api/logistica/usuarios/tarifas
+ * @desc Obtener lista de colaboradores con su tarifa horaria vigente
+ * @access Privado
+ */
+router.get('/tarifas', async (req, res) => {
+    console.log('🔍 [USUARIOS] Ruta GET /tarifas - Obteniendo colaboradores y sus tarifas');
+    
+    try {
+        const query = `
+            SELECT u.id as usuario_id, u.nombre_completo, u.usuario, u.activo as usuario_activo,
+                   t.valor_hora, t.fecha_desde
+            FROM public.usuarios u
+            LEFT JOIN public.colaboradores_tarifas t ON u.id = t.usuario_id AND t.activo = true
+            WHERE u.activo = true
+            ORDER BY u.nombre_completo ASC
+        `;
+        
+        const result = await req.db.query(query);
+        
+        res.json({
+            success: true,
+            data: result.rows
+        });
+        
+    } catch (error) {
+        console.error('❌ [USUARIOS] Error al obtener tarifas de colaboradores:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener tarifas de colaboradores',
+            message: error.message
+        });
+    }
+});
+
+/**
  * @route GET /api/logistica/usuarios/choferes
  * @desc Obtener lista de choferes activos
  * @access Privado

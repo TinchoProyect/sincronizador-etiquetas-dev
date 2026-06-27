@@ -91,3 +91,24 @@ exports.abrirCajaDestino = async (req, res) => {
         res.status(500).json({ success: false, error: error.message || 'Error interno al abrir caja' });
     }
 };
+
+exports.desvincularLote = async (req, res) => {
+    try {
+        const { lote_id_supabase, revertir_stock } = req.body;
+        if (!lote_id_supabase) {
+            return res.status(400).json({ success: false, error: 'lote_id_supabase es requerido.' });
+        }
+        
+        console.log(`🔗 [BUNKER-LOTES] Solicitud para desvincular/retrotraer lote ${lote_id_supabase} recibida. Revertir stock: ${revertir_stock}`);
+        const resultado = await LotesBunkerService.desvincularLote(req.db, lote_id_supabase, revertir_stock === true);
+        
+        res.json({
+            success: true,
+            data: resultado,
+            message: 'Vinculación de lote retrotraída exitosamente.'
+        });
+    } catch (error) {
+        console.error('❌ [BUNKER-LOTES] Error desvinculando lote:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno al desvincular lote.' });
+    }
+};

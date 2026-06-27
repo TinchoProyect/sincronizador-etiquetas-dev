@@ -8,6 +8,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const produccionRoutes = require('./routes/produccion');
 const usuariosRoutes = require('../usuarios/rutas');
 const { supabaseFetch } = require('./utils/supabaseHelper');
+const db = require('./config/database');
 
 const app = express();
 const httpServer = createServer(app);
@@ -48,16 +49,22 @@ app.use('/api/produccion', produccionRoutes);
 // Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
 app.get('/api/supabase/lotes', async (req, res) => {
     try {
-        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref)&order=created_at.desc&limit=100';
+        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref,cant_bult,cant_valor)&order=created_at.desc&limit=100';
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
+        const debugLogs = [];
+        debugLogs.push(`🔑 [Supabase Proxy] Service Key Length: ${key.length}, Starts with: ${key.substring(0, 10)}...`);
         const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
         const response = await fetch(url, { headers });
         if (!response.ok) throw new Error(await response.text());
-        const lotes = await response.json();
+        let lotes = await response.json();
+        
+        // Filtro de bultos cero (bultos <= 0)
+        lotes = lotes.filter(l => (parseFloat(l.cantidad_recibida) || 0) > 0);
         
         // Extraer IDs únicos de proveedores y pedidos
         const proveedoresIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedor_id).filter(Boolean))];
         const pedidosIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedido_id).filter(Boolean))];
+        debugLogs.push(`📡 [Supabase Proxy] Unique suppliers found: [${proveedoresIds.join(', ')}]`);
         
         // 1. Obtener Tabla Maestra para cant_bult y cant_valor (Paginación en Bucle para evitar límite de 1000 de Supabase)
         let masterMap = {};
@@ -68,6 +75,7 @@ app.get('/api/supabase/lotes', async (req, res) => {
             while (hasMore) {
                 const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})&limit=1000&offset=${offset}`;
                 const masterRes = await fetch(masterUrl, { headers });
+                debugLogs.push(`📡 [Supabase Proxy] Fetching master table status: ${masterRes.status}`);
                 if (masterRes.ok) {
                     const rows = await masterRes.json();
                     masterData = masterData.concat(rows);
@@ -77,9 +85,12 @@ app.get('/api/supabase/lotes', async (req, res) => {
                         offset += 1000;
                     }
                 } else {
+                    debugLogs.push(`❌ [Supabase Proxy] Fetch master failed: ${await masterRes.text()}`);
                     hasMore = false;
                 }
             }
+
+            debugLogs.push(`📡 [Supabase Proxy] Total master rows fetched: ${masterData.length}`);
 
             masterData.forEach(row => {
                 if (row.datos_maestros && row.datos_maestros.codigo) {
@@ -91,7 +102,11 @@ app.get('/api/supabase/lotes', async (req, res) => {
                     };
                 }
             });
+            debugLogs.push(`📡 [Supabase Proxy] Mapped items count in masterMap: ${Object.keys(masterMap).length}`);
         }
+        
+        // Write debug logs to a local file
+        require('fs').writeFileSync(path.join(__dirname, 'proxy_debug.log'), debugLogs.join('\n') + '\n');
         
         // 2. Obtener Facturas para IVA Real (Heurística de Alícuotas)
         let facturasMap = {};
@@ -151,6 +166,20 @@ app.get('/api/supabase/lotes', async (req, res) => {
         });
         const dedupedLotes = Array.from(uniqueMap.values());
 
+        // 0. Obtener overrides locales de presentación
+        let overridesMap = {};
+        try {
+            const overridesRes = await db.query('SELECT lote_id_supabase, cant_bult, cant_valor FROM public.lotes_presentacion_overrides');
+            overridesRes.rows.forEach(row => {
+                overridesMap[row.lote_id_supabase] = {
+                    cantBult: parseFloat(row.cant_bult),
+                    cantValor: parseFloat(row.cant_valor)
+                };
+            });
+        } catch (dbErr) {
+            console.error("❌ Error leyendo overrides locales:", dbErr.message);
+        }
+
         // 4. Enriquecer los lotes consolidados
         const enrichedLotes = dedupedLotes.map(lote => {
             const item = lote.pedidos_b2b_items || {};
@@ -169,12 +198,17 @@ app.get('/api/supabase/lotes', async (req, res) => {
                 ivaReal = 21;
             }
             
+            // Aplicar overrides locales si existen
+            const override = overridesMap[lote.id];
+            const finalCantBult = override ? override.cantBult : (item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult);
+            const finalCantValor = override ? override.cantValor : (item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor);
+
             return {
                 ...lote,
                 pedidos_b2b_items: {
                     ...item,
-                    cant_bult: item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult,
-                    cant_valor: item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor,
+                    cant_bult: finalCantBult,
+                    cant_valor: finalCantValor,
                     iva_porcentaje: ivaReal
                 }
             };
@@ -194,7 +228,7 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
         const minUuid = id_corto + '-0000-0000-0000-000000000000';
         const maxUuid = id_corto + '-ffff-ffff-ffff-ffffffffffff';
         
-        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref)&id=gte.${minUuid}&id=lte.${maxUuid}&limit=1`;
+        const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,cant_bult,cant_valor)&id=gte.${minUuid}&id=lte.${maxUuid}&limit=1`;
         const key = process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY';
         const response = await fetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
         if (!response.ok) throw new Error(await response.text());
@@ -224,10 +258,27 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
             
             let ivaReal = masterInfo.iva || 21;
             
+            // Buscar override local para el lote específico
+            let override = null;
+            try {
+                const overrideRes = await db.query('SELECT cant_bult, cant_valor FROM public.lotes_presentacion_overrides WHERE lote_id_supabase = $1', [lote.id]);
+                if (overrideRes.rows.length > 0) {
+                    override = {
+                        cantBult: parseFloat(overrideRes.rows[0].cant_bult),
+                        cantValor: parseFloat(overrideRes.rows[0].cant_valor)
+                    };
+                }
+            } catch (dbErr) {
+                console.error("❌ Error leyendo override local para lote:", dbErr.message);
+            }
+
+            const finalCantBult = override ? override.cantBult : (item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult);
+            const finalCantValor = override ? override.cantValor : (item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor);
+
             lote.pedidos_b2b_items = {
                 ...item,
-                cant_bult: item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult,
-                cant_valor: item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor,
+                cant_bult: finalCantBult,
+                cant_valor: finalCantValor,
                 iva_porcentaje: ivaReal
             };
             res.json(lote);
@@ -236,6 +287,29 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
         }
     } catch (e) {
         console.error("Error proxy Supabase ID:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ✅ ENDPOINT PARA REGISTRAR OVERRIDES MANUALES DE PRESENTACIÓN DESDE EL LOCAL
+app.post('/api/supabase/lotes/override', async (req, res) => {
+    const { lote_id_supabase, cant_bult, cant_valor } = req.body;
+    
+    if (!lote_id_supabase || cant_bult === undefined || cant_valor === undefined) {
+        return res.status(400).json({ error: "Faltan campos requeridos: lote_id_supabase, cant_bult, cant_valor" });
+    }
+    
+    try {
+        await db.query(`
+            INSERT INTO public.lotes_presentacion_overrides (lote_id_supabase, cant_bult, cant_valor, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (lote_id_supabase)
+            DO UPDATE SET cant_bult = EXCLUDED.cant_bult, cant_valor = EXCLUDED.cant_valor, updated_at = NOW()
+        `, [lote_id_supabase, parseFloat(cant_bult), parseFloat(cant_valor)]);
+        
+        res.json({ success: true });
+    } catch (e) {
+        console.error("❌ Error registrando override de presentación:", e.message);
         res.status(500).json({ error: e.message });
     }
 });

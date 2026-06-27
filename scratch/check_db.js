@@ -1,53 +1,37 @@
-const { Client } = require('pg');
-
-const client = new Client({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'etiquetas',
-  password: 'ta3Mionga',
-  port: 5432,
-});
+const { pool } = require('../src/logistica/config/database');
 
 async function main() {
-  await client.connect();
-  try {
-    const resColIng = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'ingredientes';
-    `);
-    console.log('INGRES COLUMNS:');
-    console.table(resColIng.rows);
+    try {
+        console.log('--- Bunker Clientes ---');
+        const resBunker = await pool.query(`
+            SELECT id, codigo_bunker_cliente, cliente_nombre, lomas_soft_id, cuit_cuil 
+            FROM public.bunker_clientes 
+            WHERE lomas_soft_id = '0740' OR cliente_nombre ILIKE '%belgian%'
+        `);
+        console.log(resBunker.rows);
 
-    const resColDest = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'bunker_lotes_destinos';
-    `);
-    console.log('DEST COLUMNS:');
-    console.table(resColDest.rows);
+        console.log('--- Clientes Legacy ---');
+        const resLegacy = await pool.query(`
+            SELECT cliente_id, nombre, apellido, cuit, dni 
+            FROM clientes 
+            WHERE cliente_id = 740 OR apellido ILIKE '%belgian%'
+        `);
+        console.log(resLegacy.rows);
 
-    const resColVinc = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'bunker_lotes_vinculos';
-    `);
-    console.log('VINC COLUMNS:');
-    console.table(resColVinc.rows);
+        console.log('--- Invoices for Belgian ---');
+        const resFacturas = await pool.query(`
+            SELECT id, cliente_id, razon_social, pto_vta, nro 
+            FROM factura_facturas 
+            WHERE cliente_id = 740 OR razon_social ILIKE '%belgian%'
+            LIMIT 5
+        `);
+        console.log(resFacturas.rows);
 
-    const resCajas = await client.query(`
-      SELECT d.*, v.lote_id_supabase, v.fecha_vinculacion
-      FROM public.bunker_lotes_destinos d
-      JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
-      WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' AND d.cantidad_abierta < d.cantidad_asignada;
-    `);
-    console.log('ACTIVE CAJAS DE LOTES:');
-    console.table(resCajas.rows);
-  } catch (err) {
-    console.error(err);
-  } finally {
-    await client.end();
-  }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        await pool.end();
+    }
 }
 
 main();

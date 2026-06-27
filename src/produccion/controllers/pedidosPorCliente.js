@@ -105,6 +105,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     p.id_cliente,
                     p.fecha,
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
+                    p.estado,
                     CAST(p.id_cliente AS integer) as cliente_id_int
                 FROM public.presupuestos p
                 LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
@@ -113,6 +114,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                       REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                       OR (REPLACE(LOWER(TRIM($1)), ' ', '') = 'presupuesto/orden' AND p.estado IN ('Facturado', 'Administrativa NC', 'Enviado a Facturación'))
                       OR p.estado = 'Retira por Deposito'
+                      OR (p.secuencia = 'Retira_Deposito' AND COALESCE(p.estado_logistico, '') = 'PENDIENTE')
                   )
                   AND p.fecha::date <= $2::date
                   AND ($3::integer IS NULL OR CAST(p.id_cliente AS integer) = $3)
@@ -120,6 +122,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                   AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
                   AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
                   AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
+                  AND (COALESCE(p.secuencia, 'Imprimir') != 'Retira_Deposito' OR COALESCE(p.estado_logistico, '') = 'PENDIENTE')
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -128,12 +131,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.id as presupuesto_id_local,
                     pc.fecha as presupuesto_fecha,
                     pc.secuencia,
+                    pc.estado as presupuesto_estado,
                     pd.articulo as articulo_numero,
                     SUM(COALESCE(pd.cantidad, 0)) as cantidad
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pc.estado, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -151,6 +155,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                         'id_presupuesto_local', app.presupuesto_id_local,
                         'presupuesto_fecha', app.presupuesto_fecha,
                         'secuencia', app.secuencia,
+                        'presupuesto_estado', app.presupuesto_estado,
                         'articulo_numero', app.articulo_numero,
                         'descripcion', COALESCE(
                             NULLIF(TRIM(a.nombre), ''),
@@ -180,9 +185,9 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 ) as articulos
             FROM articulos_por_presupuesto app
             LEFT JOIN public.clientes c ON c.cliente_id = app.cliente_id_int
-            LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = app.articulo_numero
+            LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = app.articulo_numero OR src.articulo_numero = app.articulo_numero)
             LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
-            LEFT JOIN public.articulos a ON a.codigo_barras = app.articulo_numero
+            LEFT JOIN public.articulos a ON (a.codigo_barras = app.articulo_numero OR a.numero = app.articulo_numero)
             LEFT JOIN public.presupuestos_snapshots ps ON ps.id_presupuesto = app.presupuesto_id_local AND ps.activo = true
             GROUP BY app.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
@@ -512,10 +517,10 @@ const obtenerPedidosArticulos = async (req, res) => {
             WITH articulos_derivados_compra AS (
                 SELECT DISTINCT
                     fpc.codigo_barras as codigo_barras_derivado,
+                    fpc.articulo_numero as articulo_numero_derivado,
                     fpc.id_presupuesto_local
                 FROM public.faltantes_pendientes_compra fpc
                 WHERE fpc.estado = 'En espera'
-                  AND fpc.codigo_barras IS NOT NULL
             ),
             presupuestos_confirmados AS (
                 SELECT 
@@ -543,12 +548,12 @@ const obtenerPedidosArticulos = async (req, res) => {
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 LEFT JOIN articulos_derivados_compra adc 
-                    ON adc.codigo_barras_derivado = pd.articulo 
+                    ON (adc.codigo_barras_derivado = pd.articulo OR adc.articulo_numero_derivado = pd.articulo)
                     AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
                   AND pc.secuencia NOT IN ('Pedido_Listo', 'Retira_Deposito')
-                  AND adc.codigo_barras_derivado IS NULL
+                  AND adc.id_presupuesto_local IS NULL
                 GROUP BY pc.id, pd.articulo
             ),
             pedidos_listos AS (
@@ -598,9 +603,9 @@ const obtenerPedidosArticulos = async (req, res) => {
                 FROM articulos_consolidados ac
                 LEFT JOIN presupuestos_confirmados pc ON pc.id = ac.presupuesto_id_local
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
-                LEFT JOIN public.stock_real_consolidado src ON src.codigo_barras = ac.articulo_numero
+                LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = ac.articulo_numero OR src.articulo_numero = ac.articulo_numero)
                 LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
-                LEFT JOIN public.articulos a ON a.codigo_barras = ac.articulo_numero
+                LEFT JOIN public.articulos a ON (a.codigo_barras = ac.articulo_numero OR a.numero = ac.articulo_numero)
             )
             SELECT 
                 vr.articulo_numero_alfanumerico as articulo_numero,

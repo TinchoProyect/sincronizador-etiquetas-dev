@@ -49,4 +49,10 @@ router.put('/:id/domicilio',
     tratamientosController.asignarDomicilio
 );
 
+// 7. Revertir envío a logística de una orden de tratamiento
+router.post('/:id/revertir-envio',
+    validatePermissions('logistica.revertir_envio'),
+    tratamientosController.revertirEnvio
+);
+
 module.exports = router;
