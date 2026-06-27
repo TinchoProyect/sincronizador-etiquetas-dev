@@ -954,8 +954,6 @@ const obtenerFacturaHeredada = async (req, res) => {
     }
 };
 
-};
-
 /**
  * Generar PDF para una factura heredada (Lomasoft)
  * POST /facturacion/facturas/heredadas/:presupuestoId/pdf
