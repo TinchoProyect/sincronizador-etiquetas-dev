@@ -130,25 +130,26 @@ exports.invitarCliente = async (req, res) => {
 
         // 5. Enviar mensaje de invitación por el canal seleccionado
         const portalUrl = process.env.B2B_PORTAL_URL || 'http://localhost:5173';
-        const linkOnboarding = `${portalUrl}/onboarding?token=${token}`;
+        // Usamos Hash Routing para evitar el error 404 del servidor/CDN en la carga inicial de subrutas
+        const linkOnboarding = `${portalUrl}/#/onboarding?token=${token}`;
         
         if (canalSeleccionado === 'email') {
             console.log(`✉️ [B2B-ONBOARDING] Despachando mensaje de invitación por Email a: ${emailDestino}`);
             const emailService = require('../../facturacion/services/emailService');
             await emailService.enviarEmail({
                 to: emailDestino,
-                subject: 'Invitación al Portal B2B - LAMDA',
+                subject: 'Invitación al Portal de LAMDA',
                 htmlBody: `
                     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e293b; background-color: #ffffff;">
                         <div style="text-align: center; margin-bottom: 24px; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px;">
-                            <h2 style="color: #8e4785; margin: 0; font-size: 24px; font-weight: bold;">Portal B2B LAMDA</h2>
+                            <h2 style="color: #8e4785; margin: 0; font-size: 24px; font-weight: bold;">Portal de LAMDA</h2>
                         </div>
                         <p style="font-size: 16px; line-height: 1.6; margin-bottom: 16px; color: #334155;">¡Hola, <strong>${cliente.razon_social}</strong>!</p>
                         <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
-                            Le damos la bienvenida al nuevo Portal B2B de LAMDA. Desde hoy puede autogestionar sus pedidos, consultar su cuenta corriente en tiempo real y descargar todos sus comprobantes de forma rápida y 100% online desde cualquier dispositivo.
+                            Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo.
                         </p>
                         <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #334155;">
-                            Para ingresar por primera vez y activar su cuenta, haga clic en el siguiente botón:
+                            Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente botón:
                         </p>
                         <div style="text-align: center; margin-bottom: 30px;">
                             <a href="${linkOnboarding}" style="background-color: #8e4785; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 15px;">Activar Cuenta</a>
@@ -161,7 +162,8 @@ exports.invitarCliente = async (req, res) => {
                 `
             });
         } else {
-            const mensajeTexto = `¡Hola! Te damos la bienvenida al nuevo Portal B2B de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+            // Plantilla solicitada por ticket
+            const mensajeTexto = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
 
             console.log(`📱 [B2B-ONBOARDING] Despachando mensaje de invitación por WhatsApp a: ${whatsappDestino}`);
             
