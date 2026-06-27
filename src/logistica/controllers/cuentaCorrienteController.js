@@ -1445,7 +1445,7 @@ exports.generarComprobantePdf = async (req, res) => {
             doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#8e4785').fill();
             doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('R', boxX, boxY + 6, { width: boxWidth, align: 'center' });
             doc.restore();
-            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('COMPROBANTE', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('COMPROBANTE', (pageWidth / 2) - 30, boxY + boxHeight + 4, { width: 60, align: 'center' });
 
             // Línea divisoria vertical
             doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
@@ -1458,19 +1458,19 @@ exports.generarComprobantePdf = async (req, res) => {
             let rightY = 40;
             const esAjuste = ['AJUSTE_MANUAL', 'AJUSTE_AUTOMATICO'].includes(mov.tipo_comprobante);
             const labelTitulo = esAjuste ? 'COMPROBANTE DE AJUSTE' : 'RECIBO DE PAGO';
-            doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 20, rightY);
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 35, rightY);
             
             const nroComprobanteStr = mov.numero_comprobante ? mov.numero_comprobante : `REC-PAGO-${String(mov.id).padStart(8, '0')}`;
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 20, rightY + 14);
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 35, rightY + 14);
             
             const fechaFmt = new Date(mov.fecha_movimiento).toLocaleDateString('es-AR', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric'
             });
-            doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
-            doc.text(`Hora registro: ${new Date(mov.fecha_movimiento).toLocaleTimeString()}`, (pageWidth / 2) + 20, rightY + 35);
-            doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 20, rightY + 44);
+            doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 35, rightY + 26);
+            doc.text(`Hora registro: ${new Date(mov.fecha_movimiento).toLocaleTimeString()}`, (pageWidth / 2) + 35, rightY + 35);
+            doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 35, rightY + 44);
 
             // Línea divisoria horizontal debajo de la cabecera
             let lineY = Math.max(companyY + 32, rightY + 56);
