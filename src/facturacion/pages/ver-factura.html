@@ -1345,9 +1345,17 @@
 
         async function descargarPDF() {
             try {
-                console.log('📄 Descargando PDF de factura ID:', facturaId);
+                let downloadUrl = `${API_URL}/facturas/${facturaId}/pdf`;
+                let filename = `factura-${facturaId}.pdf`;
+                
+                if (presupuestoId) {
+                    downloadUrl = `${API_URL}/facturas/heredadas/${presupuestoId}/pdf?numero_factura=${encodeURIComponent(numeroFactura)}`;
+                    filename = `factura-${numeroFactura.replace(/\s+/g, '_')}.pdf`;
+                }
 
-                const response = await fetch(`${API_URL}/facturas/${facturaId}/pdf`, {
+                console.log('📄 Descargando PDF desde:', downloadUrl);
+
+                const response = await fetch(downloadUrl, {
                     method: 'POST'
                 });
 
@@ -1360,7 +1368,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `factura-${facturaId}.pdf`;
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);

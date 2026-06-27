@@ -99,6 +99,13 @@ router.get('/facturas', facturasController.listarFacturas);
  */
 router.post('/facturas/:id/pdf', facturasController.generarPDF);
 
+/**
+ * @route POST /facturacion/facturas/heredadas/:presupuestoId/pdf
+ * @desc Generar PDF de factura heredada por ID de presupuesto
+ * @access Privado
+ */
+router.post('/facturas/heredadas/:presupuestoId/pdf', facturasController.generarPDFHeredada);
+
 router.post('/presupuestos/:id/facturar', facturasController.facturarPresupuesto);
 
 /**

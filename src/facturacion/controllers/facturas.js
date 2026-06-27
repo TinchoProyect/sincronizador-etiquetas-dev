@@ -878,6 +878,7 @@ const obtenerFacturaHeredada = async (req, res) => {
                 d.valor1 as imp_neto,
                 d.precio1 as imp_total,
                 d.iva1 as imp_iva,
+                d.camp2 as tasa_iva,
                 COALESCE(art.nombre, 'Artículo ' || d.articulo) as descripcion
             FROM public.presupuestos_detalles d
             LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
@@ -897,6 +898,18 @@ const obtenerFacturaHeredada = async (req, res) => {
             impTotal += parseFloat(item.imp_total) || 0;
             const quantity = parseFloat(item.qty) || 1;
             item.p_unit = (parseFloat(item.imp_neto) || 0) / quantity;
+
+            // Determinar alic_iva_id basándose en tasa_iva
+            const tasa = parseFloat(item.tasa_iva) || 0.21;
+            if (tasa === 0.21) {
+                item.alic_iva_id = 5; // 21%
+            } else if (tasa === 0.105) {
+                item.alic_iva_id = 4; // 10.5%
+            } else if (tasa === 0) {
+                item.alic_iva_id = 3; // 0%
+            } else {
+                item.alic_iva_id = 5; // default 21%
+            }
         });
 
         // 3. Estructurar el objeto factura mock
@@ -941,6 +954,239 @@ const obtenerFacturaHeredada = async (req, res) => {
     }
 };
 
+};
+
+/**
+ * Generar PDF para una factura heredada (Lomasoft)
+ * POST /facturacion/facturas/heredadas/:presupuestoId/pdf
+ */
+const generarPDFHeredada = async (req, res) => {
+    const { presupuestoId } = req.params;
+    const { numero_factura } = req.query;
+    console.log(`📄 [FACTURACION-CTRL] POST /facturas/heredadas/${presupuestoId}/pdf - Generar PDF Heredado`);
+
+    try {
+        const pId = parseInt(presupuestoId);
+        
+        // 1. Obtener cabecera de presupuesto y datos del cliente
+        const queryHeader = `
+            SELECT 
+                p.id, p.fecha, p.id_cliente, p.nota,
+                bc.razon_social, bc.cuit_cuil, bc.codigo_bunker_cliente, bc.condicion_iva, bc.domicilio_fiscal, bc.provincia
+            FROM public.presupuestos p
+            LEFT JOIN public.bunker_clientes bc ON CAST(bc.lomas_soft_id AS INTEGER) = CAST(p.id_cliente AS INTEGER)
+            WHERE p.id = $1
+        `;
+        const resHeader = await pool.query(queryHeader, [pId]);
+        if (resHeader.rows.length === 0) {
+            throw new Error(`Presupuesto heredado ID ${pId} no encontrado`);
+        }
+        const budget = resHeader.rows[0];
+
+        // 2. Obtener items
+        const queryItems = `
+            SELECT 
+                d.articulo as codigo_barras,
+                d.cantidad,
+                d.valor1 as precio_neto,
+                d.precio1 as precio_total,
+                d.iva1 as monto_iva,
+                COALESCE(art.nombre, 'Artículo ' || d.articulo) as articulo_nombre
+            FROM public.presupuestos_detalles d
+            LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+            WHERE d.id_presupuesto = $1
+        `;
+        const resItems = await pool.query(queryItems, [pId]);
+        const items = resItems.rows;
+
+        // 3. Generar PDF
+        const PDFDocument = require('pdfkit');
+        const fs = require('fs');
+        const path = require('path');
+
+        const doc = new PDFDocument({
+            size: 'A4',
+            margins: { top: 40, bottom: 40, left: 40, right: 40 },
+            info: {
+                Title: `Factura Heredada - ${numero_factura || budget.id}`,
+                Author: 'pdfkit'
+            }
+        });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        
+        const pdfBuffer = await new Promise((resolve, reject) => {
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', err => reject(err));
+
+            const pageWidth = doc.page.width;
+            const leftColumn = 40;
+            const contentWidth = pageWidth - 80;
+
+            const logoPath = path.join(__dirname, '..', 'img', 'logo_LAMDA_grande.png');
+            let hasLogo = false;
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, leftColumn, 40, { width: 90 });
+                hasLogo = true;
+            } else {
+                const logoPathAlt = path.join(__dirname, '..', '..', 'app-etiquetas', 'img', 'isotipo_L_LAMDA.png');
+                if (fs.existsSync(logoPathAlt)) {
+                    doc.image(logoPathAlt, leftColumn, 40, { width: 44 });
+                    hasLogo = true;
+                }
+            }
+
+            let companyY = 40 + (hasLogo ? 38 : 0);
+            doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
+            doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+            doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
+            doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+
+            const boxWidth = 32;
+            const boxHeight = 32;
+            const boxX = (pageWidth / 2) - (boxWidth / 2);
+            const boxY = 40;
+            doc.save();
+            doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#475569').fill();
+            doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('X', boxX, boxY + 6, { width: boxWidth, align: 'center' });
+            doc.restore();
+            doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569').text('DOC. DE CONTROL', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+
+            doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
+               .lineTo(pageWidth / 2, 40 + 82)
+               .strokeColor('#e2e8f0')
+               .lineWidth(1)
+               .stroke();
+
+            let rightY = 40;
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('FACTURA HISTÓRICA', (pageWidth / 2) + 20, rightY);
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text(`Nro: ${numero_factura || 'Sin Número'}`, (pageWidth / 2) + 20, rightY + 14);
+            
+            const fechaFmt = new Date(budget.fecha).toLocaleDateString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+            doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
+            doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 20, rightY + 35);
+            doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 20, rightY + 44);
+
+            let lineY = Math.max(companyY + 32, rightY + 56);
+            doc.moveTo(leftColumn, lineY)
+               .lineTo(pageWidth - leftColumn, lineY)
+               .strokeColor('#475569')
+               .lineWidth(1.5)
+               .stroke();
+
+            let clientY = lineY + 12;
+            doc.save();
+            doc.rect(leftColumn, clientY, contentWidth, 54).fillColor('#f8fafc').fill();
+            doc.rect(leftColumn, clientY, contentWidth, 54).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+            doc.restore();
+
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('DATOS DEL CLIENTE', leftColumn + 8, clientY + 6);
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(budget.razon_social || 'Cliente de Lomasoft', leftColumn + 8, clientY + 16);
+            doc.fontSize(8).font('Helvetica').fillColor('#475569').text(`Código Búnker: ${budget.codigo_bunker_cliente || 'N/D'} (Lomasoft ID: ${budget.id_cliente})`, leftColumn + 8, clientY + 28);
+            const cuitStr = budget.cuit_cuil ? `CUIT: ${budget.cuit_cuil}` : 'CUIT: N/D';
+            doc.text(cuitStr, leftColumn + 8, clientY + 38);
+
+            let tableTop = clientY + 70;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text('Detalle de Artículos Facturados', leftColumn, tableTop);
+            
+            let gridTop = tableTop + 14;
+            doc.save();
+            doc.rect(leftColumn, gridTop, contentWidth, 18).fillColor('#475569').fill();
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+            doc.text('Cód. Barra', leftColumn + 8, gridTop + 5, { width: 70 });
+            doc.text('Descripción Artículo', leftColumn + 85, gridTop + 5, { width: 200 });
+            doc.text('Cant.', leftColumn + 290, gridTop + 5, { width: 35, align: 'right' });
+            doc.text('Prec. Unit (Neto)', leftColumn + 335, gridTop + 5, { width: 75, align: 'right' });
+            doc.text('Total con IVA', pageWidth - leftColumn - 88, gridTop + 5, { width: 80, align: 'right' });
+            doc.restore();
+
+            let yPos = gridTop + 18;
+            let netTotal = 0;
+            let vatTotal = 0;
+            let grandTotal = 0;
+
+            items.forEach((item, index) => {
+                const cant = parseFloat(item.cantidad) || 0;
+                const netPrice = parseFloat(item.precio_neto) || 0;
+                const totalPrice = parseFloat(item.precio_total) || 0;
+                const ivaVal = parseFloat(item.monto_iva) || 0;
+
+                netTotal += netPrice;
+                vatTotal += ivaVal;
+                grandTotal += totalPrice;
+
+                const rowBg = index % 2 === 0 ? '#f8fafc' : '#ffffff';
+                doc.save();
+                doc.rect(leftColumn, yPos, contentWidth, 16).fillColor(rowBg).fill();
+                doc.restore();
+
+                doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
+                doc.text(item.codigo_barras || '', leftColumn + 8, yPos + 4, { width: 70, lineBreak: false });
+                doc.text(item.articulo_nombre || '', leftColumn + 85, yPos + 4, { width: 200, lineBreak: false });
+                doc.text(String(cant), leftColumn + 290, yPos + 4, { width: 35, align: 'right' });
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netPrice / cant), leftColumn + 335, yPos + 4, { width: 75, align: 'right' });
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalPrice), pageWidth - leftColumn - 88, yPos + 4, { width: 80, align: 'right' });
+
+                yPos += 16;
+            });
+
+            doc.rect(leftColumn, gridTop, contentWidth, (yPos - gridTop)).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+
+            let totalsY = yPos + 12;
+            doc.save();
+            doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).fillColor('#f8fafc').fill();
+            doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+            doc.restore();
+
+            doc.fontSize(8).font('Helvetica').fillColor('#475569');
+            doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, totalsY + 6);
+            doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, totalsY + 6, { width: 85, align: 'right' });
+
+            doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, totalsY + 18);
+            doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatTotal), pageWidth - leftColumn - 95, totalsY + 18, { width: 85, align: 'right' });
+
+            doc.font('Helvetica-Bold').fillColor('#1e293b');
+            doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, totalsY + 32);
+            doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 32, { width: 85, align: 'right' });
+
+            let footerY = doc.page.height - 90;
+            doc.moveTo(leftColumn, footerY - 5)
+               .lineTo(pageWidth - leftColumn, footerY - 5)
+               .strokeColor('#e2e8f0')
+               .lineWidth(0.5)
+               .stroke();
+
+            doc.fontSize(7).font('Helvetica-Oblique').fillColor('#64748b');
+            doc.text('Documento emitido históricamente por el sistema Lomasoft. Este documento no constituye una factura comercial válida actual frente a AFIP, se expone con fines informativos de cuenta corriente comercial.', leftColumn, footerY, { width: contentWidth, align: 'center' });
+            doc.text('LAMDA - Prolijidad y Calidad en Gestión', leftColumn, footerY + 16, { width: contentWidth, align: 'center' });
+
+            doc.end();
+        });
+
+        const fechaArchivo = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        const nombreArchivo = `factura-heredada-${presupuestoId}-${fechaArchivo}.pdf`;
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+
+        console.log(`✅ [FACTURACION-CTRL] PDF heredado generado exitosamente: ${nombreArchivo}`);
+        res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error generando PDF heredado:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Internal Server Error',
+            message: error.message
+        });
+    }
+};
+
 module.exports = {
     crearFactura,
     actualizarFactura,
@@ -949,6 +1195,7 @@ module.exports = {
     obtenerFacturaHeredada,
     listarFacturas,
     generarPDF,
+    generarPDFHeredada,
     facturarPresupuesto,
     facturarPresupuestoLocal,
     sincronizarBorrador,
