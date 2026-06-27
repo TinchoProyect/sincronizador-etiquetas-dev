@@ -149,7 +149,8 @@ export default function CuentaCorriente({ profile, highlightDocId, onClearHighli
               });
               return;
             }
-            const text = encodeURIComponent(`Hola! Comparto el comprobante de pago de mi cuenta corriente en LAMDA: ${mov.comprobante_url}`);
+            const cleanUrl = mov.comprobante_url ? `${mov.comprobante_url}?t=${Date.now()}` : '';
+            const text = encodeURIComponent(`Hola! Comparto el comprobante de pago de mi cuenta corriente en LAMDA: ${cleanUrl}`);
             window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
           });
         }
@@ -165,7 +166,8 @@ export default function CuentaCorriente({ profile, highlightDocId, onClearHighli
               });
               return;
             }
-            window.open(mov.comprobante_url, '_blank');
+            const cleanUrl = mov.comprobante_url ? `${mov.comprobante_url}?t=${Date.now()}` : '';
+            window.open(cleanUrl, '_blank');
           });
         }
 
@@ -218,7 +220,8 @@ export default function CuentaCorriente({ profile, highlightDocId, onClearHighli
       return;
     }
     
-    window.open(mov.comprobante_url, '_blank');
+    const cleanUrl = mov.comprobante_url ? `${mov.comprobante_url}?t=${Date.now()}` : '';
+    window.open(cleanUrl, '_blank');
 
     Swal.fire({
       title: 'Descarga Iniciada',
