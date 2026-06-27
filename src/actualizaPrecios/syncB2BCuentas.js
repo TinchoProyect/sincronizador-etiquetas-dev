@@ -144,7 +144,7 @@ function generarComprobantePdfBuffer(mov) {
       doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#8e4785').fill();
       doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('R', boxX, boxY + 6, { width: boxWidth, align: 'center' });
       doc.restore();
-      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('COMPROBANTE', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('COMPROBANTE', (pageWidth / 2) - 30, boxY + boxHeight + 4, { width: 60, align: 'center' });
 
       // Línea divisoria vertical
       doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
@@ -157,19 +157,19 @@ function generarComprobantePdfBuffer(mov) {
       let rightY = 40;
       const esAjuste = ['AJUSTE_MANUAL', 'AJUSTE_AUTOMATICO'].includes(mov.tipo_comprobante_original);
       const labelTitulo = esAjuste ? 'COMPROBANTE DE AJUSTE' : 'RECIBO DE PAGO';
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 20, rightY);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 35, rightY);
       
       const nroComprobanteStr = mov.numero_comprobante ? mov.numero_comprobante : `REC-PAGO-${String(mov.local_movimiento_id).padStart(8, '0')}`;
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 20, rightY + 14);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 35, rightY + 14);
       
       const fechaFmt = new Date(mov.fecha).toLocaleDateString('es-AR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
       });
-      doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
-      doc.text(`Hora registro: ${new Date(mov.fecha_registro || mov.fecha).toLocaleTimeString()}`, (pageWidth / 2) + 20, rightY + 35);
-      doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 20, rightY + 44);
+      doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 35, rightY + 26);
+      doc.text(`Hora registro: ${new Date(mov.fecha_registro || mov.fecha).toLocaleTimeString()}`, (pageWidth / 2) + 35, rightY + 35);
+      doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 35, rightY + 44);
 
       // Línea divisoria horizontal debajo de la cabecera
       let lineY = Math.max(companyY + 32, rightY + 56);
@@ -330,6 +330,10 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
       doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
       doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
 
+      const ptoVta = (numeroComprobante || '').includes('-0002-') ? 2 : ((numeroComprobante || '').includes('-0001-') ? 1 : 1);
+      const esTipoE = (numeroComprobante || '').toUpperCase().includes('FAC E-') || (numeroComprobante || '').toUpperCase().includes('NC E-') || (numeroComprobante || '').toUpperCase().includes('ND E-');
+      const noDiscriminaIva = (ptoVta === 2 || esTipoE) && ptoVta !== 1;
+
       const boxWidth = 32;
       const boxHeight = 32;
       const boxX = (pageWidth / 2) - (boxWidth / 2);
@@ -338,7 +342,7 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
       doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#475569').fill();
       doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('X', boxX, boxY + 6, { width: boxWidth, align: 'center' });
       doc.restore();
-      doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569').text('DOC. DE CONTROL', (pageWidth / 2) - 50, boxY + boxHeight + 4, { width: 100, align: 'center' });
+      doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569').text('DOC. DE CONTROL', (pageWidth / 2) - 30, boxY + boxHeight + 4, { width: 60, align: 'center' });
 
       doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
          .lineTo(pageWidth / 2, 40 + 82)
@@ -347,17 +351,17 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
          .stroke();
 
       let rightY = 40;
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('FACTURA HISTÓRICA', (pageWidth / 2) + 20, rightY);
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text(`Nro: ${numeroComprobante || 'Sin Número'}`, (pageWidth / 2) + 20, rightY + 14);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b').text('FACTURA HISTÓRICA', (pageWidth / 2) + 35, rightY);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text(`Nro: ${numeroComprobante || 'Sin Número'}`, (pageWidth / 2) + 35, rightY + 14);
       
       const fechaFmt = new Date(budget.fecha).toLocaleDateString('es-AR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
       });
-      doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 20, rightY + 26);
-      doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 20, rightY + 35);
-      doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 20, rightY + 44);
+      doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(`Fecha: ${fechaFmt}`, (pageWidth / 2) + 35, rightY + 26);
+      doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 35, rightY + 35);
+      doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 35, rightY + 44);
 
       let lineY = Math.max(companyY + 32, rightY + 56);
       doc.moveTo(leftColumn, lineY)
@@ -388,8 +392,8 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
       doc.text('Cód. Barra', leftColumn + 8, gridTop + 5, { width: 70 });
       doc.text('Descripción Artículo', leftColumn + 85, gridTop + 5, { width: 200 });
       doc.text('Cant.', leftColumn + 290, gridTop + 5, { width: 35, align: 'right' });
-      doc.text('Prec. Unit (Neto)', leftColumn + 335, gridTop + 5, { width: 75, align: 'right' });
-      doc.text('Total con IVA', pageWidth - leftColumn - 88, gridTop + 5, { width: 80, align: 'right' });
+      doc.text(noDiscriminaIva ? 'Prec. Unit.' : 'Prec. Unit (Neto)', leftColumn + 335, gridTop + 5, { width: 75, align: 'right' });
+      doc.text(noDiscriminaIva ? 'Subtotal' : 'Total con IVA', pageWidth - leftColumn - 88, gridTop + 5, { width: 80, align: 'right' });
       doc.restore();
 
       let yPos = gridTop + 18;
@@ -416,8 +420,12 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
         doc.text(item.codigo_barras || '', leftColumn + 8, yPos + 4, { width: 70, lineBreak: false });
         doc.text(item.articulo_nombre || '', leftColumn + 85, yPos + 4, { width: 200, lineBreak: false });
         doc.text(String(cant), leftColumn + 290, yPos + 4, { width: 35, align: 'right' });
-        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netPrice / cant), leftColumn + 335, yPos + 4, { width: 75, align: 'right' });
-        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalPrice), pageWidth - leftColumn - 88, yPos + 4, { width: 80, align: 'right' });
+        
+        const priceToShow = noDiscriminaIva ? (totalPrice / cant) : (netPrice / cant);
+        const subtotalToShow = totalPrice;
+        
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(priceToShow), leftColumn + 335, yPos + 4, { width: 75, align: 'right' });
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotalToShow), pageWidth - leftColumn - 88, yPos + 4, { width: 80, align: 'right' });
 
         yPos += 16;
       });
@@ -425,21 +433,29 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
       doc.rect(leftColumn, gridTop, contentWidth, (yPos - gridTop)).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
 
       let totalsY = yPos + 12;
+      const cardHeight = noDiscriminaIva ? 24 : 48;
       doc.save();
-      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).fillColor('#f8fafc').fill();
-      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, 48).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, cardHeight).fillColor('#f8fafc').fill();
+      doc.rect(pageWidth - leftColumn - 180, totalsY, 180, cardHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
       doc.restore();
 
-      doc.fontSize(8).font('Helvetica').fillColor('#475569');
-      doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, totalsY + 6);
-      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, totalsY + 6, { width: 85, align: 'right' });
+      doc.fontSize(8);
+      if (!noDiscriminaIva) {
+        doc.font('Helvetica').fillColor('#475569');
+        doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, totalsY + 6);
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, totalsY + 6, { width: 85, align: 'right' });
 
-      doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, totalsY + 18);
-      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatTotal), pageWidth - leftColumn - 95, totalsY + 18, { width: 85, align: 'right' });
+        doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, totalsY + 18);
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatTotal), pageWidth - leftColumn - 95, totalsY + 18, { width: 85, align: 'right' });
 
-      doc.font('Helvetica-Bold').fillColor('#1e293b');
-      doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, totalsY + 32);
-      doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 32, { width: 85, align: 'right' });
+        doc.font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, totalsY + 32);
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 32, { width: 85, align: 'right' });
+      } else {
+        doc.font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text('TOTAL:', pageWidth - leftColumn - 172, totalsY + 8);
+        doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 8, { width: 85, align: 'right' });
+      }
 
       let footerY = doc.page.height - 90;
       doc.moveTo(leftColumn, footerY - 5)

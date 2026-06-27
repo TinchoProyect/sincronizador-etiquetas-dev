@@ -122,16 +122,21 @@ const construirPDF = async (doc, factura, items) => {
     const middleColumn = pageMargin + (contentWidth / 2);
     
     // NUEVO: Definición de columnas adaptables para Puesto 90 (sin IVA, con precios finales)
-    const isPuesto90 = parseInt(factura.pto_vta || 0, 10) === 90;
+    // NUEVO: Definición de columnas adaptables para Puesto 90 y Puesto 2 (sin IVA, con precios finales)
+    const ptoVtaInt = parseInt(factura.pto_vta || 0, 10);
+    const esTipoE = [19, 20, 21].includes(parseInt(factura.tipo_cbte || 0, 10));
+    // No discriminar IVA si es puesto 2, puesto 90 o tipo E, pero siempre discriminar si es puesto 1
+    const noDiscriminaIva = (ptoVtaInt === 2 || ptoVtaInt === 90 || esTipoE) && ptoVtaInt !== 1;
+    const isPuesto90 = ptoVtaInt === 90;
     
     const colDescX = leftColumn + 8;
-    const colDescW = isPuesto90 ? (middleColumn - leftColumn - 60) : (middleColumn - leftColumn - 100);
+    const colDescW = noDiscriminaIva ? (middleColumn - leftColumn - 60) : (middleColumn - leftColumn - 100);
     
-    const colCantX = isPuesto90 ? (middleColumn - 60) : (middleColumn - 80);
+    const colCantX = noDiscriminaIva ? (middleColumn - 60) : (middleColumn - 80);
     const colCantW = 60;
     
-    const colPrecioX = isPuesto90 ? middleColumn : (middleColumn - 20);
-    const colPrecioW = isPuesto90 ? 100 : 80;
+    const colPrecioX = noDiscriminaIva ? middleColumn : (middleColumn - 20);
+    const colPrecioW = noDiscriminaIva ? 100 : 80;
     
     const colIvaX = middleColumn + 60;
     const colIvaW = 40;
@@ -180,10 +185,10 @@ const construirPDF = async (doc, factura, items) => {
         // Código del comprobante AFIP debajo del recuadro
         if (isPuesto90) {
             // Desplazar "DOC. INTERNO" hacia abajo para evitar superposición
-            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('DOC. INTERNO', (pageWidth / 2) - 50, boxY + boxHeight + 6, { width: 100, align: 'center' });
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#8e4785').text('DOC. INTERNO', (pageWidth / 2) - 30, boxY + boxHeight + 6, { width: 60, align: 'center' });
         } else {
             const codigoCbte = String(tipoCbte).padStart(3, '0');
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#8e4785').text(`COD. ${codigoCbte}`, (pageWidth / 2) - 50, boxY + boxHeight + 3, { width: 100, align: 'center' });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#8e4785').text(`COD. ${codigoCbte}`, (pageWidth / 2) - 30, boxY + boxHeight + 3, { width: 60, align: 'center' });
         }
         
         // Línea divisoria vertical
@@ -200,8 +205,8 @@ const construirPDF = async (doc, factura, items) => {
             const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
             tipoDesc = esNC ? 'Remito de Entrega' : 'Presupuesto Aprobado';
         }
-        // Desplazar a middleColumn + 28 para dar más margen y evitar colisiones
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(tipoDesc.toUpperCase(), middleColumn + 28, rightY);
+        // Desplazar a middleColumn + 35 para dar más margen y evitar colisiones
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(tipoDesc.toUpperCase(), middleColumn + 35, rightY);
         
         rightY += 15;
         
@@ -215,14 +220,14 @@ const construirPDF = async (doc, factura, items) => {
             compNum = `${factura.serie_interna || 'B'} - ${String(factura.nro_interno).padStart(8, '0')}`;
         }
         
-        doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nº ${compNum}`, middleColumn + 28, rightY);
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nº ${compNum}`, middleColumn + 35, rightY);
         
         rightY += 14;
         doc.fontSize(8).font('Helvetica').fillColor('#475569');
-        doc.text(`Fecha de Emisión: ${formatearFecha(factura.fecha_emision)}`, middleColumn + 28, rightY);
-        doc.text(`CUIT: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 28, rightY + 9);
-        doc.text(`Ingresos Brutos: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 28, rightY + 18);
-        doc.text(`Inicio de Actividades: ${COMPANY_CONFIG.inicioActividad || '01/01/2026'}`, middleColumn + 28, rightY + 27);
+        doc.text(`Fecha de Emisión: ${formatearFecha(factura.fecha_emision)}`, middleColumn + 35, rightY);
+        doc.text(`CUIT: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 35, rightY + 9);
+        doc.text(`Ingresos Brutos: ${COMPANY_CONFIG.cuitFmt}`, middleColumn + 35, rightY + 18);
+        doc.text(`Inicio de Actividades: ${COMPANY_CONFIG.inicioActividad || '01/01/2026'}`, middleColumn + 35, rightY + 27);
         
         // Separador de cabecera
         localY = localY + 80;
@@ -271,7 +276,7 @@ const construirPDF = async (doc, factura, items) => {
         doc.text('Descripción', colDescX, localY + 2.5);
         doc.text('Cant', colCantX, localY + 2.5, { width: colCantW, align: 'right' });
         doc.text('Precio Unit.', colPrecioX, localY + 2.5, { width: colPrecioW, align: 'right' });
-        if (!isPuesto90) {
+        if (!noDiscriminaIva) {
             doc.text('IVA', colIvaX, localY + 2.5, { width: colIvaW, align: 'right' });
         }
         doc.text('Subtotal', colSubtotalX, localY + 2.5, { width: colSubtotalW, align: 'right' });
@@ -291,17 +296,17 @@ const construirPDF = async (doc, factura, items) => {
         const codigoNormalizado = normalizarCodigo(item.alic_iva_id);
         const ivaLabel = formatearPorcentaje(codigoNormalizado);
         
-        // Si es Puesto 90, mostrar el precio unitario final (con IVA incluido) y calcular subtotal final
+        // Si no discrimina IVA, mostrar el precio unitario final (con IVA incluido) y calcular subtotal final
         const alicuota = obtenerAlicuota(codigoNormalizado);
         const ivaFactor = alicuota ? alicuota.factor : 0.21;
-        const pUnitFinal = isPuesto90 ? (item.p_unit * (1 + ivaFactor)) : item.p_unit;
+        const pUnitFinal = noDiscriminaIva ? (item.p_unit * (1 + ivaFactor)) : item.p_unit;
         const subtotalFinal = (item.qty || 0) * pUnitFinal;
         
         // Escribir contenido del item utilizando columnas dinámicas
         doc.text(item.descripcion || 'Sin descripción', colDescX, yPos, { width: colDescW });
         doc.text(String(item.qty || 0), colCantX, yPos, { width: colCantW, align: 'right' });
         doc.text(formatearMoneda(pUnitFinal), colPrecioX, yPos, { width: colPrecioW, align: 'right' });
-        if (!isPuesto90) {
+        if (!noDiscriminaIva) {
             doc.text(ivaLabel, colIvaX, yPos, { width: colIvaW, align: 'right' });
         }
         doc.text(formatearMoneda(subtotalFinal), colSubtotalX, yPos, { width: colSubtotalW, align: 'right' });
@@ -367,8 +372,8 @@ const construirPDF = async (doc, factura, items) => {
     totalRows += Object.keys(ivasPorAlicuota).length;
     if (factura.imp_trib > 0) totalRows += 1;
     
-    // Si es Puesto 90, solo se renderiza la línea de TOTAL, por lo que la altura es fija de 28 pt
-    const cardHeight = isPuesto90 ? 28 : ((totalRows * 10) + 18);
+    // Si no discrimina IVA, solo se renderiza la línea de TOTAL, por lo que la altura es fija de 28 pt
+    const cardHeight = noDiscriminaIva ? 28 : ((totalRows * 10) + 18);
     
     // Validar si los totales, el bloque de autorización AFIP y los datos bancarios caben en la página actual
     const espacioAutorizacion = factura.cae ? 132 : 40;
@@ -391,7 +396,7 @@ const construirPDF = async (doc, factura, items) => {
     let localY = yPos;
     doc.fontSize(8).font('Helvetica').fillColor('#475569');
     
-    if (!isPuesto90) {
+    if (!noDiscriminaIva) {
         if (descuento > 0) {
             doc.text('Subtotal:', totalsX, localY);
             doc.font('Helvetica-Bold').fillColor('#1e293b').text(formatearMoneda(subtotalAntesDescuento), totalsX + 70, localY, { width: 70, align: 'right' });

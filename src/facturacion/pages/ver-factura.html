@@ -725,7 +725,11 @@
                 13: 'Nota de Crédito C'
             };
 
-            const isPuesto90 = parseInt(factura.pto_vta || 0, 10) === 90;
+            const ptoVtaInt = parseInt(factura.pto_vta || 0, 10);
+            const esTipoE = [19, 20, 21].includes(parseInt(factura.tipo_cbte || 0, 10));
+            // No discriminar IVA si es puesto 2, puesto 90 o tipo E, pero SIEMPRE discriminar si es puesto 1
+            const noDiscriminaIva = (ptoVtaInt === 2 || ptoVtaInt === 90 || esTipoE) && ptoVtaInt !== 1;
+            const isPuesto90 = ptoVtaInt === 90;
             
             let tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
             if (isPuesto90) {
@@ -833,6 +837,8 @@
 
             // Agregar tabla de items
             if (factura.items && factura.items.length > 0) {
+                const colIvaHeader = noDiscriminaIva ? '' : '<th class="text-right" style="width: 80px;">IVA</th>';
+                
                 html += `
                     <div class="section">
                         <table class="items-table">
@@ -841,7 +847,7 @@
                                     <th>Descripción</th>
                                     <th class="text-right" style="width: 75px;">Cant</th>
                                     <th class="text-right" style="width: 110px;">Precio Unit.</th>
-                                    <th class="text-right" style="width: 80px;">IVA</th>
+                                    ${colIvaHeader}
                                     <th class="text-right" style="width: 120px;">Subtotal</th>
                                 </tr>
                             </thead>
@@ -849,14 +855,20 @@
                 `;
 
                 factura.items.forEach(item => {
-                    const subtotal = (item.qty || 0) * (item.p_unit || 0);
+                    const qtyVal = parseFloat(item.qty) || 0;
+                    const impTotalVal = parseFloat(item.imp_total) || 0;
+                    const pUnitVal = noDiscriminaIva ? (qtyVal > 0 ? impTotalVal / qtyVal : 0) : (parseFloat(item.p_unit) || 0);
+                    const subtotalVal = noDiscriminaIva ? impTotalVal : (qtyVal * (parseFloat(item.p_unit) || 0));
+                    
+                    const colIvaVal = noDiscriminaIva ? '' : `<td class="text-right">${obtenerAlicuotaIVA(item.alic_iva_id)}</td>`;
+                    
                     html += `
                         <tr>
                             <td>${item.descripcion || 'Sin descripción'}</td>
-                            <td class="text-right">${item.qty || 0}</td>
-                            <td class="text-right">${formatMoney(item.p_unit)}</td>
-                            <td class="text-right">${obtenerAlicuotaIVA(item.alic_iva_id)}</td>
-                            <td class="text-right">${formatMoney(subtotal)}</td>
+                            <td class="text-right">${qtyVal}</td>
+                            <td class="text-right">${formatMoney(pUnitVal)}</td>
+                            ${colIvaVal}
+                            <td class="text-right">${formatMoney(subtotalVal)}</td>
                         </tr>
                     `;
                 });
@@ -920,56 +932,58 @@
                 `;
             }
 
-            if (netoGravado > 0) {
-                html += `
-                    <tr>
-                        <td class="totals-label">Neto Gravado:</td>
-                        <td class="totals-val">${formatMoney(netoGravado)}</td>
-                    </tr>
-                `;
-            }
-
-            if (netoExento > 0) {
-                html += `
-                    <tr>
-                        <td class="totals-label">Neto Exento:</td>
-                        <td class="totals-val">${formatMoney(netoExento)}</td>
-                    </tr>
-                `;
-            }
-
-            const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
-            if (codigosOrdenados.length > 0) {
-                codigosOrdenados.forEach(codigo => {
-                    const montoIva = ivasPorAlicuota[codigo];
-                    const etiqueta = obtenerAlicuotaIVA(codigo);
-
+            if (!noDiscriminaIva) {
+                if (netoGravado > 0) {
                     html += `
                         <tr>
-                            <td class="totals-label">IVA ${etiqueta}:</td>
-                            <td class="totals-val">${formatMoney(montoIva)}</td>
-                        </tr>
-                    `;
-                });
-
-                if (codigosOrdenados.length > 1) {
-                    const totalIva = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
-                    html += `
-                        <tr>
-                            <td class="totals-label">Total IVA:</td>
-                            <td class="totals-val" style="font-weight: bold;">${formatMoney(totalIva)}</td>
+                            <td class="totals-label">Neto Gravado:</td>
+                            <td class="totals-val">${formatMoney(netoGravado)}</td>
                         </tr>
                     `;
                 }
-            }
 
-            if (factura.imp_trib > 0) {
-                html += `
-                    <tr>
-                        <td class="totals-label">Otros Tributos:</td>
-                        <td class="totals-val">${formatMoney(factura.imp_trib)}</td>
-                    </tr>
-                `;
+                if (netoExento > 0) {
+                    html += `
+                        <tr>
+                            <td class="totals-label">Neto Exento:</td>
+                            <td class="totals-val">${formatMoney(netoExento)}</td>
+                        </tr>
+                    `;
+                }
+
+                const codigosOrdenados = Object.keys(ivasPorAlicuota).map(Number).sort((a, b) => a - b);
+                if (codigosOrdenados.length > 0) {
+                    codigosOrdenados.forEach(codigo => {
+                        const montoIva = ivasPorAlicuota[codigo];
+                        const etiqueta = obtenerAlicuotaIVA(codigo);
+
+                        html += `
+                            <tr>
+                                <td class="totals-label">IVA ${etiqueta}:</td>
+                                <td class="totals-val">${formatMoney(montoIva)}</td>
+                            </tr>
+                        `;
+                    });
+
+                    if (codigosOrdenados.length > 1) {
+                        const totalIva = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
+                        html += `
+                            <tr>
+                                <td class="totals-label">Total IVA:</td>
+                                <td class="totals-val" style="font-weight: bold;">${formatMoney(totalIva)}</td>
+                            </tr>
+                        `;
+                    }
+                }
+
+                if (factura.imp_trib > 0) {
+                    html += `
+                        <tr>
+                            <td class="totals-label">Otros Tributos:</td>
+                            <td class="totals-val">${formatMoney(factura.imp_trib)}</td>
+                        </tr>
+                    `;
+                }
             }
 
             html += `
