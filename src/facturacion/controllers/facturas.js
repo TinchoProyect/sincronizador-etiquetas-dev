@@ -857,7 +857,7 @@ const obtenerFacturaHeredada = async (req, res) => {
         // 1. Obtener cabecera de presupuesto y datos del cliente
         const queryHeader = `
             SELECT 
-                p.id, p.fecha, p.id_cliente, p.nota,
+                p.id, p.fecha, p.id_cliente, p.nota, p.descuento,
                 bc.razon_social, bc.cuit_cuil, bc.codigo_bunker_cliente, bc.condicion_iva, bc.domicilio_fiscal, bc.provincia
             FROM public.presupuestos p
             LEFT JOIN public.bunker_clientes bc ON CAST(bc.lomas_soft_id AS INTEGER) = CAST(p.id_cliente AS INTEGER)
@@ -912,11 +912,17 @@ const obtenerFacturaHeredada = async (req, res) => {
             }
         });
 
+        const rawDesc = parseFloat(budget.descuento) || 0;
+        const descuentoPorcentaje = rawDesc > 1 ? rawDesc / 100 : rawDesc;
+
         // 3. Estructurar el objeto factura mock
         const factura = {
-            id: `heredada-${budget.id}`,
-            presupuesto_id: budget.id,
-            cliente_id: budget.id_cliente,
+            id: budget.id,
+            pto_vta: budget.nota && budget.nota.includes('-0007-') ? 7 : (budget.nota && budget.nota.includes('-0002-') ? 2 : 2), 
+            tipo_cbte: budget.nota && budget.nota.toUpperCase().includes('FAC A-') ? 1 : 11, 
+            nro_interno: budget.id,
+            cbte_nro: budget.id,
+            fecha_emision: budget.fecha,
             razon_social: budget.razon_social || 'Cliente Histórico Lomasoft',
             cliente_cuit: budget.cuit_cuil || 'N/D',
             cliente_domicilio: budget.domicilio_fiscal || 'Sin Dirección',
@@ -924,15 +930,13 @@ const obtenerFacturaHeredada = async (req, res) => {
             cliente_condicion_iva: budget.condicion_iva || 'Consumidor Final',
             fecha: budget.fecha,
             creado_en: budget.fecha,
-            pto_vta: 90, 
-            tipo_cbte: 11, 
             nro_cbte: budget.id,
             estado: 'APROBADA_LOCAL', 
             observaciones: 'Comprobante histórico migrado de Lomasoft',
-            descuento: 0,
-            imp_neto: impNeto,
-            imp_iva: impIva,
-            imp_total: impTotal,
+            descuento: descuentoPorcentaje,
+            imp_neto: impNeto * (1 - descuentoPorcentaje),
+            imp_iva: impIva * (1 - descuentoPorcentaje),
+            imp_total: impTotal * (1 - descuentoPorcentaje),
             cae: null,
             cae_vto: null,
             items: items,
@@ -969,7 +973,7 @@ const generarPDFHeredada = async (req, res) => {
         // 1. Obtener cabecera de presupuesto y datos del cliente
         const queryHeader = `
             SELECT 
-                p.id, p.fecha, p.id_cliente, p.nota,
+                p.id, p.fecha, p.id_cliente, p.nota, p.descuento,
                 bc.razon_social, bc.cuit_cuil, bc.codigo_bunker_cliente, bc.condicion_iva, bc.domicilio_fiscal, bc.provincia
             FROM public.presupuestos p
             LEFT JOIN public.bunker_clientes bc ON CAST(bc.lomas_soft_id AS INTEGER) = CAST(p.id_cliente AS INTEGER)
@@ -1041,19 +1045,35 @@ const generarPDFHeredada = async (req, res) => {
             doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
             doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
 
-            const ptoVta = (numero_factura || '').includes('-0002-') ? 2 : ((numero_factura || '').includes('-0001-') ? 1 : 1);
+            const ptoVta = (numero_factura || '').includes('-0002-') ? 2 : ((numero_factura || '').includes('-0007-') ? 7 : 1);
             const esTipoE = (numero_factura || '').toUpperCase().includes('FAC E-') || (numero_factura || '').toUpperCase().includes('NC E-') || (numero_factura || '').toUpperCase().includes('ND E-');
             const noDiscriminaIva = (ptoVta === 2 || esTipoE) && ptoVta !== 1;
+
+            const numStr = String(numero_factura || budget.id || '').toUpperCase();
+            let letra = 'X';
+            let codigoCbteText = 'DOC. DE CONTROL';
+
+            if (numStr.includes('-0007-')) {
+                if (numStr.includes('A-')) {
+                    letra = 'A';
+                    codigoCbteText = numStr.includes('NC') ? 'COD. 003' : (numStr.includes('ND') ? 'COD. 002' : 'COD. 001');
+                } else if (numStr.includes('B-')) {
+                    letra = 'B';
+                    codigoCbteText = numStr.includes('NC') ? 'COD. 008' : (numStr.includes('ND') ? 'COD. 007' : 'COD. 006');
+                }
+            }
+            
+            const boxColor = ['A', 'B'].includes(letra) ? '#8e4785' : '#475569';
 
             const boxWidth = 32;
             const boxHeight = 32;
             const boxX = (pageWidth / 2) - (boxWidth / 2);
             const boxY = 40;
             doc.save();
-            doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor('#475569').fill();
-            doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text('X', boxX, boxY + 6, { width: boxWidth, align: 'center' });
+            doc.rect(boxX, boxY, boxWidth, boxHeight).fillColor(boxColor).fill();
+            doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text(letra, boxX, boxY + 6, { width: boxWidth, align: 'center' });
             doc.restore();
-            doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#475569').text('DOC. DE CONTROL', (pageWidth / 2) - 30, boxY + boxHeight + 4, { width: 60, align: 'center' });
+            doc.fontSize(5.5).font('Helvetica-Bold').fillColor(boxColor).text(codigoCbteText, (pageWidth / 2) - 30, boxY + boxHeight + 4, { width: 60, align: 'center' });
 
             doc.moveTo(pageWidth / 2, boxY + boxHeight + 16)
                .lineTo(pageWidth / 2, 40 + 82)
@@ -1143,29 +1163,66 @@ const generarPDFHeredada = async (req, res) => {
 
             doc.rect(leftColumn, gridTop, contentWidth, (yPos - gridTop)).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
 
+            const rawDesc = parseFloat(budget.descuento) || 0;
+            const descuentoPorcentaje = rawDesc > 1 ? rawDesc : rawDesc * 100;
+            const descuentoDecimal = descuentoPorcentaje / 100;
+
             let totalsY = yPos + 12;
-            const cardHeight = noDiscriminaIva ? 24 : 48;
+            const cardHeight = noDiscriminaIva ? (descuentoDecimal > 0 ? 36 : 24) : (descuentoDecimal > 0 ? 60 : 48);
             doc.save();
             doc.rect(pageWidth - leftColumn - 180, totalsY, 180, cardHeight).fillColor('#f8fafc').fill();
             doc.rect(pageWidth - leftColumn - 180, totalsY, 180, cardHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
             doc.restore();
 
             doc.fontSize(8);
+            let localY = totalsY + 6;
             if (!noDiscriminaIva) {
                 doc.font('Helvetica').fillColor('#475569');
-                doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, totalsY + 6);
-                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, totalsY + 6, { width: 85, align: 'right' });
+                if (descuentoDecimal > 0) {
+                    doc.text('Subtotal Neto:', pageWidth - leftColumn - 172, localY);
+                    doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netTotal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                    localY += 12;
 
-                doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, totalsY + 18);
-                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatTotal), pageWidth - leftColumn - 95, totalsY + 18, { width: 85, align: 'right' });
+                    const descNetoVal = netTotal * descuentoDecimal;
+                    doc.text(`Desc. Neto (${descuentoPorcentaje.toFixed(0)}%):`, pageWidth - leftColumn - 172, localY);
+                    doc.text(`-${new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(descNetoVal)}`, pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                    localY += 12;
+                }
 
+                const netFinalVal = netTotal * (1 - descuentoDecimal);
+                doc.text('Neto Gravado:', pageWidth - leftColumn - 172, localY);
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(netFinalVal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                localY += 12;
+
+                const vatFinalVal = vatTotal * (1 - descuentoDecimal);
+                doc.text('IVA Inscripto (21%):', pageWidth - leftColumn - 172, localY);
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(vatFinalVal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                localY += 12;
+
+                doc.moveTo(pageWidth - leftColumn - 172, localY).lineTo(pageWidth - leftColumn - 5, localY).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
+                localY += 4;
+
+                const grandFinalVal = grandTotal * (1 - descuentoDecimal);
                 doc.font('Helvetica-Bold').fillColor('#1e293b');
-                doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, totalsY + 32);
-                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 32, { width: 85, align: 'right' });
+                doc.text('TOTAL GENERAL:', pageWidth - leftColumn - 172, localY);
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandFinalVal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
             } else {
+                doc.font('Helvetica').fillColor('#475569');
+                if (descuentoDecimal > 0) {
+                    doc.text('Subtotal:', pageWidth - leftColumn - 172, localY);
+                    doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                    localY += 12;
+
+                    const descTotalVal = grandTotal * descuentoDecimal;
+                    doc.text(`Descuento (${descuentoPorcentaje.toFixed(0)}%):`, pageWidth - leftColumn - 172, localY);
+                    doc.text(`-${new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(descTotalVal)}`, pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
+                    localY += 12;
+                }
+
+                const grandFinalVal = grandTotal * (1 - descuentoDecimal);
                 doc.font('Helvetica-Bold').fillColor('#1e293b');
-                doc.text('TOTAL:', pageWidth - leftColumn - 172, totalsY + 8);
-                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandTotal), pageWidth - leftColumn - 95, totalsY + 8, { width: 85, align: 'right' });
+                doc.text('TOTAL:', pageWidth - leftColumn - 172, localY);
+                doc.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(grandFinalVal), pageWidth - leftColumn - 95, localY, { width: 85, align: 'right' });
             }
 
             let footerY = doc.page.height - 90;

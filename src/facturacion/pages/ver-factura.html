@@ -745,8 +745,21 @@
                 return 'X';
             };
 
-            const letra = factura.es_heredada ? 'X' : (isPuesto90 ? 'R' : obtenerLetra(factura.tipo_cbte));
-            const codigoCbteText = factura.es_heredada ? 'DOC. DE CONTROL' : (isPuesto90 ? 'DOC. INTERNO' : `COD. ${String(factura.tipo_cbte).padStart(3, '0')}`);
+            let letra = factura.es_heredada ? 'X' : (isPuesto90 ? 'R' : obtenerLetra(factura.tipo_cbte));
+            let codigoCbteText = factura.es_heredada ? 'DOC. DE CONTROL' : (isPuesto90 ? 'DOC. INTERNO' : `COD. ${String(factura.tipo_cbte).padStart(3, '0')}`);
+
+            if (factura.es_heredada && numeroFactura) {
+                const numStr = String(numeroFactura).toUpperCase();
+                if (numStr.includes('-0007-')) {
+                    if (numStr.includes('A-')) {
+                        letra = 'A';
+                        codigoCbteText = numStr.includes('NC') ? 'COD. 003' : (numStr.includes('ND') ? 'COD. 002' : 'COD. 001');
+                    } else if (numStr.includes('B-')) {
+                        letra = 'B';
+                        codigoCbteText = numStr.includes('NC') ? 'COD. 008' : (numStr.includes('ND') ? 'COD. 007' : 'COD. 006');
+                    }
+                }
+            }
             const numFactura = formatNumeroFactura(factura);
 
             // Cargar datos de emisor desde la configuración del servidor, o usar valores por defecto (con el celular 221-6615746)
@@ -912,6 +925,14 @@
                     ivasPorAlicuota[codigo] += impIva;
                 }
             });
+
+            if (descuento > 0) {
+                netoExento = netoExento * (1 - descuento);
+                netoGravado = netoGravado * (1 - descuento);
+                Object.keys(ivasPorAlicuota).forEach(codigo => {
+                    ivasPorAlicuota[codigo] = ivasPorAlicuota[codigo] * (1 - descuento);
+                });
+            }
 
             // Resumen de Totales
             html += `
