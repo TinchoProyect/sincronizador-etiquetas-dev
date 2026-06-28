@@ -114,7 +114,10 @@ exports.invitarCliente = async (req, res) => {
                     error: 'Sin contacto móvil', 
                     message: 'El cliente no posee un número de WhatsApp configurado en su ficha.' 
                 });
-             // 3. Generar token de 64 caracteres y expiración de 72 horas
+            }
+        }
+ 
+        // 3. Generar token de 64 caracteres y expiración de 72 horas
         const token = crypto.randomBytes(32).toString('hex');
         const codigoActivacion = token.substring(0, 6);
         const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 horas
