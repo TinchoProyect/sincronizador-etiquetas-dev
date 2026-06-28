@@ -194,8 +194,6 @@ export default function Onboarding({ onNavigate }) {
       const cargoFinal = cargo === 'Otro' ? otroCargo.trim() : cargo;
       
       let onboardingCompleted = false;
-      let isReactivation = !!(clientData && clientData.email_portal);
-
       // Intentar primero a través del backend local
       try {
         console.log("📡 [Onboarding] Intentando completar registro vía backend local...");
@@ -220,10 +218,6 @@ export default function Onboarding({ onNavigate }) {
         }
       } catch (backendErr) {
         console.warn("⚠️ [Onboarding] Backend local offline o error. Iniciando alta directa en Supabase Cloud:", backendErr.message);
-
-        if (isReactivation) {
-          throw new Error("El servidor local está temporalmente fuera de línea. Para restablecer su contraseña, por favor intente más tarde.");
-        }
 
         // Registrar directamente en Supabase Auth
         const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
@@ -470,7 +464,7 @@ export default function Onboarding({ onNavigate }) {
   }
 
   // Paso 2: Completar Datos y Crear Contraseña
-  const isReactivation = !!(clientData && clientData.email_portal);
+  const isEmailPredefined = !!(clientData && clientData.email_portal);
 
   return (
     <div className="login-wrapper">
@@ -478,7 +472,7 @@ export default function Onboarding({ onNavigate }) {
         {/* Encabezado */}
         <div className="login-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem' }}>
           <img src="/logo_LAMDA.png" alt="LAMDA Logo" style={{ maxHeight: '54px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>{isReactivation ? 'restablecer contraseña' : 'configurar credenciales'}</span>
+          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>activar cuenta comercial</span>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -493,7 +487,7 @@ export default function Onboarding({ onNavigate }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="email">{isReactivation ? 'Correo de Acceso (Confirmado)' : 'Correo de Acceso'}</label>
+            <label className="form-label" htmlFor="email">{isEmailPredefined ? 'Correo de Acceso (Confirmado)' : 'Correo de Acceso'}</label>
             <div className="input-wrapper">
               <Mail className="input-icon" size={18} />
               <input
@@ -501,13 +495,13 @@ export default function Onboarding({ onNavigate }) {
                 type="email"
                 required
                 disabled={submitting}
-                readOnly={isReactivation}
+                readOnly={isEmailPredefined}
                 className="form-input"
-                style={{ backgroundColor: isReactivation ? 'rgba(255, 255, 255, 0.05)' : '', cursor: isReactivation ? 'not-allowed' : '' }}
+                style={{ backgroundColor: isEmailPredefined ? 'rgba(255, 255, 255, 0.05)' : '', cursor: isEmailPredefined ? 'not-allowed' : '' }}
                 placeholder="ejemplo@portal.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onFocus={() => !isReactivation && setShowSuggestions(true)}
+                onFocus={() => !isEmailPredefined && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                 autoComplete="email"
               />
@@ -545,8 +539,8 @@ export default function Onboarding({ onNavigate }) {
               </div>
             )}
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {isReactivation 
-                ? 'Este correo ya está registrado y se utilizará para ingresar al portal.'
+              {isEmailPredefined 
+                ? 'Este correo ha sido verificado por administración para su acceso.'
                 : 'Este correo será su usuario para iniciar sesión en el portal.'}
             </span>
           </div>
@@ -613,7 +607,7 @@ export default function Onboarding({ onNavigate }) {
 
           {/* Advertencia Humana de Encriptación y Seguridad */}
           <div style={{ background: 'rgba(142, 71, 133, 0.1)', borderLeft: '4px solid var(--accent)', padding: '12px', borderRadius: '6px', fontSize: '0.85rem', lineHeight: '1.45', color: 'var(--text-primary)', fontFamily: 'sans-serif' }}>
-            Establecé tu contraseña. Esta clave es absolutamente personal, está encriptada de forma segura y nadie (ni en LAMDA, ni en ninguna parte del mundo) puede verla.
+            Establecé tu contraseña para el portal. Esta clave es absolutamente personal, está encriptada de forma segura y el único que puede visualizarla sos vos mismo.
           </div>
 
           <div className="form-group">
@@ -703,10 +697,10 @@ export default function Onboarding({ onNavigate }) {
             {submitting ? (
               <>
                 <Loader2 className="spinner" style={{ width: '18px', height: '18px', borderTopColor: 'var(--text-primary)' }} />
-                <span>{isReactivation ? 'Actualizando...' : 'Registrando...'}</span>
+                <span>Registrando...</span>
               </>
             ) : (
-              <span>{isReactivation ? 'Actualizar mi Cuenta B2B' : 'Activar mi Cuenta'}</span>
+              <span>Activar mi Cuenta</span>
             )}
           </button>
 
