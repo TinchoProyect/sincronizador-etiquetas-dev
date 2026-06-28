@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Receipt, ClipboardList, LogOut, User, Layers } from 'lucide-react';
+import { BookOpen, Receipt, ClipboardList, LogOut, User, Layers, Home } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function Sidebar({ profile, currentTab, setCurrentTab }) {
@@ -8,6 +8,7 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
   };
 
   const menuItems = [
+    { id: 'home', label: 'Inicio', icon: Home },
     { id: 'catalogo', label: 'Catálogo', icon: BookOpen },
     { id: 'pedidos', label: 'Mis Pedidos', icon: ClipboardList },
     { id: 'cc', label: 'Cuenta Corriente', icon: Receipt }

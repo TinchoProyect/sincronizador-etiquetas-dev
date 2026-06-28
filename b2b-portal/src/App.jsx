@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
 import ActivarCuenta from './pages/ActivarCuenta';
+import Home from './pages/Home';
 import Catalogo from './pages/Catalogo';
 import CuentaCorriente from './pages/CuentaCorriente';
 import Pedidos from './pages/Pedidos';
@@ -13,7 +14,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const [currentTab, setCurrentTab] = useState('catalogo');
+  const [currentTab, setCurrentTab] = useState('home');
   const [cart, setCart] = useState([]);
   const [pendingAction, setPendingAction] = useState(null);
   const getRoutePath = () => {
@@ -236,6 +237,12 @@ export default function App() {
       />
       
       <main className="main-content">
+        {currentTab === 'home' && (
+          <Home 
+            setCurrentTab={setCurrentTab} 
+            profile={profile} 
+          />
+        )}
         {currentTab === 'catalogo' && (
           <Catalogo 
             profile={profile} 
