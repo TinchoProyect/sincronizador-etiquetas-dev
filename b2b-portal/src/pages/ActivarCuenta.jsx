@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { User, Phone, Key, ArrowLeft, Loader2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005';
+const API_BASE_URL = import.meta.env.DEV 
+  ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005') 
+  : '';
 
 export default function ActivarCuenta({ onNavigate }) {
   const [step, setStep] = useState(1); // 1: Solicitar, 2: Verificar

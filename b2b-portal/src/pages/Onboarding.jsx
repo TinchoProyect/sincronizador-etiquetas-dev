@@ -3,7 +3,9 @@ import { Mail, Lock, Loader2, ArrowLeft, User, Briefcase, Eye, EyeOff } from 'lu
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005';
+const API_BASE_URL = import.meta.env.DEV 
+  ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005') 
+  : '';
 
 export default function Onboarding({ onNavigate }) {
   const [token, setToken] = useState('');
