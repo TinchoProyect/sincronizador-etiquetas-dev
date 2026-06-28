@@ -279,11 +279,11 @@ export default function Home({ setCurrentTab, profile }) {
             </div>
 
             {/* Título & Mensaje */}
-            <h3 style={{ fontSize: '1.35rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-              Instalá la App de LAMDA
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.75rem', lineHeight: '1.3' }}>
+              ¿Querés crear un acceso directo en tu celular?
             </h3>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '1.75rem' }}>
-              Agregá el portal a la pantalla de inicio de tu celular para acceder de forma directa y operar de manera fluida en la calle.
+              Esto te provee de un acceso directo al portal desde tu pantalla de inicio para ingresar de forma rápida y sin demoras.
             </p>
 
             {/* Contenido Dinámico según Dispositivo */}
@@ -302,7 +302,7 @@ export default function Home({ setCurrentTab, profile }) {
                 }}
               >
                 <Download size={18} />
-                <span>Instalar Directamente</span>
+                <span>Crear Acceso Directo</span>
               </button>
             ) : isIos ? (
               /* iOS Safari */
@@ -335,7 +335,7 @@ export default function Home({ setCurrentTab, profile }) {
                 color: 'var(--text-secondary)',
                 lineHeight: '1.4'
               }}>
-                Hacé clic en el menú de <strong>3 puntos</strong> de tu navegador en la esquina superior/inferior y seleccioná la opción <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla de inicio"</strong>.
+                Hacé clic en el menú de <strong>3 puntos</strong> de tu navegador en la esquina superior/inferior y seleccioná la opción <strong>"Agregar a la pantalla de inicio"</strong>.
               </div>
             )}
 
@@ -355,7 +355,7 @@ export default function Home({ setCurrentTab, profile }) {
               onMouseOver={(e) => e.target.style.color = 'var(--text-secondary)'}
               onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
             >
-              Continuar en el navegador
+              Continuar sin agregar
             </button>
 
           </div>

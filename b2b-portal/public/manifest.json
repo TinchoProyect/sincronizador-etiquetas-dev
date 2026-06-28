@@ -1,7 +1,7 @@
 {
   "short_name": "LAMDA",
-  "name": "Portal de Clientes - Sistema LAMDA",
-  "description": "Portal de autogestión comercial para clientes de la distribuidora - Sistema LAMDA",
+  "name": "LAMDA",
+  "description": "Portal de autogestión comercial - Sistema LAMDA",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
