@@ -261,6 +261,7 @@ export default function Onboarding({ onNavigate }) {
       const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
       if (loginSuccess) {
+        sessionStorage.setItem('just_activated', 'true');
         if (isiOS) {
           // Guía manual premium de instalación para iOS/Safari
           await Swal.fire({

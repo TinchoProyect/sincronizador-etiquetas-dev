@@ -1,36 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, ClipboardList, Receipt, Smartphone, X, Download, Share } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Smartphone, X, Download, Share, ChevronDown, Home as HomeIcon, BookOpen, ClipboardList, Receipt } from 'lucide-react';
 
 export default function Home({ setCurrentTab, profile }) {
   const [showPwaModal, setShowPwaModal] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [hasPrompt, setHasPrompt] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
-    // 1. Detectar si ya está en modo PWA (standalone) para no molestar al usuario
+    // 1. Detectar si ya está en modo PWA (standalone)
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     
-    // 2. Detectar si el usuario ya descartó el aviso
+    // 2. Detectar si el usuario acaba de activar la cuenta (forzar modal en onboarding)
+    const justActivated = sessionStorage.getItem('just_activated') === 'true';
+    if (justActivated) {
+      sessionStorage.removeItem('just_activated');
+      localStorage.removeItem('pwa_install_dismissed');
+    }
+
+    // 3. Detectar si el usuario ya descartó el aviso
     const isDismissed = localStorage.getItem('pwa_install_dismissed') === 'true';
 
-    if (!isStandalone && !isDismissed) {
-      // Breve retraso para priorizar la carga visual inicial
+    if (!isStandalone && (justActivated || !isDismissed)) {
       const timer = setTimeout(() => {
-        // Detectar si es iOS
         const userAgent = window.navigator.userAgent.toLowerCase();
         const iosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIos(iosDevice);
 
-        // Verificar si tenemos el prompt guardado
         const promptAvailable = !!window.deferredPrompt;
         setHasPrompt(promptAvailable);
 
-        // Mostrar modal si aplica
         setShowPwaModal(true);
       }, 1500);
 
       return () => clearTimeout(timer);
     }
+  }, []);
+
+  // Cerrar menú al hacer clic afuera
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleInstallClick = async () => {
@@ -50,13 +66,18 @@ export default function Home({ setCurrentTab, profile }) {
     setShowPwaModal(false);
   };
 
+  const handleNavigation = (tabId) => {
+    setMenuOpen(false);
+    setCurrentTab(tabId);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '80vh', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
       
       {/* Contenedor Principal Despejado */}
       <div style={{ 
         width: '100%', 
-        maxWidth: '900px', 
+        maxWidth: '600px', 
         display: 'flex', 
         flexDirection: 'column', 
         alignItems: 'center', 
@@ -65,152 +86,154 @@ export default function Home({ setCurrentTab, profile }) {
         animation: 'fadeIn 0.8s ease-out'
       }}>
         
-        {/* Logotipo Destacado */}
-        <div style={{ marginBottom: '2.5rem', transform: 'scale(1)', transition: 'transform 0.5s ease' }}>
+        {/* Encabezado: Logotipo completo en alta definición */}
+        <div style={{ marginBottom: '2.5rem' }}>
           <img 
             src="/logo_LAMDA.png" 
             alt="LAMDA Logo" 
             style={{ 
-              maxHeight: '85px', 
+              maxHeight: '75px', 
               maxWidth: '100%', 
               height: 'auto', 
-              filter: 'drop-shadow(0 0 15px var(--accent-glow))' 
+              filter: 'drop-shadow(0 0 15px rgba(255,255,255,0.05))'
             }} 
           />
         </div>
 
-        {/* Mensaje Informativo Mínimo */}
-        <div style={{ marginBottom: '3.5rem' }}>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
-            Portal de Autogestión Comercial
+        {/* Bajada de Texto Institucional Seca */}
+        <div style={{ marginBottom: '3rem' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.5rem', letterSpacing: '-0.01em' }}>
+            Portal de autogestión comercial
           </h1>
-          <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto', lineHeight: '1.6' }}>
-            Seleccione la sección con la que desea operar a continuación.
+          <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+            Seleccione la sección con la que desea operar.
           </p>
         </div>
 
-        {/* Sistema de Navegación en Tarjetas Elegantes */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
-          gap: '1.5rem', 
-          width: '100%',
-          marginTop: '1rem'
-        }}>
+        {/* Menú de Opciones Compacto Estilizado */}
+        <div ref={menuRef} style={{ position: 'relative', width: '100%', maxWidth: '280px' }}>
           
-          {/* Tarjeta Catálogo */}
-          <div 
-            onClick={() => setCurrentTab('catalogo')}
-            className="home-nav-card"
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
             style={{
+              width: '100%',
               background: 'var(--bg-card)',
               border: '1px solid var(--border-glass)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '2rem 1.5rem',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.85rem 1.25rem',
+              color: 'var(--text-primary)',
+              fontSize: '0.95rem',
+              fontWeight: '500',
               cursor: 'pointer',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              transition: 'var(--transition-smooth)',
-              boxShadow: '0 4px 30px rgba(0, 0, 0, 0.4)',
-              backdropFilter: 'blur(8px)'
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+              backdropFilter: 'blur(10px)',
+              transition: 'var(--transition-smooth)'
             }}
+            className="menu-select-btn"
           >
-            <div style={{ background: 'rgba(142, 71, 133, 0.1)', color: 'var(--accent)', borderRadius: '50%', padding: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <BookOpen size={28} />
-            </div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Catálogo de Artículos</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>Explorá productos, precios vigentes y stock consolidado en tiempo real.</p>
-          </div>
+            <span>Operar Sistema</span>
+            <ChevronDown size={18} style={{ transform: menuOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s ease' }} />
+          </button>
 
-          {/* Tarjeta Pedidos */}
-          <div 
-            onClick={() => setCurrentTab('pedidos')}
-            className="home-nav-card"
-            style={{
-              background: 'var(--bg-card)',
+          {menuOpen && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 0.5rem)',
+              left: 0,
+              right: 0,
+              background: 'var(--bg-sidebar)',
               border: '1px solid var(--border-glass)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '2rem 1.5rem',
-              cursor: 'pointer',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.5rem',
+              zIndex: 100,
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+              backdropFilter: 'blur(20px)',
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              transition: 'var(--transition-smooth)',
-              boxShadow: '0 4px 30px rgba(0, 0, 0, 0.4)',
-              backdropFilter: 'blur(8px)'
-            }}
-          >
-            <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', borderRadius: '50%', padding: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ClipboardList size={28} />
-            </div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Mis Pedidos</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>Realizá pedidos de mercadería y realizá el seguimiento de tus despachos.</p>
-          </div>
+              gap: '0.25rem',
+              animation: 'menuDropdownIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}>
+              
+              <button 
+                onClick={() => handleNavigation('home')}
+                className="dropdown-item-pwa"
+              >
+                <HomeIcon size={16} />
+                <span>Inicio</span>
+              </button>
 
-          {/* Tarjeta Cuenta Corriente */}
-          <div 
-            onClick={() => setCurrentTab('cc')}
-            className="home-nav-card"
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-glass)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '2rem 1.5rem',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              transition: 'var(--transition-smooth)',
-              boxShadow: '0 4px 30px rgba(0, 0, 0, 0.4)',
-              backdropFilter: 'blur(8px)'
-            }}
-          >
-            <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'hsl(217, 91%, 60%)', borderRadius: '50%', padding: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Receipt size={28} />
+              <button 
+                onClick={() => handleNavigation('catalogo')}
+                className="dropdown-item-pwa"
+              >
+                <BookOpen size={16} />
+                <span>Catálogo</span>
+              </button>
+
+              <button 
+                onClick={() => handleNavigation('pedidos')}
+                className="dropdown-item-pwa"
+              >
+                <ClipboardList size={16} />
+                <span>Mi Pedido</span>
+              </button>
+
+              <button 
+                onClick={() => handleNavigation('cc')}
+                className="dropdown-item-pwa"
+              >
+                <Receipt size={16} />
+                <span>Cuenta Corriente</span>
+              </button>
+
             </div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Cuenta Corriente</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>Consultá tus saldos, descargá comprobantes oficiales en PDF y revisá movimientos.</p>
-          </div>
+          )}
 
         </div>
 
       </div>
 
-      {/* CSS in JS para efectos hover de las tarjetas */}
+      {/* Estilos locales para el menú desplegable */}
       <style>{`
-        .home-nav-card {
-          position: relative;
-          overflow: hidden;
-        }
-        .home-nav-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          border-radius: var(--radius-lg);
-          background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.08) 100%);
-          opacity: 0;
-          transition: var(--transition-smooth);
-          pointer-events: none;
-        }
-        .home-nav-card:hover {
-          transform: translateY(-5px);
+        .menu-select-btn:hover {
           border-color: var(--accent);
-          box-shadow: 0 10px 40px rgba(142, 71, 133, 0.15) !important;
+          box-shadow: 0 4px 25px rgba(142, 71, 133, 0.15);
         }
-        .home-nav-card:hover::before {
-          opacity: 1;
+        .dropdown-item-pwa {
+          width: 100%;
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-sm);
+          padding: 0.75rem 1rem;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          alignItems: center;
+          gap: 0.75rem;
+          textAlign: left;
+          transition: var(--transition-smooth);
+        }
+        .dropdown-item-pwa:hover {
+          background: rgba(142, 71, 133, 0.12);
+          color: var(--text-primary);
+          padding-left: 1.25rem;
+        }
+        @keyframes menuDropdownIn {
+          from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(15px); }
+          from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
-      {/* Modal Inteligente para Acceso Directo (PWA) */}
+      {/* Modal de Bienvenida para Acceso Directo (PWA) */}
       {showPwaModal && (
         <div style={{ 
           position: 'fixed',
