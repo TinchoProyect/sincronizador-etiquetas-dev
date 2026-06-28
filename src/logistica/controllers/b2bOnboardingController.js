@@ -114,20 +114,18 @@ exports.invitarCliente = async (req, res) => {
                     error: 'Sin contacto móvil', 
                     message: 'El cliente no posee un número de WhatsApp configurado en su ficha.' 
                 });
-            }
-        }
-
-        // 3. Generar token de 64 caracteres y expiración de 72 horas
+             // 3. Generar token de 64 caracteres y expiración de 72 horas
         const token = crypto.randomBytes(32).toString('hex');
+        const codigoActivacion = token.substring(0, 6);
         const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 horas
-
+ 
         // 4. Registrar invitación en base local
         await pool.query(
             `INSERT INTO public.portal_invitaciones (token, cliente_id, expires_at)
              VALUES ($1, $2, $3)`,
             [token, cliente.codigo_bunker_cliente, expiresAt]
         );
-
+ 
         // 5. Enviar mensaje de invitación por el canal seleccionado
         const portalUrl = process.env.B2B_PORTAL_URL || 'http://localhost:5173';
         // Usamos Hash Routing para evitar el error 404 del servidor/CDN en la carga inicial de subrutas
@@ -144,11 +142,14 @@ exports.invitarCliente = async (req, res) => {
                 } else {
                     textoCuerpo = textoCuerpo + `\n\nEntrá acá: ${linkOnboarding}`;
                 }
+                if (textoCuerpo.includes('[Codigo_Activacion]')) {
+                    textoCuerpo = textoCuerpo.replace(/\[Codigo_Activacion\]/g, codigoActivacion);
+                }
             } else {
-                textoCuerpo = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+                textoCuerpo = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Tu código de activación es: ${codigoActivacion}. Entrá acá: ${linkOnboarding}`;
             }
             const formattedHtmlBody = textoCuerpo.replace(/\n/g, '<br/>');
-
+ 
             const emailService = require('../../facturacion/services/emailService');
             await emailService.enviarEmail({
                 to: emailDestino,
@@ -181,8 +182,11 @@ exports.invitarCliente = async (req, res) => {
                 } else {
                     textoFinal = textoFinal + `\n\nEntrá acá: ${linkOnboarding}`;
                 }
+                if (textoFinal.includes('[Codigo_Activacion]')) {
+                    textoFinal = textoFinal.replace(/\[Codigo_Activacion\]/g, codigoActivacion);
+                }
             } else {
-                textoFinal = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Desde hoy podés autogestionar tus pedidos, consultar tu cuenta corriente en tiempo real y descargar todos tus comprobantes de forma rápida y 100% online desde cualquier dispositivo. Para ingresar por primera vez y activar tu cuenta, hacé clic en el siguiente enlace: ${linkOnboarding}`;
+                textoFinal = `¡Hola! Te damos la bienvenida al nuevo portal de LAMDA. Tu código de activación es: ${codigoActivacion}. Entrá acá: ${linkOnboarding}`;
             }
 
             console.log(`📱 [B2B-ONBOARDING] Despachando mensaje de invitación por WhatsApp a: ${whatsappDestino}`);
@@ -236,31 +240,34 @@ exports.validarToken = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Token requerido', message: 'Debe especificar el token de invitación en los parámetros.' });
         }
 
+        const isShortCode = token.trim().length === 6;
         const queryToken = `
             SELECT i.token, i.cliente_id, i.expires_at, i.usado, bc.razon_social, bc.email_portal, bc.email_portal_nombre, bc.email_portal_cargo
             FROM public.portal_invitaciones i
             JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = i.cliente_id
-            WHERE i.token = $1
+            WHERE ${isShortCode ? "i.token LIKE $1 || '%'" : "i.token = $1"}
+            ORDER BY i.expires_at DESC
             LIMIT 1
         `;
-        const resToken = await pool.query(queryToken, [token]);
+        const resToken = await pool.query(queryToken, [token.trim()]);
         if (resToken.rows.length === 0) {
-            return res.status(400).json({ success: false, error: 'Inexistente', message: 'El enlace de invitación no es válido.' });
+            return res.status(400).json({ success: false, error: 'Inexistente', message: 'El código de activación no es válido o ha expirado.' });
         }
 
         const row = resToken.rows[0];
         
         if (row.usado) {
-            return res.status(400).json({ success: false, error: 'Usado', message: 'Este enlace de invitación ya ha sido utilizado.' });
+            return res.status(400).json({ success: false, error: 'Usado', message: 'Este código de activación ya ha sido utilizado.' });
         }
 
         if (new Date(row.expires_at) < new Date()) {
-            return res.status(400).json({ success: false, error: 'Expirado', message: 'El enlace de invitación ha expirado.' });
+            return res.status(400).json({ success: false, error: 'Expirado', message: 'El código de activación ha expirado.' });
         }
 
         res.json({
             success: true,
             data: {
+                token: row.token,
                 cliente_id: row.cliente_id,
                 razon_social: row.razon_social,
                 email_portal: row.email_portal,

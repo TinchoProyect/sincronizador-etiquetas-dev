@@ -8,7 +8,8 @@ const API_BASE_URL = import.meta.env.DEV
   : '';
 
 export default function Onboarding({ onNavigate }) {
-  const [token, setToken] = useState('');
+  const [tokenInput, setTokenInput] = useState(''); // Estado para la clave corta (primeros 6 caracteres)
+  const [token, setToken] = useState(''); // Estado para la clave de 64 caracteres final de registro
   const [validating, setValidating] = useState(false);
   const [isValid, setIsValid] = useState(false);
   const [clientData, setClientData] = useState(null);
@@ -55,7 +56,8 @@ export default function Onboarding({ onNavigate }) {
     }
     
     if (urlToken) {
-      setToken(urlToken);
+      // Mostrar al usuario solo los primeros 6 caracteres en el campo de texto
+      setTokenInput(urlToken.substring(0, 6));
     }
   }, []);
 
@@ -71,6 +73,9 @@ export default function Onboarding({ onNavigate }) {
 
       setClientData(resJson.data);
       if (resJson.data) {
+        if (resJson.data.token) {
+          setToken(resJson.data.token); // Guardar el token completo de 64 caracteres retornado
+        }
         if (resJson.data.email_portal) {
           setEmail(resJson.data.email_portal);
         }
@@ -169,7 +174,7 @@ export default function Onboarding({ onNavigate }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token,
+          token, // Envía la clave larga de 64 caracteres
           email: email.trim(),
           password,
           nombre_contacto: nombreContacto.trim(),
@@ -334,7 +339,7 @@ export default function Onboarding({ onNavigate }) {
                 Ingresá tu Código de Acceso
               </h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                Introducí la clave de invitación recibida por WhatsApp o Correo para comenzar la activación.
+                Introducí la clave de activación recibida por WhatsApp o Correo para validar tu identidad.
               </p>
             </div>
 
@@ -348,8 +353,8 @@ export default function Onboarding({ onNavigate }) {
                   required
                   className="form-input"
                   placeholder="Ingrese el código de seguridad"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
                   style={{ textTransform: 'none' }}
                 />
               </div>
@@ -358,7 +363,7 @@ export default function Onboarding({ onNavigate }) {
             <button
               type="button"
               onClick={() => {
-                if (!token.trim()) {
+                if (!tokenInput.trim()) {
                   Swal.fire({
                     title: 'Código Requerido',
                     text: 'Por favor, ingrese el código de activación.',
@@ -369,7 +374,7 @@ export default function Onboarding({ onNavigate }) {
                   });
                   return;
                 }
-                validarTokenInvitacion(token.trim());
+                validarTokenInvitacion(tokenInput.trim());
               }}
               className="btn-primary"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.5rem' }}

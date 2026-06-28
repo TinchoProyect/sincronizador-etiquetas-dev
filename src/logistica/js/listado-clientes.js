@@ -1240,7 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">4. Editar Cuerpo del Mensaje:</p>
                         <textarea id="textarea-message-invite" class="swal2-textarea" style="width: 100%; height: 90px; margin: 0; box-sizing: border-box; font-family: sans-serif; font-size: 13px; line-height: 1.4; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; resize: none;"></textarea>
-                        <small style="color: #64748b; font-size: 11px; margin-top: 4px; display: block;">* El marcador <strong>[Enlace_Al_Portal]</strong> se reemplazará automáticamente por la clave del cliente al enviar.</small>
+                        <small style="color: #64748b; font-size: 11px; margin-top: 4px; display: block;">* Los marcadores <strong>[Codigo_Activacion]</strong> y <strong>[Enlace_Al_Portal]</strong> se reemplazarán dinámicamente al enviar.</small>
                     </div>
                 `;
  
@@ -1270,10 +1270,17 @@ document.addEventListener('DOMContentLoaded', () => {
                              return nombre;
                          };
 
+                         const updateBubblePreview = () => {
+                             let text = textareaEl.value;
+                             text = text.replace(/\[Codigo_Activacion\]/g, '31f315');
+                             text = text.replace(/\[Enlace_Al_Portal\]/g, 'https://proud-darkness-ac3d.miserrano75.workers.dev/#/onboarding?token=31f315...');
+                             previewEl.textContent = text;
+                         };
+
                          const updateTextAndPreview = () => {
                              const contactName = getContactName();
-                             textareaEl.value = `Hola ${contactName}, te paso la clave del portal para que te loguees. Entrá acá: [Enlace_Al_Portal]`;
-                             previewEl.textContent = textareaEl.value;
+                             textareaEl.value = `Hola ${contactName}, te paso el link del portal para que te loguees. Tu código de activación es: [Codigo_Activacion]. Entrá acá: [Enlace_Al_Portal]`;
+                             updateBubblePreview();
                          };
                          
                          const updateSelect = (canal) => {
@@ -1313,7 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                          // Event listener for textarea editing
                          textareaEl.addEventListener('input', () => {
-                             previewEl.textContent = textareaEl.value;
+                             updateBubblePreview();
                          });
                      },
                      preConfirm: () => {
