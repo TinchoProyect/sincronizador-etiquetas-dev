@@ -1,7 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 console.log('[LOGISTICA] 🚀 Iniciando servidor del módulo de logística...');
