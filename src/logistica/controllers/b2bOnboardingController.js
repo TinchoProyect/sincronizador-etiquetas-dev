@@ -201,11 +201,12 @@ exports.invitarCliente = async (req, res) => {
         } catch (supaErr) {
             console.error('❌ [B2B-ONBOARDING] Falla de red al conectar con Supabase para registrar invitación:', supaErr.message);
         }
- 
         // 5. Enviar mensaje de invitación por el canal seleccionado
         const portalUrl = process.env.B2B_PORTAL_URL || 'http://localhost:5173';
-        // Usamos Hash Routing para evitar el error 404 del servidor/CDN en la carga inicial de subrutas
-        const linkOnboarding = `${portalUrl}/#/onboarding?token=${token}`;
+        // Usamos Hash Routing para evitar el error 404 del servidor/CDN en la carga inicial de subrutas.
+        // Agregamos un parámetro de versión/token antes del Hash (?t=...) para evadir el agresivo caché
+        // de pre-visualización de enlaces de WhatsApp (de lo contrario, WhatsApp muestra imágenes viejas).
+        const linkOnboarding = `${portalUrl}/?t=${token.slice(0, 6)}#/onboarding?token=${token}`;
         
         if (canalSeleccionado === 'email') {
             console.log(`✉️ [B2B-ONBOARDING] Despachando mensaje de invitación por Email a: ${emailDestino}`);
