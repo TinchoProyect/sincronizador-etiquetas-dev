@@ -1,42 +1,36 @@
 -- =====================================================================
--- 06_cloud_onboarding.sql
+-- 08_fix_confirm_email_trigger.sql
 -- Proyecto: Portal de Clientes B2B — Sistema LAMDA
--- Estructura para Onboarding, Invitaciones y Creación Automática de Perfiles
+-- Solución definitiva al error 500 (deadlock/lock recursion) al confirmar email.
 -- =====================================================================
 
--- 1. Tabla de Invitaciones de Clientes B2B
-CREATE TABLE IF NOT EXISTS public.clientes_b2b_invitaciones (
-    token VARCHAR(64) PRIMARY KEY,
-    cliente_id TEXT NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    usado BOOLEAN NOT NULL DEFAULT false,
-    razon_social TEXT NOT NULL,
-    email_portal TEXT NOT NULL,
-    email_portal_nombre TEXT,
-    email_portal_cargo TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 1. Crear función BEFORE INSERT para auto-confirmar el email antes de escribir en disco
+CREATE OR REPLACE FUNCTION public.auto_confirm_b2b_email()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    -- Si el metadato contiene el token de invitación B2B, confirmamos al instante
+    IF (NEW.raw_user_meta_data ->> 'invitation_token') IS NOT NULL 
+       OR (NEW.raw_user_meta_data ->> 'token') IS NOT NULL THEN
+        NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, now());
+        NEW.confirmed_at := COALESCE(NEW.confirmed_at, now());
+    END IF;
+    RETURN NEW;
+END;
+$$;
 
--- 2. Activar Row Level Security (RLS)
-ALTER TABLE public.clientes_b2b_invitaciones ENABLE ROW LEVEL SECURITY;
+-- Registrar trigger BEFORE INSERT en auth.users
+DROP TRIGGER IF EXISTS tr_auto_confirm_b2b_email ON auth.users;
+CREATE TRIGGER tr_auto_confirm_b2b_email
+    BEFORE INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.auto_confirm_b2b_email();
 
--- Políticas de acceso para anon y authenticated
-DROP POLICY IF EXISTS "Permitir SELECT para anon y authenticated" ON public.clientes_b2b_invitaciones;
-CREATE POLICY "Permitir SELECT para anon y authenticated" 
-    ON public.clientes_b2b_invitaciones
-    FOR SELECT
-    TO anon, authenticated
-    USING (true);
 
-DROP POLICY IF EXISTS "Permitir UPDATE para anon y authenticated" ON public.clientes_b2b_invitaciones;
-CREATE POLICY "Permitir UPDATE para anon y authenticated" 
-    ON public.clientes_b2b_invitaciones
-    FOR UPDATE
-    TO anon, authenticated
-    USING (true)
-    WITH CHECK (true);
-
--- 3. Trigger Function para automatizar la creación del perfil desde la invitación
+-- 2. Limpiar el trigger AFTER INSERT eliminando la sentencia UPDATE recursiva
 CREATE OR REPLACE FUNCTION public.handle_new_b2b_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -117,33 +111,3 @@ BEGIN
     RETURN new;
 END;
 $$;
-
--- 4. Registrar el trigger AFTER INSERT en auth.users
-DROP TRIGGER IF EXISTS tr_handle_new_b2b_user ON auth.users;
-CREATE TRIGGER tr_handle_new_b2b_user
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION public.handle_new_b2b_user();
-
--- 5. Trigger BEFORE INSERT para auto-confirmar el email
-CREATE OR REPLACE FUNCTION public.auto_confirm_b2b_email()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-BEGIN
-    IF (NEW.raw_user_meta_data ->> 'invitation_token') IS NOT NULL 
-       OR (NEW.raw_user_meta_data ->> 'token') IS NOT NULL THEN
-        NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, now());
-        NEW.confirmed_at := COALESCE(NEW.confirmed_at, now());
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS tr_auto_confirm_b2b_email ON auth.users;
-CREATE TRIGGER tr_auto_confirm_b2b_email
-    BEFORE INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION public.auto_confirm_b2b_email();
