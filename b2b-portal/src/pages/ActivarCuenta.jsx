@@ -51,6 +51,11 @@ export default function ActivarCuenta({ onNavigate }) {
         })
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('El servidor local de LAMDA no está respondiendo. Por favor, verifique que los servicios de Búnker local y el túnel de internet estén encendidos.');
+      }
+
       const resJson = await response.json();
 
       if (!response.ok || !resJson.success) {
@@ -112,6 +117,11 @@ export default function ActivarCuenta({ onNavigate }) {
           otp: otp.trim()
         })
       });
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('El servidor local de LAMDA no está respondiendo. Por favor, verifique que los servicios de Búnker local y el túnel de internet estén encendidos.');
+      }
 
       const resJson = await response.json();
 

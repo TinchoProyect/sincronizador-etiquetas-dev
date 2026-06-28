@@ -65,6 +65,12 @@ export default function Onboarding({ onNavigate }) {
     setValidating(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/validar-token?token=${tokenParaValidar}`);
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('El servidor local de LAMDA no está respondiendo. Por favor, verifique que los servicios de Búnker local y el túnel de internet estén encendidos.');
+      }
+
       const resJson = await response.json();
 
       if (!response.ok || !resJson.success) {
