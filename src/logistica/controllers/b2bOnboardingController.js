@@ -1,9 +1,17 @@
 const crypto = require('crypto');
 const { pool } = require('../config/database');
+const { createClient } = require('@supabase/supabase-js');
 
 // Configuración de Supabase B2B (obtenidas del .env)
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY; // Service Role Key para crear usuarios y perfiles
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false
+    }
+});
 
 /**
  * Helper para normalizar y limpiar números telefónicos
@@ -57,7 +65,7 @@ exports.invitarCliente = async (req, res) => {
 
         // 1. Buscar cliente en la base de datos local
         const queryCliente = `
-            SELECT codigo_bunker_cliente, cliente_nombre, razon_social, whatsapp_facturas, email_portal 
+            SELECT codigo_bunker_cliente, cliente_nombre, razon_social, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
             FROM public.bunker_clientes 
             WHERE codigo_bunker_cliente = $1 
                OR lomas_soft_id = $1 
@@ -117,6 +125,37 @@ exports.invitarCliente = async (req, res) => {
             }
         }
  
+        // --- 2c. AUTO-LIMPIEZA DE REGISTROS PREVIOS EN SUPABASE (Evitar bloqueo "user already registered") ---
+        try {
+            const targetEmail = (emailDestino || cliente.email_portal || '').trim().toLowerCase();
+            
+            // A. Buscar si el cliente ya tiene un perfil registrado en Supabase
+            const { data: profile } = await supabaseAdmin
+                .from('clientes_b2b_perfiles')
+                .select('id, email')
+                .eq('cliente_id', cliente.codigo_bunker_cliente)
+                .maybeSingle();
+
+            if (profile) {
+                console.log(`🧹 [B2B-ONBOARDING] Usuario previo encontrado para cliente ${cliente.codigo_bunker_cliente} (UUID: ${profile.id}). Eliminando...`);
+                await supabaseAdmin.auth.admin.deleteUser(profile.id);
+            }
+
+            // B. Buscar si el correo electrónico ya está registrado en Supabase Auth
+            if (targetEmail) {
+                const { data: listUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+                if (!listError && listUsers && listUsers.users) {
+                    const existingUser = listUsers.users.find(u => u.email && u.email.toLowerCase() === targetEmail);
+                    if (existingUser) {
+                        console.log(`🧹 [B2B-ONBOARDING] Correo previo registrado encontrado en Auth: ${targetEmail} (UUID: ${existingUser.id}). Eliminando...`);
+                        await supabaseAdmin.auth.admin.deleteUser(existingUser.id);
+                    }
+                }
+            }
+        } catch (cleanErr) {
+            console.error('⚠️ [B2B-ONBOARDING] Error no crítico durante la auto-limpieza en Supabase:', cleanErr.message);
+        }
+
         // 3. Generar token de 64 caracteres y expiración de 72 horas
         const token = crypto.randomBytes(32).toString('hex');
         const codigoActivacion = token.substring(0, 6);
@@ -148,8 +187,8 @@ exports.invitarCliente = async (req, res) => {
                     usado: false,
                     razon_social: cliente.razon_social,
                     email_portal: emailDestino || cliente.email_portal || '',
-                    email_portal_nombre: nombre ? String(nombre).trim() : (cliente.email_portal_nombre || ''),
-                    email_portal_cargo: cargo ? String(cargo).trim() : (cliente.email_portal_cargo || '')
+                    email_portal_nombre: cliente.email_portal_nombre || '',
+                    email_portal_cargo: cliente.email_portal_cargo || ''
                 })
             });
 

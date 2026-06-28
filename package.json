@@ -30,6 +30,7 @@
     "kill-ports": "npx kill-port 3000 3002 3003 3004 3005 5173"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "@zxing/browser": "^0.1.5",
     "canvas": "^3.2.0",
     "cors": "^2.8.5",
