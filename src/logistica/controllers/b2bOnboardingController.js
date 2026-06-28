@@ -128,6 +128,40 @@ exports.invitarCliente = async (req, res) => {
              VALUES ($1, $2, $3)`,
             [token, cliente.codigo_bunker_cliente, expiresAt]
         );
+
+        // 4b. Registrar invitación en Supabase Cloud (para flujo desacoplado)
+        try {
+            console.log(`📡 [B2B-ONBOARDING] Persistiendo invitación en Supabase: ${token}`);
+            const supabaseUrlInvitacion = `${SUPABASE_URL}/rest/v1/clientes_b2b_invitaciones`;
+            const responseSupaInvite = await fetch(supabaseUrlInvitacion, {
+                method: 'POST',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({
+                    token: token,
+                    cliente_id: cliente.codigo_bunker_cliente,
+                    expires_at: expiresAt.toISOString(),
+                    usado: false,
+                    razon_social: cliente.razon_social,
+                    email_portal: emailDestino || cliente.email_portal || '',
+                    email_portal_nombre: nombre ? String(nombre).trim() : (cliente.email_portal_nombre || ''),
+                    email_portal_cargo: cargo ? String(cargo).trim() : (cliente.email_portal_cargo || '')
+                })
+            });
+
+            if (!responseSupaInvite.ok) {
+                const errSupaText = await responseSupaInvite.text();
+                console.error('❌ [B2B-ONBOARDING] Error al guardar invitación en Supabase:', errSupaText);
+            } else {
+                console.log(`✅ [B2B-ONBOARDING] Invitación registrada con éxito en Supabase.`);
+            }
+        } catch (supaErr) {
+            console.error('❌ [B2B-ONBOARDING] Falla de red al conectar con Supabase para registrar invitación:', supaErr.message);
+        }
  
         // 5. Enviar mensaje de invitación por el canal seleccionado
         const portalUrl = process.env.B2B_PORTAL_URL || 'http://localhost:5173';

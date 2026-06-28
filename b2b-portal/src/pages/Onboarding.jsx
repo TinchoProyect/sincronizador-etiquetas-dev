@@ -64,46 +64,62 @@ export default function Onboarding({ onNavigate }) {
   const validarTokenInvitacion = async (tokenParaValidar) => {
     setValidating(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/validar-token?token=${tokenParaValidar}`);
+      const isShortCode = tokenParaValidar.trim().length === 6;
+      console.log(`📡 [Supabase Cloud] Validando código: ${tokenParaValidar}`);
       
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('El servidor local de LAMDA no está respondiendo. Por favor, verifique que los servicios de Búnker local y el túnel de internet estén encendidos.');
+      let query = supabase
+        .from('clientes_b2b_invitaciones')
+        .select('*')
+        .eq('usado', false);
+        
+      if (isShortCode) {
+        query = query.like('token', `${tokenParaValidar.trim()}%`);
+      } else {
+        query = query.eq('token', tokenParaValidar.trim());
+      }
+      
+      const { data: supaData, error: supaErr } = await query
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (supaErr) {
+        throw new Error(`Error en base de datos cloud: ${supaErr.message}`);
       }
 
-      const resJson = await response.json();
-
-      if (!response.ok || !resJson.success) {
-        throw new Error(resJson.message || 'El código de activación no es válido o ha expirado.');
+      if (!supaData) {
+        throw new Error('El código de activación no es válido, ya fue utilizado o ha expirado.');
       }
 
-      setClientData(resJson.data);
-      if (resJson.data) {
-        if (resJson.data.token) {
-          setToken(resJson.data.token); // Guardar el token completo de 64 caracteres retornado
-        }
-        if (resJson.data.email_portal) {
-          setEmail(resJson.data.email_portal);
-        }
-        if (resJson.data.email_portal_nombre) {
-          setNombreContacto(resJson.data.email_portal_nombre);
-        }
-        if (resJson.data.email_portal_cargo) {
-          const c = resJson.data.email_portal_cargo;
-          const opcionesPredeterminadas = ['Dueño / Titular', 'Socio', 'Encargado de Compras', 'Administración', 'Colaborador'];
-          if (opcionesPredeterminadas.includes(c)) {
-            setCargo(c);
-          } else {
-            setCargo('Otro');
-            setOtroCargo(c);
-          }
+      if (new Date(supaData.expires_at) < new Date()) {
+        throw new Error('El código de activación ha expirado.');
+      }
+
+      setClientData(supaData);
+      if (supaData.token) {
+        setToken(supaData.token); // Guardar el token completo de 64 caracteres
+      }
+      if (supaData.email_portal) {
+        setEmail(supaData.email_portal);
+      }
+      if (supaData.email_portal_nombre) {
+        setNombreContacto(supaData.email_portal_nombre);
+      }
+      if (supaData.email_portal_cargo) {
+        const c = supaData.email_portal_cargo;
+        const opcionesPredeterminadas = ['Dueño / Titular', 'Socio', 'Encargado de Compras', 'Administración', 'Colaborador'];
+        if (opcionesPredeterminadas.includes(c)) {
+          setCargo(c);
+        } else {
+          setCargo('Otro');
+          setOtroCargo(c);
         }
       }
       setIsValid(true);
       setStep(2); // Avanzar al paso de contraseña
 
     } catch (err) {
-      console.error('Error validando token:', err.message);
+      console.error('Error validando token en la nube:', err.message);
       Swal.fire({
         title: 'Código Inválido',
         text: err.message,
@@ -176,22 +192,59 @@ export default function Onboarding({ onNavigate }) {
     setSubmitting(true);
     try {
       const cargoFinal = cargo === 'Otro' ? otroCargo.trim() : cargo;
-      const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/completar-onboarding`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token, // Envía la clave larga de 64 caracteres
+      
+      let onboardingCompleted = false;
+      let isReactivation = !!(clientData && clientData.email_portal);
+
+      // Intentar primero a través del backend local
+      try {
+        console.log("📡 [Onboarding] Intentando completar registro vía backend local...");
+        const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/completar-onboarding`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token, // Clave larga de 64 caracteres
+            email: email.trim(),
+            password,
+            nombre_contacto: nombreContacto.trim(),
+            cargo_contacto: cargoFinal
+          })
+        });
+
+        const resJson = await response.json();
+        if (response.ok && resJson.success) {
+          onboardingCompleted = true;
+          console.log("✅ [Onboarding] Registro completado en backend local.");
+        } else {
+          throw new Error(resJson.message || 'Error en backend local.');
+        }
+      } catch (backendErr) {
+        console.warn("⚠️ [Onboarding] Backend local offline o error. Iniciando alta directa en Supabase Cloud:", backendErr.message);
+
+        if (isReactivation) {
+          throw new Error("El servidor local está temporalmente fuera de línea. Para restablecer su contraseña, por favor intente más tarde.");
+        }
+
+        // Registrar directamente en Supabase Auth
+        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
           email: email.trim(),
-          password,
-          nombre_contacto: nombreContacto.trim(),
-          cargo_contacto: cargoFinal
-        })
-      });
+          password: password,
+          options: {
+            data: {
+              cliente_id: clientData.cliente_id,
+              nombre_completo: nombreContacto.trim(),
+              nombre_empresa: clientData.razon_social,
+              invitation_token: token // Se inyecta para que el trigger lo tome
+            }
+          }
+        });
 
-      const resJson = await response.json();
+        if (signUpErr) {
+          throw signUpErr;
+        }
 
-      if (!response.ok || !resJson.success) {
-        throw new Error(resJson.message || 'Ocurrió un error al registrar la cuenta comercial.');
+        onboardingCompleted = true;
+        console.log("✅ [Onboarding] Registro completado de forma autónoma en Supabase Cloud.");
       }
 
       localStorage.setItem('prefilled_email', email.trim());
