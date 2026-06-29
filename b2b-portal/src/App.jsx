@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
@@ -8,7 +8,7 @@ import Home from './pages/Home';
 import Catalogo from './pages/Catalogo';
 import CuentaCorriente from './pages/CuentaCorriente';
 import Pedidos from './pages/Pedidos';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu, Home as HomeIcon, BookOpen, ClipboardList, Receipt } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -17,6 +17,20 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('home');
   const [cart, setCart] = useState([]);
   const [pendingAction, setPendingAction] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef(null);
+
+  // Cerrar menu movil al hacer clic afuera
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+        setMobileMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const getRoutePath = () => {
     const hash = window.location.hash;
     if (hash.startsWith('#/')) {
@@ -230,6 +244,86 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* Mobile Top Header (visible solo en celulares/tablets fuera de la Home) */}
+      {currentTab !== 'home' && (
+        <header className="mobile-header" ref={mobileMenuRef}>
+          <img 
+            src="/logo_LAMDA.png" 
+            alt="LAMDA Logo" 
+            className="mobile-header-logo" 
+            onClick={() => setCurrentTab('home')} 
+            style={{ maxHeight: '28px', cursor: 'pointer' }}
+          />
+          
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-glass)',
+                borderRadius: '6px',
+                padding: '0.4rem 0.6rem',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'var(--transition-smooth)'
+              }}
+            >
+              <Menu size={18} />
+            </button>
+            
+            {mobileMenuOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 0.5rem)',
+                right: 0,
+                background: 'var(--bg-sidebar)',
+                border: '1px solid var(--border-glass)',
+                borderRadius: '8px',
+                padding: '0.4rem',
+                zIndex: 1000,
+                width: '180px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.2rem'
+              }}>
+                <button 
+                  onClick={() => { setCurrentTab('home'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'home' ? 'active' : ''}`}
+                >
+                  <HomeIcon size={14} />
+                  <span>Inicio</span>
+                </button>
+                <button 
+                  onClick={() => { setCurrentTab('catalogo'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'catalogo' ? 'active' : ''}`}
+                >
+                  <BookOpen size={14} />
+                  <span>Catálogo</span>
+                </button>
+                <button 
+                  onClick={() => { setCurrentTab('pedidos'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'pedidos' ? 'active' : ''}`}
+                >
+                  <ClipboardList size={14} />
+                  <span>Mi Pedido</span>
+                </button>
+                <button 
+                  onClick={() => { setCurrentTab('cc'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'cc' ? 'active' : ''}`}
+                >
+                  <Receipt size={14} />
+                  <span>Cta. Corriente</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+      )}
+
       <Sidebar 
         profile={profile} 
         currentTab={currentTab} 
