@@ -1742,6 +1742,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const lomasSugerencias = document.getElementById('lomas-sugerencias');
         if (lomasSugerencias) lomasSugerencias.style.display = 'none';
 
+        // Autogeneración de Código Legacy Único para altas nativas
+        fetch('/api/logistica/bunker/clientes/sugerir-legacy')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && !txtId.value) { // Solo si seguimos en modo alta nueva
+                    txtLomasId.value = data.codigoSugerido;
+                    console.log(`💡 [CLIENTES-FRONT] Código legacy autogenerado sugerido: ${data.codigoSugerido}`);
+                }
+            })
+            .catch(err => {
+                console.error('⚠️ [CLIENTES-FRONT] Error al sugerir código legacy:', err);
+            });
+
         // Limpiar validaciones fiscales
         if (txtCuit) {
             txtCuit.style.borderColor = '';
