@@ -1064,6 +1064,11 @@ async function enviarPresupuestoOmnicanal() {
 
     const presupuesto = presupuestoData.presupuesto;
 
+    // Generar el mensaje por defecto con el Alias simplificado
+    const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
+    const tituloDoc = presupuesto.estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
+    const defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${presupuestoId} de LAMDA. Saludos.` + transferInfo;
+
     // 1. Recuperar y parsear contactos de WhatsApp
     let contacts = [];
     const rawWp = (presupuesto.whatsapp_bunker || '').trim();
@@ -1211,7 +1216,16 @@ async function enviarPresupuestoOmnicanal() {
                 </div>
             </div>
             
-            <p style="margin-top: 8px; font-size: 10.5px; color: #94a3b8; font-style: italic; line-height: 1.2; margin-bottom: 0;">
+            <!-- Previsualizador y Editor de Mensaje de WhatsApp -->
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; text-align: left;">
+                <label for="swal-mensaje-texto" style="display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 6px;">
+                    📝 Mensaje de WhatsApp (Editable):
+                </label>
+                <textarea id="swal-mensaje-texto" style="width: 100%; height: 90px; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-family: inherit; box-sizing: border-box; resize: vertical; line-height: 1.4;">${defaultMensaje}</textarea>
+                <span style="font-size: 10px; color: #94a3b8; margin-top: 4px; display: block;">* Puede modificar este texto para personalizar el mensaje de WhatsApp.</span>
+            </div>
+            
+            <p style="margin-top: 12px; font-size: 10.5px; color: #94a3b8; font-style: italic; line-height: 1.2; margin-bottom: 0;">
                 * Si no selecciona ningún destinatario, se procederá con la descarga local directa del documento.
             </p>
     `;
@@ -1263,19 +1277,22 @@ async function enviarPresupuestoOmnicanal() {
                 });
             }
 
+            const mensajeTexto = document.getElementById('swal-mensaje-texto').value;
+
             return {
                 destinatariosWp: finalWp,
                 destinatariosEmail: finalEmail,
                 saveDefault,
                 selectedWpRaw: selectedWp,
-                selectedEmailRaw: selectedEmail
+                selectedEmailRaw: selectedEmail,
+                mensajeTexto
             };
         }
     });
 
     if (!modalResult) return;
 
-    const { destinatariosWp, destinatariosEmail, saveDefault, selectedWpRaw, selectedEmailRaw } = modalResult;
+    const { destinatariosWp, destinatariosEmail, saveDefault, selectedWpRaw, selectedEmailRaw, mensajeTexto } = modalResult;
 
     // 6. Si no hay destinatarios seleccionados, descargar localmente
     if (destinatariosWp.length === 0 && destinatariosEmail.length === 0) {
@@ -1362,7 +1379,8 @@ async function enviarPresupuestoOmnicanal() {
                     sololista: sololista,
                     faltantes: faltantes,
                     nombreCliente: presupuesto.nombre_cliente || presupuesto.concepto || '',
-                    estado: presupuesto.estado
+                    estado: presupuesto.estado,
+                    mensajeTexto: mensajeTexto
                 })
             });
             const data = await response.json();

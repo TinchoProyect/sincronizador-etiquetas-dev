@@ -1517,9 +1517,13 @@ const obtenerPresupuestoPorId = async (req, res) => {
                     WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
                       AND f.estado = 'APROBADA'
                     LIMIT 1
-                ) AS factura_asociada_id
+                ) AS factura_asociada_id,
+                bc.id AS bunker_cliente_id,
+                COALESCE(bc.whatsapp_facturas, '') AS whatsapp_bunker,
+                COALESCE(bc.email_facturas, '') AS email_bunker
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0')
             WHERE p.id = $1 AND p.activo = true
         `;
 
