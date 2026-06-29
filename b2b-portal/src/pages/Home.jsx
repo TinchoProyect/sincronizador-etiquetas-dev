@@ -15,7 +15,6 @@ export default function Home({ setCurrentTab, profile }) {
     // 2. Detectar si el usuario acaba de activar la cuenta (forzar modal en onboarding)
     const justActivated = sessionStorage.getItem('just_activated') === 'true';
     if (justActivated) {
-      sessionStorage.removeItem('just_activated');
       localStorage.removeItem('pwa_install_dismissed');
     }
 
@@ -57,11 +56,13 @@ export default function Home({ setCurrentTab, profile }) {
       console.log(`[PWA] Elección de instalación del usuario: ${outcome}`);
       window.deferredPrompt = null;
       setHasPrompt(false);
+      sessionStorage.removeItem('just_activated');
       setShowPwaModal(false);
     }
   };
 
   const handleDismiss = () => {
+    sessionStorage.removeItem('just_activated');
     localStorage.setItem('pwa_install_dismissed', 'true');
     setShowPwaModal(false);
   };
