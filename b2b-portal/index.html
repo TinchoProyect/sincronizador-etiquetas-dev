@@ -7,6 +7,22 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
+    <script>
+      // Desregistrar de forma inmediata cualquier service worker heredado en el navegador del cliente
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister().then(function(success) {
+              if (success) {
+                console.log('🗑️ [PWA] Service worker heredado desregistrado con éxito.');
+                window.location.reload();
+              }
+            });
+          }
+        });
+      }
+    </script>
+    
     <!-- SEO & Metadata clean -->
     <title>LAMDA</title>
     <meta name="description" content="Portal de autogestión comercial - Sistema LAMDA." />

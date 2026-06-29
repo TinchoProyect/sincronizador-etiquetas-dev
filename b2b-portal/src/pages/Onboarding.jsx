@@ -262,78 +262,16 @@ export default function Onboarding({ onNavigate }) {
 
       if (loginSuccess) {
         sessionStorage.setItem('just_activated', 'true');
-        if (isiOS) {
-          // Guía manual premium de instalación para iOS/Safari
-          await Swal.fire({
-            title: '¡Bienvenido a LAMDA!',
-            html: `
-              <div style="text-align: left; font-size: 14px; line-height: 1.6; color: var(--text-primary); font-family: sans-serif;">
-                <p style="margin-top: 0; margin-bottom: 12px;">Tu cuenta ha sido activada y se inició sesión automáticamente.</p>
-                <div style="background: rgba(142, 71, 133, 0.15); padding: 12px; border-radius: 8px; border-left: 4px solid var(--accent); margin-bottom: 12px;">
-                  <p style="font-weight: bold; color: var(--accent); margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
-                    📲 Acceso Directo en tu iPhone
-                  </p>
-                  <p style="margin: 0; font-size: 13px; color: var(--text-secondary);">
-                    Para abrir el portal al instante como una aplicación:
-                  </p>
-                  <ol style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; color: var(--text-primary);">
-                    <li style="margin-bottom: 4px;">Tocá el botón <strong>Compartir</strong> 📤 en Safari.</li>
-                    <li>Elegí la opción <strong>"Agregar a inicio"</strong> ➕.</li>
-                  </ol>
-                </div>
-              </div>
-            `,
-            icon: 'success',
-            confirmButtonText: 'Entrar al Portal',
-            confirmButtonColor: 'var(--accent)',
-            background: 'hsl(222, 47%, 11%)',
-            color: 'var(--text-primary)',
-            iconColor: 'var(--success)'
-          });
-        } else if (window.deferredPrompt) {
-          // Promoción de instalación automatizada para Android/PC (bypasseando fricciones)
-          const promptResult = await Swal.fire({
-            title: '¡Bienvenido a LAMDA!',
-            html: `
-              <div style="text-align: left; font-size: 14px; line-height: 1.6; color: var(--text-primary); font-family: sans-serif;">
-                <p style="margin-top: 0; margin-bottom: 12px;">Tu cuenta ha sido activada y se inició sesión automáticamente.</p>
-                <p style="font-weight: 600; color: var(--accent); margin-bottom: 6px;">📲 ¿Querés crear un acceso directo en tu celular?</p>
-                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Esto instalará el portal de LAMDA en tu pantalla de inicio para un acceso 100% directo y sin demoras.</p>
-              </div>
-            `,
-            icon: 'success',
-            showCancelButton: true,
-            confirmButtonText: '📲 Crear Acceso Directo',
-            cancelButtonText: 'Ahora no',
-            confirmButtonColor: 'var(--accent)',
-            cancelButtonColor: '#64748b',
-            background: 'hsl(222, 47%, 11%)',
-            color: 'var(--text-primary)',
-            iconColor: 'var(--success)'
-          });
-
-          if (promptResult.isConfirmed && window.deferredPrompt) {
-            const promptEvent = window.deferredPrompt;
-            promptEvent.prompt();
-            const { outcome } = await promptEvent.userChoice;
-            console.log(`[PWA] Install prompt outcome: ${outcome}`);
-            window.deferredPrompt = null;
-          }
-        } else {
-          // Fallback Toast
-          Swal.fire({
-            title: '¡Cuenta Activada!',
-            text: 'Su cuenta ha sido activada y se ha iniciado sesión automáticamente.',
-            icon: 'success',
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 3000,
-            background: 'hsl(222, 47%, 11%)',
-            color: 'var(--text-primary)',
-            iconColor: 'var(--success)',
-          });
-        }
+        await Swal.fire({
+          title: '¡Cuenta Activada!',
+          text: 'Tu cuenta ha sido activada con éxito. Redirigiendo al portal...',
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false,
+          background: 'hsl(222, 47%, 11%)',
+          color: 'var(--text-primary)',
+          iconColor: 'var(--success)'
+        });
         onNavigate('/');
       } else {
         // Redirigir a login manual si falló autologin

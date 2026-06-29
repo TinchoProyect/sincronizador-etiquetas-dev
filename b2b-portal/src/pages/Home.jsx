@@ -302,11 +302,11 @@ export default function Home({ setCurrentTab, profile }) {
             </div>
 
             {/* Título & Mensaje */}
-            <h3 style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.75rem', lineHeight: '1.3' }}>
-              ¿Querés crear un acceso directo en tu celular?
+            <h3 style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '0.85rem', lineHeight: '1.3', letterSpacing: '-0.02em' }}>
+              ¿Querés agregar un acceso directo en tu celular?
             </h3>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '1.75rem' }}>
-              Esto te provee de un acceso directo al portal desde tu pantalla de inicio para ingresar de forma rápida y sin demoras.
+            <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '1.85rem' }}>
+              Esto agregará el acceso directo al portal de LAMDA en tu pantalla de inicio para operar de forma rápida y sin demoras.
             </p>
 
             {/* Contenido Dinámico según Dispositivo */}
@@ -325,7 +325,7 @@ export default function Home({ setCurrentTab, profile }) {
                 }}
               >
                 <Download size={18} />
-                <span>Crear Acceso Directo</span>
+                <span>Agregar a Pantalla de Inicio</span>
               </button>
             ) : isIos ? (
               /* iOS Safari */
