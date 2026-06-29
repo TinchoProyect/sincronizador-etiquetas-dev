@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <script>
+    // 🔑 [LLAVE-MAESTRA] Interceptar tokens de redireccionamiento de Supabase Auth
+    if (window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('error='))) {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const targetPortal = isLocal ? 'http://localhost:5173' : 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+      console.log('🔄 [LLAVE-MAESTRA] Redireccionando token al portal comercial:', targetPortal);
+      window.location.href = targetPortal + '/' + window.location.hash;
+    }
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestiones Lamda</title>
