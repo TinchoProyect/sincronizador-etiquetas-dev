@@ -105,7 +105,7 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
         const filename = `${id}-Presu-${cleanNombre}-${fechaHoy}.pdf`;
         
         // 4. Determinar mensaje
-        const transferInfo = '\n\n*Datos para transferencia:*\n*Banco:* Galicia\n*DU:* 24892174\n*Cuenta (CTA):* 4007844-1 373-4\n*CBU:* 0070373230004007844141\n*CUIL:* 23248921749\n*ALIAS:* LAMDA.SER.MARTIN';
+        const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
         const tituloDoc = estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
         const mensajeTexto = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${id} de LAMDA. Saludos.` + transferInfo;
 
