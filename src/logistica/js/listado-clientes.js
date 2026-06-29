@@ -483,6 +483,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function ordenarYRenderizar() {
         let clientesOrdenados = [...todosLosClientes];
+        
+        // Aplicar Filtro Portal B2B
+        const filtroB2B = document.getElementById('filtro-portal-b2b')?.value || 'todos';
+        if (filtroB2B === 'activos') {
+            clientesOrdenados = clientesOrdenados.filter(c => c.email_portal && c.email_portal.trim() !== '');
+        } else if (filtroB2B === 'pendientes') {
+            clientesOrdenados = clientesOrdenados.filter(c => !c.email_portal || c.email_portal.trim() === '');
+        }
+
         if (sortState === 'desc') {
             clientesOrdenados.sort((a, b) => {
                 const saldoA = parseFloat(a.saldo || 0);
@@ -1141,12 +1150,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const wpAttr = encodeURIComponent(JSON.stringify(contactosWp));
             const mailAttr = encodeURIComponent(JSON.stringify(contactosEmail));
 
+            // Distintivo visual para clientes con Portal B2B Activo
+            const tieneB2B = cliente.email_portal && cliente.email_portal.trim() !== '';
+            const htmlNombre = tieneB2B 
+                ? `<div style="display: flex; flex-direction: column; gap: 2px;">
+                     <span style="font-weight: 700; color: #1e1b4b;">${cliente.cliente_nombre}</span>
+                     <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; align-self: flex-start; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Acceso al Portal B2B Habilitado (${cliente.email_portal})">🌐 Portal Activo</span>
+                   </div>`
+                : `<span style="font-weight: 600; color: #334155;">${cliente.cliente_nombre}</span>`;
+
             tr.innerHTML = `
                 <td style="text-align: center; vertical-align: middle;">${cellSeleccion}</td>
                 <td class="col-codigo" style="font-weight: 700; color: #475569;">${cliente.codigo_bunker_cliente}</td>
-                <td class="col-nombre" style="font-weight: 600;">${cliente.cliente_nombre}</td>
-                <td class="col-razon" style="color: #64748b;">${cliente.razon_social}</td>
-                <td class="col-externo">${badgeExterno}</td>
+                <td class="col-nombre" style="vertical-align: middle;">${htmlNombre}</td>
+                <td class="col-razon" style="color: #64748b; vertical-align: middle;">${cliente.razon_social}</td>
+                <td class="col-externo" style="vertical-align: middle;">${badgeExterno}</td>
                 <td class="col-saldo" style="text-align: right; white-space: nowrap;">${badgeSaldo}</td>
                 <td class="col-listas">${htmlListas}</td>
                 <td class="col-acciones" style="text-align: center;">
@@ -1476,6 +1494,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cargarClientes(buscadorInput.value.trim());
         }, 300); // 300ms de retraso para evitar ráfagas de queries al backend
     });
+
+    // Filtro B2B dropdown listener
+    const filtroB2BSelect = document.getElementById('filtro-portal-b2b');
+    if (filtroB2BSelect) {
+        filtroB2BSelect.addEventListener('change', () => {
+            ordenarYRenderizar();
+        });
+    }
 
     // --- 4. CONTROL DE APERTURA/CIERRE DEL DRAWER ---
     function abrirDrawer(titulo) {
