@@ -168,6 +168,18 @@ exports.invitarCliente = async (req, res) => {
             [token, cliente.codigo_bunker_cliente, expiresAt]
         );
 
+        // Persistir el correo en la ficha local bunker_clientes si fue provisto en la invitación
+        if (emailDestino) {
+            await pool.query(
+                `UPDATE public.bunker_clientes 
+                 SET email_portal = $1,
+                     email_facturas = COALESCE(NULLIF(TRIM(email_facturas), ''), $1),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE codigo_bunker_cliente = $2`,
+                [emailDestino.toLowerCase(), cliente.codigo_bunker_cliente]
+            );
+        }
+
         // 4b. Registrar invitación en Supabase Cloud (para flujo desacoplado)
         try {
             console.log(`📡 [B2B-ONBOARDING] Persistiendo invitación en Supabase: ${token}`);
@@ -582,10 +594,11 @@ exports.completarOnboarding = async (req, res) => {
         const clientLocal = await pool.connect();
         try {
             await clientLocal.query('BEGIN');
-            // Graba el correo portal, nombre y cargo de contacto
+            // Graba el correo portal, email de facturación (si está vacío), nombre y cargo de contacto
             await clientLocal.query(
                 `UPDATE public.bunker_clientes 
                  SET email_portal = $1, 
+                     email_facturas = COALESCE(NULLIF(TRIM(email_facturas), ''), $1),
                      email_portal_nombre = COALESCE($2, email_portal_nombre),
                      email_portal_cargo = COALESCE($3, email_portal_cargo),
                      updated_at = CURRENT_TIMESTAMP 
