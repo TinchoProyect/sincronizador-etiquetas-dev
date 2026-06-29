@@ -825,3 +825,107 @@ exports.verificarOtp = async (req, res) => {
         });
     }
 };
+
+/**
+ * Helper para validar si una IP proviene de la intranet/LAN local o localhost.
+ */
+function esIpPrivada(ip) {
+    if (!ip) return false;
+    let cleanIp = String(ip).trim();
+    if (cleanIp.startsWith('::ffff:')) {
+        cleanIp = cleanIp.substring(7);
+    }
+    
+    // Loopback
+    if (cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp === 'localhost') {
+        return true;
+    }
+    
+    // RFC 1918 Private IP ranges
+    const parts = cleanIp.split('.');
+    if (parts.length === 4) {
+        const p1 = parseInt(parts[0], 10);
+        const p2 = parseInt(parts[1], 10);
+        if (p1 === 10) return true;
+        if (p1 === 172 && (p2 >= 16 && p2 <= 31)) return true;
+        if (p1 === 192 && p2 === 168) return true;
+    }
+    return false;
+}
+
+/**
+ * Generar enlace de Acceso Maestro (Bypass de Autenticación)
+ * GET /api/logistica/b2b-onboarding/acceso-maestro/:clienteId
+ */
+exports.accesoMaestro = async (req, res) => {
+    try {
+        const { clienteId } = req.params;
+        if (!clienteId) {
+            return res.status(400).json({ success: false, error: 'Datos incompletos', message: 'El ID de cliente es obligatorio.' });
+        }
+
+        // 1. Validar seguridad: Solo peticiones desde la Intranet/LAN
+        const clientIp = req.ip || req.connection.remoteAddress;
+        console.log(`🔐 [B2B-ACCESO-MAESTRO] Solicitud recibida desde IP: ${clientIp} para cliente: ${clienteId}`);
+
+        if (!esIpPrivada(clientIp)) {
+            console.warn(`🚨 [B2B-ACCESO-MAESTRO] Intento de acceso bloqueado. IP pública no autorizada: ${clientIp}`);
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Acceso denegado', 
+                message: 'Esta funcionalidad de Llave Maestra solo es válida para solicitudes iniciadas desde la red interna de la empresa.' 
+            });
+        }
+
+        // 2. Buscar el perfil en la base de datos de Supabase B2B usando el client ID
+        const { data: profile, error: profileErr } = await supabaseAdmin
+            .from('clientes_b2b_perfiles')
+            .select('email, id')
+            .eq('cliente_id', String(clienteId).trim())
+            .maybeSingle();
+
+        if (profileErr) {
+            console.error('❌ [B2B-ACCESO-MAESTRO] Error al buscar perfil en Supabase:', profileErr.message);
+            return res.status(500).json({ success: false, error: 'Error BD', message: 'Falla al consultar el perfil en Supabase.' });
+        }
+
+        if (!profile || !profile.email) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'No registrado', 
+                message: 'El cliente no posee un perfil activo en el Portal B2B. Debe invitarlo y completar el onboarding primero.' 
+            });
+        }
+
+        // 3. Generar el magiclink con la API de administración de Supabase Auth
+        const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email: profile.email,
+            options: {
+                redirectTo: `${portalUrl}/`
+            }
+        });
+
+        if (linkErr) {
+            console.error('❌ [B2B-ACCESO-MAESTRO] Error al generar link en Supabase Auth:', linkErr.message);
+            return res.status(500).json({ success: false, error: 'Error Auth', message: 'No se pudo generar el enlace de acceso espejo en Supabase.' });
+        }
+
+        const actionLink = linkData.properties?.action_link;
+        if (!actionLink) {
+            return res.status(500).json({ success: false, error: 'Falla de Generación', message: 'No se obtuvo el enlace de inicio de sesión de la API de Supabase.' });
+        }
+
+        console.log(`✅ [B2B-ACCESO-MAESTRO] Enlace espejo generado con éxito para: ${profile.email}`);
+
+        res.json({
+            success: true,
+            redirectUrl: actionLink
+        });
+
+    } catch (error) {
+        console.error('❌ [B2B-ACCESO-MAESTRO] Error grave en accesoMaestro:', error.message);
+        res.status(500).json({ success: false, error: 'Falla servidor', message: 'Error interno en el servidor local.' });
+    }
+};

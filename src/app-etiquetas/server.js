@@ -67,6 +67,23 @@ app.use('/api/presupuestos', createProxyMiddleware({
   }
 }));
 
+// 🚚 [LOGISTICA] Configurar proxy para el módulo de logística
+console.log('🔍 [LOGISTICA] Configurando proxy para módulo de logística...');
+app.use('/api/logistica', createProxyMiddleware({
+  target: 'http://localhost:3005',
+  changeOrigin: true,
+  pathRewrite: (path, req) => {
+    return '/api/logistica' + req.url; 
+  },
+  onError: (err, req, res) => {
+    console.error('❌ [LOGISTICA] Error en proxy:', err.message);
+    res.status(503).json({
+      error: 'Servicio de logística no disponible',
+      message: 'Verifique que el servidor de logística esté ejecutándose en puerto 3005'
+    });
+  }
+}));
+
 app.use(express.json());
 
 // Configurar el middleware para servir archivos estáticos

@@ -1153,6 +1153,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display: flex; gap: 6px; justify-content: center;">
                         <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
                         <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
+                        <button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
                         <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
                         <button class="btn-action btn-delete" data-id="${cliente.id}" title="Eliminar cliente permanentemente">🗑️</button>
@@ -1398,6 +1399,46 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.addEventListener('click', (e) => {
                 const codigo = btn.getAttribute('data-codigo');
                 window.location.href = `cuenta-corriente.html?cliente=${encodeURIComponent(codigo)}`;
+            });
+        });
+
+        // Evento Acceso Espejo (Llave Maestra B2B)
+        cuerpoTablaClientes.querySelectorAll('.btn-impersonate').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const codigo = btn.getAttribute('data-codigo');
+                const nombre = btn.getAttribute('data-nombre');
+
+                Swal.fire({
+                    title: 'Generando Acceso Espejo',
+                    html: `Conectando de forma segura con el perfil de <b>${nombre}</b>...`,
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                try {
+                    const res = await fetch(`/api/logistica/b2b-onboarding/acceso-maestro/${encodeURIComponent(codigo)}`);
+                    const data = await res.json();
+
+                    if (!res.ok || !data.success) {
+                        throw new Error(data.message || 'Error al solicitar el enlace de acceso espejo.');
+                    }
+
+                    Swal.close();
+                    
+                    // Abrir en nueva pestaña
+                    window.open(data.redirectUrl, '_blank');
+
+                } catch (err) {
+                    console.error('Error al generar enlace espejo:', err);
+                    Swal.fire({
+                        title: 'Error de Acceso',
+                        text: err.message || 'No se pudo generar el enlace espejo. Asegúrese de que el cliente esté registrado y activo en el Portal B2B.',
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                }
             });
         });
 

@@ -226,7 +226,7 @@
         <span class="icon">📦</span>
         Recepción de Lotes
       </a>
-      <a href="http://localhost:5173" target="_blank" class="menu-button menu-tier-b2b">
+      <a href="javascript:void(0)" onclick="window.abrirPortalB2B()" class="menu-button menu-tier-b2b">
         <span class="icon">🌐</span>
         Portal B2B (Clientes)
       </a>
@@ -659,6 +659,110 @@ window.sincronizarB2BManual = async function() {
     } catch (e) {
         Swal.fire('Error de Conexión', 'No se pudo contactar al servidor local.', 'error');
     }
+};
+
+window.abrirPortalB2B = async function() {
+    Swal.fire({
+        title: 'Acceso al Portal B2B',
+        text: 'Seleccione el modo de operación deseado:',
+        icon: 'question',
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '🔑 Acceso Espejo',
+        confirmButtonColor: '#7c3aed',
+        denyButtonText: '🌐 Login General',
+        denyButtonColor: '#4b5563',
+        cancelButtonText: 'Cancelar'
+    }).then(async (result) => {
+        if (result.isDenied) {
+            window.open('http://localhost:5173', '_blank');
+        } else if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Acceso Espejo (Impersonación)',
+                text: 'Cargando listado de clientes B2B...',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            try {
+                const res = await fetch('/api/logistica/bunker/clientes');
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || 'No se pudo obtener la lista de clientes.');
+                }
+
+                const clientesB2B = data.data.filter(c => c.email_portal && c.email_portal.trim() !== '');
+
+                if (clientesB2B.length === 0) {
+                    Swal.fire('Sin Clientes Activos', 'No hay clientes registrados y activos en el Portal B2B actualmente.', 'warning');
+                    return;
+                }
+
+                const optionsHtml = clientesB2B.map(c => 
+                    `<option value="${c.codigo_bunker_cliente}">[${c.codigo_bunker_cliente}] ${c.cliente_nombre} - ${c.email_portal}</option>`
+                ).join('');
+
+                Swal.fire({
+                    title: 'Seleccione un Cliente',
+                    html: `
+                        <div style="text-align: left; font-family: sans-serif; font-size: 14px;">
+                            <label for="swal-select-cliente" style="font-weight: 600; display: block; margin-bottom: 6px;">Cliente B2B Activo:</label>
+                            <select id="swal-select-cliente" class="swal2-select" style="width: 100%; margin: 0; padding: 8px; border-radius: 6px; font-size: 13px;">
+                                ${optionsHtml}
+                            </select>
+                            <span style="font-size: 11px; color: #64748b; margin-top: 6px; display: block;">Se iniciará una sesión segura en modo espejo en representación de este cliente.</span>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '🔑 Ingresar',
+                    confirmButtonColor: '#7c3aed',
+                    cancelButtonText: 'Cancelar',
+                    preConfirm: () => {
+                        const selectEl = document.getElementById('swal-select-cliente');
+                        const codigo = selectEl.value;
+                        const label = selectEl.options[selectEl.selectedIndex].text;
+                        return { codigo, label };
+                    }
+                }).then(async (selectionResult) => {
+                    if (selectionResult.isConfirmed) {
+                        const { codigo, label } = selectionResult.value;
+                        
+                        Swal.fire({
+                            title: 'Generando Sesión Espejo',
+                            html: `Conectando con el perfil de <b>${label}</b>...`,
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+
+                        try {
+                            const maestroRes = await fetch(`/api/logistica/b2b-onboarding/acceso-maestro/${encodeURIComponent(codigo)}`);
+                            const maestroData = await maestroRes.json();
+
+                            if (!maestroRes.ok || !maestroData.success) {
+                                throw new Error(maestroData.message || 'Error al obtener el enlace del portal.');
+                            }
+
+                            Swal.close();
+                            window.open(maestroData.redirectUrl, '_blank');
+
+                        } catch (err) {
+                            console.error('Error al ingresar espejo:', err);
+                            Swal.fire('Error de Acceso', err.message || 'No se pudo crear la sesión espejo.', 'error');
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error('Error al cargar clientes:', err);
+                Swal.fire('Error de Carga', 'No se pudo contactar al servidor de clientes.', 'error');
+            }
+        }
+    });
 };
 
 </script>
