@@ -49,6 +49,59 @@ function verificarCoincidenciaTelefono(rawContactos, numeroIngresado) {
 }
 
 /**
+ * Helper para agregar un contacto a la lista JSON de email_facturas
+ */
+function agregarContactoEmail(emailFacturasOriginal, nuevoEmail, nombre = '', cargo = '') {
+    if (!nuevoEmail || !nuevoEmail.trim()) return emailFacturasOriginal;
+    const cleanEmail = nuevoEmail.trim().toLowerCase();
+    
+    let contacts = [];
+    const original = (emailFacturasOriginal || '').trim();
+    if (original) {
+        if (original.startsWith('[')) {
+            try {
+                contacts = JSON.parse(original);
+            } catch (e) {
+                // Fallback si no es JSON válido
+            }
+        } else {
+            // Fallback para lista separada por comas
+            contacts = original.split(',').map(em => ({
+                email: em.trim().toLowerCase(),
+                nombre: '',
+                cargo: ''
+            })).filter(c => c.email);
+        }
+    }
+    
+    if (!Array.isArray(contacts)) {
+        contacts = [];
+    }
+    
+    const exists = contacts.some(c => c.email && c.email.toLowerCase() === cleanEmail);
+    if (!exists) {
+        contacts.push({
+            email: cleanEmail,
+            nombre: (nombre || '').trim(),
+            cargo: (cargo || '').trim()
+        });
+    } else {
+        contacts = contacts.map(c => {
+            if (c.email && c.email.toLowerCase() === cleanEmail) {
+                return {
+                    email: cleanEmail,
+                    nombre: (nombre || c.nombre || '').trim(),
+                    cargo: (cargo || c.cargo || '').trim()
+                };
+            }
+            return c;
+        });
+    }
+    
+    return JSON.stringify(contacts);
+}
+
+/**
  * 1. Generar Invitación de Onboarding por WhatsApp
  * POST /api/logistica/b2b-onboarding/invitar
  */
@@ -65,7 +118,7 @@ exports.invitarCliente = async (req, res) => {
 
         // 1. Buscar cliente en la base de datos local
         const queryCliente = `
-            SELECT codigo_bunker_cliente, cliente_nombre, razon_social, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
+            SELECT codigo_bunker_cliente, cliente_nombre, razon_social, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo, email_facturas
             FROM public.bunker_clientes 
             WHERE codigo_bunker_cliente = $1 
                OR lomas_soft_id = $1 
@@ -170,13 +223,14 @@ exports.invitarCliente = async (req, res) => {
 
         // Persistir el correo en la ficha local bunker_clientes si fue provisto en la invitación
         if (emailDestino) {
+            const updatedEmailFacturas = agregarContactoEmail(cliente.email_facturas, emailDestino, cliente.email_portal_nombre, cliente.email_portal_cargo);
             await pool.query(
                 `UPDATE public.bunker_clientes 
                  SET email_portal = $1,
-                     email_facturas = COALESCE(NULLIF(TRIM(email_facturas), ''), $1),
+                     email_facturas = $2,
                      updated_at = CURRENT_TIMESTAMP
-                 WHERE codigo_bunker_cliente = $2`,
-                [emailDestino.toLowerCase(), cliente.codigo_bunker_cliente]
+                 WHERE codigo_bunker_cliente = $3`,
+                [emailDestino.toLowerCase(), updatedEmailFacturas, cliente.codigo_bunker_cliente]
             );
         }
 
@@ -390,7 +444,7 @@ exports.completarOnboarding = async (req, res) => {
 
         // 1. Validar el token de invitación
         const queryToken = `
-            SELECT i.token, i.cliente_id, i.expires_at, i.usado, bc.razon_social
+            SELECT i.token, i.cliente_id, i.expires_at, i.usado, bc.razon_social, bc.email_facturas
             FROM public.portal_invitaciones i
             JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = i.cliente_id
             WHERE i.token = $1
@@ -594,17 +648,24 @@ exports.completarOnboarding = async (req, res) => {
         const clientLocal = await pool.connect();
         try {
             await clientLocal.query('BEGIN');
-            // Graba el correo portal, email de facturación (si está vacío), nombre y cargo de contacto
+            // Graba el correo portal, email de facturación estructurado, nombre y cargo de contacto
+            const updatedEmailFacturas = agregarContactoEmail(
+                tokenRow.email_facturas, 
+                emailClean, 
+                nombre_contacto ? String(nombre_contacto).trim() : '', 
+                cargo_contacto ? String(cargo_contacto).trim() : ''
+            );
             await clientLocal.query(
                 `UPDATE public.bunker_clientes 
                  SET email_portal = $1, 
-                     email_facturas = COALESCE(NULLIF(TRIM(email_facturas), ''), $1),
-                     email_portal_nombre = COALESCE($2, email_portal_nombre),
-                     email_portal_cargo = COALESCE($3, email_portal_cargo),
+                     email_facturas = $2,
+                     email_portal_nombre = COALESCE($3, email_portal_nombre),
+                     email_portal_cargo = COALESCE($4, email_portal_cargo),
                      updated_at = CURRENT_TIMESTAMP 
-                 WHERE codigo_bunker_cliente = $4`,
+                 WHERE codigo_bunker_cliente = $5`,
                 [
                     emailClean, 
+                    updatedEmailFacturas,
                     nombre_contacto ? String(nombre_contacto).trim() : null, 
                     cargo_contacto ? String(cargo_contacto).trim() : null, 
                     tokenRow.cliente_id
