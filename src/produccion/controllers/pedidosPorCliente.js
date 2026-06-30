@@ -157,7 +157,10 @@ const obtenerPedidosPorCliente = async (req, res) => {
                         'secuencia', app.secuencia,
                         'presupuesto_estado', app.presupuesto_estado,
                         'articulo_numero', app.articulo_numero,
+                        'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
                         'descripcion', COALESCE(
+                            NULLIF(TRIM(ba.descripcion_generada), ''),
+                            NULLIF(TRIM(ba.descripcion), ''),
                             NULLIF(TRIM(a.nombre), ''),
                             app.articulo_numero
                         ),
@@ -188,6 +191,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = app.articulo_numero OR src.articulo_numero = app.articulo_numero)
             LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
             LEFT JOIN public.articulos a ON (a.codigo_barras = app.articulo_numero OR a.numero = app.articulo_numero)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = app.articulo_numero OR ba.articulo_id = a.numero)
             LEFT JOIN public.presupuestos_snapshots ps ON ps.id_presupuesto = app.presupuesto_id_local AND ps.activo = true
             GROUP BY app.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
