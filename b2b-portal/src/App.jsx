@@ -5,7 +5,7 @@ import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
 import ActivarCuenta from './pages/ActivarCuenta';
 import Home from './pages/Home';
-import Catalogo from './pages/Catalogo';
+import Articulos from './pages/Articulos';
 import CuentaCorriente from './pages/CuentaCorriente';
 import Pedidos from './pages/Pedidos';
 import { Loader2, Menu, Home as HomeIcon, BookOpen, ClipboardList, Receipt } from 'lucide-react';
@@ -298,11 +298,11 @@ export default function App() {
                   <span>Inicio</span>
                 </button>
                 <button 
-                  onClick={() => { setCurrentTab('catalogo'); setMobileMenuOpen(false); }} 
-                  className={`mobile-menu-item ${currentTab === 'catalogo' ? 'active' : ''}`}
+                  onClick={() => { setCurrentTab('articulos'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'articulos' ? 'active' : ''}`}
                 >
                   <BookOpen size={14} />
-                  <span>Catálogo</span>
+                  <span>Artículos</span>
                 </button>
                 <button 
                   onClick={() => { setCurrentTab('pedidos'); setMobileMenuOpen(false); }} 
@@ -337,18 +337,24 @@ export default function App() {
             profile={profile} 
           />
         )}
-        {currentTab === 'catalogo' && (
-          <Catalogo 
+        {currentTab === 'articulos' && (
+          <Articulos 
             profile={profile} 
             cart={cart}
             addToCart={addToCart}
             removeFromCart={removeFromCart}
             clearCart={clearCart}
+            setCurrentTab={setCurrentTab}
           />
         )}
         {currentTab === 'pedidos' && (
           <Pedidos 
             profile={profile}
+            cart={cart}
+            addToCart={addToCart}
+            removeFromCart={removeFromCart}
+            clearCart={clearCart}
+            setCurrentTab={setCurrentTab}
           />
         )}
         {currentTab === 'cc' && (

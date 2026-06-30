@@ -9,7 +9,7 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
 
   const menuItems = [
     { id: 'home', label: 'Inicio', icon: Home },
-    { id: 'catalogo', label: 'Catálogo', icon: BookOpen },
+    { id: 'articulos', label: 'Artículos', icon: BookOpen },
     { id: 'pedidos', label: 'Mis Pedidos', icon: ClipboardList },
     { id: 'cc', label: 'Cuenta Corriente', icon: Receipt }
   ];

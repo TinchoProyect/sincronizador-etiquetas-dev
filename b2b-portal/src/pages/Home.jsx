@@ -167,11 +167,11 @@ export default function Home({ setCurrentTab, profile }) {
               </button>
 
               <button 
-                onClick={() => handleNavigation('catalogo')}
+                onClick={() => handleNavigation('articulos')}
                 className="dropdown-item-pwa"
               >
                 <BookOpen size={16} />
-                <span>Catálogo</span>
+                <span>Artículos</span>
               </button>
 
               <button 

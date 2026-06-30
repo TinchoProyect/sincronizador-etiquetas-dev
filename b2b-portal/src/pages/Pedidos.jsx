@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import Swal from 'sweetalert2';
 import { 
   ClipboardList, 
   Clock, 
@@ -11,16 +12,23 @@ import {
   Loader2, 
   Calendar, 
   AlertCircle,
-  FileText
+  FileText,
+  Minus,
+  Plus,
+  Trash2,
+  ShoppingBag
 } from 'lucide-react';
 
-export default function Pedidos({ profile }) {
+export default function Pedidos({ profile, cart = [], addToCart, removeFromCart, clearCart, setCurrentTab }) {
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedPedidoId, setExpandedPedidoId] = useState(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [openMonthKey, setOpenMonthKey] = useState(null);
+  
+  const [submitting, setSubmitting] = useState(false);
+  const [nota, setNota] = useState('');
 
   useEffect(() => {
     if (profile?.cliente_id) {
@@ -121,6 +129,102 @@ export default function Pedidos({ profile }) {
     );
   }
 
+  const cartTotal = cart.reduce((acc, item) => acc + item.subtotal, 0);
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) return;
+    setSubmitting(true);
+    
+    try {
+      const subtotal = cartTotal;
+      const total = subtotal; // en desarrollo no aplicamos descuento en frontend
+
+      // 1. Insertar cabecera del pedido
+      const { data: header, error: headerErr } = await supabase
+        .from('clientes_b2b_pedidos_cabecera')
+        .insert({
+          cliente_id: profile.cliente_id,
+          subtotal: subtotal,
+          descuento: 0.00,
+          total: total,
+          observaciones: nota.trim() || null,
+          estado: 'Borrador',
+          sync_estado: 'Pendiente'
+        })
+        .select()
+        .single();
+
+      if (headerErr) throw headerErr;
+
+      // 2. Insertar ítems del pedido
+      const itemsPayload = cart.map(item => ({
+        pedido_id: header.id,
+        producto_codigo: item.producto_codigo,
+        producto_descripcion: item.producto_descripcion,
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario,
+        subtotal: item.subtotal
+      }));
+
+      const { error: itemsErr } = await supabase
+        .from('clientes_b2b_pedidos_items')
+        .insert(itemsPayload);
+
+      if (itemsErr) throw itemsErr;
+
+      // Alerta SweetAlert2
+      Swal.fire({
+        title: '¡Pedido Confirmado!',
+        text: `Su orden ha sido registrada con éxito (ID: ${header.id.slice(0, 8)}). Se ingresará a la grilla logística en el boliche para su armado en breve.`,
+        icon: 'success',
+        confirmButtonText: 'Listo',
+        confirmButtonColor: 'var(--accent)',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)',
+        iconColor: 'var(--success)'
+      });
+
+      clearCart();
+      setNota('');
+      // Recargar el historial
+      fetchPedidos();
+    } catch (err) {
+      console.error('Error al enviar pedido:', err.message);
+      Swal.fire({
+        title: 'Error al enviar pedido',
+        text: err.message,
+        icon: 'error',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: 'var(--accent)',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClearCartPrompt = () => {
+    Swal.fire({
+      title: '¿Eliminar Pedido?',
+      text: 'Se limpiará por completo la simulación actual y el carrito quedará vacío. Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, vaciar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: 'var(--danger)',
+      cancelButtonColor: 'rgba(255,255,255,0.05)',
+      background: 'hsl(222, 47%, 11%)',
+      color: 'var(--text-primary)',
+      iconColor: 'var(--danger)'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        clearCart();
+        setNota('');
+      }
+    });
+  };
+
   const pedidosActivos = pedidos.filter(p => getStepIndex(p.estado) !== 5);
   const pedidosEntregados = pedidos.filter(p => getStepIndex(p.estado) === 5);
 
@@ -144,378 +248,349 @@ export default function Pedidos({ profile }) {
 
   return (
     <div className="pedidos-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Mis Pedidos</h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Seguimiento de compras y estado de despacho en tiempo real
-          </p>
-        </div>
-        <button onClick={fetchPedidos} className="filter-btn">
-          Actualizar
-        </button>
-      </div>
+      {cart.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeInUp 0.3s ease-out' }}>
+          
+          <div className="page-header" style={{ marginBottom: '0.5rem' }}>
+            <div>
+              <h1 className="page-title">Revisar Orden</h1>
+              <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Paso 2 de 3: Confirme el detalle de los artículos y complete su compra
+              </p>
+            </div>
+          </div>
 
-      {pedidos.length === 0 ? (
-        <div className="empty-state">
-          <FileText size={48} style={{ color: 'var(--text-muted)' }} />
-          <p className="empty-state-title">No hay pedidos registrados</p>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '400px' }}>
-            Aún no has realizado pedidos desde el portal. Cuando confirmes un carrito de compras, podrás seguir su estado desde aquí.
-          </p>
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            
+            {/* Tabla de Artículos en Revisión (Izquierda) */}
+            <div className="login-card" style={{ flex: '1', minWidth: '320px', padding: '1.75rem', border: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem' }}>
+                <ShoppingBag size={20} style={{ color: 'var(--accent)' }} />
+                <h2 style={{ fontSize: '1.15rem', fontWeight: '750' }}>Detalle de Artículos ({cart.length})</h2>
+              </div>
+
+              <div className="details-table-wrapper" style={{ border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                <table className="details-table" style={{ fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Descripción</th>
+                      <th style={{ textAlign: 'center', width: '120px' }}>Cant.</th>
+                      <th style={{ textAlign: 'right' }}>Precio Unit.</th>
+                      <th style={{ textAlign: 'right' }}>Subtotal</th>
+                      <th style={{ textAlign: 'center', width: '60px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.map((item) => (
+                      <tr key={item.producto_codigo} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                        <td style={{ color: 'var(--accent)', fontWeight: '600' }}>{item.producto_codigo}</td>
+                        <td>{item.producto_descripcion}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div className="quantity-controls" style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.02)', padding: '0.2rem', borderRadius: '6px', border: '1px solid var(--border-glass)' }}>
+                            <button 
+                              className="qty-btn"
+                              onClick={() => addToCart({ producto_codigo: item.producto_codigo, producto_descripcion: item.producto_descripcion, precio_final: item.precio_unitario }, item.cantidad - 1)}
+                              style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <span style={{ minWidth: '24px', display: 'inline-block', fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.85rem' }}>{item.cantidad}</span>
+                            <button 
+                              className="qty-btn"
+                              onClick={() => addToCart({ producto_codigo: item.producto_codigo, producto_descripcion: item.producto_descripcion, precio_final: item.precio_unitario }, item.cantidad + 1)}
+                              style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(item.precio_unitario)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatCurrency(item.subtotal)}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button 
+                            onClick={() => removeFromCart(item.producto_codigo)}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', transition: 'var(--transition-smooth)' }}
+                            title="Quitar"
+                            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--danger)'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Panel de Control y Confirmación (Derecha) */}
+            <div className="login-card" style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.75rem', border: '1px solid var(--border-glass)', margin: '0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: '750' }}>Resumen de Orden</h3>
+              </div>
+
+              {/* Notas de entrega */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label className="form-label" style={{ fontSize: '0.8rem' }}>Observaciones de entrega</label>
+                <textarea 
+                  placeholder="Ej: Horario de entrega por la mañana, indicaciones para el chofer..."
+                  className="form-input"
+                  style={{ resize: 'none', height: '72px', padding: '0.5rem', fontSize: '0.85rem' }}
+                  value={nota}
+                  onChange={(e) => setNota(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+
+              {/* Total final */}
+              <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '1.05rem', fontWeight: '600', color: 'var(--text-secondary)' }}>Total Estimado:</span>
+                <span style={{ fontSize: '1.6rem', fontWeight: '850', color: 'var(--text-primary)' }}>{formatCurrency(cartTotal)}</span>
+              </div>
+
+              {/* Acciones del Paso B */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={handleCheckout}
+                  disabled={submitting}
+                  className="btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', padding: '0.85rem' }}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="spinner" style={{ width: '18px', height: '18px', borderTopColor: 'var(--text-primary)' }} />
+                      <span>Enviando pedido...</span>
+                    </>
+                  ) : (
+                    <span>Confirmar Compra</span>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleClearCartPrompt}
+                  disabled={submitting}
+                  className="filter-btn"
+                  style={{ width: '100%', borderColor: 'var(--danger)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', background: 'rgba(239, 68, 68, 0.03)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.03)'}
+                >
+                  <Trash2 size={16} />
+                  <span>Eliminar Pedido</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentTab('articulos')}
+                  disabled={submitting}
+                  className="filter-btn"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                >
+                  <span>Seguir Comprando</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
         </div>
       ) : (
         <>
-          {/* Listado de Pedidos Activos */}
-          {pedidosActivos.length === 0 ? (
-            <div className="empty-state" style={{ padding: '2rem 1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border-glass)', borderRadius: 'var(--radius-lg)' }}>
-              <Clock size={36} style={{ color: 'var(--text-muted)' }} />
-              <p className="empty-state-title" style={{ fontSize: '1rem', marginTop: '0.5rem' }}>No tienes pedidos activos</p>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '350px', margin: '0 auto' }}>
-                Todos tus pedidos han sido entregados y archivados en el listado histórico inferior.
+          <div className="page-header">
+            <div>
+              <h1 className="page-title">Mis Pedidos</h1>
+              <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Seguimiento de compras y estado de despacho en tiempo real
+              </p>
+            </div>
+            <button onClick={fetchPedidos} className="filter-btn">
+              Actualizar
+            </button>
+          </div>
+
+          {pedidos.length === 0 ? (
+            <div className="empty-state">
+              <FileText size={48} style={{ color: 'var(--text-muted)' }} />
+              <p className="empty-state-title">No hay pedidos registrados</p>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: '400px' }}>
+                Aún no has realizado pedidos desde el portal. Cuando confirmes un carrito de compras, podrás seguir su estado desde aquí.
               </p>
             </div>
           ) : (
-            <div className="pedidos-grid">
-              {pedidosActivos.map((pedido) => {
-                const currentStep = getStepIndex(pedido.estado);
-                const isExpanded = expandedPedidoId === pedido.id;
-                const items = pedido.clientes_b2b_pedidos_items || [];
-                
-                let logisticaLabel = 'Logística';
-                let logisticaSublabel = 'Despacho / Retiro';
-                const rawEstado = (pedido.estado || '').toLowerCase().trim();
-                if (rawEstado === 'en ruta') {
-                  logisticaLabel = 'En Reparto';
-                  logisticaSublabel = 'Asignado a reparto';
-                } else if (rawEstado === 'listo para retirar') {
-                  logisticaLabel = 'Listo para Retirar';
-                  logisticaSublabel = 'En depósito local';
-                }
-
-                return (
-                  <div key={pedido.id} className="pedido-card">
-                    {/* Cabecera de la Tarjeta */}
-                    <div className="pedido-header">
-                      <div className="pedido-info-main">
-                        <span className="pedido-number">
-                          <ClipboardList size={18} style={{ color: 'var(--accent)' }} />
-                          Pedido: #{pedido.id.substring(0, 8).toUpperCase()}
-                        </span>
-                        <span className="pedido-date">
-                          Fecha: {new Date(pedido.fecha_pedido).toLocaleDateString('es-AR', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                      
-                      <div className="pedido-totals">
-                        <div className="pedido-total-amount">
-                          Total: {formatCurrency(pedido.total)}
-                        </div>
-                        <span className={`badge-status ${
-                          currentStep === 5 ? 'entregado' : 
-                          currentStep === 4 ? 'logistica' : 
-                          currentStep === 3 ? 'listo' : 
-                          currentStep === 2 ? 'proceso' : 'pendiente'
-                        }`}>
-                          {pedido.estado || 'Recibido'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Stepper de 5 Pasos */}
-                    <div className="stepper-container">
-                      <div className="stepper-progress-bar">
-                        <div 
-                          className="stepper-progress-line"
-                          style={{ 
-                            width: `${((currentStep - 1) / 4) * 100}%`
-                          }}
-                        />
-                      </div>
-
-                      {stepsConfig.map((step, idx) => {
-                        const stepNum = idx + 1;
-                        const isCompleted = stepNum < currentStep;
-                        const isActive = stepNum === currentStep;
-                        
-                        const StepIcon = step.icon;
-                        const label = stepNum === 4 ? logisticaLabel : step.label;
-                        const sublabel = stepNum === 4 ? logisticaSublabel : step.sublabel;
-
-                        return (
-                          <div 
-                            key={idx} 
-                            className={`step-item ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`}
-                          >
-                            <div className="step-icon-wrapper">
-                              <StepIcon size={18} />
-                            </div>
-                            <span className="step-label">{label}</span>
-                            <span className="step-sublabel">{sublabel}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Acciones y Detalle */}
-                    <div className="pedido-action-bar">
-                      <button 
-                        onClick={() => toggleExpand(pedido.id)} 
-                        className="btn-toggle-details"
-                      >
-                        <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Detalle'}</span>
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </button>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="pedido-details">
-                        <div className="details-table-wrapper">
-                          <table className="details-table">
-                            <thead>
-                              <tr>
-                                <th>Código</th>
-                                <th>Descripción</th>
-                                <th style={{ textAlign: 'right' }}>Cant.</th>
-                                <th style={{ textAlign: 'right' }}>Precio Unit.</th>
-                                <th style={{ textAlign: 'right' }}>Subtotal</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {items.length === 0 ? (
-                                <tr>
-                                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                                    No se encontraron ítems en este pedido.
-                                  </td>
-                                </tr>
-                              ) : (
-                                items.map((item) => (
-                                  <tr key={item.id}>
-                                    <td style={{ color: 'var(--accent)', fontWeight: '600' }}>
-                                      {item.producto_codigo}
-                                    </td>
-                                    <td>{item.producto_descripcion}</td>
-                                    <td style={{ textAlign: 'right', fontWeight: '500' }}>
-                                      {parseFloat(item.cantidad)}
-                                    </td>
-                                    <td style={{ textAlign: 'right' }}>
-                                      {formatCurrency(item.precio_unitario)}
-                                    </td>
-                                    <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--text-primary)' }}>
-                                      {formatCurrency(item.subtotal)}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                              <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                                <td colSpan="3"></td>
-                                <td style={{ textAlign: 'right', color: 'var(--text-secondary)', fontWeight: '500' }}>Subtotal:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatCurrency(pedido.subtotal)}</td>
-                              </tr>
-                              {parseFloat(pedido.descuento) > 0 && (
-                                <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                                  <td colSpan="3"></td>
-                                  <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>Descuento:</td>
-                                  <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--danger)' }}>-{formatCurrency(pedido.descuento)}</td>
-                                </tr>
-                              )}
-                              <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                                <td colSpan="3"></td>
-                                <td style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>Total Final:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontSize: '1.05rem' }}>{formatCurrency(pedido.total)}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                        {pedido.observaciones && (
-                          <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)' }}>
-                            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>Observaciones del Cliente:</span>
-                            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>{pedido.observaciones}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Acordeón de Pedidos Históricos (Entregados) */}
-          {pedidosEntregados.length > 0 && (
-            <div className="historical-accordion-container" style={{ marginTop: '2.5rem' }}>
-              <button 
-                onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
-                className="historical-accordion-header"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  width: '100%',
-                  padding: '1.15rem 1.5rem',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px solid var(--border-glass)',
-                  borderRadius: 'var(--radius-lg)',
-                  color: 'var(--text-primary)',
-                  fontWeight: '600',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
-                  <span>Pedidos Históricos (Entregados) ({pedidosEntregados.length})</span>
+            <>
+              {/* Listado de Pedidos Activos */}
+              {pedidosActivos.length === 0 ? (
+                <div className="empty-state" style={{ padding: '2rem 1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border-glass)', borderRadius: 'var(--radius-lg)' }}>
+                  <Clock size={36} style={{ color: 'var(--text-muted)' }} />
+                  <p className="empty-state-title" style={{ fontSize: '1rem', marginTop: '0.5rem' }}>No tienes pedidos activos</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '350px', margin: '0 auto' }}>
+                    Todos tus pedidos han sido entregados y archivados en el listado histórico inferior.
+                  </p>
                 </div>
-                {isHistoryOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              </button>
+              ) : (
+                <div className="pedidos-grid">
+                  {pedidosActivos.map((pedido) => {
+                    const currentStep = getStepIndex(pedido.estado);
+                    const isExpanded = expandedPedidoId === pedido.id;
+                    const items = pedido.clientes_b2b_pedidos_items || [];
+                    
+                    let logisticaLabel = 'Logística';
+                    let logisticaSublabel = 'Despacho / Retiro';
+                    const rawEstado = (pedido.estado || '').toLowerCase().trim();
+                    if (rawEstado === 'en ruta') {
+                      logisticaLabel = 'En Reparto';
+                      logisticaSublabel = 'Asignado a reparto';
+                    } else if (rawEstado === 'listo para retirar') {
+                      logisticaLabel = 'Listo para Retirar';
+                      logisticaSublabel = 'En depósito local';
+                    }
 
-              {isHistoryOpen && (
-                <div className="historical-months-list" style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {Object.entries(historicalGroups).map(([monthKey, monthPedidos]) => {
-                    const isMonthOpen = openMonthKey === monthKey;
                     return (
-                      <div 
-                        key={monthKey} 
-                        className="historical-month-group" 
-                        style={{
-                          border: '1px solid var(--border-glass)',
-                          borderRadius: 'var(--radius-md)',
-                          overflow: 'hidden',
-                          background: 'rgba(255, 255, 255, 0.01)'
-                        }}
-                      >
-                        <button
-                          onClick={() => setOpenMonthKey(isMonthOpen ? null : monthKey)}
-                          className="historical-month-header"
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '0.85rem 1.25rem',
-                            background: 'rgba(255, 255, 255, 0.02)',
-                            border: 'none',
-                            color: 'var(--text-secondary)',
-                            fontWeight: '550',
-                            fontSize: '0.85rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                            <span>{monthKey} ({monthPedidos.length} {monthPedidos.length === 1 ? 'pedido' : 'pedidos'})</span>
+                      <div key={pedido.id} className="pedido-card">
+                        {/* Cabecera de la Tarjeta */}
+                        <div className="pedido-header">
+                          <div className="pedido-info-main">
+                            <span className="pedido-number">
+                              <ClipboardList size={18} style={{ color: 'var(--accent)' }} />
+                              Pedido: #{pedido.id.substring(0, 8).toUpperCase()}
+                            </span>
+                            <span className="pedido-date">
+                              Fecha: {new Date(pedido.fecha_pedido).toLocaleDateString('es-AR', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
                           </div>
-                          {isMonthOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
+                          
+                          <div className="pedido-totals">
+                            <div className="pedido-total-amount">
+                              Total: {formatCurrency(pedido.total)}
+                            </div>
+                            <span className={`badge-status ${
+                              currentStep === 5 ? 'entregado' : 
+                              currentStep === 4 ? 'logistica' : 
+                              currentStep === 3 ? 'listo' : 
+                              currentStep === 2 ? 'proceso' : 'pendiente'
+                            }`}>
+                              {pedido.estado || 'Recibido'}
+                            </span>
+                          </div>
+                        </div>
 
-                        {isMonthOpen && (
-                          <div 
-                            className="historical-month-content" 
-                            style={{ 
-                              padding: '1rem', 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '1rem',
-                              background: 'rgba(0,0,0,0.15)'
-                            }}
-                          >
-                            {monthPedidos.map((pedido) => {
-                              const isExpanded = expandedPedidoId === pedido.id;
-                              const items = pedido.clientes_b2b_pedidos_items || [];
-                              return (
-                                <div key={pedido.id} className="pedido-card historical-card" style={{ margin: 0, border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
-                                  <div className="pedido-header" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                    <div className="pedido-info-main">
-                                      <span className="pedido-number" style={{ fontSize: '0.85rem' }}>
-                                        <ClipboardList size={16} style={{ color: 'var(--text-muted)' }} />
-                                        Pedido: #{pedido.id.substring(0, 8).toUpperCase()}
-                                      </span>
-                                      <span className="pedido-date" style={{ fontSize: '0.8rem' }}>
-                                        Fecha: {new Date(pedido.fecha_pedido).toLocaleDateString('es-AR')}
-                                      </span>
-                                    </div>
-                                    <div className="pedido-totals">
-                                      <div className="pedido-total-amount" style={{ fontSize: '0.9rem' }}>
-                                        Total: {formatCurrency(pedido.total)}
-                                      </div>
-                                      <span className="badge-status entregado" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                                        Entregado
-                                      </span>
-                                    </div>
-                                  </div>
+                        {/* Stepper de 5 Pasos */}
+                        <div className="stepper-container">
+                          <div className="stepper-progress-bar">
+                            <div 
+                              className="stepper-progress-line"
+                              style={{ 
+                                width: `${((currentStep - 1) / 4) * 100}%`
+                              }}
+                            />
+                          </div>
 
-                                  <div className="pedido-action-bar" style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.01)' }}>
-                                    <button 
-                                      onClick={() => toggleExpand(pedido.id)} 
-                                      className="btn-toggle-details"
-                                      style={{ fontSize: '0.8rem' }}
-                                    >
-                                      <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Detalle'}</span>
-                                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                    </button>
-                                  </div>
+                          {stepsConfig.map((step, idx) => {
+                            const stepNum = idx + 1;
+                            const isCompleted = stepNum < currentStep;
+                            const isActive = stepNum === currentStep;
+                            
+                            const StepIcon = step.icon;
+                            const label = stepNum === 4 ? logisticaLabel : step.label;
+                            const sublabel = stepNum === 4 ? logisticaSublabel : step.sublabel;
 
-                                  {isExpanded && (
-                                    <div className="pedido-details" style={{ padding: '0.75rem', background: 'transparent' }}>
-                                      <div className="details-table-wrapper" style={{ border: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <table className="details-table" style={{ fontSize: '0.8rem' }}>
-                                          <thead>
-                                            <tr>
-                                              <th>Código</th>
-                                              <th>Descripción</th>
-                                              <th style={{ textAlign: 'right' }}>Cant.</th>
-                                              <th style={{ textAlign: 'right' }}>Precio Unit.</th>
-                                              <th style={{ textAlign: 'right' }}>Subtotal</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {items.map((item) => (
-                                              <tr key={item.id}>
-                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{item.producto_codigo}</td>
-                                                <td>{item.producto_descripcion}</td>
-                                                <td style={{ textAlign: 'right' }}>{parseFloat(item.cantidad)}</td>
-                                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.precio_unitario)}</td>
-                                                <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatCurrency(item.subtotal)}</td>
-                                              </tr>
-                                            ))}
-                                            <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
-                                              <td colSpan="3"></td>
-                                              <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>Subtotal:</td>
-                                              <td style={{ textAlign: 'right' }}>{formatCurrency(pedido.subtotal)}</td>
-                                            </tr>
-                                            {parseFloat(pedido.descuento) > 0 && (
-                                              <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
-                                                <td colSpan="3"></td>
-                                                <td style={{ textAlign: 'right', color: 'var(--danger)' }}>Descuento:</td>
-                                                <td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{formatCurrency(pedido.descuento)}</td>
-                                              </tr>
-                                            )}
-                                            <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                                              <td colSpan="3"></td>
-                                              <td style={{ textAlign: 'right', fontWeight: '700' }}>Total Final:</td>
-                                              <td style={{ textAlign: 'right', fontWeight: '700', fontSize: '0.95rem' }}>{formatCurrency(pedido.total)}</td>
-                                            </tr>
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                      {pedido.observaciones && (
-                                        <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.01)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)', fontSize: '0.8rem' }}>
-                                          <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>Observaciones:</span> {pedido.observaciones}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
+                            return (
+                              <div 
+                                key={idx} 
+                                className={`step-item ${isCompleted ? 'completed' : ''} ${isActive ? 'active' : ''}`}
+                              >
+                                <div className="step-icon-wrapper">
+                                  <StepIcon size={18} />
                                 </div>
-                              );
-                            })}
+                                <span className="step-label">{label}</span>
+                                <span className="step-sublabel">{sublabel}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Acciones y Detalle */}
+                        <div className="pedido-action-bar">
+                          <button 
+                            onClick={() => toggleExpand(pedido.id)} 
+                            className="btn-toggle-details"
+                          >
+                            <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Detalle'}</span>
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="pedido-details">
+                            <div className="details-table-wrapper">
+                              <table className="details-table">
+                                <thead>
+                                  <tr>
+                                    <th>Código</th>
+                                    <th>Descripción</th>
+                                    <th style={{ textAlign: 'right' }}>Cant.</th>
+                                    <th style={{ textAlign: 'right' }}>Precio Unit.</th>
+                                    <th style={{ textAlign: 'right' }}>Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.length === 0 ? (
+                                    <tr>
+                                      <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        No se encontraron ítems en este pedido.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    items.map((item) => (
+                                      <tr key={item.id}>
+                                        <td style={{ color: 'var(--accent)', fontWeight: '600' }}>
+                                          {item.producto_codigo}
+                                        </td>
+                                        <td>{item.producto_descripcion}</td>
+                                        <td style={{ textAlign: 'right', fontWeight: '500' }}>
+                                          {parseFloat(item.cantidad)}
+                                        </td>
+                                        <td style={{ textAlign: 'right' }}>
+                                          {formatCurrency(item.precio_unitario)}
+                                        </td>
+                                        <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--text-primary)' }}>
+                                          {formatCurrency(item.subtotal)}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )}
+                                  <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                                    <td colSpan="3"></td>
+                                    <td style={{ textAlign: 'right', color: 'var(--text-secondary)', fontWeight: '500' }}>Subtotal:</td>
+                                    <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatCurrency(pedido.subtotal)}</td>
+                                  </tr>
+                                  {parseFloat(pedido.descuento) > 0 && (
+                                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                                      <td colSpan="3"></td>
+                                      <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>Descuento:</td>
+                                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--danger)' }}>-{formatCurrency(pedido.descuento)}</td>
+                                    </tr>
+                                  )}
+                                  <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                                    <td colSpan="3"></td>
+                                    <td style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>Total Final:</td>
+                                    <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)', fontSize: '1.05rem' }}>{formatCurrency(pedido.total)}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                            {pedido.observaciones && (
+                              <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)' }}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>Observaciones del Cliente:</span>
+                                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>{pedido.observaciones}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -523,7 +598,186 @@ export default function Pedidos({ profile }) {
                   })}
                 </div>
               )}
-            </div>
+
+              {/* Acordeón de Pedidos Históricos (Entregados) */}
+              {pedidosEntregados.length > 0 && (
+                <div className="historical-accordion-container" style={{ marginTop: '2.5rem' }}>
+                  <button 
+                    onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
+                    className="historical-accordion-header"
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      width: '100%',
+                      padding: '1.15rem 1.5rem',
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-glass)',
+                      borderRadius: 'var(--radius-lg)',
+                      color: 'var(--text-primary)',
+                      fontWeight: '600',
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
+                      <span>Pedidos Históricos (Entregados) ({pedidosEntregados.length})</span>
+                    </div>
+                    {isHistoryOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </button>
+
+                  {isHistoryOpen && (
+                    <div className="historical-months-list" style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {Object.entries(historicalGroups).map(([monthKey, monthPedidos]) => {
+                        const isMonthOpen = openMonthKey === monthKey;
+                        return (
+                          <div 
+                            key={monthKey} 
+                            className="historical-month-group" 
+                            style={{
+                              border: '1px solid var(--border-glass)',
+                              borderRadius: 'var(--radius-md)',
+                              overflow: 'hidden',
+                              background: 'rgba(255, 255, 255, 0.01)'
+                            }}
+                          >
+                            <button
+                              onClick={() => setOpenMonthKey(isMonthOpen ? null : monthKey)}
+                              className="historical-month-header"
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                width: '100%',
+                                padding: '0.85rem 1.25rem',
+                                background: 'rgba(255, 255, 255, 0.02)',
+                                border: 'none',
+                                color: 'var(--text-secondary)',
+                                fontWeight: '550',
+                                fontSize: '0.85rem',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
+                                <span>{monthKey} ({monthPedidos.length} {monthPedidos.length === 1 ? 'pedido' : 'pedidos'})</span>
+                              </div>
+                              {isMonthOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </button>
+
+                            {isMonthOpen && (
+                              <div 
+                                className="historical-month-content" 
+                                style={{ 
+                                  padding: '1rem', 
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  gap: '1rem',
+                                  background: 'rgba(0,0,0,0.15)'
+                                }}
+                              >
+                                {monthPedidos.map((pedido) => {
+                                  const isExpanded = expandedPedidoId === pedido.id;
+                                  const items = pedido.clientes_b2b_pedidos_items || [];
+                                  return (
+                                    <div key={pedido.id} className="pedido-card historical-card" style={{ margin: 0, border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
+                                      <div className="pedido-header" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                        <div className="pedido-info-main">
+                                          <span className="pedido-number" style={{ fontSize: '0.85rem' }}>
+                                            <ClipboardList size={16} style={{ color: 'var(--text-muted)' }} />
+                                            Pedido: #{pedido.id.substring(0, 8).toUpperCase()}
+                                          </span>
+                                          <span className="pedido-date" style={{ fontSize: '0.8rem' }}>
+                                            Fecha: {new Date(pedido.fecha_pedido).toLocaleDateString('es-AR')}
+                                          </span>
+                                        </div>
+                                        <div className="pedido-totals">
+                                          <div className="pedido-total-amount" style={{ fontSize: '0.9rem' }}>
+                                            Total: {formatCurrency(pedido.total)}
+                                          </div>
+                                          <span className="badge-status entregado" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                                            Entregado
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="pedido-action-bar" style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.01)' }}>
+                                        <button 
+                                          onClick={() => toggleExpand(pedido.id)} 
+                                          className="btn-toggle-details"
+                                          style={{ fontSize: '0.8rem' }}
+                                        >
+                                          <span>{isExpanded ? 'Ocultar Detalle' : 'Ver Detalle'}</span>
+                                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                      </div>
+
+                                      {isExpanded && (
+                                        <div className="pedido-details" style={{ padding: '0.75rem', background: 'transparent' }}>
+                                          <div className="details-table-wrapper" style={{ border: '1px solid rgba(255,255,255,0.03)' }}>
+                                            <table className="details-table" style={{ fontSize: '0.8rem' }}>
+                                              <thead>
+                                                <tr>
+                                                  <th>Código</th>
+                                                  <th>Descripción</th>
+                                                  <th style={{ textAlign: 'right' }}>Cant.</th>
+                                                  <th style={{ textAlign: 'right' }}>Precio Unit.</th>
+                                                  <th style={{ textAlign: 'right' }}>Subtotal</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {items.map((item) => (
+                                                  <tr key={item.id}>
+                                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{item.producto_codigo}</td>
+                                                    <td>{item.producto_descripcion}</td>
+                                                    <td style={{ textAlign: 'right' }}>{parseFloat(item.cantidad)}</td>
+                                                    <td style={{ textAlign: 'right' }}>{formatCurrency(item.precio_unitario)}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatCurrency(item.subtotal)}</td>
+                                                  </tr>
+                                                ))}
+                                                <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
+                                                  <td colSpan="3"></td>
+                                                  <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>Subtotal:</td>
+                                                  <td style={{ textAlign: 'right' }}>{formatCurrency(pedido.subtotal)}</td>
+                                                </tr>
+                                                {parseFloat(pedido.descuento) > 0 && (
+                                                  <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
+                                                    <td colSpan="3"></td>
+                                                    <td style={{ textAlign: 'right', color: 'var(--danger)' }}>Descuento:</td>
+                                                    <td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{formatCurrency(pedido.descuento)}</td>
+                                                  </tr>
+                                                )}
+                                                <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                                                  <td colSpan="3"></td>
+                                                  <td style={{ textAlign: 'right', fontWeight: '700' }}>Total Final:</td>
+                                                  <td style={{ textAlign: 'right', fontWeight: '700', fontSize: '0.95rem' }}>{formatCurrency(pedido.total)}</td>
+                                                </tr>
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                          {pedido.observaciones && (
+                                            <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.01)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)', fontSize: '0.8rem' }}>
+                                              <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>Observaciones:</span> {pedido.observaciones}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
