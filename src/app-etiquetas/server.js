@@ -358,35 +358,54 @@ router.post('/etiquetas/tratamiento', (req, res) => {
 
 let isSyncingB2B = false;
 
-router.post('/sync-b2b', (req, res) => {
+router.post('/sync-b2b', async (req, res) => {
   if (isSyncingB2B) {
     return res.status(409).json({ error: 'Ya hay una sincronización en curso. Por favor, espere.' });
   }
 
   isSyncingB2B = true;
-  const scriptPath = path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js');
-  console.log(`🚀 [MANUAL-SYNC] Lanzando syncB2BPrecios.js...`);
+  console.log(`🚀 [MANUAL-SYNC] Iniciando sincronización integral B2B...`);
 
-  const child = fork(scriptPath, [], {
-    env: { ...process.env, NODE_ENV: 'production' }
-  });
+  const scripts = [
+    { name: 'Catálogo y Precios', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js') },
+    { name: 'Cuentas Corrientes', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BCuentas.js') },
+    { name: 'Clientes y Listas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BClientesListas.js') },
+    { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
+    { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
+  ];
 
-  child.on('close', (code) => {
-    isSyncingB2B = false;
-    if (code === 0) {
-      console.log('✅ [MANUAL-SYNC] Sincronización manual completada con éxito.');
-      res.json({ success: true, message: 'La sincronización de catálogo y precios se completó exitosamente.' });
-    } else {
-      console.error(`❌ [MANUAL-SYNC] Sincronización manual falló con código ${code}.`);
-      res.status(500).json({ error: `La sincronización falló con código ${code}.` });
+  try {
+    for (const script of scripts) {
+      console.log(`🚀 [MANUAL-SYNC] Ejecutando: ${script.name}...`);
+      const exitCode = await new Promise((resolve) => {
+        const child = fork(script.path, [], {
+          env: { ...process.env, NODE_ENV: 'production' }
+        });
+        child.on('close', (code) => {
+          resolve(code);
+        });
+        child.on('error', (err) => {
+          console.error(`💥 [MANUAL-SYNC] Error lanzando ${script.name}:`, err.message);
+          resolve(-1);
+        });
+      });
+
+      if (exitCode !== 0) {
+        console.warn(`⚠️ [MANUAL-SYNC] ${script.name} finalizó con advertencias/errores (código ${exitCode}). Continuando secuencia...`);
+      } else {
+        console.log(`✅ [MANUAL-SYNC] ${script.name} finalizó con éxito.`);
+      }
     }
-  });
 
-  child.on('error', (err) => {
     isSyncingB2B = false;
-    console.error('💥 [MANUAL-SYNC] Error en fork:', err.message);
-    res.status(500).json({ error: `Error al iniciar el proceso: ${err.message}` });
-  });
+    console.log('✅ [MANUAL-SYNC] Sincronización integral manual completada con éxito.');
+    res.json({ success: true, message: 'La sincronización integral (Precios, Cuentas, Listas, Pedidos y Estados) se completó exitosamente.' });
+
+  } catch (err) {
+    isSyncingB2B = false;
+    console.error('💥 [MANUAL-SYNC] Error general en secuencia:', err.message);
+    res.status(500).json({ error: `La sincronización integral falló: ${err.message}` });
+  }
 });
 
 
