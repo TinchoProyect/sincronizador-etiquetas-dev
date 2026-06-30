@@ -375,6 +375,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     JSON_BUILD_OBJECT(
                                         'articulo_numero', pd.articulo,
                                         'descripcion', COALESCE(
+                                            NULLIF(TRIM(ba.descripcion_generada), ''),
+                                            NULLIF(TRIM(ba.descripcion), ''),
                                             NULLIF(TRIM(a.nombre), ''),
                                             pd.articulo
                                         ),
@@ -389,7 +391,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     ) ORDER BY pd.articulo
                                 )
                                 FROM public.presupuestos_detalles pd
-                                LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                 LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                 WHERE pd.id_presupuesto_ext = pf.id_presupuesto_ext
                             )
@@ -595,6 +598,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
                                                     'descripcion', COALESCE(
+                                                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                        NULLIF(TRIM(ba.descripcion), ''),
                                                         NULLIF(TRIM(a.nombre), ''),
                                                         pd.articulo
                                                     ),
@@ -609,7 +614,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
-                                            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                                            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                             LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                             WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
                                         )
@@ -767,6 +773,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
                                                     'descripcion', COALESCE(
+                                                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                        NULLIF(TRIM(ba.descripcion), ''),
                                                         NULLIF(TRIM(a.nombre), ''),
                                                         pd.articulo
                                                     ),
@@ -781,7 +789,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
-                                            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+                                            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+                                            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                             LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
                                             WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
                                         )
