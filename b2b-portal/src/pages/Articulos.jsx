@@ -226,15 +226,15 @@ export default function Articulos({ profile, cart = [], addToCart, removeFromCar
                 const hasStock = parseFloat(product.stock_disponible) > 0;
                 
                 return (
-                  <div key={product.id} className="producto-card">
+                  <div key={product.id} className="product-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span className="producto-codigo">{product.producto_codigo}</span>
-                      <span className={`stock-badge ${hasStock ? 'in-stock' : 'no-stock'}`}>
+                      <span className="product-code">{product.producto_codigo}</span>
+                      <span className={`stock-badge ${hasStock ? 'in-stock' : 'out-stock'}`}>
                         {hasStock ? `${parseFloat(product.stock_disponible)} disp.` : 'Sin stock'}
                       </span>
                     </div>
 
-                    <h3 className="producto-descripcion">{product.producto_descripcion}</h3>
+                    <h3 className="product-name">{product.producto_descripcion}</h3>
                     
                     {/* Rubros y Subrubros */}
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
@@ -246,8 +246,8 @@ export default function Articulos({ profile, cart = [], addToCart, removeFromCar
                       </span>
                     </div>
 
-                    <div className="producto-actions">
-                      <span className="producto-precio">{formatCurrency(product.precio_final)}</span>
+                    <div className="product-meta">
+                      <span className="product-price">{formatCurrency(product.precio_final)}</span>
                       
                       {currentQty > 0 ? (
                         <div className="quantity-controls">
