@@ -21,7 +21,7 @@ export default function CuentaCorriente({ profile, highlightDocId, onClearHighli
         .from('clientes_b2b_cuentas_corrientes')
         .select('*')
         .order('fecha', { ascending: false })
-        .order('created_at', { ascending: false });
+        .order('local_movimiento_id', { ascending: false });
 
       if (fetchError) throw fetchError;
       setMovements(data || []);
