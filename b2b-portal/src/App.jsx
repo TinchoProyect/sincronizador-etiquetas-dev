@@ -248,7 +248,7 @@ export default function App() {
       {currentTab !== 'home' && (
         <header className="mobile-header" ref={mobileMenuRef}>
           <img 
-            src="/logo_LAMDA.png" 
+            src="/logo_LAMDA.png?v=4" 
             alt="LAMDA Logo" 
             className="mobile-header-logo" 
             onClick={() => setCurrentTab('home')} 

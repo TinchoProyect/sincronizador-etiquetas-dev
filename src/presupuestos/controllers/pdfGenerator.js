@@ -104,10 +104,11 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
         const fechaHoy = new Date().toISOString().split('T')[0];
         const filename = `${id}-Presu-${cleanNombre}-${fechaHoy}.pdf`;
         
-        // 4. Determinar mensaje
+        // 4. Determinar mensaje (usar el enviado por el cliente o generar por defecto)
         const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
         const tituloDoc = estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
-        const mensajeTexto = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${id} de LAMDA. Saludos.` + transferInfo;
+        const defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${id} de LAMDA. Saludos.` + transferInfo;
+        const mensajeTexto = req.body.mensajeTexto || defaultMensaje;
 
         console.log(`📱 [WHATSAPP-BACK] Despachando PDF por WhatsApp a destinatarios: "${destinatarios}"`);
 

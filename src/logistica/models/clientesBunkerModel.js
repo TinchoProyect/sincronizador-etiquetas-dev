@@ -17,6 +17,10 @@ class ClientesBunkerModel {
         let query = `
             SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id,
+                   EXISTS (
+                       SELECT 1 FROM public.portal_invitaciones i 
+                       WHERE i.cliente_id = c.codigo_bunker_cliente AND i.usado = true
+                   ) as onboarding_completado,
                    COALESCE(
                        (SELECT JSON_AGG(JSON_BUILD_OBJECT('id', lp.id, 'nombre', lp.nombre))
                         FROM public.bunker_cliente_listas_precios clp
@@ -56,6 +60,10 @@ class ClientesBunkerModel {
         const query = `
             SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id,
+                   EXISTS (
+                       SELECT 1 FROM public.portal_invitaciones i 
+                       WHERE i.cliente_id = c.codigo_bunker_cliente AND i.usado = true
+                   ) as onboarding_completado,
                    COALESCE(
                        (SELECT JSON_AGG(JSON_BUILD_OBJECT('id', lp.id, 'nombre', lp.nombre))
                         FROM public.bunker_cliente_listas_precios clp

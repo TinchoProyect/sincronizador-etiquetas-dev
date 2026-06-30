@@ -18,7 +18,7 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
     <aside className="sidebar">
       <div className="sidebar-top">
         <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem' }}>
-          <img src="/logo_LAMDA.png" alt="LAMDA Logo" style={{ maxHeight: '36px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+          <img src="/logo_LAMDA.png?v=4" alt="LAMDA Logo" style={{ maxHeight: '36px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
         </div>
 
         {profile && (

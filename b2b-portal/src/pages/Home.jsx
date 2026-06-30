@@ -90,7 +90,7 @@ export default function Home({ setCurrentTab, profile }) {
         {/* Encabezado: Logotipo completo en alta definición */}
         <div style={{ marginBottom: '2.5rem' }}>
           <img 
-            src="/logo_LAMDA.png" 
+            src="/logo_LAMDA.png?v=4" 
             alt="LAMDA Logo" 
             style={{ 
               maxHeight: '75px', 

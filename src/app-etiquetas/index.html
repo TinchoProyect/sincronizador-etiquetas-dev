@@ -703,7 +703,7 @@ window.abrirPortalB2B = async function() {
                     throw new Error(data.error || 'No se pudo obtener la lista de clientes.');
                 }
 
-                const clientesB2B = data.data.filter(c => c.email_portal && c.email_portal.trim() !== '');
+                const clientesB2B = data.data.filter(c => c.onboarding_completado === true);
 
                 if (clientesB2B.length === 0) {
                     Swal.fire('Sin Clientes Activos', 'No hay clientes registrados y activos en el Portal B2B actualmente.', 'warning');

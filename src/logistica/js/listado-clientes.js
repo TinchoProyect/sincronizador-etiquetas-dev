@@ -487,9 +487,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Aplicar Filtro Portal B2B
         const filtroB2B = document.getElementById('filtro-portal-b2b')?.value || 'todos';
         if (filtroB2B === 'activos') {
-            clientesOrdenados = clientesOrdenados.filter(c => c.email_portal && c.email_portal.trim() !== '');
+            clientesOrdenados = clientesOrdenados.filter(c => c.onboarding_completado === true);
         } else if (filtroB2B === 'pendientes') {
-            clientesOrdenados = clientesOrdenados.filter(c => !c.email_portal || c.email_portal.trim() === '');
+            clientesOrdenados = clientesOrdenados.filter(c => c.onboarding_completado !== true);
         }
 
         if (sortState === 'desc') {
@@ -1151,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mailAttr = encodeURIComponent(JSON.stringify(contactosEmail));
 
             // Distintivo visual para clientes con Portal B2B Activo
-            const tieneB2B = cliente.email_portal && cliente.email_portal.trim() !== '';
+            const tieneB2B = cliente.onboarding_completado === true;
             const htmlNombre = tieneB2B 
                 ? `<div style="display: flex; flex-direction: column; gap: 2px;">
                      <span style="font-weight: 700; color: #1e1b4b;">${cliente.cliente_nombre}</span>
@@ -1171,7 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display: flex; gap: 6px; justify-content: center;">
                         <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
                         <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
-                        <button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>
+                        ${tieneB2B ? `<button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>` : ''}
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
                         <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
                         <button class="btn-action btn-delete" data-id="${cliente.id}" title="Eliminar cliente permanentemente">🗑️</button>
