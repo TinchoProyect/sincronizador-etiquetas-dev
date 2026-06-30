@@ -530,6 +530,7 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
 
 async function sincronizarB2BCuentas() {
   let localClient;
+  const activeLocalIds = new Set();
 
   try {
     // 1. Obtener movimientos de cuenta corriente de la base de datos local
@@ -569,6 +570,11 @@ async function sincronizarB2BCuentas() {
     const totalMovimientos = resLocal.rows.length;
     console.log(`📊 Movimientos contables encontrados localmente: ${totalMovimientos}`);
     
+    // Registrar IDs reales de movimientos en la lista de activos locales
+    resLocal.rows.forEach(row => {
+      activeLocalIds.add(parseInt(row.local_movimiento_id));
+    });
+    
     if (totalMovimientos === 0) {
       console.log('ℹ️ No hay movimientos para sincronizar.');
       return;
@@ -582,9 +588,12 @@ async function sincronizarB2BCuentas() {
     try {
       console.log('🔍 Consultando saldos de apertura de cuentas para inyección virtual...');
       const ccRes = await localClient.query(`
-        SELECT id, codigo_bunker_cliente, saldo_apertura, creada_en 
-        FROM public.factura_cuentas_corrientes
-        WHERE saldo_apertura != 0
+        SELECT cc.id, cc.codigo_bunker_cliente, cc.saldo_apertura, cc.creada_en,
+               MIN(m.fecha_movimiento) as fecha_minima
+        FROM public.factura_cuentas_corrientes cc
+        LEFT JOIN public.factura_cuenta_corriente_movimientos m ON m.cuenta_corriente_id = cc.id
+        WHERE cc.saldo_apertura != 0
+        GROUP BY cc.id, cc.codigo_bunker_cliente, cc.saldo_apertura, cc.creada_en
       `);
       console.log(`📊 Cuentas con saldo de apertura encontradas: ${ccRes.rows.length}`);
       
@@ -593,19 +602,26 @@ async function sincronizarB2BCuentas() {
         const debeVal = saldoApertura > 0 ? saldoApertura : 0.00;
         const haberVal = saldoApertura < 0 ? Math.abs(saldoApertura) : 0.00;
         
+        activeLocalIds.add(-cc.id); // Guardar ID negativo en la lista de activos locales para evitar su purga
+        
+        // Determinar fecha virtual: 1 día antes que el primer movimiento real,
+        // o antes que creada_en si no hay movimientos.
+        const baseDate = cc.fecha_minima ? new Date(cc.fecha_minima) : (cc.creada_en ? new Date(cc.creada_en) : new Date());
+        const fechaVirtual = new Date(baseDate.getTime() - 24 * 60 * 60 * 1000); // 1 día antes
+
         payloads.push({
           local_movimiento_id: -cc.id, // ID negativo para evitar colisión
           cliente_id: String(cc.codigo_bunker_cliente).trim(),
-          fecha: cc.creada_en || new Date(),
+          fecha: fechaVirtual,
           tipo_comprobante: 'AP', // Apertura
-          numero_comprobante: 'Saldo Inicial / Ajuste de Apertura',
+          numero_comprobante: 'Saldo Inicial de Apertura',
           debe: debeVal,
           haber: haberVal,
           saldo: saldoApertura,
           comprobante_url: null,
           metadatos: null
         });
-        console.log(`➕ [APERTURA-SYNC] Inyectado movimiento virtual AP para cliente ${cc.codigo_bunker_cliente} ($${saldoApertura})`);
+        console.log(`➕ [APERTURA-SYNC] Inyectado movimiento virtual AP para cliente ${cc.codigo_bunker_cliente} ($${saldoApertura}) con fecha ${fechaVirtual.toISOString().split('T')[0]}`);
       });
     } catch (err) {
       console.error('❌ [APERTURA-SYNC] Error al consultar o inyectar saldos de apertura:', err.message);
@@ -718,10 +734,8 @@ async function sincronizarB2BCuentas() {
       console.log(`🔄 Sincronizados ${upsertados}/${totalMovimientos} movimientos contables...`);
     }
 
-    // ===== 3) Limpieza de Movimientos Huérfanos =====
     console.log('🔍 Buscando movimientos huérfanos en Supabase para su depuración...');
     try {
-      const activeLocalIds = new Set(resLocal.rows.map(row => parseInt(row.local_movimiento_id)));
       
       const getUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_cuentas_corrientes?select=local_movimiento_id`;
       const getOptions = {
