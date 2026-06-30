@@ -124,8 +124,10 @@ export default function Catalogo({ profile, cart = [], addToCart, removeFromCart
     : [];
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.producto_descripcion.toLowerCase().includes(search.toLowerCase()) ||
-                          product.producto_codigo.toLowerCase().includes(search.toLowerCase());
+    const searchLower = search.toLowerCase();
+    const matchesSearch = product.producto_descripcion.toLowerCase().includes(searchLower) ||
+                          product.producto_codigo.toLowerCase().includes(searchLower) ||
+                          (product.busqueda_metadata ? product.busqueda_metadata.toLowerCase().includes(searchLower) : false);
     const matchesStock = !onlyInStock || parseFloat(product.stock_disponible) > 0;
     const matchesRubro = !selectedRubro || getNormalizedRubro(product) === selectedRubro;
     const matchesSubrubro = !selectedSubrubro || getNormalizedSubrubro(product) === selectedSubrubro;

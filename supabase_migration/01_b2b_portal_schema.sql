@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS public.clientes_b2b_catalogo_precios (
     stock_disponible NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     rubro TEXT,
     sub_rubro TEXT,
+    busqueda_metadata TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(lista_id, producto_codigo)
