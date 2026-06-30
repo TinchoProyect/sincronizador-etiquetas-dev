@@ -8,6 +8,33 @@
 const ClientesBunkerModel = require('../models/clientesBunkerModel');
 const arcaService = require('../services/arcaService');
 const { pool } = require('../config/database');
+const { createClient } = require('@supabase/supabase-js');
+
+const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
+const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
+
+const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY) 
+    ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+    : null;
+
+async function obtenerClienteIdsActivosB2B() {
+    if (!supabaseAdmin) return [];
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('clientes_b2b_perfiles')
+            .select('cliente_id');
+        if (error) {
+            console.error('⚠️ [CLIENTES-BUNKER] Error al consultar perfiles en Supabase:', error.message);
+            return [];
+        }
+        return data ? data.map(p => p.cliente_id) : [];
+    } catch (err) {
+        console.error('⚠️ [CLIENTES-BUNKER] Error de red al conectar con Supabase:', err.message);
+        return [];
+    }
+}
 
 /**
  * Validador oficial de CUIT/CUIL basado en ponderadores de Módulo 11 (Adaptación de Blueprint ARCA).
@@ -46,7 +73,17 @@ exports.obtenerTodos = async (req, res) => {
         const { search } = req.query;
         console.log(`🔍 [CLIENTES-BUNKER] Listando clientes. Búsqueda: "${search || ''}"`);
         const clientes = await ClientesBunkerModel.obtenerTodos({ search });
-        res.json({ success: true, data: clientes });
+        
+        // Validación cruzada dinámica con perfiles reales en Supabase
+        const activeIds = await obtenerClienteIdsActivosB2B();
+        const activeSet = new Set(activeIds);
+
+        const dataConOnboarding = clientes.map(c => ({
+            ...c,
+            onboarding_completado: c.onboarding_completado === true || activeSet.has(c.codigo_bunker_cliente)
+        }));
+
+        res.json({ success: true, data: dataConOnboarding });
     } catch (error) {
         console.error('❌ [CLIENTES-BUNKER] Error al obtener clientes:', error);
         res.status(500).json({ success: false, error: 'Error al consultar el listado de clientes.' });
@@ -63,7 +100,31 @@ exports.obtenerPorId = async (req, res) => {
         if (!cliente) {
             return res.status(404).json({ success: false, error: 'Cliente no encontrado.' });
         }
-        res.json({ success: true, data: cliente });
+
+        // Validación cruzada individual con Supabase
+        let onboarding_completado = cliente.onboarding_completado;
+        if (!onboarding_completado && supabaseAdmin) {
+            try {
+                const { data, error } = await supabaseAdmin
+                    .from('clientes_b2b_perfiles')
+                    .select('id')
+                    .eq('cliente_id', cliente.codigo_bunker_cliente)
+                    .maybeSingle();
+                if (!error && data) {
+                    onboarding_completado = true;
+                }
+            } catch (err) {
+                console.error('⚠️ [CLIENTES-BUNKER] Error al verificar perfil individual en Supabase:', err.message);
+            }
+        }
+
+        res.json({ 
+            success: true, 
+            data: { 
+                ...cliente, 
+                onboarding_completado 
+            } 
+        });
     } catch (error) {
         console.error(`❌ [CLIENTES-BUNKER] Error al obtener cliente con ID ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: 'Error al consultar la ficha del cliente.' });
