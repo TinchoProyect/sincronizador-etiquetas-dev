@@ -1304,13 +1304,13 @@ async function guardarArticuloBunker(event) {
         codigo_barras = articuloConsolidadoSeleccionado ? (articuloConsolidadoSeleccionado.codigo_barras || articuloConsolidadoSeleccionado.id) : null;
     }
 
-    // Recolectar datos estructurales y base del Búnker
     const articuloData = {
         articulo_id,
         codigo_barras,
         crear_local: isCrearLocal,
         descripcion: dictLocal.principal.termino,
         descripcion_abreviada: desc_abreviada,
+        descripcion_legacy: document.getElementById('bunker_descripcion_legacy') ? document.getElementById('bunker_descripcion_legacy').value.trim() : null,
         propiedades_dinamicas: propsJSON,
         costo_base: parseInputValue(document.getElementById('costo_base')) || 0,
         porcentaje_iva: parseInputValue(document.getElementById('porcentaje_iva')) || 21,
@@ -1479,6 +1479,15 @@ window.toggleCrearLocalMode = async function(checkboxEl) {
             costoBaseEl.removeAttribute('required');
         }
 
+        // Mostrar y habilitar descripción legacy manual
+        const groupDescLegacy = document.getElementById('group_descripcion_legacy');
+        if (groupDescLegacy) groupDescLegacy.style.display = 'block';
+        const inputDescLegacy = document.getElementById('bunker_descripcion_legacy');
+        if (inputDescLegacy) {
+            inputDescLegacy.disabled = false;
+            inputDescLegacy.required = true;
+        }
+
         // Si ya hay un Artículo Principal escrito, pre-generar de inmediato de forma reactiva (Ajuste A)
         const principalVal = document.getElementById('descripcion_principal') ? document.getElementById('descripcion_principal').value.trim() : '';
         if (principalVal) {
@@ -1504,6 +1513,16 @@ window.toggleCrearLocalMode = async function(checkboxEl) {
         // Restaurar campo requerido para costo base
         if (costoBaseEl) {
             costoBaseEl.setAttribute('required', 'required');
+        }
+
+        // Ocultar y deshabilitar descripción legacy manual
+        const groupDescLegacy = document.getElementById('group_descripcion_legacy');
+        if (groupDescLegacy) groupDescLegacy.style.display = 'none';
+        const inputDescLegacy = document.getElementById('bunker_descripcion_legacy');
+        if (inputDescLegacy) {
+            inputDescLegacy.disabled = true;
+            inputDescLegacy.required = false;
+            inputDescLegacy.value = '';
         }
     }
 };

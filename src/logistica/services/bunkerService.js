@@ -284,7 +284,9 @@ class BunkerService {
                 descripcion_abreviada,
                 propiedades_dinamicas,
                 expresado_en_gramos,
-                expresado_en_unidades
+                expresado_en_unidades,
+                crear_local,
+                descripcion_legacy
             } = articuloData;
 
             // 1. Guardar términos nuevos "On-The-Fly"
@@ -370,6 +372,45 @@ class BunkerService {
                 expresado_en_gramos || false,
                 expresado_en_unidades || false
             ]);
+
+            // 3. Si se está creando en Local (Sin Origen Legacy), realizar el Upsert en las tablas locales stock_real_consolidado y articulos
+            if (crear_local) {
+                const descLegacy = descripcion_legacy || descFinal;
+                
+                // A. Upsert en stock_real_consolidado
+                const resUpdateSRC = await client.query(
+                    `UPDATE public.stock_real_consolidado
+                     SET descripcion = $1, codigo_barras = $2, no_producido_por_lambda = $3, ultima_actualizacion = NOW()
+                     WHERE articulo_numero = $4`,
+                    [descLegacy, codigo_barras, no_producido_por_lambda || false, articulo_id]
+                );
+                
+                if (resUpdateSRC.rowCount === 0) {
+                    await client.query(
+                        `INSERT INTO public.stock_real_consolidado (
+                            articulo_numero, descripcion, codigo_barras, stock_lomasoft, stock_movimientos, 
+                            stock_ajustes, stock_consolidado, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa
+                        ) VALUES ($1, $2, $3, 0, 0, 0, 0, NOW(), $4, false)`,
+                        [articulo_id, descLegacy, codigo_barras, no_producido_por_lambda || false]
+                    );
+                }
+
+                // B. Upsert en la tabla legacy articulos (si existe)
+                const resUpdateArt = await client.query(
+                    `UPDATE public.articulos
+                     SET nombre = $1, codigo_barras = $2
+                     WHERE numero = $3`,
+                    [descLegacy, codigo_barras, articulo_id]
+                );
+                
+                if (resUpdateArt.rowCount === 0) {
+                    await client.query(
+                        `INSERT INTO public.articulos (numero, nombre, codigo_barras, stock_ventas)
+                         VALUES ($1, $2, $3, 0)`,
+                        [articulo_id, descLegacy, codigo_barras]
+                    );
+                }
+            }
 
             // 4. Upsert Iterativo en los márgenes: `bunker_margenes` y `bunker_lista_articulos`
             if (listasMargenes && Array.isArray(listasMargenes)) {
