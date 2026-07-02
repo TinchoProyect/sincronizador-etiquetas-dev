@@ -98,7 +98,7 @@ async function sincronizarRetiros() {
         bc.codigo_bunker_cliente as bunker_cliente_id
       FROM public.ordenes_tratamiento o
       LEFT JOIN public.ordenes_tratamiento_detalles d ON d.id_orden_tratamiento = o.id
-      LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = TRIM(CAST(o.id_cliente AS TEXT))
+      LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = TRIM(CAST(o.id_cliente AS TEXT)) OR (bc.lomas_soft_id ~ '^[0-9]+$' AND bc.lomas_soft_id::integer = o.id_cliente)
       WHERE o.fecha_creacion >= NOW() - INTERVAL '30 days'
     `;
     
