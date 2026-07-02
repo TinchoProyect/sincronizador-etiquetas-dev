@@ -243,7 +243,7 @@ async function sincronizarB2BClientesListas() {
       }));
 
       // Enviar en lotes a Supabase
-      const batchSize = 100;
+      const batchSize = 500;
       let upsertados = 0;
       
       console.log('🚀 Iniciando subida de lotes de asignación de listas (Upsert)...');

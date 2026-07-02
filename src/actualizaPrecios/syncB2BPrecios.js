@@ -171,7 +171,7 @@ async function sincronizarB2BPrecios() {
     });
 
     // 2. Enviar datos a Supabase en lotes (batching de 100 registros)
-    const batchSize = 100;
+    const batchSize = 1000;
     let upsertados = 0;
     
     console.log('🚀 Iniciando subida de lotes a Supabase (Upsert)...');
