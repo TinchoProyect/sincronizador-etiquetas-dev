@@ -1444,12 +1444,12 @@ async function trazarFacturaOriginal(req, res) {
                 WHERE p.id_cliente::text = $1::text
                   AND mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
                   AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
-                  AND mm.articulo_numero NOT IN (
-                      -- Exclude items already conciliated with an ARCA Credit Note
-                      SELECT mci.articulo_numero 
+                  AND mm.id NOT IN (
+                      -- Exclude movements already conciliated with an ARCA Credit Note by mapping via unique movement ID
+                      SELECT COALESCE(mci.id_movimiento_origen, -1)
                       FROM public.mantenimiento_conciliaciones mc
                       JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
-                      WHERE mc.id_cliente::text = $1::text
+                      WHERE mc.id_cliente::text = $1::text AND mci.id_movimiento_origen IS NOT NULL
                   )
                 GROUP BY mm.articulo_numero
                 HAVING SUM(mm.cantidad) > 0
