@@ -218,9 +218,7 @@ window.cargarLotes = async function() {
 
                     const providerId = cabecera.pedidos_b2b_cabecera?.proveedor_id || '';
                     const isPending = estadoData.estado === 'PENDIENTE';
-                    const selectCheckbox = isPending 
-                        ? `<input type="checkbox" class="lote-select-chk" data-lote-id="${fullId}" data-proveedor-id="${providerId}" onchange="window.onLoteSelectChange(this)" style="transform: scale(1.3); margin-right: 12px; cursor: pointer;" title="Seleccionar lote para vincular en bloque">`
-                        : '';
+                    const selectCheckbox = `<input type="checkbox" class="lote-select-chk" data-lote-id="${fullId}" data-lote-corto="${idCorto}" data-proveedor-id="${providerId}" data-estado="${estadoData.estado}" onchange="window.onLoteSelectChange(this)" style="transform: scale(1.3); margin-right: 12px; cursor: pointer;" title="${isPending ? 'Seleccionar lote para vincular en bloque' : 'Seleccionar lote para impresión masiva'}">`;
 
                     const btnVincular = isPending 
                         ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #10b981, #059669); margin-left: 10px;" onclick='BunkerModal.abrir(${JSON.stringify(lote).replace(/'/g, "&apos;")})' title="Vincular al Búnker">
@@ -677,14 +675,22 @@ window.onLoteSelectChange = function(chk) {
     const checkedChks = document.querySelectorAll('.lote-select-chk:checked');
     const allChks = document.querySelectorAll('.lote-select-chk');
     const btnBatch = document.getElementById('btn-vincular-lote-batch');
+    const btnPrintBatch = document.getElementById('btn-imprimir-lote-batch');
     const countSpan = document.getElementById('batch-select-count');
+    const printCountSpan = document.getElementById('batch-print-count');
     
     if (checkedChks.length > 0) {
-        const selectedProveedorId = checkedChks[0].dataset.proveedorId;
+        const firstChk = checkedChks[0];
+        const selectedProveedorId = firstChk.dataset.proveedorId;
+        const isFirstPending = firstChk.dataset.estado === 'PENDIENTE';
         
-        // Bloquear y atenuar visualmente los lotes que pertenezcan a otros proveedores
+        // Bloquear visualmente lotes que no cumplan con el proveedor o tengan mezcla de estados
         allChks.forEach(c => {
-            if (c.dataset.proveedorId !== selectedProveedorId) {
+            const isPending = c.dataset.estado === 'PENDIENTE';
+            const isProveedorDiff = c.dataset.proveedorId !== selectedProveedorId;
+            const isEstadoDiff = isPending !== isFirstPending;
+            
+            if (isProveedorDiff || isEstadoDiff) {
                 c.disabled = true;
                 const card = c.closest('.lote-card');
                 if (card) card.style.opacity = '0.4';
@@ -695,8 +701,15 @@ window.onLoteSelectChange = function(chk) {
             }
         });
         
-        btnBatch.style.display = 'inline-block';
-        countSpan.innerText = checkedChks.length;
+        if (isFirstPending) {
+            btnBatch.style.display = 'inline-block';
+            btnPrintBatch.style.display = 'none';
+            countSpan.innerText = checkedChks.length;
+        } else {
+            btnBatch.style.display = 'none';
+            btnPrintBatch.style.display = 'inline-block';
+            printCountSpan.innerText = checkedChks.length;
+        }
     } else {
         // Habilitar y restablecer la opacidad si no queda ningún lote seleccionado
         allChks.forEach(c => {
@@ -706,7 +719,9 @@ window.onLoteSelectChange = function(chk) {
         });
         
         btnBatch.style.display = 'none';
+        btnPrintBatch.style.display = 'none';
         countSpan.innerText = '0';
+        printCountSpan.innerText = '0';
     }
 };
 
@@ -983,6 +998,208 @@ window.imprimirArticuloYLote = async function(loteId, idCorto, cantidadDefault) 
             Swal.fire('Error', e.message || 'Error de conexión', 'error');
         }
     }
+};
+
+/**
+ * Abre el modal de previsualización para la impresión masiva de etiquetas
+ */
+window.abrirModalImprimirBatch = function() {
+    const checkedChks = document.querySelectorAll('.lote-select-chk:checked');
+    const tbody = document.getElementById('mim-tabla-body');
+    tbody.innerHTML = ''; // Limpiar
+    
+    let filaIndex = 0;
+    
+    checkedChks.forEach(chk => {
+        const loteId = chk.dataset.loteId;
+        const idCorto = chk.dataset.loteShort || chk.dataset.loteCorto || loteId.substring(0, 8).toUpperCase();
+        
+        const loteTrazabilidad = window.LotesTrazabilidadCache[loteId];
+        if (!loteTrazabilidad) return;
+        
+        const destinos = loteTrazabilidad.destinos || [];
+        destinos.forEach(d => {
+            const esArticulo = d.tipo === 'ARTICULO_BUNKER';
+            const defaultBultos = parseInt(d.cantidad_bultos, 10) || 1;
+            
+            const tr = document.createElement('tr');
+            tr.className = 'mim-fila-destino';
+            tr.dataset.loteId = loteId;
+            tr.dataset.loteCorto = idCorto;
+            tr.dataset.destinoId = d.id;
+            tr.dataset.tipo = d.tipo;
+            tr.dataset.descripcion = d.descripcion;
+            
+            tr.style.borderBottom = '1px solid #e2e8f0';
+            
+            tr.innerHTML = `
+                <td style="padding: 10px; text-align: center;">
+                    <input type="checkbox" class="mim-fila-select" checked style="transform: scale(1.1); cursor: pointer;" onchange="window.verificarBotonIniciarImpresion()">
+                </td>
+                <td style="padding: 10px; font-family: monospace; font-weight: bold; color: #475569;">${idCorto}</td>
+                <td style="padding: 10px;">
+                    <span style="background: ${esArticulo ? '#e0e7ff' : '#ecfdf5'}; color: ${esArticulo ? '#4338ca' : '#047857'}; font-size: 0.85em; font-weight: bold; padding: 2px 6px; border-radius: 4px;">
+                        ${esArticulo ? 'Artículo' : 'Ingrediente'}
+                    </span>
+                </td>
+                <td style="padding: 10px; color: #1e293b; font-weight: 500;">${d.descripcion} <span style="color: #64748b; font-size: 0.85em;">(ID: ${d.id})</span></td>
+                <td style="padding: 10px; text-align: center;">
+                    <input class="mim-fila-cajas swal2-input" type="number" step="1" min="1" value="${defaultBultos}" style="margin: 0; width: 80px; text-align: center; font-size: 0.9em; padding: 4px; box-sizing: border-box;">
+                </td>
+                <td class="mim-fila-estado" style="padding: 10px; text-align: center; font-weight: bold; color: #64748b;">
+                    Pendiente
+                </td>
+            `;
+            tbody.appendChild(tr);
+            filaIndex++;
+        });
+    });
+    
+    if (tbody.children.length === 0) {
+        Swal.fire('Atención', 'No se encontraron destinos vinculados válidos para los lotes seleccionados.', 'warning');
+        return;
+    }
+    
+    document.getElementById('mim-select-all').checked = true;
+    document.getElementById('mim-progreso-container').style.display = 'none';
+    document.getElementById('modal-impresion-masiva').classList.add('show');
+    window.verificarBotonIniciarImpresion();
+};
+
+/**
+ * Cierra el modal de impresión masiva
+ */
+window.cerrarModalImprimirBatch = function() {
+    document.getElementById('modal-impresion-masiva').classList.remove('show');
+};
+
+/**
+ * Habilita/Deshabilita el botón de Iniciar según si hay filas seleccionadas
+ */
+window.verificarBotonIniciarImpresion = function() {
+    const checkedCount = document.querySelectorAll('.mim-fila-select:checked').length;
+    const btn = document.getElementById('mim-btn-iniciar');
+    btn.disabled = checkedCount === 0;
+};
+
+/**
+ * Checkea/Uncheckea todas las filas del modal
+ */
+window.toggleAllImpresionFila = function(checked) {
+    const chks = document.querySelectorAll('.mim-fila-select');
+    chks.forEach(c => c.checked = checked);
+    window.verificarBotonIniciarImpresion();
+};
+
+/**
+ * Dispara la cola asíncrona secuencial de impresión
+ */
+window.iniciarImpresionMasiva = async function() {
+    const filas = Array.from(document.querySelectorAll('.mim-fila-destino'));
+    const filasA_Imprimir = filas.filter(f => f.querySelector('.mim-fila-select').checked);
+    
+    if (filasA_Imprimir.length === 0) return;
+    
+    // Controles de UI
+    const btnIniciar = document.getElementById('mim-btn-iniciar');
+    const btnCerrar = document.querySelector('#modal-impresion-masiva .btn-close');
+    const btnCancelar = document.querySelector('#modal-impresion-masiva button[onclick*="cerrarModal"]');
+    
+    btnIniciar.disabled = true;
+    if (btnCerrar) btnCerrar.style.display = 'none';
+    if (btnCancelar) btnCancelar.disabled = true;
+    
+    const progresoContainer = document.getElementById('mim-progreso-container');
+    const progresoTexto = document.getElementById('mim-progreso-texto');
+    const progresoPorcentaje = document.getElementById('mim-progreso-porcentaje');
+    const progresoBar = document.getElementById('mim-progreso-bar');
+    
+    progresoContainer.style.display = 'block';
+    
+    let impresosConExito = 0;
+    let totalFilas = filasA_Imprimir.length;
+    
+    // Deshabilitar todos los inputs individuales para congelar estado
+    filas.forEach(f => {
+        f.querySelector('.mim-fila-select').disabled = true;
+        f.querySelector('.mim-fila-cajas').disabled = true;
+    });
+    
+    for (let i = 0; i < totalFilas; i++) {
+        const fila = filasA_Imprimir[i];
+        const statusEl = fila.querySelector('.mim-fila-estado');
+        
+        const loteId = fila.dataset.loteId;
+        const idCorto = fila.dataset.loteCorto;
+        const destinoId = fila.dataset.destinoId;
+        const tipo = fila.dataset.tipo;
+        const desc = fila.dataset.descripcion;
+        
+        const cajasInput = fila.querySelector('.mim-fila-cajas');
+        const cajas = parseInt(cajasInput.value, 10) || 1;
+        const totalEtiquetas = cajas * 2;
+        
+        // Actualizar UI del progreso
+        statusEl.innerText = 'Imprimiendo...';
+        statusEl.style.color = '#3b82f6';
+        
+        const indexActual = i + 1;
+        progresoTexto.innerText = `Imprimiendo: ${desc} (Etiqueta ${indexActual} de ${totalFilas})...`;
+        const pct = Math.round((i / totalFilas) * 100);
+        progresoPorcentaje.innerText = `${pct}%`;
+        progresoBar.style.width = `${pct}%`;
+        
+        try {
+            const endpointSubPath = tipo === 'ARTICULO_BUNKER' ? 'articulos' : 'ingredientes';
+            const res = await fetch(`http://localhost:3005/api/logistica/bunker/${endpointSubPath}/${destinoId}/imprimir`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lote_id_supabase: loteId,
+                    lote_codigo_corto: idCorto,
+                    cantidad: totalEtiquetas
+                })
+            });
+            
+            const result = await res.json();
+            if (res.ok && result.success) {
+                statusEl.innerText = 'Listo';
+                statusEl.style.color = '#10b981';
+                impresosConExito++;
+            } else {
+                throw new Error(result.error || 'Error de impresión');
+            }
+        } catch (err) {
+            console.error(`❌ Error imprimiendo fila masiva (${desc}):`, err.message);
+            statusEl.innerText = 'Error';
+            statusEl.style.color = '#ef4444';
+        }
+        
+        // Un leve retardo de 400ms para asegurar la consistencia del spooler Zebra
+        await new Promise(r => setTimeout(r, 400));
+    }
+    
+    // Finalización
+    progresoPorcentaje.innerText = '100%';
+    progresoBar.style.width = '100%';
+    progresoTexto.innerText = 'Impresión masiva completada.';
+    
+    // Habilitar botones de cierre
+    if (btnCerrar) btnCerrar.style.display = 'block';
+    if (btnCancelar) btnCancelar.disabled = false;
+    
+    // Desmarcar todos los checkboxes de lotes de la grilla principal
+    document.querySelectorAll('.lote-select-chk:checked').forEach(c => c.checked = false);
+    // Disparar reactividad para ocultar la barra de impresión masiva
+    window.onLoteSelectChange();
+    
+    await Swal.fire({
+        icon: impresosConExito === totalFilas ? 'success' : 'warning',
+        title: 'Cola de Impresión Finalizada',
+        text: `Se enviaron con éxito ${impresosConExito} de ${totalFilas} etiquetas a la Zebra.`
+    });
+    
+    window.cerrarModalImprimirBatch();
 };
 
 
