@@ -17,11 +17,10 @@ export default function Retiros({ profile }) {
     nombre: '',
     apellido: '',
     celular: '',
-    articuloNumero: '',
     descripcionExterna: '',
     kilos: '',
     bultos: '',
-    motivo: 'Devolución por mal estado'
+    motivo: ''
   });
 
   useEffect(() => {
@@ -71,11 +70,10 @@ export default function Retiros({ profile }) {
       nombre: profile.nombre_completo?.split(' ')[0] || '',
       apellido: profile.nombre_completo?.split(' ').slice(1).join(' ') || '',
       celular: '',
-      articuloNumero: '',
       descripcionExterna: '',
       kilos: '',
       bultos: '',
-      motivo: 'Devolución por mal estado'
+      motivo: ''
     });
     setIsModalOpen(true);
   };
@@ -87,44 +85,40 @@ export default function Retiros({ profile }) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-      const updated = { ...prev, [name]: value };
-      
-      // Si cambia el artículo seleccionado, autocompletar la descripción externa
-      if (name === 'articuloNumero') {
-        if (value === '') {
-          updated.descripcionExterna = '';
-        } else {
-          const art = catalogo.find(c => c.articulo_numero === value);
-          if (art) {
-            updated.descripcionExterna = art.producto_descripcion;
-          }
-        }
-      }
-      return updated;
-    });
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleSubmitCheckin = async (e) => {
     e.preventDefault();
-    if (!formData.nombre || !formData.celular || !formData.kilos || !formData.bultos || !formData.descripcionExterna) {
-      Swal.fire('Atención', 'Por favor complete todos los campos obligatorios.', 'warning');
+    if (!formData.nombre || !formData.kilos || !formData.bultos || !formData.descripcionExterna) {
+      Swal.fire('Atención', 'Por favor complete todos los campos obligatorios (Nombre, Kilos, Bultos y Descripción).', 'warning');
       return;
     }
 
     setSubmitting(true);
     try {
+      const parsedKilos = parseFloat(String(formData.kilos).replace(',', '.'));
+      
+      if (isNaN(parsedKilos) || parsedKilos <= 0) {
+        Swal.fire('Atención', 'Los kilos deben ser un valor numérico mayor a 0.', 'warning');
+        setSubmitting(false);
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from('clientes_b2b_retiros')
         .update({
           responsable_nombre: formData.nombre.trim(),
-          responsable_apellido: formData.apellido.trim(),
-          responsable_celular: formData.celular.trim(),
-          articulo_numero: formData.articuloNumero || null,
+          responsable_apellido: formData.apellido ? formData.apellido.trim() : null,
+          responsable_celular: formData.celular ? formData.celular.trim() : null,
+          articulo_numero: null, // Ya no se asocia a artículo comercial
           descripcion_externa: formData.descripcionExterna.trim(),
-          kilos: parseFloat(formData.kilos),
+          kilos: parsedKilos,
           bultos: parseInt(formData.bultos, 10),
-          motivo: formData.motivo,
+          motivo: formData.motivo ? formData.motivo.trim() : null,
           estado_logistico: 'PENDIENTE_VALIDACION',
           sincronizado_local: false
         })
@@ -371,19 +365,18 @@ export default function Retiros({ profile }) {
                   />
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Apellido Responsable *</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Apellido Responsable</label>
                   <input 
                     type="text" 
                     name="apellido" 
                     value={formData.apellido} 
                     onChange={handleInputChange}
                     className="form-control" 
-                    required 
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Celular Contacto *</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Celular Contacto</label>
                   <input 
                     type="tel" 
                     name="celular" 
@@ -391,7 +384,6 @@ export default function Retiros({ profile }) {
                     value={formData.celular} 
                     onChange={handleInputChange}
                     className="form-control" 
-                    required 
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -399,25 +391,6 @@ export default function Retiros({ profile }) {
 
               {/* Artículo / Descripción */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                
-                <div className="form-group">
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Seleccionar del Catálogo (Opcional)</label>
-                  <select 
-                    name="articuloNumero" 
-                    value={formData.articuloNumero} 
-                    onChange={handleInputChange}
-                    className="form-control"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
-                  >
-                    <option value="">-- Seleccionar artículo comercial si corresponde --</option>
-                    {catalogo.map(art => (
-                      <option key={art.articulo_numero} value={art.articulo_numero}>
-                        {art.producto_descripcion} (${art.articulo_numero})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div className="form-group">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Descripción del Producto a Devolver *</label>
                   <input 
@@ -431,7 +404,6 @@ export default function Retiros({ profile }) {
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
-
               </div>
 
               {/* Bultos, Kilos y Motivo */}
@@ -453,10 +425,10 @@ export default function Retiros({ profile }) {
                 <div className="form-group">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Kilos Estimados *</label>
                   <input 
-                    type="number" 
+                    type="text" 
+                    inputMode="decimal"
                     name="kilos" 
-                    min="0.1" 
-                    step="0.01"
+                    placeholder="0.00"
                     value={formData.kilos} 
                     onChange={handleInputChange}
                     className="form-control" 
@@ -465,21 +437,16 @@ export default function Retiros({ profile }) {
                   />
                 </div>
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Motivo de la Devolución *</label>
-                  <select 
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Motivo de la Devolución / A tratar</label>
+                  <input 
+                    type="text" 
                     name="motivo" 
+                    placeholder="Escriba el motivo (ej: mal estado, excedente de pedido, etc.)"
                     value={formData.motivo} 
                     onChange={handleInputChange}
-                    className="form-control"
-                    required
+                    className="form-control" 
                     style={{ width: '100%', boxSizing: 'border-box' }}
-                  >
-                    <option value="Devolución por mal estado">Devolución por mal estado</option>
-                    <option value="Excedente de pedido">Excedente de pedido</option>
-                    <option value="Cerca de vencimiento">Cerca de vencimiento</option>
-                    <option value="Error de despacho">Error de despacho</option>
-                    <option value="Otro">Otro</option>
-                  </select>
+                  />
                 </div>
               </div>
 
