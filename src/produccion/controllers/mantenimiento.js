@@ -1085,16 +1085,16 @@ async function emitirNotaCreditoBorrador(req, res) {
                 codigoBarras = resArt.rows[0].codigo_barras || '';
             }
 
-            // 0. CHECK EXCLUSIÓN MUTUA: Verificar que Lomasoft no lo haya conciliado
+            // 0. CHECK EXCLUSIÓN MUTUA CORREGIDO: Verificar que este movimiento específico no haya sido conciliado ya
             const lomaCheck = `
                 SELECT 1
                 FROM public.mantenimiento_conciliacion_items mci
-                JOIN public.mantenimiento_conciliaciones mc ON mc.id = mci.id_conciliacion
-                WHERE (mci.articulo_numero = $1 OR (mci.articulo_numero = $3 AND $3 != ''))
-                  AND mc.id_cliente::text = $2
+                JOIN public.mantenimiento_movimientos mm ON mm.id = mci.id_movimiento_origen
+                WHERE mm.id_presupuesto_origen = $1
+                  AND (mm.articulo_numero = $2 OR (mm.articulo_numero = $3 AND $3 != ''))
                 LIMIT 1
             `;
-            const resLomaCheck = await client.query(lomaCheck, [articuloReal, cliente_id.toString(), codigoBarras]);
+            const resLomaCheck = await client.query(lomaCheck, [idPresupuestoOrigen, articuloReal, codigoBarras]);
             if (resLomaCheck.rowCount > 0) {
                 throw new Error(`Exclusión Mutua: El artículo ${articuloReal} ya ha sido conciliado vía Lomasoft.`);
             }
