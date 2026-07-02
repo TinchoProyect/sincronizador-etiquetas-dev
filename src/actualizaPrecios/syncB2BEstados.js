@@ -3,6 +3,7 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 // ===== 1) Conexión a la Base de Datos Local =====
 const localPool = new Pool({
@@ -14,7 +15,7 @@ const localPool = new Pool({
 });
 
 console.log('═══════════════════════════════════════════════════════');
-console.log('📡 [SYNC-B2B-ESTADOS] SINCRONIZADOR DE ESTADOS LOGÍSTICOS');
+console.log('📡 [SYNC-B2B-ESTADOS] SINCRONIZADOR UNIFICADO DE PEDIDOS Y ESTADOS B2B');
 console.log('═══════════════════════════════════════════════════════');
 
 // ===== 2) Configuración de API Supabase =====
@@ -124,74 +125,235 @@ async function actualizarEstadoSupabase(id, estado) {
   }
 }
 
+async function subirPedidosLocales(localClient) {
+  console.log('🔄 Fase 1: Buscando pedidos manuales locales pendientes de sincronización...');
+  
+  // Buscar presupuestos creados en los últimos 30 días, activos, de clientes B2B,
+  // que no estén en la tabla de mapeo ni tengan un UUID en id_presupuesto_ext.
+  const sqlBuscarLocales = `
+    SELECT 
+        p.id,
+        p.id_cliente,
+        p.fecha,
+        p.nota,
+        p.estado,
+        p.secuencia,
+        p.informe_generado,
+        p.estado_logistico,
+        p.descuento,
+        p.id_presupuesto_ext,
+        bc.codigo_bunker_cliente
+    FROM public.presupuestos p
+    JOIN public.bunker_clientes bc ON bc.lomas_soft_id = TRIM(p.id_cliente) OR (bc.lomas_soft_id ~ '^[0-9]+$' AND p.id_cliente ~ '^[0-9]+$' AND bc.lomas_soft_id::integer = p.id_cliente::integer)
+    LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
+    WHERE p.activo = true 
+      AND m.local_presupuesto_id IS NULL
+      AND (p.id_presupuesto_ext IS NULL OR p.id_presupuesto_ext !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+      AND p.fecha >= NOW() - INTERVAL '30 days'
+  `;
+  
+  const resLocales = await localClient.query(sqlBuscarLocales);
+  console.log(`📊 Pedidos locales calificados encontrados: ${resLocales.rows.length}`);
+  
+  for (const row of resLocales.rows) {
+    console.log(`⚙️ Procesando Pedido Local #${row.id} para Cliente Búnker ${row.codigo_bunker_cliente} (ID Legacy: ${row.id_cliente})...`);
+    
+    // Obtener los detalles del pedido local
+    const sqlDetalles = `
+      SELECT 
+          pd.id,
+          pd.articulo,
+          pd.cantidad,
+          pd.precio1,
+          pd.iva1,
+          COALESCE(ba.descripcion_generada, ba.descripcion, pd.articulo) as producto_descripcion
+      FROM public.presupuestos_detalles pd
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = pd.articulo
+      WHERE pd.id_presupuesto = $1
+    `;
+    
+    const resDetalles = await localClient.query(sqlDetalles, [row.id]);
+    
+    if (resDetalles.rows.length === 0) {
+      console.warn(`⚠️ Advertencia: El pedido local #${row.id} no tiene ítems de detalle. Se omite.`);
+      continue;
+    }
+    
+    let subtotalConIva = 0;
+    const itemsLocal = resDetalles.rows;
+    const newSupaId = crypto.randomUUID();
+    
+    const itemsPayload = itemsLocal.map(item => {
+      const qty = parseFloat(item.cantidad || 0);
+      const precioNeto = parseFloat(item.precio1 || 0);
+      const alicuotaIva = parseFloat(item.iva1 || 0);
+      
+      const precioConIva = precioNeto * (1 + alicuotaIva / 100);
+      const totalItem = qty * precioConIva;
+      
+      subtotalConIva += totalItem;
+      
+      return {
+        id: crypto.randomUUID(),
+        pedido_id: newSupaId,
+        producto_codigo: item.articulo,
+        producto_descripcion: item.producto_descripcion,
+        cantidad: qty,
+        precio_unitario: parseFloat(precioConIva.toFixed(2)),
+        subtotal: parseFloat(totalItem.toFixed(2))
+      };
+    });
+    
+    const pctDescuento = parseFloat(row.descuento || 0);
+    const valorDescuento = subtotalConIva * (pctDescuento / 100);
+    const totalFinal = subtotalConIva - valorDescuento;
+    
+    const cabeceraPayload = {
+      id: newSupaId,
+      cliente_id: row.codigo_bunker_cliente,
+      fecha_pedido: new Date(row.fecha).toISOString(),
+      estado: mapLocalStatusToSupabase(row),
+      subtotal: parseFloat(subtotalConIva.toFixed(2)),
+      descuento: parseFloat(valorDescuento.toFixed(2)),
+      total: parseFloat(totalFinal.toFixed(2)),
+      observaciones: row.nota ? String(row.nota).trim() : null,
+      sync_estado: 'Sincronizado'
+    };
+    
+    try {
+      // Subir Cabecera
+      const urlCabecera = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera`;
+      await fetchWithRetry(urlCabecera, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(cabeceraPayload)
+      });
+      
+      // Subir ítems
+      const urlItems = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_items`;
+      await fetchWithRetry(urlItems, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(itemsPayload)
+      });
+      
+      // Registrar la asociación en la tabla de mapeo local
+      await localClient.query(
+        `INSERT INTO public.b2b_pedidos_mapeo (local_presupuesto_id, supabase_pedido_id) VALUES ($1, $2)`,
+        [row.id, newSupaId]
+      );
+      
+      console.log(`✅ Sincronizado exitosamente Pedido Local #${row.id} a Supabase con UUID: ${newSupaId.slice(0, 8)}`);
+      
+    } catch (err) {
+      console.error(`❌ Error al subir el pedido local #${row.id} a Supabase:`, err.message);
+    }
+  }
+}
+
 async function sincronizarEstados() {
   let localClient;
   
   try {
-    // 1. Obtener de Supabase los pedidos creados en los últimos 30 días (permite detectar regresiones de cualquier estado)
-    console.log('🔍 Consultando pedidos recientes en Supabase...');
+    localClient = await localPool.connect();
+    
+    // Crear tabla de mapeo local si no existe
+    await localClient.query(`
+      CREATE TABLE IF NOT EXISTS public.b2b_pedidos_mapeo (
+          local_presupuesto_id INTEGER PRIMARY KEY REFERENCES public.presupuestos(id) ON DELETE CASCADE,
+          supabase_pedido_id UUID NOT NULL UNIQUE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+    
+    // Fase 1: Subir pedidos que nacieron localmente y no están en Supabase
+    await subirPedidosLocales(localClient);
+    
+    // Fase 2: Sincronizar estados de pedidos existentes (de local a Supabase)
+    console.log('\n🔄 Fase 2: Sincronizando estados de pedidos recientes de Supabase...');
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const dateStr = thirtyDaysAgo.toISOString();
     const url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?created_at=gte.${dateStr}&select=id,estado`;
-    const options = {
+    
+    const response = await fetchWithRetry(url, {
       method: 'GET',
       headers: {
         'apikey': SUPABASE_KEY,
         'Authorization': `Bearer ${SUPABASE_KEY}`
       }
-    };
-    
-    const response = await fetchWithRetry(url, options);
+    });
     const pedidosB2B = await response.json();
     console.log(`📊 Pedidos activos encontrados en Supabase: ${pedidosB2B.length}`);
 
-    if (pedidosB2B.length === 0) {
-      console.log('✅ No hay pedidos activos en Supabase para actualizar.');
-      return;
+    if (pedidosB2B.length > 0) {
+      for (const pedido of pedidosB2B) {
+        // Buscar si existe un mapeo en b2b_pedidos_mapeo
+        const resMap = await localClient.query(
+          `SELECT local_presupuesto_id FROM public.b2b_pedidos_mapeo WHERE supabase_pedido_id = $1 LIMIT 1`,
+          [pedido.id]
+        );
+        
+        let resLocal;
+        if (resMap.rows.length > 0) {
+          // Si hay mapeo, buscar por el ID local primario
+          resLocal = await localClient.query(
+            `SELECT estado, secuencia, informe_generado, estado_logistico, activo 
+             FROM public.presupuestos 
+             WHERE id = $1 LIMIT 1`,
+            [resMap.rows[0].local_presupuesto_id]
+          );
+        } else {
+          // Si no hay mapeo, buscar por id_presupuesto_ext (pedido que nació en B2B)
+          resLocal = await localClient.query(
+            `SELECT estado, secuencia, informe_generado, estado_logistico, activo 
+             FROM public.presupuestos 
+             WHERE id_presupuesto_ext = $1 LIMIT 1`,
+            [pedido.id]
+          );
+        }
+
+        if (resLocal.rows.length === 0) {
+          console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} no encontrado en base de datos local.`);
+          if (pedido.estado !== 'Cancelado') {
+            console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
+            await actualizarEstadoSupabase(pedido.id, 'Cancelado');
+          }
+          continue;
+        }
+
+        const row = resLocal.rows[0];
+        const localEstado = (row.estado || '').toUpperCase().trim();
+
+        if (row.activo === false || localEstado === 'ANULADO') {
+          console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} está inactivo o anulado localmente.`);
+          if (pedido.estado !== 'Cancelado') {
+            console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
+            await actualizarEstadoSupabase(pedido.id, 'Cancelado');
+          }
+          continue;
+        }
+
+        const nuevoEstadoSupabase = mapLocalStatusToSupabase(row);
+
+        if (pedido.estado !== nuevoEstadoSupabase) {
+          console.log(`🔄 Cambio de estado detectado para Pedido ${pedido.id.slice(0, 8)}: [${pedido.estado}] ➔ [${nuevoEstadoSupabase}]`);
+          await actualizarEstadoSupabase(pedido.id, nuevoEstadoSupabase);
+        }
+      }
     }
 
-    localClient = await localPool.connect();
-
-    // 2. Por cada pedido, buscar su estado local y actualizar si difiere
-    for (const pedido of pedidosB2B) {
-      const resLocal = await localClient.query(
-        `SELECT estado, secuencia, informe_generado, estado_logistico, activo 
-         FROM public.presupuestos 
-         WHERE id_presupuesto_ext = $1 LIMIT 1`,
-        [pedido.id]
-      );
-
-      if (resLocal.rows.length === 0) {
-        console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} no encontrado en base de datos local (eliminado físicamente).`);
-        if (pedido.estado !== 'Cancelado') {
-          console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
-          await actualizarEstadoSupabase(pedido.id, 'Cancelado');
-        }
-        continue;
-      }
-
-      const row = resLocal.rows[0];
-      const localEstado = (row.estado || '').toUpperCase().trim();
-
-      if (row.activo === false || localEstado === 'ANULADO') {
-        console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} está inactivo o anulado localmente.`);
-        if (pedido.estado !== 'Cancelado') {
-          console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
-          await actualizarEstadoSupabase(pedido.id, 'Cancelado');
-        }
-        continue;
-      }
-
-      const nuevoEstadoSupabase = mapLocalStatusToSupabase(row);
-
-      if (pedido.estado !== nuevoEstadoSupabase) {
-        console.log(`🔄 Cambio detectado para Pedido ${pedido.id.slice(0, 8)}: [${pedido.estado}] ➔ [${nuevoEstadoSupabase}]`);
-        await actualizarEstadoSupabase(pedido.id, nuevoEstadoSupabase);
-      }
-    }
-
-    console.log('✅ Sincronización de estados completada con éxito.');
+    console.log('✅ Sincronización de pedidos y estados completada con éxito.');
 
   } catch (error) {
     console.error('❌ Error general durante la sincronización de estados:', error.message);
@@ -200,6 +362,7 @@ async function sincronizarEstados() {
     if (localClient) {
       localClient.release();
     }
+    await localPool.end();
   }
 }
 
