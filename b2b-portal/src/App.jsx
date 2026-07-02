@@ -8,7 +8,8 @@ import Home from './pages/Home';
 import Articulos from './pages/Articulos';
 import CuentaCorriente from './pages/CuentaCorriente';
 import Pedidos from './pages/Pedidos';
-import { Loader2, Menu, Home as HomeIcon, BookOpen, ClipboardList, Receipt } from 'lucide-react';
+import Retiros from './pages/Retiros';
+import { Loader2, Menu, Home as HomeIcon, BookOpen, ClipboardList, Receipt, Truck } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -318,6 +319,13 @@ export default function App() {
                   <Receipt size={14} />
                   <span>Cta. Corriente</span>
                 </button>
+                <button 
+                  onClick={() => { setCurrentTab('retiros'); setMobileMenuOpen(false); }} 
+                  className={`mobile-menu-item ${currentTab === 'retiros' ? 'active' : ''}`}
+                >
+                  <Truck size={14} />
+                  <span>Devoluciones</span>
+                </button>
               </div>
             )}
           </div>
@@ -362,6 +370,11 @@ export default function App() {
             profile={profile} 
             highlightDocId={pendingAction?.doc_id} 
             onClearHighlight={() => setPendingAction(null)} 
+          />
+        )}
+        {currentTab === 'retiros' && (
+          <Retiros 
+            profile={profile} 
           />
         )}
       </main>
