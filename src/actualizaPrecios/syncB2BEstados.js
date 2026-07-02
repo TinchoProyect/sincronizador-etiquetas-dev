@@ -158,17 +158,17 @@ async function subirPedidosLocales(localClient) {
   for (const row of resLocales.rows) {
     console.log(`⚙️ Procesando Pedido Local #${row.id} para Cliente Búnker ${row.codigo_bunker_cliente} (ID Legacy: ${row.id_cliente})...`);
     
-    // Obtener los detalles del pedido local
+    // Obtener los detalles del pedido local cruzando con la tabla articulos local y bunker_articulos
     const sqlDetalles = `
       SELECT 
           pd.id,
           pd.articulo,
           pd.cantidad,
-          pd.precio1,
-          pd.iva1,
-          COALESCE(ba.descripcion_generada, ba.descripcion, pd.articulo) as producto_descripcion
+          pd.precio1 as precio_unitario_con_iva,
+          COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, pd.articulo) as producto_descripcion
       FROM public.presupuestos_detalles pd
-      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = pd.articulo
+      LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
       WHERE pd.id_presupuesto = $1
     `;
     
@@ -185,10 +185,7 @@ async function subirPedidosLocales(localClient) {
     
     const itemsPayload = itemsLocal.map(item => {
       const qty = parseFloat(item.cantidad || 0);
-      const precioNeto = parseFloat(item.precio1 || 0);
-      const alicuotaIva = parseFloat(item.iva1 || 0);
-      
-      const precioConIva = precioNeto * (1 + alicuotaIva / 100);
+      const precioConIva = parseFloat(item.precio_unitario_con_iva || 0);
       const totalItem = qty * precioConIva;
       
       subtotalConIva += totalItem;
