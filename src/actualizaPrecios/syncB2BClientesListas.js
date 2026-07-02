@@ -211,23 +211,18 @@ async function sincronizarB2BClientesListas() {
     // ==========================================
     console.log('\n🔍 Consultando asignaciones de listas en base local (Híbrido)...');
     
+    // Consultar asignaciones explícitas en bunker_cliente_listas_precios cruzando con clientes para marcar la principal
     const listsQuery = `
-      SELECT 
-          COALESCE(
-              (SELECT codigo_bunker_cliente FROM public.bunker_clientes WHERE lomas_soft_id ~ '^[0-9]+$' AND lomas_soft_id::integer = c.cliente_id LIMIT 1),
-              c.cliente_id::text
-          ) as cliente_id,
-          c.lista_precios::integer as lista_id,
-          true as es_principal
-      FROM public.clientes c
-      WHERE c.lista_precios IS NOT NULL AND c.lista_precios ~ '^[0-9]+$'
-      UNION
       SELECT 
           bc.codigo_bunker_cliente as cliente_id,
           clp.bunker_lista_precio_id as lista_id,
-          false as es_principal
+          COALESCE(
+              (c.lista_precios IS NOT NULL AND c.lista_precios ~ '^[0-9]+$' AND c.lista_precios::integer = clp.bunker_lista_precio_id),
+              false
+          ) as es_principal
       FROM public.bunker_cliente_listas_precios clp
-      JOIN public.bunker_clientes bc ON bc.id = clp.bunker_cliente_id;
+      JOIN public.bunker_clientes bc ON bc.id = clp.bunker_cliente_id
+      LEFT JOIN public.clientes c ON (bc.lomas_soft_id = TRIM(c.cliente_id::text) OR (bc.lomas_soft_id ~ '^[0-9]+$' AND c.cliente_id::text ~ '^[0-9]+$' AND bc.lomas_soft_id::integer = c.cliente_id::integer));
     `;
 
     const resLocalLists = await localClient.query(listsQuery);
@@ -265,21 +260,21 @@ async function sincronizarB2BClientesListas() {
         upsertados += batch.length;
         console.log(`🔄 Sincronizados ${upsertados}/${totalMappings} mapeos de listas...`);
       }
-
-      // Limpieza de relaciones de listas obsoletas
-      console.log(`\n🧹 Iniciando limpieza de mapeos obsoletos (anteriores a ${syncStart})...`);
-      const cleanUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_perfiles_listas?created_at=lt.${encodeURIComponent(syncStart)}`;
-      const cleanOptions = {
-        method: 'DELETE',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      };
-      
-      await fetchWithRetry(cleanUrl, cleanOptions);
-      console.log('✅ Sincronización e higiene de listas completada exitosamente.');
     }
+
+    // Limpieza de relaciones de listas obsoletas (se ejecuta siempre para asegurar higiene contable)
+    console.log(`\n🧹 Iniciando limpieza de mapeos obsoletos (anteriores a ${syncStart})...`);
+    const cleanUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_perfiles_listas?created_at=lt.${encodeURIComponent(syncStart)}`;
+    const cleanOptions = {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    };
+    
+    await fetchWithRetry(cleanUrl, cleanOptions);
+    console.log('✅ Sincronización e higiene de listas completada exitosamente.');
 
   } catch (error) {
     console.error('❌ Error durante la sincronización de clientes y listas B2B:', error.message);
