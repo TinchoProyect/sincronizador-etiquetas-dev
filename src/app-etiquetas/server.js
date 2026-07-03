@@ -409,6 +409,50 @@ router.post('/sync-b2b', async (req, res) => {
 });
 
 
+router.post('/sync-b2b/:step', async (req, res) => {
+  const { step } = req.params;
+  
+  const stepMap = {
+    precios: { name: 'Catálogo y Precios', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js') },
+    cuentas: { name: 'Cuentas Corrientes', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BCuentas.js') },
+    listas: { name: 'Clientes y Listas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BClientesListas.js') },
+    pedidos: { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
+    estados: { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
+  };
+
+  const script = stepMap[step];
+  if (!script) {
+    return res.status(400).json({ error: 'Paso de sincronización inválido.' });
+  }
+
+  console.log(`🚀 [MANUAL-STEP-SYNC] Iniciando paso: ${script.name}...`);
+
+  try {
+    const exitCode = await new Promise((resolve) => {
+      const child = fork(script.path, [], {
+        env: { ...process.env, NODE_ENV: 'production' }
+      });
+      child.on('close', (code) => {
+        resolve(code);
+      });
+      child.on('error', (err) => {
+        console.error(`💥 [MANUAL-STEP-SYNC] Error lanzando ${script.name}:`, err.message);
+        resolve(-1);
+      });
+    });
+
+    if (exitCode !== 0) {
+      return res.status(500).json({ error: `El paso ${script.name} finalizó con errores.` });
+    }
+
+    res.json({ success: true, message: `Paso ${script.name} completado con éxito.` });
+  } catch (err) {
+    console.error(`💥 [MANUAL-STEP-SYNC] Error general en ${script.name}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // NUEVO: Endpoint para abrir la carpeta b2b-portal/dist/ en el Explorador de Archivos de Windows
 app.get('/api/open-dist', (req, res) => {
   const distPath = path.resolve(__dirname, '../../b2b-portal/dist');
