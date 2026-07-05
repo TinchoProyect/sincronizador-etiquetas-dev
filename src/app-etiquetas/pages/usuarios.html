@@ -66,59 +66,60 @@
       text-align: left;
     }
 
-    .volver {
-      position: absolute;
-      top: 20px;
-      left: 30px;
-    }
-
-    .volver a {
-      text-decoration: none;
-      font-size: 0.9em;
-      color: var(--primary-color);
-      border: 1px solid var(--primary-color);
-      padding: 6px 12px;
-      border-radius: 6px;
-      transition: background-color 0.3s ease;
-    }
-
-    .volver a:hover {
-      background-color: var(--primary-color);
-      color: white;
-    }
-
-    .atajos-admin {
-      position: absolute;
-      top: 20px;
-      right: 30px;
+    .admin-header {
       display: flex;
-      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 30px;
+      gap: 20px;
     }
 
-    .atajos-admin a {
+    .admin-header .header-left {
+      display: flex;
+      align-items: center;
+      gap: 25px;
+    }
+
+    .admin-header .header-title {
+      margin: 0;
+      font-size: 1.8em;
+      color: var(--primary-color);
+    }
+
+    .admin-header .btn-volver {
       text-decoration: none;
       font-size: 0.9em;
       color: var(--primary-color);
       border: 1px solid var(--primary-color);
-      padding: 6px 12px;
+      padding: 8px 16px;
       border-radius: 6px;
-      transition: background-color 0.3s ease;
+      transition: all 0.3s ease;
+      white-space: nowrap;
     }
 
-    .atajos-admin a:hover {
+    .admin-header .btn-volver:hover {
       background-color: var(--primary-color);
       color: white;
+    }
+
+    .admin-header .header-right {
+      display: flex;
+      align-items: center;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <header style="position: relative;">
-      <h1>Administración de Usuarios</h1>
-      <div class="volver">
-        <a href="../index.html">← Volver al inicio</a>
+    <header class="admin-header">
+      <div class="header-left">
+        <div class="volver-container">
+          <a href="../index.html" class="btn-volver">← Volver al inicio</a>
+        </div>
+        <h1 class="header-title">Administración de Usuarios</h1>
       </div>
-      <div class="atajos-admin">
+      <div class="header-right">
         <div class="dropdown-menu">
           <button class="dropdown-toggle">⚙️ Gestionar <span class="caret">▼</span></button>
           <div class="dropdown-content">

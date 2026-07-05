@@ -1,5 +1,89 @@
 const API_BASE = '/api';
 
+// --- UTILIDADES DE MODALES DINÁMICOS Y ARRASTRABLES ---
+function makeModalDraggable(modalEl) {
+  const header = modalEl.querySelector('.modal-header');
+  const content = modalEl.querySelector('.modal-content');
+  if (!header || !content) return;
+
+  header.style.cursor = 'grab';
+
+  let isDragging = false;
+  let startX, startY;
+  let initialLeft, initialTop;
+
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.modal-close') || e.target.closest('input') || e.target.closest('button')) {
+      return;
+    }
+
+    isDragging = true;
+    header.style.cursor = 'grabbing';
+    document.body.style.cursor = 'grabbing';
+
+    const rect = content.getBoundingClientRect();
+    content.style.transform = 'none';
+    content.style.left = `${rect.left}px`;
+    content.style.top = `${rect.top}px`;
+    content.style.margin = '0';
+
+    startX = e.clientX;
+    startY = e.clientY;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    let newLeft = initialLeft + dx;
+    let newTop = initialTop + dy;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const rect = content.getBoundingClientRect();
+
+    newLeft = Math.max(0, Math.min(newLeft, viewportWidth - rect.width));
+    newTop = Math.max(0, Math.min(newTop, viewportHeight - rect.height));
+
+    content.style.left = `${newLeft}px`;
+    content.style.top = `${newTop}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      header.style.cursor = 'grab';
+      document.body.style.cursor = 'default';
+    }
+  });
+}
+
+function resetModalPosition(contentEl) {
+  if (!contentEl) return;
+  contentEl.style.transform = '';
+  contentEl.style.left = '';
+  contentEl.style.top = '';
+  contentEl.style.margin = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('modal-editar-rol');
+  if (modal) {
+    makeModalDraggable(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        cerrarModal();
+      }
+    });
+  }
+});
+
 // Cargar roles existentes
 async function cargarRoles() {
   try {
@@ -63,12 +147,18 @@ document.getElementById('form-nuevo-rol').addEventListener('submit', async (e) =
 
 // Funciones del modal
 function abrirModal() {
-  document.getElementById('modal-editar-rol').classList.add('active');
+  const modal = document.getElementById('modal-editar-rol');
+  const content = modal.querySelector('.modal-content');
+  resetModalPosition(content);
+  modal.classList.add('active');
+  document.body.style.overflow = 'hidden'; // Bloquear scroll de la página de atrás
 }
 
 function cerrarModal() {
-  document.getElementById('modal-editar-rol').classList.remove('active');
+  const modal = document.getElementById('modal-editar-rol');
+  modal.classList.remove('active');
   document.getElementById('form-editar-rol').reset();
+  document.body.style.overflow = ''; // Restaurar scroll de la página de atrás
 }
 
 // Cargar datos del rol en el modal

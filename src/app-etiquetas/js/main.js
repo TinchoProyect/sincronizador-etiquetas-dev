@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// INDICADOR DE ENTORNO
+// INDICADOR DE ENTORNO Y RELOJ PIZARRA
 // ═══════════════════════════════════════════════════════════
 
 /**
@@ -26,10 +26,11 @@ async function cargarIndicadorEntorno() {
     if (data.isTest) {
       // Modo PRUEBAS - Indicador llamativo
       indicator.classList.add('test');
-      iconElement.textContent = '⚠️';
-      textElement.textContent = `MODO PRUEBAS (${data.database})`;
-      pulseElement.style.display = 'block';
-      indicator.style.display = 'flex';
+      indicator.setAttribute('data-tooltip', `Conectado a Base de Datos de Pruebas (${data.database})`);
+      if (iconElement) iconElement.textContent = '⚠️';
+      if (textElement) textElement.textContent = `Pruebas: ${data.database}`;
+      if (pulseElement) pulseElement.style.display = 'block';
+      indicator.style.display = 'inline-block';
       
       console.log('%c🧪 MODO PRUEBAS ACTIVO', 'background: #ff6b6b; color: white; padding: 8px; font-weight: bold; font-size: 14px;');
       console.log(`📊 Base de datos: ${data.database}`);
@@ -39,10 +40,11 @@ async function cargarIndicadorEntorno() {
     } else if (data.isProduction) {
       // Modo PRODUCCIÓN - Indicador sutil
       indicator.classList.add('production');
-      iconElement.textContent = '●';
-      textElement.textContent = 'Producción';
-      pulseElement.style.display = 'none';
-      indicator.style.display = 'flex';
+      indicator.setAttribute('data-tooltip', 'Conectado a Base de Datos de Producción');
+      if (iconElement) iconElement.textContent = '●';
+      if (textElement) textElement.textContent = 'Producción';
+      if (pulseElement) pulseElement.style.display = 'block';
+      indicator.style.display = 'inline-block';
       
       console.log('%c✅ MODO PRODUCCIÓN', 'background: #28a745; color: white; padding: 8px; font-weight: bold; font-size: 14px;');
       console.log(`📊 Base de datos: ${data.database}`);
@@ -55,13 +57,324 @@ async function cargarIndicadorEntorno() {
   }
 }
 
+/**
+ * Actualiza la fecha y la hora en el canvas de la pizarra central
+ */
+function actualizarPizarraDateTime() {
+  const timeEl = document.getElementById('pizarra-time');
+  const dateEl = document.getElementById('pizarra-date');
+  if (!timeEl || !dateEl) return;
+
+  const ahora = new Date();
+  
+  // Formato Hora: HH:MM:SS
+  timeEl.textContent = ahora.toLocaleTimeString('es-AR', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit', 
+    hour12: false 
+  });
+  
+  // Formato Fecha: viernes, 3 de julio de 2026
+  const opcionesFecha = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+  const fechaFormateada = ahora.toLocaleDateString('es-AR', opcionesFecha);
+  
+  // Capitalizar primer letra
+  dateEl.textContent = fechaFormateada.charAt(0).toUpperCase() + fechaFormateada.slice(1);
+}
+
 // Cargar el indicador al iniciar la página
 document.addEventListener('DOMContentLoaded', () => {
   cargarIndicadorEntorno();
   cargarIndicadorWhatsApp();
+  
+  // Inicializar y actualizar la pizarra central (fecha/hora)
+  actualizarPizarraDateTime();
+  setInterval(actualizarPizarraDateTime, 1000);
+
+  // Inicializar y actualizar alertas dinámicas de la pizarra
+  actualizarAlertasPizarra();
+  setInterval(actualizarAlertasPizarra, 5000);
+
   // Polling activo cada 5 segundos para refrescar estado en tiempo real
   setInterval(cargarIndicadorWhatsApp, 5000);
 });
+
+/**
+ * Limpia y normaliza la descripción del artículo para la visualización en la Pizarra
+ */
+function limpiarDescripcionArticulo(desc) {
+  if (!desc) return '';
+  let limpia = desc;
+  if (limpia.includes('Mix/F/Secas/Premium')) {
+    limpia = limpia.replace('Mix/F/Secas/Premium', 'Mix Frutos Secos Premium');
+  }
+  // Reemplazar " x " o " x" por " por "
+  limpia = limpia.replace(/\s+x\s*/g, ' por ');
+  // Reemplazar barras inclinadas sobrantes
+  limpia = limpia.replace(/\//g, ' ');
+  return limpia.trim();
+}
+
+/**
+ * Consulta las alertas activas en segundo plano e inyecta la información en #pizarra-extra-widgets
+ */
+async function actualizarAlertasPizarra() {
+  const container = document.getElementById('pizarra-extra-widgets');
+  const btnLimpiar = document.getElementById('btn-limpiar-pizarra');
+  if (!container) return;
+
+  try {
+    // 1. Consultar resumen_faltantes_parciales del módulo Producción
+    const resProd = await fetch('/api/pizarra/resumen_faltantes_parciales');
+    const dataProd = await resProd.json();
+    const activeProd = dataProd.success && Array.isArray(dataProd.data) ? dataProd.data : [];
+
+    // 2. Consultar bandeja_imprimir_modificado del módulo Logística/Impresión
+    const resLog = await fetch('/api/pizarra/bandeja_imprimir_modificado');
+    const dataLog = await resLog.json();
+    const activeLogCount = dataLog.success && typeof dataLog.count === 'number' ? dataLog.count : 0;
+
+    // 3. Consultar tratamientos activos (carpas) del módulo Mantenimiento
+    const resCarpas = await fetch('/api/pizarra/mantenimiento_carpas');
+    const dataCarpas = await resCarpas.json();
+    const activeCarpas = dataCarpas.success && Array.isArray(dataCarpas.data) ? dataCarpas.data : [];
+
+    // 4. Cargar tareas almacenadas en localStorage para persistencia
+    let storedTasks = [];
+    try {
+      const stored = localStorage.getItem('pizarra_tasks');
+      if (stored) storedTasks = JSON.parse(stored);
+    } catch (e) {
+      console.warn('Error al leer pizarra_tasks desde localStorage:', e);
+    }
+
+    // 5. Vía A: Evaporación Automática (Eliminar completados hace más de 24 horas)
+    const limite24h = 24 * 60 * 60 * 1000;
+    const ahora = Date.now();
+    storedTasks = storedTasks.filter(t => {
+      if (!t.completed) return true;
+      return (ahora - t.completedAt) < limite24h;
+    });
+
+    // 6. Preparar mapa de tareas del ciclo actual
+    const updatedTasks = [];
+
+    // --- PROCESAR PRODUCCIÓN ---
+    activeProd.forEach(item => {
+      const taskId = `prod-${item.articulo_numero}`;
+      const cant = Math.round(item.faltante);
+      const descLimpia = limpiarDescripcionArticulo(item.descripcion);
+      const taskText = `${cant} unidad — ${descLimpia}`;
+      
+      updatedTasks.push({
+        id: taskId,
+        type: 'produccion',
+        text: taskText,
+        completed: false,
+        completedAt: null
+      });
+    });
+
+    // Detectar si alguna tarea de producción se completó
+    storedTasks.forEach(st => {
+      if (st.type === 'produccion') {
+        const stillActive = activeProd.some(item => `prod-${item.articulo_numero}` === st.id);
+        if (!stillActive) {
+          if (!st.completed) {
+            updatedTasks.push({
+              ...st,
+              completed: true,
+              completedAt: Date.now()
+            });
+          } else {
+            updatedTasks.push(st);
+          }
+        }
+      }
+    });
+
+    // --- PROCESAR LOGÍSTICA ---
+    const logActiveTask = storedTasks.find(t => t.id === 'log-active');
+    let prevLogCount = 0;
+    if (logActiveTask) {
+      const match = logActiveTask.text.match(/^(\d+)/);
+      if (match) prevLogCount = parseInt(match[1]) || 0;
+    }
+
+    if (activeLogCount > 0) {
+      updatedTasks.push({
+        id: 'log-active',
+        type: 'logistica',
+        text: `${activeLogCount} pedidos para armar`,
+        completed: false,
+        completedAt: null
+      });
+
+      // Si disminuyó el contador, registrar la diferencia como completada
+      if (prevLogCount > activeLogCount) {
+        const dif = prevLogCount - activeLogCount;
+        updatedTasks.push({
+          id: `log-completed-${Date.now()}`,
+          type: 'logistica',
+          text: `${dif} pedidos para armar`,
+          completed: true,
+          completedAt: Date.now()
+        });
+      }
+    } else if (prevLogCount > 0) {
+      // El contador llegó a cero, registrar todo el remanente como completado
+      updatedTasks.push({
+        id: `log-completed-${Date.now()}`,
+        type: 'logistica',
+        text: `${prevLogCount} pedidos para armar`,
+        completed: true,
+        completedAt: Date.now()
+      });
+    }
+
+    // Conservar las tareas de logística ya completadas anteriormente
+    storedTasks.forEach(st => {
+      if (st.type === 'logistica' && st.completed) {
+        updatedTasks.push(st);
+      }
+    });
+
+    // --- PROCESAR MANTENIMIENTO (CARPAS) ---
+    activeCarpas.forEach(carpa => {
+      const taskId = `carpa-${carpa.id}`;
+      const carpaFecha = new Date(carpa.fecha_inicio_cuarentena);
+      const diffMs = Date.now() - carpaFecha;
+      const dias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const kilos = Math.round(carpa.kilos_brutos_totales);
+      const descLimpia = limpiarDescripcionArticulo(carpa.item_nombre);
+      const taskText = `1 carpa activa (hace ${dias} días): ${kilos} kg de ${descLimpia}`;
+
+      updatedTasks.push({
+        id: taskId,
+        type: 'mantenimiento',
+        text: taskText,
+        completed: false,
+        completedAt: null
+      });
+    });
+
+    // Detectar si alguna carpa se completó
+    storedTasks.forEach(st => {
+      if (st.type === 'mantenimiento') {
+        const stillActive = activeCarpas.some(carpa => `carpa-${carpa.id}` === st.id);
+        if (!stillActive) {
+          if (!st.completed) {
+            updatedTasks.push({
+              ...st,
+              completed: true,
+              completedAt: Date.now()
+            });
+          } else {
+            updatedTasks.push(st);
+          }
+        }
+      }
+    });
+
+    // 7. Guardar tareas en localStorage
+    localStorage.setItem('pizarra_tasks', JSON.stringify(updatedTasks));
+
+    // 8. Separar tareas activas y completadas para el renderizado
+    const activeProdTasks = updatedTasks.filter(t => !t.completed && (t.type === 'produccion' || t.id === 'log-active'));
+    const completedProdTasks = updatedTasks.filter(t => t.completed && (t.type === 'produccion' || t.type === 'logistica'));
+
+    const activeMantenimiento = updatedTasks.filter(t => !t.completed && t.type === 'mantenimiento');
+    const completedMantenimiento = updatedTasks.filter(t => t.completed && t.type === 'mantenimiento');
+
+    const totalProdCount = activeProdTasks.length + completedProdTasks.length;
+    const totalMantenimientoCount = activeMantenimiento.length + completedMantenimiento.length;
+
+    // Condición de Pantalla Limpia
+    if (totalProdCount === 0 && totalMantenimientoCount === 0) {
+      container.innerHTML = '';
+      if (btnLimpiar) btnLimpiar.style.display = 'none';
+      return;
+    }
+
+    // Mostrar u ocultar el botón de limpieza manual (Vía B) si hay tareas completadas
+    const hasCompleted = updatedTasks.some(t => t.completed);
+    if (btnLimpiar) {
+      btnLimpiar.style.display = hasCompleted ? 'flex' : 'none';
+    }
+
+    // 9. Construir y Renderizar HTML
+    let html = '';
+
+    // Renderizar sección de Producción
+    if (totalProdCount > 0) {
+      html += `<div class="pizarra-alert-title">Producción:</div>`;
+      
+      // Renderizar activas primero
+      activeProdTasks.forEach(t => {
+        html += `<div class="pizarra-alert-item">• ${t.text}</div>`;
+      });
+
+      // Renderizar separador sutil de Producción
+      const hasActiveFaltantes = activeProdTasks.some(t => t.type === 'produccion');
+      const hasActiveLog = activeProdTasks.some(t => t.id === 'log-active');
+      if (hasActiveFaltantes && hasActiveLog) {
+        html += `<div class="pizarra-production-divider"></div>`;
+      }
+
+      // Renderizar completadas después
+      completedProdTasks.forEach(t => {
+        html += `<div class="pizarra-alert-item completed">✅ ${t.text}</div>`;
+      });
+    }
+
+    // Renderizar sección de Mantenimiento
+    if (totalMantenimientoCount > 0) {
+      html += `<div class="pizarra-alert-title">Mantenimiento:</div>`;
+      
+      // Activas
+      activeMantenimiento.forEach(t => {
+        html += `<div class="pizarra-alert-item">• ${t.text}</div>`;
+      });
+
+      // Completadas
+      completedMantenimiento.forEach(t => {
+        html += `<div class="pizarra-alert-item completed">✅ ${t.text}</div>`;
+      });
+    }
+
+    container.innerHTML = html;
+
+  } catch (error) {
+    console.error('Error al actualizar alertas de la pizarra:', error);
+  }
+}
+
+/**
+ * Vía B: Purga Manual Directa (Eliminar elementos completados con tilde verde de inmediato)
+ */
+function purgaManualAlertas() {
+  try {
+    const stored = localStorage.getItem('pizarra_tasks');
+    if (!stored) return;
+    
+    let tasks = JSON.parse(stored);
+    // Filtrar conservando únicamente las tareas que sigan activas
+    tasks = tasks.filter(t => !t.completed);
+    
+    localStorage.setItem('pizarra_tasks', JSON.stringify(tasks));
+    
+    // Forzar actualización inmediata de la interfaz
+    actualizarAlertasPizarra();
+  } catch (error) {
+    console.error('Error al purgar alertas de la pizarra:', error);
+  }
+}
+
+// Exponer la función globalmente para onclick de index.html
+window.purgaManualAlertas = purgaManualAlertas;
+
+
 
 /**
  * Consulta el estado de WhatsApp en el puerto 3004 y actualiza el indicador global en el header
@@ -83,48 +396,36 @@ async function cargarIndicadorWhatsApp() {
     if (result.success && result.data) {
       const { status } = result.data;
       
-      let badgeHTML = '';
+      let dotClass = '';
+      let tooltipText = '';
       if (status === 'CONECTADO') {
-        badgeHTML = `
-          <a href="${configUrl}" class="whatsapp-badge connected" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #10b981; background-color: #ecfdf5; color: #047857; text-decoration: none; font-size: 0.85em; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; display: inline-block;"></span>
-            🟢 WhatsApp Activo
-          </a>
-        `;
+        dotClass = 'connected';
+        tooltipText = 'WhatsApp Activo';
       } else if (status === 'CONECTANDO') {
-        badgeHTML = `
-          <a href="${configUrl}" class="whatsapp-badge connecting" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #3b82f6; background-color: #eff6ff; color: #1d4ed8; text-decoration: none; font-size: 0.85em; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: #3b82f6; display: inline-block; animation: pulse 1s infinite;"></span>
-            ⏳ WhatsApp Conectando...
-          </a>
-        `;
+        dotClass = 'connecting';
+        tooltipText = 'WhatsApp Conectando...';
       } else if (status === 'ESPERANDO_QR') {
-        badgeHTML = `
-          <a href="${configUrl}" class="whatsapp-badge waiting" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #f59e0b; background-color: #fffbeb; color: #b45309; text-decoration: none; font-size: 0.85em; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.1);">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: #f59e0b; display: inline-block; animation: pulse 1.5s infinite;"></span>
-            🔑 WhatsApp Esperando QR
-          </a>
-        `;
+        dotClass = 'waiting';
+        tooltipText = 'WhatsApp Esperando QR';
       } else {
-        badgeHTML = `
-          <a href="${configUrl}" class="whatsapp-badge disconnected" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #ef4444; background-color: #fef2f2; color: #b91c1c; text-decoration: none; font-size: 0.85em; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1);">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; display: inline-block; animation: pulse 2s infinite;"></span>
-            🔴 WhatsApp Desconectado
-          </a>
-        `;
+        dotClass = 'disconnected';
+        tooltipText = 'WhatsApp Desconectado';
       }
       
-      container.innerHTML = badgeHTML;
+      container.className = `whatsapp-status-indicator tooltip ${dotClass}`;
+      container.setAttribute('data-tooltip', tooltipText);
+      container.innerHTML = `
+        <a href="${configUrl}" class="whatsapp-dot-link" style="display: block; width: 100%; height: 100%; border-radius: 50%;"></a>
+      `;
     } else {
       throw new Error('Formato de respuesta inválido');
     }
   } catch (error) {
     console.warn('No se pudo obtener el estado de WhatsApp:', error.message);
+    container.className = 'whatsapp-status-indicator tooltip disconnected';
+    container.setAttribute('data-tooltip', 'WhatsApp Desconectado');
     container.innerHTML = `
-      <a href="${configUrl}" class="whatsapp-badge disconnected" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid #ef4444; background-color: #fef2f2; color: #b91c1c; text-decoration: none; font-size: 0.85em; font-weight: 600; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1);">
-        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; display: inline-block; animation: pulse 2s infinite;"></span>
-        🔴 WhatsApp Desconectado
-      </a>
+      <a href="${configUrl}" class="whatsapp-dot-link" style="display: block; width: 100%; height: 100%; border-radius: 50%;"></a>
     `;
   }
 }
@@ -283,10 +584,11 @@ async function autenticar(event) {
   return false;
 }
 
-// Cerrar modal con Escape
+// Cerrar modal y sidebar con Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     cerrarModalLogin();
+    closeSidebar();
   }
 });
 
@@ -296,3 +598,32 @@ document.getElementById('modal-login').addEventListener('click', (e) => {
     cerrarModalLogin();
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// LÓGICA DE MENÚ LATERAL (SIDEBAR DRAWER & ACCORDION)
+// ═══════════════════════════════════════════════════════════
+
+function openSidebar() {
+  const drawer = document.getElementById('sidebar-drawer');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (drawer && overlay) {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  }
+}
+
+function closeSidebar() {
+  const drawer = document.getElementById('sidebar-drawer');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (drawer && overlay) {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+  }
+}
+
+function toggleBranch(headerElement) {
+  const branchItem = headerElement.parentElement;
+  if (branchItem) {
+    branchItem.classList.toggle('expanded');
+  }
+}

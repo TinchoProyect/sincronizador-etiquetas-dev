@@ -150,6 +150,7 @@ async function subirPedidosLocales(localClient) {
       AND m.local_presupuesto_id IS NULL
       AND (p.id_presupuesto_ext IS NULL OR p.id_presupuesto_ext !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
       AND p.fecha >= NOW() - INTERVAL '30 days'
+      AND p.tipo_comprobante != 'Orden de Retiro'
   `;
   
   const resLocales = await localClient.query(sqlBuscarLocales);

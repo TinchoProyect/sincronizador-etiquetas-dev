@@ -1,5 +1,79 @@
 const API_BASE = '/api';
 
+// --- UTILIDADES DE MODALES DINÁMICOS Y ARRASTRABLES ---
+function makeModalDraggable(modalEl) {
+  const header = modalEl.querySelector('.modal-header');
+  const content = modalEl.querySelector('.modal-content');
+  if (!header || !content) return;
+
+  header.style.cursor = 'grab';
+
+  let isDragging = false;
+  let startX, startY;
+  let initialLeft, initialTop;
+
+  header.addEventListener('mousedown', (e) => {
+    // No iniciar arrastre si se hace clic en elementos interactivos
+    if (e.target.closest('.modal-close') || e.target.closest('input') || e.target.closest('select') || e.target.closest('button') || e.target.closest('.password-toggle')) {
+      return;
+    }
+
+    isDragging = true;
+    header.style.cursor = 'grabbing';
+    document.body.style.cursor = 'grabbing';
+
+    const rect = content.getBoundingClientRect();
+    content.style.transform = 'none';
+    content.style.left = `${rect.left}px`;
+    content.style.top = `${rect.top}px`;
+    content.style.margin = '0';
+
+    startX = e.clientX;
+    startY = e.clientY;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    let newLeft = initialLeft + dx;
+    let newTop = initialTop + dy;
+
+    // Límites de pantalla seguros
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const rect = content.getBoundingClientRect();
+
+    newLeft = Math.max(0, Math.min(newLeft, viewportWidth - rect.width));
+    newTop = Math.max(0, Math.min(newTop, viewportHeight - rect.height));
+
+    content.style.left = `${newLeft}px`;
+    content.style.top = `${newTop}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      header.style.cursor = 'grab';
+      document.body.style.cursor = 'default';
+    }
+  });
+}
+
+function resetModalPosition(contentEl) {
+  if (!contentEl) return;
+  contentEl.style.transform = '';
+  contentEl.style.left = '';
+  contentEl.style.top = '';
+  contentEl.style.margin = '';
+}
+
 // Manejo del menú desplegable y eventos iniciales
 document.addEventListener('DOMContentLoaded', () => {
   // Configuración del menú desplegable
@@ -8,16 +82,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Cerrar el menú al hacer clic fuera
   document.addEventListener('click', (e) => {
-    if (!dropdownMenu.contains(e.target)) {
+    if (dropdownMenu && !dropdownMenu.contains(e.target)) {
       dropdownMenu.classList.remove('active');
     }
   });
 
   // Toggle del menú
-  dropdownToggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    dropdownMenu.classList.toggle('active');
-  });
+  if (dropdownToggle && dropdownMenu) {
+    dropdownToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdownMenu.classList.toggle('active');
+    });
+  }
+
+  // Configurar modal de edición como arrastrable
+  const modal = document.getElementById('modal-editar-usuario');
+  if (modal) {
+    makeModalDraggable(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        cerrarModal();
+      }
+    });
+  }
 });
 
 
@@ -88,12 +175,18 @@ document.getElementById('form-nuevo-usuario').addEventListener('submit', async (
 
 // Funciones del modal
 function abrirModal() {
-  document.getElementById('modal-editar-usuario').classList.add('active');
+  const modal = document.getElementById('modal-editar-usuario');
+  const content = modal.querySelector('.modal-content');
+  resetModalPosition(content);
+  modal.classList.add('active');
+  document.body.style.overflow = 'hidden'; // Bloquear scroll de la página de atrás
 }
 
 function cerrarModal() {
-  document.getElementById('modal-editar-usuario').classList.remove('active');
+  const modal = document.getElementById('modal-editar-usuario');
+  modal.classList.remove('active');
   document.getElementById('form-editar-usuario').reset();
+  document.body.style.overflow = ''; // Restaurar scroll de la página de atrás
 }
 
 // Toggle de contraseña

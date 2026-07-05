@@ -15,173 +15,51 @@
   <title>Gestiones Lamda</title>
   <link rel="icon" type="image/png" href="favicon.ico?v=2" />
   <link rel="stylesheet" href="css/style.css" />
-  <style>
-    .admin-access {
-      position: absolute;
-      top: 20px;
-      right: 30px;
-    }
 
-    .admin-access a {
-      font-size: 0.9em;
-      text-decoration: none;
-      color: var(--primary-color);
-      background-color: transparent;
-      border: 1px solid var(--primary-color);
-      padding: 6px 12px;
-      border-radius: 6px;
-      transition: background-color 0.3s ease;
-    }
-
-    .admin-access a:hover {
-      background-color: var(--primary-color);
-      color: white;
-    }
-
-    /* Indicador de Entorno */
-    .environment-indicator {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-weight: bold;
-      font-size: 0.9em;
-      z-index: 9999;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-      display: none;
-      animation: slideIn 0.3s ease-out;
-    }
-
-    @keyframes slideIn {
-      from {
-        transform: translateX(-100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-
-    .environment-indicator.test {
-      background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
-      color: white;
-      border: 2px solid #ff4757;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .environment-indicator.production {
-      background-color: #f8f9fa;
-      color: #28a745;
-      border: 1px solid #28a745;
-      padding: 6px 12px;
-      font-size: 0.8em;
-    }
-
-    .environment-indicator .pulse {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background-color: currentColor;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.5;
-      }
-    }
-
-    .environment-indicator .icon {
-      font-size: 1.2em;
-    }
-
-    /* Portal B2B Tier */
-    .menu-tier-b2b {
-      grid-column: span 1;
-      padding: 30px;
-      font-size: 1.3em;
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
-      color: white;
-      justify-content: center;
-      flex-direction: column;
-      text-align: center;
-      box-shadow: 0 4px 15px rgba(124, 58, 237, 0.25);
-      border: 1px solid #7c3aed;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .menu-tier-b2b::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -50%;
-      width: 200%;
-      height: 100%;
-      background: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.3) 50%,
-        rgba(255, 255, 255, 0) 100%
-      );
-      transform: skewX(-25deg);
-      transition: 0.75s;
-      opacity: 0;
-    }
-
-    .menu-tier-b2b:hover::before {
-      left: 125%;
-      opacity: 1;
-    }
-
-    .menu-tier-b2b:hover {
-      background: linear-gradient(135deg, #4338ca 0%, #6d28d9 50%, #7e22ce 100%) !important;
-      box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4) !important;
-      color: white !important;
-      transform: translateY(-4px);
-    }
-
-    .menu-tier-b2b .icon {
-      font-size: 2.2em;
-      display: block;
-      margin-bottom: 15px;
-      animation: float-icon 3s ease-in-out infinite;
-    }
-
-    @keyframes float-icon {
-      0% { transform: translateY(0px); }
-      50% { transform: translateY(-5px); }
-      100% { transform: translateY(0px); }
-    }
-  </style>
 </head>
 <body>
-  <!-- Indicador de Entorno -->
-  <div id="environment-indicator" class="environment-indicator">
-    <span class="icon"></span>
-    <span class="text"></span>
-    <span class="pulse"></span>
-  </div>
-
   <div class="container">
-    <header style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 0 20px 0;">
-      <!-- 🟢/🔴 Indicador global de WhatsApp -->
-      <div id="global-whatsapp-indicator" class="whatsapp-status-indicator" style="position: absolute; left: 30px; top: 50%; transform: translateY(-50%);"></div>
+    <header class="main-header">
+      <!-- Margen Izquierdo: Signos Vitales y Identidad Visual -->
+      <div class="header-left-area">
+        <!-- Puntos de Conectividad (Signos Vitales) -->
+        <div class="header-status-dots">
+          <!-- Badge Postgres (Conexión) -->
+          <div id="environment-indicator" class="environment-indicator tooltip" style="display: none;" data-tooltip="Cargando...">
+            <span class="pulse" style="width: 100%; height: 100%; border-radius: 50%; display: block; background-color: currentColor;"></span>
+            <span class="icon" style="display: none;"></span>
+            <span class="text" style="display: none;"></span>
+          </div>
+          <!-- Badge WhatsApp -->
+          <div id="global-whatsapp-indicator" class="whatsapp-status-indicator tooltip" data-tooltip="WhatsApp Desconectado"></div>
+        </div>
 
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
-        <img src="img/logo_LAMDA.png" alt="LAMDA Logo" style="height: 48px; width: auto; object-fit: contain;">
-        <span style="font-size: 0.95em; font-weight: 500; color: var(--medium-slate); letter-spacing: 4px; text-transform: uppercase; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; margin-top: 2px;">Gestiones</span>
+        <!-- Identidad Visual (Logo) -->
+        <div class="header-logo-container">
+          <img src="img/logo_LAMDA.png" alt="LAMDA Logo" class="header-logo-img">
+          <span class="header-logo-text">Gestiones</span>
+        </div>
       </div>
-      <!-- 🔐 Acceso discreto al panel de administración -->
-      <div class="admin-access" style="position: absolute; right: 30px; top: 50%; transform: translateY(-50%);">
-        <button onclick="abrirModalLogin()" class="admin-button">👤 Administración</button>
+
+      <!-- Sección Central-Derecha: Barra de Navegación Operativa -->
+      <nav class="header-nav-bar">
+        <a href="http://localhost:3002/pages/produccion.html" class="nav-btn prod-nav">
+          <span class="nav-icon">🏭</span>
+          <span class="nav-text">Producción</span>
+        </a>
+        <a href="/presupuestos" class="nav-btn presupuestos-nav">
+          <span class="nav-icon">🧾</span>
+          <span class="nav-text">Presupuestos</span>
+        </a>
+        <a href="http://localhost:3005" class="nav-btn logistica-nav">
+          <span class="nav-icon">🚚</span>
+          <span class="nav-text">Logística</span>
+        </a>
+      </nav>
+
+      <!-- Margen Derecho: Menú Hamburguesa -->
+      <div class="header-menu-container">
+        <button class="hamburger-button" onclick="openSidebar()" aria-label="Abrir menú">☰</button>
       </div>
     </header>
 
@@ -221,78 +99,101 @@
       </div>
     </div>
 
-        <nav class="main-menu">
-      <!-- NIVEL 1 -->
-      <a href="http://localhost:3002/pages/produccion.html" class="menu-button menu-tier-1">
-        <span class="icon">🏭</span>
-        Producción
-      </a>
-      <a href="/presupuestos" class="menu-button menu-tier-1">
-        <span class="icon">🧾</span>
-        Presupuestos
-      </a>
-      <a href="http://localhost:3002/pages/recepcion-lotes.html" class="menu-button menu-tier-1">
-        <span class="icon">📦</span>
-        Recepción de Lotes
-      </a>
-      <a href="javascript:void(0)" onclick="window.abrirPortalB2B()" class="menu-button menu-tier-b2b">
-        <span class="icon">🌐</span>
-        Portal B2B (Clientes)
-      </a>
-      
-      <!-- NIVEL 2 -->
-      <a href="http://localhost:3005" class="menu-button menu-tier-2">
-        <span class="icon">🚚</span>
-        Logística y Reparto
-      </a>
-      <a href="http://localhost:3004" class="menu-button menu-tier-2">
-        <span class="icon">💰</span>
-        Facturación
-      </a>
-      <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="menu-button menu-tier-2">
-        <span class="icon">🏦</span>
-        Cuentas Bancarias
-      </a>
-      
-      <!-- NIVEL 3 -->
-      <a href="pages/impresion.html" class="menu-button menu-tier-3">
-        <span class="icon">🏷️</span>
-        Impresión de etiquetas
-      </a>
-      <a href="pages/informe-faltantes.html" class="menu-button menu-tier-3">
-        <span class="icon">📈</span>
-        Demanda No Satisfecha
-      </a>
-      <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal()" class="menu-button menu-tier-3 warning">
-        <span class="icon">🏥</span>
-        Enviar a Mantenimiento
-      </a>
-      <a href="javascript:void(0)" onclick="window.abrirCarpetaDist()" class="menu-button menu-tier-3" style="border-color: #8e4785; background: rgba(142, 71, 133, 0.05);">
-        <span class="icon">📁</span>
-        B2B: Carpeta dist/
-      </a>
-      <a href="javascript:void(0)" onclick="window.sincronizarB2BManual()" class="menu-button menu-tier-3" style="border-color: #4f46e5; background: rgba(79, 70, 229, 0.05);">
-        <span class="icon">🔄</span>
-        Sincronizar B2B (Manual)
-      </a>
-      
-      <!-- NIVEL 4 (Operaciones Base) -->
-      <a href="http://localhost:3005/pages/listado-bunker.html" class="menu-button menu-tier-1">
-        <span class="icon">📊</span>
-        Gestión de Artículos
-      </a>
-      <a href="http://localhost:3005/pages/listado-clientes.html" class="menu-button menu-tier-1">
-        <span class="icon">👥</span>
-        Gestión de Clientes
-      </a>
-    </nav>
-
-    <main>
-      <div class="welcome-section">
-        <h2>Bienvenido al sistema de gestión</h2>
-        <p>Seleccione una opción del menú para comenzar.</p>
+    <!-- Dashboard Principal (Full-Screen clock) -->
+    <div class="dashboard-container">
+      <div id="pizarra-canvas" class="pizarra-card">
+        <!-- Botón de Limpieza Pizarra (Vía B) -->
+        <button id="btn-limpiar-pizarra" class="btn-limpiar-pizarra" style="display: none;" title="Limpiar realizados" onclick="purgaManualAlertas()">
+          <span>🧹</span>
+          <span class="btn-limpiar-text">Limpiar realizados</span>
+        </button>
+        <div class="pizarra-clock-wrapper">
+          <div id="pizarra-time" class="pizarra-time">--:--:--</div>
+          <div id="pizarra-date" class="pizarra-date">Cargando fecha...</div>
+        </div>
+        <div id="pizarra-extra-widgets" class="pizarra-extra-widgets"></div>
       </div>
-    </main>
+    </div>
+
+    <!-- Menú Lateral (Sidebar Drawer) -->
+    <div id="sidebar-drawer" class="sidebar-drawer">
+      <div class="sidebar-header">
+        <h3>Menú de Navegación</h3>
+        <button class="sidebar-close" onclick="closeSidebar()">&times;</button>
+      </div>
+      <div class="sidebar-content">
+        <!-- Árbol de Navegación -->
+        <ul class="nav-tree">
+          <!-- Rama 1: Administración -->
+          <li class="tree-item">
+            <a href="javascript:void(0)" onclick="abrirModalLogin(); closeSidebar();" class="tree-link">
+              <span class="tree-icon">👤</span> Administración
+            </a>
+          </li>
+          
+          <!-- Rama 2: Gestión Comercial y Financiera -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">📊</span> Gestión Comercial y Financiera
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li>
+                <a href="http://localhost:3005/pages/listado-clientes.html" class="tree-sublink">Clientes Búnker</a>
+              </li>
+              <li>
+                <a href="http://localhost:3004" class="tree-sublink">Facturación</a>
+              </li>
+              <li>
+                <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="tree-sublink">Cuentas Bancarias</a>
+              </li>
+              <!-- Sub-rama: Portal -->
+              <li class="tree-item branch nested-branch">
+                <div class="tree-branch-header" onclick="toggleBranch(this)">
+                  <span class="tree-icon">📁</span> Portal
+                  <span class="chevron">▼</span>
+                </div>
+                <ul class="tree-submenu">
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirPortalB2B(); closeSidebar();" class="tree-sublink">Portal B2B (Accesos)</a>
+                  </li>
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.sincronizarB2BManual(); closeSidebar();" class="tree-sublink">Sincronización Manual</a>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+
+          <!-- Rama 3: Operaciones y Soporte de Depósito -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">⚙️</span> Operaciones y Soporte de Depósito
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li>
+                <a href="http://localhost:3002/pages/recepcion-lotes.html" class="tree-sublink">Recepción de Lotes</a>
+              </li>
+              <li>
+                <a href="http://localhost:3005/pages/listado-bunker.html" class="tree-sublink">Artículos Búnker</a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal(); closeSidebar();" class="tree-sublink warning-link">Enviar a Mantenimiento</a>
+              </li>
+              <li>
+                <a href="pages/impresion.html" class="tree-sublink">Impresión de Etiquetas</a>
+              </li>
+              <li>
+                <a href="pages/informe-faltantes.html" class="tree-sublink">Demanda no Satisfecha</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <!-- Overlay del Sidebar -->
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
     <footer>
       <p>&copy; 2024 Gestiones Lamda</p>

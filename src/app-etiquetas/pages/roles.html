@@ -83,9 +83,11 @@
     }
 
     .modal-content {
-      position: relative;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       background-color: white;
-      margin: 10% auto;
       padding: 20px;
       width: 80%;
       max-width: 500px;
@@ -152,23 +154,43 @@
       background-color: #c82333;
     }
 
-    .volver {
-      position: absolute;
-      top: 20px;
-      left: 30px;
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 30px;
+      gap: 20px;
     }
 
-    .volver a {
+    .admin-header .header-left {
+      display: flex;
+      align-items: center;
+      gap: 25px;
+    }
+
+    .admin-header .header-title {
+      margin: 0;
+      font-size: 1.8em;
+      color: var(--primary-color);
+    }
+
+    .admin-header .btn-volver {
       text-decoration: none;
       font-size: 0.9em;
       color: var(--primary-color);
       border: 1px solid var(--primary-color);
-      padding: 6px 12px;
+      padding: 8px 16px;
       border-radius: 6px;
-      transition: background-color 0.3s ease;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .volver a:hover {
+    .admin-header .btn-volver:hover {
       background-color: var(--primary-color);
       color: white;
     }
@@ -176,10 +198,12 @@
 </head>
 <body>
   <div class="container">
-    <header style="position: relative;">
-      <h1>Administración de Roles</h1>
-      <div class="volver">
-        <a href="usuarios.html">← Volver a Administración de Usuarios</a>
+    <header class="admin-header">
+      <div class="header-left">
+        <div class="volver-container">
+          <a href="usuarios.html" class="btn-volver">← Volver a Administración de Usuarios</a>
+        </div>
+        <h1 class="header-title">Administración de Roles</h1>
       </div>
     </header>
 

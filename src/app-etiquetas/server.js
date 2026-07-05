@@ -472,6 +472,95 @@ app.get('/api/open-dist', (req, res) => {
   });
 });
 
+
+// Helper for local HTTP GET requests
+const http = require('http');
+function httpGetJson(url) {
+  return new Promise((resolve, reject) => {
+    http.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(new Error('Invalid JSON response: ' + data.substring(0, 100)));
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+// Módulo Producción (resumen_faltantes_parciales)
+router.get('/pizarra/resumen_faltantes_parciales', async (req, res) => {
+  try {
+    const data = await httpGetJson('http://localhost:3002/api/produccion/pedidos-articulos');
+    const articulos = data.data || [];
+    // Filtrar por estado FALTANTE o PARCIAL
+    const faltantes = articulos.filter(a => a.estado === 'FALTANTE' || a.estado === 'PARCIAL');
+    res.json({
+      success: true,
+      data: faltantes.map(a => ({
+        articulo_numero: a.articulo_numero,
+        descripcion: a.descripcion,
+        faltante: parseFloat(a.faltante) || 0,
+        estado: a.estado
+      }))
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/resumen_faltantes_parciales:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Módulo Logística/Impresión (bandeja_imprimir_modificado)
+router.get('/pizarra/bandeja_imprimir_modificado', async (req, res) => {
+  try {
+    // Usamos el pool centralizado para contar presupuestos activos en 'Imprimir' o 'Imprimir_Modificado' y estado 'Presupuesto/Orden'
+    const query = `
+      SELECT COUNT(*) as count
+      FROM public.presupuestos
+      WHERE activo = true
+        AND secuencia IN ('Imprimir', 'Imprimir_Modificado')
+        AND estado = 'Presupuesto/Orden'
+    `;
+    const result = await pool.query(query);
+    res.json({
+      success: true,
+      count: parseInt(result.rows[0].count) || 0
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/bandeja_imprimir_modificado:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Módulo Mantenimiento (carpas activas)
+router.get('/pizarra/mantenimiento_carpas', async (req, res) => {
+  try {
+    const data = await httpGetJson('http://localhost:3002/api/produccion/mantenimiento/tratamientos');
+    const tratamientos = data.data || [];
+    // Filtrar por tratamientos en curso (estado !== 'FINALIZADO')
+    const activos = tratamientos.filter(t => t.estado !== 'FINALIZADO');
+    res.json({
+      success: true,
+      data: activos.map(t => {
+        const item = t.items && t.items[0] ? t.items[0] : {};
+        return {
+          id: t.id,
+          fecha_inicio_cuarentena: t.fecha_inicio_cuarentena || t.fecha_inicio_armado,
+          kilos_brutos_totales: parseFloat(t.kilos_brutos_totales) || 0,
+          item_nombre: item.item_nombre || ''
+        };
+      })
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/mantenimiento_carpas:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 // Montar las rutas API
 app.use('/api', router);
 app.use('/api', rutasUsuarios); // 🟩 NUEVAS rutas de usuarios
