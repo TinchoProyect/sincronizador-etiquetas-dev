@@ -99,8 +99,13 @@ const obtenerPresupuestos = async (req, res) => {
             cliente_id, // Añadimos compatibilidad con llamadas legacy front-end
             clienteName,
             presupuestoId, // Nuevo filtro por PK numérica
+            articulo, // Nuevo filtro por artículo (búsqueda universal LAMDA)
+            articulo_search,
             // Nuevo parámetro de filtro por estado
             estado,
+            // Nuevos filtros modernos: Canal Origen (Portal B2B vs Local) y Canal Facturación
+            canal_origen,
+            canal_facturacion,
             // Parámetros de paginación nuevos
             page = 1,
             pageSize = 100,
@@ -120,6 +125,7 @@ const obtenerPresupuestos = async (req, res) => {
 
         // Validamos cual parámetro de cliente prevalece
         const finalClienteId = clienteId || cliente_id;
+        const finalArticulo = articulo || articulo_search;
 
         // Convertir parámetros de paginación nueva a formato interno
         const currentPage = parseInt(page);
@@ -134,7 +140,7 @@ const obtenerPresupuestos = async (req, res) => {
         const finalOrder = order || order_dir || 'desc';
 
         console.log('📋 [PRESUPUESTOS] Filtros aplicados:', {
-            categoria, concepto, finalClienteId, clienteName, estado, fecha_desde, fecha_hasta,
+            categoria, concepto, finalClienteId, clienteName, finalArticulo, estado, fecha_desde, fecha_hasta,
             monto_min, monto_max, sheet_id,
             page: currentPage, pageSize: itemsPerPage, sortBy: finalSortBy, order: finalOrder
         });
@@ -153,18 +159,32 @@ const obtenerPresupuestos = async (req, res) => {
                 p.id_cliente as cliente_id,
                 COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
                 COALESCE((
-                    SELECT SUM(d.cantidad * d.precio1) 
+                    SELECT ROUND(SUM( 
+                        (d.cantidad * COALESCE(d.precio1, d.valor1 * (1 + COALESCE(d.camp2, 0.21)), 0)) 
+                        * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END) - (COALESCE(d.descuento_adicional, 0) / 100.0))
+                    ), 2)
                     FROM public.presupuestos_detalles d 
                     WHERE d.id_presupuesto = p.id
-                ), 0) * (1 - COALESCE(p.descuento, 0)) as total_final,
-                COALESCE(p.descuento, 0) * 100 as descuento,
+                ), 0) as total_final,
+                (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN COALESCE(p.descuento, 0) ELSE COALESCE(p.descuento, 0) * 100 END) as descuento,
+                p.nota,
                 0 as monto,
                 p.fecha as fecha_registro,
                 p.activo,
                 p.estado,
                 p.estado_logistico,
                 p.agente,
-                EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado,
+                EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')) as esta_facturado,
+                (
+                    SELECT CASE 
+                        WHEN f.estado = 'APROBADA' THEN 'ARCA'
+                        WHEN f.estado = 'APROBADA_LOCAL' THEN 'LOCAL'
+                        ELSE 'LOCAL'
+                    END
+                    FROM public.factura_facturas f 
+                    WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    LIMIT 1
+                ) as origen_factura_canal,
                 (draft.last_draft_id IS NOT NULL) as tiene_borrador,
                 draft.last_draft_id as id_borrador,
                 (COALESCE(p.fecha_actualizacion, p.fecha) > draft.draft_date) as borrador_desincronizado,
@@ -172,10 +192,11 @@ const obtenerPresupuestos = async (req, res) => {
                 p.origen_facturacion,
                 p.origen_punto_venta,
                 p.origen_numero_factura,
+                p.modificado_portal,
                 (
                     SELECT f.id FROM public.factura_facturas f
-                    WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
-                      AND f.estado = 'APROBADA'
+                    WHERE (f.presupuesto_id = p.id OR f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END))
+                      AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
                     LIMIT 1
                 ) AS factura_asociada_id
             FROM public.presupuestos p
@@ -183,10 +204,10 @@ const obtenerPresupuestos = async (req, res) => {
             LEFT JOIN (
                 SELECT presupuesto_id, MAX(id) as last_draft_id, MAX(COALESCE(updated_at, created_at)) as draft_date
                 FROM public.factura_facturas
-                WHERE cae IS NULL AND estado = 'BORRADOR'
+                WHERE cae IS NULL AND estado IN ('BORRADOR', 'PENDIENTE_FACTURACION')
                 GROUP BY presupuesto_id
             ) draft ON draft.presupuesto_id = p.id
-            WHERE p.activo = true
+            WHERE p.activo = true AND (p.archivado IS NULL OR p.archivado = false)
         `;
 
         const params = [];
@@ -220,9 +241,9 @@ const obtenerPresupuestos = async (req, res) => {
             query += ` AND c.cliente_id = $${paramCount}`;
             params.push(parseInt(finalClienteId));
         } else if (clienteName) {
-            // Filtro por nombre/apellido del cliente
+            // Filtro por nombre/apellido/razon_social del cliente
             paramCount++;
-            query += ` AND LOWER(c.nombre || ' ' || COALESCE(c.apellido,'')) LIKE LOWER($${paramCount})`;
+            query += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(c.razon_social, '')) LIKE LOWER($${paramCount})`;
             params.push(`%${clienteName}%`);
         } else if (concepto) {
             // Filtro legacy por concepto (mantener compatibilidad)
@@ -267,6 +288,48 @@ const obtenerPresupuestos = async (req, res) => {
             params.push(parseInt(presupuestoId));
         }
 
+        // Filtro por Canal / Origen (Portal B2B vs Local)
+        if (canal_origen) {
+            if (canal_origen === 'portal') {
+                query += ` AND (p.agente = 'Portal B2B' OR p.modificado_portal = true)`;
+            } else if (canal_origen === 'local') {
+                query += ` AND (COALESCE(p.agente, '') != 'Portal B2B' AND (p.modificado_portal IS NULL OR p.modificado_portal = false))`;
+            }
+        }
+
+        // Filtro por Estado / Canal de Facturación
+        if (canal_facturacion) {
+            if (canal_facturacion === 'arca') {
+                query += ` AND (EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR p.origen_facturacion IN ('AFIP/ARCA', 'LAMDA'))`;
+            } else if (canal_facturacion === 'local') {
+                query += ` AND (EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA_LOCAL') OR p.origen_facturacion = 'LAMDA INTERNO')`;
+            } else if (canal_facturacion === 'pendiente') {
+                query += ` AND NOT EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')) AND (p.origen_facturacion IS NULL OR p.origen_facturacion = 'PENDIENTE') AND (p.comprobante_lomasoft IS NULL OR TRIM(p.comprobante_lomasoft) = '')`;
+            } else if (canal_facturacion === 'lomasoft') {
+                query += ` AND ((p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '') OR p.origen_facturacion = 'LOMASOFT')`;
+            }
+        }
+
+        // Filtro acumulativo por artículo (Universal Search LAMDA: AND por cada término separado por espacios)
+        if (finalArticulo && typeof finalArticulo === 'string' && finalArticulo.trim().length > 0) {
+            const terminos = finalArticulo.trim().toLowerCase().split(/\s+/).filter(Boolean);
+            if (terminos.length > 0) {
+                const subCondiciones = [];
+                terminos.forEach(term => {
+                    paramCount++;
+                    subCondiciones.push(`LOWER(COALESCE(vpd.descripcion, '') || ' ' || COALESCE(vpd.articulo, '') || ' ' || COALESCE(vpd.articulo_numero, '')) LIKE $${paramCount}`);
+                    params.push(`%${term}%`);
+                });
+
+                query += ` AND EXISTS (
+                    SELECT 1 
+                    FROM public.v_presupuestos_detalles_resueltos vpd
+                    WHERE (vpd.id_presupuesto = p.id OR vpd.id_presupuesto_ext = p.id_presupuesto_ext)
+                      AND ${subCondiciones.join(' AND ')}
+                )`;
+            }
+        }
+
         // Filtro por estado - Filtro por Estado – 2024-12-19
         if (estado) {
             // Soportar múltiples estados (array o string separado por comas)
@@ -278,21 +341,26 @@ const obtenerPresupuestos = async (req, res) => {
             }
 
             if (estadosArray.length > 0) {
-                // QA Bugfix 2: Falso Estado 'FACTURADO'
-                const includesFacturado = estadosArray.includes('FACTURADO');
-                const realStates = estadosArray.filter(e => e !== 'FACTURADO');
+                // QA Bugfix 2: Estado 'Facturado' comprensivo
+                const includesFacturado = estadosArray.some(e => e.toUpperCase() === 'FACTURADO');
+                const realStates = estadosArray.filter(e => e.toUpperCase() !== 'FACTURADO');
 
                 let stateConditions = [];
 
                 if (realStates.length > 0) {
-                    const estadosPlaceholders = realStates.map((_, index) => `$${paramCount + index + 1}`).join(', ');
+                    const placeholders = realStates.map((_, index) => `$${paramCount + index + 1}`).join(', ');
                     paramCount += realStates.length;
-                    stateConditions.push(`p.estado IN (${estadosPlaceholders})`);
+                    stateConditions.push(`UPPER(TRIM(p.estado)) IN (SELECT UPPER(UNNEST(ARRAY[${placeholders}]::text[])))`);
                     params.push(...realStates);
                 }
 
                 if (includesFacturado) {
-                    stateConditions.push(`(EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != ''))`);
+                    stateConditions.push(`(
+                        UPPER(TRIM(p.estado)) = 'FACTURADO'
+                        OR EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL'))
+                        OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
+                        OR p.origen_facturacion IN ('AFIP/ARCA', 'LAMDA INTERNO', 'LAMDA')
+                    )`);
                 }
 
                 if (stateConditions.length > 0) {
@@ -487,7 +555,7 @@ const obtenerPresupuestos = async (req, res) => {
             SELECT COUNT(*) as total
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
-            WHERE p.activo = true
+            WHERE p.activo = true AND (p.archivado IS NULL OR p.archivado = false)
         `;
 
         // Aplicar mismos filtros para el conteo
@@ -495,9 +563,23 @@ const obtenerPresupuestos = async (req, res) => {
         let countParamCount = 0;
 
         if (categoria) {
-            countParamCount++;
-            countQuery += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${countParamCount})`;
-            countParams.push(`%${categoria}%`);
+            if (categoria === 'Orden de Retiro') {
+                countQuery += ` AND (p.tipo_comprobante = 'Orden de Retiro' OR p.estado IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado'))`;
+            } else {
+                countParamCount++;
+                countQuery += ` AND LOWER(p.tipo_comprobante) LIKE LOWER($${countParamCount})`;
+                countParams.push(`%${categoria}%`);
+            }
+        }
+
+        if (categoria_exclude) {
+            if (categoria_exclude === 'Orden de Retiro') {
+                countQuery += ` AND (p.tipo_comprobante != 'Orden de Retiro' AND p.estado NOT IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado'))`;
+            } else {
+                countParamCount++;
+                countQuery += ` AND LOWER(p.tipo_comprobante) NOT LIKE LOWER($${countParamCount})`;
+                countParams.push(`%${categoria_exclude}%`);
+            }
         }
 
         // Aplicar mismo filtro de cliente para el conteo - Filtro cliente + Typeahead + Fechas – 2024-12-19
@@ -507,7 +589,7 @@ const obtenerPresupuestos = async (req, res) => {
             countParams.push(parseInt(finalClienteId));
         } else if (clienteName) {
             countParamCount++;
-            countQuery += ` AND LOWER(c.nombre || ' ' || COALESCE(c.apellido,'')) LIKE LOWER($${countParamCount})`;
+            countQuery += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(c.razon_social, '')) LIKE LOWER($${countParamCount})`;
             countParams.push(`%${clienteName}%`);
         } else if (concepto) {
             countParamCount++;
@@ -551,6 +633,48 @@ const obtenerPresupuestos = async (req, res) => {
             countParams.push(parseInt(presupuestoId));
         }
 
+        // Filtro por Canal / Origen (Portal B2B vs Local) para el conteo
+        if (canal_origen) {
+            if (canal_origen === 'portal') {
+                countQuery += ` AND (p.agente = 'Portal B2B' OR p.modificado_portal = true)`;
+            } else if (canal_origen === 'local') {
+                countQuery += ` AND (COALESCE(p.agente, '') != 'Portal B2B' AND (p.modificado_portal IS NULL OR p.modificado_portal = false))`;
+            }
+        }
+
+        // Filtro por Estado / Canal de Facturación para el conteo
+        if (canal_facturacion) {
+            if (canal_facturacion === 'arca') {
+                countQuery += ` AND (EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR p.origen_facturacion IN ('AFIP/ARCA', 'LAMDA'))`;
+            } else if (canal_facturacion === 'local') {
+                countQuery += ` AND (EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA_LOCAL') OR p.origen_facturacion = 'LAMDA INTERNO')`;
+            } else if (canal_facturacion === 'pendiente') {
+                countQuery += ` AND NOT EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')) AND (p.origen_facturacion IS NULL OR p.origen_facturacion = 'PENDIENTE') AND (p.comprobante_lomasoft IS NULL OR TRIM(p.comprobante_lomasoft) = '')`;
+            } else if (canal_facturacion === 'lomasoft') {
+                countQuery += ` AND ((p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '') OR p.origen_facturacion = 'LOMASOFT')`;
+            }
+        }
+
+        // Filtro acumulativo por artículo para el conteo
+        if (finalArticulo && typeof finalArticulo === 'string' && finalArticulo.trim().length > 0) {
+            const terminos = finalArticulo.trim().toLowerCase().split(/\s+/).filter(Boolean);
+            if (terminos.length > 0) {
+                const subCondiciones = [];
+                terminos.forEach(term => {
+                    countParamCount++;
+                    subCondiciones.push(`LOWER(COALESCE(vpd.descripcion, '') || ' ' || COALESCE(vpd.articulo, '') || ' ' || COALESCE(vpd.articulo_numero, '')) LIKE $${countParamCount}`);
+                    countParams.push(`%${term}%`);
+                });
+
+                countQuery += ` AND EXISTS (
+                    SELECT 1 
+                    FROM public.v_presupuestos_detalles_resueltos vpd
+                    WHERE (vpd.id_presupuesto = p.id OR vpd.id_presupuesto_ext = p.id_presupuesto_ext)
+                      AND ${subCondiciones.join(' AND ')}
+                )`;
+            }
+        }
+
         // Aplicar mismo filtro de estado para el conteo - Filtro por Estado – 2024-12-19
         if (estado) {
             let estadosArray = [];
@@ -561,20 +685,25 @@ const obtenerPresupuestos = async (req, res) => {
             }
 
             if (estadosArray.length > 0) {
-                const includesFacturado = estadosArray.includes('FACTURADO');
-                const realStates = estadosArray.filter(e => e !== 'FACTURADO');
+                const includesFacturado = estadosArray.some(e => e.toUpperCase() === 'FACTURADO');
+                const realStates = estadosArray.filter(e => e.toUpperCase() !== 'FACTURADO');
 
                 let stateConditions = [];
 
                 if (realStates.length > 0) {
-                    const estadosPlaceholders = realStates.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
+                    const placeholders = realStates.map((_, index) => `$${countParamCount + index + 1}`).join(', ');
                     countParamCount += realStates.length;
-                    stateConditions.push(`p.estado IN (${estadosPlaceholders})`);
+                    stateConditions.push(`UPPER(TRIM(p.estado)) IN (SELECT UPPER(UNNEST(ARRAY[${placeholders}]::text[])))`);
                     countParams.push(...realStates);
                 }
 
                 if (includesFacturado) {
-                    stateConditions.push(`(EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != ''))`);
+                    stateConditions.push(`(
+                        UPPER(TRIM(p.estado)) = 'FACTURADO'
+                        OR EXISTS (SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL'))
+                        OR (p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '')
+                        OR p.origen_facturacion IN ('AFIP/ARCA', 'LAMDA INTERNO', 'LAMDA')
+                    )`);
                 }
 
                 if (stateConditions.length > 0) {
@@ -926,7 +1055,14 @@ const obtenerSugerenciasClientes = async (req, res) => {
 const obtenerSugerenciasArticulos = async (req, res) => {
     try {
         const qRaw = (req.query.q || '').trim();
-        if (!qRaw) {
+        const qClienteRaw = String(req.query.cliente_id || '').trim();
+        const qClienteLower = qClienteRaw.toLowerCase();
+        const esProspectoQuery = qClienteLower === 'prospecto' || qClienteLower === 'libre';
+        let clienteId = parseInt(qClienteRaw, 10);
+        if (isNaN(clienteId)) clienteId = 0;
+        const isAllRequested = req.query.all === 'true' || req.query.catalogo === 'true' || qRaw === '*' || qRaw.toLowerCase() === 'all';
+
+        if (!qRaw && !isAllRequested) {
             return res.json({
                 success: true,
                 data: [],
@@ -935,12 +1071,12 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             });
         }
 
-        // limit: default 50, máximo 200
+        // limit: default 50 (o 3000 para catálogo completo all=true)
+        const isAll = (req.query.all === 'true' || req.query.all === '1');
         const limitParam = parseInt(req.query.limit, 10);
-        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
+        const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 3000) : (isAll ? 3000 : 50);
 
         // Recuperar Lista de Precios basada en cliente_id
-        const clienteId = parseInt(req.query.cliente_id, 10);
         let lista = 1;
 
         if (clienteId > 0) {
@@ -962,26 +1098,89 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             lista === 4 ? 'pa.consumidor_final' :
             lista === 5 ? 'pa.lista_5' : 'pa.precio_neg';
 
-        // Tokenización (múltiples palabras) – tolerante a espacios y acentos (solo para logs);
-        // en SQL usamos ILIKE para insensibilidad de mayúsc/minúsc.
-        const tokens = qRaw
+        // Tokenización (múltiples palabras)
+        const tokens = (!isAllRequested && qRaw) ? qRaw
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
             .split(/\s+/)
-            .filter(Boolean);
+            .map(t => t.replace(/#/g, '').trim())
+            .filter(Boolean) : [];
 
         // Si parece código de barras (solo dígitos 8–14), lo priorizamos como igualdad exacta
         const isBarcode = /^\d{8,14}$/.test(qRaw);
 
-        // Armado dinámico del WHERE con placeholders
-        const fields = ['src.descripcion', 'src.articulo_numero', 'src.codigo_barras'];
+        // Si no se especifica, y clienteId > 0 o se especifica lista_id o es prospecto, usar precios Bunker por defecto
+        const usarBunker = req.query.usar_precios_bunker !== 'false' && (clienteId > 0 || !!req.query.lista_id || !!req.query.lista_bunker_id || esProspectoQuery || qClienteRaw.length > 0);
+
+        let listaBunkerId = (req.query.lista_id || req.query.lista_bunker_id) ? parseInt(req.query.lista_id || req.query.lista_bunker_id, 10) : null;
+        if (usarBunker && !listaBunkerId) {
+            if (!esProspectoQuery && (clienteId > 0 || qClienteRaw.length > 0)) {
+                const clientPId = String(clienteId > 0 ? clienteId : qClienteRaw).padStart(4, '0');
+                const clientRawId = qClienteRaw;
+                const clientIntId = clienteId > 0 ? clienteId : null;
+
+                try {
+                    // 1. Buscar lista asignada específicamente en bunker_cliente_listas_precios
+                    const rBunkerList = await req.db.query(`
+                        SELECT bclp.bunker_lista_precio_id
+                        FROM public.bunker_clientes bc
+                        INNER JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
+                        WHERE bc.codigo_bunker_cliente ILIKE $1
+                           OR bc.lomas_soft_id = $1
+                           OR bc.lomas_soft_id = $2 
+                           OR ($3::integer IS NOT NULL AND bc.id = $3::integer)
+                        LIMIT 1
+                    `, [clientRawId, clientPId, clientIntId]);
+
+                    if (rBunkerList.rows.length && rBunkerList.rows[0].bunker_lista_precio_id) {
+                        listaBunkerId = parseInt(rBunkerList.rows[0].bunker_lista_precio_id, 10);
+                    }
+                } catch (e) {
+                    console.warn('[PRESUPUESTOS] Error buscando lista bunker personalizada:', e.message);
+                }
+
+                // 2. Si no tiene lista bunker personalizada, mapear según lista_precios del cliente o fallback a Dietética (5)
+                if (!listaBunkerId) {
+                    if (lista === 4) listaBunkerId = 6; // Consumidor Final
+                    else if (lista === 2) listaBunkerId = 2; // Mayorista
+                    else if (lista === 3) listaBunkerId = 7; // Gastronómicos
+                    else if (lista === 1) listaBunkerId = 1; // Lista Nico
+                    else listaBunkerId = 5; // Dietética por defecto
+                }
+            } else {
+                listaBunkerId = 5; // Dietética por defecto para consultas libres / prospectos
+            }
+        }
+
+        // Armado dinámico del WHERE con placeholders (incluye atributos completos, silenciosos y taxonomía)
+        const fields = usarBunker
+            ? [
+                'COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion)',
+                'bla.articulo_numero',
+                'COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero)',
+                'CAST(ba.propiedades_dinamicas AS TEXT)',
+                'COALESCE(bf.nombre, \'\')',
+                'COALESCE(ba.rubro, \'\')',
+                'COALESCE(ba.sub_rubro, \'\')',
+                'COALESCE(src.descripcion, \'\')'
+              ]
+            : [
+                'src.descripcion', 
+                'src.articulo_numero', 
+                'src.codigo_barras',
+                'CAST(ba.propiedades_dinamicas AS TEXT)',
+                'COALESCE(ba.rubro, \'\')',
+                'COALESCE(ba.sub_rubro, \'\')'
+              ];
+
         const whereParts = [];
         const params = [];
         let p = 0;
 
         if (isBarcode) {
             p += 1;
-            whereParts.push(`src.codigo_barras = $${p}`);
+            const barcodeField = usarBunker ? 'COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero)' : 'src.codigo_barras';
+            whereParts.push(`${barcodeField} = $${p}`);
             params.push(qRaw);
         }
 
@@ -992,7 +1191,6 @@ const obtenerSugerenciasArticulos = async (req, res) => {
                 params.push(`%${t}%`);
                 return `(${fields.map(f => `${f} ILIKE ${ph}`).join(' OR ')})`;
             });
-            // Si ya agregamos el OR de código de barras exacto, incluimos AND-group aparte
             if (isBarcode) {
                 whereParts.push(`(${andGroup.join(' AND ')})`);
             } else {
@@ -1000,84 +1198,502 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             }
         }
 
-        // Si no hay condiciones, devolvemos vacío (no debería ocurrir porque qRaw existe)
-        if (!whereParts.length) {
-            return res.json({ success: true, data: [], query: qRaw, total: 0, timestamp: new Date().toISOString() });
+        let whereClause = '';
+        if (whereParts.length > 0) {
+            whereClause = isBarcode
+                ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
+                : `WHERE ${whereParts.join(' AND ')}`;
         }
 
-        const whereClause = isBarcode
-            ? `WHERE (${whereParts[0]}) OR (${whereParts.slice(1).join(' AND ') || 'FALSE'})`
-            : `WHERE ${whereParts.join(' AND ')}`;
-
         let sql;
-        const usarBunker = (req.query.usar_precios_bunker === 'true' || req.query.usar_precios_bunker === true) && clienteId > 0;
+
+        const cteReservas = `
+      WITH reservas_crudas AS (
+        SELECT
+          COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo) AS articulo_numero,
+          SUM(pd.cantidad) AS cantidad_reservada
+        FROM public.presupuestos_detalles pd
+        JOIN public.presupuestos p ON p.id = pd.id_presupuesto
+        LEFT JOIN public.stock_real_consolidado src_res ON (src_res.articulo_numero = pd.articulo OR src_res.codigo_barras = pd.articulo)
+        LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo)
+        WHERE p.activo = true
+          AND COALESCE(p.archivado, false) = false
+          AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
+          AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
+          AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Entregado', 'Finalizado', 'Cancelado')
+          AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO')
+          AND p.factura_id IS NULL
+          AND p.id_factura_lomasoft IS NULL
+          AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
+        GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo)
+      )
+        `;
 
         if (usarBunker) {
             p += 1;
-            params.push(String(clienteId).padStart(4, '0'));
-            const clientPId = p;
+            params.push(listaBunkerId);
+            const pListaBunkerId = p;
+
+            whereClause += (whereClause ? ' AND ' : 'WHERE ') + `bla.lista_id = $${pListaBunkerId} AND COALESCE(bla.disponible, false) = true AND COALESCE(bla.precio_final, 0) > 0`;
 
             sql = `
+      ${cteReservas}
       SELECT
-        src.codigo_barras,
-        src.articulo_numero,
+        COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero) AS codigo_barras,
+        COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero) AS articulo_numero,
         COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) AS descripcion,
-        COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
-        COALESCE(bla.precio_final / (1 + COALESCE(bla.iva, pa.iva, 21) / 100.0), ${colPrecio}, 0) AS precio_venta,
-        COALESCE(bla.iva, pa.iva, 21) AS iva
-      FROM public.stock_real_consolidado src
-      LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
-      LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = $${clientPId}
-      LEFT JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
-      LEFT JOIN public.bunker_lista_articulos bla ON bla.lista_id = bclp.bunker_lista_precio_id 
-        AND (bla.articulo_numero = src.articulo_numero OR bla.articulo_numero = src.codigo_barras)
-      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
+        -- Stock Físico (Consolidado)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            COALESCE(src.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+          ELSE
+            COALESCE(src.stock_consolidado, 0)
+        END AS stock_fisico,
+        -- Stock Reservado (en pedidos activos)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            COALESCE(res_art.cantidad_reservada, 0) + CEIL(COALESCE(res_hijo.cantidad_reservada, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)::numeric)
+          ELSE
+            COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)
+        END AS stock_reservado,
+        -- Stock Disponible Real
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+            FLOOR(
+              GREATEST(0, 
+                COALESCE(src_hijo.stock_consolidado, 0) - (
+                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                )
+              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+            )
+          ELSE
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+        END AS stock_disponible,
+        -- Stock consolidado (disponible para retrocompatibilidad)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+            FLOOR(
+              GREATEST(0, 
+                COALESCE(src_hijo.stock_consolidado, 0) - (
+                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                )
+              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+            )
+          ELSE
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+        END AS stock_consolidado,
+        COALESCE(bla.precio_final / (1 + COALESCE(bla.iva, ba.porcentaje_iva, 21) / 100.0), 0) AS precio_venta,
+        COALESCE(bla.precio_final, 0) AS precio_final,
+        COALESCE(bla.iva, ba.porcentaje_iva, 21) AS iva,
+        COALESCE(ba.kilos_unidad, src.kilos_unidad, 1.0) AS kilos_unidad,
+        COALESCE(src.es_pack, ba.es_pack, false) AS es_pack,
+        COALESCE(src.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
+        COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
+        ba.familia_id,
+        ba.rubro,
+        ba.sub_rubro,
+        bf.nombre AS familia_nombre,
+        ba.propiedades_dinamicas AS propiedades_dinamicas,
+        src.descripcion AS descripcion_legacy
+      FROM public.bunker_lista_articulos bla
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = bla.articulo_numero
+      LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+      LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = bla.articulo_numero OR src.codigo_barras = bla.articulo_numero)
+      LEFT JOIN public.stock_real_consolidado src_sub ON (
+          src_sub.articulo_numero = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+          OR src_sub.codigo_barras = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+      )
+      LEFT JOIN LATERAL (
+          SELECT src_sub.stock_consolidado, src_sub.articulo_numero
+          LIMIT 1
+      ) src_hijo ON true
+      LEFT JOIN reservas_crudas res_art ON (res_art.articulo_numero = COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero))
+      LEFT JOIN reservas_crudas res_hijo ON (res_hijo.articulo_numero = src_hijo.articulo_numero)
+      LEFT JOIN LATERAL (
+          SELECT SUM(rc_padre.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
+          FROM public.bunker_articulos bp
+          JOIN reservas_crudas rc_padre ON rc_padre.articulo_numero = bp.articulo_id
+          WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
+            AND (bp.pack_hijo_codigo = COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero)
+                 OR bp.pack_hijo_codigo = COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero))
+      ) res_padres ON true
       ${whereClause}
       ORDER BY
-        CASE WHEN COALESCE(src.stock_consolidado,0) > 0 THEN 0 ELSE 1 END ASC,
+        CASE
+          WHEN (
+            CASE
+              WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+                   AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+              THEN
+                GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+                FLOOR(
+                  GREATEST(0, 
+                    COALESCE(src_hijo.stock_consolidado, 0) - (
+                      COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                    )
+                  ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+                )
+              ELSE
+                GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+            END
+          ) > 0 THEN 0 ELSE 1 END ASC,
         COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) ASC
       LIMIT $${p + 1}
     `;
         } else {
             sql = `
+      ${cteReservas}
       SELECT
         src.codigo_barras,
         src.articulo_numero,
         src.descripcion,
-        COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
+        -- Stock Físico (Consolidado)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            COALESCE(src.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+          ELSE
+            COALESCE(src.stock_consolidado, 0)
+        END AS stock_fisico,
+        -- Stock Reservado (en pedidos activos)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            COALESCE(res_art.cantidad_reservada, 0) + CEIL(COALESCE(res_hijo.cantidad_reservada, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)::numeric)
+          ELSE
+            COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)
+        END AS stock_reservado,
+        -- Stock Disponible Real
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+            FLOOR(
+              GREATEST(0, 
+                COALESCE(src_hijo.stock_consolidado, 0) - (
+                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                )
+              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+            )
+          ELSE
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+        END AS stock_disponible,
+        -- Stock consolidado (disponible para retrocompatibilidad)
+        CASE
+          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+          THEN
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+            FLOOR(
+              GREATEST(0, 
+                COALESCE(src_hijo.stock_consolidado, 0) - (
+                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                )
+              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+            )
+          ELSE
+            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+        END AS stock_consolidado,
         COALESCE(${colPrecio}, 0) AS precio_venta,
-        COALESCE(pa.iva, 21) AS iva
+        COALESCE(pa.iva, 21) AS iva,
+        COALESCE(src.kilos_unidad, 1.0) AS kilos_unidad,
+        COALESCE(src.es_pack, ba.es_pack, false) AS es_pack,
+        COALESCE(src.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
+        COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
+        ba.familia_id,
+        ba.rubro,
+        ba.sub_rubro,
+        ba.propiedades_dinamicas AS propiedades_dinamicas,
+        src.descripcion AS descripcion_legacy
       FROM public.stock_real_consolidado src
       LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
+      LEFT JOIN public.stock_real_consolidado src_sub ON (
+          src_sub.articulo_numero = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+          OR src_sub.codigo_barras = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+      )
+      LEFT JOIN LATERAL (
+          SELECT src_sub.stock_consolidado, src_sub.articulo_numero
+          LIMIT 1
+      ) src_hijo ON true
+      LEFT JOIN reservas_crudas res_art ON (res_art.articulo_numero = COALESCE(ba.articulo_id, src.articulo_numero))
+      LEFT JOIN reservas_crudas res_hijo ON (res_hijo.articulo_numero = src_hijo.articulo_numero)
+      LEFT JOIN LATERAL (
+          SELECT SUM(rc_padre.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
+          FROM public.bunker_articulos bp
+          JOIN reservas_crudas rc_padre ON rc_padre.articulo_numero = bp.articulo_id
+          WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
+            AND (bp.pack_hijo_codigo = COALESCE(ba.articulo_id, src.articulo_numero)
+                 OR bp.pack_hijo_codigo = src.codigo_barras)
+      ) res_padres ON true
       ${whereClause}
       ORDER BY
-        CASE WHEN COALESCE(src.stock_consolidado,0) > 0 THEN 0 ELSE 1 END ASC,
+        CASE
+          WHEN (
+            CASE
+              WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
+                   AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
+              THEN
+                GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
+                FLOOR(
+                  GREATEST(0, 
+                    COALESCE(src_hijo.stock_consolidado, 0) - (
+                      COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+                    )
+                  ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
+                )
+              ELSE
+                GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
+            END
+          ) > 0 THEN 0 ELSE 1 END ASC,
         src.descripcion ASC
       LIMIT $${p + 1}
     `;
         }
         params.push(limit);
 
-        console.log('📋 [PRESUPUESTOS] Query artículos:', sql);
-        console.log('📋 [PRESUPUESTOS] Parámetros:', params);
-
         const result = await req.db.query(sql, params);
 
-        const sugerencias = result.rows.map(a => ({
-            codigo_barras: a.codigo_barras,
-            articulo_numero: a.articulo_numero,
-            codigo_articulo: a.codigo_barras, // Parity para PWA
-            numero: a.codigo_barras, // Fallback anterior
-            descripcion: a.descripcion,
-            precio_venta: parseFloat(a.precio_venta || 0),
-            stock_actual: parseFloat(a.stock_consolidado || 0),
-            stock_consolidado: parseFloat(a.stock_consolidado || 0),
-            iva: parseFloat(a.iva || 21), // Aseguramos propagar el IVA
-            alicuota_iva: parseFloat(a.iva || 21), // Fallback de paridad
-            text: `${a.descripcion} — [${a.articulo_numero}] (stock: ${Math.floor(a.stock_consolidado || 0)})`
-        }));
+        // Cargar reglas de jerarquía B2B si existen
+        let jerarquiaMap = new Map();
+        try {
+            const jRes = await req.db.query(`
+                SELECT familia_id, articulo_principal, eje_nivel_3, reglas_nivel_4, reglas_nivel_5 
+                FROM public.bunker_portal_b2b_jerarquia 
+                WHERE eje_nivel_3 IS NOT NULL AND TRIM(eje_nivel_3) != ''
+            `);
+            for (const jRow of jRes.rows) {
+                const famId = jRow.familia_id !== null && jRow.familia_id !== undefined ? jRow.familia_id : 0;
+                const artP = String(jRow.articulo_principal || '').trim().toLowerCase();
+                const rawEjeN3 = jRow.eje_nivel_3 ? String(jRow.eje_nivel_3).trim().toLowerCase() : '';
+                const ejesN3 = rawEjeN3 ? rawEjeN3.split(',').map(s => s.trim()).filter(Boolean) : [];
+                jerarquiaMap.set(`${famId}___${artP}`, {
+                    eje_nivel_3: rawEjeN3,
+                    ejes_nivel_3: ejesN3,
+                    reglas_nivel_4: jRow.reglas_nivel_4 && typeof jRow.reglas_nivel_4 === 'object' ? jRow.reglas_nivel_4 : {},
+                    reglas_nivel_5: jRow.reglas_nivel_5 && typeof jRow.reglas_nivel_5 === 'object' ? jRow.reglas_nivel_5 : {}
+                });
+            }
+        } catch (jErr) {
+            // Tabla opcional o vacía
+        }
 
-        console.log(`✅ [PRESUPUESTOS] Sugerencias de artículos encontradas: ${sugerencias.length} (limit=${limit})`);
+        // Cargar ofertas dinámicas activas para este contexto (cliente y lista de precios)
+        let mapaOfertas = {};
+        try {
+            const OfertasDinamicasService = require('../services/ofertasDinamicasService');
+            mapaOfertas = await OfertasDinamicasService.obtenerOfertasActivasParaContexto({
+                clienteId: clienteId || qClienteRaw,
+                listaPrecioId: listaBunkerId || lista
+            }, req.db);
+        } catch (eOfertas) {
+            console.warn('[PRESUPUESTOS] Advertencia al obtener ofertas dinámicas para sugerencias:', eOfertas.message);
+        }
+
+        const sugerencias = result.rows.map(a => {
+            let props = a.propiedades_dinamicas;
+            if (props && typeof props === 'string') {
+                try { props = JSON.parse(props); } catch (e) { props = null; }
+            }
+
+            let familia = a.familia_nombre ? String(a.familia_nombre).trim() : null;
+            if (!familia && a.rubro) familia = String(a.rubro).trim();
+            if (!familia) familia = 'General';
+
+            let articuloPrincipal = null;
+            if (props && props.articulo_principal) {
+                const rawArtPrinc = props.articulo_principal;
+                articuloPrincipal = (typeof rawArtPrinc === 'object' && rawArtPrinc.valor) 
+                    ? String(rawArtPrinc.valor).trim() 
+                    : String(rawArtPrinc).trim();
+            }
+            if (!articuloPrincipal && a.sub_rubro) articuloPrincipal = String(a.sub_rubro).trim();
+            if (!articuloPrincipal && a.descripcion) articuloPrincipal = String(a.descripcion).trim();
+            if (!articuloPrincipal) articuloPrincipal = 'General';
+
+            // Subcategorías (Niveles 3, 4 y 5)
+            let subCategoria = null;
+            let subSubCategoria = null;
+            let subSubSubCategoria = null;
+
+            const famId = a.familia_id || 0;
+            const jerarquiaKey = `${famId}___${articuloPrincipal.toLowerCase()}`;
+            const confRule = jerarquiaMap.get(jerarquiaKey) || null;
+
+            if (confRule && props && typeof props === 'object') {
+                const posObj = props.posiciones || props;
+                // 1. Resolver Nivel 3 (evaluando ejes configurados en cascada / orden de prioridad)
+                const targetEjesN3 = Array.isArray(confRule.ejes_nivel_3) && confRule.ejes_nivel_3.length > 0
+                    ? confRule.ejes_nivel_3
+                    : (confRule.eje_nivel_3 ? [confRule.eje_nivel_3] : []);
+
+                for (const targetEjeN3 of targetEjesN3) {
+                    for (const key in posObj) {
+                        if (Object.prototype.hasOwnProperty.call(posObj, key)) {
+                            const p = posObj[key];
+                            if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === targetEjeN3) {
+                                if (p.valor !== undefined && p.valor !== null && String(p.valor).trim() !== '') {
+                                    subCategoria = String(p.valor).trim();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (subCategoria) break;
+                }
+
+                // Resguardo Nivel 3: si hay ejes configurados pero este producto no coincide con ninguno
+                if (!subCategoria && targetEjesN3.length > 0) {
+                    subCategoria = 'General';
+                }
+
+                if (subCategoria && confRule.reglas_nivel_4) {
+                    const configuredEjeN4 = confRule.reglas_nivel_4[subCategoria] || null;
+                    if (configuredEjeN4) {
+                        const targetEjesN4 = Array.isArray(configuredEjeN4)
+                            ? configuredEjeN4.map(s => String(s).trim().toLowerCase()).filter(Boolean)
+                            : String(configuredEjeN4).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+                        for (const targetEjeN4 of targetEjesN4) {
+                            for (const key in posObj) {
+                                if (Object.prototype.hasOwnProperty.call(posObj, key)) {
+                                    const p = posObj[key];
+                                    if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === targetEjeN4) {
+                                        if (p.valor !== undefined && p.valor !== null && String(p.valor).trim() !== '') {
+                                            subSubCategoria = String(p.valor).trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (subSubCategoria) break;
+                        }
+
+                        // Resguardo Nivel 4: si la subrama tiene reglas pero este producto no coincide
+                        if (!subSubCategoria && targetEjesN4.length > 0) {
+                            subSubCategoria = 'General';
+                        }
+                    }
+                }
+
+                if (subCategoria && subSubCategoria && confRule.reglas_nivel_5) {
+                    const pathKeyN5 = `${subCategoria}___${subSubCategoria}`;
+                    const configuredEjeN5 = confRule.reglas_nivel_5[pathKeyN5] || null;
+                    if (configuredEjeN5) {
+                        const targetEjesN5 = Array.isArray(configuredEjeN5)
+                            ? configuredEjeN5.map(s => String(s).trim().toLowerCase()).filter(Boolean)
+                            : String(configuredEjeN5).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+                        for (const targetEjeN5 of targetEjesN5) {
+                            for (const key in posObj) {
+                                if (Object.prototype.hasOwnProperty.call(posObj, key)) {
+                                    const p = posObj[key];
+                                    if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === targetEjeN5) {
+                                        if (p.valor !== undefined && p.valor !== null && String(p.valor).trim() !== '') {
+                                            subSubSubCategoria = String(p.valor).trim();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if (subSubSubCategoria) break;
+                        }
+
+                        // Resguardo Nivel 5: si la sub-subrama tiene reglas pero este producto no coincide
+                        if (!subSubSubCategoria && targetEjesN5.length > 0) {
+                            subSubSubCategoria = 'General';
+                        }
+                    }
+                }
+            }
+
+            const ivaPct = parseFloat(a.iva || 21);
+            const kilos = parseFloat(a.kilos_unidad || 1.0) || 1.0;
+            const precioVentaNeto = parseFloat(a.precio_venta || 0);
+            const precioBrutoFinal = a.precio_final ? parseFloat(a.precio_final) : (precioVentaNeto * (1 + ivaPct / 100));
+            const precioKiloBruto = kilos > 0 ? (precioBrutoFinal / kilos) : precioBrutoFinal;
+            const precioKiloNeto = kilos > 0 ? (precioVentaNeto / kilos) : precioVentaNeto;
+
+            const artNum = String(a.articulo_numero || '').trim();
+            const ofertaActiva = mapaOfertas[artNum] || null;
+            let precioOfertaNeto = null;
+            let precioOfertaFinal = null;
+            let precioKiloOfertaFinal = null;
+            let precioKiloOfertaNeto = null;
+
+            if (ofertaActiva) {
+                const descPct = parseFloat(ofertaActiva.descuento_porcentaje) || 0;
+                if (ofertaActiva.precio_fijo_oferta) {
+                    precioOfertaFinal = parseFloat(ofertaActiva.precio_fijo_oferta);
+                    precioOfertaNeto = Math.round((precioOfertaFinal / (1 + ivaPct / 100)) * 100) / 100;
+                } else {
+                    precioOfertaNeto = Math.round(precioVentaNeto * (1 - descPct / 100) * 100) / 100;
+                    precioOfertaFinal = Math.round(precioBrutoFinal * (1 - descPct / 100) * 100) / 100;
+                }
+                precioKiloOfertaFinal = kilos > 0 ? (precioOfertaFinal / kilos) : precioOfertaFinal;
+                precioKiloOfertaNeto = kilos > 0 ? (precioOfertaNeto / kilos) : precioOfertaNeto;
+            }
+
+            const sf = Math.floor(parseFloat(a.stock_fisico || 0));
+            const sr = Math.floor(parseFloat(a.stock_reservado || 0));
+            const sd = Math.floor(parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)));
+            const stockStr = sr > 0 ? `disp: ${sd} | fís: ${sf}, res: ${sr}` : `stock: ${sd}`;
+
+            return {
+                codigo_barras: a.codigo_barras,
+                articulo_numero: a.articulo_numero,
+                producto_codigo: a.articulo_numero,
+                codigo_articulo: a.codigo_barras,
+                numero: a.codigo_barras,
+                descripcion: a.descripcion,
+                producto_descripcion: a.descripcion,
+                precio_venta: precioVentaNeto,
+                precio_neto: precioVentaNeto,
+                precio_final: precioBrutoFinal,
+                precio_kilo: precioKiloBruto,
+                precio_kilo_neto: precioKiloNeto,
+                oferta_activa: ofertaActiva ? {
+                    ...ofertaActiva,
+                    precio_oferta_neto: precioOfertaNeto,
+                    precio_oferta_final: precioOfertaFinal,
+                    precio_kilo_oferta_final: precioKiloOfertaFinal,
+                    precio_kilo_oferta_neto: precioKiloOfertaNeto
+                } : null,
+                kilos_unidad: kilos,
+                stock_fisico: sf,
+                stock_reservado: sr,
+                stock_disponible: sd,
+                stock_actual: sd,
+                stock_consolidado: sd,
+                iva: ivaPct,
+                iva_porcentaje: ivaPct,
+                alicuota_iva: ivaPct,
+                familia: familia,
+                articulo_principal: articuloPrincipal,
+                sub_categoria: subCategoria,
+                sub_sub_categoria: subSubCategoria,
+                sub_sub_sub_categoria: subSubSubCategoria,
+                es_pack: a.es_pack === true || a.es_pack === 't' || a.es_pack === 'true',
+                pack_unidades: parseInt(a.pack_unidades || 1, 10),
+                pack_hijo_codigo: a.pack_hijo_codigo || null,
+                propiedades_dinamicas: a.propiedades_dinamicas || null,
+                descripcion_legacy: a.descripcion_legacy || '',
+                text: `${a.descripcion} — [${a.articulo_numero}] (${stockStr})`
+            };
+        });
 
         return res.json({
             success: true,
@@ -1107,70 +1723,104 @@ const obtenerSugerenciasArticulos = async (req, res) => {
 const obtenerPrecioArticuloCliente = async (req, res) => {
     try {
         const idCliente = parseInt(req.query.cliente_id, 10) || 0;
-        const codigoBarras = (req.query.codigo_barras || '').trim();
+        const codigoBarras = (req.query.codigo_barras || req.query.articulo_codigo || '').trim();
+        const articuloNumero = (req.query.articulo_numero || req.query.articulo_codigo || '').trim();
         let descripcion = (req.query.descripcion || '').trim();
 
-        if (!codigoBarras && !descripcion) {
+        if (!codigoBarras && !descripcion && !articuloNumero) {
             return res.status(400).json({
                 success: false,
-                error: 'Falta codigo_barras o descripcion',
+                error: 'Falta codigo_barras, descripcion o articulo_numero',
                 timestamp: new Date().toISOString()
             });
         }
 
-        // 1) Búnker price lookup if active
+        // 1) Resolver finanzas y estructura Búnker del artículo (para precios o rentabilidad)
         const usarPreciosBunker = req.query.usar_precios_bunker === 'true' || req.query.usar_precios_bunker === true;
-        if (usarPreciosBunker && idCliente > 0) {
-            console.log(`🛡️ [PRESUPUESTOS] Buscando precio Búnker para cliente ${idCliente}, código: ${codigoBarras}, desc: ${descripcion}`);
+        let listaId = req.query.lista_id ? parseInt(req.query.lista_id, 10) : null;
+        if (!listaId && idCliente > 0) {
             try {
-                const queryBunker = `
-                    SELECT 
-                        bla.precio_final,
-                        bla.iva,
-                        COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion_resuelta
-                    FROM public.bunker_lista_articulos bla
-                    JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_lista_precio_id = bla.lista_id
+                const queryList = `
+                    SELECT bclp.bunker_lista_precio_id 
+                    FROM public.bunker_cliente_listas_precios bclp
                     JOIN public.bunker_clientes bc ON bc.id = bclp.bunker_cliente_id
-                    LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = bla.articulo_numero
-                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = bla.articulo_numero
                     WHERE bc.lomas_soft_id = LPAD($1, 4, '0')
-                      AND (
-                        bla.articulo_numero = $2 
-                        OR src.codigo_barras = $2
-                        OR LOWER(ba.descripcion) = LOWER($3)
-                        OR LOWER(ba.descripcion_generada) = LOWER($3)
-                        OR LOWER(src.descripcion) = LOWER($3)
-                      )
+                       OR bc.lomas_soft_id = $1
+                       OR (CASE WHEN $1 ~ '^[0-9]+$' AND LENGTH($1) < 10 THEN bc.id = $1::integer ELSE false END)
                     LIMIT 1
                 `;
-                const rBunker = await req.db.query(queryBunker, [
-                    String(idCliente), 
-                    codigoBarras || '', 
-                    descripcion || ''
-                ]);
-
-                if (rBunker.rows.length > 0) {
-                    const row = rBunker.rows[0];
-                    const ivaRate = Number(row.iva) || 21;
-                    const finalPrice = Number(row.precio_final) || 0;
-                    const netPrice = finalPrice / (1 + ivaRate / 100);
-                    console.log(`✅ [PRESUPUESTOS] Encontrado precio Búnker: ${finalPrice}, IVA: ${ivaRate}, Neto: ${netPrice}`);
-                    return res.json({
-                        success: true,
-                        data: {
-                            valor1: Number(netPrice.toFixed(4)) || 0,
-                            iva: ivaRate,
-                            lista_precios: 'Búnker',
-                            descripcion_resuelta: row.descripcion_resuelta || descripcion
-                        },
-                        timestamp: new Date().toISOString()
-                    });
-                } else {
-                    console.log(`⚠️ [PRESUPUESTOS] No se encontró precio Búnker para item. Usando fallback de Legacy.`);
+                const rList = await req.db.query(queryList, [String(idCliente)]);
+                if (rList.rows.length > 0) {
+                    listaId = rList.rows[0].bunker_lista_precio_id;
                 }
-            } catch (err) {
-                console.error('❌ [PRESUPUESTOS] Error al buscar precio Búnker:', err);
+            } catch (errList) {
+                console.warn('⚠️ [PRESUPUESTOS] Error buscando lista Bunker del cliente:', errList.message);
             }
+        }
+
+        let artIdBunker = null;
+        let descResueltaBunker = '';
+        let finanzasBunker = null;
+        let listaFinanciera = null;
+
+        try {
+            const queryId = `
+                SELECT ba.articulo_id, COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion_resuelta
+                FROM public.bunker_articulos ba
+                LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ba.articulo_id
+                WHERE ba.articulo_id = $1 
+                   OR src.articulo_numero = $1
+                   OR src.codigo_barras = $1
+                   OR ($2 <> '' AND (LOWER(ba.descripcion) = LOWER($2)
+                                  OR LOWER(ba.descripcion_generada) = LOWER($2)
+                                  OR LOWER(src.descripcion) = LOWER($2)))
+                LIMIT 1
+            `;
+            const rId = await req.db.query(queryId, [articuloNumero || codigoBarras || '', descripcion || '']);
+            if (rId.rows.length > 0) {
+                artIdBunker = rId.rows[0].articulo_id;
+                descResueltaBunker = rId.rows[0].descripcion_resuelta;
+
+                const BunkerService = require('../../logistica/services/bunkerService');
+                finanzasBunker = await BunkerService.obtenerRadiografiaFinanciera(req.db, artIdBunker, { solo_local: true, saltar_reposicion: true });
+                if (finanzasBunker && Array.isArray(finanzasBunker.listas_margenes)) {
+                    if (listaId) {
+                        listaFinanciera = finanzasBunker.listas_margenes.find(m => m.lista_id === listaId);
+                    }
+                    if (!listaFinanciera) {
+                        listaFinanciera = finanzasBunker.listas_margenes.find(m => m.es_patron) || finanzasBunker.listas_margenes[0];
+                    }
+                }
+            }
+        } catch (eBunker) {
+            console.warn('⚠️ [PRESUPUESTOS] Advertencia al calcular finanzas Búnker:', eBunker.message);
+        }
+
+        const costoOp = listaFinanciera ? Number(listaFinanciera.costo_operativo) || 0 : 0;
+        const costoTiempo = listaFinanciera ? Number(listaFinanciera.costo_tiempo) || 0 : 0;
+        const costoBulto = Number((costoOp - costoTiempo).toFixed(4)) || 0;
+        const gananciaReal = listaFinanciera ? Number(listaFinanciera.ganancia_real) || 0 : 0;
+
+        if (usarPreciosBunker && listaFinanciera) {
+            const ivaRate = Number(listaFinanciera.iva) || 21;
+            const finalPrice = Number(listaFinanciera.precio_final) || 0;
+            const netPrice = finalPrice / (1 + ivaRate / 100);
+
+            console.log(`✅ [PRESUPUESTOS] Precio Búnker real: Final ${finalPrice}, IVA ${ivaRate}, Neto ${netPrice}, CostoOp ${costoOp}, Ganancia ${gananciaReal}`);
+            return res.json({
+                success: true,
+                data: {
+                    valor1: Number(netPrice.toFixed(4)) || 0,
+                    iva: ivaRate,
+                    ganancia_real: gananciaReal,
+                    costo_operativo: costoOp,
+                    costo_bulto: costoBulto,
+                    costo_tiempo: costoTiempo,
+                    lista_precios: 'Búnker',
+                    descripcion_resuelta: descResueltaBunker || descripcion
+                },
+                timestamp: new Date().toISOString()
+            });
         }
 
         // 2) Lista de precios del cliente (default 1) - Legacy Fallback
@@ -1261,7 +1911,11 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
                 valor1: Number(valor) || 0,
                 iva: Number(p.iva) || 0,
                 lista_precios: lista,
-                descripcion_resuelta: descripcion
+                costo_operativo: costoOp,
+                costo_bulto: costoBulto,
+                costo_tiempo: costoTiempo,
+                ganancia_real: gananciaReal,
+                descripcion_resuelta: descResueltaBunker || descripcion
             },
             timestamp: new Date().toISOString()
         });
@@ -1489,9 +2143,13 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 COALESCE(p.descuento, 0) AS descuento,
                 p.formato_impresion,
                 p.activo,
-                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
-                c.cuit,
-                c.condicion_iva,
+                COALESCE(c.nombre || ' ' || c.apellido, bc.razon_social, bc.cliente_nombre, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                COALESCE(bc.cuit_cuil, c.cuit, '') as cuit,
+                COALESCE(c.dni, '') as dni,
+                COALESCE(bc.condicion_iva, c.condicion_iva, 'Consumidor Final') as condicion_iva,
+                COALESCE(c.telefono, c.celular, '') as telefono,
+                COALESCE(c.email, '') as email,
+                COALESCE(bc.preferencia_facturacion, c.preferencia_facturacion, 'PREGUNTAR') AS preferencia_facturacion,
                 COALESCE(
                     p.factura_id,
                     (SELECT f.id FROM public.factura_facturas f 
@@ -1513,17 +2171,34 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 p.origen_numero_factura,
                 COALESCE(p.usar_precios_bunker, false) AS usar_precios_bunker,
                 (
+                    SELECT CASE 
+                        WHEN f.estado = 'APROBADA' THEN 'ARCA'
+                        WHEN f.estado = 'APROBADA_LOCAL' THEN 'LOCAL'
+                        ELSE 'LOCAL'
+                    END
+                    FROM public.factura_facturas f 
+                    WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    LIMIT 1
+                ) as origen_factura_canal,
+                (
                     SELECT f.id FROM public.factura_facturas f
-                    WHERE f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END)
-                      AND f.estado = 'APROBADA'
+                    WHERE (f.presupuesto_id = p.id OR f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END))
+                      AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
                     LIMIT 1
                 ) AS factura_asociada_id,
                 bc.id AS bunker_cliente_id,
                 COALESCE(bc.whatsapp_facturas, '') AS whatsapp_bunker,
-                COALESCE(bc.email_facturas, '') AS email_bunker
+                COALESCE(bc.email_facturas, '') AS email_bunker,
+                COALESCE(bc.canal_envio_preferido, 'ambos') AS canal_envio_preferido
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
-            LEFT JOIN public.bunker_clientes bc ON bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0')
+            LEFT JOIN public.clientes c ON (
+                CASE WHEN p.id_cliente ~ '^[0-9]+$' THEN c.cliente_id = CAST(p.id_cliente AS integer) ELSE false END
+            )
+            LEFT JOIN public.bunker_clientes bc ON (
+                (c.cliente_id IS NOT NULL AND (bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') OR bc.lomas_soft_id = c.cliente_id::text OR bc.id = c.cliente_id))
+                OR (p.id_cliente ~ '^[0-9]+$' AND (bc.lomas_soft_id = LPAD(p.id_cliente, 4, '0') OR bc.lomas_soft_id = p.id_cliente))
+                OR bc.codigo_bunker_cliente = p.id_cliente
+            )
             WHERE p.id = $1 AND p.activo = true
         `;
 
@@ -2018,6 +2693,10 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 p.id_presupuesto_ext, 
                 p.tipo_comprobante,
                 p.descuento,
+                p.nota,
+                p.estado,
+                p.id_cliente,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as cliente_nombre,
                 c.condicion_iva,
                 f.pto_vta
             FROM public.presupuestos p
@@ -2026,7 +2705,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 SELECT presupuesto_id, pto_vta,
                        ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
                 FROM public.factura_facturas 
-                WHERE estado = 'APROBADA'
+                WHERE estado IN ('APROBADA', 'APROBADA_LOCAL')
             ) f ON f.presupuesto_id = p.id AND f.rn = 1
             WHERE p.id = $1 AND p.activo = true
         `;
@@ -2051,12 +2730,17 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, pd.articulo) as descripcion_articulo,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, ing.nombre, pd.articulo) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
                 pd.iva1,
                 pd.camp2,
+                COALESCE(pd.descuento_adicional, 0) as descuento_adicional,
+                COALESCE(pd.es_saldo_ingrediente, false) as es_saldo_ingrediente,
+                pd.ingrediente_id_saldo,
+                pd.kilos_saldo,
+                ing_saldo.nombre as ingrediente_saldo_nombre,
                 -- Cálculos FINALMENTE CORREGIDOS según análisis de datos reales
                 -- NETO = cantidad * valor1 (neto unitario)
                 ROUND(pd.cantidad * COALESCE(pd.valor1, 0), 2) as neto_linea,
@@ -2067,6 +2751,8 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             FROM public.presupuestos_detalles pd
             LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
             LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
+            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo)
+            LEFT JOIN public.ingredientes ing_saldo ON (ing_saldo.id = pd.ingrediente_id_saldo)
             WHERE pd.id_presupuesto_ext = $1
             ORDER BY pd.id
         `;
@@ -2092,6 +2778,11 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             precio1: parseFloat(item.precio1 || 0),    // Precio unitario CON IVA
             iva1: parseFloat(item.iva1 || 0),          // Monto IVA unitario
             camp2: parseFloat(item.camp2 || 0),        // Alícuota decimal (0.21)
+            descuento_adicional: parseFloat(item.descuento_adicional || 0),
+            es_saldo_ingrediente: item.es_saldo_ingrediente === true,
+            ingrediente_id_saldo: item.ingrediente_id_saldo ? parseInt(item.ingrediente_id_saldo, 10) : null,
+            kilos_saldo: item.kilos_saldo !== null && item.kilos_saldo !== undefined ? parseFloat(item.kilos_saldo) : null,
+            ingrediente_saldo_nombre: item.ingrediente_saldo_nombre || null,
             // VALORES TOTALES (para resumen/totales)
             neto: parseFloat(item.neto_linea || 0),
             iva: parseFloat(item.iva_linea || 0),
@@ -2158,7 +2849,11 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                     id_presupuesto_ext: presupuesto.id_presupuesto_ext,
                     tipo_comprobante: presupuesto.tipo_comprobante,
                     condicion_iva: presupuesto.condicion_iva,
-                    descuento: parseFloat(presupuesto.descuento || 0)
+                    descuento: parseFloat(presupuesto.descuento || 0) > 1 ? parseFloat(presupuesto.descuento) / 100 : parseFloat(presupuesto.descuento || 0),
+                    nota: presupuesto.nota || '',
+                    estado: presupuesto.estado || '',
+                    id_cliente: presupuesto.id_cliente || '',
+                    cliente_nombre: presupuesto.cliente_nombre || ''
                 },
                 detalles: detallesConCalculos,
                 detalles_sin_stock: detallesSinStock,
@@ -2197,11 +2892,20 @@ const obtenerEstados = async (req, res) => {
 
         const result = await req.db.query(query);
 
-        // Filtrar y limpiar estados
-        const estados = result.rows
-            .map(row => row.estado.trim())
-            .filter(estado => estado.length > 0)
-            .sort();
+        // Filtrar, limpiar y deduplicar estados insensible a mayúsculas/minúsculas
+        const estadosMap = new Map();
+        result.rows.forEach(row => {
+            const raw = (row.estado || '').trim();
+            if (!raw) return;
+            const key = raw.toUpperCase();
+            if (!estadosMap.has(key)) {
+                // Preservar formato canónico (ej: 'Anulado' en vez de 'ANULADO')
+                const canonical = (raw === 'ANULADO') ? 'Anulado' : raw;
+                estadosMap.set(key, canonical);
+            }
+        });
+
+        const estados = Array.from(estadosMap.values()).sort();
 
         console.log(`🔍 [PRESUPUESTOS] Ruta GET /estados - estados distintos: ${estados.length}`);
         console.log('📊 [PRESUPUESTOS] Estados encontrados:', estados);
@@ -2254,7 +2958,7 @@ const actualizarEstadoPresupuesto = async (req, res) => {
 
         // Verificar que el presupuesto existe
         const existsQuery = `
-            SELECT id, estado FROM presupuestos 
+            SELECT id, estado, secuencia FROM presupuestos 
             WHERE id = $1 AND activo = true
         `;
 
@@ -2269,35 +2973,58 @@ const actualizarEstadoPresupuesto = async (req, res) => {
             });
         }
 
+        const registroActual = existsResult.rows[0];
+        const nuevoEstado = estado.trim();
+        let nuevaSecuencia = (req.body.secuencia !== undefined && req.body.secuencia !== null && req.body.secuencia !== '') 
+            ? req.body.secuencia 
+            : null;
+
+        if (!nuevaSecuencia) {
+            if (nuevoEstado === 'Sin Confirmar') {
+                nuevaSecuencia = 'Standby';
+            } else if (nuevoEstado === 'Presupuesto/Orden' && (registroActual.secuencia === 'Standby' || registroActual.estado === 'Sin Confirmar' || registroActual.estado === 'Standby')) {
+                nuevaSecuencia = 'Imprimir';
+            }
+        }
+
         // Actualizar estado (y estado_logistico si viene en el body)
         let updateQuery;
         let queryParams;
 
         // Verificar si se envió estado_logistico
-        // Verificar usando hasOwnProperty o in para distinguir undefined
+        const esEntregado = (nuevoEstado && nuevoEstado.toLowerCase() === 'entregado') || 
+                            (req.body.estado_logistico && ['ENTREGADO', 'ENTREGADO_DEPOSITO'].includes(req.body.estado_logistico.toUpperCase()));
+
         if (req.body.estado_logistico !== undefined) {
             console.log(`📦 [PRESUPUESTOS] Actualizando también estado_logistico a: ${req.body.estado_logistico}`);
             updateQuery = `
                 UPDATE presupuestos
-                SET estado = $1, estado_logistico = $2
+                SET estado = $1, 
+                    estado_logistico = $2,
+                    secuencia = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE secuencia END,
+                    fecha_entrega_real = CASE WHEN $4 = true THEN COALESCE(fecha_entrega_real, CURRENT_TIMESTAMP) ELSE fecha_entrega_real END,
+                    fecha_actualizacion = CURRENT_TIMESTAMP
                 WHERE id = $3 AND activo = true
                 RETURNING *
             `;
-            queryParams = [estado.trim(), req.body.estado_logistico, parseInt(id)];
+            queryParams = [nuevoEstado, req.body.estado_logistico, parseInt(id), esEntregado, nuevaSecuencia];
         } else {
             updateQuery = `
                 UPDATE presupuestos
-                SET estado = $1
+                SET estado = $1,
+                    secuencia = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE secuencia END,
+                    fecha_entrega_real = CASE WHEN $3 = true THEN COALESCE(fecha_entrega_real, CURRENT_TIMESTAMP) ELSE fecha_entrega_real END,
+                    fecha_actualizacion = CURRENT_TIMESTAMP
                 WHERE id = $2 AND activo = true
                 RETURNING *
             `;
-            queryParams = [estado.trim(), parseInt(id)];
+            queryParams = [nuevoEstado, parseInt(id), esEntregado, nuevaSecuencia];
         }
 
         const updateResult = await req.db.query(updateQuery, queryParams);
         const presupuestoActualizado = updateResult.rows[0];
 
-        console.log(`✅ [PRESUPUESTOS] Estado actualizado: ${presupuestoActualizado.estado}`);
+        console.log(`✅ [PRESUPUESTOS] Estado actualizado: ${presupuestoActualizado.estado} | Secuencia: ${presupuestoActualizado.secuencia}`);
 
         res.json({
             success: true,
@@ -2344,13 +3071,37 @@ const obtenerDatosCliente = async (req, res) => {
                 c.nombre,
                 c.apellido,
                 c.condicion_iva,
+                c.lista_precios as legacy_lista_precios,
+                bc.id as bunker_cliente_id,
+                bc.codigo_bunker_cliente,
+                (bc.id IS NOT NULL) as en_bunker,
+                COALESCE(
+                    (SELECT JSON_AGG(JSON_BUILD_OBJECT('id', lp.id, 'nombre', lp.nombre))
+                     FROM public.bunker_cliente_listas_precios clp
+                     JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
+                     WHERE clp.bunker_cliente_id = bc.id),
+                    '[]'::json
+                ) as bunker_listas,
+                (SELECT lp.nombre
+                 FROM public.bunker_cliente_listas_precios clp
+                 JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
+                 WHERE clp.bunker_cliente_id = bc.id
+                 LIMIT 1) as bunker_lista_nombre,
+                (SELECT clp.bunker_lista_precio_id
+                 FROM public.bunker_cliente_listas_precios clp
+                 WHERE clp.bunker_cliente_id = bc.id
+                 LIMIT 1) as bunker_lista_id,
                 EXISTS (
                     SELECT 1 
-                    FROM public.bunker_clientes bc
-                    JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
-                    WHERE bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0')
+                    FROM public.bunker_cliente_listas_precios clp
+                    WHERE clp.bunker_cliente_id = bc.id
                 ) as tiene_listas_bunker
             FROM public.clientes c
+            LEFT JOIN public.bunker_clientes bc ON (
+                bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') 
+                OR bc.lomas_soft_id = c.cliente_id::text 
+                OR bc.id = c.cliente_id
+            )
             WHERE c.cliente_id = $1
             LIMIT 1
         `;
@@ -2371,7 +3122,10 @@ const obtenerDatosCliente = async (req, res) => {
         console.log(`✅ [PRESUPUESTOS] ${requestId} - Cliente encontrado:`, {
             id_cliente: cliente.id_cliente,
             nombre: cliente.nombre,
-            condicion_iva: cliente.condicion_iva
+            condicion_iva: cliente.condicion_iva,
+            en_bunker: cliente.en_bunker,
+            tiene_listas_bunker: cliente.tiene_listas_bunker,
+            bunker_lista_nombre: cliente.bunker_lista_nombre
         });
 
         res.json({
@@ -2522,14 +3276,16 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
             LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(COALESCE(a.nombre, ba.descripcion))
             LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = COALESCE(a.numero, ba.articulo_id) OR src.codigo_barras = pd.articulo)
-            LEFT JOIN public.stock_real_consolidado src_hijo ON src.pack_hijo_codigo = src_hijo.codigo_barras
-            WHERE p.id_cliente = $1
+            LEFT JOIN public.stock_real_consolidado src_hijo ON (src_hijo.codigo_barras = src.pack_hijo_codigo OR src_hijo.articulo_numero = src.pack_hijo_codigo)
+            WHERE (p.id_cliente = $1 OR (p.id_cliente ~ '^[0-9]+$' AND CAST(p.id_cliente AS integer) = $2))
               AND p.activo = true
               AND LOWER(p.estado) = 'entregado'
             ORDER BY fecha_entrega DESC, p.id DESC
         `;
 
-        const result = await req.db.query(query, [id_cliente.toString()]);
+        const clienteIdParsed = parseInt(id_cliente, 10);
+        const clienteIdInt = isNaN(clienteIdParsed) ? -1 : clienteIdParsed;
+        const result = await req.db.query(query, [id_cliente.toString(), clienteIdInt]);
 
         console.log(`📦 [PRESUPUESTOS] ${requestId} - Total detalles encontrados: ${result.rows.length}`);
 
@@ -3273,10 +4029,28 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
         // Voy a usar un query más genérico o ajustado si falla, pero por ahora esto es el diseño.
         // Si precio_unitario no existe, usar valor1 * (1 + iva/100) si aplica, o simplemente mostrar el valor guardado.
 
-        // CORRECCIÓN QUERY SEGÚN INSPECCIÓN PREVIA (Step 486: id_presupuesto existe)
-        // Asumimos 'valor1' como precio neto o 'precio1' como precio final guardado?
-        // En crearPresupuestos.js se guarda 'precio1' (con iva) y 'valor1'.
-        // Usaremos 'precio1' para mostrar el total histórico.
+        // Resolver el artículo tanto por SKU como por Código de Barras para garantizar coincidencias cruzadas
+        let artNumero = articulo_codigo || '';
+        let artBarcode = articulo_codigo || '';
+        let artNombre = descripcion || '';
+
+        try {
+            const artInfo = await req.db.query(`
+                SELECT numero, codigo_barras, nombre 
+                FROM public.articulos 
+                WHERE numero = $1 OR codigo_barras = $1 OR nombre ILIKE $2
+                LIMIT 1
+            `, [articulo_codigo, descripcion ? `%${descripcion}%` : '']);
+            if (artInfo.rows.length > 0) {
+                artNumero = artInfo.rows[0].numero || artNumero;
+                artBarcode = artInfo.rows[0].codigo_barras || artBarcode;
+                if (!artNombre && artInfo.rows[0].nombre) {
+                    artNombre = artInfo.rows[0].nombre;
+                }
+            }
+        } catch (eArt) {
+            console.warn('⚠️ [PRESUPUESTOS] No se pudo resolver artículo extendido:', eArt.message);
+        }
 
         const queryReal = `
             SELECT * FROM (
@@ -3288,29 +4062,49 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                     CASE 
                         WHEN p.comprobante_lomasoft IS NOT NULL AND TRIM(p.comprobante_lomasoft) != '' THEN 
                             'LOMASOFT (Puesto ' || SPLIT_PART(p.comprobante_lomasoft, '-', 2) || ')'
+                        WHEN f.pto_vta = 32 AND f.cbte_nro IS NOT NULL THEN 'LAMDA (Pto 32, Factura ' || f.cbte_nro || ')'
                         WHEN f.pto_vta = 32 THEN 'LAMDA (Puesto 32)'
+                        WHEN f.pto_vta IS NOT NULL AND f.cbte_nro IS NOT NULL THEN 'LOMASOFT (Pto ' || f.pto_vta || ', Factura ' || f.cbte_nro || ')'
                         WHEN f.pto_vta IS NOT NULL THEN 'LOMASOFT (Puesto ' || f.pto_vta || ')'
                         WHEN p.origen_facturacion != 'PENDIENTE' THEN p.origen_facturacion
                         ELSE 'NO FACTURADO'
                     END as origen_facturacion,
                     f.pto_vta,
+                    f.cbte_nro,
+                    f.id as factura_id,
+                    p.usar_precios_bunker,
                     d.cantidad,
                     d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
                     d.valor1 as precio_neto_historico,      -- Precio NETO guardado (para comparativas)
+                    d.camp2 as alic_iva,
+                    COALESCE(d.descuento_adicional, 0) as descuento_adicional,
                     -- Usamos 'articulo' que contiene la descripción completa (o código en algunos casos)
                     d.articulo as descripcion,
-                    COALESCE(p.descuento, 0) * 100 as descuento_porcentaje
+                    CASE 
+                        WHEN p.descuento > 1 THEN p.descuento 
+                        ELSE COALESCE(p.descuento, 0) * 100 
+                    END as descuento_porcentaje
                 FROM presupuestos p
                 JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
                 LEFT JOIN (
                     -- Subquery para traer la última factura aprobada por si hay múltiples
-                    SELECT presupuesto_id, pto_vta, cbte_nro, estado,
+                    SELECT id, presupuesto_id, pto_vta, cbte_nro, estado,
                            ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
                     FROM factura_facturas 
-                    WHERE estado = 'APROBADA'
+                    WHERE estado IN ('APROBADA', 'APROBADA_LOCAL')
                 ) f ON f.presupuesto_id = p.id AND f.rn = 1
-                WHERE p.id_cliente = $1::text 
-                  AND (d.articulo ILIKE $2 OR d.articulo ILIKE $3)
+                WHERE (p.id_cliente = $1::text OR LTRIM(p.id_cliente::text, '0') = LTRIM($1::text, '0'))
+                  AND (
+                      d.articulo = $2 
+                      OR d.articulo = $3 
+                      OR d.articulo ILIKE $4
+                      OR (d.articulo ILIKE $5 AND $5 != '')
+                      OR EXISTS (
+                          SELECT 1 FROM public.articulos a_match
+                          WHERE (a_match.numero = d.articulo OR a_match.codigo_barras = d.articulo)
+                            AND (a_match.numero = $2 OR a_match.codigo_barras = $3)
+                      )
+                  )
                   -- QA Bugfix 2: Permitir devoluciones de historial FACTURADO
                   AND (
                       p.estado_logistico IN ('RETIRADO', 'ENTREGADO') 
@@ -3328,8 +4122,10 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
 
         const queryParams = [
             cliente_id,
+            artNumero,
+            artBarcode,
             `%${articulo_codigo || ''}%`,
-            `%${descripcion || ''}%`
+            artNombre ? `%${artNombre}%` : ''
         ];
 
         // VIGÍA DEPURADOR: Trámite Administrativo (Modal de vinculación por artículo)
@@ -3388,8 +4184,637 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
     }
 };
 
+/**
+ * Obtener artículos comprados habitualmente por el cliente (frecuencia y última fecha)
+ * GET /api/presupuestos/clientes/:id_cliente/articulos-habituales
+ */
+const obtenerArticulosHabitualesCliente = async (req, res) => {
+    try {
+        const { id_cliente } = req.params;
+        if (!id_cliente) {
+            return res.status(400).json({ success: false, error: 'ID de cliente requerido' });
+        }
+
+        const ClientesBunkerModel = require('../../logistica/models/clientesBunkerModel');
+        const data = await ClientesBunkerModel.obtenerArticulosComprados(id_cliente);
+
+        return res.json({
+            success: true,
+            cliente_id: id_cliente,
+            total: data.length,
+            data: data,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error al obtener artículos habituales del cliente:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error al obtener artículos habituales del cliente',
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Auditoría y Trazabilidad Completa de Rentabilidad Estimada (Búnker) para un Presupuesto
+ * POST /api/presupuestos/auditoria-rentabilidad
+ */
+const obtenerAuditoriaRentabilidadBunker = async (req, res) => {
+    try {
+        const db = req.db || require('../config/database').pool;
+        req.db = db;
+        const body = req.body || {};
+        const presupuestoId = body.presupuesto_id || null;
+        const idCliente = parseInt(body.cliente_id || body.id_cliente, 10) || 0;
+        const tipoComprobante = body.tipo_comprobante || 'Factura';
+        const rawDescGen = body.descuento_general !== undefined ? body.descuento_general : body.descuento_general_pct;
+        const descGenPct = Math.max(0, Math.min(100, parseFloat(rawDescGen) || 0));
+        const usarPreciosBunker = body.usar_precios_bunker === true || body.usar_precios_bunker === 'true';
+        const itemsInput = Array.isArray(body.items) ? body.items : [];
+
+        // 1) Resolver lista de precios Búnker y nombre del cliente
+        let listaId = body.lista_id ? parseInt(body.lista_id, 10) : null;
+        let listaNombre = 'Lista Patrón / General';
+        let clienteNombre = body.cliente_nombre || '';
+
+        if (idCliente > 0) {
+            try {
+                const rCli = await req.db.query(`
+                    SELECT COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, '') as nombre_completo
+                    FROM public.clientes c
+                    WHERE c.cliente_id = $1
+                    LIMIT 1
+                `, [idCliente]);
+                if (rCli.rows.length > 0 && rCli.rows[0].nombre_completo.trim()) {
+                    clienteNombre = rCli.rows[0].nombre_completo.trim();
+                }
+
+                const queryList = `
+                    SELECT bclp.bunker_lista_precio_id, blp.nombre as lista_nombre, bc.razon_social
+                    FROM public.bunker_cliente_listas_precios bclp
+                    JOIN public.bunker_clientes bc ON bc.id = bclp.bunker_cliente_id
+                    LEFT JOIN public.bunker_listas_precios blp ON blp.id = bclp.bunker_lista_precio_id
+                    WHERE bc.lomas_soft_id = LPAD($1, 4, '0')
+                       OR bc.lomas_soft_id = $1
+                       OR (CASE WHEN $1 ~ '^[0-9]+$' AND LENGTH($1) < 10 THEN bc.id = $1::integer ELSE false END)
+                    LIMIT 1
+                `;
+                const rList = await req.db.query(queryList, [String(idCliente)]);
+                if (rList.rows.length > 0) {
+                    if (!listaId) listaId = rList.rows[0].bunker_lista_precio_id;
+                    if (rList.rows[0].lista_nombre) listaNombre = rList.rows[0].lista_nombre;
+                    if (!clienteNombre && rList.rows[0].razon_social) clienteNombre = rList.rows[0].razon_social;
+                }
+            } catch (errCli) {
+                console.warn('⚠️ [AUDITORIA-RENTABILIDAD] Error resolviendo cliente/lista:', errCli.message);
+            }
+        }
+
+        // 2) Cargar tarifas horarias de colaboradores para trazabilidad de mano de obra
+        const colaboradoresMap = new Map();
+        try {
+            const rColab = await req.db.query(`
+                SELECT u.id as usuario_id, COALESCE(u.nombre_completo, u.usuario) as nombre,
+                       ct.valor_hora
+                FROM public.usuarios u
+                LEFT JOIN LATERAL (
+                    SELECT valor_hora
+                    FROM public.colaboradores_tarifas ct2
+                    WHERE ct2.usuario_id = u.id AND ct2.activo = true
+                    ORDER BY ct2.id DESC
+                    LIMIT 1
+                ) ct ON true
+            `);
+            rColab.rows.forEach(r => {
+                colaboradoresMap.set(Number(r.usuario_id), {
+                    usuario_id: Number(r.usuario_id),
+                    nombre: r.nombre || `Operario #${r.usuario_id}`,
+                    valor_hora: parseFloat(r.valor_hora) || 0
+                });
+            });
+        } catch (errColab) {
+            console.warn('⚠️ [AUDITORIA-RENTABILIDAD] No se pudieron cargar colaboradores:', errColab.message);
+        }
+
+        const BunkerService = require('../../logistica/services/bunkerService');
+
+        // Helper para enriquecer ingrediente (incluyendo si proviene de artículo puente o mix)
+        const enriquecerIngredienteTrazabilidad = async (ing) => {
+            const ingId = ing.ingrediente_id;
+            const cant = parseFloat(ing.cantidad) || 0;
+            const costoPatron = parseFloat(ing.costo_patron) || 0;
+            const subtotal = cant * costoPatron;
+
+            let detalleOrigen = null;
+            if (ingId) {
+                try {
+                    const rIng = await req.db.query(`
+                        SELECT id, nombre, unidad_medida, costo_patron, es_insumo, receta_base_kg, articulo_vinculado_numero
+                        FROM public.ingredientes
+                        WHERE id = $1
+                        LIMIT 1
+                    `, [parseInt(ingId, 10)]);
+                    if (rIng.rows.length > 0) {
+                        const rowIng = rIng.rows[0];
+                        const artVinc = rowIng.articulo_vinculado_numero;
+                        let composicionMix = [];
+                        let puenteInfo = null;
+
+                        // Verificar si el ingrediente directo es un mix en ingrediente_composicion
+                        const rCompDirect = await req.db.query(`
+                            SELECT ic.cantidad, i.nombre, i.unidad_medida, i.costo_patron
+                            FROM public.ingrediente_composicion ic
+                            JOIN public.ingredientes i ON i.id = ic.ingrediente_id
+                            WHERE ic.mix_id = $1
+                            ORDER BY ic.id ASC
+                        `, [rowIng.id]);
+
+                        if (rCompDirect.rows.length > 0) {
+                            composicionMix = rCompDirect.rows.map(c => ({
+                                nombre: c.nombre,
+                                cantidad: parseFloat(c.cantidad) || 0,
+                                unidad_medida: c.unidad_medida || 'Kilo',
+                                costo_patron: parseFloat(c.costo_patron) || 0,
+                                subtotal: (parseFloat(c.cantidad) || 0) * (parseFloat(c.costo_patron) || 0)
+                            }));
+                        }
+
+                        // Si tiene artículo vinculado (ej. MSXK, HTLN4x5, CHB10X1), consultar su estructura
+                        if (artVinc) {
+                            const rArtVinc = await req.db.query(`
+                                SELECT ba.articulo_id, COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion,
+                                       ba.kilos_unidad, ba.costo_base, ba.propiedades_dinamicas,
+                                       la.costo_base_sobrescrito, la.costo_tiempo, la.precio_final
+                                FROM public.bunker_articulos ba
+                                LEFT JOIN public.bunker_lista_articulos la ON la.articulo_numero = ba.articulo_id AND la.lista_id = $2
+                                WHERE ba.articulo_id = $1
+                                LIMIT 1
+                            `, [artVinc, listaId || 1]);
+
+                            if (rArtVinc.rows.length > 0) {
+                                const av = rArtVinc.rows[0];
+                                let avProps = av.propiedades_dinamicas || {};
+                                if (typeof avProps === 'string') {
+                                    try { avProps = JSON.parse(avProps); } catch (_) { avProps = {}; }
+                                }
+                                const avMin = parseFloat(avProps.asistente_minutos) || 0;
+                                const avColab = avProps.asistente_colaborador_id ? colaboradoresMap.get(Number(avProps.asistente_colaborador_id)) : null;
+
+                                // Buscar si el artículo vinculado tiene receta propia (ej. MSXK -> Mix Salado (Mix) id 40)
+                                const rRecVinc = await req.db.query(`
+                                    SELECT r.id as receta_id, ri.ingrediente_id, ri.nombre_ingrediente, ri.cantidad, ri.unidad_medida,
+                                           i.receta_base_kg, i.costo_patron
+                                    FROM public.recetas r
+                                    JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                                    LEFT JOIN public.ingredientes i ON i.id = ri.ingrediente_id
+                                    WHERE r.articulo_numero = $1
+                                    ORDER BY r.fecha_creacion DESC, ri.id ASC
+                                `, [artVinc]);
+
+                                let subRecetaItems = [];
+                                for (const sr of rRecVinc.rows) {
+                                    let subMixComp = [];
+                                    let baseKgMix = parseFloat(sr.receta_base_kg) || 1;
+                                    if (sr.ingrediente_id) {
+                                        const rSubComp = await req.db.query(`
+                                            SELECT ic.cantidad, i.nombre, i.unidad_medida, i.costo_patron
+                                            FROM public.ingrediente_composicion ic
+                                            JOIN public.ingredientes i ON i.id = ic.ingrediente_id
+                                            WHERE ic.mix_id = $1
+                                            ORDER BY ic.id ASC
+                                        `, [sr.ingrediente_id]);
+                                        if (rSubComp.rows.length > 0) {
+                                            subMixComp = rSubComp.rows.map(c => ({
+                                                nombre: c.nombre,
+                                                cantidad: parseFloat(c.cantidad) || 0,
+                                                unidad_medida: c.unidad_medida || 'Kilo',
+                                                costo_patron: parseFloat(c.costo_patron) || 0,
+                                                subtotal: (parseFloat(c.cantidad) || 0) * (parseFloat(c.costo_patron) || 0)
+                                            }));
+                                        }
+                                    }
+                                    const sumaSubMix = subMixComp.reduce((acc, x) => acc + x.subtotal, 0);
+                                    subRecetaItems.push({
+                                        ingrediente_id: sr.ingrediente_id,
+                                        nombre_ingrediente: sr.nombre_ingrediente,
+                                        cantidad: parseFloat(sr.cantidad) || 0,
+                                        unidad_medida: sr.unidad_medida || 'Kilo',
+                                        receta_base_kg: baseKgMix,
+                                        composicion_mix: subMixComp,
+                                        costo_total_batch_mix: sumaSubMix,
+                                        costo_kilo_mix_actual: baseKgMix > 0 && sumaSubMix > 0 ? (sumaSubMix / baseKgMix) : (parseFloat(sr.costo_patron) || 0)
+                                    });
+                                }
+
+                                const cBaseVinc = av.costo_base_sobrescrito !== null && av.costo_base_sobrescrito !== undefined
+                                    ? parseFloat(av.costo_base_sobrescrito)
+                                    : (parseFloat(av.costo_base) || 0) / (parseFloat(av.kilos_unidad) || 1);
+                                const cTiempoVinc = parseFloat(av.costo_tiempo) || 0;
+
+                                puenteInfo = {
+                                    articulo_id: av.articulo_id,
+                                    descripcion: av.descripcion,
+                                    kilos_unidad: parseFloat(av.kilos_unidad) || 1,
+                                    costo_base_bulto: parseFloat(av.costo_base) || 0,
+                                    costo_base_kilo_lista: cBaseVinc,
+                                    costo_tiempo_lista: cTiempoVinc,
+                                    costo_operativo_kilo: cBaseVinc + (cTiempoVinc / (parseFloat(av.kilos_unidad) || 1)),
+                                    mano_obra_minutos: avMin,
+                                    mano_obra_operario: avColab ? avColab.nombre : null,
+                                    mano_obra_valor_hora: avColab ? avColab.valor_hora : null,
+                                    sub_receta: subRecetaItems
+                                };
+                            }
+                        }
+
+                        detalleOrigen = {
+                            es_insumo: rowIng.es_insumo === true,
+                            receta_base_kg: parseFloat(rowIng.receta_base_kg) || null,
+                            articulo_vinculado_numero: artVinc || null,
+                            composicion_mix: composicionMix,
+                            articulo_puente: puenteInfo
+                        };
+                    }
+                } catch (eIng) {
+                    console.warn('⚠️ [AUDITORIA-RENTABILIDAD] Error enriqueciendo ingrediente:', eIng.message);
+                }
+            }
+
+            return {
+                ingrediente_id: ingId,
+                nombre_ingrediente: ing.nombre_ingrediente,
+                cantidad: cant,
+                unidad_medida: ing.unidad_medida || 'Kilo',
+                costo_patron: costoPatron,
+                subtotal: Number(subtotal.toFixed(4)),
+                lote_id_ref: ing.lote_id_ref || null,
+                costo_kilo_lote: ing.costo_kilo_lote ? parseFloat(ing.costo_kilo_lote) : null,
+                detalle_origen: detalleOrigen
+            };
+        };
+
+        // 3) Procesar cada fila del presupuesto
+        const filasAuditadas = [];
+        let subtotalBrutoPresupuesto = 0;
+        let montoDescEspecialesTotal = 0;
+        let totalNetoSinIvaConDesc = 0;
+        let totalCostoBulto = 0;
+        let totalCostoTiempo = 0;
+        let totalCostoOperativo = 0;
+        let totalIibb = 0;
+        let totalIvaVenta = 0;
+        let totalIvaCompra = 0;
+        let totalDiferenciaIva = 0;
+        let gananciaTotalPresupuesto = 0;
+
+        for (let i = 0; i < itemsInput.length; i++) {
+            const item = itemsInput[i];
+            if (item.sin_stock || item.out_of_stock) continue;
+
+            const codigoBarras = String(item.codigo_barras || item.articulo || '').trim();
+            const articuloNumero = String(item.articulo_numero || item.articulo || '').trim();
+            const descripcionInput = String(item.descripcion || '').trim();
+            const cant = parseFloat(item.cantidad) || 0;
+            const valor1 = parseFloat(item.valor1) || 0;
+            const ivaVal = item.iva1 !== undefined && item.iva1 !== null ? (parseFloat(item.iva1) || 0) : 21;
+            const pvu = item.precio1 !== undefined && item.precio1 !== null && parseFloat(item.precio1) > 0
+                ? parseFloat(item.precio1)
+                : Number((valor1 * (1 + ivaVal / 100)).toFixed(2));
+            const descEspPct = parseFloat(item.descuento_adicional) || 0;
+
+            const subFila = cant * pvu;
+            subtotalBrutoPresupuesto += subFila;
+            if (descEspPct > 0) {
+                montoDescEspecialesTotal += subFila * (descEspPct / 100);
+            }
+
+            // Resolver artículo en Búnker
+            let artIdBunker = null;
+            let descResueltaBunker = descripcionInput;
+            let finanzasBunker = null;
+            let listaFinanciera = null;
+
+            try {
+                const queryId = `
+                    SELECT ba.articulo_id, COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion_resuelta
+                    FROM public.bunker_articulos ba
+                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ba.articulo_id
+                    WHERE ba.articulo_id = $1 
+                       OR src.articulo_numero = $1
+                       OR src.codigo_barras = $1
+                       OR ($2 <> '' AND (ba.articulo_id = $2 OR src.articulo_numero = $2 OR src.codigo_barras = $2))
+                       OR ($3 <> '' AND (LOWER(ba.descripcion) = LOWER($3)
+                                      OR LOWER(ba.descripcion_generada) = LOWER($3)
+                                      OR LOWER(src.descripcion) = LOWER($3)))
+                    LIMIT 1
+                `;
+                const rId = await req.db.query(queryId, [
+                    articuloNumero || codigoBarras || '',
+                    codigoBarras || articuloNumero || '',
+                    descripcionInput || ''
+                ]);
+                if (rId.rows.length > 0) {
+                    artIdBunker = rId.rows[0].articulo_id;
+                    descResueltaBunker = rId.rows[0].descripcion_resuelta || descripcionInput;
+                    finanzasBunker = await BunkerService.obtenerRadiografiaFinanciera(req.db, artIdBunker, { solo_local: true, saltar_reposicion: true });
+                    if (finanzasBunker && Array.isArray(finanzasBunker.listas_margenes)) {
+                        if (listaId) {
+                            listaFinanciera = finanzasBunker.listas_margenes.find(m => Number(m.lista_id) === Number(listaId));
+                        }
+                        if (!listaFinanciera) {
+                            listaFinanciera = finanzasBunker.listas_margenes.find(m => m.es_patron) || finanzasBunker.listas_margenes[0];
+                        }
+                    }
+                }
+            } catch (errB) {
+                console.warn('⚠️ [AUDITORIA-RENTABILIDAD] Error resolviendo artículo Búnker:', errB.message);
+            }
+
+            const costoOpBackend = listaFinanciera ? Number(listaFinanciera.costo_operativo) || 0 : 0;
+            const costoTiempoBackend = listaFinanciera ? Number(listaFinanciera.costo_tiempo) || 0 : 0;
+            const costoBultoBackend = Number((costoOpBackend - costoTiempoBackend).toFixed(4)) || 0;
+            const gananciaRealBackend = listaFinanciera ? Number(listaFinanciera.ganancia_real) || 0 : 0;
+
+            // Usar los valores que tiene la fila en el DOM si están presentes, o los del backend (son idénticos)
+            const costoBultoUnit = (item.costo_bunker !== undefined && item.costo_bunker !== null && String(item.costo_bunker) !== '')
+                ? (parseFloat(item.costo_bunker) || 0)
+                : costoBultoBackend;
+            const costoTiempoUnit = (item.costo_tiempo_bunker !== undefined && item.costo_tiempo_bunker !== null && String(item.costo_tiempo_bunker) !== '')
+                ? (parseFloat(item.costo_tiempo_bunker) || 0)
+                : costoTiempoBackend;
+            const gananciaUnitBase = (item.ganancia_bunker_base !== undefined && item.ganancia_bunker_base !== null && String(item.ganancia_bunker_base) !== '')
+                ? (parseFloat(item.ganancia_bunker_base) || 0)
+                : gananciaRealBackend;
+            const costoOperativoUnit = costoBultoUnit + costoTiempoUnit;
+
+            // Desglose interno del Costo Bulto (Base vs Insumos Lista)
+            const factorKilos = finanzasBunker && parseFloat(finanzasBunker.kilos_unidad) > 0
+                ? parseFloat(finanzasBunker.kilos_unidad)
+                : 1;
+            const valSob = listaFinanciera && listaFinanciera.costo_base_sobrescrito !== null && listaFinanciera.costo_base_sobrescrito !== undefined
+                ? parseFloat(listaFinanciera.costo_base_sobrescrito)
+                : null;
+            const precioListaFinal = listaFinanciera ? parseFloat(listaFinanciera.precio_final || 0) : pvu;
+            const ivaLista = listaFinanciera ? parseFloat(listaFinanciera.iva || 21) : ivaVal;
+            const precioListaSinIva = precioListaFinal / (1 + ivaLista / 100);
+
+            // Enriquecer ingredientes de receta si existen
+            const recetaIngredientesEnriquecidos = [];
+            let costoTotalRecetaActual = 0;
+            if (finanzasBunker && Array.isArray(finanzasBunker.receta_ingredientes) && finanzasBunker.receta_ingredientes.length > 0) {
+                for (const ing of finanzasBunker.receta_ingredientes) {
+                    const enr = await enriquecerIngredienteTrazabilidad(ing);
+                    recetaIngredientesEnriquecidos.push(enr);
+                    costoTotalRecetaActual += enr.subtotal;
+                }
+            }
+
+            let costoKiloIngredienteCalculado = 0;
+            let metodoCostoBase = 'SIN_COSTO_BUNKER';
+            if (recetaIngredientesEnriquecidos.length > 0) {
+                costoKiloIngredienteCalculado = costoTotalRecetaActual / factorKilos;
+                metodoCostoBase = 'RECETA_PRODUCCION';
+            } else if (finanzasBunker && finanzasBunker.lote && parseFloat(finanzasBunker.lote.costo_kilo_al_momento) > 0) {
+                costoKiloIngredienteCalculado = parseFloat(finanzasBunker.lote.costo_kilo_al_momento);
+                metodoCostoBase = 'LOTE_VINCULADO';
+            } else if (finanzasBunker && parseFloat(finanzasBunker.costo_base_manual) > 0) {
+                costoKiloIngredienteCalculado = parseFloat(finanzasBunker.costo_base_manual) / factorKilos;
+                metodoCostoBase = 'COSTO_BASE_MANUAL_ARTICULO';
+            }
+
+            let cBultoBaseExplicado = 0;
+            let usaSobrescrito = false;
+            let modoMultiplicacionSobrescrito = 'POR_KILO';
+            if (valSob !== null && valSob > 0) {
+                usaSobrescrito = true;
+                if (factorKilos > 1 && (valSob * factorKilos) > (precioListaSinIva * 0.95)) {
+                    cBultoBaseExplicado = valSob;
+                    modoMultiplicacionSobrescrito = 'BULTO_DIRECTO';
+                } else {
+                    cBultoBaseExplicado = valSob * factorKilos;
+                    modoMultiplicacionSobrescrito = 'POR_KILO';
+                }
+            } else {
+                cBultoBaseExplicado = costoKiloIngredienteCalculado * factorKilos;
+            }
+
+            const insumosListaDetalle = (listaFinanciera && Array.isArray(listaFinanciera.insumos))
+                ? listaFinanciera.insumos.map(ins => {
+                    const inc = ins.incluido === true || ins.incluido === 'true';
+                    const pUnit = parseFloat(ins.costo_unitario_en_vivo || ins.costo_unitario_capturado || 0);
+                    const cIns = parseFloat(ins.cantidad) || 0;
+                    return {
+                        id: ins.id,
+                        codigo: ins.insumo_articulo_numero,
+                        descripcion: ins.descripcion || ins.insumo_articulo_numero,
+                        cantidad: cIns,
+                        costo_unitario: pUnit,
+                        subtotal: inc ? Number((cIns * pUnit).toFixed(4)) : 0,
+                        incluido: inc
+                    };
+                })
+                : [];
+            const costoInsumosLista = insumosListaDetalle.reduce((acc, x) => acc + (x.incluido ? x.subtotal : 0), 0);
+
+            // Trazabilidad de Mano de Obra
+            const props = (finanzasBunker && finanzasBunker.propiedades_dinamicas) ? finanzasBunker.propiedades_dinamicas : {};
+            const minutosMO = parseFloat(props.asistente_minutos) || 0;
+            const colabId = props.asistente_colaborador_id ? Number(props.asistente_colaborador_id) : null;
+            const colabInfo = colabId ? colaboradoresMap.get(colabId) : null;
+            const manoObraActiva = listaFinanciera ? (listaFinanciera.mano_obra_activa === true || costoTiempoUnit > 0) : (costoTiempoUnit > 0);
+
+            // Observaciones de Auditoría Automáticas
+            const observaciones = [];
+            if (usaSobrescrito && recetaIngredientesEnriquecidos.length > 0) {
+                const diffReceta = Math.abs(cBultoBaseExplicado - costoTotalRecetaActual);
+                if (diffReceta > 5) {
+                    observaciones.push({
+                        tipo: 'warning',
+                        mensaje: `El costo base en Lista (${listaNombre}) está fijado en $${valSob.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kg (Bulto: $${cBultoBaseExplicado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}), mientras que la suma actual de su Receta a costo patrón vigente es $${costoTotalRecetaActual.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ($${(costoTotalRecetaActual / factorKilos).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kg).`
+                    });
+                }
+            }
+            if (costoInsumosLista > 0 && recetaIngredientesEnriquecidos.some(r => r.detalle_origen?.es_insumo || /bolsa|envase|caja|pote/i.test(r.nombre_ingrediente))) {
+                observaciones.push({
+                    tipo: 'info',
+                    mensaje: `Este artículo suma $${costoInsumosLista.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} de Insumos Adicionales de Lista sobre un Costo Base de Receta que ya incluye un insumo de empaque.`
+                });
+            }
+
+            // Cálculos exactos de rentabilidad de la fila (espejo de recalcTotales en detalles-common.js)
+            const descTotalPct = descGenPct + descEspPct;
+            const pvuConDesc = pvu * (1 - descTotalPct / 100);
+            const netoConDesc = pvuConDesc / (1 + (ivaVal / 100));
+
+            let iibbUnit = 0;
+            let ivaVentaUnit = 0;
+            let ivaCompraUnit = 0;
+            let diferenciaIvaUnit = 0;
+            let gananciaUnitFila = 0;
+            let ganFila = 0;
+            let formulaAplicada = 'SIN_DATOS_BUNKER';
+
+            if (costoOperativoUnit > 0) {
+                iibbUnit = pvuConDesc * 0.04;
+                ivaVentaUnit = netoConDesc * (ivaVal / 100);
+                ivaCompraUnit = costoBultoUnit * 0.21;
+                diferenciaIvaUnit = Math.max(0, ivaVentaUnit - ivaCompraUnit);
+                gananciaUnitFila = netoConDesc - costoOperativoUnit - iibbUnit - diferenciaIvaUnit;
+                ganFila = gananciaUnitFila * cant;
+                formulaAplicada = 'COMPLETA_COSTO_OPERATIVO';
+            } else if (gananciaUnitBase !== 0) {
+                const ganBaseTotal = gananciaUnitBase * cant;
+                const descFilaBruto = subFila * (descTotalPct / 100);
+                const descFilaNeto = descFilaBruto / (1 + (ivaVal / 100));
+                ganFila = ganBaseTotal - descFilaNeto;
+                gananciaUnitFila = cant > 0 ? (ganFila / cant) : gananciaUnitBase;
+                formulaAplicada = 'FALLBACK_GANANCIA_BASE';
+            }
+
+            totalNetoSinIvaConDesc += netoConDesc * cant;
+            totalCostoBulto += costoBultoUnit * cant;
+            totalCostoTiempo += costoTiempoUnit * cant;
+            totalCostoOperativo += costoOperativoUnit * cant;
+            totalIibb += iibbUnit * cant;
+            totalIvaVenta += ivaVentaUnit * cant;
+            totalIvaCompra += ivaCompraUnit * cant;
+            totalDiferenciaIva += diferenciaIvaUnit * cant;
+            gananciaTotalPresupuesto += ganFila;
+
+            filasAuditadas.push({
+                orden: i + 1,
+                codigo_barras: codigoBarras,
+                articulo_numero: articuloNumero,
+                articulo_id_bunker: artIdBunker,
+                descripcion: descripcionInput || descResueltaBunker,
+                descripcion_bunker: descResueltaBunker,
+                cantidad: cant,
+                kilos_unidad: factorKilos,
+                kilos_totales_linea: cant * factorKilos,
+
+                // Precios de Venta
+                valor_unitario_neto_sin_desc: valor1,
+                iva_porcentaje: ivaVal,
+                precio_unitario_c_iva_sin_desc: pvu,
+                subtotal_bruto_c_iva: subFila,
+                descuento_general_pct: descGenPct,
+                descuento_especial_pct: descEspPct,
+                descuento_total_pct: descTotalPct,
+                precio_unitario_c_iva_con_desc: pvuConDesc,
+                neto_unitario_s_iva_con_desc: netoConDesc,
+                subtotal_c_iva_con_desc: pvuConDesc * cant,
+                subtotal_neto_s_iva_con_desc: netoConDesc * cant,
+
+                // Estructura de Costos Unitarios y Totales
+                costo_bulto_unitario: costoBultoUnit,
+                costo_bulto_base_unitario: cBultoBaseExplicado,
+                costo_insumos_lista_unitario: costoInsumosLista,
+                costo_tiempo_unitario: costoTiempoUnit,
+                costo_operativo_unitario: costoOperativoUnit,
+                costo_operativo_total_fila: costoOperativoUnit * cant,
+
+                // Impuestos y Deducciones Unitarias y Totales
+                iibb_unitario: iibbUnit,
+                iibb_total_fila: iibbUnit * cant,
+                iva_venta_unitario: ivaVentaUnit,
+                iva_compra_unitario: ivaCompraUnit,
+                diferencia_iva_unitario: diferenciaIvaUnit,
+                diferencia_iva_total_fila: diferenciaIvaUnit * cant,
+
+                // Rentabilidad
+                ganancia_unitaria: gananciaUnitFila,
+                ganancia_total_fila: ganFila,
+                margen_real_sobre_neto_pct: netoConDesc > 0 ? (gananciaUnitFila / netoConDesc) * 100 : 0,
+                margen_real_sobre_final_pct: pvuConDesc > 0 ? (gananciaUnitFila / pvuConDesc) * 100 : 0,
+                markup_sobre_costo_op_pct: costoOperativoUnit > 0 ? ((netoConDesc - costoOperativoUnit) / costoOperativoUnit) * 100 : 0,
+                margen_configurado_lista_pct: listaFinanciera ? parseFloat(listaFinanciera.margen_porcentaje || 0) : null,
+                precio_final_lista_bunker: listaFinanciera ? parseFloat(listaFinanciera.precio_final || 0) : null,
+
+                // Trazabilidad profunda del origen del costo
+                trazabilidad: {
+                    formula_aplicada: formulaAplicada,
+                    metodo_costo_base: metodoCostoBase,
+                    usa_costo_base_sobrescrito: usaSobrescrito,
+                    costo_base_sobrescrito_valor: valSob,
+                    modo_multiplicacion_sobrescrito: modoMultiplicacionSobrescrito,
+                    costo_base_manual_bunker: finanzasBunker ? parseFloat(finanzasBunker.costo_base_manual || 0) : null,
+                    costo_kilo_calculado: costoKiloIngredienteCalculado,
+                    lote_vinculado: finanzasBunker && finanzasBunker.lote ? {
+                        lote_id_supabase: finanzasBunker.lote.lote_id_supabase,
+                        fecha_vinculacion: finanzasBunker.lote.fecha_vinculacion,
+                        costo_kilo_al_momento: parseFloat(finanzasBunker.lote.costo_kilo_al_momento) || 0,
+                        impuesto_iva: parseFloat(finanzasBunker.lote.impuesto_iva) || 21
+                    } : null,
+                    receta_id: finanzasBunker ? finanzasBunker.receta_id : null,
+                    receta_heredada: finanzasBunker ? finanzasBunker.receta_heredada : false,
+                    receta_ingredientes: recetaIngredientesEnriquecidos,
+                    costo_total_receta_actual: Number(costoTotalRecetaActual.toFixed(4)),
+                    insumos_lista: insumosListaDetalle,
+                    mano_obra: {
+                        activa: manoObraActiva,
+                        minutos: minutosMO,
+                        operario_id: colabId,
+                        operario_nombre: colabInfo ? colabInfo.nombre : (colabId ? `Operario #${colabId}` : 'Estándar Taller'),
+                        valor_hora: colabInfo ? colabInfo.valor_hora : (minutosMO > 0 && costoTiempoUnit > 0 ? Math.round((costoTiempoUnit / minutosMO) * 60) : 0),
+                        costo_calculado: costoTiempoUnit
+                    },
+                    observaciones
+                }
+            });
+        }
+
+        const montoDescGeneral = subtotalBrutoPresupuesto * (descGenPct / 100);
+        const totalFinalConIva = subtotalBrutoPresupuesto - montoDescGeneral - montoDescEspecialesTotal;
+
+        return res.json({
+            success: true,
+            data: {
+                cabecera: {
+                    presupuesto_id: presupuestoId,
+                    cliente_id: idCliente,
+                    cliente_nombre: clienteNombre || `Cliente #${idCliente}`,
+                    tipo_comprobante: tipoComprobante,
+                    lista_bunker_id: listaId,
+                    lista_bunker_nombre: listaNombre,
+                    usar_precios_bunker: usarPreciosBunker,
+                    descuento_general_pct: descGenPct,
+                    fecha_auditoria: new Date().toISOString()
+                },
+                totales: {
+                    subtotal_bruto_c_iva: Number(subtotalBrutoPresupuesto.toFixed(2)),
+                    descuento_general_monto: Number(montoDescGeneral.toFixed(2)),
+                    descuentos_especiales_monto: Number(montoDescEspecialesTotal.toFixed(2)),
+                    total_final_c_iva: Number(totalFinalConIva.toFixed(2)),
+                    total_neto_s_iva_con_desc: Number(totalNetoSinIvaConDesc.toFixed(2)),
+                    total_costo_bulto: Number(totalCostoBulto.toFixed(2)),
+                    total_costo_tiempo: Number(totalCostoTiempo.toFixed(2)),
+                    total_costo_operativo: Number(totalCostoOperativo.toFixed(2)),
+                    total_iibb: Number(totalIibb.toFixed(2)),
+                    total_iva_venta: Number(totalIvaVenta.toFixed(2)),
+                    total_iva_compra: Number(totalIvaCompra.toFixed(2)),
+                    total_diferencia_iva: Number(totalDiferenciaIva.toFixed(2)),
+                    rentabilidad_estimada_bunker: Number(gananciaTotalPresupuesto.toFixed(2)),
+                    margen_neto_sobre_venta_neta_pct: totalNetoSinIvaConDesc > 0 ? Number(((gananciaTotalPresupuesto / totalNetoSinIvaConDesc) * 100).toFixed(2)) : 0,
+                    margen_neto_sobre_total_final_pct: totalFinalConIva > 0 ? Number(((gananciaTotalPresupuesto / totalFinalConIva) * 100).toFixed(2)) : 0
+                },
+                filas: filasAuditadas
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ [AUDITORIA-RENTABILIDAD] Error general:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Error al generar auditoría de rentabilidad Búnker',
+            message: error.message
+        });
+    }
+};
+
 module.exports = {
     obtenerHistorialArticuloCliente, // Nuevo
+    obtenerArticulosHabitualesCliente, // Artículos habituales del cliente
+    obtenerAuditoriaRentabilidadBunker, // Auditoría y trazabilidad de rentabilidad Búnker
 
     obtenerPresupuestos,
     obtenerSugerenciasClientes,
@@ -3413,3 +4838,4 @@ module.exports = {
     excluirArticulo,
     reincluirArticulo
 };
+

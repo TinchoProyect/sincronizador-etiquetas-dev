@@ -422,6 +422,26 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                         }
                         
                         const fechaFormateada = new Date(presupuesto.presupuesto_fecha).toLocaleDateString('es-AR');
+                        const primerArt = presupuesto.articulos[0] || {};
+                        const esFacturado = primerArt.esta_facturado === true || primerArt.esta_facturado === 'true';
+                        const origenCanal = primerArt.origen_factura_canal;
+                        
+                        let badgeFacturadoHTML = '';
+                        if (esFacturado) {
+                            if (origenCanal === 'ARCA') {
+                                badgeFacturadoHTML = `
+                                    <span style="font-size: 0.75rem; font-weight: bold; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 2px 6px; border-radius: 4px; margin-left: 10px; display: inline-flex; align-items: center; vertical-align: middle;">
+                                        🧾 Facturado ARCA
+                                    </span>
+                                `;
+                            } else {
+                                badgeFacturadoHTML = `
+                                    <span style="font-size: 0.75rem; font-weight: bold; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 2px 6px; border-radius: 4px; margin-left: 10px; display: inline-flex; align-items: center; vertical-align: middle;">
+                                        🧾 Facturado Local
+                                    </span>
+                                `;
+                            }
+                        }
                         
                         return `
                             <div class="presupuesto-acordeon" style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 4px; overflow: hidden;">
@@ -431,6 +451,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                                         <strong>Presupuesto ${presupuesto.presupuesto_id}</strong>
                                         <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span>
                                         <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>
+                                        ${badgeFacturadoHTML}
                                     </div>
                                     <span class="toggle-icon" style="font-size: 1.2em; transition: transform 0.3s ease;">▼</span>
                                 </div>

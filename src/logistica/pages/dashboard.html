@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logística y Reparto - Gestiones Lamda</title>
     <link rel="icon" type="image/x-icon" href="../favicon.ico?v=2">
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/dashboard.css?v=2">
 </head>
 <body>
     <div class="container">
@@ -16,23 +16,43 @@
                 <span class="subtitle">Gestión de Rutas y Entregas</span>
             </div>
             <div class="header-right">
-                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'">
-                    ← Volver al Menú Principal
+                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" title="Volver al Menú Principal">
+                    ← Menú Principal
                 </button>
+                <button class="btn-secondary btn-facturacion-nav" onclick="window.location.href='http://localhost:3004'" title="Ir a Gestión de Facturas y Presupuestos Aprobados">
+                    🧾 Gestión de Facturas
+                </button>
+
+                <!-- Menú desplegable de herramientas operativas y configuración -->
+                <div class="header-tools-dropdown" id="header-tools-dropdown">
+                    <button type="button" class="btn-secondary" onclick="toggleHeaderToolsMenu(event)" title="Herramientas operativas y configuración">
+                        🛠️ Herramientas <span style="font-size: 0.7rem; opacity: 0.7;">▾</span>
+                    </button>
+                    <div class="header-tools-menu">
+                        <button type="button" class="header-tools-item" onclick="window.location.href='/pages/recepcion-efectivo.html'">
+                            <span>💵</span> <span>Recepción de Efectivo</span>
+                        </button>
+                        <button type="button" class="header-tools-item" onclick="window.location.href='/pages/prospectos.html'">
+                            <span>🎯</span> <span>Preventa (CRM)</span>
+                        </button>
+                        <button type="button" class="header-tools-item" onclick="cerrarHeaderToolsMenu(); window.abrirAsistenteInmunizacionOficina()">
+                            <span>🦠</span> <span>Registro de Tratamiento</span>
+                        </button>
+                        <div class="header-tools-divider"></div>
+                        <button type="button" class="header-tools-item" onclick="window.location.href='/pages/auditoria-rutas.html'">
+                            <span>🛰️</span> <span>Auditoría de Rutas</span>
+                        </button>
+                        <button type="button" class="header-tools-item" onclick="window.location.href='/pages/ingesta-satelital.html'">
+                            <span>📡</span> <span>Ingesta Satelital</span>
+                        </button>
+                        <button type="button" class="header-tools-item" onclick="window.location.href='/pages/config-puntos.html'">
+                            <span>⚙️</span> <span>Configuración de Nodos</span>
+                        </button>
+                    </div>
+                </div>
+
                 <button class="btn-primary" onclick="crearNuevaRuta()">
                     + Nueva Ruta
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='/pages/config-puntos.html'" title="Configuración Nodos Cero" style="background-color: #f1f5f9; color: #1e293b; border-color: #cbd5e1;">
-                    ⚙️ Nodos
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='/pages/auditoria-rutas.html'" style="background-color: #1e293b; color: white; border-color: #1e293b;">
-                    🛰️ Auditoría
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='/pages/ingesta-satelital.html'" title="Ingesta JSON Google" style="background-color: #2563eb; color: white; border-color: #2563eb;">
-                    📡 Ingesta Satelital
-                </button>
-                <button class="btn-secondary" onclick="window.abrirAsistenteInmunizacionOficina()" style="background-color: #f59e0b; color: white; border-color: #f59e0b;">
-                    🦠 Registro Tratamiento
                 </button>
             </div>
         </header>
@@ -77,6 +97,25 @@
                         <option value="SUR">Zona Sur</option>
                         <option value="CENTRO">Centro</option>
                     </select>
+                </div>
+
+                <!-- Barra de Segmentación Rápida del Pool (Pedidos / Ensobrados / Retiros) -->
+                <div id="pool-tipo-tabs" style="display: flex; gap: 4px; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap;">
+                    <button type="button" class="pool-tab-btn active" data-tipo="TODOS" onclick="cambiarFiltroTipoPool('TODOS')" style="flex: 1; padding: 5px 6px; font-size: 0.74rem; font-weight: 700; border-radius: 6px; border: 1px solid #2563eb; background: #2563eb; color: white; cursor: pointer; white-space: nowrap;">
+                        Todos <span id="count-pool-todos">(0)</span>
+                    </button>
+                    <button type="button" class="pool-tab-btn" data-tipo="PEDIDOS" onclick="cambiarFiltroTipoPool('PEDIDOS')" style="flex: 1; padding: 5px 6px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: white; color: #334155; cursor: pointer; white-space: nowrap;">
+                        📦 Pedidos <span id="count-pool-pedidos">(0)</span>
+                    </button>
+                    <button type="button" class="pool-tab-btn" data-tipo="SOBRES" onclick="cambiarFiltroTipoPool('SOBRES')" style="flex: 1; padding: 5px 6px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: white; color: #6d28d9; cursor: pointer; white-space: nowrap;">
+                        💵 Sobres <span id="count-pool-sobres">(0)</span>
+                    </button>
+                    <button type="button" class="pool-tab-btn" data-tipo="RETIROS" onclick="cambiarFiltroTipoPool('RETIROS')" style="flex: 1; padding: 5px 6px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: white; color: #c2410c; cursor: pointer; white-space: nowrap;">
+                        🔙 Retiros <span id="count-pool-retiros">(0)</span>
+                    </button>
+                    <button type="button" class="pool-tab-btn" data-tipo="CONTACTOS" onclick="cambiarFiltroTipoPool('CONTACTOS')" style="flex: 1; padding: 5px 6px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: white; color: #0f766e; cursor: pointer; white-space: nowrap;">
+                        🎯 Contactos <span id="count-pool-contactos">(0)</span>
+                    </button>
                 </div>
 
                 <div id="pedidos-list" class="pedidos-list">
@@ -406,7 +445,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <script src="../js/modules/mapaInteractivo.js"></script>
-    <script src="../js/dashboard.js"></script>
+    <script src="../js/dashboard.js?v=6"></script>
     <script src="../js/config.js"></script>
     <script>
         // Inicializar cuando el DOM esté listo

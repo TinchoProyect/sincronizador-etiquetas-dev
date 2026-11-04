@@ -6,6 +6,7 @@ const path = require('path');
 require('dotenv').config();
 const { Pool } = require('pg');
 const PDFDocument = require('pdfkit');
+const salvavidasService = require('../logistica/services/salvavidasService');
 
 // ===== 1) Conexión a la Base de Datos Local =====
 const localPool = new Pool({
@@ -87,7 +88,8 @@ async function uploadPdfToStorage(filename, buffer) {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/pdf',
-      'x-upsert': 'true'
+      'x-upsert': 'true',
+      'cache-control': 'no-cache, no-store, must-revalidate'
     },
     body: buffer
   });
@@ -131,9 +133,10 @@ function generarComprobantePdfBuffer(mov) {
       // Datos de la empresa debajo del logo
       let companyY = 40 + (hasLogo ? 38 : 0);
       doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
-      doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+      doc.text('Dirección: Av. 19 Nº 406', leftColumn, companyY);
       doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
-      doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+      doc.text('Tel / WA: 221-6615746', leftColumn, companyY + 18);
+      doc.text('CUIT: 23-24892174-9', leftColumn, companyY + 27);
 
       // Letra R en recuadro para Recibo/Comprobante de Pago
       const boxWidth = 32;
@@ -159,7 +162,24 @@ function generarComprobantePdfBuffer(mov) {
       const labelTitulo = esAjuste ? 'COMPROBANTE DE AJUSTE' : 'RECIBO DE PAGO';
       doc.fontSize(11).font('Helvetica-Bold').fillColor('#8e4785').text(labelTitulo, (pageWidth / 2) + 35, rightY);
       
-      const nroComprobanteStr = mov.numero_comprobante ? mov.numero_comprobante : `REC-PAGO-${String(mov.local_movimiento_id).padStart(8, '0')}`;
+      let nroComprobanteStr = mov.numero_comprobante ? mov.numero_comprobante : `REC-PAGO-${String(mov.local_movimiento_id).padStart(8, '0')}`;
+      if (nroComprobanteStr.includes('[')) {
+          const parts = nroComprobanteStr.split('[');
+          let firstPart = parts[0].trim();
+          if (firstPart.endsWith('-')) {
+              firstPart = firstPart.slice(0, -1).trim();
+          }
+          if (firstPart.includes('(Vto:') || firstPart.includes('Vto:')) {
+              nroComprobanteStr = firstPart;
+          } else {
+              const matchVto = nroComprobanteStr.match(/Vto:\s*([^\s\]]+)/i);
+              if (matchVto) {
+                  nroComprobanteStr = `${firstPart} (Vto: ${matchVto[1]})`;
+              } else {
+                  nroComprobanteStr = firstPart;
+              }
+          }
+      }
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b').text(`Nro: ${nroComprobanteStr}`, (pageWidth / 2) + 35, rightY + 14);
       
       const fechaFmt = new Date(mov.fecha).toLocaleDateString('es-AR', {
@@ -172,7 +192,7 @@ function generarComprobantePdfBuffer(mov) {
       doc.text(`Sistema: Autogestión LAMDA`, (pageWidth / 2) + 35, rightY + 44);
 
       // Línea divisoria horizontal debajo de la cabecera
-      let lineY = Math.max(companyY + 32, rightY + 56);
+      let lineY = Math.max(companyY + 38, rightY + 56);
       doc.moveTo(leftColumn, lineY)
          .lineTo(pageWidth - leftColumn, lineY)
          .strokeColor('#8e4785')
@@ -326,9 +346,10 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
 
       let companyY = 40 + (hasLogo ? 38 : 0);
       doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
-      doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+      doc.text('Dirección: Av. 19 Nº 406', leftColumn, companyY);
       doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
-      doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+      doc.text('Tel / WA: 221-6615746', leftColumn, companyY + 18);
+      doc.text('CUIT: 23-24892174-9', leftColumn, companyY + 27);
 
       const ptoVta = (numeroComprobante || '').includes('-0002-') ? 2 : ((numeroComprobante || '').includes('-0007-') ? 7 : 1);
       const esTipoE = (numeroComprobante || '').toUpperCase().includes('FAC E-') || (numeroComprobante || '').toUpperCase().includes('NC E-') || (numeroComprobante || '').toUpperCase().includes('ND E-');
@@ -379,7 +400,7 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
       doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 35, rightY + 35);
       doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 35, rightY + 44);
 
-      let lineY = Math.max(companyY + 32, rightY + 56);
+      let lineY = Math.max(companyY + 38, rightY + 56);
       doc.moveTo(leftColumn, lineY)
          .lineTo(pageWidth - leftColumn, lineY)
          .strokeColor('#475569')
@@ -553,6 +574,8 @@ async function sincronizarB2BCuentas() {
               WHEN m.tipo_comprobante = 'NOTA_CREDITO' THEN 'NC'
               WHEN m.tipo_comprobante = 'NOTA_DEBITO' THEN 'ND'
               WHEN m.tipo_comprobante IN ('RECIBO', 'RECIBO_PAGO', 'COBRO_BANCARIO', 'COBRO_CHEQUE') THEN 'RC'
+              WHEN m.tipo_comprobante = 'CREDITO_HORAS' THEN 'CH'
+              WHEN m.tipo_comprobante = 'CREDITO_RENDIMIENTO' THEN 'CR'
               ELSE 'OT'
           END as tipo_comprobante,
           COALESCE(m.descripcion, '') as numero_comprobante,
@@ -619,6 +642,7 @@ async function sincronizarB2BCuentas() {
           haber: haberVal,
           saldo: saldoApertura,
           comprobante_url: null,
+          created_at: fechaVirtual.toISOString(),
           metadatos: null
         });
         console.log(`➕ [APERTURA-SYNC] Inyectado movimiento virtual AP para cliente ${cc.codigo_bunker_cliente} ($${saldoApertura}) con fecha ${fechaVirtual.toISOString().split('T')[0]}`);
@@ -627,8 +651,158 @@ async function sincronizarB2BCuentas() {
       console.error('❌ [APERTURA-SYNC] Error al consultar o inyectar saldos de apertura:', err.message);
     }
 
+    // 1.1 Pre-consultar en 1 sola llamada qué movimientos ya tienen comprobante_url en Supabase
+    // Esto evita hacer cientos de peticiones HTTP HEAD individuales a Storage en cada corrida
+    const existingCloudMovsWithPdf = new Set();
+    let supExistingData = [];
+    try {
+      const preGetUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_cuentas_corrientes?select=local_movimiento_id,comprobante_url&limit=10000`;
+      const preGetRes = await fetchWithRetry(preGetUrl, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      supExistingData = await preGetRes.json();
+      if (Array.isArray(supExistingData)) {
+        for (const r of supExistingData) {
+          const mId = parseInt(r.local_movimiento_id);
+          if (!isNaN(mId) && r.comprobante_url && String(r.comprobante_url).trim() !== '') {
+            existingCloudMovsWithPdf.add(mId);
+          }
+        }
+      }
+      console.log(`⚡ Pre-caché de comprobantes en nube: ${existingCloudMovsWithPdf.size} PDFs ya verificados en Supabase.`);
+    } catch (preErr) {
+      console.warn('⚠️ No se pudo pre-consultar comprobantes existentes en nube, se verificará por Storage:', preErr.message);
+    }
+
+    const forceRegenerate = process.argv.includes('--force');
+
+    // 1.2 Pre-calcular Reloj de Financiación desde el Día 1, +3d Gracia Natural y Comodines de Cortesía (3/año) para todas las cuentas activas
+    const mapaSalvavidasPorMovId = new Map();
+    const mapaResumenSalvavidasPorCliente = new Map();
+    try {
+      const ctasActivas = await localClient.query(`
+        SELECT id, codigo_bunker_cliente, saldo
+        FROM public.factura_cuentas_corrientes
+        WHERE estado = 'ACTIVA'
+      `);
+      for (const cta of ctasActivas.rows) {
+        const sim = await salvavidasService.calcularSimulacionCuenta(cta.id, { persistir_sombra: false }, localClient);
+        if (sim) {
+          mapaResumenSalvavidasPorCliente.set(String(cta.codigo_bunker_cliente).trim(), {
+            habilitado: Boolean(sim.reglas_aplicadas?.habilitado ?? true),
+            modo_switch: sim.reglas_aplicadas?.modo_switch || 'ACTIVO',
+            saldo_contable_real: sim.saldo_contable_real,
+            financiacion_total_activa: sim.financiacion_total,
+            financiacion_iva: sim.financiacion_iva || 0,
+            financiacion_total_con_iva: sim.financiacion_total_con_iva || sim.financiacion_total || 0,
+            financiacion_calculada_neta: sim.financiacion_calculada_neta ?? sim.financiacion_total ?? 0,
+            financiacion_calculada_iva: sim.financiacion_calculada_iva ?? sim.financiacion_iva ?? 0,
+            financiacion_calculada_con_iva: sim.financiacion_calculada_con_iva ?? sim.financiacion_total_con_iva ?? 0,
+            interes_bonificado_en_plazo: sim.financiacion_cortesia_bonificada || 0,
+            saldo_total_proyectado: sim.saldo_total_proyectado,
+            saldo_total_proyectado_con_iva: sim.saldo_total_proyectado_con_iva || sim.saldo_total_proyectado,
+            salvavidas_activo: (sim.reglas_aplicadas?.modo_switch === 'ACTIVO') && (sim.comprobantes_asistencia_formalizada > 0 || (sim.financiacion_total || 0) > 0),
+            comprobantes_margen_estandar: sim.comprobantes_margen_estandar || 0,
+            comprobantes_gracia_natural: sim.comprobantes_gracia_natural || 0,
+            comprobantes_cortesia: sim.comprobantes_cortesia || 0,
+            comprobantes_asistencia_formalizada: sim.comprobantes_asistencia_formalizada || 0,
+            cupo_cortesias_anual: sim.reglas_aplicadas?.cupo_cortesias_anual ?? 3,
+            cortesias_usadas_anio: sim.reglas_aplicadas?.cortesias_usadas_anio ?? 0,
+            cortesias_disponibles_anio: sim.reglas_aplicadas?.cortesias_disponibles_anio ?? 3,
+            dias_ventana_estandar: sim.reglas_aplicadas?.dias_ventana_estandar ?? 7,
+            dias_gracia_natural: sim.reglas_aplicadas?.dias_gracia_natural ?? 3,
+            dias_tope_sin_comodin: sim.reglas_aplicadas?.dias_tope_sin_comodin ?? 10,
+            dias_total_cortesia: sim.reglas_aplicadas?.dias_total_cortesia ?? 14,
+            tasa_mensual_pct: sim.reglas_aplicadas?.tasa_servicio_financiero ?? 3.0,
+            tasa_diaria_pct: Number(((sim.reglas_aplicadas?.tasa_diaria || 0.001) * 100).toFixed(3)),
+            iva_porcentaje: 21,
+            lista_nombre: sim.reglas_aplicadas?.lista_nombre || 'Estándar',
+            comodines_historial: (sim.comodines_historial || []).map(ch => ({
+              mov_id: ch.mov_id,
+              descripcion: ch.descripcion,
+              punto_cero: ch.punto_cero,
+              fecha_cancelacion: ch.fecha_cancelacion,
+              dias_hasta_cancelacion: ch.dias_hasta_cancelacion,
+              monto_original: ch.monto_original
+            })),
+            actualizado_en: new Date().toISOString()
+          });
+
+          if (Array.isArray(sim.capas_simuladas)) {
+            for (const capa of sim.capas_simuladas) {
+              if (typeof capa.mov_id === 'number') {
+                mapaSalvavidasPorMovId.set(capa.mov_id, {
+                  estado_comprobante: 'PENDIENTE',
+                  monto_original: capa.monto_original,
+                  monto_pagado: capa.monto_pagado,
+                  capital_pendiente: capa.capital_pendiente,
+                  antiguedad_dias: capa.antiguedad_dias,
+                  dias_reloj_desde_dia_1: capa.dias_reloj_desde_dia_1,
+                  interes_acumulado_desde_dia_1: capa.interes_acumulado_desde_dia_1,
+                  interes_exigible_hoy: capa.interes_financiacion,
+                  iva_financiacion: capa.iva_financiacion,
+                  interes_con_iva_hoy: capa.interes_financiacion_con_iva,
+                  interes_bonificado_hoy: capa.interes_proyectado_cortesia,
+                  costo_diario_neto: capa.costo_diario_neto,
+                  costo_diario_con_iva: capa.costo_diario_con_iva,
+                  saldo_proyectado: capa.saldo_proyectado,
+                  saldo_proyectado_con_iva: capa.saldo_proyectado_con_iva,
+                  ventana_codigo: capa.ventana_codigo,
+                  ventana_nombre: capa.ventana_nombre,
+                  ventana_descripcion: capa.ventana_descripcion,
+                  dias_ventana_estandar: capa.dias_ventana_estandar ?? 7,
+                  dias_gracia_natural: capa.dias_gracia_natural ?? 3,
+                  dias_tope_sin_comodin: capa.dias_tope_sin_comodin ?? 10,
+                  dias_total_cortesia: capa.dias_total_cortesia ?? 14,
+                  cupo_cortesias_anual: capa.cupo_cortesias_anual ?? 3,
+                  cortesias_usadas_anio: capa.cortesias_usadas_anio ?? 0,
+                  cortesias_disponibles_anio: capa.cortesias_disponibles_anio ?? 3,
+                  punto_cero: capa.punto_cero,
+                  punto_cero_fecha: capa.punto_cero,
+                  fecha_vto_compromiso: capa.fecha_vto_compromiso,
+                  fecha_vto_gracia_natural: capa.fecha_vto_gracia_natural,
+                  fecha_vto_comodin: capa.fecha_vto_comodin
+                });
+              }
+            }
+          }
+
+          if (Array.isArray(sim.comprobantes_cancelados)) {
+            for (const cc of sim.comprobantes_cancelados) {
+              if (typeof cc.mov_id === 'number' && !mapaSalvavidasPorMovId.has(cc.mov_id)) {
+                mapaSalvavidasPorMovId.set(cc.mov_id, {
+                  estado_comprobante: 'CANCELADO',
+                  monto_original: cc.monto_original,
+                  monto_pagado: cc.monto_pagado,
+                  capital_pendiente: 0,
+                  punto_cero: cc.punto_cero,
+                  punto_cero_fecha: cc.punto_cero,
+                  fecha_vto_compromiso: cc.fecha_vto_compromiso,
+                  fecha_vto_gracia_natural: cc.fecha_vto_gracia_natural,
+                  fecha_vto_comodin: cc.fecha_vto_comodin,
+                  fecha_cancelacion: cc.fecha_cancelacion,
+                  dias_hasta_cancelacion: cc.dias_hasta_cancelacion,
+                  tramo_cancelacion: cc.tramo_cancelacion,
+                  tramo_cancelacion_nombre: cc.tramo_cancelacion_nombre,
+                  uso_comodin: cc.uso_comodin
+                });
+              }
+            }
+          }
+        }
+      }
+      console.log(`🛡️ [SALVAVIDAS-B2B] Diagnóstico de financiación y comodines calculado para ${mapaSalvavidasPorMovId.size} comprobantes.`);
+    } catch (salvErr) {
+      console.warn('⚠️ [SALVAVIDAS-B2B] No se pudo enriquecer reloj de financiación B2B:', salvErr.message);
+    }
+
     for (let i = 0; i < resLocal.rows.length; i++) {
       const row = resLocal.rows[i];
+      const movIdInt = parseInt(row.local_movimiento_id);
       const debeVal = parseFloat(row.debe);
       const haberVal = parseFloat(row.haber);
       
@@ -639,63 +813,77 @@ async function sincronizarB2BCuentas() {
                               row.tipo_comprobante_original === 'AJUSTE_MANUAL' ? 'Ajuste de Saldo' : 'Efectivo';
           row.metadatos = { tipo_pago: defaultTipo };
       }
+
+      // Inyectar el estado del Reloj de Financiación desde el Día 1 y Comodines Anuales en los comprobantes abiertos para el Portal B2B
+      const capaSalv = mapaSalvavidasPorMovId.get(movIdInt);
+      const resumenCliSalv = mapaResumenSalvavidasPorCliente.get(String(row.cliente_id).trim());
+      if (capaSalv || resumenCliSalv) {
+          const baseMeta = (row.metadatos && typeof row.metadatos === 'object') ? { ...row.metadatos } : {};
+          if (capaSalv) baseMeta.salvavidas_comprobante = capaSalv;
+          if (resumenCliSalv) baseMeta.salvavidas_cuenta = resumenCliSalv;
+          row.metadatos = baseMeta;
+      }
       
       let comprobanteUrl = null;
       if (['FC', 'NC', 'ND', 'RC'].includes(row.tipo_comprobante)) {
         const filename = `comprobante_${row.local_movimiento_id}.pdf`;
         comprobanteUrl = `${SUPABASE_URL}/storage/v1/object/public/comprobantes/${filename}`;
         
-        try {
-          const isHeredada = ['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && !row.comprobante_id && row.presupuesto_id;
-          const fileExists = await checkFileExistsInStorage(filename);
-          if (!fileExists || isHeredada) {
-            console.log(`📥 [PDF-SYNC] El PDF ${filename} ${!fileExists ? 'no existe en la nube' : 'es heredado (forzando actualización)'}. Generando y subiendo...`);
-            
-            let pdfBuffer = null;
-            if (['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && row.comprobante_id) {
-              try {
-                const resFact = await fetch(`http://localhost:3004/facturacion/facturas/${row.comprobante_id}/pdf`, {
-                  method: 'POST'
-                });
-                if (resFact.ok) {
-                  const arrBuf = await resFact.arrayBuffer();
-                  pdfBuffer = Buffer.from(arrBuf);
-                } else {
-                  console.warn(`⚠️ [PDF-SYNC] No se pudo obtener PDF de facturación (Status: ${resFact.status}) para comprobante local ID ${row.comprobante_id}`);
+        // Si ya figura sincronizado con comprobante_url en Supabase y no se pidió --force, saltar chequeo HEAD y regeneración
+        if (!forceRegenerate && existingCloudMovsWithPdf.has(movIdInt)) {
+          // Ya existe en la nube, no hace falta petición HTTP adicional
+        } else {
+          try {
+            const fileExists = forceRegenerate ? false : await checkFileExistsInStorage(filename);
+            if (!fileExists || forceRegenerate) {
+              console.log(`📥 [PDF-SYNC] El PDF ${filename} ${!fileExists ? 'no existe en la nube' : 'forzando regeneración (--force)'}. Generando y subiendo...`);
+              
+              let pdfBuffer = null;
+              if (['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && row.comprobante_id) {
+                try {
+                  const resFact = await fetch(`http://localhost:3004/facturacion/facturas/${row.comprobante_id}/pdf`, {
+                    method: 'POST'
+                  });
+                  if (resFact.ok) {
+                    const arrBuf = await resFact.arrayBuffer();
+                    pdfBuffer = Buffer.from(arrBuf);
+                  } else {
+                    console.warn(`⚠️ [PDF-SYNC] No se pudo obtener PDF de facturación (Status: ${resFact.status}) para comprobante local ID ${row.comprobante_id}`);
+                  }
+                } catch (err) {
+                  console.warn(`⚠️ [PDF-SYNC] Error conectando a facturación en puerto 3004: ${err.message}`);
                 }
-              } catch (err) {
-                console.warn(`⚠️ [PDF-SYNC] Error conectando a facturación en puerto 3004: ${err.message}`);
+              } else if (['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && !row.comprobante_id && row.presupuesto_id) {
+                try {
+                  pdfBuffer = await generarFacturaHeredadaPdfBuffer(row.presupuesto_id, row.numero_comprobante);
+                } catch (err) {
+                  console.error(`❌ [PDF-SYNC] Error generando PDF de factura heredada para ID ${row.local_movimiento_id}:`, err.message);
+                }
+              } else if (row.tipo_comprobante === 'RC') {
+                try {
+                  pdfBuffer = await generarComprobantePdfBuffer(row);
+                } catch (err) {
+                  console.error(`❌ [PDF-SYNC] Error generando recibo PDF local para ID ${row.local_movimiento_id}:`, err.message);
+                }
               }
-            } else if (['FC', 'NC', 'ND'].includes(row.tipo_comprobante) && !row.comprobante_id && row.presupuesto_id) {
-              try {
-                pdfBuffer = await generarFacturaHeredadaPdfBuffer(row.presupuesto_id, row.numero_comprobante);
-              } catch (err) {
-                console.error(`❌ [PDF-SYNC] Error generando PDF de factura heredada para ID ${row.local_movimiento_id}:`, err.message);
-              }
-            } else if (row.tipo_comprobante === 'RC') {
-              try {
-                pdfBuffer = await generarComprobantePdfBuffer(row);
-              } catch (err) {
-                console.error(`❌ [PDF-SYNC] Error generando recibo PDF local para ID ${row.local_movimiento_id}:`, err.message);
+              
+              // Subir a Supabase Storage si tenemos buffer
+              if (pdfBuffer) {
+                await uploadPdfToStorage(filename, pdfBuffer);
+                console.log(`✅ [PDF-SYNC] PDF ${filename} subido correctamente a Supabase Storage.`);
+              } else {
+                console.warn(`⚠️ [PDF-SYNC] No se generó buffer para comprobante ${filename}. Se omitirá el enlace de descarga.`);
+                comprobanteUrl = null;
               }
             }
-            
-            // Subir a Supabase Storage si tenemos buffer
-            if (pdfBuffer) {
-              await uploadPdfToStorage(filename, pdfBuffer);
-              console.log(`✅ [PDF-SYNC] PDF ${filename} subido correctamente a Supabase Storage.`);
-            } else {
-              console.warn(`⚠️ [PDF-SYNC] No se generó buffer para comprobante ${filename}. Se omitirá el enlace de descarga.`);
-              comprobanteUrl = null;
-            }
+          } catch (err) {
+            console.error(`❌ [PDF-SYNC] Error al procesar PDF para movimiento ID ${row.local_movimiento_id}:`, err.message);
           }
-        } catch (err) {
-          console.error(`❌ [PDF-SYNC] Error al procesar PDF para movimiento ID ${row.local_movimiento_id}:`, err.message);
         }
       }
       
       payloads.push({
-        local_movimiento_id: parseInt(row.local_movimiento_id),
+        local_movimiento_id: movIdInt,
         cliente_id: String(row.cliente_id).trim(),
         fecha: row.fecha,
         tipo_comprobante: row.tipo_comprobante,
@@ -704,11 +892,12 @@ async function sincronizarB2BCuentas() {
         haber: haberVal,
         saldo: parseFloat(row.saldo),
         comprobante_url: comprobanteUrl,
+        created_at: new Date(row.fecha_registro).toISOString(),
         metadatos: row.metadatos
       });
     }
 
-    // 2. Enviar movimientos a Supabase en lotes (batching de 50 registros)
+    // 2. Enviar movimientos a Supabase en lotes (batching de 500 registros)
     const batchSize = 500;
     let upsertados = 0;
     
@@ -736,18 +925,15 @@ async function sincronizarB2BCuentas() {
 
     console.log('🔍 Buscando movimientos huérfanos en Supabase para su depuración...');
     try {
-      
-      const getUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_cuentas_corrientes?select=local_movimiento_id`;
-      const getOptions = {
-        method: 'GET',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      };
-      
-      const resSup = await fetchWithRetry(getUrl, getOptions);
-      const supData = await resSup.json();
+      const supData = Array.isArray(supExistingData) && supExistingData.length > 0
+        ? supExistingData
+        : await (await fetchWithRetry(`${SUPABASE_URL}/rest/v1/clientes_b2b_cuentas_corrientes?select=local_movimiento_id&limit=10000`, {
+            method: 'GET',
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`
+            }
+          })).json();
       
       const orphanIds = supData
         .map(row => parseInt(row.local_movimiento_id))

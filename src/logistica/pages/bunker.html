@@ -183,6 +183,31 @@
         .switch-container input:checked + .slider:before {
             transform: translateX(24px);
         }
+        /* Sugerencias de Autocompletado */
+        .sugerencias-container {
+            background-color: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            position: absolute;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            top: 100%;
+            left: 0;
+        }
+        .sugerencia-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 13px;
+            color: #334155;
+            text-align: left;
+        }
+        .sugerencia-item:hover {
+            background-color: #f1f5f9;
+        }
     </style>
 </head>
 <body>
@@ -229,13 +254,49 @@
             
             <form id="form-nuevo-articulo" onsubmit="guardarArticuloBunker(event)" autocomplete="off">
                 
+                <!-- Panel de Clonación / Referente (Fase Clonación Integral) -->
+                <div class="bunker-panel" id="panel_clonacion" style="background-color: #f5f3ff; border: 2px solid #8b5cf6; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h3 style="color: #6d28d9; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <span>📋</span> Crear a Imagen y Semejanza (Clonar desde Referente)
+                        </h3>
+                        <span id="badge_clon_activo" style="display: none; background: #8b5cf6; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">✨ Modo Clon Activo</span>
+                    </div>
+                    <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #5b21b6;">
+                        Seleccione un artículo existente del Búnker para copiar automáticamente toda su estructura: taxonomía posicional, empaque, listas asignadas y márgenes financieros.
+                    </p>
+                    <div class="form-group" style="position: relative; margin-bottom: 0;">
+                        <input type="text" id="buscador_referente" placeholder="Buscar artículo de referencia por Nombre / Código..." autocomplete="off" oninput="buscarReferenteEnVivo(this)">
+                        <div id="autocomplete-list-buscador_referente" class="autocomplete-items" style="display:none;"></div>
+                        <button type="button" id="btn_limpiar_referente" class="btn-secondary" style="position: absolute; right: 5px; top: 5px; padding: 5px 10px; font-size: 0.8em; display: none;" onclick="limpiarReferente()">✖ Quitar Referente</button>
+                    </div>
+                    <div id="aviso_referente_info" style="display: none; margin-top: 10px; padding: 10px 14px; background: #ede9fe; border-left: 4px solid #7c3aed; border-radius: 4px; font-size: 0.88em; color: #4c1d95;">
+                    </div>
+                </div>
+
                 <!-- Buscador de Enriquecimiento (Fase 3) -->
-                <div class="bunker-panel" style="background-color: #fdfbf7; border: 2px solid #eab308; margin-bottom: 20px;">
-                    <h3 style="color: #ca8a04;">🔍 Enriquecer Artículo Existente (Opcional)</h3>
-                    <div class="form-group" style="position: relative;">
+                <div class="bunker-panel" id="panel_enriquecimiento" style="background-color: #fdfbf7; border: 2px solid #eab308; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                        <h3 style="color: #ca8a04; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            🔍 Enriquecer Artículo Existente (Opcional)
+                            <span id="badge_enrich_activo" style="display: none; background: #ca8a04; color: white; font-size: 0.72em; padding: 3px 8px; border-radius: 12px; font-weight: bold;">VINCULADO A LEGACY</span>
+                        </h3>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.82em; font-weight: 700; color: #854d0e; cursor: pointer; background: #fef9c3; padding: 4px 10px; border-radius: 14px; border: 1px solid #fde047;" title="Filtrar en el buscador únicamente los artículos Legacy que tienen Stock Consolidado > 0">
+                                <input type="checkbox" id="chk_consolidado_solo_stock" onchange="if(document.getElementById('buscador_consolidado').value.trim().length >= 2) buscarConsolidadoEnVivo(document.getElementById('buscador_consolidado'))" style="cursor: pointer;">
+                                📦 Solo con Stock &gt; 0
+                            </label>
+                            <button type="button" onclick="mostrarPendientesLegacyConStock()" style="background: #fef08a; color: #854d0e; border: 1px solid #eab308; padding: 4px 10px; border-radius: 14px; font-size: 0.8em; font-weight: 800; cursor: pointer;" title="Desplegar lista de artículos Legacy con Stock > 0 que aún no están en Búnker">
+                                🏛️ Ver Pendientes c/Stock
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group" style="position: relative; margin-bottom: 0;">
                         <input type="text" id="buscador_consolidado" placeholder="Buscar por Nombre / Código de barras en el Stock Legacy..." autocomplete="off" oninput="buscarConsolidadoEnVivo(this)">
                         <div id="autocomplete-list-buscador_consolidado" class="autocomplete-items" style="display:none;"></div>
                         <button type="button" class="btn-secondary" style="position: absolute; right: 5px; top: 5px; padding: 5px 10px; font-size: 0.8em;" onclick="limpiarSeleccionConsolidado()">✖ Limpiar</button>
+                    </div>
+                    <div id="aviso_enriquecimiento_legacy_info" style="display: none; margin-top: 10px; padding: 10px 14px; background: #fef9c3; border-left: 4px solid #ca8a04; border-radius: 4px; font-size: 0.88em; color: #713f12;">
                     </div>
                 </div>
 
@@ -290,21 +351,91 @@
                         <small style="color: #475569; display: block; margin-top: 4px;">Este texto se utilizará como la descripción del artículo en el sistema legacy local (Lomas Soft).</small>
                     </div>
                     
-                    <!-- Nomenclador Vivo -->
-                    <div class="form-group" style="position: relative;">
-                        <label for="descripcion_principal">Artículo Principal *</label>
-                        <input type="text" id="descripcion_principal" required placeholder="Ej: Almendra, Nuez Pecán..." 
-                            onblur="validarDiccionarioBlur(this, 'articulo_principal'); handleDescripcionPrincipalBlur();" 
-                            oninput="buscarDiccionarioEnVivo(this)"
-                            onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
-                        <div id="autocomplete-list-descripcion_principal" class="autocomplete-items" style="display:none;"></div>
+                    <!-- Panel 1: Selector de Familia de Producto (Nivel 1 - Molde Posicional) -->
+                    <div class="form-group" style="margin-top: 15px; margin-bottom: 15px; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label for="bunker_familia_id" style="color: #166534; font-weight: 700; margin: 0;">🌳 Familia de Producto (Nivel 1)</label>
+                            <div style="display: flex; gap: 4px; align-items: center;">
+                                <button type="button" onclick="window.crearNuevaFamiliaModal()" style="background:#166534; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.8em; font-weight:bold; cursor:pointer;" title="Crear Nueva Familia de Producto">🌳 ➕ Nueva Familia</button>
+                                <div id="acciones-familia-bunker" style="display: flex; gap: 4px; align-items: center;">
+                                    <button type="button" class="btn-action btn-edit" style="padding:4px 8px; font-size:0.8em; font-weight:bold; border-radius:4px; cursor:pointer;" title="Editar Nombre de Familia" onclick="window.editarFamiliaModalBunker()">✏️</button>
+                                    <button type="button" class="btn-action btn-delete" style="padding:4px 8px; font-size:0.8em; font-weight:bold; border-radius:4px; cursor:pointer;" title="Eliminar Familia (Protegida)" onclick="window.eliminarFamiliaModalBunker()">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                        <select id="bunker_familia_id" onchange="window.cambiarFamiliaArticulo(this.value)" style="border-color: #22c55e; font-weight: 600;">
+                            <option value="6" selected>General / Sin Clasificar</option>
+                            <option value="1">Frutos Secos</option>
+                            <option value="2">Semillas</option>
+                            <option value="3">Mixes y Elaborados</option>
+                            <option value="4">Aceites y Especiales</option>
+                            <option value="5">Semielaborados / Granel</option>
+                        </select>
+                        <small style="color: #15803d; display: block; margin-top: 4px;">Seleccione una familia para cargar automáticamente sus ejes comerciales posicionales.</small>
+
+                        <!-- Módulo de Inyección Optativa de Familia en Nomenclatura -->
+                        <div id="familia_injection_bar" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; background: #ffffff; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; flex-wrap: wrap;">
+                            <button type="button" id="btn_toggle_familia" onclick="window.toggleInyeccionFamilia()" style="background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 0.82em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Activar/Desactivar Familia en la Nomenclatura Generada">
+                                🙈 Familia Oculta en Nomenclatura
+                            </button>
+
+                            <div id="panel_opciones_familia" style="display: none; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                <select id="bunker_posicion_familia" onchange="window.actualizarLivePreview()" style="padding: 3px 6px; font-size: 0.8em; border-radius: 4px; border: 1px solid #94a3b8; background: #f8fafc;" title="Ubicación espacial relativa al Nombre Principal">
+                                    <option value="ANTES" selected>⬅️ Antes del Principal</option>
+                                    <option value="DESPUES">➡️ Después del Principal</option>
+                                </select>
+
+                                <select id="bunker_modo_familia" onchange="window.actualizarLivePreview()" style="padding: 3px 6px; font-size: 0.8em; border-radius: 4px; border: 1px solid #94a3b8; background: #f8fafc;" title="Formato de la Familia en Nomenclatura">
+                                    <option value="COMPLETO" selected>Nombre Completo</option>
+                                    <option value="ABREVIADO">Abreviatura</option>
+                                </select>
+
+                                <input type="text" id="bunker_abrev_familia" oninput="window.actualizarLivePreview()" onchange="window.sincronizarAbreviaturaFamiliaEnCaliente()" placeholder="Abrev. Familia (En caliente)" style="padding: 3px 6px; font-size: 0.8em; border-radius: 4px; border: 1px solid #94a3b8; width: 140px; text-transform: uppercase;" title="Edición in-line de abreviatura de familia">
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Atributos Dinámicos -->
-                    <div class="form-group" style="margin-top: 15px;">
-                        <label>Atributos Dinámicos (Familias)</label>
+                    <!-- Nomenclador Vivo: Artículo Principal (Nivel 2) -->
+                    <div class="form-group" style="position: relative; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                <label for="bunker_principal_id" style="margin: 0; color: #1e3a8a; font-weight: 700;">📦 Nombre Principal (Nivel 2 - Categoría: articulo_principal) *</label>
+                                <button type="button" onclick="window.crearNuevoArticuloPrincipalModal()" style="background:#1e3a8a; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.78em; font-weight:bold; cursor:pointer;" title="Vincular o Crear Nuevo Artículo Principal en esta Familia">📦 ➕ Vincular / Nuevo Principal</button>
+                                <button type="button" onclick="window.editarArticuloPrincipalModalBunker()" style="background:#eab308; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.78em; font-weight:bold; cursor:pointer;" title="Editar Nombre o Abreviatura del Atributo Principal">✏️ Editar</button>
+                                <button type="button" onclick="window.desvincularArticuloPrincipalModalBunker()" style="background:#dc2626; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:0.78em; font-weight:bold; cursor:pointer;" title="Desvincular Atributo Principal de esta Familia">🔗❌ Desvincular</button>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <div style="display:inline-flex; background:#e2e8f0; border-radius:6px; padding:2px; font-size:0.75em; font-weight:bold;">
+                                    <button type="button" id="btn_principal_mode_comp" class="btn-mode-display active" onclick="window.setModoDisplayPrincipal('COMPLETO')" style="border:none; background:#3b82f6; color:white; border-radius:4px; padding:4px 6px; cursor:pointer;" title="Usar palabra completa">COMPLETO</button>
+                                    <button type="button" id="btn_principal_mode_abrev" class="btn-mode-display" onclick="window.setModoDisplayPrincipal('ABREVIADO')" style="border:none; background:transparent; color:#64748b; border-radius:4px; padding:4px 6px; cursor:pointer;" title="Usar abreviatura">ABREV</button>
+                                </div>
+                                <button type="button" class="btn-icon" id="toggle_attr_principal" style="color: #3b82f6; font-size: 1.2em; border:none; background:transparent; cursor:pointer;" onclick="window.toggleVisibilidadPrincipal()" title="Visible en Nomenclador">👁️</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; width: 100%; flex-wrap: wrap;">
+                            <input type="text" id="buscador_principal_bunker" placeholder="🔍 Filtrar atributo principal (ej: Porotos, Almendra...)" oninput="window.filtrarSelectorPrincipalBunker(this.value)" style="width: 260px; padding: 9px 10px; border: 1px solid #93c5fd; border-radius: 4px; font-size: 0.9em; background: #ffffff; box-sizing: border-box;">
+                            <!-- Selector estructurado Nivel 2 idéntico a diccionario-bunker.html -->
+                            <select id="bunker_principal_id" onchange="window.cambiarPrincipalArticulo(this.value)" required style="flex: 1; min-width: 240px; border: 1px solid #3b82f6; border-radius: 4px; padding: 9px 10px; font-size: 1em; font-weight: bold; background: #ffffff; color: #1e293b; box-sizing: border-box;">
+                                <option value="" selected>📦 Seleccione un Atributo Principal...</option>
+                            </select>
+                            
+                            <!-- Valores ocultos preservados para compatibilidad de formulario -->
+                            <input type="hidden" id="descripcion_principal" name="descripcion_principal" required>
+                            <input type="hidden" id="descripcion_principal_input">
+                        </div>
+                    </div>
+
+                    <!-- Atributos Dinámicos (Categorías Posicionales / Nivel 3+) -->
+                    <div class="form-group" style="margin-top: 15px; background: #f8fafc; border: 1px solid #cbd5e1; padding: 12px; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <label style="margin: 0; color: #1e3a8a; font-weight: 700;">📐 Categorías y Atributos Comerciales Posicionales (Nivel 3+)</label>
+                                <button type="button" onclick="window.crearNuevaCategoriaModalBunker()" style="background:#2563eb; color:#fff; border:none; border-radius:4px; padding:5px 10px; font-size:0.8em; font-weight:bold; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.08);" title="Vincular una categoría preexistente o crear una nueva Categoría / Eje Comercial en esta Familia">➕ Nueva Categoría / Eje</button>
+                                <button type="button" onclick="window.abrirGestorTaxonomiaModalBunker()" style="background:#475569; color:#fff; border:none; border-radius:4px; padding:5px 10px; font-size:0.8em; font-weight:bold; cursor:pointer;" title="Reordenar secuencia de posiciones de la plantilla de esta Familia">⚙️ Ordenar Ejes</button>
+                            </div>
+                            <span style="font-size: 0.78em; color: #475569; background: #ffffff; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1;">💡 En cada categoría podés dejarla vacía o tocar <strong>➕ Atributo</strong> para dar de alta un término (ej: Cranberry) igual que en el Diccionario.</span>
+                        </div>
                         <div id="atributos-container"></div>
-                        <button type="button" class="btn-secondary" onclick="agregarAtributoUI()" style="margin-top: 10px; font-size: 0.85em;">+ Agregar Propiedad</button>
                     </div>
                 </div>
 
@@ -315,6 +446,10 @@
                         <div class="form-group">
                             <label for="costo_base">Costo Base ($)</label>
                             <input type="text" id="costo_base" required value="0,00" oninput="recalcularTodaLaGrilla()" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this)" data-decimals="2">
+                            <button type="button" class="btn-secondary" onclick="window.abrirCalculadoraTostadero()" style="margin-top: 5px; width: 100%; font-size: 0.8em; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; height: 32px;">
+                                ⚙️ Simular Tostadero
+                            </button>
+                            <div id="aviso_costo_proporcional" style="display: none; margin-top: 6px; padding: 6px 10px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px; font-size: 0.82em; color: #166534;"></div>
                         </div>
                         <div class="form-group">
                             <label for="porcentaje_iva">IVA (%)</label>
@@ -322,21 +457,43 @@
                         </div>
                         <div class="form-group">
                             <label for="kilos_unidad">Kilos x Unidad</label>
-                            <input type="text" id="kilos_unidad" required value="0,000" oninput="actualizarLivePreview()" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this)" data-decimals="3">
+                            <input type="text" id="kilos_unidad" required value="0,000" oninput="actualizarLivePreview(); if(typeof window.recalcularCostoPresentacionReactivo === 'function') window.recalcularCostoPresentacionReactivo();" onfocus="limpiarFormatoInputFocus(this)" onblur="aplicarFormatoInputBlur(this); if(typeof window.recalcularCostoPresentacionReactivo === 'function') window.recalcularCostoPresentacionReactivo();" data-decimals="3">
                             <div style="margin-top: 5px; display: flex; flex-direction: column; gap: 4px;">
                                 <div style="display: flex; align-items: center; gap: 5px;">
                                     <input type="checkbox" id="expresar_gramos" onchange="actualizarLivePreview()" style="width: auto;">
                                     <label for="expresar_gramos" style="font-size: 0.85em; font-weight: normal; color: #475569; margin: 0;">Expresar en gramos</label>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 5px;">
-                                    <input type="checkbox" id="expresar_unidades" onchange="conmutarModoUnidades()" style="width: auto;">
+                                    <input type="checkbox" id="expresar_unidades" onchange="conmutarModoUnidades(); if(typeof window.recalcularCostoPresentacionReactivo === 'function') window.recalcularCostoPresentacionReactivo();" style="width: auto;">
                                     <label for="expresar_unidades" style="font-size: 0.85em; font-weight: normal; color: #475569; margin: 0; cursor: pointer;">Expresar en unidades 📦</label>
+                                </div>
+                                <!-- 🏭 TOGGLE EXCEPCIONALIDAD WIP (FASE 50) -->
+                                <div style="display: flex; align-items: center; gap: 5px; background: #fffbeb; padding: 4px 6px; border-radius: 4px; border: 1px solid #fde68a;">
+                                    <input type="checkbox" id="presentacion_variable_wip" onchange="togglePresentacionVariableWIP(this.checked)" style="width: auto;">
+                                    <label for="presentacion_variable_wip" style="font-size: 0.85em; font-weight: bold; color: #92400e; margin: 0; cursor: pointer;">🏭 Presentación Variable / WIP (Unidad Productiva)</label>
+                                </div>
+                            </div>
+                            <!-- 🏷️ CAMPO SUFIJO WIP Y ARTÍCULO PUENTE (UP -> AP) -->
+                            <div id="container_sufijo_wip" style="display: none; background: #fef3c7; padding: 8px; border-radius: 6px; margin-top: 6px; border: 1px solid #f59e0b;">
+                                <div style="margin-bottom: 8px;">
+                                    <label for="sufijo_wip" style="font-size: 0.85em; font-weight: bold; color: #78350f; display: block; margin-bottom: 3px;">🏷️ Sufijo WIP (Nomenclador)</label>
+                                    <input type="text" id="sufijo_wip" list="list_sufijos_wip" placeholder="Ej: UP Variable, A Granel..." oninput="actualizarLivePreview()" style="width: 100%; padding: 4px 8px; border: 1px solid #d97706; border-radius: 4px; font-size: 0.9em;">
+                                    <datalist id="list_sufijos_wip">
+                                        <!-- Poblado dinámicamente desde GET /api/logistica/bunker/sufijos-wip-historico -->
+                                    </datalist>
+                                </div>
+                                <div>
+                                    <label for="articulo_puente_codigo" style="font-size: 0.85em; font-weight: bold; color: #78350f; display: block; margin-bottom: 3px;">🔗 Artículo Puente / Salida Comercial (AP)</label>
+                                    <input type="text" id="articulo_puente_codigo" list="list_articulos_puente" placeholder="Buscar SKU o nombre de Artículo Puente..." style="width: 100%; padding: 4px 8px; border: 1px solid #d97706; border-radius: 4px; font-size: 0.9em;">
+                                    <datalist id="list_articulos_puente">
+                                        <!-- Poblado dinámicamente con artículos puente/comerciales -->
+                                    </datalist>
                                 </div>
                             </div>
                         </div>
                         <div class="form-group">
                             <label for="cantidad_pack">Cantidad</label>
-                            <input type="number" step="1" id="cantidad_pack" required value="1" min="1" oninput="actualizarLivePreview()">
+                            <input type="number" step="1" id="cantidad_pack" required value="1" min="1" oninput="actualizarLivePreview(); if(typeof window.recalcularCostoPresentacionReactivo === 'function') window.recalcularCostoPresentacionReactivo();">
                         </div>
                     </div>
                     <div class="form-row">
@@ -362,9 +519,10 @@
                     </div>
                     
                     <div class="form-row">
-                        <div class="form-group" style="flex: 2;">
+                        <div class="form-group" style="flex: 2; position: relative;">
                             <label for="pack_hijo_codigo">Código Artículo Hijo (Si es Pack)</label>
-                            <input type="text" id="pack_hijo_codigo" placeholder="Ej: LAMDA-0001 (Opcional)">
+                            <input type="text" id="pack_hijo_codigo" placeholder="Ej: LAMDA-0001 (Opcional)" autocomplete="off">
+                            <div id="pack_hijo_sugerencias" class="sugerencias-container" style="display: none;"></div>
                         </div>
                         <div class="form-group" style="flex: 1; display: flex; align-items: center; padding-top: 25px;">
                             <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
@@ -378,6 +536,155 @@
                                 <span>Mantener Utilidad Financiera</span>
                             </label>
                         </div>
+                    </div>
+
+                    <!-- Panel Dinámico de Receta y Fraccionamiento (Fase Clonación Integral) -->
+                    <div id="panel_receta_fraccionamiento" style="margin-top: 25px; margin-bottom: 25px; padding: 18px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #bbf7d0; padding-bottom: 10px; margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.3em;">🥣</span>
+                                <h4 style="margin: 0; color: #166534; font-size: 1.1em; font-weight: 700;">Estructura de Receta de Fraccionamiento / Costo de Elaboración</h4>
+                                <span id="badge_receta_ldn" style="background: #dcfce7; color: #15803d; font-size: 0.75em; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #86efac;">LDN 2: Fraccionado</span>
+                                <span id="badge_receta_origen" style="background: #f0fdf4; color: #166534; font-size: 0.75em; font-weight: 600; padding: 2px 8px; border-radius: 12px; border: 1px solid #bbf7d0;">Heredada de Referente</span>
+                            </div>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; color: #166534; font-size: 0.9em; user-select: none;">
+                                <input type="checkbox" id="chk_activar_receta" style="width: auto; cursor: pointer;">
+                                <span>Activar Receta & Mano de Obra</span>
+                            </label>
+                        </div>
+
+                        <!-- Banner explicativo cuando el referente es LDN 1 (Bulto Cerrado) -->
+                        <div id="aviso_receta_ldn1_a_ldn2" style="display: none; margin-bottom: 15px; padding: 10px 14px; background: #ecfdf5; border-left: 4px solid #10b981; border-radius: 4px; font-size: 0.85em; color: #065f46;">
+                            🌾 <strong>Transformación LDN 1 ➔ LDN 2:</strong> El artículo referente es un bulto cerrado sin receta directa. Al activar la receta, puede vincular la Materia Prima (grano/fruto), seleccionar el envase correspondiente y fijar los minutos de fraccionamiento.
+                        </div>
+
+                        <div id="receta_contenedor_campos" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+                            <!-- Tarjeta 1: Materia Prima Base -->
+                            <div style="background: #ffffff; padding: 12px 15px; border-radius: 6px; border: 1px solid #dcfce7; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative;">
+                                <div style="font-size: 0.8em; font-weight: 700; color: #15803d; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>🌾 Materia Prima Principal</span>
+                                    <span id="receta_mp_unidad_badge" style="color: #64748b; font-weight: normal;">Kilos</span>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <input type="hidden" id="receta_ingrediente_id" value="">
+                                    
+                                    <div id="receta_mp_seleccionada_box" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 4px;">
+                                        <div style="min-width: 0; flex: 1;">
+                                            <div id="receta_ingrediente_nombre" style="font-weight: 600; color: #1e293b; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Sin materia prima seleccionada">
+                                                Seleccione o herede materia prima
+                                            </div>
+                                            <div style="font-size: 0.8em; color: #64748b; margin-top: 2px;">
+                                                Costo Patrón: <strong id="receta_mp_costo_kilo_lbl" style="color: #0f172a;">$0.00</strong> /kg
+                                            </div>
+                                        </div>
+                                        <button type="button" id="btn_cambiar_mp" onclick="window.activarBuscadorMP(true)" style="background: #e2e8f0; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.75em; font-weight: bold; color: #334155; cursor: pointer; white-space: nowrap; margin-left: 8px;" title="Buscar o cambiar materia prima">
+                                            🔍 Buscar / Cambiar
+                                        </button>
+                                    </div>
+
+                                    <!-- Buscador desplegable de materias primas -->
+                                    <div id="receta_mp_buscador_box" style="display: none; position: relative; margin-top: 6px;">
+                                        <div style="display: flex; gap: 5px;">
+                                            <input type="text" id="receta_mp_buscar_input" placeholder="🔍 Escriba para buscar materia prima..." style="flex: 1; padding: 6px 8px; border: 1.5px solid #16a34a; border-radius: 4px; font-size: 0.9em;" autocomplete="off" oninput="window.buscarMateriaPrimaEnVivo(this.value)">
+                                            <button type="button" onclick="window.activarBuscadorMP(false)" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 0.8em; cursor: pointer;" title="Cerrar buscador">✕</button>
+                                        </div>
+                                        <div id="receta_mp_sugerencias" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; margin-top: 2px;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Cantidad (Kilos):</label>
+                                        <input type="number" id="receta_ingrediente_kilos" step="0.001" min="0" placeholder="0.00" style="width: 100%; padding: 6px; font-weight: bold; border: 1px solid #cbd5e1; border-radius: 4px; background: #f8fafc;" readonly title="Sincronizado automáticamente con los Kilos por Unidad del artículo">
+                                    </div>
+                                    <div style="flex: 1; text-align: right;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Subtotal MP:</label>
+                                        <div id="receta_subtotal_mp" style="font-size: 1.05em; font-weight: 700; color: #166534; padding-top: 6px;">$0.00</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tarjeta 2: Packaging / Empaque -->
+                            <div style="background: #ffffff; padding: 12px 15px; border-radius: 6px; border: 1px solid #dcfce7; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-size: 0.8em; font-weight: 700; color: #15803d; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                    <span>📦 Insumo / Packaging</span>
+                                    <span style="color: #64748b; font-weight: normal;">Bolsa / Caja</span>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <select id="receta_packaging_select" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; background: #fff;">
+                                        <option value="">(Sin packaging / A granel)</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Unidades:</label>
+                                        <input type="number" id="receta_packaging_cant" value="1" min="0" step="1" style="width: 100%; padding: 6px; font-weight: bold; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                    </div>
+                                    <div style="flex: 1; text-align: right;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Subtotal Envase:</label>
+                                        <div id="receta_subtotal_packaging" style="font-size: 1.05em; font-weight: 700; color: #166534; padding-top: 6px;">$0.00</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tarjeta 3: Mano de Obra (Fraccionamiento) -->
+                            <div style="background: #ffffff; padding: 12px 15px; border-radius: 6px; border: 1px solid #dcfce7; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-size: 0.8em; font-weight: 700; color: #15803d; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                                    <span>⏱️ Mano de Obra</span>
+                                    <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 0.85em; text-transform: none; color: #475569;">
+                                        <input type="checkbox" id="receta_mo_activa" checked style="width: auto;">
+                                        <span>Incluir</span>
+                                    </label>
+                                </div>
+                                <div style="margin-bottom: 8px;">
+                                    <select id="receta_mo_colaborador" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; background: #fff;">
+                                        <option value="">Seleccione Colaborador / Tarifa...</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Minutos asignados:</label>
+                                        <input type="number" id="receta_mo_minutos" value="0" min="0" step="0.5" style="width: 100%; padding: 6px; font-weight: bold; border: 1px solid #cbd5e1; border-radius: 4px;">
+                                    </div>
+                                    <div style="flex: 1; text-align: right;">
+                                        <label style="font-size: 0.75em; color: #475569; display: block; margin-bottom: 2px;">Subtotal MO:</label>
+                                        <div id="receta_subtotal_mo" style="font-size: 1.05em; font-weight: 700; color: #166534; padding-top: 6px;">$0.00</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Barra de Consolidación y Ecuación de Costos -->
+                        <div style="margin-top: 15px; padding: 12px 16px; background: #ffffff; border-radius: 6px; border: 1px solid #bbf7d0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px;">
+                            <div style="display: flex; flex-direction: column; gap: 3px;">
+                                <div style="font-size: 0.8em; color: #64748b; font-weight: 600; text-transform: uppercase;">
+                                    Ecuación de Costo Total Resultante
+                                </div>
+                                <div style="font-size: 0.9em; color: #334155; font-family: monospace;">
+                                    Bulto: <span id="eq_mp_lbl">$0.00</span> (MP) + <span id="eq_pkg_lbl">$0.00</span> (Envase) + <span id="eq_mo_lbl">$0.00</span> (MO) = <strong id="eq_total_bulto_lbl" style="color: #15803d; font-size: 1.1em;">$0.00</strong>
+                                </div>
+                                <div style="font-size: 0.85em; color: #0369a1; font-weight: 600;">
+                                    ➡️ Costo Base resultante por Kilo: <strong id="eq_costo_kilo_lbl" style="font-size: 1.15em;">$0.00 /kg</strong>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <button type="button" id="btn_aplicar_costo_receta" style="background: #16a34a; color: #ffffff; border: none; padding: 9px 16px; border-radius: 6px; font-weight: 700; font-size: 0.9em; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(22, 163, 74, 0.25);" title="Inyecta el costo por kilo a Costo Base y recalcula todas las listas comerciales">
+                                    <span>🎯 Inyectar a Costo Base y Listas</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin-top: 30px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span>Asignación Comercial a Listas Vigentes</span>
+                        <div style="font-size: 0.78em; font-weight: normal; display: flex; gap: 10px; align-items: center;">
+                            <span onclick="window.marcarTodasLasListas(true)" style="color: #0284c7; cursor: pointer; text-decoration: underline; font-weight: bold; user-select: none;">☑️ Seleccionar todas</span>
+                            <span style="color: #cbd5e1;">|</span>
+                            <span onclick="window.marcarTodasLasListas(false)" style="color: #ef4444; cursor: pointer; text-decoration: underline; font-weight: bold; user-select: none;">⬜ Deseleccionar todas</span>
+                        </div>
+                    </h4>
+                    <div id="listas-checklist-container" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; padding: 15px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                        <div style="color: #64748b;">⏳ Cargando listas vigentes...</div>
                     </div>
 
                     <h4 style="margin-top: 30px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px;">Calculadora Financiera - Proyección de Precios</h4>
@@ -396,6 +703,6 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="../js/bunker.js?v=1.5.4"></script>
+    <script src="../js/bunker.js?v=5.22.0_enrich_legacy_stock"></script>
 </body>
 </html>

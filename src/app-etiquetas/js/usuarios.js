@@ -1,4 +1,5 @@
 const API_BASE = '/api';
+let clientesBunkerCargados = [];
 
 // --- UTILIDADES DE MODALES DINÁMICOS Y ARRASTRABLES ---
 function makeModalDraggable(modalEl) {
@@ -145,6 +146,58 @@ async function cargarRoles(rolIdSeleccionado = null) {
   }
 }
 
+/**
+ * Carga los clientes Búnker para vincular cuentas híbridas
+ * Deshabilita los ya vinculados a otros operarios para evitar colisiones
+ */
+async function cargarClientesBunker(userIdEditando = null) {
+  try {
+    const res = await fetch(`${API_BASE}/bunker_clientes`);
+    if (!res.ok) throw new Error('Error al obtener clientes búnker');
+    clientesBunkerCargados = await res.json();
+
+    // 1. Cargar selector de nuevo usuario
+    const selectNuevo = document.getElementById('cliente_bunker_id');
+    if (selectNuevo) {
+      selectNuevo.innerHTML = '<option value="">-- No vinculado (Solo Operario) --</option>';
+      clientesBunkerCargados.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        if (c.usuario_id) {
+          opt.textContent = `${c.cliente_nombre} (Ya vinculado)`;
+          opt.disabled = true;
+          opt.style.color = '#94a3b8';
+        } else {
+          opt.textContent = c.cliente_nombre;
+        }
+        selectNuevo.appendChild(opt);
+      });
+    }
+
+    // 2. Cargar selector de edición de usuario
+    const selectEditar = document.getElementById('editar_cliente_bunker_id');
+    if (selectEditar) {
+      selectEditar.innerHTML = '<option value="">-- No vinculado (Solo Operario) --</option>';
+      clientesBunkerCargados.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        
+        // Deshabilitar si ya está asignado a otro operario
+        if (c.usuario_id && String(c.usuario_id) !== String(userIdEditando)) {
+          opt.textContent = `${c.cliente_nombre} (Ya vinculado)`;
+          opt.disabled = true;
+          opt.style.color = '#94a3b8';
+        } else {
+          opt.textContent = c.cliente_nombre;
+        }
+        selectEditar.appendChild(opt);
+      });
+    }
+  } catch (error) {
+    console.error('Error al cargar clientes búnker:', error);
+  }
+}
+
 // Enviar nuevo usuario
 document.getElementById('form-nuevo-usuario').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -152,18 +205,20 @@ document.getElementById('form-nuevo-usuario').addEventListener('submit', async (
   const usuario = document.getElementById('usuario').value;
   const contraseña = document.getElementById('contraseña').value;
   const rol_id = document.getElementById('rol_id').value;
+  const cliente_bunker_id = document.getElementById('cliente_bunker_id').value || null;
 
   try {
     const res = await fetch(`${API_BASE}/usuarios`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre_completo, usuario, contraseña, rol_id })
+      body: JSON.stringify({ nombre_completo, usuario, contraseña, rol_id, cliente_bunker_id })
     });
 
     if (res.ok) {
       alert('Usuario creado correctamente');
       document.getElementById('form-nuevo-usuario').reset();
       cargarUsuarios();
+      cargarClientesBunker();
     } else {
       const data = await res.json();
       alert(data.error || 'Error al crear usuario');
@@ -211,19 +266,22 @@ async function cargarDatosUsuario(id) {
     
     const usuario = await res.json();
     
+    // Cargar selectores dependientes antes de poblar datos
+    await cargarRoles(usuario.rol_id);
+    await cargarClientesBunker(id);
+    
     // Llenar el formulario
     document.getElementById('editar_id').value = usuario.id;
     document.getElementById('editar_nombre_completo').value = usuario.nombre_completo;
     document.getElementById('editar_usuario').value = usuario.usuario;
     document.getElementById('editar_rol_id').value = usuario.rol_id || '';
+    document.getElementById('editar_cliente_bunker_id').value = usuario.cliente_bunker_id || '';
     document.getElementById('editar_comentario').value = usuario.comentario || '';
     document.getElementById('editar_activo').checked = usuario.activo;
     
     // Limpiar contraseña ya que es opcional
     document.getElementById('editar_contraseña').value = '';
     
-    // Cargar roles y seleccionar el rol actual
-    await cargarRoles(usuario.rol_id);
     abrirModal();
   } catch (error) {
     console.error('Error al cargar datos del usuario:', error);
@@ -242,6 +300,7 @@ document.getElementById('form-editar-usuario').addEventListener('submit', async 
   const rol_id = document.getElementById('editar_rol_id').value;
   const comentario = document.getElementById('editar_comentario').value;
   const activo = document.getElementById('editar_activo').checked;
+  const cliente_bunker_id = document.getElementById('editar_cliente_bunker_id').value || null;
 
   // Validaciones
   if (!nombre_completo || !usuario) {
@@ -260,7 +319,8 @@ document.getElementById('form-editar-usuario').addEventListener('submit', async 
       usuario,
       rol_id,
       comentario,
-      activo
+      activo,
+      cliente_bunker_id
     };
 
     // Solo incluir contraseña si se modificó
@@ -282,6 +342,7 @@ document.getElementById('form-editar-usuario').addEventListener('submit', async 
     alert('Usuario actualizado correctamente');
     cerrarModal();
     cargarUsuarios();
+    cargarClientesBunker();
   } catch (error) {
     console.error('Error al actualizar usuario:', error);
     alert(error.message || 'Error al actualizar usuario');
@@ -298,13 +359,19 @@ async function cargarUsuarios() {
 
     usuarios.forEach(u => {
       const fila = document.createElement('tr');
+      
+      const badgeCliente = u.cliente_bunker_nombre
+        ? `<span style="background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 9999px; font-size: 0.85em; font-weight: 600; display: inline-block;">${u.cliente_bunker_nombre}</span>`
+        : '<span style="color: #94a3b8; font-style: italic;">Sin vincular</span>';
+
       fila.innerHTML = `
         <td>${u.id}</td>
-        <td>${u.nombre_completo}</td>
-        <td>${u.usuario}</td>
+        <td><strong>${u.nombre_completo}</strong></td>
+        <td><code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${u.usuario}</code></td>
         <td>${u.rol_nombre || '-'}</td>
-        <td>${u.activo ? 'Sí' : 'No'}</td>
-        <td>
+        <td>${badgeCliente}</td>
+        <td style="text-align: center;">${u.activo ? '✔️' : '❌'}</td>
+        <td style="text-align: center;">
           <button 
             onclick="event.stopPropagation(); eliminarUsuario(${u.id}, '${u.nombre_completo}')" 
             class="btn-danger"
@@ -344,6 +411,7 @@ async function eliminarUsuario(id, nombre) {
 
     alert('Usuario eliminado correctamente');
     cargarUsuarios();
+    cargarClientesBunker();
   } catch (error) {
     console.error('Error al eliminar usuario:', error);
     alert(error.message || 'Error al eliminar usuario');
@@ -352,4 +420,5 @@ async function eliminarUsuario(id, nombre) {
 
 // Inicialización
 cargarRoles();
+cargarClientesBunker();
 cargarUsuarios();

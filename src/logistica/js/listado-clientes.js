@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const txtLomasId = document.getElementById('txt-lomas-id');
     const txtCuit = document.getElementById('txt-cuit');
     const selCondicionIva = document.getElementById('sel-condicion-iva');
+    const selPreferenciaFacturacion = document.getElementById('sel-preferencia-facturacion');
     const txtDomicilioFiscal = document.getElementById('txt-domicilio-fiscal');
     const txtProvincia = document.getElementById('txt-provincia');
     const txtWhatsappFacturas = document.getElementById('txt-whatsapp-facturas');
@@ -61,7 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const txtEmailPortal = document.getElementById('txt-email-portal');
     const txtEmailPortalNombre = document.getElementById('txt-email-portal-nombre');
     const txtEmailPortalCargo = document.getElementById('txt-email-portal-cargo');
+    const chkVerStock = document.getElementById('chk-ver-stock');
 
+    // Trazabilidad de conversión de prospecto a cliente
+    let prospectoConversionId = null;
 
     // Configuración de visibilidad de columnas
     const columnasConfig = {
@@ -69,9 +73,32 @@ document.addEventListener('DOMContentLoaded', () => {
         nombre: { selector: '.col-nombre', visible: true },
         razon: { selector: '.col-razon', visible: true },
         externo: { selector: '.col-externo', visible: true },
+        financiacion: { selector: '.col-financiacion', visible: true },
         saldo: { selector: '.col-saldo', visible: true },
         listas: { selector: '.col-listas', visible: true }
     };
+
+    function obtenerModoSwitchCliente(cliente) {
+        if (cliente?.salvavidas_info?.modo_switch) {
+            return cliente.salvavidas_info.modo_switch;
+        }
+        const rawModo = String(cliente?.salvavidas_modo || 'HEREDAR_LISTA').trim().toUpperCase();
+        if (rawModo === 'EXCLUIDO') return 'EXCLUIDO';
+        if (rawModo === 'SOMBRA') return 'SOMBRA';
+        return 'ACTIVO';
+    }
+
+    function obtenerFinanciacionCalculadaConIva(cliente) {
+        return Number(cliente?.salvavidas_info?.financiacion_calculada_con_iva || 0);
+    }
+
+    function obtenerFinanciacionCalculadaNeta(cliente) {
+        return Number(cliente?.salvavidas_info?.financiacion_calculada_neta || 0);
+    }
+
+    function obtenerFinanciacionCalculadaIva(cliente) {
+        return Number(cliente?.salvavidas_info?.financiacion_calculada_iva || 0);
+    }
 
     function inicializarColumnas() {
         const guardado = localStorage.getItem('lamda_columnas_visibles');
@@ -170,14 +197,44 @@ document.addEventListener('DOMContentLoaded', () => {
     let mostrarDeuda = localStorage.getItem('lamda_mostrar_deuda_total') !== 'false';
 
     function actualizarDeudaTotal() {
-        const totalDeuda = todosLosClientes.reduce((acc, c) => {
+        let totalDeuda = 0;
+        let totalFinancActivaConIva = 0;
+        let totalFinancSombraConIva = 0;
+        let countActivo = 0;
+        let countActivoConCargo = 0;
+        let countSombra = 0;
+        let countSombraConCargo = 0;
+        let countExcluido = 0;
+
+        todosLosClientes.forEach(c => {
             const val = parseFloat(c.saldo || 0);
-            return val > 0 ? acc + val : acc;
-        }, 0);
+            if (val > 0) totalDeuda += val;
+
+            const modo = obtenerModoSwitchCliente(c);
+            const financConIva = obtenerFinanciacionCalculadaConIva(c);
+
+            if (modo === 'ACTIVO') {
+                countActivo++;
+                if (financConIva > 0) {
+                    countActivoConCargo++;
+                    totalFinancActivaConIva += financConIva;
+                }
+            } else if (modo === 'SOMBRA') {
+                countSombra++;
+                if (financConIva > 0) {
+                    countSombraConCargo++;
+                    totalFinancSombraConIva += financConIva;
+                }
+            } else {
+                countExcluido++;
+            }
+        });
+
+        const fmt = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         if (txtDeudaTotal && btnToggleDeuda) {
             if (mostrarDeuda) {
-                txtDeudaTotal.textContent = '$ ' + totalDeuda.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                txtDeudaTotal.textContent = '$ ' + fmt(totalDeuda);
                 btnToggleDeuda.textContent = '👁️';
                 btnToggleDeuda.title = 'Ocultar Deuda';
             } else {
@@ -185,6 +242,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnToggleDeuda.textContent = '🙈';
                 btnToggleDeuda.title = 'Mostrar Deuda';
             }
+        }
+
+        const txtDeudaTotalConFinanc = document.getElementById('txt-deuda-total-con-financiacion');
+        if (txtDeudaTotalConFinanc) {
+            if (mostrarDeuda) {
+                const totalExigibleActivo = totalDeuda + totalFinancActivaConIva;
+                const queryActiva = (buscadorInput?.value || '').trim();
+                let subHtml = `🛡️ Total c/Financiación Activa (c/IVA): <strong>$ ${fmt(totalExigibleActivo)}</strong>`;
+                if (totalFinancSombraConIva > 0) {
+                    subHtml += ` &nbsp;·&nbsp; <span style="color:#92400e; opacity:0.8;">🌓 En Sombra: +$ ${fmt(totalFinancSombraConIva)}</span>`;
+                }
+                if (queryActiva) {
+                    subHtml += ` &nbsp;<span style="background:#fee2e2; color:#991b1b; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700;">🔍 Filtro activo: "${queryActiva}"</span>`;
+                }
+                txtDeudaTotalConFinanc.innerHTML = subHtml;
+            } else {
+                txtDeudaTotalConFinanc.textContent = '🛡️ Total c/Financiación Activa: $ ••••••••';
+            }
+        }
+
+        const txtKpiActiva = document.getElementById('txt-kpi-financ-activa');
+        const txtKpiCountActivo = document.getElementById('txt-kpi-count-activo');
+        const txtKpiSombra = document.getElementById('txt-kpi-financ-sombra');
+        const txtKpiCountSombra = document.getElementById('txt-kpi-count-sombra');
+        const txtKpiCountExcluido = document.getElementById('txt-kpi-count-excluido');
+
+        if (txtKpiActiva) {
+            txtKpiActiva.textContent = mostrarDeuda ? ('+$ ' + fmt(totalFinancActivaConIva) + ' c/IVA') : '$ ••••••';
+        }
+        if (txtKpiCountActivo) {
+            txtKpiCountActivo.textContent = `${countActivo} en Activo (${countActivoConCargo} con saldo financiado)`;
+        }
+        if (txtKpiSombra) {
+            txtKpiSombra.textContent = mostrarDeuda ? ('+$ ' + fmt(totalFinancSombraConIva) + ' c/IVA') : '$ ••••••';
+        }
+        if (txtKpiCountSombra) {
+            txtKpiCountSombra.textContent = `${countSombra} en Sombra (${countSombraConCargo} con cargo informativo)`;
+        }
+        if (txtKpiCountExcluido) {
+            txtKpiCountExcluido.textContent = `${countExcluido} cliente${countExcluido === 1 ? '' : 's'} apagado${countExcluido === 1 ? '' : 's'}`;
         }
     }
 
@@ -273,28 +370,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error parseando whatsapp_facturas:', e);
             }
         } else if (whatsappString.trim().length > 0) {
-            contactos = whatsappString.split(',').map(n => ({ numero: n.trim(), nombre: '', cargo: '', default_factura: true }));
+            contactos = whatsappString.split(',').map(n => ({ numero: n.trim(), nombre: '', cargo: '', default_factura: true, default_resumen: true }));
         }
         return contactos.map(c => ({
             numero: c.numero ? c.numero.replace(/\D/g, '') : '',
             nombre: c.nombre || '',
             cargo: c.cargo || '',
-            default_factura: c.default_factura !== false
+            default_factura: c.default_factura !== false,
+            default_resumen: c.default_resumen === true || c.default === true
         })).filter(c => c.numero.length > 0);
     }
 
     function obtenerEmailsDeCliente(cliente) {
         const emailString = cliente.email_facturas || '';
         let emails = [];
-        if (emailString.trim().startsWith('[')) {
+        if (emailString && emailString.trim().startsWith('[')) {
             try {
                 emails = JSON.parse(emailString);
             } catch (e) {
                 console.error('Error parseando email_facturas:', e);
             }
-        } else if (emailString.trim().length > 0) {
+        } else if (emailString && emailString.trim().length > 0) {
             emails = emailString.split(',').map(e => ({ email: e.trim(), nombre: '', cargo: '', default_factura: true }));
         }
+
+        // 🚀 FALLBACK AUTOMÁTICO: Si no hay emails en email_facturas, recuperar email_portal si está disponible
+        if (emails.length === 0 && cliente.email_portal && cliente.email_portal.trim().length > 0) {
+            emails.push({
+                email: cliente.email_portal.trim(),
+                nombre: cliente.email_portal_nombre || cliente.cliente_nombre || '',
+                cargo: cliente.email_portal_cargo || 'Portal B2B',
+                default_factura: true
+            });
+        }
+
         return emails.map(e => ({
             email: e.email ? e.email.trim() : '',
             nombre: e.nombre || '',
@@ -354,12 +463,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="font-size: 12px; font-weight: 600; color: #10b981; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
                     <span>📱 WhatsApp</span>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div id="swal-bulk-wp-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
         `;
 
         if (contactosWp.length === 0) {
             htmlContent += `
-                <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
                     No hay contactos de WhatsApp cargados para este cliente.
                 </div>
             `;
@@ -394,6 +503,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         htmlContent += `
                 </div>
+                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+                    <div style="font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 4px;">➕ O ingrese un número de WhatsApp específico para este envío:</div>
+                    <input type="text" id="swal-bulk-whatsapp-manual" placeholder="ej: (221) 563-1117" style="width: 100%; font-size: 13px; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; box-sizing: border-box;">
+                </div>
             </div>
         `;
 
@@ -403,12 +516,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="font-size: 12px; font-weight: 600; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
                     <span>📧 Correo Electrónico</span>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div id="swal-bulk-email-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
         `;
 
         if (contactosEmail.length === 0) {
             htmlContent += `
-                <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+                <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
                     No hay contactos de correo cargados para este cliente.
                 </div>
             `;
@@ -433,6 +546,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
         htmlContent += `
                 </div>
+                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+                    <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">➕ O ingrese un correo específico para este envío:</div>
+                    <input type="email" id="swal-bulk-email-manual" placeholder="ej: diana@belgian.com" style="width: 100%; font-size: 13px; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <!-- Sección: Cargar Nuevo Contacto Directo a la Ficha -->
+            <div style="margin-top: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
+                <div id="toggle-nuevo-contacto-bulk" style="padding: 9px 12px; background: #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                    <span style="font-size: 12px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                        <span style="color: #6366f1;">➕</span> Cargar nuevo contacto para este cliente
+                    </span>
+                    <span id="icon-toggle-nuevo-contacto" style="font-size: 11px; color: #64748b; font-weight: 600;">▼ Desplegar</span>
+                </div>
+                <div id="form-nuevo-contacto-bulk" style="display: none; padding: 12px; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Nombre:</label>
+                            <input type="text" id="swal-bulk-nuevo-nombre" placeholder="Ej: Micaela" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Cargo / Rol:</label>
+                            <input type="text" id="swal-bulk-nuevo-cargo" placeholder="Ej: Dueña, Administración" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 2px;">📱 WhatsApp (con máscara):</label>
+                            <input type="text" id="swal-bulk-nuevo-wp" placeholder="(221) 305-1684" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #8b5cf6; margin-bottom: 2px;">📧 Correo (opcional):</label>
+                            <input type="email" id="swal-bulk-nuevo-email" placeholder="ejemplo@cliente.com" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px;">
+                        <label style="font-size: 11px; color: #475569; display: flex; align-items: center; gap: 5px; cursor: pointer; margin: 0;">
+                            <input type="checkbox" id="swal-bulk-nuevo-alerta" checked style="accent-color: #10b981; width: 14px; height: 14px;">
+                            <span>Alerta Logística 🚚</span>
+                        </label>
+                        <button type="button" id="btn-guardar-nuevo-contacto-bulk" style="background: #10b981; color: white; border: none; border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                            <span>💾</span> Guardar en ficha y seleccionar
+                        </button>
+                    </div>
+                    <div id="swal-bulk-nuevo-feedback" style="display: none; font-size: 11.5px; font-weight: 600; padding: 6px 10px; border-radius: 4px; text-align: center; margin-top: 4px;"></div>
+                </div>
             </div>
             </div>
         `;
@@ -441,14 +600,257 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'Seleccionar Destinatarios',
             html: htmlContent,
             icon: 'info',
+            width: '620px',
             showCancelButton: true,
             confirmButtonText: '💾 Confirmar',
             cancelButtonText: 'Cancelar',
             confirmButtonColor: 'var(--purple-primary)',
             cancelButtonColor: '#64748b',
+            didOpen: (popup) => {
+                // 1. Máscara telefónica en número manual
+                const manualWpInput = popup.querySelector('#swal-bulk-whatsapp-manual');
+                if (manualWpInput) {
+                    manualWpInput.addEventListener('input', () => {
+                        let cursorPosition = manualWpInput.selectionStart;
+                        const originalLength = manualWpInput.value.length;
+                        const clean = cleanInputForFormatting(manualWpInput.value);
+                        const formatted = formatArgentinePhone(clean);
+                        manualWpInput.value = formatted;
+                        const newLength = formatted.length;
+                        cursorPosition = cursorPosition + (newLength - originalLength);
+                        manualWpInput.setSelectionRange(cursorPosition, cursorPosition);
+                    });
+                }
+
+                // 2. Máscara telefónica en nuevo contacto
+                const nuevoWpInput = popup.querySelector('#swal-bulk-nuevo-wp');
+                if (nuevoWpInput) {
+                    nuevoWpInput.addEventListener('input', () => {
+                        let cursorPosition = nuevoWpInput.selectionStart;
+                        const originalLength = nuevoWpInput.value.length;
+                        const clean = cleanInputForFormatting(nuevoWpInput.value);
+                        const formatted = formatArgentinePhone(clean);
+                        nuevoWpInput.value = formatted;
+                        const newLength = formatted.length;
+                        cursorPosition = cursorPosition + (newLength - originalLength);
+                        nuevoWpInput.setSelectionRange(cursorPosition, cursorPosition);
+                    });
+                }
+
+                // 3. Toggle de acordeón de nuevo contacto
+                const toggleBtn = popup.querySelector('#toggle-nuevo-contacto-bulk');
+                const formContainer = popup.querySelector('#form-nuevo-contacto-bulk');
+                const toggleIcon = popup.querySelector('#icon-toggle-nuevo-contacto');
+                if (toggleBtn && formContainer) {
+                    toggleBtn.addEventListener('click', () => {
+                        const isOpen = formContainer.style.display === 'flex';
+                        formContainer.style.display = isOpen ? 'none' : 'flex';
+                        if (toggleIcon) toggleIcon.textContent = isOpen ? '▼ Desplegar' : '▲ Plegar';
+                        if (!isOpen) {
+                            setTimeout(() => popup.querySelector('#swal-bulk-nuevo-nombre')?.focus(), 50);
+                        }
+                    });
+                }
+
+                // 4. Guardar nuevo contacto directamente en Bunker
+                const btnGuardarNuevo = popup.querySelector('#btn-guardar-nuevo-contacto-bulk');
+                const feedbackEl = popup.querySelector('#swal-bulk-nuevo-feedback');
+                if (btnGuardarNuevo) {
+                    btnGuardarNuevo.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const nombreVal = (popup.querySelector('#swal-bulk-nuevo-nombre')?.value || '').trim();
+                        const cargoVal = (popup.querySelector('#swal-bulk-nuevo-cargo')?.value || '').trim();
+                        const rawWp = (popup.querySelector('#swal-bulk-nuevo-wp')?.value || '').trim();
+                        const cleanPhone = cleanInputForFormatting(rawWp);
+                        const emailVal = (popup.querySelector('#swal-bulk-nuevo-email')?.value || '').trim();
+                        const alertaVal = popup.querySelector('#swal-bulk-nuevo-alerta')?.checked !== false;
+
+                        if (!cleanPhone && !emailVal) {
+                            if (feedbackEl) {
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = '#fef2f2';
+                                feedbackEl.style.color = '#991b1b';
+                                feedbackEl.style.border = '1px solid #fecaca';
+                                feedbackEl.textContent = 'Debe ingresar al menos un número de WhatsApp o un correo electrónico.';
+                            }
+                            return;
+                        }
+
+                        if (cleanPhone && cleanPhone.length < 8) {
+                            if (feedbackEl) {
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = '#fef2f2';
+                                feedbackEl.style.color = '#991b1b';
+                                feedbackEl.style.border = '1px solid #fecaca';
+                                feedbackEl.textContent = 'El número de WhatsApp ingresado no parece ser un número válido.';
+                            }
+                            return;
+                        }
+
+                        btnGuardarNuevo.disabled = true;
+                        btnGuardarNuevo.innerHTML = '<span>⏳</span> Guardando...';
+
+                        try {
+                            let curWps = obtenerContactosDeCliente(cliente);
+                            let curEmails = obtenerEmailsDeCliente(cliente);
+
+                            let wpAdded = null;
+                            if (cleanPhone) {
+                                const alreadyExists = curWps.some(c => c.numero && c.numero.replace(/\D/g, '') === cleanPhone);
+                                if (!alreadyExists) {
+                                    wpAdded = {
+                                        id: `cont_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
+                                        numero: cleanPhone,
+                                        nombre: nombreVal,
+                                        cargo: cargoVal,
+                                        enviar_alerta: alertaVal,
+                                        default_factura: true,
+                                        default_resumen: true,
+                                        default_presupuesto: true,
+                                        default: true
+                                    };
+                                    curWps.push(wpAdded);
+                                }
+                            }
+
+                            let emailAdded = null;
+                            if (emailVal && emailVal.includes('@')) {
+                                const alreadyExists = curEmails.some(em => em.email && em.email.toLowerCase() === emailVal.toLowerCase());
+                                if (!alreadyExists) {
+                                    emailAdded = {
+                                        id: `em_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
+                                        email: emailVal,
+                                        nombre: nombreVal,
+                                        cargo: cargoVal,
+                                        enviar_alerta: alertaVal,
+                                        default_factura: true,
+                                        default_resumen: true,
+                                        default_presupuesto: true,
+                                        default: true
+                                    };
+                                    curEmails.push(emailAdded);
+                                }
+                            }
+
+                            const payload = {
+                                whatsapp_facturas: JSON.stringify(curWps),
+                                email_facturas: JSON.stringify(curEmails)
+                            };
+
+                            const res = await fetch(`/api/logistica/bunker/clientes/${clienteId}/whatsapp-contacts`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            });
+
+                            if (!res.ok) {
+                                throw new Error(`Error en el servidor al guardar el contacto (${res.status})`);
+                            }
+
+                            cliente.whatsapp_facturas = payload.whatsapp_facturas;
+                            cliente.email_facturas = payload.email_facturas;
+
+                            // Actualizar DOM en vivo en el modal
+                            if (wpAdded) {
+                                const wpContainer = popup.querySelector('#swal-bulk-wp-list');
+                                if (wpContainer) {
+                                    const emptyPlaceholder = wpContainer.querySelector('.empty-placeholder');
+                                    if (emptyPlaceholder) emptyPlaceholder.remove();
+
+                                    const formattedDisplay = formatArgentinePhone(cleanPhone);
+                                    const labelText = wpAdded.nombre 
+                                        ? `<strong>${wpAdded.nombre}</strong>${wpAdded.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${wpAdded.cargo}</span>` : ''}`
+                                        : 'Contacto nuevo';
+
+                                    const newLabel = document.createElement('label');
+                                    newLabel.style = 'display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #10b981; border-radius: 6px; background: #ecfdf5; cursor: pointer; transition: background 0.2s; margin-bottom: 0;';
+                                    newLabel.innerHTML = `
+                                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${wpAdded.numero}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
+                                        <div style="flex: 1;">
+                                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                                            <div style="font-size: 11px; color: #059669; font-weight: 600;">📱 ${formattedDisplay}</div>
+                                        </div>
+                                    `;
+                                    wpContainer.prepend(newLabel);
+                                }
+                            }
+
+                            if (emailAdded) {
+                                const emailContainer = popup.querySelector('#swal-bulk-email-list');
+                                if (emailContainer) {
+                                    const emptyPlaceholder = emailContainer.querySelector('.empty-placeholder');
+                                    if (emptyPlaceholder) emptyPlaceholder.remove();
+
+                                    const labelText = emailAdded.nombre 
+                                        ? `<strong>${emailAdded.nombre}</strong>${emailAdded.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${emailAdded.cargo}</span>` : ''}`
+                                        : 'Contacto nuevo';
+
+                                    const newLabel = document.createElement('label');
+                                    newLabel.style = 'display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #8b5cf6; border-radius: 6px; background: #f5f3ff; cursor: pointer; transition: background 0.2s; margin-bottom: 0;';
+                                    newLabel.innerHTML = `
+                                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${emailAdded.email}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
+                                        <div style="flex: 1;">
+                                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
+                                            <div style="font-size: 11px; color: #7c3aed; font-weight: 600; word-break: break-all;">📧 ${emailAdded.email}</div>
+                                        </div>
+                                    `;
+                                    emailContainer.prepend(newLabel);
+                                }
+                            }
+
+                            // Actualizar botón de la tabla
+                            const btnCfg = cuerpoTablaClientes.querySelector(`.btn-config-contactos-cliente[data-id="${clienteId}"]`);
+                            if (btnCfg) {
+                                btnCfg.title = `Configurar destinatarios específicos (${curWps.length} WhatsApp, ${curEmails.length} Correo)`;
+                            }
+
+                            if (feedbackEl) {
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = '#d1fae5';
+                                feedbackEl.style.color = '#065f46';
+                                feedbackEl.style.border = '1px solid #a7f3d0';
+                                feedbackEl.textContent = '✔️ ¡Contacto guardado en la ficha del cliente y preseleccionado!';
+                            }
+
+                            // Limpiar inputs
+                            popup.querySelector('#swal-bulk-nuevo-nombre').value = '';
+                            popup.querySelector('#swal-bulk-nuevo-cargo').value = '';
+                            popup.querySelector('#swal-bulk-nuevo-wp').value = '';
+                            popup.querySelector('#swal-bulk-nuevo-email').value = '';
+
+                            setTimeout(() => {
+                                btnGuardarNuevo.disabled = false;
+                                btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y seleccionar';
+                            }, 2000);
+
+                        } catch (err) {
+                            console.error('Error guardando nuevo contacto:', err);
+                            if (feedbackEl) {
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = '#fef2f2';
+                                feedbackEl.style.color = '#991b1b';
+                                feedbackEl.style.border = '1px solid #fecaca';
+                                feedbackEl.textContent = 'Error al guardar: ' + err.message;
+                            }
+                            btnGuardarNuevo.disabled = false;
+                            btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y seleccionar';
+                        }
+                    });
+                }
+            },
             preConfirm: () => {
                 const wps = Array.from(document.querySelectorAll('.swal-bulk-contacto-wp-chk:checked')).map(el => el.value);
                 const emails = Array.from(document.querySelectorAll('.swal-bulk-contacto-email-chk:checked')).map(el => el.value);
+                const manualWp = (document.getElementById('swal-bulk-whatsapp-manual')?.value || '').replace(/\D/g, '').trim();
+                if (manualWp && manualWp.length >= 8 && !wps.includes(manualWp)) {
+                    wps.push(manualWp);
+                }
+                const manualEmail = (document.getElementById('swal-bulk-email-manual')?.value || '').trim();
+                if (manualEmail && manualEmail.includes('@') && !emails.includes(manualEmail)) {
+                    emails.push(manualEmail);
+                }
                 return {
                     whatsapp: wps,
                     email: emails
@@ -478,12 +880,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Estado de ordenamiento para la columna Saldo ('none' | 'desc' | 'asc')
+    // Estado de ordenamiento para las columnas Saldo ('none' | 'desc' | 'asc') y Financiación ('none' | 'activo_desc' | 'sombra_desc')
     let sortState = 'none';
+    let sortFinanciacionState = 'none';
+
+    function obtenerPrioridadOrdenFinanciacion(cliente, modoOrden) {
+        const modo = obtenerModoSwitchCliente(cliente);
+        const financ = obtenerFinanciacionCalculadaConIva(cliente);
+        const saldo = parseFloat(cliente?.saldo || 0);
+
+        if (modoOrden === 'sombra_desc') {
+            // Prioriza Modo Sombra con valores arriba, luego Activo con valores
+            if (modo === 'SOMBRA' && financ > 0) return 1;
+            if (modo === 'ACTIVO' && financ > 0) return 2;
+            if (modo === 'SOMBRA' && saldo > 0) return 3;
+            if (modo === 'ACTIVO' && saldo > 0) return 4;
+            if (modo === 'SOMBRA') return 5;
+            if (modo === 'ACTIVO') return 6;
+            return 7;
+        }
+
+        // 'activo_desc' (Por defecto al tocar encabezado Financiación):
+        // 1° Financiación Activa con valores (> $0) arriba de todo
+        // 2° Modo Sombra con valores (> $0)
+        // 3° Financiación Activa con saldo deudor (en término 0%)
+        // 4° Financiación Activa al día
+        // 5° Modo Sombra sin cargo
+        // 6° Modo Apagado (Excluido)
+        if (modo === 'ACTIVO' && financ > 0) return 1;
+        if (modo === 'SOMBRA' && financ > 0) return 2;
+        if (modo === 'ACTIVO' && saldo > 0) return 3;
+        if (modo === 'ACTIVO') return 4;
+        if (modo === 'SOMBRA' && saldo > 0) return 5;
+        if (modo === 'SOMBRA') return 6;
+        return 7;
+    }
+
+    function sincronizarEstadoKpiCardsFinanciacion() {
+        const filtroFinanc = document.getElementById('filtro-financiacion-modo')?.value || 'todos';
+        const cardActiva = document.getElementById('kpi-card-financ-activa');
+        const cardSombra = document.getElementById('kpi-card-financ-sombra');
+        const cardExcluido = document.getElementById('kpi-card-financ-excluido');
+
+        if (cardActiva) cardActiva.classList.toggle('active-filter', filtroFinanc === 'ACTIVO');
+        if (cardSombra) cardSombra.classList.toggle('active-filter', filtroFinanc === 'SOMBRA');
+        if (cardExcluido) cardExcluido.classList.toggle('active-filter', filtroFinanc === 'EXCLUIDO');
+    }
 
     function ordenarYRenderizar() {
         let clientesOrdenados = [...todosLosClientes];
         
+        // Aplicar Filtro de Programa de Financiación
+        const filtroFinanc = document.getElementById('filtro-financiacion-modo')?.value || 'todos';
+        if (filtroFinanc === 'con_cargo') {
+            clientesOrdenados = clientesOrdenados.filter(c => obtenerFinanciacionCalculadaConIva(c) > 0);
+        } else if (filtroFinanc === 'ACTIVO' || filtroFinanc === 'SOMBRA' || filtroFinanc === 'EXCLUIDO') {
+            clientesOrdenados = clientesOrdenados.filter(c => obtenerModoSwitchCliente(c) === filtroFinanc);
+        }
+
+        sincronizarEstadoKpiCardsFinanciacion();
+
         // Aplicar Filtro Portal B2B
         const filtroB2B = document.getElementById('filtro-portal-b2b')?.value || 'todos';
         if (filtroB2B === 'activos') {
@@ -492,11 +948,28 @@ document.addEventListener('DOMContentLoaded', () => {
             clientesOrdenados = clientesOrdenados.filter(c => c.onboarding_completado !== true);
         }
 
-        if (sortState === 'desc') {
+        if (sortFinanciacionState !== 'none') {
+            clientesOrdenados.sort((a, b) => {
+                const prioA = obtenerPrioridadOrdenFinanciacion(a, sortFinanciacionState);
+                const prioB = obtenerPrioridadOrdenFinanciacion(b, sortFinanciacionState);
+                if (prioA !== prioB) return prioA - prioB;
+
+                const financA = obtenerFinanciacionCalculadaConIva(a);
+                const financB = obtenerFinanciacionCalculadaConIva(b);
+                if (financB !== financA) return financB - financA; // Mayor monto financiado primero
+
+                const saldoA = parseFloat(a.saldo || 0);
+                const saldoB = parseFloat(b.saldo || 0);
+                if (saldoB !== saldoA) return saldoB - saldoA; // Mayor saldo capital primero
+
+                return (a.cliente_nombre || '').localeCompare(b.cliente_nombre || '', 'es');
+            });
+        } else if (sortState === 'desc') {
             clientesOrdenados.sort((a, b) => {
                 const saldoA = parseFloat(a.saldo || 0);
                 const saldoB = parseFloat(b.saldo || 0);
-                return saldoB - saldoA; // Mayor saldo deudor primero
+                if (saldoB !== saldoA) return saldoB - saldoA; // Mayor saldo deudor primero
+                return obtenerFinanciacionCalculadaConIva(b) - obtenerFinanciacionCalculadaConIva(a);
             });
         } else if (sortState === 'asc') {
             clientesOrdenados.sort((a, b) => {
@@ -516,9 +989,28 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupSorting() {
         const thSaldo = document.getElementById('th-saldo');
         const sortIconSaldo = document.getElementById('sort-icon-saldo');
+        const thFinanciacion = document.getElementById('th-financiacion');
+        const sortIconFinanciacion = document.getElementById('sort-icon-financiacion');
+
+        const resetIconoFinanciacion = () => {
+            sortFinanciacionState = 'none';
+            if (sortIconFinanciacion) {
+                sortIconFinanciacion.textContent = ' ⇅';
+                sortIconFinanciacion.style.opacity = '0.3';
+            }
+        };
+
+        const resetIconoSaldo = () => {
+            sortState = 'none';
+            if (sortIconSaldo) {
+                sortIconSaldo.textContent = ' ⇅';
+                sortIconSaldo.style.opacity = '0.3';
+            }
+        };
 
         if (thSaldo && sortIconSaldo) {
             thSaldo.addEventListener('click', () => {
+                resetIconoFinanciacion();
                 if (sortState === 'none') {
                     sortState = 'desc';
                     sortIconSaldo.textContent = ' ▼';
@@ -528,9 +1020,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     sortIconSaldo.textContent = ' ▲';
                     sortIconSaldo.style.opacity = '1';
                 } else {
-                    sortState = 'none';
-                    sortIconSaldo.textContent = ' ⇅';
-                    sortIconSaldo.style.opacity = '0.3';
+                    resetIconoSaldo();
+                }
+                ordenarYRenderizar();
+            });
+        }
+
+        if (thFinanciacion && sortIconFinanciacion) {
+            thFinanciacion.addEventListener('click', () => {
+                resetIconoSaldo();
+                if (sortFinanciacionState === 'none') {
+                    sortFinanciacionState = 'activo_desc';
+                    sortIconFinanciacion.textContent = ' ▼ (🛡️ Activos 1°)';
+                    sortIconFinanciacion.style.opacity = '1';
+                    sortIconFinanciacion.style.color = '#047857';
+                } else if (sortFinanciacionState === 'activo_desc') {
+                    sortFinanciacionState = 'sombra_desc';
+                    sortIconFinanciacion.textContent = ' ▲ (🌓 Sombra 1°)';
+                    sortIconFinanciacion.style.opacity = '1';
+                    sortIconFinanciacion.style.color = '#b45309';
+                } else {
+                    resetIconoFinanciacion();
+                    sortIconFinanciacion.style.color = '';
                 }
                 ordenarYRenderizar();
             });
@@ -656,9 +1167,15 @@ document.addEventListener('DOMContentLoaded', () => {
         actualizarHiddenWhatsapp();
     }
 
-    function crearFilaWhatsapp(contacto = { numero: '', nombre: '', cargo: '' }) {
+    function crearFilaWhatsapp(contacto = { numero: '', nombre: '', cargo: '', enviar_alerta: true }) {
         const card = document.createElement('div');
         card.className = 'whatsapp-contact-card';
+        card.dataset.contactId = contacto.id || `cont_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`;
+        if (contacto.default_factura !== undefined) card.dataset.defaultFactura = contacto.default_factura;
+        if (contacto.default_resumen !== undefined) card.dataset.defaultResumen = contacto.default_resumen;
+        if (contacto.default_difusion !== undefined) card.dataset.defaultDifusion = contacto.default_difusion;
+        if (contacto.default_presupuesto !== undefined) card.dataset.defaultPresupuesto = contacto.default_presupuesto;
+        if (contacto.default !== undefined) card.dataset.default = contacto.default;
         card.style.border = '1px solid #cbd5e1';
         card.style.padding = '8px';
         card.style.borderRadius = '6px';
@@ -744,9 +1261,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         row2.appendChild(inputNumber);
 
+        // Fila 3: Alerta de Entrega Logística
+        const row3 = document.createElement('div');
+        row3.style.display = 'flex';
+        row3.style.alignItems = 'center';
+        row3.style.gap = '6px';
+        row3.style.marginTop = '4px';
+
+        const checkboxAlerta = document.createElement('input');
+        checkboxAlerta.type = 'checkbox';
+        checkboxAlerta.className = 'whatsapp-contact-alerta';
+        checkboxAlerta.id = `alert-wa-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        checkboxAlerta.checked = contacto.enviar_alerta !== false; // por defecto true
+        checkboxAlerta.addEventListener('change', actualizarHiddenWhatsapp);
+
+        const labelAlerta = document.createElement('label');
+        labelAlerta.htmlFor = checkboxAlerta.id;
+        labelAlerta.textContent = 'Enviar Alerta de Entrega Logística 📦';
+        labelAlerta.style.fontSize = '11px';
+        labelAlerta.style.fontWeight = '500';
+        labelAlerta.style.color = '#475569';
+        labelAlerta.style.cursor = 'pointer';
+        labelAlerta.style.userSelect = 'none';
+
+        row3.appendChild(checkboxAlerta);
+        row3.appendChild(labelAlerta);
+
         card.appendChild(btnDelete);
         card.appendChild(row1);
         card.appendChild(row2);
+        card.appendChild(row3);
         whatsappInputsContainer.appendChild(card);
 
         return inputName;
@@ -755,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderWhatsappInputs(valueString) {
         whatsappInputsContainer.innerHTML = '';
         if (!valueString || !valueString.trim()) {
-            crearFilaWhatsapp({ numero: '', nombre: '', cargo: '' });
+            crearFilaWhatsapp({ numero: '', nombre: '', cargo: '', enviar_alerta: true });
             return;
         }
 
@@ -777,16 +1321,19 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback para strings separados por comas tradicionales
         const numbers = str.split(',').map(n => n.trim()).filter(n => n.length > 0);
         numbers.forEach(num => {
-            crearFilaWhatsapp({ numero: num, nombre: '', cargo: '' });
+            crearFilaWhatsapp({ numero: num, nombre: '', cargo: '', enviar_alerta: true });
         });
     }
 
     function actualizarHiddenWhatsapp() {
         const cards = Array.from(whatsappInputsContainer.querySelectorAll('.whatsapp-contact-card'));
-        const contacts = cards.map(card => {
+        const contacts = cards.map((card, idx) => {
             const name = card.querySelector('.whatsapp-contact-name').value.trim();
             const role = card.querySelector('.whatsapp-contact-role').value.trim();
             let number = card.querySelector('.whatsapp-contact-number').value.replace(/\D/g, '').trim();
+            const alertaCheckbox = card.querySelector('.whatsapp-contact-alerta');
+            const alerta = alertaCheckbox ? Boolean(alertaCheckbox.checked) : true;
+            const contactId = card.dataset.contactId || `cont_${Date.now().toString(36)}_${idx}`;
 
             if (number.length === 10) {
                 number = '549' + number;
@@ -795,9 +1342,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             return {
+                id: contactId,
                 numero: number,
                 nombre: name,
-                cargo: role
+                cargo: role,
+                enviar_alerta: alerta,
+                default_factura: card.dataset.defaultFactura !== undefined ? card.dataset.defaultFactura === 'true' : true,
+                default_resumen: card.dataset.defaultResumen !== undefined ? card.dataset.defaultResumen === 'true' : true,
+                ...(card.dataset.defaultDifusion !== undefined ? { default_difusion: card.dataset.defaultDifusion === 'true' } : {}),
+                ...(card.dataset.defaultPresupuesto !== undefined ? { default_presupuesto: card.dataset.defaultPresupuesto === 'true' } : {}),
+                ...(card.dataset.default !== undefined ? { default: card.dataset.default === 'true' } : {})
             };
         }).filter(c => c.numero.length > 0);
 
@@ -806,7 +1360,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnAddWhatsapp) {
         btnAddWhatsapp.addEventListener('click', () => {
-            const input = crearFilaWhatsapp({ numero: '', nombre: '', cargo: '' });
+            const input = crearFilaWhatsapp({ numero: '', nombre: '', cargo: '', enviar_alerta: true });
             input.focus();
         });
     }
@@ -866,7 +1420,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function crearFilaEmail(contacto = { email: '', nombre: '', cargo: '' }) {
+    function crearFilaEmail(contacto = { email: '', nombre: '', cargo: '', enviar_alerta: true }) {
         const card = document.createElement('div');
         card.className = 'email-contact-card';
         card.style.border = '1px solid #cbd5e1';
@@ -953,9 +1507,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         row2.appendChild(inputEmail);
 
+        // Fila 3: Alerta de Entrega Logística
+        const row3 = document.createElement('div');
+        row3.style.display = 'flex';
+        row3.style.alignItems = 'center';
+        row3.style.gap = '6px';
+        row3.style.marginTop = '4px';
+
+        const checkboxAlerta = document.createElement('input');
+        checkboxAlerta.type = 'checkbox';
+        checkboxAlerta.className = 'email-contact-alerta';
+        checkboxAlerta.id = `alert-em-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        checkboxAlerta.checked = contacto.enviar_alerta !== false; // por defecto true
+        checkboxAlerta.addEventListener('change', actualizarHiddenEmail);
+
+        const labelAlerta = document.createElement('label');
+        labelAlerta.htmlFor = checkboxAlerta.id;
+        labelAlerta.textContent = 'Enviar Alerta de Entrega Logística 📦';
+        labelAlerta.style.fontSize = '11px';
+        labelAlerta.style.fontWeight = '500';
+        labelAlerta.style.color = '#475569';
+        labelAlerta.style.cursor = 'pointer';
+        labelAlerta.style.userSelect = 'none';
+
+        row3.appendChild(checkboxAlerta);
+        row3.appendChild(labelAlerta);
+
         card.appendChild(btnDelete);
         card.appendChild(row1);
         card.appendChild(row2);
+        card.appendChild(row3);
         emailInputsContainer.appendChild(card);
 
         return inputName;
@@ -964,7 +1545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderEmailInputs(valueString) {
         emailInputsContainer.innerHTML = '';
         if (!valueString || !valueString.trim()) {
-            crearFilaEmail({ email: '', nombre: '', cargo: '' });
+            crearFilaEmail({ email: '', nombre: '', cargo: '', enviar_alerta: true });
             return;
         }
 
@@ -986,7 +1567,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback para strings separados por comas tradicionales
         const emails = str.split(',').map(e => e.trim()).filter(e => e.length > 0);
         emails.forEach(email => {
-            crearFilaEmail({ email: email, nombre: '', cargo: '' });
+            crearFilaEmail({ email: email, nombre: '', cargo: '', enviar_alerta: true });
         });
     }
 
@@ -996,11 +1577,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = card.querySelector('.email-contact-name').value.trim();
             const role = card.querySelector('.email-contact-role').value.trim();
             const email = card.querySelector('.email-contact-address').value.trim();
+            const alertaCheckbox = card.querySelector('.email-contact-alerta');
+            const alerta = alertaCheckbox ? alertaCheckbox.checked : true;
 
             return {
                 email: email,
                 nombre: name,
-                cargo: role
+                cargo: role,
+                enviar_alerta: alerta
             };
         }).filter(c => c.email.length > 0);
 
@@ -1009,10 +1593,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnAddEmail) {
         btnAddEmail.addEventListener('click', () => {
-            const input = crearFilaEmail({ email: '', nombre: '', cargo: '' });
+            const input = crearFilaEmail({ email: '', nombre: '', cargo: '', enviar_alerta: true });
             input.focus();
         });
     }
+
+    // Caché del mapa de financiación por cliente
+    let ultimoMapaFinanciacion = {};
 
     // --- 1. CARGA DE CLIENTES DESDE LA API ---
     async function cargarClientes(searchQuery = '') {
@@ -1031,15 +1618,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 url += `?search=${encodeURIComponent(searchQuery)}`;
             }
 
-            const response = await fetch(url);
-            const data = await response.json();
+            const [clientesRes, dashRes] = await Promise.allSettled([
+                fetch(url).then(r => r.json()),
+                fetch('/api/logistica/bunker/cuentas-corrientes/salvavidas/dashboard-sombra').then(r => r.json())
+            ]);
 
-            if (!data.success) {
-                throw new Error(data.error || 'Error al obtener clientes.');
+            if (clientesRes.status !== 'fulfilled' || !clientesRes.value?.success) {
+                throw new Error(clientesRes.value?.error || 'Error al obtener clientes.');
             }
 
-            todosLosClientes = data.data;
-            actualizarDeudaTotal(); // Actualizar widget de deuda consolidada
+            if (dashRes.status === 'fulfilled' && dashRes.value?.success && dashRes.value?.data?.clientes_financiacion_map) {
+                ultimoMapaFinanciacion = dashRes.value.data.clientes_financiacion_map;
+            }
+
+            todosLosClientes = (clientesRes.value.data || []).map(c => {
+                const infoFinanc = ultimoMapaFinanciacion[c.codigo_bunker_cliente] || null;
+                return {
+                    ...c,
+                    salvavidas_info: infoFinanc || {
+                        codigo_bunker_cliente: c.codigo_bunker_cliente,
+                        salvavidas_modo_raw: c.salvavidas_modo || 'HEREDAR_LISTA',
+                        modo_switch: String(c.salvavidas_modo || '').toUpperCase() === 'EXCLUIDO'
+                            ? 'EXCLUIDO'
+                            : (String(c.salvavidas_modo || '').toUpperCase() === 'SOMBRA' ? 'SOMBRA' : 'ACTIVO'),
+                        financiacion_calculada_neta: 0,
+                        financiacion_calculada_iva: 0,
+                        financiacion_calculada_con_iva: 0,
+                        estado_semaforo: parseFloat(c.saldo || 0) > 0 ? 'EN_TERMINO' : 'AL_DIA',
+                        max_dias: 0,
+                        tasa_tem_pct: 3
+                    }
+                };
+            });
+
+            actualizarDeudaTotal(); // Actualizar widget de deuda consolidada y KPIs de financiación
             ordenarYRenderizar();
         } catch (error) {
             console.error('❌ [CLIENTES-FRONT] Error al cargar clientes:', error);
@@ -1062,13 +1674,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <tr>
                     <td colspan="${visibleCount}">
                         <div class="empty-state">
-                            📭 No se encontraron clientes registrados.
+                            📭 No se encontraron clientes registrados para el filtro seleccionado.
                         </div>
                     </td>
                 </tr>
             `;
             return;
         }
+
+        const fmtMoneda = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         cuerpoTablaClientes.innerHTML = '';
         clientes.forEach(cliente => {
@@ -1089,6 +1703,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 htmlListas = `<span class="badge" style="background-color: #fef3c7; color: #d97706; border: 1px solid #fde68a;" title="Falta asociar lista del nuevo sistema">⚠️ Sin Lista Bunker</span>`;
             }
 
+            // Datos de Financiación y Switch de 3 posiciones
+            const modoSwitch = obtenerModoSwitchCliente(cliente);
+            const financConIva = obtenerFinanciacionCalculadaConIva(cliente);
+            const financNeta = obtenerFinanciacionCalculadaNeta(cliente);
+            const infoFinanc = cliente.salvavidas_info || {};
+            const maxDias = Number(infoFinanc.dias_max_antiguedad || infoFinanc.max_dias || 0);
+            const tasaPct = Number(infoFinanc.tasa_tem_pct || 3);
+            const estadoSem = infoFinanc.estado_general || infoFinanc.estado_semaforo || 'AL_DIA';
+
             // Calcular y formatear saldo
             const saldoNum = parseFloat(cliente.saldo || 0);
             let colorSaldo = '#64748b'; // neutral (cero)
@@ -1098,13 +1721,125 @@ document.addEventListener('DOMContentLoaded', () => {
                 colorSaldo = '#16a34a'; // verde (a favor / acreedor)
             }
             
-            const saldoFormateado = '$ ' + Math.abs(saldoNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            let badgeSaldo = `<span style="font-weight: 600; color: ${colorSaldo};">${saldoFormateado}</span>`;
+            const saldoFormateado = '$ ' + fmtMoneda(Math.abs(saldoNum));
+            let badgeSaldo = `<span style="font-weight: 700; color: ${colorSaldo}; font-size: 1.02em;">${saldoFormateado}</span>`;
             if (saldoNum > 0) {
-                badgeSaldo += `<br><small style="color: #ef4444; font-size: 0.75em; font-weight: 600;">Deudor</small>`;
+                if (financConIva > 0) {
+                    const totalConFinanc = saldoNum + financConIva;
+                    if (modoSwitch === 'ACTIVO') {
+                        badgeSaldo += `
+                            <div style="margin-top: 3px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px; padding: 2px 6px; display: inline-block;">
+                                <div style="font-size: 11px; font-weight: 800; color: #b91c1c;" title="Saldo Capital + Financiación Activa c/IVA">
+                                    🛡️ Total c/Financ.: $ ${fmtMoneda(totalConFinanc)}
+                                </div>
+                                <div style="font-size: 9.5px; font-weight: 700; color: #047857;">
+                                    (+Financ. c/IVA: $ ${fmtMoneda(financConIva)})
+                                </div>
+                            </div>
+                        `;
+                    } else if (modoSwitch === 'SOMBRA') {
+                        badgeSaldo += `
+                            <div style="margin-top: 3px; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 5px; padding: 2px 6px; display: inline-block; opacity: 0.62;" title="Modo Sombra: informativo para el cliente, sin aplicación efectiva">
+                                <div style="font-size: 10.5px; font-weight: 700; color: #92400e;">
+                                    🌓 Sombra c/IVA: $ ${fmtMoneda(totalConFinanc)}
+                                </div>
+                                <div style="font-size: 9.5px; font-weight: 600; color: #b45309;">
+                                    (+$ ${fmtMoneda(financConIva)} informativo)
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        badgeSaldo += `<br><small style="color: #94a3b8; font-size: 0.74em; font-weight: 600;">Deudor · ⚪ Sin financiación</small>`;
+                    }
+                } else {
+                    badgeSaldo += `<br><small style="color: #ef4444; font-size: 0.75em; font-weight: 600;">Deudor (0% interés)</small>`;
+                }
             } else if (saldoNum < 0) {
                 badgeSaldo += `<br><small style="color: #10b981; font-size: 0.75em; font-weight: 600;">A favor</small>`;
             }
+
+            // Construir Switch interactivo de 3 posiciones + Indicador de Monto Financiado (Activo vs. Sombra apagadito vs. Excluido)
+            let detalleFinancHtml = '';
+            if (financConIva > 0) {
+                if (modoSwitch === 'ACTIVO') {
+                    detalleFinancHtml = `
+                        <div style="display: inline-flex; flex-direction: column; align-items: center; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 7px; padding: 3px 10px; margin-top: 5px; box-shadow: 0 1px 2px rgba(5, 150, 105, 0.12);">
+                            <span style="font-size: 11.5px; font-weight: 800; color: #047857;">
+                                🛡️ +$ ${fmtMoneda(financConIva)} c/IVA (Activo)
+                            </span>
+                            <span style="font-size: 9.5px; color: #065f46; font-weight: 600;">
+                                Neto $ ${fmtMoneda(financNeta)} + IVA · Día ${maxDias} (${tasaPct}%/mes)
+                            </span>
+                        </div>
+                    `;
+                } else if (modoSwitch === 'SOMBRA') {
+                    detalleFinancHtml = `
+                        <div style="display: inline-flex; flex-direction: column; align-items: center; background: #fffbeb; border: 1px dashed #d97706; border-radius: 7px; padding: 3px 10px; margin-top: 5px; opacity: 0.62;" title="En Modo Sombra: el cliente visualiza cómo opera la financiación de manera educativa sin aplicación efectiva">
+                            <span style="font-size: 11.5px; font-weight: 700; color: #92400e;">
+                                🌓 +$ ${fmtMoneda(financConIva)} c/IVA (En Sombra)
+                            </span>
+                            <span style="font-size: 9.5px; color: #b45309; font-weight: 600;">
+                                Informativo · Día ${maxDias} (Neto $ ${fmtMoneda(financNeta)} + IVA)
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    detalleFinancHtml = `
+                        <div style="display: inline-flex; flex-direction: column; align-items: center; background: #f8fafc; border: 1px dotted #cbd5e1; border-radius: 7px; padding: 2px 9px; margin-top: 5px; opacity: 0.58;" title="Cliente excluido del programa de financiación">
+                            <span style="font-size: 10.5px; font-weight: 700; color: #64748b;">
+                                ⚪ Excluido ($ 0,00) · <s style="font-weight: 500;">$ ${fmtMoneda(financConIva)}</s>
+                            </span>
+                        </div>
+                    `;
+                }
+            } else if (saldoNum > 0) {
+                const opacidadVentana = modoSwitch === 'ACTIVO' ? '1' : '0.62';
+                let etiquetaVentana = `🟢 En término (Día ${maxDias}/7 · $ 0,00)`;
+                let bgVentana = '#f0fdf4';
+                let colorVentana = '#15803d';
+                let borderVentana = '#bbf7d0';
+                if (estadoSem === 'GRACIA_3D') {
+                    etiquetaVentana = `⏳ +3d Gracia (Día ${maxDias}/10 · $ 0,00)`;
+                    bgVentana = '#eff6ff';
+                    colorVentana = '#1d4ed8';
+                    borderVentana = '#bfdbfe';
+                } else if (estadoSem === 'COMODIN_TRIMESTRAL') {
+                    etiquetaVentana = `🎟️ Comodín (Día ${maxDias}/14 · $ 0,00)`;
+                    bgVentana = '#fffbeb';
+                    colorVentana = '#b45309';
+                    borderVentana = '#fde68a';
+                }
+                detalleFinancHtml = `
+                    <div style="display: inline-block; background: ${bgVentana}; color: ${colorVentana}; border: 1px ${modoSwitch === 'SOMBRA' ? 'dashed' : 'solid'} ${borderVentana}; border-radius: 6px; padding: 2px 8px; margin-top: 5px; font-size: 10px; font-weight: 700; opacity: ${opacidadVentana};">
+                        ${etiquetaVentana}${modoSwitch === 'SOMBRA' ? ' · Sombra' : (modoSwitch === 'EXCLUIDO' ? ' · Apagado' : '')}
+                    </div>
+                `;
+            } else {
+                if (modoSwitch === 'ACTIVO') {
+                    detalleFinancHtml = `<div style="font-size: 10px; color: #64748b; margin-top: 4px; font-weight: 500;">🛡️ Vigente · Al día ($ 0,00)</div>`;
+                } else if (modoSwitch === 'SOMBRA') {
+                    detalleFinancHtml = `<div style="font-size: 10px; color: #92400e; opacity: 0.62; margin-top: 4px; font-weight: 600;">🌓 Modo Sombra (Informativo)</div>`;
+                } else {
+                    detalleFinancHtml = `<div style="font-size: 10px; color: #94a3b8; opacity: 0.7; margin-top: 4px; font-weight: 500;">⚪ Apagado (Sin financiación)</div>`;
+                }
+            }
+
+            const htmlFinanciacionCell = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div class="financiacion-3way-switch" role="group" aria-label="Modo de Financiación de ${cliente.cliente_nombre}">
+                        <button type="button" class="financiacion-3way-btn ${modoSwitch === 'EXCLUIDO' ? 'active-excluido' : ''}" data-codigo="${cliente.codigo_bunker_cliente}" data-modo="EXCLUIDO" title="Apagado / Excluido: No aplica financiación ni intereses (0%)">
+                            ⚪ Apagado
+                        </button>
+                        <button type="button" class="financiacion-3way-btn ${modoSwitch === 'SOMBRA' ? 'active-sombra' : ''}" data-codigo="${cliente.codigo_bunker_cliente}" data-modo="SOMBRA" title="Modo Sombra: Activo de forma informativa/educativa para que el cliente comprenda el esquema, sin implementación efectiva">
+                            🌓 Sombra
+                        </button>
+                        <button type="button" class="financiacion-3way-btn ${modoSwitch === 'ACTIVO' ? 'active-activo' : ''}" data-codigo="${cliente.codigo_bunker_cliente}" data-modo="ACTIVO" title="Financiación Activa: Implementación efectiva vigente en cuenta corriente y portal">
+                            🛡️ Activo
+                        </button>
+                    </div>
+                    ${detalleFinancHtml}
+                </div>
+            `;
 
             // Procesar contactos para la columna de selección
             const contactosWp = obtenerContactosDeCliente(cliente);
@@ -1142,7 +1877,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cellSeleccion = `
                     <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: center; vertical-align: middle;">
                         <input type="checkbox" class="chk-cliente" data-id="${cliente.id}" data-codigo="${cliente.codigo_bunker_cliente}" ${isChecked} style="width: 18px; height: 18px; accent-color: var(--purple-primary); cursor: pointer; margin: 0; vertical-align: middle;">
-                        <button type="button" class="btn-config-contactos-cliente" data-id="${cliente.id}" data-nombre="${cliente.cliente_nombre}" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: 1.1em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle;" title="Configurar destinatarios específicos (posee ${totalConts} contactos)">👥</button>
+                        <button type="button" class="btn-config-contactos-cliente" data-id="${cliente.id}" data-nombre="${cliente.cliente_nombre}" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: 1.1em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle;" title="Configurar destinatarios específicos (${numWp} WhatsApp, ${numEmail} Correo)">👥</button>
                     </div>
                 `;
             }
@@ -1152,10 +1887,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Distintivo visual para clientes con Portal B2B Activo
             const tieneB2B = cliente.onboarding_completado === true;
+            const tieneStock = cliente.ver_stock === true;
             const htmlNombre = tieneB2B 
                 ? `<div style="display: flex; flex-direction: column; gap: 2px;">
                      <span style="font-weight: 700; color: #1e1b4b;">${cliente.cliente_nombre}</span>
-                     <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; align-self: flex-start; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Acceso al Portal B2B Habilitado (${cliente.email_portal})">🌐 Portal Activo</span>
+                     <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                       <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; align-self: flex-start; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Acceso al Portal B2B Habilitado (${cliente.email_portal})">🌐 Portal Activo</span>
+                       ${tieneStock ? `<span class="badge" style="background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Visualización de Stock Habilitada">📦 Stock ON</span>` : ''}
+                     </div>
                    </div>`
                 : `<span style="font-weight: 600; color: #334155;">${cliente.cliente_nombre}</span>`;
 
@@ -1165,12 +1904,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="col-nombre" style="vertical-align: middle;">${htmlNombre}</td>
                 <td class="col-razon" style="color: #64748b; vertical-align: middle;">${cliente.razon_social}</td>
                 <td class="col-externo" style="vertical-align: middle;">${badgeExterno}</td>
-                <td class="col-saldo" style="text-align: right; white-space: nowrap;">${badgeSaldo}</td>
+                <td class="col-financiacion" style="text-align: center; vertical-align: middle;">${htmlFinanciacionCell}</td>
+                <td class="col-saldo" style="text-align: right; white-space: nowrap; vertical-align: middle;">${badgeSaldo}</td>
                 <td class="col-listas">${htmlListas}</td>
-                <td class="col-acciones" style="text-align: center;">
+                <td class="col-acciones" style="text-align: center; vertical-align: middle;">
                     <div style="display: flex; gap: 6px; justify-content: center;">
                         <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
                         <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
+                        <button class="btn-action btn-colaborador-b2b" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-ver-stock="${cliente.ver_stock === true}" title="Habilitar Operador de Pre-Pedido B2B (Selección de Artículos)">👷</button>
                         ${tieneB2B ? `<button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>` : ''}
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
                         <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
@@ -1188,8 +1929,81 @@ document.addEventListener('DOMContentLoaded', () => {
         registrarEventosGrilla();
     }
 
-    // Registrar escuchas dinámicos de los botones EDITAR / ELIMINAR / CUENTA CORRIENTE / ASOCIAR LISTAS
+    // Registrar escuchas dinámicos de los botones EDITAR / ELIMINAR / CUENTA CORRIENTE / ASOCIAR LISTAS / SWITCH FINANCIACIÓN
     function registrarEventosGrilla() {
+        // Evento Switch de 3 posiciones de Financiación (Apagado | Sombra | Activo)
+        cuerpoTablaClientes.querySelectorAll('.financiacion-3way-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const codigo = btn.getAttribute('data-codigo');
+                const nuevoModo = btn.getAttribute('data-modo');
+                if (!codigo || !nuevoModo) return;
+
+                const cliente = todosLosClientes.find(c => c.codigo_bunker_cliente === codigo);
+                if (!cliente) return;
+
+                const modoAnterior = obtenerModoSwitchCliente(cliente);
+                if (modoAnterior === nuevoModo) return;
+
+                // Actualización optimista inmediata en memoria y DOM
+                cliente.salvavidas_modo = nuevoModo;
+                if (!cliente.salvavidas_info) cliente.salvavidas_info = {};
+                cliente.salvavidas_info.salvavidas_modo_raw = nuevoModo;
+                cliente.salvavidas_info.modo_switch = nuevoModo;
+                if (ultimoMapaFinanciacion[codigo]) {
+                    ultimoMapaFinanciacion[codigo].salvavidas_modo_raw = nuevoModo;
+                    ultimoMapaFinanciacion[codigo].modo_switch = nuevoModo;
+                }
+
+                actualizarDeudaTotal();
+                ordenarYRenderizar();
+
+                try {
+                    const res = await fetch(`/api/logistica/bunker/cuentas-corrientes/salvavidas/configuracion-cliente/${encodeURIComponent(codigo)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ salvavidas_modo: nuevoModo })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        throw new Error(data.error || 'No se pudo actualizar el modo de financiación.');
+                    }
+
+                    const etiquetasModo = {
+                        ACTIVO: '🛡️ Financiación Activa (Efectiva)',
+                        SOMBRA: '🌓 Modo Sombra (Informativo para el cliente)',
+                        EXCLUIDO: '⚪ Modo Apagado (Excluido 0%)'
+                    };
+
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: `${cliente.cliente_nombre}`,
+                        text: etiquetasModo[nuevoModo] || nuevoModo,
+                        showConfirmButton: false,
+                        timer: 2000
+                    });
+                } catch (err) {
+                    console.error('Error al cambiar modo de financiación:', err);
+                    // Revertir en caso de error
+                    cliente.salvavidas_modo = modoAnterior;
+                    if (cliente.salvavidas_info) cliente.salvavidas_info.modo_switch = modoAnterior;
+                    if (ultimoMapaFinanciacion[codigo]) ultimoMapaFinanciacion[codigo].modo_switch = modoAnterior;
+                    actualizarDeudaTotal();
+                    ordenarYRenderizar();
+
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error al cambiar estado',
+                        text: err.message || 'No se pudo guardar el cambio en el servidor.',
+                        confirmButtonColor: '#ef4444'
+                    });
+                }
+            });
+        });
         // Evento Invitar al Portal B2B
         cuerpoTablaClientes.querySelectorAll('.btn-invite').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -1292,7 +2106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                          const updateBubblePreview = () => {
                              let text = textareaEl.value;
                              text = text.replace(/\[Codigo_Activacion\]/g, '31f315');
-                             text = text.replace(/\[Enlace_Al_Portal\]/g, 'https://proud-darkness-ac3d.miserrano75.workers.dev/#/onboarding?token=31f315...');
+                             text = text.replace(/\[Enlace_Al_Portal\]/g, 'https://proud-darkness-ac3d.miserrano75.workers.dev/?t=31f315');
                              previewEl.textContent = text;
                          };
 
@@ -1412,6 +2226,290 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        // Evento Habilitar Operador de Pre-Pedido B2B (Selección de Artículos y Envío para Aprobación)
+        cuerpoTablaClientes.querySelectorAll('.btn-colaborador-b2b').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const codigo = btn.getAttribute('data-codigo');
+                const nombreComercio = btn.getAttribute('data-nombre');
+                const defaultVerStock = btn.getAttribute('data-ver-stock') === 'true';
+
+                let wpContacts = [];
+                try {
+                    wpContacts = JSON.parse(decodeURIComponent(btn.getAttribute('data-whatsapp') || '[]'));
+                } catch (err) {
+                    console.error('Error parseando contactos WhatsApp para operador:', err);
+                }
+
+                if (wpContacts.length === 0) {
+                    Swal.fire({
+                        title: 'Sin Contactos Telefónicos',
+                        text: 'Este cliente no tiene contactos de WhatsApp cargados en su ficha. Edite la ficha del cliente y cargue los contactos antes de habilitar un operador.',
+                        icon: 'warning',
+                        confirmButtonColor: 'var(--purple-primary)'
+                    });
+                    return;
+                }
+
+                // Preseleccionar inteligentemente quién suele ser el titular/aprobador vs el empleado/operador
+                const esCargoTitular = (cargo) => /dueñ|titular|encargad|gerent|admin|jefe|jefa/i.test(String(cargo || ''));
+                let idxAprobadorDefault = wpContacts.findIndex(c => esCargoTitular(c.cargo));
+                if (idxAprobadorDefault === -1) idxAprobadorDefault = 0;
+
+                let idxOperadorDefault = wpContacts.findIndex((c, idx) => idx !== idxAprobadorDefault && !esCargoTitular(c.cargo));
+                if (idxOperadorDefault === -1) {
+                    idxOperadorDefault = wpContacts.findIndex((c, idx) => idx !== idxAprobadorDefault);
+                }
+                if (idxOperadorDefault === -1) idxOperadorDefault = 0;
+
+                const modalHtml = `
+                    <div style="text-align: left; font-family: 'Outfit', sans-serif; font-size: 14px; color: #334155;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; color: #475569; line-height: 1.45;">
+                            <strong>🔒 Acceso de Pre-Armado con Dispositivo Vinculado:</strong> El operador accede únicamente al catálogo de artículos sin iniciar sesión (validando por única vez los últimos 4 dígitos de su celular) y envía su selección por WhatsApp al responsable de aprobación para que la edite o confirme.
+                        </div>
+
+                        <label style="display: block; font-weight: 700; color: #1e293b; margin-bottom: 5px;">
+                            1. Contacto Operador (Quien selecciona los artículos):
+                        </label>
+                        <select id="select-operador-b2b" style="width: 100%; height: 38px; border: 1px solid #cbd5e1; border-radius: 7px; padding: 0 10px; font-size: 13.5px; margin-bottom: 12px; background: #fff; color: #0f172a;">
+                            ${wpContacts.map((c, idx) => `
+                                <option value="${idx}" ${idx === idxOperadorDefault ? 'selected' : ''}>
+                                    📱 ${c.nombre || 'Contacto'}${c.cargo ? ` (${c.cargo})` : ''} — ${c.numero}
+                                </option>
+                            `).join('')}
+                        </select>
+
+                        <label style="display: block; font-weight: 700; color: #1e293b; margin-bottom: 5px;">
+                            2. Responsable de Aprobación (Quien recibe y confirma el pedido):
+                        </label>
+                        <select id="select-aprobador-b2b" style="width: 100%; height: 38px; border: 1px solid #cbd5e1; border-radius: 7px; padding: 0 10px; font-size: 13.5px; margin-bottom: 14px; background: #fff; color: #0f172a;">
+                            ${wpContacts.map((c, idx) => `
+                                <option value="${idx}" ${idx === idxAprobadorDefault ? 'selected' : ''}>
+                                    ✅ ${c.nombre || 'Contacto'}${c.cargo ? ` (${c.cargo})` : ''} — ${c.numero}
+                                </option>
+                            `).join('')}
+                        </select>
+
+                        <label style="display: block; font-weight: 700; color: #1e293b; margin-bottom: 6px;">
+                            3. Permisos de Catálogo para el Operador:
+                        </label>
+                        <div style="display: flex; flex-direction: column; gap: 7px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                                <input type="checkbox" id="chk-colab-precios" checked style="accent-color: var(--purple-primary); width: 15px; height: 15px;">
+                                <span>Mostrar precios de lista, ofertas activas y bonificación por volumen</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                                <input type="checkbox" id="chk-colab-toggle-iva" checked style="accent-color: var(--purple-primary); width: 15px; height: 15px;">
+                                <span>Permitir alternar modalidad de precios (Con IVA / Sin IVA)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                                <input type="checkbox" id="chk-colab-stock" ${defaultVerStock ? 'checked' : ''} style="accent-color: var(--purple-primary); width: 15px; height: 15px;">
+                                <span>Mostrar semáforo de disponibilidad de stock</span>
+                            </label>
+                        </div>
+
+                        <label style="display: block; font-weight: 700; color: #1e293b; margin-bottom: 5px;">
+                            4. Mensaje de WhatsApp para el Operador:
+                        </label>
+                        <textarea id="txt-mensaje-colab-b2b" style="width: 100%; height: 95px; box-sizing: border-box; font-family: sans-serif; font-size: 12.5px; line-height: 1.4; border: 1px solid #cbd5e1; border-radius: 7px; padding: 8px; resize: vertical;"></textarea>
+                        <small style="color: #64748b; font-size: 11px; display: block; margin-top: 3px; margin-bottom: 12px;">
+                            * Los marcadores <strong>[Enlace_PrePedido]</strong> y <strong>[Ultimos_4_Digitos]</strong> se completan automáticamente al generar.
+                        </small>
+
+                        <div id="box-delegaciones-activas" style="border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: 6px;">
+                            <div style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px;">
+                                🔗 Enlaces de Operador Activos en este Comercio:
+                            </div>
+                            <div id="lista-delegaciones-activas" style="font-size: 12px; color: #94a3b8;">
+                                Consultando enlaces activos...
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const result = await Swal.fire({
+                    title: `<span style="color: var(--purple-primary); font-weight: 700; font-family: 'Outfit'; font-size: 1.25rem;">👷 Habilitar Operador de Pre-Pedido</span>`,
+                    html: modalHtml,
+                    width: '560px',
+                    showCancelButton: true,
+                    confirmButtonColor: 'var(--purple-primary)',
+                    cancelButtonColor: '#64748b',
+                    confirmButtonText: '🚀 Generar y Enviar por WhatsApp',
+                    cancelButtonText: 'Cerrar',
+                    didOpen: () => {
+                        const selOp = document.getElementById('select-operador-b2b');
+                        const selAp = document.getElementById('select-aprobador-b2b');
+                        const txtMsg = document.getElementById('txt-mensaje-colab-b2b');
+                        const listContainer = document.getElementById('lista-delegaciones-activas');
+
+                        const actualizarMensajeTemplate = () => {
+                            const op = wpContacts[parseInt(selOp.value, 10)] || {};
+                            const ap = wpContacts[parseInt(selAp.value, 10)] || {};
+                            const opNombre = op.nombre || 'Operador';
+                            const apNombre = ap.nombre || 'Administración';
+                            txtMsg.value = `Hola ${opNombre}, te habilitamos el acceso al catálogo de artículos de LAMDA para que puedas pre-armar pedidos de mercadería de *${nombreComercio}* y enviárselos a ${apNombre} para su aprobación.\n\n🔒 La primera vez que ingreses desde tu celular, validá los últimos 4 dígitos de tu número ([Ultimos_4_Digitos]) para dejar vinculado tu teléfono:\n[Enlace_PrePedido]`;
+                        };
+
+                        actualizarMensajeTemplate();
+                        selOp.addEventListener('change', actualizarMensajeTemplate);
+                        selAp.addEventListener('change', actualizarMensajeTemplate);
+
+                        const cargarDelegacionesExistentes = async () => {
+                            try {
+                                const r = await fetch(`/api/logistica/b2b-onboarding/delegaciones/${encodeURIComponent(codigo)}`);
+                                const j = await r.json();
+                                if (!r.ok || !j.success || !Array.isArray(j.data) || j.data.length === 0) {
+                                    listContainer.innerHTML = `<span style="color:#94a3b8; font-style:italic;">No hay operadores habilitados actualmente para este cliente.</span>`;
+                                    return;
+                                }
+                                listContainer.innerHTML = j.data.map(d => `
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#fff; border:1px solid #cbd5e1; border-radius:7px; padding:6px 9px; margin-bottom:5px;">
+                                        <div style="flex:1; min-width:0;">
+                                            <div style="font-weight:700; color:#1e293b; font-size:12.5px;">
+                                                👤 ${d.nombre_colaborador} ${d.telefono_colaborador ? `<span style="color:#64748b; font-weight:400;">(${d.telefono_colaborador})</span>` : ''}
+                                            </div>
+                                            <div style="font-size:11px; color:${d.dispositivo_vinculado ? '#15803d' : '#d97706'}; font-weight:600;">
+                                                ${d.dispositivo_vinculado ? '🔒 Teléfono vinculado' : '⏳ Pendiente de primera apertura'}
+                                                ${d.aprobador_nombre ? ` • Aprueba: ${d.aprobador_nombre}` : ''}
+                                            </div>
+                                        </div>
+                                        <div style="display:flex; gap:4px;">
+                                            <button type="button" class="btn-copy-del" data-link="${d.link}" title="Copiar enlace" style="border:1px solid #cbd5e1; background:#f8fafc; border-radius:5px; padding:3px 7px; cursor:pointer; font-size:11.5px;">📋</button>
+                                            ${d.dispositivo_vinculado ? `<button type="button" class="btn-unbind-del" data-id="${d.id}" title="Liberar teléfono vinculado (si cambió de celular)" style="border:1px solid #fed7aa; background:#fff7ed; border-radius:5px; padding:3px 7px; cursor:pointer; font-size:11.5px;">🔓</button>` : ''}
+                                            <button type="button" class="btn-revoke-del" data-id="${d.id}" title="Revocar acceso" style="border:1px solid #fecaca; background:#fef2f2; border-radius:5px; padding:3px 7px; cursor:pointer; font-size:11.5px;">🗑️</button>
+                                        </div>
+                                    </div>
+                                `).join('');
+
+                                listContainer.querySelectorAll('.btn-copy-del').forEach(b => {
+                                    b.addEventListener('click', () => {
+                                        navigator.clipboard.writeText(b.getAttribute('data-link'));
+                                        b.textContent = '✅';
+                                        setTimeout(() => { b.textContent = '📋'; }, 1500);
+                                    });
+                                });
+
+                                listContainer.querySelectorAll('.btn-unbind-del').forEach(b => {
+                                    b.addEventListener('click', async () => {
+                                        const delId = b.getAttribute('data-id');
+                                        await fetch(`/api/logistica/b2b-onboarding/delegaciones/${delId}/desvincular-dispositivo`, { method: 'POST' });
+                                        cargarDelegacionesExistentes();
+                                    });
+                                });
+
+                                listContainer.querySelectorAll('.btn-revoke-del').forEach(b => {
+                                    b.addEventListener('click', async () => {
+                                        const delId = b.getAttribute('data-id');
+                                        await fetch(`/api/logistica/b2b-onboarding/delegaciones/${delId}`, { method: 'DELETE' });
+                                        cargarDelegacionesExistentes();
+                                    });
+                                });
+                            } catch (e) {
+                                listContainer.innerHTML = `<span style="color:#ef4444;">No se pudieron consultar los enlaces activos.</span>`;
+                            }
+                        };
+
+                        cargarDelegacionesExistentes();
+                    },
+                    preConfirm: () => {
+                        const selOpIdx = parseInt(document.getElementById('select-operador-b2b').value, 10);
+                        const selApIdx = parseInt(document.getElementById('select-aprobador-b2b').value, 10);
+                        const op = wpContacts[selOpIdx];
+                        const ap = wpContacts[selApIdx];
+
+                        if (!op || !op.numero) {
+                            Swal.showValidationMessage('Debe seleccionar un contacto operador con número de teléfono.');
+                            return false;
+                        }
+
+                        return {
+                            nombre_colaborador: op.nombre || 'Operador',
+                            telefono_colaborador: op.numero,
+                            aprobador_nombre: ap ? (ap.nombre || 'Administración') : 'Administración',
+                            aprobador_telefono: ap ? ap.numero : '',
+                            mostrar_precios: document.getElementById('chk-colab-precios').checked,
+                            permitir_toggle_iva: document.getElementById('chk-colab-toggle-iva').checked,
+                            ver_stock: document.getElementById('chk-colab-stock').checked,
+                            mensaje_texto: document.getElementById('txt-mensaje-colab-b2b').value
+                        };
+                    }
+                });
+
+                if (!result.isConfirmed) return;
+
+                Swal.fire({
+                    title: 'Habilitando Operador...',
+                    html: 'Sincronizando listas de precios y generando enlace protegido...',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+
+                try {
+                    const response = await fetch('/api/logistica/b2b-onboarding/habilitar-colaborador', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            cliente_id: codigo,
+                            ...result.value,
+                            mostrar_sin_iva: true,
+                            enviar_whatsapp: true
+                        })
+                    });
+
+                    const resData = await response.json();
+                    if (!response.ok || !resData.success) {
+                        throw new Error(resData.message || 'No se pudo habilitar el operador.');
+                    }
+
+                    const linkGenerado = resData.data?.link || '';
+                    const waMeUrl = resData.data?.waMeUrl || '';
+
+                    await Swal.fire({
+                        title: resData.whatsappEnviado ? '¡Operador Habilitado y Notificado!' : '¡Enlace de Operador Generado!',
+                        html: `
+                            <div style="text-align:left; font-size:13.5px; color:#334155; line-height:1.5;">
+                                <p style="margin:0 0 10px 0;">
+                                    ${resData.whatsappEnviado
+                                        ? `Se envió el enlace por WhatsApp a <strong>${result.value.nombre_colaborador}</strong> (${result.value.telefono_colaborador}).`
+                                        : `El enlace fue creado con éxito. Podés copiarlo o abrir WhatsApp directamente desde acá:`}
+                                </p>
+                                <div style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; font-family:monospace; font-size:12px; word-break:break-all; margin-bottom:12px;">
+                                    ${linkGenerado}
+                                </div>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" id="btn-swal-copy-colab" style="flex:1; background:#334155; color:#fff; border:none; border-radius:7px; padding:8px 10px; font-weight:700; cursor:pointer; font-size:12.5px;">
+                                        📋 Copiar Enlace
+                                    </button>
+                                    <a href="${waMeUrl}" target="_blank" rel="noopener noreferrer" style="flex:1; background:#16a34a; color:#fff; text-decoration:none; border-radius:7px; padding:8px 10px; font-weight:700; text-align:center; font-size:12.5px;">
+                                        📲 Abrir WhatsApp
+                                    </a>
+                                </div>
+                            </div>
+                        `,
+                        icon: 'success',
+                        confirmButtonColor: 'var(--purple-primary)',
+                        confirmButtonText: 'Listo',
+                        didOpen: () => {
+                            const btnCopy = document.getElementById('btn-swal-copy-colab');
+                            if (btnCopy) {
+                                btnCopy.addEventListener('click', () => {
+                                    navigator.clipboard.writeText(linkGenerado);
+                                    btnCopy.textContent = '✅ ¡Enlace Copiado!';
+                                });
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.error('Error habilitando operador:', err);
+                    Swal.fire({
+                        title: 'Error',
+                        text: err.message || 'Ocurrió un error al generar el acceso del operador.',
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                }
+            });
+        });
+
         // Evento Cuenta Corriente
         cuerpoTablaClientes.querySelectorAll('.btn-cc').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1503,6 +2601,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Filtro Programa de Financiación dropdown y tarjetas KPI interactivas
+    const filtroFinanciacionSelect = document.getElementById('filtro-financiacion-modo');
+    if (filtroFinanciacionSelect) {
+        filtroFinanciacionSelect.addEventListener('change', () => {
+            ordenarYRenderizar();
+        });
+    }
+
+    const toggleFiltroKpiFinanc = (modoTarget) => {
+        if (!filtroFinanciacionSelect) return;
+        filtroFinanciacionSelect.value = (filtroFinanciacionSelect.value === modoTarget) ? 'todos' : modoTarget;
+        ordenarYRenderizar();
+    };
+
+    const kpiCardActiva = document.getElementById('kpi-card-financ-activa');
+    const kpiCardSombra = document.getElementById('kpi-card-financ-sombra');
+    const kpiCardExcluido = document.getElementById('kpi-card-financ-excluido');
+
+    if (kpiCardActiva) kpiCardActiva.addEventListener('click', () => toggleFiltroKpiFinanc('ACTIVO'));
+    if (kpiCardSombra) kpiCardSombra.addEventListener('click', () => toggleFiltroKpiFinanc('SOMBRA'));
+    if (kpiCardExcluido) kpiCardExcluido.addEventListener('click', () => toggleFiltroKpiFinanc('EXCLUIDO'));
+
     // --- 4. CONTROL DE APERTURA/CIERRE DEL DRAWER ---
     function abrirDrawer(titulo) {
         drawerTitulo.innerHTML = titulo;
@@ -1521,6 +2641,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Pizarra limpia del formulario
             formCliente.reset();
             txtId.value = '';
+            if (chkVerStock) chkVerStock.checked = false;
 
             // Ocultar botones auxiliares del Autocomplete Lomas Soft
             const btnLimpiarLomas = document.getElementById('btn-limpiar-lomas');
@@ -1691,13 +2812,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     txtActividadPrincipal.value = datos.actividad_principal || 'N/A';
                 }
 
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Datos Recuperados',
-                    text: 'Se han autocompletado los datos fiscales correctamente.',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
+                if (datos.advertencia_fiscal) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Datos Recuperados con Advertencia',
+                        html: `
+                            <p style="font-size: 14px; color: #1e293b; margin-bottom: 10px;">
+                                <strong>${datos.razon_social || 'Contribuyente'}</strong> (${datos.condicion_iva})
+                            </p>
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px; border-radius: 4px; text-align: left; font-size: 12px; color: #92400e;">
+                                ⚠️ ${datos.advertencia_fiscal}
+                            </div>
+                        `,
+                        confirmButtonColor: '#6b21a8'
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Datos Recuperados',
+                        text: 'Se han autocompletado los datos fiscales correctamente.',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
 
             } catch (error) {
                 console.error('❌ [ARCA-FRONT] Error al consultar ARCA:', error);
@@ -1733,6 +2870,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Enforce Pizarra Limpia
         txtId.value = '';
         formCliente.reset();
+        if (selPreferenciaFacturacion) selPreferenciaFacturacion.value = 'PREGUNTAR';
         renderWhatsappInputs('');
         renderEmailInputs('');
         if (selCanalPreferido) selCanalPreferido.value = 'whatsapp';
@@ -1773,6 +2911,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btnGuardarCliente.style.cursor = '';
 
         abrirDrawer('➕ Registrar Nuevo Cliente');
+        domiciliosMemoria = [];
+        domiciliosClienteActual = [];
+        renderizarListaDomicilios();
     });
 
     // --- 5. ABRIR FICHA DE CLIENTE PARA EDICIÓN ---
@@ -1790,6 +2931,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Cargar inputs fiscales (Fase 1 y 3 Fiscal)
         txtCuit.value = cliente.cuit_cuil || '';
         selCondicionIva.value = cliente.condicion_iva || '';
+        if (selPreferenciaFacturacion) selPreferenciaFacturacion.value = cliente.preferencia_facturacion || 'PREGUNTAR';
         txtDomicilioFiscal.value = cliente.domicilio_fiscal || '';
         txtProvincia.value = cliente.provincia || '';
         txtWhatsappFacturas.value = cliente.whatsapp_facturas || '';
@@ -1807,7 +2949,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (txtEmailPortal) txtEmailPortal.value = cliente.email_portal || '';
         if (txtEmailPortalNombre) txtEmailPortalNombre.value = cliente.email_portal_nombre || '';
         if (txtEmailPortalCargo) txtEmailPortalCargo.value = cliente.email_portal_cargo || '';
+        if (chkVerStock) chkVerStock.checked = cliente.ver_stock === true;
 
+        // Cargar domicilios de entrega del cliente
+        domiciliosMemoria = [];
+        cargarDomiciliosDeCliente(cliente.id);
 
         // Sincronizar el botón de limpieza del autocomplete
         const btnLimpiarLomas = document.getElementById('btn-limpiar-lomas');
@@ -1825,6 +2971,29 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGuardarCliente.addEventListener('click', async (e) => {
         e.preventDefault();
 
+        // Forzar actualización inmediata de strings JSON de contactos desde la interfaz
+        actualizarHiddenWhatsapp();
+        actualizarHiddenEmail();
+
+        // Validar si existen contactos de correo con nombre/cargo pero sin dirección cargada
+        if (emailInputsContainer) {
+            const emailCards = Array.from(emailInputsContainer.querySelectorAll('.email-contact-card'));
+            for (const card of emailCards) {
+                const name = card.querySelector('.email-contact-name')?.value.trim() || '';
+                const role = card.querySelector('.email-contact-role')?.value.trim() || '';
+                const email = card.querySelector('.email-contact-address')?.value.trim() || '';
+                if ((name || role) && !email) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Correo Electrónico Faltante',
+                        text: `Ha ingresado el contacto "${name || role}" pero dejó vacía su dirección de correo electrónico. Por favor complete el correo antes de guardar.`,
+                        confirmButtonColor: '#6b21a8'
+                    });
+                    return;
+                }
+            }
+        }
+
         // Validaciones manuales básicas
         const id = txtId.value;
         const codigo = txtCodigo.value.trim();
@@ -1833,6 +3002,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const lomasId = txtLomasId.value.trim();
         const cuit = txtCuit.value.trim();
         const condicionIva = selCondicionIva.value;
+        const preferenciaFacturacion = selPreferenciaFacturacion ? selPreferenciaFacturacion.value : 'PREGUNTAR';
         const domicilioFiscal = txtDomicilioFiscal.value.trim();
         const provincia = txtProvincia.value.trim();
         const whatsappFacturas = txtWhatsappFacturas.value.trim();
@@ -1846,6 +3016,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const emailPortal = txtEmailPortal ? txtEmailPortal.value.trim() : '';
         const emailPortalNombre = txtEmailPortalNombre ? txtEmailPortalNombre.value.trim() : '';
         const emailPortalCargo = txtEmailPortalCargo ? txtEmailPortalCargo.value.trim() : '';
+        const verStock = chkVerStock ? chkVerStock.checked : false;
 
         // ARQUITECTURA LAMDA: El Código Búnker es autogenerado por el backend durante la creación,
         // por lo tanto, solo es obligatorio verificar su presencia para flujos de edición/actualización.
@@ -1879,6 +3050,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lomas_soft_id: lomasId,
             cuit_cuil: cuit || null,
             condicion_iva: condicionIva || null,
+            preferencia_facturacion: preferenciaFacturacion,
             domicilio_fiscal: domicilioFiscal || null,
             provincia: provincia || null,
             whatsapp_facturas: whatsappFacturas || null,
@@ -1889,7 +3061,9 @@ document.addEventListener('DOMContentLoaded', () => {
             actividad_principal: actividadPrincipal || null,
             email_portal: emailPortal || null,
             email_portal_nombre: emailPortalNombre || null,
-            email_portal_cargo: emailPortalCargo || null
+            email_portal_cargo: emailPortalCargo || null,
+            ver_stock: verStock,
+            domicilios: !esEdicion ? domiciliosMemoria : undefined
         };
 
 
@@ -1963,6 +3137,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cerrarDrawer();
             cargarClientes(buscadorInput.value.trim());
+
+            // Si proviene de la conversión de un prospecto de CRM, marcarlo formalmente como CONVERTIDO
+            if (prospectoConversionId && data.data && data.data.id) {
+                try {
+                    await fetch(`/api/logistica/prospectos/${prospectoConversionId}/convertir`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bunker_cliente_id: data.data.id })
+                    });
+                    console.log(`[PROSPECTO] Prospecto #${prospectoConversionId} convertido formalmente a Cliente #${data.data.id}`);
+                    prospectoConversionId = null;
+                } catch (convErr) {
+                    console.error('[PROSPECTO] Error registrando conversión:', convErr);
+                }
+            }
 
         } catch (error) {
             console.error('❌ [CLIENTES-FRONT] Error al guardar:', error);
@@ -2566,7 +3755,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         emails = selected.email;
                     }
                 } else {
-                    wps = obtenerContactosDeCliente(cliente).filter(c => c.default_factura).map(c => c.numero);
+                    wps = obtenerContactosDeCliente(cliente).filter(c => c.default_resumen).map(c => c.numero);
                     emails = obtenerEmailsDeCliente(cliente).filter(e => e.default_factura).map(e => e.email);
                     
                     const rawWpStr = (cliente.whatsapp_facturas || '').trim();
@@ -2577,7 +3766,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (rawWpStr.startsWith('[')) {
                         try {
                             const parsed = JSON.parse(rawWpStr);
-                            hasWpConfig = Array.isArray(parsed) && parsed.some(c => c.default_factura !== undefined);
+                            hasWpConfig = Array.isArray(parsed) && parsed.some(c => c.default_resumen !== undefined);
                         } catch(e) {}
                     }
                     if (rawEmailStr.startsWith('[')) {
@@ -2688,9 +3877,819 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- LÓGICA DE GESTIÓN MULTIDOMICILIO Y PREDETERMINADOS ---
+    let domiciliosMemoria = [];
+    let domiciliosClienteActual = [];
+    let mapaModalInstance = null;
+
+    const domiciliosListaContainer = document.getElementById('domicilios-lista-container');
+    const btnAddDomicilio = document.getElementById('btn-add-domicilio');
+    const modalDomicilioOverlay = document.getElementById('modal-domicilio-overlay');
+    const modalDomicilio = document.getElementById('modal-domicilio');
+    const modalDomicilioTitulo = document.getElementById('modal-domicilio-titulo');
+    const btnCerrarModalDomicilio = document.getElementById('btn-cerrar-modal-domicilio');
+    const btnCancelarModalDomicilio = document.getElementById('btn-cancelar-modal-domicilio');
+    const btnGuardarModalDomicilio = document.getElementById('btn-guardar-modal-domicilio');
+    const formDomicilio = document.getElementById('form-domicilio');
+
+    const txtDomId = document.getElementById('domicilio-id');
+    const txtDomIndex = document.getElementById('domicilio-index');
+    const txtDomAlias = document.getElementById('txt-dom-alias');
+    const txtDomDireccion = document.getElementById('txt-dom-direccion');
+    const txtDomLocalidad = document.getElementById('txt-dom-localidad');
+    const txtDomProvincia = document.getElementById('txt-dom-provincia');
+    const txtDomTelefono = document.getElementById('txt-dom-telefono');
+    const txtDomCp = document.getElementById('txt-dom-cp');
+    const txtDomHorarioDesde = document.getElementById('txt-dom-horario-desde');
+    const txtDomHorarioHasta = document.getElementById('txt-dom-horario-hasta');
+    const txtDomInstrucciones = document.getElementById('txt-dom-instrucciones');
+    const chkDomPredeterminado = document.getElementById('chk-dom-predeterminado');
+
+    const txtDomLatitud = document.getElementById('txt-dom-latitud');
+    const txtDomLongitud = document.getElementById('txt-dom-longitud');
+    const coordenadasDisplay = document.getElementById('coordenadas-display');
+    const btnGeocodificarDireccion = document.getElementById('btn-geocodificar-direccion');
+    const btnToggleMaximizarDomicilio = document.getElementById('btn-toggle-maximizar-domicilio');
+    const iconMaximizarDomicilio = document.getElementById('icon-maximizar-domicilio');
+    const textMaximizarDomicilio = document.getElementById('text-maximizar-domicilio');
+
+    const txtDomCalle = document.getElementById('txt-dom-calle');
+    const txtDomNumero = document.getElementById('txt-dom-numero');
+    const txtDomEntreCalles = document.getElementById('txt-dom-entre-calles');
+    const selDomTelefonoPreexistente = document.getElementById('sel-dom-telefono-preexistente');
+
+    function aplicarMascaraTelefono(val) {
+        if (!val) return '';
+        let digits = String(val).replace(/\D/g, '');
+        if (!digits) return '';
+
+        if (digits.startsWith('549')) digits = digits.substring(3);
+        else if (digits.startsWith('54')) digits = digits.substring(2);
+
+        if (digits.length <= 2) {
+            return `+54 9 (${digits}`;
+        } else if (digits.length <= 6) {
+            return `+54 9 (${digits.substring(0, 2)}) ${digits.substring(2)}`;
+        } else if (digits.length <= 10) {
+            return `+54 9 (${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6, 10)}`;
+        } else {
+            return `+54 9 (${digits.substring(0, 3)}) ${digits.substring(3, 7)}-${digits.substring(7, 11)}`;
+        }
+    }
+
+    function extraerNumeroLimpio(cadena) {
+        if (!cadena) return '';
+        const str = String(cadena).trim();
+        let numBase = str;
+
+        // 1. Si viene con formato comillas / metadatos '"Nombre" <numero>' o similar
+        const matchAngle = str.match(/<([^>]+)>/);
+        if (matchAngle) {
+            numBase = matchAngle[1];
+        } else {
+            // 2. Buscar secuencia de formato telefónico (+54 9 221 476-8551, 11 4455-6677, etc.)
+            const matchPhone = str.match(/(?:\+?\d{1,3}[\s\-]?)?(?:\(?\d{2,4}\)?[\s\-]?)?\d{3,4}[\s\-]?\d{3,4}/);
+            if (matchPhone) {
+                numBase = matchPhone[0];
+            }
+        }
+
+        return aplicarMascaraTelefono(numBase);
+    }
+
+    function actualizarDireccionFormateada() {
+        const calle = txtDomCalle ? txtDomCalle.value.trim() : '';
+        const num = txtDomNumero ? txtDomNumero.value.trim() : '';
+        const entre = txtDomEntreCalles ? txtDomEntreCalles.value.trim() : '';
+
+        if (!calle && !num && !entre) return;
+
+        let res = calle;
+        if (num) res += (res ? ' N° ' : '') + num;
+        if (entre) res += (res ? ' e/ ' : '') + entre;
+
+        if (txtDomDireccion) txtDomDireccion.value = res;
+    }
+
+    function toggleMaximizarModalDomicilio() {
+        if (!modalDomicilio) return;
+        const estaMaximizado = modalDomicilio.classList.toggle('modal-maximized');
+
+        if (iconMaximizarDomicilio) iconMaximizarDomicilio.textContent = estaMaximizado ? '🗗' : '🗖';
+        if (textMaximizarDomicilio) textMaximizarDomicilio.textContent = estaMaximizado ? 'Restaurar' : 'Maximizar';
+        if (btnToggleMaximizarDomicilio) {
+            btnToggleMaximizarDomicilio.title = estaMaximizado ? 'Restaurar tamaño normal' : 'Maximizar a Pantalla Completa (Ver mapa expandido)';
+        }
+
+        // Notificar a Google Maps para recalcular su visor
+        setTimeout(() => {
+            if (mapaModalInstance && mapaModalInstance.map && window.google && window.google.maps) {
+                google.maps.event.trigger(mapaModalInstance.map, 'resize');
+            }
+        }, 150);
+    }
+
+    async function cargarDomiciliosDeCliente(clienteId) {
+        if (!domiciliosListaContainer) return;
+        domiciliosListaContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; font-size: 0.85em; padding: 8px;">⏳ Cargando domicilios...</div>';
+        try {
+            console.log(`📡 [DOMICILIOS-DEBUG] Cargar domicilios para clienteId: ${clienteId}`);
+            const res = await fetch(`/api/logistica/domicilios?id_cliente=${clienteId}`);
+            const data = await res.json();
+            console.log('📥 [DOMICILIOS-DEBUG] GET /api/logistica/domicilios respuesta:', data);
+            if (data.success) {
+                domiciliosClienteActual = data.data || [];
+                renderizarListaDomicilios();
+            } else {
+                domiciliosListaContainer.innerHTML = '<div style="text-align: center; color: #ef4444; font-size: 0.85em; padding: 8px;">Error al cargar domicilios.</div>';
+            }
+        } catch (err) {
+            console.error('❌ Error al cargar domicilios del cliente:', err);
+            domiciliosListaContainer.innerHTML = '<div style="text-align: center; color: #ef4444; font-size: 0.85em; padding: 8px;">Error de conexión.</div>';
+        }
+    }
+
+    function renderizarListaDomicilios() {
+        console.log('🎨 [DOMICILIOS-DEBUG] renderizarListaDomicilios ejecutándose. domiciliosClienteActual:', domiciliosClienteActual);
+        if (!domiciliosListaContainer) return;
+
+        domiciliosListaContainer.innerHTML = '';
+
+        const esEdicionCliente = !!txtId.value;
+        const lista = esEdicionCliente ? domiciliosClienteActual : domiciliosMemoria;
+
+        if (!Array.isArray(lista) || lista.length === 0) {
+            console.log('🎨 [DOMICILIOS-DEBUG] Lista vacía, mostrando mensaje de sin domicilios.');
+            domiciliosListaContainer.innerHTML = `
+                <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; color: #64748b; font-size: 0.85em;">
+                    📍 No hay domicilios de entrega registrados. Haga clic en <b>Agregar Domicilio</b>.
+                </div>
+            `;
+            return;
+        }
+
+        console.log(`🎨 [DOMICILIOS-DEBUG] Dibujando ${lista.length} tarjetas de domicilio en el panel lateral...`);
+
+        lista.forEach((dom, index) => {
+            try {
+                const card = document.createElement('div');
+                card.style.border = dom.es_predeterminado ? '2px solid #8b5cf6' : '1px solid #cbd5e1';
+                card.style.backgroundColor = dom.es_predeterminado ? '#faf5ff' : '#ffffff';
+                card.style.borderRadius = '8px';
+                card.style.padding = '10px 12px';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '4px';
+                card.style.position = 'relative';
+
+                const badgePredeterminado = dom.es_predeterminado ? `
+                    <button type="button" class="btn-set-predeterminado" data-index="${index}" data-id="${dom.id || ''}" style="background-color: #8b5cf6; color: white; border: none; padding: 2px 8px; border-radius: 9999px; font-size: 0.75em; font-weight: bold; cursor: pointer;" title="Quitar como predeterminada">
+                        ⭐ Predeterminada
+                    </button>
+                ` : `
+                    <button type="button" class="btn-set-predeterminado" data-index="${index}" data-id="${dom.id || ''}" style="background: none; border: 1px solid #cbd5e1; color: #64748b; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; cursor: pointer;" title="Fijar como predeterminada">
+                        Fijar como predeterminada
+                    </button>
+                `;
+
+                const latNum = dom.latitud ? parseFloat(dom.latitud) : NaN;
+                const lngNum = dom.longitud ? parseFloat(dom.longitud) : NaN;
+                const tieneCoords = !isNaN(latNum) && !isNaN(lngNum);
+
+                const badgeCoords = tieneCoords ? `
+                    <span style="background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 1px 6px; border-radius: 4px; font-size: 0.75em;" title="Coordenadas GPS para la App del Chofer">
+                        🗺️ ${latNum.toFixed(4)}, ${lngNum.toFixed(4)}
+                    </span>
+                ` : '';
+
+                let detalleUbicacion = [dom.direccion, dom.localidad, dom.provincia].filter(Boolean).join(', ');
+                let detalleHorario = (dom.horario_atencion_desde || dom.horario_atencion_hasta) ? ` 🕒 ${dom.horario_atencion_desde || ''} a ${dom.horario_atencion_hasta || ''}` : '';
+                let detalleTel = dom.telefono_contacto ? ` 📞 ${dom.telefono_contacto}` : '';
+
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                        <div style="font-weight: 600; font-size: 0.9em; color: #1e293b; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span>📍 ${dom.alias || 'Domicilio de Entrega'}</span>
+                            ${badgePredeterminado}
+                            ${badgeCoords}
+                        </div>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" class="btn-edit-domicilio btn-action btn-edit" data-index="${index}" data-id="${dom.id || ''}" style="width: 26px; height: 26px; font-size: 12px;" title="Editar Domicilio">✏️</button>
+                            <button type="button" class="btn-delete-domicilio btn-action btn-delete" data-index="${index}" data-id="${dom.id || ''}" style="width: 26px; height: 26px; font-size: 12px;" title="Eliminar Domicilio">🗑️</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.85em; color: #475569;">${detalleUbicacion || 'Sin dirección registrada'}</div>
+                    ${(detalleTel || detalleHorario) ? `<div style="font-size: 0.8em; color: #64748b;">${detalleTel}${detalleHorario}</div>` : ''}
+                    ${dom.instrucciones_entrega ? `<div style="font-size: 0.8em; color: #7c3aed; font-style: italic;">📝 ${dom.instrucciones_entrega}</div>` : ''}
+                `;
+
+                const btnSetPred = card.querySelector('.btn-set-predeterminado');
+                if (btnSetPred) {
+                    btnSetPred.addEventListener('click', () => cambiarPredeterminado(index, dom.id));
+                }
+
+                const btnEdit = card.querySelector('.btn-edit-domicilio');
+                if (btnEdit) {
+                    btnEdit.addEventListener('click', () => abrirModalDomicilio(index, dom));
+                }
+
+                const btnDelete = card.querySelector('.btn-delete-domicilio');
+                if (btnDelete) {
+                    btnDelete.addEventListener('click', () => eliminarDomicilio(index, dom.id));
+                }
+
+                domiciliosListaContainer.appendChild(card);
+                console.log(`✅ [DOMICILIOS-DEBUG] Tarjeta ${index + 1} insertada exitosamente en el DOM.`);
+            } catch (errCard) {
+                console.error(`❌ [DOMICILIOS-DEBUG] Error al renderizar tarjeta ${index}:`, errCard);
+            }
+        });
+    }
+
+    async function asegurarGoogleMapsSDK() {
+        if (window.google && window.google.maps) return true;
+        try {
+            const res = await fetch('/api/logistica/config');
+            const data = await res.json();
+            const apiKey = data?.data?.googleMapsApiKey;
+            if (!apiKey) {
+                console.warn('[MAPA] googleMapsApiKey no configurado en servidor');
+                return false;
+            }
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+            return true;
+        } catch (err) {
+            console.error('[MAPA] Error al cargar Google Maps SDK:', err);
+            return false;
+        }
+    }
+
+    async function inicializarMapaEnModal(latInicial = null, lngInicial = null) {
+        const container = document.getElementById('mapa-domicilio-interactive');
+        if (!container) return;
+
+        const hasSdk = await asegurarGoogleMapsSDK();
+        if (!hasSdk) {
+            container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-size:12px; padding:10px; text-align:center;">🗺️ Seleccione coordenadas en el mapa (Verifique API Key de Google Maps).</div>';
+            return;
+        }
+
+        const lat = latInicial || -34.9214; // La Plata por defecto
+        const lng = lngInicial || -57.9545;
+
+        try {
+            if (!mapaModalInstance && window.MapaInteractivo) {
+                mapaModalInstance = new window.MapaInteractivo();
+            }
+
+            if (mapaModalInstance) {
+                await mapaModalInstance.inicializar('mapa-domicilio-interactive', {
+                    lat,
+                    lng,
+                    zoom: 15
+                });
+
+                mapaModalInstance.onCoordenadasChange = (newLat, newLng) => {
+                    if (txtDomLatitud) txtDomLatitud.value = newLat;
+                    if (txtDomLongitud) txtDomLongitud.value = newLng;
+                    if (coordenadasDisplay) {
+                        coordenadasDisplay.innerHTML = `📍 <b>${newLat.toFixed(6)}, ${newLng.toFixed(6)}</b>`;
+                        coordenadasDisplay.style.color = '#7c3aed';
+                    }
+                };
+
+                mapaModalInstance.onDireccionChange = (dir) => {
+                    if (dir.calle && txtDomDireccion && !txtDomDireccion.value) {
+                        txtDomDireccion.value = dir.calle + (dir.numero ? ' ' + dir.numero : '');
+                    }
+                    if (dir.localidad && txtDomLocalidad && !txtDomLocalidad.value) {
+                        txtDomLocalidad.value = dir.localidad;
+                    }
+                    if (dir.provincia && txtDomProvincia && !txtDomProvincia.value) {
+                        txtDomProvincia.value = dir.provincia;
+                    }
+                };
+
+                if (latInicial && lngInicial) {
+                    mapaModalInstance.posicionarMarcador(latInicial, lngInicial);
+                }
+            }
+        } catch (err) {
+            console.error('[MAPA] Error al inicializar mapa en modal:', err);
+        }
+    }
+
+    async function geocodificarDireccionEnMapa() {
+        const dir = txtDomDireccion ? txtDomDireccion.value.trim() : '';
+        const loc = txtDomLocalidad ? txtDomLocalidad.value.trim() : '';
+        const prov = txtDomProvincia ? txtDomProvincia.value.trim() : '';
+
+        const direccionCompleta = [dir, loc, prov].filter(Boolean).join(', ');
+        if (!direccionCompleta) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Dirección requerida',
+                text: 'Por favor ingrese la calle y número para ubicar en el mapa.',
+                confirmButtonColor: '#6b21a8'
+            });
+            return;
+        }
+
+        if (mapaModalInstance) {
+            try {
+                const coords = await mapaModalInstance.geocode(direccionCompleta);
+                if (coords) {
+                    if (txtDomLatitud) txtDomLatitud.value = coords.lat;
+                    if (txtDomLongitud) txtDomLongitud.value = coords.lng;
+                    if (coordenadasDisplay) {
+                        coordenadasDisplay.innerHTML = `📍 <b>${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}</b>`;
+                        coordenadasDisplay.style.color = '#7c3aed';
+                    }
+                } else {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Búsqueda en Mapa',
+                        text: 'Puede hacer clic directamente en el mapa o mover el pin marcador para fijar la ubicación exacta de entrega.',
+                        confirmButtonColor: '#6b21a8'
+                    });
+                }
+            } catch (err) {
+                console.warn('[MAPA-LOGISTICA] Geocodificación:', err);
+            }
+        }
+    }
+
+    function abrirModalDomicilio(index = null, domicilio = null) {
+        if (!formDomicilio || !modalDomicilio) return;
+        formDomicilio.reset();
+        txtDomId.value = '';
+        txtDomIndex.value = '';
+        if (txtDomLatitud) txtDomLatitud.value = '';
+        if (txtDomLongitud) txtDomLongitud.value = '';
+        if (txtDomCalle) txtDomCalle.value = '';
+        if (txtDomNumero) txtDomNumero.value = '';
+        if (txtDomEntreCalles) txtDomEntreCalles.value = '';
+
+        // Cargar teléfonos del cliente en el selector preexistente (limpios de metadatos)
+        if (selDomTelefonoPreexistente) {
+            selDomTelefonoPreexistente.innerHTML = '<option value="">📋 Usar teléfono registrado del cliente...</option>';
+            const tels = new Set();
+            
+            if (txtWhatsappFacturas && txtWhatsappFacturas.value.trim()) {
+                const tLimpio = extraerNumeroLimpio(txtWhatsappFacturas.value);
+                if (tLimpio) tels.add(tLimpio);
+            }
+
+            const containerWhatsapp = document.getElementById('container-whatsapp-facturas');
+            if (containerWhatsapp) {
+                const inputs = containerWhatsapp.querySelectorAll('input');
+                inputs.forEach(inp => {
+                    const tLimpio = extraerNumeroLimpio(inp.value);
+                    if (tLimpio) tels.add(tLimpio);
+                });
+            }
+
+            tels.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = `📞 ${t}`;
+                selDomTelefonoPreexistente.appendChild(opt);
+            });
+        }
+
+        const esEdicionCliente = !!txtId.value;
+        const listaActual = esEdicionCliente ? domiciliosClienteActual : domiciliosMemoria;
+
+        let initialLat = null;
+        let initialLng = null;
+
+        if (domicilio) {
+            modalDomicilioTitulo.textContent = '✏️ Editar Domicilio de Entrega';
+            txtDomId.value = domicilio.id || '';
+            txtDomIndex.value = index !== null ? index : '';
+            txtDomAlias.value = domicilio.alias || '';
+            txtDomDireccion.value = domicilio.direccion || '';
+            txtDomLocalidad.value = domicilio.localidad || '';
+            txtDomProvincia.value = domicilio.provincia || '';
+            txtDomTelefono.value = domicilio.telefono_contacto || '';
+            txtDomCp.value = domicilio.codigo_postal || '';
+            txtDomHorarioDesde.value = domicilio.horario_atencion_desde || '';
+            txtDomHorarioHasta.value = domicilio.horario_atencion_hasta || '';
+            txtDomInstrucciones.value = domicilio.instrucciones_entrega || '';
+            chkDomPredeterminado.checked = !!domicilio.es_predeterminado;
+
+            if (domicilio.latitud && domicilio.longitud) {
+                initialLat = parseFloat(domicilio.latitud);
+                initialLng = parseFloat(domicilio.longitud);
+                if (txtDomLatitud) txtDomLatitud.value = initialLat;
+                if (txtDomLongitud) txtDomLongitud.value = initialLng;
+                if (coordenadasDisplay) {
+                    coordenadasDisplay.innerHTML = `📍 <b>${initialLat.toFixed(6)}, ${initialLng.toFixed(6)}</b>`;
+                    coordenadasDisplay.style.color = '#7c3aed';
+                }
+            } else {
+                if (coordenadasDisplay) {
+                    coordenadasDisplay.innerHTML = '📍 Sin coordenadas';
+                    coordenadasDisplay.style.color = '#64748b';
+                }
+            }
+        } else {
+            modalDomicilioTitulo.textContent = '📍 Agregar Domicilio de Entrega';
+            chkDomPredeterminado.checked = (listaActual.length === 0);
+            if (coordenadasDisplay) {
+                coordenadasDisplay.innerHTML = '📍 Sin coordenadas';
+                coordenadasDisplay.style.color = '#64748b';
+            }
+        }
+
+        if (modalDomicilioOverlay) modalDomicilioOverlay.style.display = 'block';
+        modalDomicilio.style.display = 'flex';
+
+        // Inicializar o refrescar el mapa interactivo una vez visible el modal
+        setTimeout(() => {
+            inicializarMapaEnModal(initialLat, initialLng);
+        }, 100);
+    }
+
+    function cerrarModalDomicilio() {
+        if (modalDomicilioOverlay) modalDomicilioOverlay.style.display = 'none';
+        if (modalDomicilio) {
+            modalDomicilio.style.display = 'none';
+            modalDomicilio.classList.remove('modal-maximized');
+        }
+        if (iconMaximizarDomicilio) iconMaximizarDomicilio.textContent = '🗖';
+        if (textMaximizarDomicilio) textMaximizarDomicilio.textContent = 'Maximizar';
+        if (btnToggleMaximizarDomicilio) {
+            btnToggleMaximizarDomicilio.title = 'Maximizar a Pantalla Completa (Ver mapa expandido)';
+        }
+        if (formDomicilio) formDomicilio.reset();
+    }
+
+    async function guardarModalDomicilio() {
+        console.log('🚀 [DOMICILIOS-DEBUG] guardarModalDomicilio INICIADO');
+        try {
+            // Forzar consolidación preventiva de subcampos (Calle, N°, Entre calles)
+            actualizarDireccionFormateada();
+
+            let alias = txtDomAlias ? txtDomAlias.value.trim() : '';
+            let direccion = txtDomDireccion ? txtDomDireccion.value.trim() : '';
+
+            console.log('🔍 [DOMICILIOS-DEBUG] Valores antes de validación:', { 
+                alias, 
+                direccion, 
+                calle: txtDomCalle ? txtDomCalle.value : null, 
+                numero: txtDomNumero ? txtDomNumero.value : null 
+            });
+
+            // Fallback directo si txtDomDireccion estaba vacío pero se tipeó Calle
+            if (!direccion && txtDomCalle && txtDomCalle.value.trim()) {
+                const calleVal = txtDomCalle.value.trim();
+                const numVal = txtDomNumero ? txtDomNumero.value.trim() : '';
+                const entreVal = txtDomEntreCalles ? txtDomEntreCalles.value.trim() : '';
+                direccion = calleVal + (numVal ? ' N° ' + numVal : '') + (entreVal ? ' e/ ' + entreVal : '');
+                if (txtDomDireccion) txtDomDireccion.value = direccion;
+            }
+
+            if (!direccion) {
+                console.warn('⚠️ [DOMICILIOS-DEBUG] Proceso detenido: dirección evaluada como vacía');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Dirección requerida',
+                    text: 'Por favor ingrese la Dirección de entrega (Calle y N°).',
+                    confirmButtonColor: '#6b21a8'
+                });
+                return;
+            }
+
+            if (!alias) {
+                alias = 'Domicilio de Entrega';
+                if (txtDomAlias) txtDomAlias.value = alias;
+            }
+
+            const datosDom = {
+                alias,
+                direccion,
+                localidad: (txtDomLocalidad && txtDomLocalidad.value.trim()) ? txtDomLocalidad.value.trim() : null,
+                provincia: (txtDomProvincia && txtDomProvincia.value.trim()) ? txtDomProvincia.value.trim() : null,
+                codigo_postal: (txtDomCp && txtDomCp.value.trim()) ? txtDomCp.value.trim() : null,
+                telefono_contacto: (txtDomTelefono && txtDomTelefono.value.trim()) ? txtDomTelefono.value.trim() : null,
+                horario_atencion_desde: (txtDomHorarioDesde && txtDomHorarioDesde.value) ? txtDomHorarioDesde.value : null,
+                horario_atencion_hasta: (txtDomHorarioHasta && txtDomHorarioHasta.value) ? txtDomHorarioHasta.value : null,
+                instrucciones_entrega: (txtDomInstrucciones && txtDomInstrucciones.value.trim()) ? txtDomInstrucciones.value.trim() : null,
+                latitud: (txtDomLatitud && txtDomLatitud.value) ? parseFloat(txtDomLatitud.value) : null,
+                longitud: (txtDomLongitud && txtDomLongitud.value) ? parseFloat(txtDomLongitud.value) : null,
+                coordenadas_validadas: !!(txtDomLatitud && txtDomLatitud.value && txtDomLongitud && txtDomLongitud.value),
+                es_predeterminado: chkDomPredeterminado ? chkDomPredeterminado.checked : false
+            };
+
+            const esEdicionCliente = !!(txtId && txtId.value);
+            const domId = txtDomId ? txtDomId.value : '';
+            const indexStr = txtDomIndex ? txtDomIndex.value : '';
+
+            console.log('📡 [DOMICILIOS-DEBUG] Payload preparado:', { datosDom, esEdicionCliente, clienteId: txtId ? txtId.value : null, domId });
+
+            if (esEdicionCliente) {
+                let res;
+                if (domId) {
+                    console.log(`📡 [DOMICILIOS-DEBUG] Enviando PUT /api/logistica/domicilios/${domId}`);
+                    res = await fetch(`/api/logistica/domicilios/${domId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datosDom)
+                    });
+                } else {
+                    console.log(`📡 [DOMICILIOS-DEBUG] Enviando POST /api/logistica/domicilios para cliente ID ${txtId.value}`);
+                    res = await fetch('/api/logistica/domicilios', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...datosDom, id_cliente: txtId.value })
+                    });
+                }
+
+                console.log(`📥 [DOMICILIOS-DEBUG] Respuesta HTTP Status: ${res.status}`);
+                const data = await res.json();
+                console.log('📥 [DOMICILIOS-DEBUG] Respuesta JSON del Servidor:', data);
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || data.message || 'Error al guardar el domicilio.');
+                }
+
+                cerrarModalDomicilio();
+                await cargarDomiciliosDeCliente(txtId.value);
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Domicilio guardado',
+                    text: 'La dirección de entrega fue registrada correctamente.',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+            } else {
+                console.log('📝 [DOMICILIOS-DEBUG] Guardando en memoria para cliente nuevo');
+                if (datosDom.es_predeterminado) {
+                    domiciliosMemoria.forEach(d => d.es_predeterminado = false);
+                }
+
+                if (indexStr !== '') {
+                    const idx = parseInt(indexStr, 10);
+                    domiciliosMemoria[idx] = { ...domiciliosMemoria[idx], ...datosDom };
+                } else {
+                    if (domiciliosMemoria.length === 0) {
+                        datosDom.es_predeterminado = true;
+                    }
+                    domiciliosMemoria.push(datosDom);
+                }
+
+                cerrarModalDomicilio();
+                renderizarListaDomicilios();
+            }
+        } catch (err) {
+            console.error('❌ [DOMICILIOS-DEBUG] Excepción capturada:', err);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error al guardar',
+                text: err.message || 'Ocurrió un error inesperado al procesar la solicitud.',
+                confirmButtonColor: '#6b21a8'
+            });
+        }
+    }
+
+    async function cambiarPredeterminado(index, domId) {
+        const esEdicionCliente = !!txtId.value;
+        if (esEdicionCliente && domId) {
+            const dom = domiciliosClienteActual.find(d => String(d.id) === String(domId));
+            if (!dom) return;
+            const nuevoEstado = !dom.es_predeterminado;
+
+            try {
+                const res = await fetch(`/api/logistica/domicilios/${domId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ es_predeterminado: nuevoEstado })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await cargarDomiciliosDeCliente(txtId.value);
+                }
+            } catch (err) {
+                console.error('Error al cambiar domicilio predeterminado:', err);
+            }
+        } else {
+            const dom = domiciliosMemoria[index];
+            if (!dom) return;
+            const nuevoEstado = !dom.es_predeterminado;
+
+            domiciliosMemoria.forEach((d, i) => {
+                if (nuevoEstado) {
+                    d.es_predeterminado = (i === index);
+                } else {
+                    if (i === index) {
+                        d.es_predeterminado = false;
+                    }
+                }
+            });
+            renderizarListaDomicilios();
+        }
+    }
+
+    async function eliminarDomicilio(index, domId) {
+        const esEdicionCliente = !!txtId.value;
+        const confirmacion = await Swal.fire({
+            title: '¿Eliminar domicilio?',
+            text: 'Se eliminará esta dirección de entrega.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!confirmacion.isConfirmed) return;
+
+        if (esEdicionCliente && domId) {
+            try {
+                const res = await fetch(`/api/logistica/domicilios/${domId}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await cargarDomiciliosDeCliente(txtId.value);
+                } else {
+                    throw new Error(data.error || 'No se pudo eliminar el domicilio.');
+                }
+            } catch (err) {
+                console.error('Error al eliminar domicilio:', err);
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, confirmButtonColor: '#6b21a8' });
+            }
+        } else {
+            const fuePredeterminado = domiciliosMemoria[index]?.es_predeterminado;
+            domiciliosMemoria.splice(index, 1);
+            if (fuePredeterminado && domiciliosMemoria.length > 0) {
+                domiciliosMemoria[0].es_predeterminado = true;
+            }
+            renderizarListaDomicilios();
+        }
+    }
+
+    // Event listeners para modal de domicilios
+    if (btnAddDomicilio) {
+        btnAddDomicilio.addEventListener('click', () => abrirModalDomicilio());
+    }
+    if (btnCerrarModalDomicilio) {
+        btnCerrarModalDomicilio.addEventListener('click', cerrarModalDomicilio);
+    }
+    if (btnCancelarModalDomicilio) {
+        btnCancelarModalDomicilio.addEventListener('click', cerrarModalDomicilio);
+    }
+    if (btnGuardarModalDomicilio) {
+        btnGuardarModalDomicilio.addEventListener('click', guardarModalDomicilio);
+    }
+    if (btnToggleMaximizarDomicilio) {
+        btnToggleMaximizarDomicilio.addEventListener('click', toggleMaximizarModalDomicilio);
+    }
+    if (btnGeocodificarDireccion) {
+        btnGeocodificarDireccion.addEventListener('click', geocodificarDireccionEnMapa);
+    }
+    if (txtDomCalle) txtDomCalle.addEventListener('input', actualizarDireccionFormateada);
+    if (txtDomNumero) txtDomNumero.addEventListener('input', actualizarDireccionFormateada);
+    if (txtDomEntreCalles) txtDomEntreCalles.addEventListener('input', actualizarDireccionFormateada);
+
+    if (txtDomTelefono) {
+        txtDomTelefono.addEventListener('input', (e) => {
+            e.target.value = aplicarMascaraTelefono(e.target.value);
+        });
+    }
+
+    if (selDomTelefonoPreexistente) {
+        selDomTelefonoPreexistente.addEventListener('change', () => {
+            if (selDomTelefonoPreexistente.value && txtDomTelefono) {
+                txtDomTelefono.value = extraerNumeroLimpio(selDomTelefonoPreexistente.value);
+            }
+        });
+    }
+
+    if (formDomicilio) {
+        formDomicilio.addEventListener('submit', (e) => {
+            e.preventDefault();
+            guardarModalDomicilio();
+        });
+    }
+
     // --- INICIALIZACIÓN ---
     setupLomasSoftAutocomplete();
     setupSorting();
     inicializarColumnas();
     cargarClientes();
+
+    // Verificación de conversión desde CRM Preventa & Prospectos
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromProspectoId = urlParams.get('fromProspecto');
+    if (fromProspectoId) {
+        prospectoConversionId = fromProspectoId;
+        const nombreParam = urlParams.get('nombre') || '';
+        const direccionParam = urlParams.get('direccion') || '';
+        const telefonoParam = urlParams.get('telefono') || '';
+
+        setTimeout(() => {
+            btnNuevoCliente.click();
+            drawerTitulo.innerHTML = '🚀 Convertir Prospecto a Cliente';
+            if (nombreParam) {
+                txtNombre.value = nombreParam;
+                txtRazon.value = nombreParam;
+            }
+            if (telefonoParam) {
+                renderWhatsappInputs(JSON.stringify([{
+                    id: `wa_${Date.now()}`,
+                    numero: telefonoParam,
+                    nombre: nombreParam,
+                    cargo: 'Contacto',
+                    enviar_alerta: true
+                }]));
+            }
+            if (direccionParam) {
+                domiciliosMemoria = [{
+                    alias: 'Sucursal Principal',
+                    direccion: direccionParam,
+                    es_predeterminado: true,
+                    activo: true
+                }];
+                renderizarListaDomicilios();
+            }
+        }, 350);
+    }
 });
+
+// Window function para Modal de Telemetría y Salud Cloudflare
+window.abrirModalTelemetriaCloudflare = async function() {
+    Swal.fire({
+        title: '⚡ Telemetría y Rendimiento Cloudflare',
+        html: `<div style="text-align:center; padding: 20px;"><p style="margin-top:10px;">Consultando API de Cloudflare y métricas en vivo...</p></div>`,
+        showConfirmButton: false,
+        width: '650px'
+    });
+
+    try {
+        const resp = await fetch('/api/logistica/telemetria/cloudflare');
+        const res = await resp.json();
+        if (!res.success) throw new Error(res.error || 'Error al obtener telemetría');
+
+        const cf = res.resumenCloudflare;
+        
+        Swal.fire({
+            title: '📊 Telemetría y Salud de Red Cloudflare',
+            width: '700px',
+            html: `
+                <div style="text-align: left; font-family: sans-serif; font-size: 0.95em;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 0.85em; font-weight: 600;">ESTADO DE RED</div>
+                            <div style="color: #16a34a; font-size: 1.1em; font-weight: 700; margin-top: 4px;">🟢 ${cf.estado}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 0.85em; font-weight: 600;">SUBDOMINIO WORKER</div>
+                            <div style="color: #6b21a8; font-size: 0.85em; font-weight: 700; margin-top: 4px; word-break: break-all;">⚡ ${cf.subdominio}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 0.85em; font-weight: 600;">TASA CACHE HITS</div>
+                            <div style="color: #2563eb; font-size: 1.2em; font-weight: 700; margin-top: 4px;">🎯 ${cf.tasaCacheHits}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                            <div style="color: #64748b; font-size: 0.85em; font-weight: 600;">LATENCIA PROMEDIO</div>
+                            <div style="color: #059669; font-size: 1.2em; font-weight: 700; margin-top: 4px;">⚡ ${cf.latenciaPromedio}</div>
+                        </div>
+                    </div>
+                    <div style="background: #f3e8ff; border: 1px solid #d8b4fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                        <div style="color: #6b21a8; font-weight: 700; font-size: 0.9em;">
+                            📱 PWA Service Worker (Instalación Local en Celulares)
+                        </div>
+                        <div style="color: #4c1d95; font-size: 0.85em; margin-top: 4px;">
+                            Marco visual pre-cacheado en memoria interna de dispositivos. Respuesta en 0.002s por solicitud.
+                        </div>
+                    </div>
+                    <div style="text-align: right; color: #94a3b8; font-size: 0.8em;">
+                        Última sincronización API: ${new Date(res.timestamp).toLocaleTimeString()}
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '🔄 Actualizar Métricas',
+            confirmButtonColor: '#8b5cf6',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.abrirModalTelemetriaCloudflare();
+            }
+        });
+    } catch(err) {
+        Swal.fire('Error', err.message, 'error');
+    }
+};

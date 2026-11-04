@@ -525,8 +525,11 @@
                 <div id="bm-destinos-container" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; max-height: 200px; overflow-y: auto;">
                     <!-- Filas dinámicas aquí -->
                 </div>
-                <div style="text-align: right; margin-bottom: 25px; font-weight: bold; color: #475569;">
-                    Asignado: <span id="bm-asignado-total">0</span> / <span id="bm-disponible-total">0</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-weight: bold; flex-wrap: wrap; gap: 10px;">
+                    <div id="bm-alerta-parcial" style="display: none; padding: 6px 12px; border-radius: 6px; font-size: 0.88em; border: 1px solid transparent;"></div>
+                    <div style="color: #475569; margin-left: auto; font-size: 0.95em;">
+                        Asignado: <span id="bm-asignado-total" style="color: #10b981;">0</span> / <span id="bm-disponible-total">0</span>
+                    </div>
                 </div>
 
                 <!-- CHECK DE VALIDACIÓN MANUAL -->
@@ -668,6 +671,37 @@
                     </div>
                 </div>
 
+                <!-- NUEVO CONTENEDOR DE LANDED COST Y GASTOS ADICIONALES -->
+                <h4 style="margin-top: 15px; color: #0284c7; border-bottom: 2px solid #bae6fd; padding-bottom: 5px; display: flex; align-items: center; gap: 6px;">
+                    💰 Landed Cost (Fletes y Gastos Supabase)
+                </h4>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; background: #f0f9ff; padding: 15px; border-radius: 6px; border: 1px solid #bae6fd;">
+                    <div>
+                        <span style="font-weight: bold; color: #0369a1; font-size: 0.8em; text-transform: uppercase;">Costo FOB</span><br>
+                        <span id="auditoria-landed-fob" style="font-size: 1.15em; font-weight: bold; color: #0c4a6e;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #0369a1; font-size: 0.8em; text-transform: uppercase;">Costo Flete</span><br>
+                        <span id="auditoria-landed-flete" style="font-size: 1.15em; font-weight: bold; color: #0c4a6e;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #0369a1; font-size: 0.8em; text-transform: uppercase;">Otros Costos</span><br>
+                        <span id="auditoria-landed-otros" style="font-size: 1.15em; font-weight: bold; color: #0c4a6e;">-</span>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold; color: #0369a1; font-size: 0.8em; text-transform: uppercase;">Landed Cost</span><br>
+                        <span id="auditoria-landed-total" style="font-size: 1.2em; font-weight: bold; color: #0369a1; background: #e0f2fe; padding: 2px 4px; border-radius: 4px;">-</span>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN DE TRAZABILIDAD DE FACTURAS -->
+                <div id="auditoria-trazabilidad-gastos-section" style="margin-bottom: 20px; display: none;">
+                    <h5 style="margin: 0 0 8px 0; color: #1e293b; font-size: 0.95em; text-align: left;">🚚 Desglose de Distribución de Fletes</h5>
+                    <div id="auditoria-trazabilidad-gastos-container" style="background: white; border-radius: 6px; border: 1px solid #e2e8f0; padding: 10px; font-size: 0.9em; text-align: left;">
+                        <!-- Tabla o tarjetas dinámicas de fletes -->
+                    </div>
+                </div>
+
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <h4 style="margin: 0; color: #1e293b;">🔄 Desglose de Impacto Comercial</h4>
                     <div style="text-align: right;">
@@ -688,9 +722,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="/js/services/supabaseService.js"></script>
-    <script src="/js/recepcionLotes.js"></script>
-    <script src="/js/lotesBunkerModal.js"></script>
-    <script src="/js/lotesBunkerModalBatch.js"></script>
+    <script src="/js/services/supabaseService.js?v=20261016"></script>
+    <script src="/js/recepcionLotes.js?v=20261016"></script>
+    <script src="/js/lotesBunkerModal.js?v=20261016"></script>
+    <script src="/js/lotesBunkerModalBatch.js?v=20261016"></script>
 </body>
 </html>

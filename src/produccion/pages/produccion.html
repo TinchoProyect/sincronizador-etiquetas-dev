@@ -215,6 +215,16 @@
             color: #721c24;
         }
 
+        .indicador-disputa {
+            background-color: #ffe8cc;
+            color: #d9480f;
+            border: 1px solid #ffa94d;
+        }
+
+        tr.fila-en-disputa {
+            background-color: #fff9db !important;
+        }
+
         /* Estilos para el modal */
         .modal-overlay {
             position: fixed;
@@ -1640,7 +1650,14 @@
                     <h2>Seleccione su nombre para iniciar su espacio de trabajo de producción</h2>
 
                     <div class="admin-buttons">
-                        <div style="margin-bottom: 10px; text-align: right; padding-right: 15px;">
+                        <div style="margin-bottom: 10px; text-align: right; padding-right: 15px; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
+                            <button id="btn-imprimir-etiqueta-lamda" onclick="imprimirEtiquetaLamdaModal()" class="admin-button"
+                                style="background-color: transparent; color: #0284c7; border: 1px solid #0284c7; font-size: 0.85em; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; transition: all 0.2s ease;"
+                                onmouseover="this.style.backgroundColor='#e0f2fe'"
+                                onmouseout="this.style.backgroundColor='transparent'"
+                                title="Imprimir Etiquetas LAMDA">
+                                🖨️ Imprimir Etiqueta LAMDA
+                            </button>
                             <button id="btn-abrir-caja-global" class="admin-button"
                                 style="background-color: transparent; color: #6c757d; border: 1px solid #6c757d; font-size: 0.9em; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px;">
                                 🔓 Abrir Caja Manual
@@ -1707,6 +1724,16 @@
                             <div id="carros-lista-container" class="carros-lista-container">
                                 <p class="mensaje-info">Cargando artículos...</p>
                             </div>
+                        </div>
+
+                        <!-- Widget Estimación Predictiva de Tiempo del Carro a Armar -->
+                        <div id="carros-estimacion-tiempo-panel" style="display: none; align-items: center; justify-content: space-between; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">⏳</span>
+                                <span style="font-size: 12px; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">Demora Estimada:</span>
+                                <strong id="carros-estimacion-val" style="font-size: 15px; color: #0f172a; font-weight: 800;">~ 0 min</strong>
+                            </div>
+                            <span id="carros-estimacion-badge"></span>
                         </div>
 
                         <!-- Botones de Acción -->
@@ -2018,7 +2045,7 @@
                 <div id="modal-derivar-compras" class="modal-overlay" style="display:none;">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h3>🛒 Derivar a Compras</h3>
+                            <h3>⏳ Dejar en Espera (Pendientes de Compra)</h3>
                             <button class="modal-close" aria-label="Cerrar modal"
                                 onclick="cerrarModalDerivarCompras()">&times;</button>
                         </div>
@@ -2049,8 +2076,8 @@
                             <div id="derivar-mensaje" class="mensaje-info" style="display:none;"></div>
                         </div>
                         <div class="modal-footer">
-                            <button id="btn-confirmar-derivar" class="admin-button" style="background-color: #28a745;"
-                                onclick="confirmarDerivarCompras()">Confirmar Derivación</button>
+                            <button id="btn-confirmar-derivar" class="admin-button" style="background-color: #d97706; color: white;"
+                                onclick="confirmarDerivarCompras()">⏳ Confirmar En Espera</button>
                             <button class="admin-button" style="background-color: #6c757d;"
                                 onclick="cerrarModalDerivarCompras()">Cancelar</button>
                         </div>
@@ -2215,9 +2242,9 @@
     <!-- Modal Abrir Caja (HTML estático para evitar problemas de timing) -->
     <script>console.log('🔍 [DEBUG] Cargando modal-abrir-caja en HTML...');</script>
     <div id="modal-abrir-caja" class="modal-overlay" style="display: none;">
-        <div class="modal-content" style="max-width: 650px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-content" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header" style="cursor: move;" id="modal-abrir-caja-header">
-                <h3>🔓 Abrir Caja</h3>
+                <h3>📦 Abrir Caja Cerrada (Desempacar Producto)</h3>
                 <button class="modal-close" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()"
                     aria-label="Cerrar">&times;</button>
             </div>
@@ -2225,22 +2252,22 @@
                 <!-- PASO 1: SELECCIÓN DE UNIDAD (Solo visible en modo manual) -->
                 <div id="paso-seleccion-unidad" style="display: none; margin-bottom: 20px;">
                     <div
-                        style="background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px;">
-                        <i class="fas fa-info-circle"></i> Busque el artículo (unidad) que desea producir.
+                        style="background-color: #e8f4fd; color: #0d47a1; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #1976d2; margin-bottom: 15px; font-size: 13px; line-height: 1.4;">
+                        <strong style="font-size: 14px; display: block; margin-bottom: 4px;">📦 Paso 1: ¿Qué producto vas a extraer de la caja cerrada?</strong>
+                        Como la caja aún está cerrada y no tienes el código de barras a mano, <strong>busca primero por Nombre o Descripción</strong> del artículo que vas a obtener.
                     </div>
 
                     <div class="buscador-unidad">
-                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Artículo
-                            (Contenido):</label>
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #333;">🔍 Buscar Producto por Nombre (la unidad a extraer):</label>
                         <div style="position: relative;">
                             <input type="text" id="input-busqueda-unidad" class="form-control"
-                                placeholder="Escriba nombre o código del artículo..." autocomplete="off">
-                            <small style="color: #757575; display: block; margin-top: 5px;">
-                                💡 Busque por descripción, código o código de barras
+                                placeholder="Escribe el nombre del producto (ej: almendra pelada, nuez, caju)..." autocomplete="off" style="font-size: 14px; padding: 10px 12px;">
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                💡 Puedes escribir varias palabras separadas por espacios. Al hacer clic en un producto se cargará para seleccionar su caja de origen.
                             </small>
                         </div>
                         <div id="resultados-unidad"
-                            style="display: none; max-height: 250px; overflow-y: auto; background: white; border: 2px solid #ffc107; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                            style="display: none; max-height: 260px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 6px; margin-top: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
                         </div>
                     </div>
                 </div>
@@ -2248,95 +2275,132 @@
                 <!-- PASO 2: SELECCIÓN DE CAJA Y DATOS (Contenedor principal) -->
                 <div id="paso-seleccion-caja">
                     <div id="unidad-info-container"
-                        style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3; position: relative;">
+                        style="margin-bottom: 20px; padding: 14px 16px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3; position: relative;">
                         <button id="btn-cambiar-unidad"
-                            style="position: absolute; right: 10px; top: 10px; background: none; border: 1px solid #2196f3; color: #2196f3; border-radius: 4px; cursor: pointer; font-size: 11px; padding: 2px 6px; display: none;">
-                            🔄 Cambiar
+                            style="position: absolute; right: 12px; top: 12px; background: #fff; border: 1px solid #1976d2; color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; padding: 4px 10px; display: none;">
+                            🔄 Cambiar Producto
                         </button>
-                        <div style="font-size: 18px; font-weight: 700; color: #1565c0;" id="unidad-descripcion-caja">-
+                        <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #1565c0; font-weight: 700; margin-bottom: 2px;">
+                            ✔ Producto a extraer (Unidad)
                         </div>
-                        <div style="font-size: 13px; color: #424242; margin-top: 5px;">
-                            Código: <span id="unidad-codigo-caja"
-                                style="font-family: monospace; font-weight: 600;">-</span>
-                        </div>
-                        <div style="font-size: 13px; color: #424242;">
-                            Stock actual: <span id="unidad-stock-caja"
-                                style="font-weight: 700; color: #2196f3;">-</span>
+                        <div style="font-size: 17px; font-weight: 700; color: #0d47a1;" id="unidad-descripcion-caja">-</div>
+                        <div style="font-size: 13px; color: #424242; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 15px;">
+                            <span>Código SKU: <strong id="unidad-codigo-caja" style="font-family: monospace; color: #212121;">-</strong></span>
+                            <span>Cód. Barras: <strong id="unidad-barcode-caja" style="font-family: monospace; color: #212121;">-</strong></span>
+                            <span>Stock actual: <strong id="unidad-stock-caja" style="color: #1976d2;">-</strong></span>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Usuario: <span
-                                style="color: #d32f2f;">*</span></label>
-                        <select id="abrir-caja-usuario" class="form-control" required>
-                            <option value="">-- Seleccionar usuario --</option>
-                        </select>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Operador / Usuario: <span
+                                    style="color: #d32f2f;">*</span></label>
+                            <select id="abrir-caja-usuario" class="form-control" required>
+                                <option value="">-- Seleccionar usuario --</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Unidades que trae la caja:
+                                <span style="color: #d32f2f;">*</span></label>
+                            <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
+                                placeholder="Ej: 12" required>
+                            <small style="color: #757575;">¿Cuántas unidades se obtienen de la caja?</small>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Cantidad de unidades por caja:
-                            <span style="color: #d32f2f;">*</span></label>
-                        <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
-                            placeholder="Ej: 12" required>
-                        <small style="color: #757575;">¿Cuántas unidades trae la caja?</small>
-                    </div>
-                    <div id="sugerencias-container-caja" style="margin: 20px 0; display: none;">
-                        <label style="font-weight: 600; color: #388e3c;">💡 Sugerencias (basadas en historial):</label>
+
+                    <div id="sugerencias-container-caja" style="margin: 15px 0; display: none;">
+                        <label style="font-weight: 600; color: #388e3c;">💡 Cajas sugeridas para este producto:</label>
                         <div id="sugerencias-lista-caja"
-                            style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;"></div>
+                            style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
                     </div>
-                    <div class="buscador-manual">
-                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔍 Buscar Caja:</label>
+
+                    <div class="buscador-manual" style="margin-top: 15px;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">🔍 Buscar Caja de Origen:</label>
                         <div class="search-mode-tabs">
-                            <button type="button" id="btn-codigo-caja" class="search-tab active">Código de
-                                Barras</button>
+                            <button type="button" id="btn-codigo-caja" class="search-tab active">Código de Barras</button>
                             <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
                         </div>
                         <div id="container-codigo-caja" style="position: relative;">
                             <input type="text" id="input-codigo-caja" class="form-control"
-                                placeholder="Escanear código..." autocomplete="off">
+                                placeholder="Escanear código de barras de la caja..." autocomplete="off">
                         </div>
                         <div id="container-descripcion-caja" style="position: relative; display: none;">
                             <input type="text" id="input-descripcion-caja" class="form-control"
-                                placeholder="Buscar por descripción..." autocomplete="off">
-                            <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe múltiples
-                                palabras
-                                separadas por espacio</small>
+                                placeholder="Buscar caja por descripción..." autocomplete="off">
+                            <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe palabras separadas por espacio</small>
                         </div>
                         <div id="resultados-caja"
                             style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
                         </div>
                     </div>
+
                     <div id="caja-seleccionada-display"
-                        style="display: none; margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
-                        <div style="font-weight: 600; color: #2e7d32; font-size: 16px;" id="caja-nombre">-</div>
-                        <div style="font-size: 13px; color: #424242; margin-top: 5px;">
-                            Código: <span id="caja-codigo" style="font-family: monospace; font-weight: 600;">-</span>
+                        style="display: none; margin: 15px 0; padding: 14px 16px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
+                        <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #2e7d32; font-weight: 700; margin-bottom: 2px;">
+                            📦 Caja de origen seleccionada
                         </div>
-                        <div style="font-size: 13px; color: #424242;">
-                            Stock: <span id="caja-stock" style="font-weight: 700; color: #4caf50;">-</span>
+                        <div style="font-weight: 700; color: #1b5e20; font-size: 16px;" id="caja-nombre">-</div>
+                        <div style="font-size: 13px; color: #424242; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 15px;">
+                            <span>Código: <strong id="caja-codigo" style="font-family: monospace;">-</strong></span>
+                            <span>Cód. Barras: <strong id="caja-barcode" style="font-family: monospace;">-</strong></span>
+                            <span>Stock de Cajas: <strong id="caja-stock" style="color: #2e7d32;">-</strong></span>
                         </div>
                     </div>
+
+                    <!-- SECCIÓN DE LOTE Y TRAZABILIDAD -->
+                    <div id="seccion-lote-caja" style="margin: 15px 0; padding: 14px 16px; background: #fffde7; border-radius: 8px; border-left: 4px solid #fbc02d; border: 1px solid #fff59d;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="font-weight: 700; color: #f57f17; font-size: 14px; margin: 0;">
+                                🏷️ Lote y Trazabilidad de las Unidades:
+                            </label>
+                            <span id="badge-origen-lote" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #e0f2f1; color: #00796b; font-weight: 600;">Lote Automático</span>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                            <input type="text" id="abrir-caja-lote" class="form-control" style="font-family: monospace; font-weight: 700; font-size: 15px; letter-spacing: 1px; max-width: 200px;" placeholder="Lote asignado...">
+                            <button type="button" id="btn-regenerar-lote" class="btn btn-sm" style="background: #fff; border: 1px solid #ccc; font-size: 12px;" title="Generar un nuevo código de lote">🔄 Nuevo Lote</button>
+                            <span style="font-size: 12px; color: #616161;" id="info-lote-origen">Este lote se imprimirá en las etiquetas.</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; color: #555; margin-bottom: 2px; display: block;">Fecha Elaboración / Envasado:</label>
+                                <input type="text" id="abrir-caja-fecha-elab" class="form-control form-control-sm" placeholder="DD/MM/AAAA">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; color: #555; margin-bottom: 2px; display: block;">Fecha Vencimiento:</label>
+                                <input type="text" id="abrir-caja-fecha-venc" class="form-control form-control-sm" placeholder="DD/MM/AAAA">
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 12px; color: #424242; background: rgba(255,255,255,0.7); padding: 6px 10px; border-radius: 4px;">
+                            🖨️ <span id="display-cant-etiquetas" style="font-weight: 600;">0 etiquetas listas para imprimir</span> (cada unidad recibe su etiqueta de producto y su etiqueta de lote con código de barras).
+                        </div>
+                    </div>
+
                     <div id="mensaje-abrir-caja" style="display: none; margin-top: 15px;"></div>
                 </div> <!-- Fin de paso-seleccion-caja -->
             </div>
-            <div class="modal-footer">
-                <button id="btn-imprimir-caja" class="btn btn-info" disabled>🏷️ Imprimir Etiquetas</button>
-                <button id="btn-confirmar-caja" class="btn btn-success" disabled>🔓 Abrir Caja</button>
-                <button class="btn btn-secondary"
-                    onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <button id="btn-imprimir-caja" class="btn btn-info" disabled style="font-weight: 600;">🏷️ Imprimir Etiquetas (con Lote)</button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary"
+                        onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
+                    <button id="btn-confirmar-caja" class="btn btn-success" disabled style="font-weight: 700;">🔓 Confirmar Apertura de Caja</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="/js/produccion.js?v=8.1"></script>
+    <script src="/js/produccion.js?v=8.5_saldo_ingrediente"></script>
     <script src="/js/produccion-resumen-expandible.js?v=18.2"></script>
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=2.4"></script>
-    <script src="/js/derivar-compras.js?v=1.0"></script>
+    <script src="/js/derivar-compras.js?v=1.1"></script>
     <script>console.log('🔍 [DEBUG] Modal HTML cargado, ID:', document.getElementById('modal-abrir-caja') ? 'ENCONTRADO' : 'NO ENCONTRADO');</script>
-    <script src="/js/modal-abrir-caja.js?v=2.7"></script>
+    <script src="/js/modal-abrir-caja.js?v=4.0"></script>
 
     <!-- Script Máquina Estados Verificación Continua -->
-    <script src="/js/verificacion-continua.js?v=1.5"></script>
+    <script src="/js/verificacion-continua.js?v=1.6_saldo_ingrediente"></script>
 
     <!-- Script para funcionalidad de secciones colapsables -->
     <script>
@@ -2591,17 +2655,20 @@
 
                     // RECALCULAR: faltante = pedido_total - stock_disponible
                     existente.faltante = Math.max(0, existente.pedido_total - existente.stock_disponible);
+                    existente.estado = existente.faltante > 0 ? (existente.stock_disponible > 0 ? 'PARCIAL' : 'FALTANTE') : 'COMPLETO';
 
                     console.log(`[CONSOLIDAR] Sumando artículo duplicado: ${codigo}`, {
                         pedido_total: existente.pedido_total,
                         stock_disponible: existente.stock_disponible,
                         faltante: existente.faltante,
+                        estado: existente.estado,
                         nota: 'Stock NO sumado (es el mismo)'
                     });
                 } else {
                     // Primera vez que vemos este artículo: agregarlo al Map
                     const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock || 0);
                     const pedidoTotal = parseNumeroSeguro(art.pedido_total || art.cantidad_pedida || 0);
+                    const faltanteCalc = Math.max(0, pedidoTotal - stockDisponible);
 
                     articulosMap.set(codigo, {
                         articulo_numero: codigo,
@@ -2611,8 +2678,8 @@
                         codigo_barras: art.codigo_barras || '',
                         pedido_total: pedidoTotal,
                         stock_disponible: stockDisponible,
-                        faltante: Math.max(0, pedidoTotal - stockDisponible),
-                        estado: art.estado || '',
+                        faltante: faltanteCalc,
+                        estado: art.estado || (faltanteCalc > 0 ? (stockDisponible > 0 ? 'PARCIAL' : 'FALTANTE') : 'COMPLETO'),
                         // Preservar IDs de presupuesto del primer registro
                         presupuesto_id: art.presupuesto_id || art.id_presupuesto_local || art.id_presupuesto || 0,
                         presupuesto_ext: art.presupuesto_ext || art.id_presupuesto_ext || '',
@@ -2655,6 +2722,8 @@
             // Solo necesitamos filtrar por estado !== "COMPLETO"
             articulos.forEach((art, index) => {
                 const estadoNormalizado = normalizarEstado(art.estado);
+                const faltante = parseNumeroSeguro(art.faltante || art.cantidad_faltante);
+                const stockDisponible = parseNumeroSeguro(art.stock_disponible || art.stock);
 
                 // Log del primer elemento
                 if (index === 0) {
@@ -2663,14 +2732,15 @@
                         descripcion: art.descripcion,
                         estado: art.estado,
                         estadoNormalizado: estadoNormalizado,
+                        faltante: faltante,
                         tipoDescripcion: typeof art.descripcion
                     });
                 }
 
-                // Filtrar por estado (excluir COMPLETO)
-                if (estadoNormalizado === 'FALTANTE') {
+                // Filtrar por estado (excluir COMPLETO) o si faltante > 0
+                if (estadoNormalizado === 'FALTANTE' || (faltante > 0 && stockDisponible === 0)) {
                     faltantes.push(art);
-                } else if (estadoNormalizado === 'PARCIAL') {
+                } else if (estadoNormalizado === 'PARCIAL' || (faltante > 0 && stockDisponible > 0)) {
                     parciales.push(art);
                 }
                 // Ignorar COMPLETO
@@ -2737,7 +2807,7 @@
                     <td><span class="indicador-estado ${estadoClass}">${tipo}</span></td>
                     <td onclick="event.stopPropagation()">
                         <button class="pack-button pack-config-btn" data-codigo="${codigoArticulo}" onclick="abrirModalPack('${codigoArticulo}')" style="margin-right: 4px;">🧩 Pack</button>
-                        <button class="pack-button" style="background-color: #ff6b6b;" onclick="abrirModalDerivarCompras({articulo_numero: '${codigoArticulo}', codigo_barras: '${codigoBarrasEscapado}', cantidad_faltante: ${faltante}, id_presupuesto_local: ${idPresupuestoLocal}, id_presupuesto_ext: '${idPresupuestoExtEscapado}'})">🛒 Derivar</button>
+                        <button class="pack-button" style="background-color: #fef3c7; color: #92400e; border: 1px solid #f59e0b;" onclick="abrirModalDerivarCompras({articulo_numero: '${codigoArticulo}', codigo_barras: '${codigoBarrasEscapado}', descripcion: '${descripcionEscapada}', cantidad_faltante: ${faltante}, id_presupuesto_local: ${idPresupuestoLocal}, id_presupuesto_ext: '${idPresupuestoExtEscapado}'})" title="Dejar en Espera (Pendientes de Compra)">⏳ En Espera</button>
                     </td>
                 </tr>
             `;
@@ -2974,6 +3044,7 @@
             console.debug('🔄 Actualización externa del resumen solicitada');
             actualizarResumen();
         };
+        window.actualizarResumen = actualizarResumen;
 
         // Actualizar contador de pendientes de compra
         async function actualizarContadorPendientes() {
@@ -3023,6 +3094,7 @@
         // Actualizar contador cada 30 segundos
         setInterval(actualizarContadorPendientes, 30000);
         setTimeout(actualizarContadorPendientes, 2000);
+        window.actualizarContadorPendientes = actualizarContadorPendientes;
 
         // ===== FUNCIONES GLOBALES PARA MODAL PACK =====
         // Las funciones window.abrirModalPack y window.cerrarModalPack están definidas en:

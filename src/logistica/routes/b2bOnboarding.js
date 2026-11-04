@@ -20,4 +20,16 @@ router.post('/otp/verificar', onboardingController.verificarOtp);
 // Acceso maestro espejo (bypass de login para administrador)
 router.get('/acceso-maestro/:clienteId', onboardingController.accesoMaestro);
 
+// Cambiar contraseña en Supabase Cloud
+router.post('/cambiar-password', onboardingController.cambiarPassword);
+
+// Generar enlace y QR de vinculación rápida de dispositivo (PWA / Web)
+router.post('/generar-vinculo-dispositivo', onboardingController.generarVinculoDispositivo);
+
+// Gestión de Operadores / Colaboradores de Pre-Armado de Pedidos B2B
+router.get('/delegaciones/:clienteId', onboardingController.listarDelegacionesCliente);
+router.post('/habilitar-colaborador', onboardingController.habilitarColaboradorPrepedido);
+router.post('/delegaciones/:id/desvincular-dispositivo', onboardingController.desvincularDispositivoDelegacion);
+router.delete('/delegaciones/:id', onboardingController.revocarDelegacionCliente);
+
 module.exports = router;

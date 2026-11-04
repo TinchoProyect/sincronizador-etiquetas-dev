@@ -58,6 +58,27 @@ router.put('/facturas/:id', facturasController.actualizarFactura);
 router.post('/facturas/:id/emitir', validarEmitirFactura, facturasController.emitirFactura);
 
 /**
+ * @route POST /facturacion/facturas/:id/diferir
+ * @desc Pasar factura borrador a facturación diferida (descuenta stock y debita en CC)
+ * @access Privado
+ */
+router.post('/facturas/:id/diferir', facturasController.diferirFactura);
+
+/**
+ * @route POST /facturacion/facturas/diferir-lote
+ * @desc Pasar lote de borradores a facturación diferida
+ * @access Privado
+ */
+router.post('/facturas/diferir-lote', facturasController.diferirLoteFacturas);
+
+/**
+ * @route POST /facturacion/facturas/:id/revertir-diferida
+ * @desc Revertir factura diferida a borrador (restablece stock y anula débito en CC)
+ * @access Privado
+ */
+router.post('/facturas/:id/revertir-diferida', facturasController.revertirDiferidaFactura);
+
+/**
  * @route POST /facturacion/facturas/:id/anular
  * @desc Anular factura y generar/emitir Nota de Crédito espejo
  * @access Privado
@@ -65,11 +86,39 @@ router.post('/facturas/:id/emitir', validarEmitirFactura, facturasController.emi
 router.post('/facturas/:id/anular', facturasController.anularFactura);
 
 /**
+ * @route POST /facturacion/facturas/:id/marcar-enviado
+ * @desc Marcar factura como enviada/notificada
+ * @access Privado
+ */
+router.post('/facturas/:id/marcar-enviado', facturasController.marcarEnviado);
+
+/**
+ * @route POST /facturacion/facturas/:id/desmarcar-enviado
+ * @desc Desmarcar factura como enviada (volver a pendiente)
+ * @access Privado
+ */
+router.post('/facturas/:id/desmarcar-enviado', facturasController.desmarcarEnviado);
+
+/**
+ * @route POST /facturacion/facturas/marcar-enviado-lote
+ * @desc Marcar lote de facturas como enviadas/notificadas
+ * @access Privado
+ */
+router.post('/facturas/marcar-enviado-lote', facturasController.marcarEnviadoLote);
+
+/**
  * @route DELETE /facturacion/facturas/:id
  * @desc Eliminar borrador de factura (rechazado si tiene CAE)
  * @access Privado
  */
 router.delete('/facturas/:id', facturasController.eliminarBorrador);
+
+/**
+ * @route POST /facturacion/facturas/:id/cambiar-circuito
+ * @desc Mover borrador entre circuito Oficial (ARCA) e Interno (Presupuesto Aprobado)
+ * @access Privado
+ */
+router.post('/facturas/:id/cambiar-circuito', facturasController.cambiarCircuito);
 
 /**
  * @route GET /facturacion/facturas/:id

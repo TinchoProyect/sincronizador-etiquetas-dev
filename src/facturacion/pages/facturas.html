@@ -243,6 +243,12 @@
             color: #475569;
         }
 
+        .badge.pendiente-facturacion {
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+
         .actions {
             display: flex;
             gap: 10px;
@@ -370,6 +376,192 @@
             color: #764ba2;
             border-bottom: 3px solid #764ba2;
         }
+
+        /* Estilos de Acordeones por Nivel (Borradores, Aprobadas, Enviadas) */
+        .accordion-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+            margin-bottom: 24px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            cursor: pointer;
+            user-select: none;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s;
+        }
+
+        .accordion-header:hover {
+            background: #f1f5f9;
+        }
+
+        .accordion-header.header-borradores {
+            border-left: 5px solid #f59e0b;
+        }
+
+        .accordion-header.header-diferidas {
+            border-left: 5px solid #0284c7;
+        }
+
+        .accordion-header.header-aprobadas {
+            border-left: 5px solid #10b981;
+        }
+
+        .accordion-header.header-enviadas {
+            border-left: 5px solid #6366f1;
+        }
+
+        .accordion-title-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .accordion-title-box h4 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .accordion-toggle-arrow {
+            font-size: 14px;
+            transition: transform 0.25s ease;
+            color: #64748b;
+        }
+
+        .accordion-card.collapsed .accordion-toggle-arrow {
+            transform: rotate(-90deg);
+        }
+
+        .accordion-card.collapsed .accordion-body {
+            display: none;
+        }
+
+        .accordion-body {
+            padding: 0;
+        }
+
+        .accordion-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .group-select-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Estilos para Acordeones Jerárquicos de Histórico (Año / Mes) */
+        .stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .stat-pill .pill-label {
+            opacity: 0.85;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 600;
+        }
+
+        .stat-pill .pill-value {
+            font-weight: 700;
+        }
+
+        .stat-pill-facturado {
+            background: #e0e7ff;
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+        }
+
+        .stat-pill-neto {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+        }
+
+        .stat-pill-iva {
+            background: #f3e8ff;
+            color: #6b21a8;
+            border: 1px solid #e9d5ff;
+        }
+
+        .stat-pill-mercaderia {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .stat-pill-mano-obra {
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+
+        .stat-pill-insumos {
+            background: #fae8ff;
+            color: #86198f;
+            border: 1px solid #f5d0fe;
+        }
+
+        .stat-pill-iibb {
+            background: #fff7ed;
+            color: #c2410c;
+            border: 1px solid #fed7aa;
+        }
+
+        .stat-pill-ganancia {
+            background: #ecfdf5;
+            color: #047857;
+            border: 1px solid #a7f3d0;
+        }
+
+        .month-card {
+            transition: all 0.2s ease;
+        }
+
+        .month-card.collapsed .month-body {
+            display: none;
+        }
+
+        .month-card.collapsed .month-header {
+            border-bottom: none;
+        }
+
+        .month-arrow {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+
+        .month-card.collapsed .month-arrow {
+            transform: rotate(0deg);
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
@@ -467,6 +659,7 @@
             <div class="filter-actions">
                 <button class="btn btn-primary" onclick="cargarFacturas()">🔍 Filtrar</button>
                 <button class="btn btn-secondary" onclick="limpiarFiltros()">🔄 Limpiar</button>
+                <button class="btn" style="background: #1d4ed8; color: white; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(29, 78, 216, 0.25);" onclick="window.open('http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa', '_blank')">➕ Armar Nueva Factura Directa (Con Buscador) ↗</button>
             </div>
         </div>
 
@@ -499,50 +692,197 @@
         <!-- Error -->
         <div id="error" class="error" style="display: none;"></div>
 
-        <!-- Tabla de facturas -->
+        <!-- Tabla de facturas dividida en 3 Acordeones -->
         <div id="table-container" class="table-container" style="display: none;">
-            <div class="table-header">
-                <div style="display: flex; align-items: center; gap: 20px;">
-                    <h3>📋 Listado de Facturas</h3>
-                    <button id="btn-emitir-lote" class="btn btn-primary"
-                        style="display: none; background: #10b981; border: none; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);"
-                        onclick="emitirLoteAFIP()">
-                        🚀 Obtener CAE de Seleccionadas
-                    </button>
-                    <button id="btn-whatsapp-lote" class="btn btn-primary"
-                        style="display: none; background: #8b5cf6; border: none; box-shadow: 0 4px 6px rgba(139, 92, 246, 0.2); margin-left: 10px;"
-                        onclick="enviarLoteOmnicanal()">
-                        ⚡ Despachar Seleccionadas
-                    </button>
-                    <button id="btn-eliminar-lote" class="btn btn-danger"
-                        style="display: none; border: none; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2); margin-left: 10px;"
-                        onclick="eliminarLoteSeleccionado()">
-                        🗑️ Eliminar Seleccionados
-                    </button>
-                </div>
-                <span id="result-count"></span>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                    📊 Gestión Clasificada de Comprobantes
+                </h3>
+                <span id="result-count" style="font-weight: 600; color: #64748b;"></span>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="chk-select-all" onclick="toggleSelectAll()">
-                        </th>
-                        <th>ID</th>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Número</th>
-                        <th>Cliente</th>
-                        <th>Total</th>
-                        <th>Estado</th>
-                        <th>CAE</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="facturas-tbody">
-                    <!-- Se llena dinámicamente -->
-                </tbody>
-            </table>
-            <div class="pagination">
+
+            <!-- ACORDEÓN 1: BORRADORES -->
+            <div class="accordion-card" id="card-borradores">
+                <div class="accordion-header header-borradores" onclick="toggleAccordion('borradores')">
+                    <div class="accordion-title-box">
+                        <span class="accordion-toggle-arrow" id="arrow-borradores">▼</span>
+                        <h4 id="title-accordion-borradores">📝 Borradores (Pendientes de Solicitar CAE)</h4>
+                        <span class="badge borrador" id="badge-count-borradores">0</span>
+                        <span style="font-weight: 700; color: #b45309;" id="badge-total-borradores">$0,00</span>
+                    </div>
+                    <div class="accordion-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm" style="background: #1d4ed8; color: white; border: none; font-weight: 700;" onclick="window.open('http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa', '_blank')" title="Abrir armador con buscador de artículos para enviar un nuevo borrador a esta bandeja">
+                            ➕ Nueva Factura Directa
+                        </button>
+                        <label class="group-select-label">
+                            <input type="checkbox" id="chk-group-borradores" onclick="toggleSelectGroup('borradores')"> <span id="lbl-group-borradores">Seleccionar Borradores</span>
+                        </label>
+                        <button id="btn-emitir-lote" class="btn btn-primary btn-sm"
+                            style="display: none; background: #10b981; border: none; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);"
+                            onclick="emitirLoteAFIP()">
+                            🚀 Obtener CAE (0)
+                        </button>
+                        <button id="btn-diferir-lote" class="btn btn-sm"
+                            style="display: none; background: #0284c7; color: white; border: none; box-shadow: 0 4px 6px rgba(2, 132, 199, 0.2);"
+                            onclick="diferirLote()">
+                            ⏳ Diferir Seleccionadas (0)
+                        </button>
+                        <button id="btn-eliminar-lote" class="btn btn-danger btn-sm"
+                            style="display: none; border: none; box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);"
+                            onclick="eliminarLoteSeleccionado()">
+                            🗑️ Eliminar (0)
+                        </button>
+                    </div>
+                </div>
+                <div class="accordion-body" id="body-borradores">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Cliente</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>CAE / Control</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-borradores"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ACORDEÓN 2: FACTURACIÓN DIFERIDA (PENDIENTES DE CAE / MES SIGUIENTE) -->
+            <div class="accordion-card" id="card-diferidas">
+                <div class="accordion-header header-diferidas" onclick="toggleAccordion('diferidas')">
+                    <div class="accordion-title-box">
+                        <span class="accordion-toggle-arrow" id="arrow-diferidas">▼</span>
+                        <h4>⏳ Facturación Diferida (Mercadería Entregada - Pendientes de CAE)</h4>
+                        <span class="badge pendiente-facturacion" id="badge-count-diferidas">0</span>
+                        <span style="font-weight: 700; color: #0369a1;" id="badge-total-diferidas">$0,00</span>
+                    </div>
+                    <div class="accordion-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm" style="background: #1d4ed8; color: white; border: none; font-weight: 700;" onclick="window.open('http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa', '_blank')" title="Abrir armador con buscador de artículos para enviar un nuevo borrador a esta bandeja">
+                            ➕ Nueva Factura Directa
+                        </button>
+                        <label class="group-select-label">
+                            <input type="checkbox" id="chk-group-diferidas" onclick="toggleSelectGroup('diferidas')"> Seleccionar Diferidas
+                        </label>
+                        <button id="btn-emitir-diferidas-lote" class="btn btn-primary btn-sm"
+                            style="display: none; background: #10b981; border: none; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);"
+                            onclick="emitirLoteAFIP()">
+                            🚀 Obtener CAE (0)
+                        </button>
+                        <button id="btn-revertir-diferidas-lote" class="btn btn-warning btn-sm"
+                            style="display: none; border: none; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2);"
+                            onclick="revertirLoteDiferidas()">
+                            ↩️ Revertir a Borrador (0)
+                        </button>
+                    </div>
+                </div>
+                <div class="accordion-body" id="body-diferidas">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Cliente</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>CAE / Control</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-diferidas"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ACORDEÓN 3: APROBADAS PENDIENTES DE ENVIAR -->
+            <div class="accordion-card" id="card-aprobadas">
+                <div class="accordion-header header-aprobadas" onclick="toggleAccordion('aprobadas')">
+                    <div class="accordion-title-box">
+                        <span class="accordion-toggle-arrow" id="arrow-aprobadas">▼</span>
+                        <h4 id="title-accordion-aprobadas">🟢 Aprobados - Pendiente de despachar a cliente</h4>
+                        <span class="badge aprobada" id="badge-count-aprobadas">0</span>
+                        <span style="font-weight: 700; color: #15803d;" id="badge-total-aprobadas">$0,00</span>
+                    </div>
+                    <div class="accordion-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm" style="background: #1d4ed8; color: white; border: none; font-weight: 700;" onclick="window.open('http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa', '_blank')" title="Abrir armador con buscador de artículos para enviar un nuevo borrador a esta bandeja">
+                            ➕ Nueva Factura Directa
+                        </button>
+                        <label class="group-select-label">
+                            <input type="checkbox" id="chk-group-aprobadas" onclick="toggleSelectGroup('aprobadas')"> <span id="lbl-group-aprobadas">Seleccionar Aprobadas</span>
+                        </label>
+                        <button id="btn-whatsapp-lote" class="btn btn-primary btn-sm"
+                            style="display: none; background: #8b5cf6; border: none; box-shadow: 0 4px 6px rgba(139, 92, 246, 0.2);"
+                            onclick="enviarLoteOmnicanal()">
+                            ⚡ Despachar Seleccionadas (0)
+                        </button>
+                        <button id="btn-marcar-despachadas-lote" class="btn btn-sm"
+                            style="display: none; background: #059669; color: white; border: none; box-shadow: 0 4px 6px rgba(5, 150, 105, 0.2);"
+                            onclick="marcarDespachadasLote()">
+                            📦 Marcar Despachadas (0)
+                        </button>
+                    </div>
+                </div>
+                <div class="accordion-body" id="body-aprobadas">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Cliente</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>CAE / Control</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-aprobadas"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ACORDEÓN 3: ENVIADAS / HISTÓRICO (PLEGADO POR DEFECTO) -->
+            <div class="accordion-card collapsed" id="card-enviadas">
+                <div class="accordion-header header-enviadas" onclick="toggleAccordion('enviadas')">
+                    <div class="accordion-title-box">
+                        <span class="accordion-toggle-arrow" id="arrow-enviadas">►</span>
+                        <h4>📲 Enviadas / Notificadas a Clientes (Histórico)</h4>
+                        <span class="badge" style="background: #e0e7ff; color: #3730a3;" id="badge-count-enviadas">0</span>
+                        <span style="font-weight: 700; color: #4338ca;" id="badge-total-enviadas">$0,00</span>
+                    </div>
+                    <div class="accordion-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm" style="background: #1d4ed8; color: white; border: none; font-weight: 700;" onclick="window.open('http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa', '_blank')" title="Abrir armador con buscador de artículos para enviar un nuevo borrador a esta bandeja">
+                            ➕ Nueva Factura Directa
+                        </button>
+                        <label class="group-select-label">
+                            <input type="checkbox" id="chk-group-enviadas" onclick="toggleSelectGroup('enviadas')"> Seleccionar Enviadas
+                        </label>
+                        <button id="btn-reenviar-lote" class="btn btn-secondary btn-sm"
+                            style="display: none;"
+                            onclick="enviarLoteOmnicanal()">
+                            📤 Re-despachar Seleccionadas (0)
+                        </button>
+                    </div>
+                </div>
+                <div class="accordion-body" id="body-enviadas">
+                    <!-- Contenido dinámico agrupado por Año y Mes -->
+                </div>
+            </div>
+
+            <div class="pagination" style="margin-top: 20px;">
                 <button id="btn-prev" onclick="cambiarPagina(-1)">← Anterior</button>
                 <span class="page-info" id="page-info">Página 1</span>
                 <button id="btn-next" onclick="cambiarPagina(1)">Siguiente →</button>
@@ -579,7 +919,7 @@
 
                 const queryParams = new URLSearchParams();
                 queryParams.append('page', page);
-                queryParams.append('limit', 50);
+                queryParams.append('limit', 1000);
 
                 if (circuitoSeleccionado === 'oficiales') {
                     queryParams.append('tipo_circuito', 'oficial');
@@ -630,17 +970,45 @@
             }
         }
 
-        function renderizarFacturas(facturas) {
-            // Desmarcar selecciones previas al renderizar nuevos datos
-            document.getElementById('chk-select-all').checked = false;
-            document.getElementById('btn-emitir-lote').style.display = 'none';
-            document.getElementById('btn-whatsapp-lote').style.display = 'none';
-            if (document.getElementById('btn-eliminar-lote')) {
-                document.getElementById('btn-eliminar-lote').style.display = 'none';
+        function toggleAccordion(groupKey) {
+            const card = document.getElementById(`card-${groupKey}`);
+            const arrow = document.getElementById(`arrow-${groupKey}`);
+            if (!card) return;
+
+            const isCollapsed = card.classList.toggle('collapsed');
+            if (arrow) {
+                arrow.textContent = isCollapsed ? '►' : '▼';
+            }
+        }
+
+        function toggleSelectGroup(groupKey) {
+            const groupChk = document.getElementById(`chk-group-${groupKey}`);
+            if (!groupChk) return;
+            const isChecked = groupChk.checked;
+
+            const rowCheckboxes = document.querySelectorAll(`.chk-factura[data-group="${groupKey}"]`);
+            rowCheckboxes.forEach(chk => {
+                chk.checked = isChecked;
+            });
+
+            if (groupKey === 'enviadas') {
+                const monthCheckboxes = document.querySelectorAll('[id^="chk-month-"]');
+                monthCheckboxes.forEach(chk => {
+                    chk.checked = isChecked;
+                });
             }
 
-            facturasActuales = facturas;
-            const tbody = document.getElementById('facturas-tbody');
+            actualizarBotonLote();
+        }
+
+        function renderizarFacturas(facturas) {
+            // Desmarcar selecciones de grupo previas
+            ['borradores', 'diferidas', 'aprobadas', 'enviadas'].forEach(g => {
+                const chk = document.getElementById(`chk-group-${g}`);
+                if (chk) chk.checked = false;
+            });
+
+            facturasActuales = facturas || [];
 
             if (!facturas || facturas.length === 0) {
                 document.getElementById('table-container').style.display = 'none';
@@ -650,13 +1018,437 @@
 
             document.getElementById('table-container').style.display = 'block';
             document.getElementById('empty-state').style.display = 'none';
-            document.getElementById('result-count').textContent = `${facturas.length} facturas`;
+            document.getElementById('result-count').textContent = `${facturas.length} facturas totales`;
 
-            tbody.innerHTML = facturas.map(factura => {
+            // Clasificación en 4 Niveles
+            const grupoBorradores = facturas.filter(f => f.estado === 'BORRADOR' || f.estado === 'RECHAZADA');
+            const grupoDiferidas = facturas.filter(f => f.estado === 'PENDIENTE_FACTURACION');
+            const grupoEnviadas = facturas.filter(f => f.es_enviado === true);
+            const grupoAprobadas = facturas.filter(f => (f.estado === 'APROBADA' || f.estado === 'APROBADA_LOCAL') && !f.es_enviado);
+
+            // Actualizar Badges y Totales de Encabezados de Acordeón (Notas de Crédito restan)
+            const signoCbte = (f) => [3, 8, 13].includes(parseInt(f.tipo_cbte)) ? -1 : 1;
+            const sumBorradores = grupoBorradores.reduce((sum, f) => sum + ((parseFloat(f.imp_total) || 0) * signoCbte(f)), 0);
+            const sumDiferidas = grupoDiferidas.reduce((sum, f) => sum + ((parseFloat(f.imp_total) || 0) * signoCbte(f)), 0);
+            const sumAprobadas = grupoAprobadas.reduce((sum, f) => sum + ((parseFloat(f.imp_total) || 0) * signoCbte(f)), 0);
+            const sumEnviadas = grupoEnviadas.reduce((sum, f) => sum + ((parseFloat(f.imp_total) || 0) * signoCbte(f)), 0);
+
+            document.getElementById('badge-count-borradores').textContent = grupoBorradores.length;
+            document.getElementById('badge-total-borradores').textContent = formatMoney(sumBorradores);
+
+            const badgeCountDif = document.getElementById('badge-count-diferidas');
+            if (badgeCountDif) badgeCountDif.textContent = grupoDiferidas.length;
+            const badgeTotalDif = document.getElementById('badge-total-diferidas');
+            if (badgeTotalDif) badgeTotalDif.textContent = formatMoney(sumDiferidas);
+
+            document.getElementById('badge-count-aprobadas').textContent = grupoAprobadas.length;
+            document.getElementById('badge-total-aprobadas').textContent = formatMoney(sumAprobadas);
+
+            document.getElementById('badge-count-enviadas').textContent = grupoEnviadas.length;
+            document.getElementById('badge-total-enviadas').textContent = formatMoney(sumEnviadas);
+
+            // Control de visualización: El acordeón de diferidas solo aplica a comprobantes oficiales ARCA
+            const cardDiferidas = document.getElementById('card-diferidas');
+            if (cardDiferidas) {
+                cardDiferidas.style.display = (circuitoSeleccionado === 'oficiales') ? 'block' : 'none';
+            }
+
+            // Renderizar Filas de cada Grupo
+            document.getElementById('tbody-borradores').innerHTML = renderizarFilasGrupo(grupoBorradores, 'borradores');
+            const tbodyDif = document.getElementById('tbody-diferidas');
+            if (tbodyDif) tbodyDif.innerHTML = renderizarFilasGrupo(grupoDiferidas, 'diferidas');
+            document.getElementById('tbody-aprobadas').innerHTML = renderizarFilasGrupo(grupoAprobadas, 'aprobadas');
+            
+            // Renderizar Histórico Agrupado por Año y Mes
+            renderizarHistoricoAgrupado(grupoEnviadas);
+
+            actualizarBotonLote();
+        }
+
+        function renderizarHistoricoAgrupado(lista) {
+            const container = document.getElementById('body-enviadas');
+            if (!container) return;
+
+            if (!lista || lista.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; color: #94a3b8; padding: 30px; font-size: 14px;">
+                        📭 No hay comprobantes archivados en el histórico
+                    </div>
+                `;
+                return;
+            }
+
+            const esOficial = (circuitoSeleccionado === 'oficiales');
+            const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const agrupado = {};
+
+            lista.forEach(f => {
+                let fechaStr = f.fecha_emision || f.created_at;
+                let year = 'Sin Año';
+                let monthIndex = 0;
+                let monthKey = 'Sin Mes';
+
+                if (fechaStr) {
+                    let y, m;
+                    if (fechaStr instanceof Date) {
+                        y = fechaStr.getFullYear();
+                        m = fechaStr.getMonth();
+                    } else {
+                        const str = String(fechaStr).substring(0, 10);
+                        const parts = str.split('-');
+                        if (parts.length === 3) {
+                            y = parseInt(parts[0], 10);
+                            m = parseInt(parts[1], 10) - 1;
+                        }
+                    }
+                    if (y && !isNaN(y)) {
+                        year = String(y);
+                        monthIndex = m;
+                        const mm = String(m + 1).padStart(2, '0');
+                        monthKey = `${year}-${mm}`;
+                    }
+                }
+
+                if (!agrupado[year]) {
+                    agrupado[year] = {
+                        year,
+                        total_facturado: 0,
+                        total_neto: 0,
+                        total_iva: 0,
+                        total_iibb: 0,
+                        total_dif_iva: 0,
+                        total_costo: 0,
+                        total_mercaderia: 0,
+                        total_mano_obra: 0,
+                        total_insumos: 0,
+                        ganancia_sin_iibb: 0,
+                        ganancia: 0,
+                        count: 0,
+                        meses: {}
+                    };
+                }
+
+                if (!agrupado[year].meses[monthKey]) {
+                    agrupado[year].meses[monthKey] = {
+                        monthKey,
+                        monthName: nombresMeses[monthIndex] || 'Desconocido',
+                        monthNum: monthIndex + 1,
+                        year,
+                        total_facturado: 0,
+                        total_neto: 0,
+                        total_iva: 0,
+                        total_iibb: 0,
+                        total_dif_iva: 0,
+                        total_costo: 0,
+                        total_mercaderia: 0,
+                        total_mano_obra: 0,
+                        total_insumos: 0,
+                        ganancia_sin_iibb: 0,
+                        ganancia: 0,
+                        facturas: []
+                    };
+                }
+
+                const tipoCbte = parseInt(f.tipo_cbte);
+                const esNC = [3, 8, 13].includes(tipoCbte);
+                const signo = esNC ? -1 : 1;
+
+                const rawTotal = parseFloat(f.imp_total) || 0;
+                const rawNeto = (parseFloat(f.imp_neto) > 0) ? parseFloat(f.imp_neto) : (rawTotal / 1.21);
+                const rawIva = (parseFloat(f.imp_iva) > 0) ? parseFloat(f.imp_iva) : (rawTotal - rawNeto);
+                const rawCosto = parseFloat(f.costo_estimado_total) || parseFloat(f.costo_estimado) || 0;
+                const rawMercaderia = (f.costo_mercaderia_total !== undefined && f.costo_mercaderia_total !== null && !isNaN(parseFloat(f.costo_mercaderia_total)) && parseFloat(f.costo_mercaderia_total) > 0)
+                    ? parseFloat(f.costo_mercaderia_total)
+                    : rawCosto;
+                const rawManoObra = parseFloat(f.costo_mano_obra_total) || 0;
+                const rawInsumos = parseFloat(f.costo_insumos_total) || 0;
+                const rawIibb = (parseFloat(f.imp_iibb) > 0)
+                    ? parseFloat(f.imp_iibb)
+                    : (Math.round(rawTotal * 0.04 * 100) / 100);
+                const rawDifIva = (f.imp_dif_iva !== undefined && f.imp_dif_iva !== null && !isNaN(parseFloat(f.imp_dif_iva)) && parseFloat(f.imp_dif_iva) > 0)
+                    ? parseFloat(f.imp_dif_iva)
+                    : (Math.round(Math.max(0, rawIva - ((rawMercaderia + rawInsumos) * 0.21)) * 100) / 100);
+                const rawGanSinIibb = (f.ganancia_sin_iibb_total !== undefined && f.ganancia_sin_iibb_total !== null && !isNaN(parseFloat(f.ganancia_sin_iibb_total)) && parseFloat(f.ganancia_sin_iibb_total) !== 0)
+                    ? parseFloat(f.ganancia_sin_iibb_total)
+                    : (Math.round((rawNeto - rawCosto - rawIibb) * 100) / 100);
+                // Si el comprobante ya tiene imp_dif_iva guardado o calculado, Ganancia Real descuenta siempre la Diferencia de IVA (unificado 1 a 1 con Presupuesto y Búnker)
+                const rawGanReal = (f.imp_dif_iva !== undefined && f.imp_dif_iva !== null && parseFloat(f.imp_dif_iva) > 0 && f.ganancia_real_total !== null && f.ganancia_real_total !== undefined && !isNaN(parseFloat(f.ganancia_real_total)))
+                    ? parseFloat(f.ganancia_real_total)
+                    : (Math.round((rawGanSinIibb - rawDifIva) * 100) / 100);
+
+                const total = rawTotal * signo;
+                const neto = rawNeto * signo;
+                const iva = rawIva * signo;
+                const costo = rawCosto * signo;
+                const mercaderia = rawMercaderia * signo;
+                const manoObra = rawManoObra * signo;
+                const insumos = rawInsumos * signo;
+                const iibb = rawIibb * signo;
+                const difIva = rawDifIva * signo;
+                const gananciaSinIibb = rawGanSinIibb * signo;
+                const ganancia = rawGanReal * signo;
+
+                // Acumular mes
+                const m = agrupado[year].meses[monthKey];
+                m.total_facturado += total;
+                m.total_neto += neto;
+                m.total_iva += iva;
+                m.total_costo += costo;
+                m.total_mercaderia += mercaderia;
+                m.total_mano_obra += manoObra;
+                m.total_insumos += insumos;
+                m.total_iibb += iibb;
+                m.total_dif_iva += difIva;
+                m.ganancia_sin_iibb += gananciaSinIibb;
+                m.ganancia += ganancia;
+                m.facturas.push(f);
+
+                // Acumular año
+                const a = agrupado[year];
+                a.total_facturado += total;
+                a.total_neto += neto;
+                a.total_iva += iva;
+                a.total_costo += costo;
+                a.total_mercaderia += mercaderia;
+                a.total_mano_obra += manoObra;
+                a.total_insumos += insumos;
+                a.total_iibb += iibb;
+                a.total_dif_iva += difIva;
+                a.ganancia_sin_iibb += gananciaSinIibb;
+                a.ganancia += ganancia;
+                a.count++;
+            });
+
+            // Ordenar Años descendente
+            const yearsSorted = Object.keys(agrupado).sort((a, b) => b.localeCompare(a));
+
+            let html = '<div class="historico-container" style="padding: 12px 16px;">';
+
+            yearsSorted.forEach((yearKey, yIndex) => {
+                const yearData = agrupado[yearKey];
+                const baseYearGanancia = yearData.total_neto;
+                const margenYearSinIibbPct = baseYearGanancia > 0 ? ((yearData.ganancia_sin_iibb / baseYearGanancia) * 100).toFixed(1) : 0;
+                const margenYearPct = baseYearGanancia > 0 ? ((yearData.ganancia / baseYearGanancia) * 100).toFixed(1) : 0;
+
+                // Ordenar Meses del año descendente
+                const monthsSorted = Object.keys(yearData.meses).sort((a, b) => b.localeCompare(a));
+
+                html += `
+                    <div class="year-block" id="year-block-${yearKey}" style="margin-bottom: 24px; border: 1px solid #cbd5e1; border-radius: 10px; background: #ffffff; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                        <!-- Header del Año -->
+                        <div class="year-header" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; padding: 14px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 18px; font-weight: 800; letter-spacing: 0.5px;">📅 Año ${yearKey}</span>
+                                <span class="badge" style="background: rgba(255,255,255,0.2); color: #ffffff; font-size: 12px;">${yearData.count} comprobantes</span>
+                            </div>
+                            <!-- Métricas del Año Divididas en Dos Bloques: Fiscal y Desglose Neto -->
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                                <!-- Bloque 1: Facturación -->
+                                <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.08); padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15);" title="Total Facturado = Neto Gravado + IVA Total">
+                                    <span style="font-size: 11px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px;">📄 Facturación:</span>
+                                    <div class="stat-pill stat-pill-facturado" title="Total Facturado = Neto Gravado (${formatMoney(yearData.total_neto)}) + IVA (${formatMoney(yearData.total_iva)})">
+                                        <span class="pill-label">Total Facturado:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_facturado)}</span>
+                                    </div>
+                                    <div class="stat-pill stat-pill-neto" title="Neto Gravado Total (Base de Venta)">
+                                        <span class="pill-label">Neto:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_neto)}</span>
+                                    </div>
+                                    <div class="stat-pill stat-pill-iva" title="Total Débito Fiscal IVA del Año">
+                                        <span class="pill-label">Total IVA:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_iva)}</span>
+                                    </div>
+                                </div>
+
+                                <!-- Bloque 2: Composición del Neto (Costos, Cargas y Ganancias) -->
+                                <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.08); padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15);" title="Desglose completo de costos, cargas impositivas y rentabilidad real Búnker">
+                                    <span style="font-size: 11px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 2px;">🏭 Desglose Neto:</span>
+                                    <div class="stat-pill stat-pill-mercaderia" title="Costo Directo de Mercadería (Bulto cerrado / insumos puros)">
+                                        <span class="pill-label">📦 Mercadería:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_mercaderia)}</span>
+                                    </div>
+                                    <div class="stat-pill stat-pill-mano-obra" title="Costo Mano de Obra Fraccionado / Elaboración Propia">
+                                        <span class="pill-label">⏱️ Mano de Obra:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_mano_obra)}</span>
+                                    </div>
+                                    ${yearData.total_insumos > 0 ? `
+                                    <div class="stat-pill stat-pill-insumos" title="Insumos de Empaque / Bolsas / Precintos">
+                                        <span class="pill-label">🛍️ Insumos:</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_insumos)}</span>
+                                    </div>
+                                    ` : ''}
+                                    <div class="stat-pill stat-pill-iibb" title="Total Impuesto sobre los Ingresos Brutos PBA (4% sobre facturación)">
+                                        <span class="pill-label">IIBB (4%):</span>
+                                        <span class="pill-value">${formatMoney(yearData.total_iibb)}</span>
+                                    </div>
+                                    <div class="stat-pill" style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(148, 163, 184, 0.4); color: #e2e8f0;" title="Ganancia después de Costos Operativos e IIBB 4%, sin descontar Diferencia de IVA (${margenYearSinIibbPct}%)">
+                                        <span class="pill-label" style="color: #cbd5e1;">Ganancia s/IIBB:</span>
+                                        <span class="pill-value" style="color: #f8fafc;">${formatMoney(yearData.ganancia_sin_iibb)} <small style="opacity: 0.85;">(${margenYearSinIibbPct}%)</small></span>
+                                    </div>
+                                    <div class="stat-pill stat-pill-ganancia" title="Ganancia Real unificada con Presupuestos y Artículos Búnker: Ganancia s/IIBB (${formatMoney(yearData.ganancia_sin_iibb)}) − Dif. IVA Compra/Venta (${formatMoney(yearData.total_dif_iva)}) = ${formatMoney(yearData.ganancia)} (${margenYearPct}%)">
+                                        <span class="pill-label">Ganancia Real:</span>
+                                        <span class="pill-value">${formatMoney(yearData.ganancia)} <small style="opacity: 0.9;">(${margenYearPct}%)</small></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sub-acordeones de Meses -->
+                        <div class="year-body" style="padding: 14px;">
+                `;
+
+                monthsSorted.forEach((mKey, mIndex) => {
+                    const mesData = yearData.meses[mKey];
+                    const baseMesGanancia = mesData.total_neto;
+                    const margenMesSinIibbPct = baseMesGanancia > 0 ? ((mesData.ganancia_sin_iibb / baseMesGanancia) * 100).toFixed(1) : 0;
+                    const margenMesPct = baseMesGanancia > 0 ? ((mesData.ganancia / baseMesGanancia) * 100).toFixed(1) : 0;
+                    
+                    // Abrir por defecto el mes más reciente del año más reciente
+                    const isFirstMonth = (yIndex === 0 && mIndex === 0);
+                    const collapsedClass = isFirstMonth ? '' : 'collapsed';
+                    const arrowChar = isFirstMonth ? '▼' : '►';
+
+                    html += `
+                        <div class="month-card ${collapsedClass}" id="month-card-${mKey}" style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; background: #ffffff;">
+                            <div class="month-header" onclick="toggleMonthAccordion('${mKey}')" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f8fafc; cursor: pointer; user-select: none; border-bottom: 1px solid #e2e8f0; transition: background 0.2s;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span class="month-arrow" id="arrow-month-${mKey}" style="font-size: 13px; color: #64748b; width: 14px;">${arrowChar}</span>
+                                    <strong style="font-size: 15px; color: #1e293b;">🗓️ ${mesData.monthName} ${mesData.year}</strong>
+                                    <span class="badge" style="background: #e2e8f0; color: #475569; font-size: 11px;">${mesData.facturas.length} cbtes</span>
+                                </div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" onclick="event.stopPropagation()">
+                                    <!-- Bloque 1: Facturación -->
+                                    <div style="display: inline-flex; align-items: center; gap: 5px; background: #e2e8f0; padding: 2px 6px; border-radius: 6px; border: 1px solid #cbd5e1;" title="Total Facturado = Neto Gravado + IVA Total">
+                                        <span style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.3px;">📄 Facturación:</span>
+                                        <div class="stat-pill stat-pill-facturado" style="font-size: 12px; padding: 2px 6px;" title="Facturado = Neto (${formatMoney(mesData.total_neto)}) + IVA (${formatMoney(mesData.total_iva)})">
+                                            <span class="pill-label">Facturado:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_facturado)}</span>
+                                        </div>
+                                        <div class="stat-pill stat-pill-neto" style="font-size: 12px; padding: 2px 6px;" title="Neto Gravado Total (Base de Venta)">
+                                            <span class="pill-label">Neto:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_neto)}</span>
+                                        </div>
+                                        <div class="stat-pill stat-pill-iva" style="font-size: 12px; padding: 2px 6px;" title="Total Débito Fiscal IVA">
+                                            <span class="pill-label">IVA:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_iva)}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bloque 2: Composición del Neto (Costos, Cargas y Ganancias) -->
+                                    <div style="display: inline-flex; align-items: center; gap: 5px; background: #f1f5f9; padding: 2px 6px; border-radius: 6px; border: 1px solid #cbd5e1;" title="Desglose de Costos, IIBB y Rentabilidad Real Búnker">
+                                        <span style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.3px;">🏭 Desglose Neto:</span>
+                                        <div class="stat-pill stat-pill-mercaderia" style="font-size: 12px; padding: 2px 6px;" title="Costo Directo Mercadería">
+                                            <span class="pill-label">📦 Merc.:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_mercaderia)}</span>
+                                        </div>
+                                        <div class="stat-pill stat-pill-mano-obra" style="font-size: 12px; padding: 2px 6px;" title="Costo Mano de Obra">
+                                            <span class="pill-label">⏱️ MO:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_mano_obra)}</span>
+                                        </div>
+                                        ${mesData.total_insumos > 0 ? `
+                                        <div class="stat-pill stat-pill-insumos" style="font-size: 12px; padding: 2px 6px;" title="Insumos Empaque">
+                                            <span class="pill-label">🛍️ Ins.:</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_insumos)}</span>
+                                        </div>
+                                        ` : ''}
+                                        <div class="stat-pill stat-pill-iibb" style="font-size: 12px; padding: 2px 6px;" title="Impuesto sobre los Ingresos Brutos PBA (4%)">
+                                            <span class="pill-label">IIBB (4%):</span>
+                                            <span class="pill-value">${formatMoney(mesData.total_iibb)}</span>
+                                        </div>
+                                        <div class="stat-pill" style="font-size: 12px; padding: 2px 6px; background: #e2e8f0; border: 1px solid #94a3b8; color: #1e293b;" title="Ganancia después de Costos e IIBB 4%, sin descontar Diferencia de IVA (${margenMesSinIibbPct}%)">
+                                            <span class="pill-label" style="color: #475569;">Ganancia s/IIBB:</span>
+                                            <span class="pill-value" style="color: #0f172a; font-weight: 700;">${formatMoney(mesData.ganancia_sin_iibb)} <small>(${margenMesSinIibbPct}%)</small></span>
+                                        </div>
+                                        <div class="stat-pill stat-pill-ganancia" style="font-size: 12px; padding: 2px 6px;" title="Ganancia Real unificada con Presupuestos y Búnker: Ganancia s/IIBB (${formatMoney(mesData.ganancia_sin_iibb)}) − Dif. IVA Compra/Venta (${formatMoney(mesData.total_dif_iva)}) = ${formatMoney(mesData.ganancia)} (${margenMesPct}%)">
+                                            <span class="pill-label">Ganancia Real:</span>
+                                            <span class="pill-value">${formatMoney(mesData.ganancia)} <small>(${margenMesPct}%)</small></span>
+                                        </div>
+                                    </div>
+
+                                    <label class="group-select-label" style="margin-left: 8px; font-size: 12px;">
+                                        <input type="checkbox" id="chk-month-${mKey}" onclick="toggleSelectMonth('${mKey}')" title="Seleccionar comprobantes de ${mesData.monthName}"> Seleccionar Mes
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="month-body" id="body-month-${mKey}" style="padding: 0;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40px;"></th>
+                                            <th>ID</th>
+                                            <th>Fecha</th>
+                                            <th>Tipo</th>
+                                            <th>Número</th>
+                                            <th>Cliente</th>
+                                            <th>Total</th>
+                                            <th>Margen Est.</th>
+                                            <th>Estado</th>
+                                            <th>CAE / Canal</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-month-${mKey}">
+                                        ${renderizarFilasHistorico(mesData.facturas, mKey)}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function toggleMonthAccordion(monthKey) {
+            const card = document.getElementById(`month-card-${monthKey}`);
+            const arrow = document.getElementById(`arrow-month-${monthKey}`);
+            if (!card) return;
+
+            const isCollapsed = card.classList.toggle('collapsed');
+            if (arrow) {
+                arrow.textContent = isCollapsed ? '►' : '▼';
+            }
+        }
+        window.toggleMonthAccordion = toggleMonthAccordion;
+
+        function toggleSelectMonth(monthKey) {
+            const chk = document.getElementById(`chk-month-${monthKey}`);
+            if (!chk) return;
+            const isChecked = chk.checked;
+
+            const checkboxes = document.querySelectorAll(`.chk-factura[data-month="${monthKey}"]`);
+            checkboxes.forEach(c => {
+                c.checked = isChecked;
+            });
+
+            actualizarBotonLote();
+        }
+        window.toggleSelectMonth = toggleSelectMonth;
+
+        function renderizarFilasHistorico(lista, monthKey) {
+            if (!lista || lista.length === 0) {
+                return `
+                    <tr>
+                        <td colspan="11" style="text-align: center; color: #94a3b8; padding: 20px;">
+                            No hay comprobantes en este período
+                        </td>
+                    </tr>
+                `;
+            }
+
+            const esOficial = (circuitoSeleccionado === 'oficiales');
+
+            return lista.map(factura => {
                 let fecha = '-';
                 if (factura.fecha_emision) {
                     try {
-                        // Tratar de parsear fecha de forma segura (asumiendo que viene en YYYY-MM-DD o ISO)
                         const f = new Date(factura.fecha_emision.includes('T') ? factura.fecha_emision : factura.fecha_emision + 'T00:00:00');
                         if (!isNaN(f)) {
                             fecha = f.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -672,8 +1464,61 @@
                 const numero = `${ptoVtaPad}-${cbtePad}`;
                 const total = formatMoney(factura.imp_total);
                 const estadoClass = factura.estado.toLowerCase().replace('_', '-');
-                const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA');
-                const puedeEnviarse = factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL';
+
+                // Cálculo de Margen y Ganancia para el comprobante (idéntico en Oficiales y Validadas)
+                const tipoCbte = parseInt(factura.tipo_cbte);
+                const esNC = [3, 8, 13].includes(tipoCbte);
+                const signo = esNC ? -1 : 1;
+                const rawTot = parseFloat(factura.imp_total) || 0;
+                const rawNet = (parseFloat(factura.imp_neto) > 0) ? parseFloat(factura.imp_neto) : (rawTot / 1.21);
+                const rawIva = (parseFloat(factura.imp_iva) > 0) ? parseFloat(factura.imp_iva) : (rawTot - rawNet);
+                const rawCostoEst = parseFloat(factura.costo_estimado_total) || parseFloat(factura.costo_estimado) || 0;
+                const rawMercaderia = (factura.costo_mercaderia_total !== undefined && factura.costo_mercaderia_total !== null && parseFloat(factura.costo_mercaderia_total) > 0)
+                    ? parseFloat(factura.costo_mercaderia_total)
+                    : rawCostoEst;
+                const rawManoObra = parseFloat(factura.costo_mano_obra_total) || 0;
+                const rawInsumos = parseFloat(factura.costo_insumos_total) || 0;
+                const rawIibb = (parseFloat(factura.imp_iibb) > 0)
+                    ? parseFloat(factura.imp_iibb)
+                    : (Math.round(rawTot * 0.04 * 100) / 100);
+                const rawDifIva = (factura.imp_dif_iva !== undefined && factura.imp_dif_iva !== null && !isNaN(parseFloat(factura.imp_dif_iva)) && parseFloat(factura.imp_dif_iva) > 0)
+                    ? parseFloat(factura.imp_dif_iva)
+                    : (Math.round(Math.max(0, rawIva - ((rawMercaderia + rawInsumos) * 0.21)) * 100) / 100);
+                const rawGanSinIibb = (factura.ganancia_sin_iibb_total !== undefined && factura.ganancia_sin_iibb_total !== null && !isNaN(parseFloat(factura.ganancia_sin_iibb_total)) && parseFloat(factura.ganancia_sin_iibb_total) !== 0)
+                    ? parseFloat(factura.ganancia_sin_iibb_total)
+                    : (Math.round((rawNet - rawCostoEst - rawIibb) * 100) / 100);
+                const rawGanReal = (factura.imp_dif_iva !== undefined && factura.imp_dif_iva !== null && parseFloat(factura.imp_dif_iva) > 0 && factura.ganancia_real_total !== null && factura.ganancia_real_total !== undefined && !isNaN(parseFloat(factura.ganancia_real_total)))
+                    ? parseFloat(factura.ganancia_real_total)
+                    : (Math.round((rawGanSinIibb - rawDifIva) * 100) / 100);
+
+                const impTot = rawTot * signo;
+                const impNet = rawNet * signo;
+                const costoEst = rawCostoEst * signo;
+                const mercaderia = rawMercaderia * signo;
+                const manoObra = rawManoObra * signo;
+                const insumos = rawInsumos * signo;
+                const iibb = rawIibb * signo;
+                const difIva = rawDifIva * signo;
+                const gananciaSinIibb = rawGanSinIibb * signo;
+                const ganancia = rawGanReal * signo;
+                const baseGan = impNet;
+                const margenPct = Math.abs(baseGan) > 0 ? ((ganancia / Math.abs(baseGan)) * 100).toFixed(1) : 0;
+
+                let margenHTML = '-';
+                if ((factura.costo_estimado_total && parseFloat(factura.costo_estimado_total) > 0) || (factura.costo_estimado && parseFloat(factura.costo_estimado) > 0)) {
+                    const colorGanancia = ganancia >= 0 ? '#047857' : '#b91c1c';
+                    const prefijo = ganancia > 0 ? '+' : '';
+                    const tooltipText = `Neto: ${formatMoney(Math.abs(impNet))} | 📦 Merc.: ${formatMoney(Math.abs(mercaderia))} | ⏱️ MO: ${formatMoney(Math.abs(manoObra))}${Math.abs(insumos) > 0 ? ` | 🛍️ Ins: ${formatMoney(Math.abs(insumos))}` : ''} | 🏛️ IIBB (4%): ${formatMoney(Math.abs(iibb))} | 📊 Gan. s/IIBB: ${formatMoney(gananciaSinIibb)} | ⚖️ Dif. IVA: ${formatMoney(Math.abs(difIva))} | 📈 Ganancia Real: ${formatMoney(ganancia)}`;
+
+                    margenHTML = `
+                        <div style="font-size: 13px; font-weight: 700; color: ${colorGanancia};" title="${tooltipText}">
+                            ${prefijo}${formatMoney(ganancia)} <small style="font-size: 10px; opacity: 0.85; font-weight: 600;">(${margenPct}% real)</small>
+                            <small style="font-size: 10px; color: #64748b; display: block; font-weight: 600;">s/IIBB: ${formatMoney(gananciaSinIibb)}</small>
+                        </div>
+                    `;
+                } else {
+                    margenHTML = `<small style="color: #94a3b8;">Sin costo</small>`;
+                }
 
                 const tieneWp = (() => {
                     const str = (factura.whatsapp_facturas || '').trim();
@@ -682,9 +1527,7 @@
                         try {
                             const parsed = JSON.parse(str);
                             return Array.isArray(parsed) && parsed.some(c => c.numero && c.numero.trim());
-                        } catch (e) {
-                            return false;
-                        }
+                        } catch (e) { return false; }
                     }
                     return true;
                 })();
@@ -696,12 +1539,11 @@
                         try {
                             const parsed = JSON.parse(str);
                             return Array.isArray(parsed) && parsed.some(c => c.email && c.email.trim());
-                        } catch (e) {
-                            return false;
-                        }
+                        } catch (e) { return false; }
                     }
                     return true;
                 })();
+
                 let contactsButtonHTML = '';
                 if (factura.bunker_cliente_id) {
                     contactsButtonHTML = `
@@ -711,43 +1553,224 @@
                     `;
                 }
 
+                let infoCae = '-';
+                if ((factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') && factura.cae) {
+                    infoCae = `<strong>${factura.cae}</strong>${factura.enviado_canal ? ` <br><small style="color: #6366f1;">📲 ${factura.enviado_canal}</small>` : ''}`;
+                } else if (factura.estado === 'APROBADA_LOCAL' && factura.nro_interno) {
+                    infoCae = `<small style="color: #059669; font-weight: 600;">Emitido Interno (${factura.serie_interna || 'X'}-${factura.nro_interno})</small>${factura.enviado_canal ? ` <br><small style="color: #6366f1;">📦 ${factura.enviado_canal}</small>` : ''}`;
+                }
+
                 return `
                     <tr>
                         <td>
-                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" data-has-email="${tieneEmail ? 'true' : 'false'}" data-has-cae="${factura.cae ? 'true' : 'false'}" onchange="actualizarBotonLote()">
+                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-group="enviadas" data-month="${monthKey}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" data-has-email="${tieneEmail ? 'true' : 'false'}" data-has-cae="${factura.cae ? 'true' : 'false'}" onchange="actualizarBotonLote()">
                         </td>
                         <td><strong>#${factura.id}</strong></td>
                         <td>${fecha}</td>
                         <td>${tipo}</td>
                         <td>${numero}</td>
                         <td>${factura.razon_social || 'Cliente'}${contactsButtonHTML}</td>
-                        <td><strong>${total}</strong></td>
-                        <td><span class="badge ${estadoClass}">${factura.estado}</span></td>
-                        <td>${(factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') && factura.cae ? `<strong>${factura.cae}</strong>` : '-'}</td>
+                        <td><strong style="${esNC ? 'color: #dc2626;' : ''}">${esNC ? '-' : ''}${total}</strong></td>
+                        <td>${margenHTML}</td>
+                        <td>
+                            <span class="badge ${estadoClass}">${factura.estado}</span>
+                            <span class="badge" style="background: #e0e7ff; color: #3730a3; margin-left: 4px;">Enviado</span>
+                        </td>
+                        <td>${infoCae}</td>
                         <td>
                             <div class="actions">
                                 <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
                                     📄 Ver
                                 </button>
+                                ${tieneWp || tieneEmail ? `
+                                <button class="btn btn-sm" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white;" onclick="abrirModalDespachoFactura(${factura.id})" title="Re-despachar comprobante por WhatsApp y/o Email">
+                                    📤 Enviar
+                                </button>
+                                ` : `
+                                <button class="btn btn-sm" style="background: #e2e8f0; color: #94a3b8; border: 1px dashed #cbd5e1; cursor: not-allowed;" title="Cliente sin destinatarios configurados" disabled>
+                                    📤 Enviar
+                                </button>
+                                `}
+                                <button class="btn btn-sm" style="background: #64748b; color: white; border: none;" onclick="desmarcarComoDespachado(${factura.id})" title="Volver a Pendientes de Despachar">
+                                    ↩️ Desmarcar
+                                </button>
+                                ${[1, 6, 11].includes(parseInt(factura.tipo_cbte)) && (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') ? `
+                                <button class="btn btn-sm" style="background: #ef4444; color: white;" onclick="anularFactura(${factura.id}, '${factura.fecha_emision}')">
+                                    🚫 Anular
+                                </button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderizarFilasGrupo(lista, groupKey) {
+            if (!lista || lista.length === 0) {
+                return `
+                    <tr>
+                        <td colspan="10" style="text-align: center; color: #94a3b8; padding: 25px;">
+                            No hay comprobantes en esta categoría
+                        </td>
+                    </tr>
+                `;
+            }
+
+            return lista.map(factura => {
+                let fecha = '-';
+                if (factura.fecha_emision) {
+                    try {
+                        const f = new Date(factura.fecha_emision.includes('T') ? factura.fecha_emision : factura.fecha_emision + 'T00:00:00');
+                        if (!isNaN(f)) {
+                            fecha = f.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        }
+                    } catch (e) {
+                        console.error("Error parseando fecha:", factura.fecha_emision);
+                    }
+                }
+
+                const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
+                const tipo = obtenerTipoComprobante(factura.tipo_cbte, factura.pto_vta);
+                const ptoVtaPad = String(factura.pto_vta || '0').padStart(4, '0');
+                const cbtePad = String(factura.cbte_nro || factura.nro_interno || '0').padStart(8, '0');
+                const numero = `${ptoVtaPad}-${cbtePad}`;
+                const total = formatMoney(factura.imp_total);
+                const estadoClass = factura.estado.toLowerCase().replace('_', '-');
+                const puedeEmitirse = (factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA' || factura.estado === 'PENDIENTE_FACTURACION');
+                const puedeEnviarse = factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL';
+
+                const tieneWp = (() => {
+                    const str = (factura.whatsapp_facturas || '').trim();
+                    if (!str) return false;
+                    if (str.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(str);
+                            return Array.isArray(parsed) && parsed.some(c => c.numero && c.numero.trim());
+                        } catch (e) { return false; }
+                    }
+                    return true;
+                })();
+
+                const tieneEmail = (() => {
+                    const str = (factura.email_facturas || '').trim();
+                    if (!str) return false;
+                    if (str.startsWith('[')) {
+                        try {
+                            const parsed = JSON.parse(str);
+                            return Array.isArray(parsed) && parsed.some(c => c.email && c.email.trim());
+                        } catch (e) { return false; }
+                    }
+                    return true;
+                })();
+
+                let contactsButtonHTML = '';
+                if (factura.bunker_cliente_id) {
+                    contactsButtonHTML = `
+                        <button type="button" class="btn btn-sm btn-link" style="padding: 2px 4px; font-size: 1.1em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle; background: none; border: none; cursor: pointer; color: #4f46e5;" title="Configurar destinatarios de facturación" onclick="abrirConfiguracionContactosFactura(${factura.id})">
+                            👥
+                        </button>
+                    `;
+                }
+
+                let infoCae = '-';
+                if ((factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') && factura.cae) {
+                    infoCae = `<strong>${factura.cae}</strong>${factura.enviado_canal ? ` <br><small style="color: #6366f1;">📲 ${factura.enviado_canal}</small>` : ''}`;
+                } else if (factura.estado === 'APROBADA_LOCAL' && factura.nro_interno) {
+                    infoCae = `<small style="color: #059669; font-weight: 600;">Emitido Interno (${factura.serie_interna || 'X'}-${factura.nro_interno})</small>${factura.enviado_canal ? ` <br><small style="color: #6366f1;">📦 ${factura.enviado_canal}</small>` : ''}`;
+                } else if (factura.estado === 'PENDIENTE_FACTURACION') {
+                    infoCae = `<small style="color: #0284c7; font-weight: 600;">📦 Stock & 💳 CC ok</small>`;
+                }
+
+                return `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="chk-factura" value="${factura.id}" data-group="${groupKey}" data-estado="${factura.estado}" data-has-wp="${tieneWp ? 'true' : 'false'}" data-has-email="${tieneEmail ? 'true' : 'false'}" data-has-cae="${factura.cae ? 'true' : 'false'}" onchange="actualizarBotonLote()">
+                        </td>
+                        <td><strong>#${factura.id}</strong></td>
+                        <td>${fecha}</td>
+                        <td>
+                            ${esNC ? `<strong style="color: #b91c1c;">🧾 ${tipo}</strong>` : tipo}
+                            ${factura.factura_asociada_id ? `<br><small style="color: #64748b; font-weight: 600;">Asoc. #${factura.factura_asociada_id}</small>` : ''}
+                        </td>
+                        <td>${numero}</td>
+                        <td>${factura.razon_social || 'Cliente'}${contactsButtonHTML}</td>
+                        <td><strong style="${esNC ? 'color: #dc2626;' : ''}">${esNC ? '-' : ''}${total}</strong></td>
+                        <td>
+                            <span class="badge ${estadoClass}">${factura.estado === 'PENDIENTE_FACTURACION' ? 'DIFERIDA (MES PRÓXIMO)' : factura.estado}</span>
+                            ${factura.es_enviado ? '<span class="badge" style="background: #e0e7ff; color: #3730a3; margin-left: 4px;">Enviado</span>' : ''}
+                        </td>
+                        <td>${infoCae}</td>
+                        <td>
+                            <div class="actions">
+                                <button class="btn btn-info btn-sm" onclick="verFactura(${factura.id})">
+                                    📄 Ver
+                                </button>
+                                ${(factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && !factura.cae ? `
+                                <button class="btn btn-sm" style="background: #10b981; color: white; border: none;" onclick="emitirFacturaDiferida(${factura.id})" title="Solicitar CAE a ARCA / Emitir Comprobante">
+                                    🚀 Obtener CAE
+                                </button>
+                                ` : ''}
+                                ${factura.estado === 'BORRADOR' && !esNC && circuitoSeleccionado === 'oficiales' ? `
+                                <button class="btn btn-sm" style="background: #0284c7; color: white; border: none;" onclick="diferirFactura(${factura.id})" title="Diferir facturación al mes siguiente (descuenta stock y debita en CC provisoriamente)">
+                                    ⏳ Diferir
+                                </button>
+                                ` : ''}
+                                ${factura.estado === 'PENDIENTE_FACTURACION' ? `
+                                <button class="btn btn-sm" style="background: #10b981; color: white; border: none;" onclick="emitirFacturaDiferida(${factura.id})" title="Solicitar CAE a ARCA con fecha actual (stock y CC ya están procesados)">
+                                    🚀 Obtener CAE
+                                </button>
+                                <button class="btn btn-sm" style="background: #f59e0b; color: white; border: none;" onclick="revertirFacturaDiferida(${factura.id})" title="Revertir a borrador (restablece stock y anula débito provisorio en CC)">
+                                    ↩️ Revertir
+                                </button>
+                                ` : ''}
                                 ${puedeEnviarse ? (() => {
+                                    let htmlEnvio = '';
                                     if (tieneWp || tieneEmail) {
-                                        return `
+                                        htmlEnvio += `
                                         <button class="btn btn-sm" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white;" onclick="abrirModalDespachoFactura(${factura.id})" title="Enviar comprobante por WhatsApp y/o Email">
                                             📤 Enviar
                                         </button>
                                         `;
                                     } else {
-                                        return `
+                                        htmlEnvio += `
                                         <button class="btn btn-sm" style="background: #e2e8f0; color: #94a3b8; border: 1px dashed #cbd5e1; cursor: not-allowed;" title="Cliente sin destinatarios configurados de WhatsApp ni Correo" disabled>
                                             📤 Enviar
                                         </button>
                                         `;
                                     }
+
+                                    if (!factura.es_enviado) {
+                                        htmlEnvio += `
+                                        <button class="btn btn-sm" style="background: #059669; color: white; border: none;" onclick="marcarComoDespachado(${factura.id})" title="Marcar como despachado y mover a Histórico sin enviar por WhatsApp/Email">
+                                            📦 Despachado
+                                        </button>
+                                        `;
+                                    } else {
+                                        htmlEnvio += `
+                                        <button class="btn btn-sm" style="background: #64748b; color: white; border: none;" onclick="desmarcarComoDespachado(${factura.id})" title="Volver a Pendientes de Despachar">
+                                            ↩️ Desmarcar
+                                        </button>
+                                        `;
+                                    }
+
+                                    return htmlEnvio;
                                 })() : ''}
                                 ${[1, 6, 11].includes(parseInt(factura.tipo_cbte)) && (factura.estado === 'APROBADA' || factura.estado === 'APROBADA_LOCAL') ? `
                                 <button class="btn btn-sm" style="background: #ef4444; color: white;" onclick="anularFactura(${factura.id}, '${factura.fecha_emision}')">
                                     🚫 Anular
                                 </button>
+                                ` : ''}
+                                ${factura.estado === 'BORRADOR' && !factura.cae ? `
+                                    ${factura.pto_vta != 90 ? `
+                                    <button class="btn btn-sm" style="background: #8b5cf6; color: white;" onclick="cambiarCircuitoFactura(${factura.id}, 'interno')" title="Mover a Presupuestos Aprobados (Interno)">
+                                        🏢 Mover a Interno
+                                    </button>
+                                    ` : `
+                                    <button class="btn btn-sm" style="background: #3b82f6; color: white;" onclick="cambiarCircuitoFactura(${factura.id}, 'oficial')" title="Mover a Factura Oficial (ARCA)">
+                                        📄 Mover a ARCA
+                                    </button>
+                                    `}
                                 ` : ''}
                                 ${!factura.cae && ['BORRADOR', 'RECHAZADA', 'ANULADA', 'APROBADA_LOCAL'].includes(factura.estado) ? `
                                 <button class="btn btn-sm" style="background: #e74c3c; color: white;" onclick="eliminarFactura(${factura.id})">
@@ -772,7 +1795,10 @@
             const total = facturas.length;
             const aprobadas = facturas.filter(f => f.estado === 'APROBADA' || f.estado === 'APROBADA_LOCAL').length;
             const borradores = facturas.filter(f => f.estado === 'BORRADOR').length;
-            const monto = facturas.reduce((sum, f) => sum + (parseFloat(f.imp_total) || 0), 0);
+            const monto = facturas.reduce((sum, f) => {
+                const signo = [3, 8, 13].includes(parseInt(f.tipo_cbte)) ? -1 : 1;
+                return sum + ((parseFloat(f.imp_total) || 0) * signo);
+            }, 0);
 
             document.getElementById('stat-total').textContent = total;
             document.getElementById('stat-aprobadas').textContent = aprobadas;
@@ -1261,7 +2287,7 @@
 
                     if (runEmail) {
                         try {
-                            const response = await fetch(`/facturacion/email/facturas/${facturaId}/enviar`, {
+                            const response = await fetch(`${API_URL}/email/facturas/${facturaId}/enviar`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ destinatarios: destinatariosEmail })
@@ -1275,6 +2301,17 @@
                             factOk = false;
                             currentErrors.push(`Email: ${error.message}`);
                         }
+                    }
+
+                    // Asegurar que la factura quede marcada como enviada en DB
+                    try {
+                        await fetch(`${API_URL}/facturas/${facturaId}/marcar-enviado`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ canal: runWp && runEmail ? 'WhatsApp y Email' : (runWp ? 'WhatsApp' : 'Email') })
+                        });
+                    } catch (mErr) {
+                        console.warn(`⚠️ No se pudo marcar factura ${facturaId} como enviada:`, mErr.message);
                     }
                 }
 
@@ -1296,10 +2333,153 @@
                 alert(`⚠️ Despacho en lote finalizado con algunos errores:\n\n- ${exitosas} enviadas exitosamente\n- ${fallidas} fallaron\n\nDetalles (primeros 5):\n${errDetail}`);
             }
 
-            document.getElementById('chk-select-all').checked = false;
+            const chkAll = document.getElementById('chk-select-all');
+            if (chkAll) chkAll.checked = false;
+            ['borradores', 'diferidas', 'aprobadas', 'enviadas'].forEach(g => {
+                const chk = document.getElementById(`chk-group-${g}`);
+                if (chk) chk.checked = false;
+            });
             document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            if (document.getElementById('btn-marcar-despachadas-lote')) {
+                document.getElementById('btn-marcar-despachadas-lote').style.display = 'none';
+            }
             document.getElementById('btn-emitir-lote').style.display = 'none';
-            cargarFacturas(currentPage);
+            const cardEnviadas = document.getElementById('card-enviadas');
+            if (cardEnviadas) {
+                cardEnviadas.classList.remove('collapsed');
+                const arrow = document.getElementById('arrow-enviadas');
+                if (arrow) arrow.textContent = '▼';
+            }
+            await cargarFacturas(currentPage);
+        }
+
+        async function marcarComoDespachado(facturaId) {
+            const result = await Swal.fire({
+                title: '¿Marcar como Despachado?',
+                text: 'El comprobante se moverá a la bandeja de "Enviadas / Histórico" sin enviar mensajes automáticos por WhatsApp ni Email.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Sí, Marcar Despachado',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/marcar-enviado`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ canal: 'Manual / Despachado' })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Actualizado!',
+                        text: 'Comprobante movido al Histórico exitosamente.',
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al actualizar comprobante');
+                }
+            } catch (error) {
+                console.error('Error al marcar comprobante:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function desmarcarComoDespachado(facturaId) {
+            const result = await Swal.fire({
+                title: '¿Volver a Pendientes de Despachar?',
+                text: 'El comprobante volverá a la bandeja de pendientes de despachar a clientes.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#0284c7',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Sí, Volver a Pendientes',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/desmarcar-enviado`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Actualizado!',
+                        text: 'Comprobante devuelto a Pendientes de Despachar.',
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al actualizar comprobante');
+                }
+            } catch (error) {
+                console.error('Error al desmarcar comprobante:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function marcarDespachadasLote() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura[data-group="aprobadas"]:checked')).map(chk => chk.value);
+            if (seleccionadas.length === 0) return;
+
+            const result = await Swal.fire({
+                title: `¿Marcar ${seleccionadas.length} comprobantes como Despachados?`,
+                text: 'Se moverán a la bandeja de "Enviadas / Histórico" sin emitir mensajes por WhatsApp ni Email.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#059669',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: `Sí, Marcar (${seleccionadas.length})`,
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/marcar-enviado-lote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: seleccionadas, canal: 'Manual / Despachado' })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Lote Actualizado!',
+                        text: `${seleccionadas.length} comprobantes movidos al Histórico exitosamente.`,
+                        icon: 'success'
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al procesar lote');
+                }
+            } catch (error) {
+                console.error('Error al marcar lote como despachado:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
         }
 
         function verFactura(id) {
@@ -1327,6 +2507,72 @@
             } catch (error) {
                 console.error(error);
                 alert(`Error al eliminar: ${error.message}`);
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function cambiarCircuitoFactura(id, nuevoCircuito) {
+            const esInterno = nuevoCircuito === 'interno';
+            const destinoTexto = esInterno ? 'Presupuestos Aprobados (Interno)' : 'Facturación Oficial (ARCA)';
+            const confirmMsg = esInterno
+                ? `¿Mover el borrador #${id} al circuito de Presupuestos Aprobados (Interno)?\n\nEl comprobante pasará al Punto de Venta 90 y no se validará ante ARCA.`
+                : `¿Mover el borrador #${id} al circuito Oficial (ARCA)?\n\nEl comprobante pasará al Punto de Venta oficial y quedará pendiente de validación CAE ante ARCA.`;
+
+            if (typeof Swal !== 'undefined') {
+                const result = await Swal.fire({
+                    title: `¿Mover a ${destinoTexto}?`,
+                    text: esInterno 
+                        ? `El borrador #${id} pasará al Punto de Venta 90 (sin validación ARCA) y se visualizará en la solapa de Presupuestos Aprobados.`
+                        : `El borrador #${id} pasará al Punto de Venta oficial y quedará pendiente de validación CAE en la solapa de ARCA.`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, mover',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: esInterno ? '#8b5cf6' : '#3b82f6',
+                    cancelButtonColor: '#64748b'
+                });
+                if (!result.isConfirmed) return;
+            } else {
+                if (!confirm(confirmMsg)) return;
+            }
+
+            mostrarLoading(true);
+            try {
+                const res = await fetch(`${API_URL}/facturas/${id}/cambiar-circuito`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nuevo_circuito: nuevoCircuito })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: '¡Comprobante reasignado!',
+                            text: data.message || `El borrador #${id} fue movido a ${destinoTexto}.`,
+                            icon: 'success',
+                            confirmButtonColor: '#10b981'
+                        });
+                    } else {
+                        alert(data.message || `El borrador #${id} fue movido a ${destinoTexto}.`);
+                    }
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.error || 'No se pudo cambiar el circuito de la factura');
+                }
+            } catch (error) {
+                console.error(error);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        title: 'Error al cambiar circuito',
+                        text: error.message,
+                        icon: 'error',
+                        confirmButtonColor: '#ef4444'
+                    });
+                } else {
+                    alert(`Error: ${error.message}`);
+                }
             } finally {
                 mostrarLoading(false);
             }
@@ -1368,36 +2614,61 @@
             }
 
             Swal.fire({
-                title: '¿Confirmar Anulación?',
+                title: '¿Confirmar Anulación de Factura?',
                 html: `
-                    <p style="font-size: 14px; color: #4b5563;">
-                        Se generará y autorizará una <strong>Nota de Crédito espejo</strong> ante ARCA.
-                        Esto revertirá automáticamente el stock y neteará el saldo de la cuenta corriente.
+                    <p style="font-size: 14px; color: #4b5563; margin-bottom: 12px;">
+                        Se generará y emitirá una <strong>Nota de Crédito espejo</strong> ante ARCA.
                     </p>
+                    <div style="text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                        <label style="display: block; font-weight: 600; font-size: 13px; color: #1e293b; margin-bottom: 8px;">
+                            Seleccione el tipo de operación:
+                        </label>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; cursor: pointer;">
+                                <input type="radio" name="swal_nc_stock_mode" value="con_stock" checked style="accent-color: #ef4444;">
+                                <span><strong>Devolución física:</strong> Reingresa la mercadería al stock y netea la cuenta corriente.</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; cursor: pointer;">
+                                <input type="radio" name="swal_nc_stock_mode" value="sin_stock" style="accent-color: #4f46e5;">
+                                <span><strong>Anulación administrativa:</strong> <span style="color: #4f46e5; font-weight: 600;">NO mueve stock</span> (la mercadería no se mueve de depósito) y netea la cuenta corriente.</span>
+                            </label>
+                        </div>
+                    </div>
                     ${advertenciaPeriodo}
                 `,
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonText: 'Sí, Anular Factura',
+                confirmButtonText: 'Sí, Emitir Nota de Crédito',
                 cancelButtonText: 'Cancelar',
                 confirmButtonColor: '#ef4444',
-                cancelButtonColor: '#6b7280'
+                cancelButtonColor: '#6b7280',
+                preConfirm: () => {
+                    const selected = document.querySelector('input[name="swal_nc_stock_mode"]:checked');
+                    return { mover_stock: selected ? selected.value === 'con_stock' : true };
+                }
             }).then(async (result) => {
                 if (!result.isConfirmed) return;
+
+                const moverStock = result.value ? result.value.mover_stock : true;
 
                 mostrarLoading(true);
                 try {
                     const res = await fetch(`${API_URL}/facturas/${id}/anular`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ usuario: 'Operador Lamda' })
+                        body: JSON.stringify({ 
+                            usuario: 'Operador Lamda',
+                            mover_stock: moverStock
+                        })
                     });
                     const data = await res.json();
 
                     if (data.success) {
                         Swal.fire({
                             title: '¡Anulada!',
-                            text: `Factura anulada con éxito. Nota de Crédito Nº ${data.data.pto_vta}-${data.data.cbte_nro || data.data.nro_interno} emitida.`,
+                            text: `Factura anulada con éxito. Nota de Crédito Nº ${data.data.pto_vta}-${data.data.cbte_nro || data.data.nro_interno} emitida${moverStock ? '' : ' (sin movimiento de stock)'}.`,
                             icon: 'success',
                             confirmButtonColor: '#10b981'
                         });
@@ -1427,10 +2698,23 @@
                 btn.classList.remove('active');
             });
             
+            const titleBorradores = document.getElementById('title-accordion-borradores');
+            const titleAprobadas = document.getElementById('title-accordion-aprobadas');
+            const lblBorradores = document.getElementById('lbl-group-borradores');
+            const lblAprobadas = document.getElementById('lbl-group-aprobadas');
+
             if (circuito === 'oficiales') {
                 document.getElementById('tab-oficiales').classList.add('active');
+                if (titleBorradores) titleBorradores.textContent = '📝 Borradores (Pendientes de Solicitar CAE)';
+                if (titleAprobadas) titleAprobadas.textContent = '🟢 Aprobados - Pendiente de despachar a cliente';
+                if (lblBorradores) lblBorradores.textContent = 'Seleccionar Borradores';
+                if (lblAprobadas) lblAprobadas.textContent = 'Seleccionar Aprobadas';
             } else {
                 document.getElementById('tab-internos').classList.add('active');
+                if (titleBorradores) titleBorradores.textContent = '📝 Presupuestos Aprobados (Pendientes de Emitir)';
+                if (titleAprobadas) titleAprobadas.textContent = '🟢 Aprobados - Pendiente de despachar a cliente';
+                if (lblBorradores) lblBorradores.textContent = 'Seleccionar Presupuestos';
+                if (lblAprobadas) lblAprobadas.textContent = 'Seleccionar Aprobados';
             }
             
             // Recargar grilla en página 1
@@ -1477,7 +2761,8 @@
         // --- Lógica de Emisión por Lotes ---
 
         function toggleSelectAll() {
-            const selectAllVal = document.getElementById('chk-select-all').checked;
+            const chkAll = document.getElementById('chk-select-all');
+            const selectAllVal = chkAll ? chkAll.checked : false;
             const checkboxes = document.querySelectorAll('.chk-factura');
             checkboxes.forEach(chk => {
                 chk.checked = selectAllVal;
@@ -1491,7 +2776,26 @@
             
             const aEmitir = chks.filter(chk => {
                 const estado = chk.getAttribute('data-estado');
-                return ['BORRADOR', 'RECHAZADA'].includes(estado);
+                const group = chk.getAttribute('data-group');
+                return group === 'borradores' && ['BORRADOR', 'RECHAZADA'].includes(estado);
+            }).length;
+
+            const aDiferir = (circuitoSeleccionado === 'oficiales') ? chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const group = chk.getAttribute('data-group');
+                return group === 'borradores' && estado === 'BORRADOR';
+            }).length : 0;
+
+            const aEmitirDiferidas = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const group = chk.getAttribute('data-group');
+                return group === 'diferidas' && estado === 'PENDIENTE_FACTURACION';
+            }).length;
+
+            const aRevertirDiferidas = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const group = chk.getAttribute('data-group');
+                return group === 'diferidas' && estado === 'PENDIENTE_FACTURACION';
             }).length;
 
             const aEnviar = chks.filter(chk => {
@@ -1506,6 +2810,12 @@
                 return whatsapp.length > 0 || email.length > 0;
             }).length;
 
+            const aMarcarDespachadas = chks.filter(chk => {
+                const estado = chk.getAttribute('data-estado');
+                const group = chk.getAttribute('data-group');
+                return group === 'aprobadas' && ['APROBADA', 'APROBADA_LOCAL'].includes(estado);
+            }).length;
+
             const aEliminar = chks.filter(chk => {
                 const estado = chk.getAttribute('data-estado');
                 const hasCae = chk.getAttribute('data-has-cae') === 'true';
@@ -1513,17 +2823,48 @@
             }).length;
 
             const btnCae = document.getElementById('btn-emitir-lote');
+            const btnDiferir = document.getElementById('btn-diferir-lote');
             const btnWp = document.getElementById('btn-whatsapp-lote');
+            const btnMarcarDespachadas = document.getElementById('btn-marcar-despachadas-lote');
             const btnEliminar = document.getElementById('btn-eliminar-lote');
+            const btnEmitirDif = document.getElementById('btn-emitir-diferidas-lote');
+            const btnRevertirDif = document.getElementById('btn-revertir-diferidas-lote');
 
             if (aEmitir > 0) {
                 btnCae.style.display = 'inline-block';
                 const textoBoton = circuitoSeleccionado === 'internos'
                     ? `🚀 Emitir Seleccionados (${aEmitir})`
-                    : `🚀 Obtener CAE de Seleccionadas (${aEmitir})`;
+                    : `🚀 Obtener CAE (${aEmitir})`;
                 btnCae.innerHTML = textoBoton;
             } else {
                 btnCae.style.display = 'none';
+            }
+
+            if (btnDiferir) {
+                if (aDiferir > 0) {
+                    btnDiferir.style.display = 'inline-block';
+                    btnDiferir.innerHTML = `⏳ Diferir Seleccionadas (${aDiferir})`;
+                } else {
+                    btnDiferir.style.display = 'none';
+                }
+            }
+
+            if (btnEmitirDif) {
+                if (aEmitirDiferidas > 0) {
+                    btnEmitirDif.style.display = 'inline-block';
+                    btnEmitirDif.innerHTML = `🚀 Obtener CAE (${aEmitirDiferidas})`;
+                } else {
+                    btnEmitirDif.style.display = 'none';
+                }
+            }
+
+            if (btnRevertirDif) {
+                if (aRevertirDiferidas > 0) {
+                    btnRevertirDif.style.display = 'inline-block';
+                    btnRevertirDif.innerHTML = `↩️ Revertir (${aRevertirDiferidas})`;
+                } else {
+                    btnRevertirDif.style.display = 'none';
+                }
             }
 
             if (aEliminar > 0) {
@@ -1542,8 +2883,255 @@
                 btnWp.style.display = 'none';
             }
 
+            if (btnMarcarDespachadas) {
+                if (aMarcarDespachadas > 0) {
+                    btnMarcarDespachadas.style.display = 'inline-block';
+                    btnMarcarDespachadas.innerHTML = `📦 Marcar Despachadas (${aMarcarDespachadas})`;
+                } else {
+                    btnMarcarDespachadas.style.display = 'none';
+                }
+            }
+
+            const btnReenviar = document.getElementById('btn-reenviar-lote');
+            const aReenviar = chks.filter(chk => {
+                const group = chk.getAttribute('data-group');
+                if (group !== 'enviadas') return false;
+                const facturaId = chk.value;
+                const factura = facturasActuales.find(f => String(f.id) === String(facturaId));
+                if (!factura) return false;
+                const { whatsapp, email } = obtenerDestinatariosPredeterminados(factura);
+                return whatsapp.length > 0 || email.length > 0;
+            }).length;
+
+            if (btnReenviar) {
+                if (aReenviar > 0) {
+                    btnReenviar.style.display = 'inline-block';
+                    btnReenviar.innerHTML = `📤 Re-despachar Seleccionadas (${aReenviar})`;
+                } else {
+                    btnReenviar.style.display = 'none';
+                }
+            }
+
             if (totalSeleccionadas === 0) {
-                document.getElementById('chk-select-all').checked = false;
+                const chkAll = document.getElementById('chk-select-all');
+                if (chkAll) chkAll.checked = false;
+            }
+        }
+
+        async function diferirFactura(facturaId) {
+            const result = await Swal.fire({
+                title: '¿Diferir Facturación?',
+                text: 'La mercadería se descontará del depósito y se asentará el débito provisorio en la Cuenta Corriente del cliente. La factura quedará en espera para solicitar CAE el próximo mes.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#0284c7',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Sí, Diferir al Mes Siguiente',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/diferir`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Facturación Diferida!',
+                        text: 'Stock descontado y Cuenta Corriente debitada correctamente. El comprobante fue movido al buzón de Facturación Diferida.',
+                        icon: 'success'
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.message || data.error || 'Error al diferir factura');
+                }
+            } catch (error) {
+                console.error('Error al diferir factura:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function diferirLote() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura[data-group="borradores"]:checked')).map(chk => chk.value);
+            if (seleccionadas.length === 0) return;
+
+            const result = await Swal.fire({
+                title: `¿Diferir ${seleccionadas.length} comprobantes?`,
+                text: 'Se descontará el stock y se asentará el débito en Cuenta Corriente para todos los pedidos seleccionados, postergando la emisión del CAE para el próximo mes.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#0284c7',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: `Sí, Diferir (${seleccionadas.length})`,
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/diferir-lote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: seleccionadas })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Lote Diferido!',
+                        text: `${seleccionadas.length} comprobantes pasados a Facturación Diferida con éxito.`,
+                        icon: 'success'
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    const detalle = data.errores && data.errores.length > 0
+                        ? data.errores.map(e => `Factura #${e.id}: ${e.error}`).join('<br>')
+                        : (data.message || 'Error al procesar lote diferido');
+                    Swal.fire({
+                        title: 'Atención al Diferir',
+                        html: detalle,
+                        icon: 'error'
+                    });
+                }
+            } catch (error) {
+                console.error('Error al diferir lote:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function emitirFacturaDiferida(facturaId) {
+            const fac = (facturasActuales || []).find(f => Number(f.id) === Number(facturaId));
+            const esNC = fac && [3, 8, 13].includes(parseInt(fac.tipo_cbte));
+            const esDiferida = fac && fac.estado === 'PENDIENTE_FACTURACION';
+            const result = await Swal.fire({
+                title: esNC ? `¿Obtener CAE de Nota de Crédito #${facturaId}?` : (esDiferida ? '¿Obtener CAE de Factura Diferida?' : `¿Obtener CAE del Comprobante #${facturaId}?`),
+                text: esDiferida
+                    ? 'Se solicitará el CAE a ARCA con fecha de emisión actual. Dado que el stock y la cuenta corriente ya fueron procesados, no se duplicará ningún movimiento.'
+                    : (esNC
+                        ? 'Se solicitará el CAE de la Nota de Crédito ante ARCA, acreditando el importe en la Cuenta Corriente del cliente y registrando el movimiento de stock correspondiente.'
+                        : 'Se solicitará el CAE de la Factura ante ARCA, asentando el comprobante en la Cuenta Corriente del cliente y registrando el movimiento de stock correspondiente.'),
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '🚀 Solicitar CAE a ARCA',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/emitir`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡CAE Obtenido!',
+                        text: `Factura oficial aprobada con CAE: ${data.data.cae}`,
+                        icon: 'success'
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.message || data.error || 'Error al solicitar CAE');
+                }
+            } catch (error) {
+                console.error('Error emitiendo factura diferida:', error);
+                Swal.fire('Error al Emitir', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function revertirFacturaDiferida(facturaId) {
+            const result = await Swal.fire({
+                title: '¿Revertir a Borrador?',
+                text: 'Se devolverá la mercadería al stock del depósito y se anulará el débito provisorio en la Cuenta Corriente del cliente.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Sí, Revertir a Borrador',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                const response = await fetch(`${API_URL}/facturas/${facturaId}/revertir-diferida`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Revertido con Éxito!',
+                        text: 'El comprobante volvió al buzón de Borradores. Stock y Cuenta Corriente restablecidos.',
+                        icon: 'success'
+                    });
+                    cargarFacturas(currentPage);
+                } else {
+                    throw new Error(data.message || data.error || 'Error al revertir');
+                }
+            } catch (error) {
+                console.error('Error al revertir factura diferida:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
+            }
+        }
+
+        async function revertirLoteDiferidas() {
+            const seleccionadas = Array.from(document.querySelectorAll('.chk-factura[data-group="diferidas"]:checked')).map(chk => chk.value);
+            if (seleccionadas.length === 0) return;
+
+            const result = await Swal.fire({
+                title: `¿Revertir ${seleccionadas.length} comprobantes a Borrador?`,
+                text: 'Se devolverá el stock al depósito y se limpiará el débito provisorio en la Cuenta Corriente para todos los seleccionados.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: `Sí, Revertir (${seleccionadas.length})`,
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!result.isConfirmed) return;
+
+            mostrarLoading(true);
+            try {
+                for (const id of seleccionadas) {
+                    await fetch(`${API_URL}/facturas/${id}/revertir-diferida`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+                Swal.fire({
+                    title: '¡Lote Revertido!',
+                    text: `${seleccionadas.length} comprobantes devueltos a Borrador exitosamente.`,
+                    icon: 'success'
+                });
+                cargarFacturas(currentPage);
+            } catch (error) {
+                console.error('Error revirtiendo lote:', error);
+                Swal.fire('Error', error.message, 'error');
+            } finally {
+                mostrarLoading(false);
             }
         }
 
@@ -1583,7 +3171,7 @@
                     if (result.success) {
                         exitosas++;
                     } else {
-                        console.error(`Error emitiendo factura ${facturaId}:`, result.message);
+                        console.error(`Error emitiendo factura ${facturaId}:`, result.detalle || result.message || result.error);
                         fallidas++;
                     }
                 } catch (error) {
@@ -1607,14 +3195,28 @@
                 alert(msgError);
             }
 
-            // Recargar tabla formatea checkboxes
-            document.getElementById('chk-select-all').checked = false;
+            // Recargar tabla formatea checkboxes y asegurar expansión del acordeón de Aprobadas
+            const chkAll = document.getElementById('chk-select-all');
+            if (chkAll) chkAll.checked = false;
+            ['borradores', 'diferidas', 'aprobadas', 'enviadas'].forEach(g => {
+                const chk = document.getElementById(`chk-group-${g}`);
+                if (chk) chk.checked = false;
+            });
             document.getElementById('btn-emitir-lote').style.display = 'none';
             document.getElementById('btn-whatsapp-lote').style.display = 'none';
+            if (document.getElementById('btn-marcar-despachadas-lote')) {
+                document.getElementById('btn-marcar-despachadas-lote').style.display = 'none';
+            }
             if (document.getElementById('btn-eliminar-lote')) {
                 document.getElementById('btn-eliminar-lote').style.display = 'none';
             }
-            cargarFacturas(currentPage);
+            const cardAprobadas = document.getElementById('card-aprobadas');
+            if (cardAprobadas) {
+                cardAprobadas.classList.remove('collapsed');
+                const arrow = document.getElementById('arrow-aprobadas');
+                if (arrow) arrow.textContent = '▼';
+            }
+            await cargarFacturas(currentPage);
         }
 
         async function eliminarLoteSeleccionado() {
@@ -1665,13 +3267,22 @@
                 alert(`⚠️ Proceso finalizado con algunos errores:\n\n- ${exitosas} eliminados exitosamente\n- ${fallidas} fallaron al eliminar`);
             }
 
-            document.getElementById('chk-select-all').checked = false;
+            const chkAll = document.getElementById('chk-select-all');
+            if (chkAll) chkAll.checked = false;
+            ['borradores', 'diferidas', 'aprobadas', 'enviadas'].forEach(g => {
+                const chk = document.getElementById(`chk-group-${g}`);
+                if (chk) chk.checked = false;
+            });
             document.getElementById('btn-emitir-lote').style.display = 'none';
             document.getElementById('btn-whatsapp-lote').style.display = 'none';
-            if (document.getElementById('btn-eliminar-lote')) {
-                document.getElementById('btn-eliminar-lote').style.display = 'none';
+            if (document.getElementById('btn-marcar-despachadas-lote')) {
+                document.getElementById('btn-marcar-despachadas-lote').style.display = 'none';
             }
-            cargarFacturas(currentPage);
+            const btnEliminar = document.getElementById('btn-eliminar-lote');
+            if (btnEliminar) {
+                btnEliminar.style.display = 'none';
+            }
+            await cargarFacturas(currentPage);
         }
     </script>
 </body>

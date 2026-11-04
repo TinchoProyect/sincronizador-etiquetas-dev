@@ -1,0 +1,14 @@
+
+==================================================
+        MOCK COMPROBANTE OFICIAL - SISTEMA LAMDA
+==================================================
+ID Movimiento Local: 117
+Tipo Comprobante:    FC
+Detalle:             Fac B-0001-10003264
+Debe:                $ 159108.95
+Haber:               $ 0
+Fecha de Emision:    21/6/2026
+==================================================
+Este documento es una simulacion de caja negra en local
+para desarrollo y depuracion en el sandbox.
+==================================================

@@ -150,7 +150,8 @@ const actualizarFactura = async (req, res) => {
             'fecha_emision',
             'concepto',
             'tipo_cbte',
-            'factura_asociada_id'
+            'factura_asociada_id',
+            'stock_descontado'
         ];
 
         const updates = [];
@@ -253,7 +254,7 @@ const emitirFactura = async (req, res) => {
         res.status(400).json({
             success: false,
             error: 'Error emitiendo factura',
-            message: 'Rechazado por AFIP',
+            message: error.message || 'Error al emitir factura',
             detalle: error.message
         });
     }
@@ -322,7 +323,16 @@ const listarFacturas = async (req, res) => {
                 COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
                 COALESCE(bc.whatsapp_facturas, c.celular, c.telefono) as whatsapp_facturas,
                 bc.email_facturas as email_facturas,
-                COALESCE(bc.canal_envio_preferido, 'whatsapp') as canal_envio_preferido
+                COALESCE(bc.canal_envio_preferido, 'whatsapp') as canal_envio_preferido,
+                COALESCE(
+                    f.costo_estimado_total,
+                    (
+                        SELECT SUM(COALESCE(ffi.costo_total, 0))
+                        FROM factura_factura_items ffi
+                        WHERE ffi.factura_id = f.id
+                    ),
+                    0
+                ) as costo_estimado
             FROM factura_facturas f
             LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
             LEFT JOIN bunker_clientes bc ON 
@@ -755,6 +765,31 @@ const eliminarBorrador = async (req, res) => {
             console.log(`🔗 [FACTURACION-CTRL] Presupuesto ${presupuestoId} desvinculado y restaurado a 'Presupuesto/Orden'`);
         }
 
+        // Si fue una NC generada desde Mantenimiento, limpiar el movimiento y reabrir el movimiento origen
+        try {
+            const resMovNC = await pool.query(
+                `SELECT id, observaciones FROM public.mantenimiento_movimientos WHERE observaciones LIKE '%[NC Generada ID: ' || $1 || ']%'`,
+                [parseInt(id)]
+            );
+            for (const r of resMovNC.rows) {
+                const match = r.observaciones?.match(/\[MovID:\s*(\d+)\]/);
+                if (match) {
+                    const sourceMovId = parseInt(match[1]);
+                    await pool.query(
+                        `UPDATE public.mantenimiento_movimientos SET estado = 'PENDIENTE' WHERE id = $1 AND estado = 'FINALIZADO'`,
+                        [sourceMovId]
+                    );
+                    console.log(`🔄 [FACTURACION-CTRL] Movimiento origen #${sourceMovId} restaurado a PENDIENTE.`);
+                }
+            }
+            await pool.query(
+                `DELETE FROM public.mantenimiento_movimientos WHERE observaciones LIKE '%[NC Generada ID: ' || $1 || ']%'`,
+                [parseInt(id)]
+            );
+        } catch (mErr) {
+            console.warn('⚠️ [FACTURACION-CTRL] Advertencia al sincronizar eliminación con Mantenimiento:', mErr.message);
+        }
+
         console.log(`✅ [FACTURACION-CTRL] Borrador #${id} eliminado exitosamente`);
         res.status(200).json({ success: true, message: 'Borrador eliminado exitosamente' });
 
@@ -765,18 +800,80 @@ const eliminarBorrador = async (req, res) => {
 };
 
 /**
+ * Cambiar circuito de borrador entre Oficial (ARCA) e Interno (Presupuesto Aprobado)
+ * POST /facturacion/facturas/:id/cambiar-circuito
+ */
+const cambiarCircuito = async (req, res) => {
+    const { id } = req.params;
+    const { nuevo_circuito } = req.body; // 'interno' | 'oficial'
+
+    console.log(`🔄 [FACTURACION-CTRL] POST /facturas/${id}/cambiar-circuito -> ${nuevo_circuito}`);
+
+    try {
+        if (!nuevo_circuito || !['interno', 'oficial'].includes(nuevo_circuito.toLowerCase())) {
+            return res.status(400).json({ success: false, error: "Parámetro 'nuevo_circuito' inválido. Debe ser 'interno' u 'oficial'." });
+        }
+
+        const checkQuery = 'SELECT id, estado, cae, pto_vta, requiere_afip FROM factura_facturas WHERE id = $1';
+        const checkResult = await pool.query(checkQuery, [parseInt(id)]);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Factura no encontrada' });
+        }
+
+        const f = checkResult.rows[0];
+        if (f.cae) {
+            return res.status(400).json({ success: false, error: 'Rechazado: La factura ya posee CAE y valor fiscal. No puede cambiarse de circuito.' });
+        }
+
+        if (f.estado !== 'BORRADOR') {
+            return res.status(400).json({ success: false, error: `Solo se pueden reasignar facturas en estado BORRADOR (estado actual: ${f.estado}).` });
+        }
+
+        const esInterno = nuevo_circuito.toLowerCase() === 'interno';
+        const nuevoPtoVta = esInterno ? 90 : 1;
+        const nuevoRequiereAfip = !esInterno;
+
+        await pool.query(
+            `UPDATE factura_facturas 
+             SET pto_vta = $1, requiere_afip = $2, updated_at = NOW() 
+             WHERE id = $3`,
+            [nuevoPtoVta, nuevoRequiereAfip, parseInt(id)]
+        );
+
+        console.log(`✅ [FACTURACION-CTRL] Factura #${id} movida a circuito ${nuevo_circuito} (Pto Vta ${nuevoPtoVta}, Requiere AFIP: ${nuevoRequiereAfip})`);
+
+        res.status(200).json({
+            success: true,
+            message: `Borrador #${id} movido exitosamente al circuito ${esInterno ? 'Interno (Presupuesto Aprobado)' : 'Oficial (ARCA)'}.`,
+            data: {
+                id: parseInt(id),
+                pto_vta: nuevoPtoVta,
+                requiere_afip: nuevoRequiereAfip,
+                circuito: nuevo_circuito
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al cambiar circuito de factura:', error.message);
+        res.status(500).json({ success: false, error: 'Error interno al cambiar circuito de factura: ' + error.message });
+    }
+};
+
+/**
  * Anular factura (genera y emite Nota de Crédito espejo)
  * POST /facturacion/facturas/:id/anular
  */
 const anularFactura = async (req, res) => {
     const { id } = req.params;
     const usuario = req.body.usuario || 'Sistema';
+    const moverStock = req.body.mover_stock !== false; // Default true, salvo que explícitamente se pase false
 
-    console.log(`🚫 [FACTURACION-CTRL] POST /facturas/${id}/anular - Anular factura`);
+    console.log(`🚫 [FACTURACION-CTRL] POST /facturas/${id}/anular - Anular factura (Mover stock: ${moverStock})`);
 
     try {
         // 1. Crear borrador de Nota de Crédito espejo
-        const ncId = await facturaService.anular(parseInt(id), usuario);
+        const ncId = await facturaService.anular(parseInt(id), usuario, moverStock);
         console.log(`✅ [FACTURACION-CTRL] Borrador de NC creado ID: ${ncId}. Procediendo a emitir...`);
 
         // 2. Emitir la Nota de Crédito
@@ -1041,9 +1138,10 @@ const generarPDFHeredada = async (req, res) => {
 
             let companyY = 40 + (hasLogo ? 38 : 0);
             doc.fontSize(8).font('Helvetica').fillColor('#1e293b');
-            doc.text('Dirección: Calle 20 No. 638, La Plata', leftColumn, companyY);
+            doc.text('Dirección: Av. 19 Nº 406', leftColumn, companyY);
             doc.text('Condición frente al IVA: Responsable Inscripto', leftColumn, companyY + 9);
-            doc.text('Tel / WA: 221-6615746 | Email: administracion@lamda.com.ar', leftColumn, companyY + 18);
+            doc.text('Tel / WA: 221-6615746', leftColumn, companyY + 18);
+            doc.text('CUIT: 23-24892174-9', leftColumn, companyY + 27);
 
             const ptoVta = (numero_factura || '').includes('-0002-') ? 2 : ((numero_factura || '').includes('-0007-') ? 7 : 1);
             const esTipoE = (numero_factura || '').toUpperCase().includes('FAC E-') || (numero_factura || '').toUpperCase().includes('NC E-') || (numero_factura || '').toUpperCase().includes('ND E-');
@@ -1094,7 +1192,7 @@ const generarPDFHeredada = async (req, res) => {
             doc.text(`Sistema de Origen: Lomasoft`, (pageWidth / 2) + 35, rightY + 35);
             doc.text(`Estado: Migrado / Histórico`, (pageWidth / 2) + 35, rightY + 44);
 
-            let lineY = Math.max(companyY + 32, rightY + 56);
+            let lineY = Math.max(companyY + 38, rightY + 56);
             doc.moveTo(leftColumn, lineY)
                .lineTo(pageWidth - leftColumn, lineY)
                .strokeColor('#475569')
@@ -1258,10 +1356,173 @@ const generarPDFHeredada = async (req, res) => {
     }
 };
 
+const marcarEnviado = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { canal } = req.body;
+
+        await pool.query(
+            `UPDATE public.factura_facturas 
+             SET es_enviado = true, 
+                 enviado_at = NOW(), 
+                 enviado_canal = COALESCE($1, 'Manual/Despachado')
+             WHERE id = $2`,
+            [canal || 'Manual/Despachado', id]
+        );
+
+        res.json({
+            success: true,
+            message: `Factura #${id} marcada como enviada exitosamente.`
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al marcar como enviada:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+const desmarcarEnviado = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await pool.query(
+            `UPDATE public.factura_facturas 
+             SET es_enviado = false, 
+                 enviado_at = NULL, 
+                 enviado_canal = NULL
+             WHERE id = $1`,
+            [id]
+        );
+
+        res.json({
+            success: true,
+            message: `Factura #${id} devuelta a pendientes de despachar.`
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al desmarcar como enviada:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+const marcarEnviadoLote = async (req, res) => {
+    try {
+        const { ids, canal } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'Lista de IDs requerida' });
+        }
+
+        await pool.query(
+            `UPDATE public.factura_facturas 
+             SET es_enviado = true, 
+                 enviado_at = NOW(), 
+                 enviado_canal = COALESCE($1, 'Manual/Despachado')
+             WHERE id = ANY($2::int[])`,
+            [canal || 'Manual/Despachado', ids.map(id => parseInt(id))]
+        );
+
+        res.json({
+            success: true,
+            message: `${ids.length} comprobantes marcados como despachados exitosamente.`
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al marcar lote como enviado:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * Diferir factura (pasar a PENDIENTE_FACTURACION)
+ * POST /facturacion/facturas/:id/diferir
+ */
+const diferirFactura = async (req, res) => {
+    const { id } = req.params;
+    console.log(`⏳ [FACTURACION-CTRL] POST /facturas/${id}/diferir - Diferir factura`);
+
+    try {
+        const factura = await facturaService.diferir(parseInt(id), req.user?.usuario || 'OPERARIO');
+
+        res.status(200).json({
+            success: true,
+            message: 'Factura diferida exitosamente. Mercadería descontada y cuenta corriente actualizada.',
+            data: factura
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al diferir factura:', error.message);
+        res.status(400).json({
+            success: false,
+            error: 'Error al diferir factura',
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Revertir factura diferida a borrador
+ * POST /facturacion/facturas/:id/revertir-diferida
+ */
+const revertirDiferidaFactura = async (req, res) => {
+    const { id } = req.params;
+    console.log(`↩️ [FACTURACION-CTRL] POST /facturas/${id}/revertir-diferida - Revertir factura diferida`);
+
+    try {
+        const factura = await facturaService.revertirDiferida(parseInt(id));
+
+        res.status(200).json({
+            success: true,
+            message: 'Factura revertida a borrador exitosamente. Stock y cuenta corriente restablecidos.',
+            data: factura
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-CTRL] Error al revertir factura diferida:', error.message);
+        res.status(400).json({
+            success: false,
+            error: 'Error al revertir factura diferida',
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Diferir lote de facturas
+ * POST /facturacion/facturas/diferir-lote
+ */
+const diferirLoteFacturas = async (req, res) => {
+    const { ids } = req.body;
+    console.log(`⏳ [FACTURACION-CTRL] POST /facturas/diferir-lote - IDs:`, ids);
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Debe proporcionar una lista de IDs de facturas'
+        });
+    }
+
+    const resultados = [];
+    const errores = [];
+
+    for (const id of ids) {
+        try {
+            const factura = await facturaService.diferir(parseInt(id), req.user?.usuario || 'OPERARIO');
+            resultados.push(factura);
+        } catch (error) {
+            errores.push({ id, error: error.message });
+        }
+    }
+
+    res.status(200).json({
+        success: errores.length === 0,
+        message: `Procesadas ${resultados.length} de ${ids.length} facturas para diferir.`,
+        data: resultados,
+        errores
+    });
+};
+
 module.exports = {
     crearFactura,
     actualizarFactura,
     emitirFactura,
+    diferirFactura,
+    revertirDiferidaFactura,
+    diferirLoteFacturas,
     obtenerFactura,
     obtenerFacturaHeredada,
     listarFacturas,
@@ -1273,5 +1534,9 @@ module.exports = {
     validarFacturaAfip,
     buscarDevoluciones,
     eliminarBorrador,
-    anularFactura
+    cambiarCircuito,
+    anularFactura,
+    marcarEnviado,
+    desmarcarEnviado,
+    marcarEnviadoLote
 };

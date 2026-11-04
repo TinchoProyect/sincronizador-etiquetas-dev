@@ -18,48 +18,165 @@
         }
         .grid-dict th, .grid-dict td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
         .grid-dict th { background: #334155; color: white; }
-        .btn-action { padding: 5px 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
-        .btn-edit { background: #3b82f6; color: white; }
-        .btn-delete { background: #ef4444; color: white; }
-        .btn-edit:hover { background: #2563eb; }
-        .btn-delete:hover { background: #dc2626; }
+        
+        /* 🎨 Estilo Corporativo Plano para Zonas SoC (Separación de Responsabilidades) */
+        .bunker-zones-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .zone-card {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .zone-familia { border-top: 3px solid #166534; }
+        .zone-principal { border-top: 3px solid #1e3a8a; }
+        .zone-plantilla { border-top: 3px solid #475569; }
+
+        .zone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 6px;
+        }
+        .zone-title {
+            font-size: 0.95em;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        .zone-body {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .zone-select {
+            padding: 8px 10px;
+            flex: 1;
+            min-width: 180px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #0f172a;
+            background: #fff;
+        }
+        .zone-buttons {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .btn-zone {
+            padding: 8px 12px;
+            font-size: 0.88em;
+            font-weight: 700;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #ffffff;
+            transition: background-color 0.15s ease;
+        }
+        .btn-green { background: #166534; }
+        .btn-green:hover { background: #15803d; }
+        .btn-indigo { background: #1e3a8a; }
+        .btn-indigo:hover { background: #1e40af; }
+        .btn-sky { background: #0284c7; }
+        .btn-sky:hover { background: #0369a1; }
+        .btn-slate { background: #475569; }
+        .btn-slate:hover { background: #334155; }
+        .btn-edit { background: #2563eb; }
+        .btn-edit:hover { background: #1d4ed8; }
+        .btn-delete { background: #dc2626; }
+        .btn-delete:hover { background: #b91c1c; }
+        .btn-red { background: #991b1b; }
+        .btn-red:hover { background: #7f1d1d; }
     </style>
 </head>
 <body>
     <header class="header">
         <div>
             <h1 style="margin: 0; font-size: 1.5em;">📚 Gestor de Diccionario Búnker</h1>
-            <span style="color: #cbd5e1; font-size: 0.9em;">Control de Abreviaturas y Nomenclatura</span>
+            <span style="color: #cbd5e1; font-size: 0.9em;">Control de Abreviaturas y Nomenclatura Taxonómica</span>
         </div>
-        <button class="btn-action" style="background:#eab308; color:#000; font-size: 1em; padding: 8px 15px;" onclick="window.location.href='listado-bunker.html'">← Volver a Gestión de Artículos</button>
+        <button class="btn-zone" style="background:#eab308; color:#000; font-size: 0.95em; padding: 8px 15px;" onclick="window.location.href='listado-bunker.html'">← Volver al Catálogo</button>
     </header>
 
     <div class="container-box">
         <div class="bunker-panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #fffbeeb3; padding: 15px; border: 1px solid #eab308; border-radius: 6px;">
-                <div>
-                    <h3 style="margin:0; border:none; padding:0; color: #b45309;">Jerarquía por Atributo</h3>
-                    <p style="margin:5px 0 0 0; font-size: 0.9em; color:#78350f;">Seleccione un Atributo Principal para visualizar las familias dinámicas asociadas.</p>
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <select id="filtro-principal" style="padding: 10px; width: 300px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.1em; font-weight: bold; color: #1e293b;" onchange="cargarJerarquia()">
-                        <option value="" disabled selected>⏳ Cargando atributos...</option>
-                    </select>
-                    <div id="acciones-raiz" style="display: none; gap: 5px;">
-                        <button class="btn-action btn-edit" title="Editar Atributo Raíz" onclick="editarRaiz()">✏️</button>
-                        <button class="btn-action btn-delete" title="Eliminar Atributo Raíz" onclick="eliminarRaiz()">🗑️</button>
+            <!-- 🧱 Rediseño por Zonas Independientes (Separation of Concerns) -->
+            <div class="bunker-zones-grid">
+                
+                <!-- ZONA 1: FAMILIA DE PRODUCTO -->
+                <div class="zone-card zone-familia">
+                    <div class="zone-header">
+                        <span class="zone-title">🌳 Posición 1: Familia de Producto</span>
+                    </div>
+                    <div class="zone-body">
+                        <select id="filtro-familia" class="zone-select" onchange="familiaCambiada()" title="Posición 1 - Familia de Producto">
+                            <option value="" selected>🌳 Seleccionar Familia...</option>
+                        </select>
+                        <div class="zone-buttons">
+                            <button type="button" class="btn-zone btn-green" onclick="crearNuevaFamiliaModal()" title="Alta de Nueva Familia de Producto">🌳 ➕</button>
+                            <div id="acciones-familia" style="display: none; gap: 4px;">
+                                <button type="button" class="btn-zone btn-edit" onclick="editarFamiliaModal()" title="Editar Nombre de Familia">✏️</button>
+                                <button type="button" class="btn-zone btn-delete" onclick="eliminarFamiliaModal()" title="Eliminar Familia de Producto">🗑️</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                <!-- ZONA 2: CATEGORÍA PRINCIPAL (POSICIÓN 2) -->
+                <div class="zone-card zone-principal">
+                    <div class="zone-header">
+                        <span class="zone-title">🔹 Posición 2: Categoría Principal</span>
+                    </div>
+                    <div class="zone-body" style="flex-direction: column; align-items: stretch; gap: 6px;">
+                        <input type="text" id="buscar-filtro-principal" class="zone-select" style="margin: 0; width: 100%; border: 1px solid #1e3a8a; background: #f0f9ff;" placeholder="🔍 Buscar atributo... (ej: banana, nuez)" oninput="window.filtrarOpcionesPrincipalViva()" autocomplete="off">
+                        <div style="display: flex; gap: 8px; width: 100%; align-items: center;">
+                            <select id="filtro-principal" class="zone-select" onchange="cargarJerarquia()" title="Posición 2 - Atributo de Categoría Principal">
+                                <option value="" selected>🔹 Seleccionar Atributo Principal...</option>
+                            </select>
+                            <div class="zone-buttons">
+                                <button type="button" class="btn-zone btn-indigo" onclick="crearNuevoArticuloPrincipalModal()" title="Alta o Vinculación de Atributo Principal">🔹 ➕</button>
+                                <div id="acciones-raiz" style="display: none; gap: 4px;">
+                                    <button type="button" class="btn-zone btn-edit" onclick="editarRaiz()" title="Editar Nombre y Abreviatura de Atributo Principal">✏️</button>
+                                    <button type="button" class="btn-zone btn-red" onclick="desvincularArticuloPrincipalModal()" title="Desvincular Atributo Principal de esta Familia">🔗❌ Desvincular</button>
+                                    <button type="button" class="btn-zone btn-delete" onclick="eliminarRaiz()" title="Eliminar Atributo Principal Globalmente">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ZONA 3: PLANTILLA Y EJES POSICIONALES -->
+                <div class="zone-card zone-plantilla">
+                    <div class="zone-header">
+                        <span class="zone-title">⚙️ Plantilla & Ejes Posicionales</span>
+                    </div>
+                    <div class="zone-body" style="justify-content: flex-start;">
+                        <button type="button" class="btn-zone btn-sky" onclick="crearNuevaCategoriaModal()" title="Alta de Categoría en la Plantilla">➕ Categoría</button>
+                        <button type="button" class="btn-zone btn-slate" onclick="abrirGestorTaxonomiaModal()" title="Gestor de Ejes Posicionales por Familia">⚙️ Ejes Posicionales</button>
+                        <button type="button" class="btn-zone btn-slate" style="background: #1e293b; color: #ffffff; font-weight: 700; border: 1px solid #475569;" onclick="abrirModalAuditoriaEjesHistoricos()" title="Auditar y Depurar Ejes Históricos en Base de Datos">🧹 Auditar Ejes</button>
+                    </div>
+                </div>
+
             </div>
             
             <div id="diccionario-acordeon-container" style="display: flex; flex-direction: column; gap: 15px;">
-                <div style="text-align: center; padding: 40px; color: #94a3b8; font-size: 1.2em; border: 2px dashed #cbd5e1; border-radius: 8px;">
-                    👆 Seleccione un Atributo Principal arriba para desplegar su diccionario.
+                <div style="text-align: center; padding: 40px; color: #94a3b8; font-size: 1.1em; border: 2px dashed #cbd5e1; border-radius: 8px;">
+                    👆 Seleccione un Atributo Principal en la Zona 2 para desplegar la estructura de términos.
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="../js/diccionario-bunker.js?v=2.0.1"></script>
+    <script src="../js/diccionario-bunker.js?v=5.18.0_hotfix"></script>
 </body>
 </html>

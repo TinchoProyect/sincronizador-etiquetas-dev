@@ -10,6 +10,9 @@ router.get('/', clientesBunkerController.obtenerTodos);
 // Sugerir un código legacy (Lomasoft ID) único de 3 dígitos disponible
 router.get('/sugerir-legacy', clientesBunkerController.sugerirLegacy);
 
+// Obtener historial de artículos comprados/facturados por cliente
+router.get('/:id/articulos-comprados', clientesBunkerController.obtenerArticulosComprados);
+
 // Obtener un cliente específico por ID
 router.get('/:id', clientesBunkerController.obtenerPorId);
 

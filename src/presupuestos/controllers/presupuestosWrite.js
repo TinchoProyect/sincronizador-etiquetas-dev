@@ -43,6 +43,7 @@ function normalizeDate(dateInput) {
     return new Date().toISOString().split('T')[0];
 }
 
+function normalizeDescuentoDecimal(numberInput) { const num = normalizeNumber(numberInput); if (num <= 0) return 0; return num > 1 ? Math.round((num / 100) * 10000) / 10000 : Math.round(num * 10000) / 10000; }
 function normalizeNumber(numberInput) {
     if (numberInput === null || numberInput === undefined) return 0;
     const num = parseFloat(numberInput);
@@ -132,6 +133,67 @@ async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId
 }
 
 /**
+ * Revierte (reintegra al stock) cualquier descuento de saldo de ingrediente previo
+ * asociado a un presupuesto (usado al editar o anular/eliminar el presupuesto).
+ * Nota: El DELETE sobre public.ingredientes_movimientos dispara trigger_actualizar_stock (ON DELETE),
+ * devolviendo automáticamente los kilos a public.ingredientes.stock_actual.
+ */
+async function revertirMovimientosSaldoIngrediente(client, presupuestoId) {
+    const patronObs = `SALDO PRESUPUESTO #${presupuestoId}:%`;
+    const delMov = await client.query(
+        `DELETE FROM public.ingredientes_movimientos WHERE observaciones LIKE $1 RETURNING id, ingrediente_id, kilos`,
+        [patronObs]
+    );
+    await client.query(
+        `DELETE FROM public.ingredientes_ajustes WHERE observacion LIKE $1`,
+        [patronObs]
+    );
+    if (delMov.rowCount > 0) {
+        console.log(`♻️ [SALDO-INGREDIENTE] Revertidos ${delMov.rowCount} movimientos de saldo de ingrediente para presupuesto #${presupuestoId}`);
+    }
+}
+
+/**
+ * Registra el descuento inmediato de stock de ingredientes para los renglones marcados
+ * como es_saldo_ingrediente = true.
+ * Nota: El INSERT en public.ingredientes_movimientos dispara trigger_actualizar_stock (ON INSERT),
+ * descontando automáticamente los kilos de public.ingredientes.stock_actual.
+ */
+async function registrarMovimientosSaldoIngrediente(client, presupuestoId, detallesNormalizados) {
+    for (const det of detallesNormalizados) {
+        if (det.es_saldo_ingrediente && det.ingrediente_id_saldo && det.kilos_saldo > 0) {
+            const kilosDescontar = Math.abs(parseFloat(det.kilos_saldo));
+            const ingRes = await client.query(
+                `SELECT id, nombre, COALESCE(stock_actual, 0) as stock_actual FROM public.ingredientes WHERE id = $1 FOR UPDATE`,
+                [det.ingrediente_id_saldo]
+            );
+            if (ingRes.rows.length > 0) {
+                const ing = ingRes.rows[0];
+                const stockAnterior = parseFloat(ing.stock_actual) || 0;
+                const stockNuevo = Number((stockAnterior - kilosDescontar).toFixed(4));
+                const obs = `SALDO PRESUPUESTO #${presupuestoId}: Art. ${det.articulo} (${kilosDescontar} kg -> ${det.cantidad} u)`;
+
+                // 1. Insertar registro en tabla de auditoría de ajustes
+                await client.query(`
+                    INSERT INTO public.ingredientes_ajustes
+                    (fecha, ingrediente_id, usuario_id, stock_anterior, stock_nuevo, tipo_ajuste, observacion)
+                    VALUES (NOW(), $1, NULL, $2, $3, 'ajuste_puntual', $4)
+                `, [det.ingrediente_id_saldo, stockAnterior, stockNuevo, obs]);
+
+                // 2. Insertar movimiento (el trigger_actualizar_stock descuenta de ingredientes.stock_actual)
+                await client.query(`
+                    INSERT INTO public.ingredientes_movimientos
+                    (fecha, ingrediente_id, kilos, tipo, carro_id, observaciones, stock_anterior)
+                    VALUES (NOW(), $1, $2, 'egreso', NULL, $3, $4)
+                `, [det.ingrediente_id_saldo, -kilosDescontar, obs, stockAnterior]);
+
+                console.log(`⚖️ [SALDO-INGREDIENTE] Descontados ${kilosDescontar} kg de "${ing.nombre}" (ID ${ing.id}) por Presupuesto #${presupuestoId}. Stock: ${stockAnterior} -> ${stockNuevo}`);
+            }
+        }
+    }
+}
+
+/**
  * Crear nuevo presupuesto con encabezado + detalles
  * Transacción corta + guardas de concurrencia + PUSH AUTOMÁTICO A SHEETS
  */
@@ -217,7 +279,7 @@ const crearPresupuesto = async (req, res) => {
         const presupuestoId = generatePresupuestoId();
         const fechaNormalizada = normalizeDate(fecha || new Date());
         const fechaEntregaNormalizada = fecha_entrega ? normalizeDate(fecha_entrega) : null;
-        const descuentoNormalizado = normalizeNumber(descuento);
+        const descuentoNormalizado = normalizeDescuentoDecimal(descuento);
         const estadoNormalizado = (typeof estado === 'string' && estado.trim()) ? estado.trim() : 'Presupuesto/Orden';
 
         console.log(`📋 [PRESUPUESTOS-WRITE] ${requestId} - IDs/fechas listos:`, {
@@ -312,7 +374,7 @@ const crearPresupuesto = async (req, res) => {
                 informe_generado || 'Pendiente', // Respetar payload o default
                 punto_entrega || '',
                 descuentoNormalizado,
-                (secuencia && secuencia.trim()) ? secuencia.trim() : 'Imprimir',
+                (secuencia && secuencia.trim()) ? secuencia.trim() : (estadoNormalizado === 'Sin Confirmar' ? 'Standby' : 'Imprimir'),
                 configHojaUrl,
                 1, // usuario_id
                 estado_logistico || null, // NUEVO: Se guarda lo que viene del front
@@ -379,9 +441,10 @@ const crearPresupuesto = async (req, res) => {
 
                 const barcode = (det.articulo || '').toString().trim();
                 const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+                const descAdicional = normalizeNumber(det.descuento_adicional || 0);
 
                 // LOG ANTES - Mapeo actual detectado
-                console.log(`🔍[CAMP - MAPPING - ANTES] ${requestId} - CAMP2 <= brutoUnit, CAMP3 <= alicDec, CAMP4 <= netoTotal, CAMP5 <= brutoTotal, CAMP6 <= ivaTotal`);
+                console.log(`🔍[CAMP - MAPPING - ANTES] ${requestId} - CAMP2 <= brutoUnit, CAMP3 <= alicDec, CAMP4 <= netoTotal, CAMP5 <= brutoTotal, CAMP6 <= ivaTotal, descAdic=${descAdicional}`);
 
                 detallesNormalizados.push({
                     id: generateDetalleId(),
@@ -397,7 +460,11 @@ const crearPresupuesto = async (req, res) => {
                     camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO  
                     camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
                     camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
-                    camp6: null                       // Sin uso (era ivaTotal)
+                    camp6: null,                      // Sin uso (era ivaTotal)
+                    descuento_adicional: descAdicional,
+                    es_saldo_ingrediente: Boolean(det.es_saldo_ingrediente),
+                    ingrediente_id_saldo: det.ingrediente_id_saldo ? parseInt(det.ingrediente_id_saldo, 10) : null,
+                    kilos_saldo: det.kilos_saldo ? normalizeNumber(det.kilos_saldo) : null
                 });
 
                 // LOG DESPUÉS - Mapeo efectivo aplicado
@@ -405,11 +472,12 @@ const crearPresupuesto = async (req, res) => {
             }
 
             const insertDetalleQuery = `
-                INSERT INTO presupuestos_detalles
+                INSERT INTO presupuestos_detalles 
                 (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
-                    diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
-            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
-                `;
+                 diferencia, camp1, camp2, camp3, camp4, camp5, camp6, descuento_adicional,
+                 es_saldo_ingrediente, ingrediente_id_saldo, kilos_saldo, fecha_actualizacion)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+            `;
             let detallesInsertados = 0;
             for (const detalle of detallesNormalizados) {
                 console.log(`[PUT - DET] Insertando detalle ${detallesInsertados + 1}/${detallesNormalizados.length}: articulo=${detalle.articulo}`);
@@ -428,8 +496,18 @@ const crearPresupuesto = async (req, res) => {
                     detalle.camp3,      // camp3 ↔ Camp4
                     detalle.camp4,      // camp4 ↔ Camp5 (columna M)
                     detalle.camp5,      // camp5 ↔ Camp6 (columna N)
-                    detalle.camp6       // camp6 ↔ Condicion (columna O)
+                    detalle.camp6,      // camp6 ↔ Condicion (columna O)
+                    detalle.descuento_adicional,
+                    detalle.es_saldo_ingrediente,
+                    detalle.ingrediente_id_saldo,
+                    detalle.kilos_saldo
                 ]);
+                detallesInsertados++;
+            }
+
+            // Descontar inmediatamente del stock de ingredientes los renglones con saldo de ingrediente (si el presupuesto no nace anulado)
+            if (!['Anulado', 'ANULADO', 'Cancelado'].includes(estadoNormalizado)) {
+                await registrarMovimientosSaldoIngrediente(client, presupuestoBD.id, detallesNormalizados);
             }
 
             // Insertar faltantes de stock en tabla auxiliar
@@ -719,7 +797,7 @@ const editarPresupuesto = async (req, res) => {
             if (descuento !== undefined && !hasFiscalLock) {
                 paramCount++;
                 updates.push(`descuento = $${paramCount}`);
-                params.push(normalizeNumber(descuento));
+                params.push(normalizeDescuentoDecimal(descuento));
             } else if (descuento !== undefined && hasFiscalLock) {
                 console.log(`🔒 [FISCAL-LOCK] Descuento ignorado por bloqueo fiscal`);
             }
@@ -826,9 +904,13 @@ const editarPresupuesto = async (req, res) => {
                 params.push(secuencia);
                 console.log(`[PRESUPUESTO] Actualizando secuencia a: '${secuencia}' para ID: ${id}`);
             } else {
-                // COMPORTAMIENTO LEGACY (Solo si no viene secuencia): Forzar Imprimir al editar para reactivar
-                // Pero solo si NO es una Orden de Retiro (protección adicional)
-                if (presupuesto.estado !== 'Orden de Retiro') {
+                const targetEstado = estado !== undefined ? estado : presupuesto.estado;
+                if (targetEstado === 'Sin Confirmar') {
+                    paramCount++;
+                    updates.push(`secuencia = $${paramCount}`);
+                    params.push('Standby');
+                    console.log(`[PRESUPUESTO] Estado es Sin Confirmar: Forzando secuencia='Standby' para ID: ${id}`);
+                } else if (targetEstado !== 'Orden de Retiro') {
                     paramCount++;
                     updates.push(`secuencia = $${paramCount}`);
                     params.push('Imprimir');
@@ -879,6 +961,9 @@ const editarPresupuesto = async (req, res) => {
                 }
                 console.log(`[PUT-DET] ✅ Todos los detalles validados correctamente`);
 
+                // 0. Revertir cualquier movimiento de saldo de ingrediente previo de este presupuesto
+                await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
+
                 // 1. Eliminar detalles existentes
                 console.log(`[PUT-DET] Ejecutando DELETE de detalles existentes para id_presupuesto=${presupuesto.id}`);
                 const deleteDetallesQuery = `
@@ -909,9 +994,10 @@ const editarPresupuesto = async (req, res) => {
 
                     const barcode = (det.articulo || '').toString().trim();
                     const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+                    const descAdicional = normalizeNumber(det.descuento_adicional || 0);
 
                     // LOG ANTES - Mapeo actual detectado (edición)
-                    console.log(`🔍 [CAMP-MAPPING-ANTES-EDIT] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal`);
+                    console.log(`🔍 [CAMP-MAPPING-ANTES-EDIT] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal, descAdic=${descAdicional}`);
 
                     detallesNormalizados.push({
                         id: generateDetalleId(),
@@ -927,7 +1013,11 @@ const editarPresupuesto = async (req, res) => {
                         camp3: netoTotal,                 // L (era camp4) - CORRIMIENTO
                         camp4: brutoTotal,                // M (era camp5) - CORRIMIENTO
                         camp5: ivaTotal,                  // N (era camp6) - CORRIMIENTO
-                        camp6: null                       // Sin uso (era ivaTotal)
+                        camp6: null,                      // Sin uso (era ivaTotal)
+                        descuento_adicional: descAdicional,
+                        es_saldo_ingrediente: Boolean(det.es_saldo_ingrediente),
+                        ingrediente_id_saldo: det.ingrediente_id_saldo ? parseInt(det.ingrediente_id_saldo, 10) : null,
+                        kilos_saldo: det.kilos_saldo ? normalizeNumber(det.kilos_saldo) : null
                     });
 
                     // LOG DESPUÉS - Mapeo efectivo aplicado (edición)
@@ -947,8 +1037,9 @@ const editarPresupuesto = async (req, res) => {
                 const insertDetalleQuery = `
                     INSERT INTO presupuestos_detalles
                     (id_presupuesto, id_presupuesto_ext, articulo, cantidad, valor1, precio1, iva1,
-                     diferencia, camp1, camp2, camp3, camp4, camp5, camp6, fecha_actualizacion)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+                     diferencia, camp1, camp2, camp3, camp4, camp5, camp6, descuento_adicional,
+                     es_saldo_ingrediente, ingrediente_id_saldo, kilos_saldo, fecha_actualizacion)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
                 `;
                 let detallesInsertados = 0;
                 for (const detalle of detallesNormalizados) {
@@ -967,9 +1058,19 @@ const editarPresupuesto = async (req, res) => {
                         detalle.camp3,
                         detalle.camp4,
                         detalle.camp5,
-                        detalle.camp6
+                        detalle.camp6,
+                        detalle.descuento_adicional,
+                        detalle.es_saldo_ingrediente,
+                        detalle.ingrediente_id_saldo,
+                        detalle.kilos_saldo
                     ]);
                     detallesInsertados++;
+                }
+
+                // Aplicar nuevos descuentos de saldo de ingrediente si el presupuesto no está anulado
+                const estadoEfectivo = (estado !== undefined ? estado : presupuesto.estado) || '';
+                if (!['Anulado', 'ANULADO', 'Cancelado'].includes(estadoEfectivo)) {
+                    await registrarMovimientosSaldoIngrediente(client, presupuesto.id, detallesNormalizados);
                 }
 
                 console.log(`[PUT-DET] ===== RESUMEN FINAL =====`);
@@ -1008,6 +1109,9 @@ const editarPresupuesto = async (req, res) => {
 
             } else if (hasFiscalLock) {
                 console.log(`🔒 [FISCAL-LOCK] Se omitió el DELETE e INSERT de presupuestos_detalles para proteger la factura.`);
+            } else if (estado && ['Anulado', 'ANULADO', 'Cancelado'].includes(estado)) {
+                // Si se anuló por cambio de cabecera sin reenviar detalles, devolver saldos de ingrediente
+                await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
             }
 
             await client.query('COMMIT');
@@ -1226,6 +1330,9 @@ const eliminarPresupuesto = async (req, res) => {
                         estado = CASE WHEN COALESCE(estado,'')='' THEN 'Anulado' ELSE estado END
                 WHERE id = $1 AND activo = true
                 `, [presupuesto.id]);
+
+            // Revertir cualquier descuento de saldo de ingrediente asociado al presupuesto anulado
+            await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
 
             await client.query('COMMIT');
 

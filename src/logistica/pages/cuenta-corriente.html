@@ -252,6 +252,207 @@
             transform: translateY(-1px);
         }
 
+        /* Estilos para Composición de Saldo y Factor Tiempo */
+        .composicion-panel {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 18px 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+            transition: all 0.3s ease;
+        }
+
+        .composicion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .composicion-title {
+            font-size: 1.05em;
+            font-weight: 700;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+        }
+
+        .composicion-badges {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .badge-condicion {
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-size: 0.78em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .badge-condicion.optimo {
+            background-color: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .badge-condicion.alerta {
+            background-color: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .badge-condicion.mora {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .badge-metric {
+            background-color: #f1f5f9;
+            color: #475569;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 600;
+            border: 1px solid #e2e8f0;
+        }
+
+        .capas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 14px;
+        }
+
+        .capa-card {
+            background: #fafafa;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            position: relative;
+            transition: all 0.2s ease;
+            border-left: 4px solid #94a3b8;
+        }
+
+        .capa-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            background: #ffffff;
+        }
+
+        .capa-card.optimo {
+            border-left-color: #10b981;
+        }
+
+        .capa-card.alerta {
+            border-left-color: #f59e0b;
+        }
+
+        .capa-card.vencido {
+            border-left-color: #ef4444;
+        }
+
+        .capa-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .capa-comprobante {
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 0.95em;
+        }
+
+        .capa-canal-badge {
+            font-size: 0.75em;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: #f1f5f9;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .capa-monto-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+        }
+
+        .capa-monto-pendiente {
+            font-size: 1.35em;
+            font-weight: 850;
+            font-family: monospace;
+            color: #b91c1c;
+        }
+
+        .capa-monto-original {
+            font-size: 0.82em;
+            color: #64748b;
+        }
+
+        .capa-progress-container {
+            width: 100%;
+            height: 6px;
+            background-color: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .capa-progress-fill {
+            height: 100%;
+            background-color: #ef4444;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .capa-footer-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.82em;
+            color: #64748b;
+            padding-top: 6px;
+            border-top: 1px dashed #e2e8f0;
+        }
+
+        .capa-tiempo-badge {
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+
+        .capa-tiempo-badge.optimo {
+            background-color: #ecfdf5;
+            color: #047857;
+        }
+
+        .capa-tiempo-badge.alerta {
+            background-color: #fffbeb;
+            color: #b45309;
+        }
+
+        .capa-tiempo-badge.vencido {
+            background-color: #fef2f2;
+            color: #b91c1c;
+        }
+
         /* Tabla de Movimientos */
         .grid-container {
             overflow-x: auto;
@@ -472,6 +673,9 @@
             <span style="color: #cbd5e1; font-size: 0.9em;">Historial de deuda, cobros y movimientos comerciales de la distribuidora</span>
         </div>
         <div style="display: flex; gap: 12px;">
+            <button class="btn-premium" style="background:#8e4785; color:#fff; font-size: 0.95em;" onclick="irARecepcionEfectivo()">
+                💵 Recepción Efectivo
+            </button>
             <button class="btn-premium" style="background:#eab308; color:#000; font-size: 0.95em;" onclick="window.location.href='listado-clientes.html'">
                 ← Volver a Clientes
             </button>
@@ -534,6 +738,12 @@
                     <button class="btn-premium btn-purple" id="btn-previsualizar-reporte" style="background-color: #7c3aed; box-shadow: 0 4px 6px rgba(124, 58, 237, 0.15);">
                         📄 Previsualizar
                     </button>
+                    <button class="btn-premium" id="btn-asistente-politicas-cc" onclick="window.abrirAsistentePoliticasDesdeCC && window.abrirAsistentePoliticasDesdeCC()" style="background: linear-gradient(135deg, #0f766e, #0284c7); color: white; border: none; box-shadow: 0 4px 6px rgba(2, 132, 199, 0.2);">
+                        🛡️ Políticas / Pagos Parciales WA
+                    </button>
+                    <button class="btn-premium" id="btn-ver-jornadas-colaborador" style="display: none; background-color: #8e4785; color: white; box-shadow: 0 4px 6px rgba(142, 71, 133, 0.2);">
+                        ⏱️ Horas Depósito
+                    </button>
                 </div>
 
             </div>
@@ -547,12 +757,126 @@
                         Saldo Inicial / Apertura: <span id="cc-saldo-apertura-val">$0.00</span> 
                         <a href="#" id="lnk-editar-saldo-apertura" style="color: white; text-decoration: underline; margin-left: 8px; font-weight: bold;">✏️ Ajustar</a>
                     </div>
+                    <!-- Composición de Deuda Activa (Punto Cero / Factor Tiempo) -->
+                    <div class="composicion-deuda-info" id="cc-composicion-deuda-container" style="margin-top: 10px; font-size: 0.85em; display: none;">
+                        <div style="font-weight: 700; opacity: 0.95; margin-bottom: 5px; display: flex; align-items: center; gap: 6px;">
+                            <span>⏳ Composición de Saldo Pendiente:</span>
+                        </div>
+                        <div id="cc-composicion-deuda-list" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                    </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <button class="btn-premium" id="btn-ajuste-automatico" style="display: none; background-color: #d97706; color: white; box-shadow: 0 4px 6px rgba(217, 119, 6, 0.15); border: none;">
                         ⚡ Ajustar Saldo Mínimo
                     </button>
                     <span class="balance-badge" id="cc-balance-badge">Al día / Sin deuda</span>
+                </div>
+            </div>
+
+            <!-- Card del Servicio de Asistencia Financiera (Modo Sombra / Esquema de 3 Ventanas) -->
+            <div class="salvavidas-shadow-card" id="cc-salvavidas-card" style="display: none; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%); color: white; border-radius: 8px; padding: 20px 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(30, 27, 75, 0.25); border: 1px solid #4338ca; transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;">
+                            <span style="font-size: 1.25em;">🛡️</span>
+                            <span style="font-size: 0.95em; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #a5b4fc;">Servicio de Asistencia Financiera LAMDA</span>
+                            <span id="cc-salvavidas-badge-modo" style="background: rgba(16, 185, 129, 0.22); border: 1px solid #34d399; color: #a7f3d0; font-size: 0.72em; font-weight: 700; padding: 2px 9px; border-radius: 9999px; text-transform: uppercase;">🛡️ Financiación Activa</span>
+                        </div>
+                        <div style="font-size: 0.88em; color: #cbd5e1; max-width: 700px; line-height: 1.4;" id="cc-salvavidas-descripcion">
+                            Contención comercial y acompañamiento financiero. El sistema no computa multas ni mora; asiste la continuidad de pedidos y despachos.
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div id="cc-salvavidas-switch-container" style="display: inline-flex; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 9999px; padding: 3px; gap: 3px;"></div>
+                        <button type="button" class="btn-premium" onclick="window.abrirAsistentePoliticasDesdeCC && window.abrirAsistentePoliticasDesdeCC()" style="background: #0d9488; border: 1px solid #2dd4bf; color: white; font-size: 0.88em; padding: 7px 14px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.4);">
+                            💬 Explicar Políticas / Pagos Parciales por WA
+                        </button>
+                        <button type="button" class="btn-premium" id="btn-salvavidas-config-cliente" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: white; font-size: 0.88em; padding: 7px 14px;">
+                            ⚙️ Excepción Comercial
+                        </button>
+                        <button type="button" class="btn-premium" id="btn-salvavidas-dashboard-general" style="background: #4f46e5; border: none; color: white; font-size: 0.88em; padding: 7px 14px; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.4);">
+                            📊 Tablero de Asistencia
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Métricas Clave de Asistencia Financiera (4 Cuadrantes) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.12);">
+                    <div style="background: rgba(255,255,255,0.06); padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                        <div style="font-size: 0.75em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Capital de Comprobantes</div>
+                        <div style="font-size: 1.3em; font-weight: 800; font-family: monospace; color: #f8fafc;" id="cc-salvavidas-saldo-real">$0.00</div>
+                        <div style="font-size: 0.75em; color: #10b981; margin-top: 2px;">Capital remanente impago</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                        <div style="font-size: 0.75em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Interés desde Día 1 (Bonif. ≤14d)</div>
+                        <div style="font-size: 1.3em; font-weight: 800; font-family: monospace; color: #38bdf8;" id="cc-salvavidas-cortesia-monto">$0.00</div>
+                        <div style="font-size: 0.75em; color: #7dd3fc; margin-top: 2px;" id="cc-salvavidas-cortesia-badge">100% Bonificado · 🎟️ 3/3 comodines</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                        <div style="font-size: 0.75em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Financiación Activa (c/IVA)</div>
+                        <div style="font-size: 1.3em; font-weight: 800; font-family: monospace; color: #fbbf24;" id="cc-salvavidas-monto-financiacion">+$0.00</div>
+                        <div style="font-size: 0.75em; color: #fde68a; margin-top: 2px;" id="cc-salvavidas-tasa-dias">Tasa 3.0% TEM + IVA 21%</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                        <div style="font-size: 0.75em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Total Real a Pagar Hoy (c/IVA)</div>
+                        <div style="font-size: 1.3em; font-weight: 800; font-family: monospace; color: #a5b4fc;" id="cc-salvavidas-saldo-proyectado">$0.00</div>
+                        <div style="font-size: 0.75em; color: #c7d2fe; margin-top: 2px;" id="cc-salvavidas-cant-comprobantes">0 comprobantes asistidos</div>
+                    </div>
+                </div>
+
+                <!-- Chips detallados por comprobante y ventana -->
+                <div id="cc-salvavidas-detalles-container" style="margin-top: 14px; display: none;">
+                    <div style="font-size: 0.8em; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">1) ¿Cómo continúa la deuda? (Comprobantes Abiertos con su Capital y Financiación Activa):</div>
+                    <div id="cc-salvavidas-chips-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                </div>
+
+                <!-- Desglose de Pagos Parciales con Imputación Proporcional de Capital + Financiación -->
+                <div id="cc-salvavidas-pagos-container" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.18); display: none;">
+                    <div style="font-size: 0.8em; font-weight: 700; color: #6ee7b7; margin-bottom: 8px;">2) ¿Qué cancelaron los pagos parciales? (Imputación de Capital + Financiación y Facturación del Interés):</div>
+                    <div id="cc-salvavidas-pagos-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                </div>
+            </div>
+
+            <!-- Desglose de Ecuación Contable -->
+            <div class="cc-totales-bar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                <div class="info-card" style="border-left: 4px solid #3b82f6; background-color: #f8fafc;">
+                    <div class="label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 0.8em; font-weight: 700; color: #1e40af;">Saldo Apertura / Inicial</span>
+                        <a href="#" id="lnk-editar-saldo-apertura-box" style="color: #3b82f6; text-decoration: none; font-size: 0.85em; font-weight: 600;">✏️ Ajustar</a>
+                    </div>
+                    <div class="value" id="lbl-total-apertura" style="color: #1e293b; font-family: monospace; font-size: 1.15em;">$0.00</div>
+                </div>
+                <div class="info-card" style="border-left: 4px solid var(--danger-color); background-color: #fef2f2;">
+                    <div class="label" style="color: #991b1b; font-size: 0.8em; font-weight: 700; margin-bottom: 6px;">Total Facturado / Débitos (+)</div>
+                    <div class="value" id="lbl-total-debitos" style="color: var(--danger-color); font-family: monospace; font-size: 1.15em;">$0.00</div>
+                </div>
+                <div class="info-card" style="border-left: 4px solid var(--success-color); background-color: #ecfdf5;">
+                    <div class="label" style="color: #065f46; font-size: 0.8em; font-weight: 700; margin-bottom: 6px;">Total Cobrado / Créditos (-)</div>
+                    <div class="value" id="lbl-total-creditos" style="color: var(--success-color); font-family: monospace; font-size: 1.15em;">$0.00</div>
+                </div>
+                <div class="info-card" style="border-left: 4px solid var(--purple-primary); background-color: var(--purple-light);">
+                    <div class="label" style="color: var(--purple-primary); font-size: 0.8em; font-weight: 700; margin-bottom: 6px;">Saldo Contable Final (=)</div>
+                    <div class="value" id="lbl-total-saldo-final" style="color: var(--purple-primary); font-family: monospace; font-size: 1.15em;">$0.00</div>
+                </div>
+            </div>
+
+            <!-- Panel de Composición de Deuda & Factor Tiempo (Punto Cero Logístico) -->
+            <div class="composicion-panel" id="panel-composicion-deuda" style="display: none;">
+                <div class="composicion-header">
+                    <div>
+                        <h3 class="composicion-title">
+                            <span>⏳ Composición del Saldo & Antigüedad (Factor Tiempo)</span>
+                        </h3>
+                        <span style="font-size: 0.82em; color: #64748b;">Trazabilidad exacta del origen de la deuda desde el Punto Cero de entrega o retiro.</span>
+                    </div>
+                    <div class="composicion-badges">
+                        <span class="badge-condicion optimo" id="badge-condicion-comercial">Al día</span>
+                        <span class="badge-metric" id="badge-antiguedad-maxima">Antigüedad máxima: 0 días</span>
+                        <span class="badge-metric" id="badge-antiguedad-promedio">Promedio ponderado: 0 días</span>
+                    </div>
+                </div>
+                <div class="capas-grid" id="contenedor-capas-deuda">
+                    <!-- Inyectado dinámicamente -->
                 </div>
             </div>
 
@@ -585,13 +909,19 @@
             </div>
 
             <!-- Grilla de Movimientos -->
-            <h2 style="margin-top: 24px; margin-bottom: 12px; font-size: 1.15em; color: var(--purple-primary); display: flex; align-items: center; gap: 6px;">
-                📜 Historial Cronológico de Movimientos
-            </h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <h2 style="margin: 0; font-size: 1.15em; color: var(--purple-primary); display: flex; align-items: center; gap: 6px;">
+                    📜 Historial Cronológico de Movimientos
+                </h2>
+                <button id="btn-enviar-seleccionados-wp" class="btn-premium" style="display: none; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; font-weight: 600; padding: 7px 14px; font-size: 0.85em; border: none; cursor: pointer; border-radius: 6px; align-items: center; gap: 6px; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.2);">
+                    📱 Enviar Comprobantes Seleccionados (<span id="lbl-cant-seleccionados">0</span>)
+                </button>
+            </div>
             <div class="grid-container">
                 <table class="grid-movimientos" id="tabla-movimientos">
                     <thead>
                         <tr>
+                            <th style="width: 36px; text-align: center;"><input type="checkbox" id="chk-select-all-movs" title="Seleccionar/Desseleccionar todos" style="cursor: pointer; width: 15px; height: 15px; accent-color: #25d366;"></th>
                             <th>Fecha</th>
                             <th>Concepto / Descripción</th>
                             <th>Tipo Comp.</th>
@@ -603,7 +933,7 @@
                     </thead>
                     <tbody id="cuerpo-tabla-movimientos">
                         <tr>
-                            <td colspan="7" style="text-align: center; color: #94a3b8; padding: 20px;">
+                            <td colspan="8" style="text-align: center; color: #94a3b8; padding: 20px;">
                                 ⏳ Cargando movimientos...
                             </td>
                         </tr>
@@ -616,6 +946,6 @@
     <!-- Script de configuración de variables globales -->
     <script src="/env-config.js"></script>
     <!-- Script de lógica frontend dedicado -->
-    <script src="../js/cuenta-corriente.js?v=1.0.1"></script>
+    <script src="../js/cuenta-corriente.js?v=1.2.1"></script>
 </body>
 </html>

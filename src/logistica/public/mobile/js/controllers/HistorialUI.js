@@ -75,11 +75,13 @@ async function abrirDetalleRutaHistorial(idRuta) {
             
             let html = '';
             ruta.entregas.forEach(e => {
-                const esRetiro = e.estado === 'Orden de Tratamiento' || e.estado === 'Orden de Retiro';
-                const color = esRetiro ? '#dc2626' : '#2563eb';
+                const esSobre = e.es_sobre_efectivo === true || e.estado === 'Sobre de Efectivo';
+                const esVisita = e.es_visita_preventa === true || e.estado === 'Visita Comercial';
+                const esRetiro = !esSobre && !esVisita && (e.estado === 'Orden de Tratamiento' || e.estado === 'Orden de Retiro');
+                const color = esSobre ? '#7c3aed' : (esVisita ? '#ea580c' : (esRetiro ? '#dc2626' : '#2563eb'));
                 
                 let articulosHtml = '<ul style="margin: 0.5rem 0 0.5rem 1.5rem; font-size: 0.85rem; color: #475569; padding-left:0;">';
-                e.articulos.forEach(art => {
+                (e.articulos || []).forEach(art => {
                     articulosHtml += `<li style="margin-bottom: 2px;">${art.cantidad}x ${art.articulo}</li>`;
                 });
                 articulosHtml += '</ul>';
@@ -88,12 +90,20 @@ async function abrirDetalleRutaHistorial(idRuta) {
                 if(e.comprobante_lomasoft) badge = `<span style="font-size:0.7rem; background:#d1fae5; color:#059669; padding:2px 4px; border-radius:4px; margin-left:8px;">✅ ${e.comprobante_lomasoft}</span>`;
                 else if(e.id_factura_lomasoft) badge = `<span style="font-size:0.7rem; background:#d1fae5; color:#059669; padding:2px 4px; border-radius:4px; margin-left:8px;">📄 ${e.id_factura_lomasoft}</span>`;
 
-                const totalFormateado = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(e.total_monto || 0);
+                const totalFormateado = esVisita
+                    ? ''
+                    : new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(e.total_monto || 0);
+
+                const prefijoTitulo = esSobre
+                    ? `💵 Sobre #${e.id}`
+                    : (esVisita
+                        ? `🎯 Visita Preventa (${e.id})`
+                        : `${esRetiro ? (e.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${e.id}`);
 
                 html += `
                 <div style="border-left: 3px solid ${color}; margin-bottom: 1rem; background: #fff; padding: 12px; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                     <div style="font-weight: bold; margin-bottom: 4px; color:#1e293b; display: flex; justify-content: space-between; align-items: center;">
-                        <span>${esRetiro ? (e.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${e.id} ${badge}</span>
+                        <span>${prefijoTitulo} ${badge}</span>
                         <span style="color:#0f172a; font-size:1.1rem;">${totalFormateado}</span>
                     </div>
                     <div style="font-size: 0.95rem; color: #334155; margin-bottom: 4px;">👤 ${e.cliente_nombre}</div>

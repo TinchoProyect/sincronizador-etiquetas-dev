@@ -116,7 +116,7 @@ async function crearReceta(req, res) {
     
     try {
         console.log('📥 crearReceta - Body recibido:', req.body);
-        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal } = req.body;
+        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
@@ -169,11 +169,11 @@ async function crearReceta(req, res) {
 
         // Insertar la receta
         const recetaQuery = `
-            INSERT INTO recetas (articulo_numero, descripcion, fecha_creacion)
-            VALUES ($1, $2, NOW())
+            INSERT INTO recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
+            VALUES ($1, $2, NOW(), $3)
             RETURNING id
         `;
-        const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion]);
+        const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion, enlazado_externo === true]);
         const recetaId = recetaResult.rows[0].id;
 
         // Insertar los ingredientes si existen
@@ -259,7 +259,7 @@ async function obtenerReceta(numero_articulo) {
     try {
         // Obtener la receta base
         const recetaBaseQuery = `
-            SELECT id, articulo_numero, descripcion, fecha_creacion
+            SELECT id, articulo_numero, descripcion, fecha_creacion, COALESCE(enlazado_externo, false) as enlazado_externo
             FROM recetas
             WHERE articulo_numero = $1
         `;
@@ -298,6 +298,7 @@ async function obtenerReceta(numero_articulo) {
             articulo_numero: recetaBase.articulo_numero,
             descripcion: recetaBase.descripcion,
             fecha_creacion: recetaBase.fecha_creacion,
+            enlazado_externo: recetaBase.enlazado_externo,
             ingredientes: ingredientesResult.rows.map(row => ({
                 ingrediente_id: row.ingrediente_id,
                 nombre_ingrediente: row.nombre_ingrediente,
@@ -325,7 +326,7 @@ async function actualizarReceta(req, res) {
     try {
         console.log('📥 actualizarReceta - Body recibido:', req.body);
         const { numero_articulo } = req.params;
-        const { descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal } = req.body;
+        const { descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
@@ -389,8 +390,8 @@ async function actualizarReceta(req, res) {
         await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
         await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
 
-        // Actualizar descripción
-        await client.query('UPDATE recetas SET descripcion = $1 WHERE id = $2', [descripcion, recetaId]);
+        // Actualizar descripción y enlace externo
+        await client.query('UPDATE recetas SET descripcion = $1, enlazado_externo = $2 WHERE id = $3', [descripcion, enlazado_externo === true, recetaId]);
 
         // Insertar nuevos ingredientes si existen
         if (tieneIngredientes) {

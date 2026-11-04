@@ -119,7 +119,9 @@
     }
 
     function setCantidad(el, val) {
-        setNumeric(el, val, 2, 1);
+        const n = Number(val);
+        const dec = (Number.isFinite(n) && Math.round(n * 100) !== Math.round(n * 1000) / 10) ? 3 : 2;
+        setNumeric(el, val, dec, 1);
     }
 
     // InicializaciÄ‚Å‚n
@@ -244,7 +246,33 @@
         if (form) {
             form.addEventListener('submit', handleSubmit);
         } else {
-            console.error('Ã¢Â ÂŒ [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
+            console.error('❌ [PRESUPUESTOS-EDIT] Formulario #form-editar-presupuesto no encontrado');
+        }
+
+        // Configurar botón "Guardar en Standby"
+        const btnGuardarStandby = document.getElementById('btn-guardar-standby');
+        if (btnGuardarStandby) {
+            btnGuardarStandby.addEventListener('click', () => {
+                const estadoSelect = document.getElementById('estado');
+                if (estadoSelect) {
+                    estadoSelect.value = 'Sin Confirmar';
+                }
+                const secuenciaInput = document.getElementById('secuencia');
+                if (secuenciaInput) {
+                    secuenciaInput.value = 'Standby';
+                }
+                if (form) {
+                    if (form.checkValidity && !form.checkValidity()) {
+                        form.reportValidity();
+                        return;
+                    }
+                    if (form.requestSubmit) {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                    }
+                }
+            });
         }
 
         // Configurar autocompletar de clientes
@@ -263,16 +291,22 @@
         window.seleccionarArticulo = seleccionarArticulo;
 
         // Cargar datos del presupuesto y detalles en paralelo
-        Promise.all([cargarPresupuesto(), cargarDetallesPresupuesto()]).then(() => {
+        Promise.all([cargarPresupuesto(), cargarDetallesPresupuesto()]).then(async () => {
             console.log('[EDIT] encabezado OK');
             console.log(`[EDIT] detalles: ${detallesData.length} filas`);
 
-            // Renderizar detalles usando mÄ‚Å‚dulo comÄ‚ÅŸn
-            renderDetallesConModuloComun();
+            // Renderizar detalles usando módulo común (con await!)
+            await renderDetallesConModuloComun();
 
             // Aplicar modo IVA y recalcular totales
             applyIvaModeToAllRows();
-            if (typeof recalcTotales === 'function') recalcTotales();
+
+            // Forzar la carga en caliente determinística de datasets financieros (incluyendo gananciaBunker) para todas las filas.
+            if (window.conmutarModoBunker) {
+                await window.conmutarModoBunker();
+            } else {
+                if (typeof recalcTotales === 'function') recalcTotales();
+            }
         }).catch(error => {
             console.error('[EDIT] Error cargando datos:', error);
         });
@@ -315,7 +349,7 @@
             llenarInformacionPresupuesto();
 
             // Llenar campos editables
-            llenarCamposEditables();
+            await llenarCamposEditables();
 
             // NUEVO: Actualizar botÃ³n de facturaciÃ³n segÃºn estado
             const estaFacturado = presupuestoData.esta_facturado || false;
@@ -364,17 +398,25 @@
         // precio unitario con IVA
         const precioUnit = pvu || (neto * (1 + ivaDecimal));
 
+        const descEspRaw = d?.descuento_adicional ?? d?.desc_adicional ?? d?.descuento_extra ?? 0;
+        const descEsp = toNum(descEspRaw);
+
         return {
-            // cÄ‚Å‚digos
+            // códigos
             codigo_barras: d?.codigo_barras ?? d?.cod_barra ?? d?.codigo ?? d?.articulo ?? d?.articulo_numero ?? '',
             articulo_numero: d?.articulo_numero ?? d?.articulo ?? '',
-            // descripciÄ‚Å‚n (probamos varias claves comunes)
-            descripcion: d?.detalle ?? d?.descripcion ?? d?.articulo_descripcion ?? d?.nombre ?? '',
-            // nÄ‚ÅŸmeros
+            // descripción (probamos varias claves comunes)
+            descripcion: d?.descripcion_articulo ?? d?.detalle ?? d?.descripcion ?? d?.articulo_descripcion ?? d?.nombre ?? '',
+            // números
             cantidad: toNum(d?.cantidad),
             valor1: neto,            // neto sin IVA
-            iva1: ivaDecimal,        // Ä‘ÂŸÂ‘Âˆ SIEMPRE decimal (0.21)
-            precio1: precioUnit      // unitario con IVA
+            iva1: ivaDecimal,        // SIEMPRE decimal (0.21)
+            precio1: precioUnit,     // unitario con IVA
+            descuento_adicional: descEsp,
+            es_saldo_ingrediente: d?.es_saldo_ingrediente === true,
+            ingrediente_id_saldo: d?.ingrediente_id_saldo || null,
+            kilos_saldo: d?.kilos_saldo != null ? toNum(d?.kilos_saldo) : null,
+            ingrediente_saldo_nombre: d?.ingrediente_saldo_nombre || ''
         };
     }
 
@@ -433,7 +475,7 @@
     /**
      * Llenar campos editables con datos actuales
      */
-    function llenarCamposEditables() {
+    async function llenarCamposEditables() {
         console.log('[EDIT] Llenando campos editables...');
 
         // nota
@@ -453,6 +495,10 @@
         document.getElementById('fecha').value = presupuestoData.fecha ? presupuestoData.fecha.split('T')[0] : '';
         document.getElementById('tipo_comprobante').value = presupuestoData.tipo_comprobante || 'Factura';
         document.getElementById('estado').value = presupuestoData.estado || 'Presupuesto/Orden';
+        const secuenciaInput = document.getElementById('secuencia');
+        if (secuenciaInput) {
+            secuenciaInput.value = presupuestoData.secuencia || (presupuestoData.estado === 'Sin Confirmar' ? 'Standby' : 'Imprimir');
+        }
         document.getElementById('agente').value = presupuestoData.agente || '';
 
         // Inicializar switch de precios Búnker desde el presupuesto cargado
@@ -470,33 +516,90 @@
         // Verificar si el cliente tiene listas de precios Búnker para mostrar/ocultar el switch
         const clienteIdForBunker = parseInt(presupuestoData.id_cliente, 10) || 0;
         if (clienteIdForBunker > 0) {
-            (async () => {
-                try {
-                    const res = await fetch(`/api/presupuestos/clientes/${clienteIdForBunker}`);
-                    if (res.ok) {
-                        const body = await res.json();
-                        const wrapper = document.getElementById('bunker-switch-wrapper');
-                        const switchInputEl = document.getElementById('usar_precios_bunker');
-                        const labelEl = document.getElementById('bunker-switch-label');
-                        if (body?.data?.tiene_listas_bunker || usarPreciosBunker) {
-                            if (wrapper) wrapper.style.display = 'inline-flex';
-                            if (switchInputEl) switchInputEl.disabled = false;
-                        } else {
-                            if (wrapper) wrapper.style.display = 'none';
-                            if (switchInputEl) {
-                                switchInputEl.checked = false;
-                                switchInputEl.disabled = true;
-                            }
-                            if (labelEl) {
-                                labelEl.innerText = 'Inactivo';
-                                labelEl.style.color = '#475569';
+            try {
+                const res = await fetch(`/api/presupuestos/clientes/${clienteIdForBunker}`);
+                if (res.ok) {
+                    const body = await res.json();
+                    const clienteData = body?.data;
+                    const wrapper = document.getElementById('bunker-switch-wrapper');
+                    const switchInputEl = document.getElementById('usar_precios_bunker');
+                    const labelEl = document.getElementById('bunker-switch-label');
+                    const badgeEl = document.getElementById('bunker-lista-badge');
+
+                    if (wrapper) wrapper.style.display = 'inline-flex';
+
+                    if (clienteData?.tiene_listas_bunker || usarPreciosBunker) {
+                        if (switchInputEl) switchInputEl.disabled = false;
+                        if (badgeEl) {
+                            badgeEl.style.display = 'inline-flex';
+                            if (clienteData?.tiene_listas_bunker) {
+                                badgeEl.textContent = `📋 Lista: ${clienteData.bunker_lista_nombre || 'Asignada'}`;
+                                badgeEl.dataset.listaNombre = clienteData.bunker_lista_nombre || 'Asignada';
+                                if (usarPreciosBunker) {
+                                    badgeEl.style.background = '#dcfce7';
+                                    badgeEl.style.color = '#15803d';
+                                    badgeEl.style.border = '1px solid #86efac';
+                                    if (wrapper) {
+                                        wrapper.style.background = '#f0fdf4';
+                                        wrapper.style.borderColor = '#bbf7d0';
+                                    }
+                                } else {
+                                    badgeEl.style.background = '#f1f5f9';
+                                    badgeEl.style.color = '#64748b';
+                                    badgeEl.style.border = '1px solid #cbd5e1';
+                                    if (wrapper) {
+                                        wrapper.style.background = '#f8fafc';
+                                        wrapper.style.borderColor = '#e2e8f0';
+                                    }
+                                }
+                            } else {
+                                badgeEl.textContent = '⚠️ Sin lista asignada';
+                                badgeEl.dataset.listaNombre = '';
+                                badgeEl.style.background = '#fef3c7';
+                                badgeEl.style.color = '#b45309';
+                                badgeEl.style.border = '1px solid #fcd34d';
                             }
                         }
+                    } else {
+                        if (switchInputEl) {
+                            switchInputEl.checked = false;
+                            switchInputEl.disabled = true;
+                        }
+                        if (labelEl) {
+                            labelEl.innerText = 'Inactivo';
+                            labelEl.style.color = '#92400e';
+                        }
+                        if (badgeEl) {
+                            badgeEl.style.display = 'inline-flex';
+                            badgeEl.textContent = '⚠️ Sin lista asignada';
+                            badgeEl.dataset.listaNombre = '';
+                            badgeEl.style.background = '#fef3c7';
+                            badgeEl.style.color = '#b45309';
+                            badgeEl.style.border = '1px solid #fcd34d';
+                        }
+                        if (wrapper) {
+                            wrapper.style.background = '#fffbeb';
+                            wrapper.style.borderColor = '#fde68a';
+                        }
                     }
-                } catch (err) {
-                    console.error('Error al verificar listas Bunker del cliente:', err);
                 }
-            })();
+            } catch (err) {
+                console.error('Error al verificar listas Bunker del cliente:', err);
+            }
+
+            // 🏷️ Cargar Política Comercial asignada al cliente y evaluar
+            try {
+                if (window.EvaluadorPoliticas && typeof window.EvaluadorPoliticas.cargarPoliticaCliente === 'function') {
+                    await window.EvaluadorPoliticas.cargarPoliticaCliente(clienteIdForBunker);
+                    const pctGuardado = Number.isFinite(d) ? (d <= 1 ? d * 100 : d) : 0;
+                    if (pctGuardado > 0 && typeof window.EvaluadorPoliticas.autorizarDescuentoExistente === 'function') {
+                        window.EvaluadorPoliticas.autorizarDescuentoExistente(pctGuardado);
+                    }
+                    recalcTotales();
+                }
+            } catch (errPol) {
+                console.warn('⚠️ No se pudo cargar política comercial del cliente en edición:', errPol);
+            }
         }
 
         // Secuencia - SIEMPRE forzar "Imprimir" (campo no editable)
@@ -558,7 +661,7 @@
         if (!tbody) return;
         tbody.innerHTML = '';
 
-        // Resetear contador del mÄ‚Å‚dulo comÄ‚ÅŸn
+        // Resetear contador del módulo común
         if (window.Detalles) {
             window.Detalles.detalleCounter = 0;
         }
@@ -566,16 +669,20 @@
         const tipoSel = document.getElementById('tipo_comprobante');
         const esRemito = () => tipoSel && tipoSel.value === 'Remito-Efectivo';
 
-        // Procesar cada detalle de forma asÄ‚Â­ncrona
-        for (const det of detallesData) {
-            console.log(`Ä‘ÂŸÂ“Åš [PRESUPUESTOS-EDIT] Renderizando detalle:`, det);
+        const switchInput = document.getElementById('usar_precios_bunker');
+        const usarPreciosBunker = switchInput ? switchInput.checked : (typeof presupuestoData !== 'undefined' && (presupuestoData.usar_precios_bunker === true || presupuestoData.usar_precios_bunker === 'true'));
 
-            // CORRECCIÄ‚Â“N: Usar camp2 (alÄ‚Â­cuota decimal) en lugar de iva1 (monto)
-            // camp2 contiene la alÄ‚Â­cuota correcta (0.21 para 21%)
+        // Tracking para filas hijas (Kit de insumos UP)
+        let activeParentRowId = null;
+        let activeKitIngredientCodes = [];
+
+        // Procesar cada detalle de forma asíncrona
+        for (const det of detallesData) {
+            console.log(`📋 [PRESUPUESTOS-EDIT] Renderizando detalle:`, det);
+
             const ivaPctBase = ((det.iva1 || 0) * 100);
             const ivaPctVisible = esRemito() ? (ivaPctBase / 2) : ivaPctBase;
 
-            // Usar funciÄ‚Å‚n del mÄ‚Å‚dulo comÄ‚ÅŸn para agregar fila vacÄ‚Â­a
             agregarDetalle();
             const idx = window.Detalles ? window.Detalles.detalleCounter : 1;
 
@@ -587,22 +694,35 @@
             const valorInput = row.querySelector(`input[name="detalles[${idx}][valor1]"]`);
             const ivaInput = row.querySelector(`input[name="detalles[${idx}][iva1]"]`);
 
-            // Mostrar DESCRIPCION al usuario y guardar CODIGO DE BARRAS en dataset (igual que Crear)
+            const searchCode = (det.codigo_barras || det.articulo_numero || det.articulo || '').trim();
+
+            // 1. Detectar si este renglón es un insumo hijo del Kit del renglón anterior
+            const isChildIngredient = activeParentRowId && activeKitIngredientCodes.includes(searchCode);
+
+            if (isChildIngredient) {
+                row.classList.add('child-row');
+                row.dataset.childOf = activeParentRowId;
+                if (artInput) {
+                    artInput.readOnly = true;
+                    artInput.style.backgroundColor = '#f1f5f9';
+                    artInput.style.fontWeight = 'bold';
+                    artInput.style.color = '#475569';
+                }
+            }
+
+            // 2. Resolver descripción friendly
             if (artInput) {
                 let descripcionVisible = (det.descripcion || '').trim();
-                const searchCode = (det.codigo_barras || det.articulo_numero || det.articulo || '').trim();
                 
+                // Un valor se considera "código crudo" solo si la descripción está vacía, es igual al código, 
+                // o si la descripción es idéntica a un código numérico largo de barras.
                 const isRaw = !descripcionVisible ||
-                    descripcionVisible === det.codigo_barras ||
-                    descripcionVisible === det.articulo ||
-                    descripcionVisible === det.articulo_numero ||
-                    /^[A-Z0-9]+$/i.test(descripcionVisible);
+                    descripcionVisible === searchCode ||
+                    (/^[0-9]{8,14}$/.test(descripcionVisible) && searchCode === descripcionVisible);
 
-                if (isRaw && searchCode) {
+                if (isRaw && searchCode && !isChildIngredient) {
                     console.log(`🔍 [PRESUPUESTOS-EDIT] Detectado código crudo: "${descripcionVisible || searchCode}". Buscando descripción friendly...`);
                     const clienteId = parseInt(presupuestoData.id_cliente, 10) || 0;
-                    const switchInput = document.getElementById('usar_precios_bunker');
-                    const usarPreciosBunker = switchInput ? switchInput.checked : false;
                     
                     const descripcionEncontrada = await buscarDescripcionPorCodigo(searchCode, clienteId, usarPreciosBunker);
                     if (descripcionEncontrada) {
@@ -616,30 +736,73 @@
                 }
 
                 artInput.value = descripcionVisible;
-                artInput.dataset.codigoBarras = det.codigo_barras || '';
-                artInput.dataset.articuloNumero = det.articulo_numero || '';
+                artInput.dataset.codigoBarras = det.codigo_barras || det.articulo || '';
+                artInput.dataset.articuloNumero = det.articulo_numero || det.articulo || '';
             }
 
-            // CORRECCIÄ‚Â“N: Setear valores UNITARIOS (igual que en creaciÄ‚Å‚n)
+            // 3. Setear valores UNITARIOS (respetando precios guardados de la instantánea histórica)
             if (cantInput) setCantidad(cantInput, det.cantidad || 1);
-            if (valorInput) setNumeric(valorInput, det.valor1 || 0, 2, 0);  // Precio unitario SIN IVA
-
-            // CORRECCIÄ‚Â“N: Guardar base IVA y setear porcentaje visible
+            if (valorInput) setNumeric(valorInput, det.valor1 || 0, 2, 0);
+            const descInput = row.querySelector(`input[name="detalles[${idx}][descuento_adicional]"]`);
+            if (descInput) setNumeric(descInput, det.descuento_adicional || 0, 2, 0);
             if (ivaInput) {
-                ivaInput.dataset.ivaBase = String(ivaPctBase);  // Guardar base para modo Remito
-                setNumeric(ivaInput, ivaPctVisible, 2, 21);     // Mostrar porcentaje
+                ivaInput.dataset.ivaBase = String(ivaPctBase);
+                setNumeric(ivaInput, ivaPctVisible, 2, 21);
             }
 
-            // CORRECCIÄ‚Â“N: NO setear precio1 manualmente, dejar que calcularPrecio() lo haga
-            // Esto asegura que el cÄ‚Ä„lculo sea idÄ‚Å ntico al de creaciÄ‚Å‚n
+            // Marcar fila como perteneciente al ecosistema del presupuesto cargado
+            row.dataset.isOriginalBudgetRow = "true";
+            row.dataset.initialPrice = String(det.valor1 || 0);
+            row.dataset.initialIva = String(ivaPctBase);
 
-            // Llamar a calcularPrecio() para que calcule precio1 y subtotal
-            // (igual que en creaciÄ‚Å‚n cuando se cambia un valor)
+            if (usarPreciosBunker) {
+                row.dataset.priceBunker = String(det.valor1 || 0);
+                row.dataset.ivaBunker = String(ivaPctBase);
+                row.dataset.priceSource = 'bunker';
+            } else {
+                row.dataset.priceLegacy = String(det.valor1 || 0);
+                row.dataset.ivaLegacy = String(ivaPctBase);
+                row.dataset.priceSource = 'legacy';
+            }
+
             if (window.Detalles && window.Detalles.calcularPrecio) {
                 window.Detalles.calcularPrecio(idx);
             }
 
-            // Flag de sin stock
+            // 4. Verificar si este renglón es un Artículo Base con Kit UP enlazado (para registrar sus insumos para los siguientes renglones)
+            if (searchCode && !isChildIngredient) {
+                try {
+                    const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(searchCode)}`);
+                    if (kitRes.ok) {
+                        const kitData = await kitRes.json();
+                        if (kitData.enlazado && kitData.ingredientes && kitData.ingredientes.length > 0) {
+                            activeParentRowId = row.id || `detalle-${idx}`;
+                            activeKitIngredientCodes = kitData.ingredientes.map(i => String(i.articulo_id));
+                        } else {
+                            activeParentRowId = null;
+                            activeKitIngredientCodes = [];
+                        }
+                    } else {
+                        activeParentRowId = null;
+                        activeKitIngredientCodes = [];
+                    }
+                } catch(e) {
+                    console.error('[EDIT] Error al verificar Kit UP para renglón', e);
+                    activeParentRowId = null;
+                    activeKitIngredientCodes = [];
+                }
+            }
+
+            if (det.es_saldo_ingrediente) {
+                row.dataset.esSaldoIngrediente = 'true';
+                row.dataset.ingredienteIdSaldo = String(det.ingrediente_id_saldo || '');
+                row.dataset.kilosSaldo = String(det.kilos_saldo || '');
+                row.dataset.ingredienteSaldoNombre = String(det.ingrediente_saldo_nombre || '');
+                if (typeof window.renderCucardaSaldoIngrediente === 'function') {
+                    window.renderCucardaSaldoIngrediente(row, det);
+                }
+            }
+
             if (det.is_out_of_stock && window.Detalles && window.Detalles.toggleSinStock) {
                 const btn = row.querySelector('.btn-sin-stock');
                 if (btn) {
@@ -647,7 +810,7 @@
                 }
             }
 
-            console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
+            console.log(`✅ [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
         }
 
         // Recalcular totales finales
@@ -655,7 +818,7 @@
             window.Detalles.recalcTotales();
         }
 
-        console.log(`Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Todos los detalles renderizados: ${detallesData.length} Ä‚Â­tems`);
+        console.log(`✅ [PRESUPUESTOS-EDIT] Todos los detalles renderizados: ${detallesData.length} ítems`);
     }
 
     /**
@@ -729,18 +892,64 @@
         if (cantidadInput && (!cantidadInput.value || parseFloat(cantidadInput.value) <= 0)) {
             setCantidad(cantidadInput, 1);
         }
-        if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
+
+        // Asignación instantánea si el artículo ya trajo precio en la lista de sugerencias (0ms latencia)
+        const sugPrecioVenta = parseFloat(element.dataset.precioVenta);
+        const sugIva = parseFloat(element.dataset.iva);
+        const tipoSel = document.getElementById('tipo_comprobante');
+
+        if (Number.isFinite(sugPrecioVenta) && sugPrecioVenta > 0) {
+            if (valor1Input) setNumeric(valor1Input, sugPrecioVenta, 2, 0);
+        } else if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) {
+            setNumeric(valor1Input, 0, 2, 0);
+        }
+
+        if (Number.isFinite(sugIva) && iva1Input) {
+            iva1Input.dataset.ivaBase = String(sugIva);
+            const visibleIva = (tipoSel && tipoSel.value === 'Remito-Efectivo') ? (sugIva / 2) : sugIva;
+            setNumeric(iva1Input, visibleIva, 2, 21);
+        } else if (iva1Input && (iva1Input.value === '' || isNaN(parseFloat(iva1Input.value)))) {
             setNumeric(iva1Input, 21, 2, 21);
         }
-        if (valor1Input && (valor1Input.value === '' || isNaN(parseFloat(valor1Input.value)))) {
-            setNumeric(valor1Input, 0, 2, 0);
+
+        // Detección y aplicación automática de Oferta Activa por defecto (Fase Ofertas Dinámicas)
+        const ofertaDataRaw = element.dataset.ofertaActiva;
+        let ofertaActiva = null;
+        if (ofertaDataRaw) {
+            try {
+                ofertaActiva = JSON.parse(decodeURIComponent(ofertaDataRaw));
+            } catch (e) {
+                console.warn('⚠️ [OFERTAS] Error parseando ofertaActiva:', e);
+            }
+        }
+
+        const descInput = row?.querySelector('input[name*="[descuento_adicional]"]');
+        if (ofertaActiva && descInput) {
+            let descPct = parseFloat(ofertaActiva.descuento_porcentaje) || 0;
+            if (descPct === 0 && ofertaActiva.precio_fijo_oferta && sugPrecioVenta > 0) {
+                const netoOferta = parseFloat(ofertaActiva.precio_oferta_neto) || 0;
+                descPct = Math.max(0, ((sugPrecioVenta - netoOferta) / sugPrecioVenta) * 100);
+            }
+
+            // Aplicar el beneficio por default en Desc. Esp. %
+            setNumeric(descInput, descPct, 2, 0);
+
+            // Renderizar / actualizar el switch/badge interactivo en la fila
+            if (typeof window.renderOfertaBadgeFila === 'function') {
+                window.renderOfertaBadgeFila(row, detalleId, ofertaActiva, descPct);
+            }
+        } else {
+            // Si no tiene oferta activa, remover cualquier badge residual
+            row?.querySelector('.switch-oferta-container')?.remove();
         }
 
         if (detalleId != null && window.Detalles && window.Detalles.calcularPrecio) {
             window.Detalles.calcularPrecio(detalleId);
         }
+        if (typeof recalcTotales === 'function') recalcTotales();
 
-        // BUSCAR PRECIOS AUTOMÄ‚ÂTICAMENTE (igual que en creaciÄ‚Å‚n)
+        // BUSCAR PRECIOS AUTOMÁTICAMENTE (igual que en creación) - Integrado con precios Búnker
+        const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
         const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
 
         const fetchPrecios = async (params) => {
@@ -753,31 +962,77 @@
 
         (async () => {
             let valor, iva;
+            let valorBunker = null, ivaBunker = null;
+            let valorLegacy = null, ivaLegacy = null;
+            let gananciaBunker = 0;
 
-            // 1) Por cÄ‚Å‚digo de barras
             try {
-                const p = new URLSearchParams();
-                p.set('cliente_id', String(clienteId));
-                if (codigoBarras) p.set('codigo_barras', codigoBarras);
-                let body = await fetchPrecios(p);
-                valor = Number(body?.data?.valor1);
-                iva = Number(body?.data?.iva);
-            } catch (e1) {
-                console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No respondiÄ‚Å‚ por cÄ‚Å‚digo de barras. Probando por descripciÄ‚Å‚nÃ¢Â€Åš', e1);
+                const pBunker = new URLSearchParams({ cliente_id: String(clienteId), usar_precios_bunker: 'true' });
+                const pLegacy = new URLSearchParams({ cliente_id: String(clienteId) });
+                if (articuloNumero) {
+                    pBunker.set('articulo_numero', articuloNumero);
+                    pLegacy.set('articulo_numero', articuloNumero);
+                }
+                if (codigoBarras) {
+                    pBunker.set('codigo_barras', codigoBarras);
+                    pLegacy.set('codigo_barras', codigoBarras);
+                }
+                if (description) {
+                    pBunker.set('descripcion', description);
+                    pLegacy.set('descripcion', description);
+                }
+
+                const [resBunker, resLegacy] = await Promise.all([
+                    fetchPrecios(pBunker).catch(e => { console.warn('Bunker price fetch failed:', e); return null; }),
+                    fetchPrecios(pLegacy).catch(e => { console.warn('Legacy price fetch failed:', e); return null; })
+                ]);
+
+                if (resBunker && resBunker.data) {
+                    valorBunker = Number(resBunker.data.valor1);
+                    ivaBunker = Number(resBunker.data.iva);
+                    gananciaBunker = Number(resBunker.data.ganancia_real) || 0;
+                }
+                if (resLegacy && resLegacy.data) {
+                    valorLegacy = Number(resLegacy.data.valor1);
+                    ivaLegacy = Number(resLegacy.data.iva);
+                }
+            } catch (e) {
+                console.error('Error fetching prices in parallel:', e);
             }
 
-            // 2) Fallback por descripciÄ‚Å‚n
-            if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
-                try {
-                    const p2 = new URLSearchParams();
-                    p2.set('cliente_id', String(clienteId));
-                    if (description) p2.set('descripcion', description);
-                    const body2 = await fetchPrecios(p2);
-                    valor = Number(body2?.data?.valor1);
-                    iva = Number(body2?.data?.iva);
-                } catch (e2) {
-                    console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Tampoco por descripciÄ‚Å‚n:', e2);
+            const activeSource = usarPreciosBunker ? 'bunker' : 'legacy';
+            if (row) {
+                row.dataset.priceBunker = valorBunker !== null ? String(valorBunker) : '';
+                row.dataset.ivaBunker = ivaBunker !== null ? String(ivaBunker) : '21';
+                row.dataset.gananciaBunker = String(gananciaBunker);
+                if (resBunker?.data) {
+                    const cBulto = resBunker.data.costo_bulto !== undefined ? resBunker.data.costo_bulto : (resBunker.data.costo_operativo || 0);
+                    const cTiempo = resBunker.data.costo_tiempo !== undefined ? resBunker.data.costo_tiempo : 0;
+                    row.dataset.costoBunker = String(cBulto);
+                    row.dataset.costoTiempoBunker = String(cTiempo);
                 }
+                row.dataset.priceLegacy = valorLegacy !== null ? String(valorLegacy) : '';
+                row.dataset.ivaLegacy = ivaLegacy !== null ? String(ivaLegacy) : '21';
+                row.dataset.priceSource = activeSource;
+            }
+
+            valor = activeSource === 'bunker' ? valorBunker : valorLegacy;
+            iva = activeSource === 'bunker' ? ivaBunker : ivaLegacy;
+
+            // Fallback si el precio activo no tiene valor
+            if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'bunker' && valorLegacy > 0) {
+                valor = valorLegacy;
+                iva = ivaLegacy;
+                if (row) row.dataset.priceSource = 'legacy';
+            } else if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'legacy' && valorBunker > 0) {
+                valor = valorBunker;
+                iva = ivaBunker;
+                if (row) row.dataset.priceSource = 'bunker';
+            }
+
+            if (valor === null || isNaN(valor)) {
+                valor = 0;
+                iva = 21;
             }
 
             // Setear valores si se encontraron
@@ -795,13 +1050,69 @@
             }
 
             if (detalleId != null && window.Detalles && window.Detalles.calcularPrecio) {
+                if (window.Detalles.renderPriceBadge) {
+                    window.Detalles.renderPriceBadge(detalleId);
+                }
                 window.Detalles.calcularPrecio(detalleId);
             }
 
-            // Enfocar siguiente campo
-            setTimeout(() => (valor1Input || cantidadInput)?.focus(), 50);
+            // -------------------------------------------------------------
+            // LÓGICA DE SSOT: VERIFICAR SI EL ARTÍCULO TIENE KIT NATIVO (UP)
+            // -------------------------------------------------------------
+            const articuloBaseParaKit = articuloNumero || input.dataset.articuloNumero || codigoBarras || description || element.dataset.id;
+            console.log('[KIT-FRONT-DEBUG] Evaluando Kit para (Edit):', {articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit});
+            if (articuloBaseParaKit) {
+                try {
+                    const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(articuloBaseParaKit)}`);
+                    if (kitRes.ok) {
+                        const kitData = await kitRes.json();
+                        if (kitData.enlazado && kitData.ingredientes && kitData.ingredientes.length > 0) {
+                            console.log('[KIT] Artículo base tiene UP enlazada. Agregando botón de Kit en Edit.');
+                            const tdArticulo = input.closest('td');
+                            if (tdArticulo) {
+                                const btnPrev = tdArticulo.querySelector('.btn-kit-toggle');
+                                if (btnPrev) btnPrev.remove();
 
-            console.log('Ã¢ÂœÂ… [PRESUPUESTOS-EDIT] Precios actualizados automÄ‚Ä„ticamente');
+                                const btnKit = document.createElement('button');
+                                btnKit.type = 'button';
+                                btnKit.className = 'btn-kit-toggle';
+                                btnKit.dataset.recetaId = kitData.receta_id;
+                                btnKit.dataset.ingredientes = JSON.stringify(kitData.ingredientes);
+                                btnKit.dataset.multiplicadorBase = kitData.multiplicador_base || 1;
+                                btnKit.dataset.isAdded = "false";
+                                btnKit.innerHTML = '📦 Añadir Kit Insumos';
+                                
+                                // Vinculamos la cantidad base
+                                btnKit.onclick = function() {
+                                    if (this.dataset.isAdded === "true") return; // Ya agregado
+                                    this.dataset.isAdded = "true";
+                                    this.style.display = 'none'; // Ocultar botón tras agregar
+                                    
+                                    // Determinar ID de fila padre
+                                    const targetRow = input.closest('tr');
+                                    if (!targetRow.id) targetRow.id = 'row_' + Math.random().toString(36).substr(2, 9);
+                                    const parentRowId = targetRow.id;
+                                    
+                                    const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
+                                    const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',','.')) || 1) : 1;
+                                    
+                                    if (typeof window.inyectarFilasHijasKit === 'function') {
+                                        window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
+                                    } else {
+                                        console.error('[KIT] Error: window.inyectarFilasHijasKit no está definido en Edit');
+                                    }
+                                };
+
+                                tdArticulo.appendChild(btnKit);
+                            }
+                        }
+                    }
+                } catch(e) {
+                    console.error('[KIT] Error al buscar UP del artículo base', e);
+                }
+            }
+            // Foco preservado: no forzar focus a valor1Input para respetar la interacción del operador
+            console.log('✅ [PRESUPUESTOS-EDIT] Precios actualizados automáticamente');
         })();
     }
 
@@ -814,7 +1125,7 @@
         // Encontrar la fila correspondiente usando el detalleIndex como ID de fila
         const row = document.getElementById(`detalle-${detalleIndex}`);
         if (!row) {
-            console.error('Ã¢ÂÂŒ [PRESUPUESTOS-EDIT] Fila de detalle no encontrada:', detalleIndex);
+            console.error('Ã¢Â ÂŒ [PRESUPUESTOS-EDIT] Fila de detalle no encontrada:', detalleIndex);
             return;
         }
 
@@ -877,8 +1188,9 @@
             const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
             const codigoBarras = articulo.codigo_barras || '';
             const descripcion = articulo.descripcion || articulo.description || '';
+            const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
 
-            console.log(`Ä‘ÂŸÂ”Â [PRESUPUESTOS-EDIT] Buscando precios para cliente ${clienteId}, cÄ‚Å‚digo: ${codigoBarras}`);
+            console.log(`Ä‘ÂŸÂ”Â  [PRESUPUESTOS-EDIT] Buscando precios para cliente ${clienteId}, cÄ‚Å‚digo: ${codigoBarras}, usarPreciosBunker: ${usarPreciosBunker}`);
 
             const fetchPrecios = async (params) => {
                 const url = `/api/presupuestos/precios?${params.toString()}`;
@@ -889,35 +1201,76 @@
             };
 
             let valor, iva;
+            let valorBunker = null, ivaBunker = null;
+            let valorLegacy = null, ivaLegacy = null;
+            let gananciaBunker = 0;
 
-            // 1) Buscar por cÄ‚Å‚digo de barras
             try {
-                const p = new URLSearchParams();
-                p.set('cliente_id', String(clienteId));
-                if (codigoBarras) p.set('codigo_barras', codigoBarras);
-                let body = await fetchPrecios(p);
-                valor = Number(body?.data?.valor1);
-                iva = Number(body?.data?.iva);
-            } catch (e1) {
-                console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] No respondiÄ‚Å‚ por cÄ‚Å‚digo de barras. Probando por descripciÄ‚Å‚nÃ¢Â€Åš', e1);
+                const pBunker = new URLSearchParams({ cliente_id: String(clienteId), usar_precios_bunker: 'true' });
+                const pLegacy = new URLSearchParams({ cliente_id: String(clienteId) });
+                if (codigoBarras) {
+                    pBunker.set('codigo_barras', codigoBarras);
+                    pLegacy.set('codigo_barras', codigoBarras);
+                } else if (descripcion) {
+                    pBunker.set('descripcion', descripcion);
+                    pLegacy.set('descripcion', descripcion);
+                }
+
+                const [resBunker, resLegacy] = await Promise.all([
+                    fetchPrecios(pBunker).catch(e => { console.warn('Bunker price fetch failed:', e); return null; }),
+                    fetchPrecios(pLegacy).catch(e => { console.warn('Legacy price fetch failed:', e); return null; })
+                ]);
+
+                if (resBunker && resBunker.data) {
+                    valorBunker = Number(resBunker.data.valor1);
+                    ivaBunker = Number(resBunker.data.iva);
+                    gananciaBunker = Number(resBunker.data.ganancia_real) || 0;
+                }
+                if (resLegacy && resLegacy.data) {
+                    valorLegacy = Number(resLegacy.data.valor1);
+                    ivaLegacy = Number(resLegacy.data.iva);
+                }
+            } catch (e) {
+                console.error('Error fetching prices in parallel:', e);
             }
 
-            // 2) Fallback por descripciÄ‚Å‚n
-            if (!Number.isFinite(valor) || valor <= 0 || !Number.isFinite(iva)) {
-                try {
-                    const p2 = new URLSearchParams();
-                    p2.set('cliente_id', String(clienteId));
-                    if (descripcion) p2.set('descripcion', descripcion);
-                    const body2 = await fetchPrecios(p2);
-                    valor = Number(body2?.data?.valor1);
-                    iva = Number(body2?.data?.iva);
-                } catch (e2) {
-                    console.warn('Ã¢ÂšÂ ÄÂ¸Â [PRESUPUESTOS-EDIT] Tampoco por descripciÄ‚Å‚n:', e2);
+            const activeSource = usarPreciosBunker ? 'bunker' : 'legacy';
+            const row = document.getElementById(`detalle-${detalleIndex}`);
+            if (row) {
+                row.dataset.priceBunker = valorBunker !== null ? String(valorBunker) : '';
+                row.dataset.ivaBunker = ivaBunker !== null ? String(ivaBunker) : '21';
+                row.dataset.gananciaBunker = String(gananciaBunker);
+                if (resBunker?.data) {
+                    const cBulto = resBunker.data.costo_bulto !== undefined ? resBunker.data.costo_bulto : (resBunker.data.costo_operativo || 0);
+                    const cTiempo = resBunker.data.costo_tiempo !== undefined ? resBunker.data.costo_tiempo : 0;
+                    row.dataset.costoBunker = String(cBulto);
+                    row.dataset.costoTiempoBunker = String(cTiempo);
                 }
+                row.dataset.priceLegacy = valorLegacy !== null ? String(valorLegacy) : '';
+                row.dataset.ivaLegacy = ivaLegacy !== null ? String(ivaLegacy) : '21';
+                row.dataset.priceSource = activeSource;
+            }
+
+            valor = activeSource === 'bunker' ? valorBunker : valorLegacy;
+            iva = activeSource === 'bunker' ? ivaBunker : ivaLegacy;
+
+            // Fallback si el precio activo no tiene valor
+            if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'bunker' && valorLegacy > 0) {
+                valor = valorLegacy;
+                iva = ivaLegacy;
+                if (row) row.dataset.priceSource = 'legacy';
+            } else if ((valor === null || isNaN(valor) || valor <= 0) && activeSource === 'legacy' && valorBunker > 0) {
+                valor = valorBunker;
+                iva = ivaBunker;
+                if (row) row.dataset.priceSource = 'bunker';
+            }
+
+            if (valor === null || isNaN(valor)) {
+                valor = 0;
+                iva = 21;
             }
 
             // Actualizar valores si se encontraron
-            const row = document.getElementById(`detalle-${detalleIndex}`);
             if (row) {
                 const valorInput = row.querySelector(`input[name="detalles[${detalleIndex}][valor1]"]`);
                 const ivaInput = row.querySelector(`input[name="detalles[${detalleIndex}][iva1]"]`);
@@ -935,8 +1288,11 @@
                     setNumeric(ivaInput, visibleIva, 2, 21);
                 }
 
-                // Recalcular despuÄ‚Å s de actualizar precios
+                // Recalcular después de actualizar precios
                 if (window.Detalles && window.Detalles.calcularPrecio) {
+                    if (window.Detalles.renderPriceBadge) {
+                        window.Detalles.renderPriceBadge(detalleIndex);
+                    }
                     window.Detalles.calcularPrecio(detalleIndex);
                 }
             }
@@ -1148,15 +1504,22 @@
                 const artInput = row.querySelector('input[name*="[articulo]"]');
                 const cantInput = row.querySelector('input[name*="[cantidad]"]');
                 const valorInput = row.querySelector('input[name*="[valor1]"]');
+                const descInput = row.querySelector('input[name*="[descuento_adicional]"]');
                 const ivaInput = row.querySelector('input[name*="[iva1]"]');
 
-                if (artInput && artInput.dataset.codigoBarras) {
+                const realCodigo = (artInput?.dataset?.codigoBarras || artInput?.dataset?.articuloNumero || artInput?.value || '').trim();
+                if (artInput && realCodigo) {
+                    const esSaldo = row.dataset.esSaldoIngrediente === 'true';
                     const rowData = {
-                        articulo: artInput.dataset.codigoBarras.trim(),
+                        articulo: realCodigo,
                         descripcion: artInput.value || '',
                         cantidad: parseFloat(cantInput.value) || 0,
                         valor1: parseFloat(valorInput.value) || 0,
-                        iva1: parseFloat(ivaInput.value) || 0
+                        descuento_adicional: parseFloat(descInput?.value) || 0,
+                        iva1: parseFloat(ivaInput.value) || 0,
+                        es_saldo_ingrediente: esSaldo,
+                        ingrediente_id_saldo: esSaldo ? (parseInt(row.dataset.ingredienteIdSaldo, 10) || null) : null,
+                        kilos_saldo: esSaldo ? (parseFloat(row.dataset.kilosSaldo) || null) : null
                     };
                     
                     if (row.classList.contains('out-of-stock-row')) {
@@ -1187,7 +1550,7 @@
                 fecha: data.fecha,
                 secuencia: (data.estado === 'Orden de Retiro' || new URLSearchParams(window.location.search).get('modo') === 'retiro')
                     ? 'Pedido_Listo'
-                    : 'Imprimir', // REQ: "Pedido_Listo" si es Retiro, sino "Imprimir"
+                    : (data.estado === 'Sin Confirmar' ? 'Standby' : 'Imprimir'),
                 usar_precios_bunker: document.getElementById('usar_precios_bunker')?.checked || false,
 
                 // Detalles
@@ -1363,6 +1726,7 @@ async function manejarFacturacion() {
  * Activar Modo Retiro en Edición (Cambios Visuales)
  */
 function activarModoRetiroEdicion() {
+    window.MODO_RETIRO = true;
     console.log('📦 [EDIT] Aplicando overrides visuales para Modo Retiro...');
 
     // 1. Título de la página

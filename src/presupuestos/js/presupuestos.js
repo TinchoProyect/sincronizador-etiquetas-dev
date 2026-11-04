@@ -71,6 +71,10 @@ const PRESET_FILTROS_EMPTY = {
     concepto: '',
     clienteId: '',
     clienteName: '',
+    presupuestoId: '',
+    articulo: '',
+    canal_origen: '',
+    canal_facturacion: '',
     estado: []
 };
 
@@ -161,11 +165,15 @@ function switchTab(tabName) {
     });
 
     // 5. Actualizar UI de filtros (restaurar inputs visuales)
-    // Nota: Esto requiere refactorizar restoreFilterControls para que use appState.filtros
-    restoreFilterControls({ ...appState.filtros, buscarClienteText: appState.filtros.clienteName }); // Helper rápido
+    restoreFilterControls({ 
+        ...appState.filtros, 
+        buscarClienteText: appState.filtros.clienteName || appState.filtros.clienteId || appState.filtros.presupuestoId || '',
+        buscarArticuloText: appState.filtros.articulo || ''
+    });
 
-    // Regenerar botones de estado según contexto
-    updateEstadosFilter(appState.estados);
+    // Regenerar select de tipos de comprobante y botones de estado según contexto
+    updateCategoriasFilter();
+    updateEstadosFilter();
 
     // 6. Recargar datos
     handleCargarDatos(1);
@@ -250,11 +258,30 @@ function setupEventListeners() {
 
     // Filtros
     const filtroCategoria = document.getElementById('filtro-categoria');
+    const filtroCanalOrigen = document.getElementById('filtro-canal-origen');
+    const filtroCanalFacturacion = document.getElementById('filtro-canal-facturacion');
     const buscarCliente = document.getElementById('buscar-cliente');
+    const buscarArticulo = document.getElementById('buscar-articulo');
+    const btnLimpiarFiltros = document.getElementById('btn-limpiar-filtros');
 
     if (filtroCategoria) {
         filtroCategoria.addEventListener('change', handleFiltroCategoria);
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-categoria');
+    }
+
+    if (filtroCanalOrigen) {
+        filtroCanalOrigen.addEventListener('change', handleFiltroCanalOrigen);
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-canal-origen');
+    }
+
+    if (filtroCanalFacturacion) {
+        filtroCanalFacturacion.addEventListener('change', handleFiltroCanalFacturacion);
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: filtro-canal-facturacion');
+    }
+
+    if (btnLimpiarFiltros) {
+        btnLimpiarFiltros.addEventListener('click', handleLimpiarFiltros);
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: btn-limpiar-filtros');
     }
 
     if (buscarCliente) {
@@ -262,8 +289,14 @@ function setupEventListeners() {
         console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-cliente');
     }
 
-    // Los botones de estado se crean dinámicamente en updateEstadosFilter()
-    console.log('✅ [PRESUPUESTOS-JS] Botones de estado se configurarán dinámicamente');
+    if (buscarArticulo) {
+        buscarArticulo.addEventListener('input', debounce(handleBuscarArticulo, 300));
+        console.log('✅ [PRESUPUESTOS-JS] Event listener agregado: buscar-articulo');
+    }
+
+    // Inicializar selectores y botones contextuales a la solapa
+    updateCategoriasFilter();
+    updateEstadosFilter();
 
     console.log('✅ [PRESUPUESTOS-JS] Event listeners configurados');
     if (AUTOLOAD_ON_START) autoCargarAlAbrir();
@@ -414,6 +447,18 @@ function updateStatsDisplay(stats) {
 async function handleCargarDatos(page = 1, maintainFilters = false) {
     console.log(`🔍 [PRESUPUESTOS-JS] Iniciando carga de datos - Página: ${page}...`);
 
+    // Sincronizar en segundo plano con el B2B de Supabase de forma pasiva
+    if (page === 1) {
+        fetch(`${CONFIG.API_BASE_URL}/sync/b2b-force`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                console.log('[SYNC-B2B-PASSIVE] Sincronización en segundo plano completada:', data);
+            })
+            .catch(err => {
+                console.warn('[SYNC-B2B-PASSIVE] Falló la sincronización pasiva:', err);
+            });
+    }
+
     // Si vino por autocarga, permitimos que el usuario vuelva a recargar manualmente
     window.__presupuestosAutocargados = false;
 
@@ -446,6 +491,15 @@ async function handleCargarDatos(page = 1, maintainFilters = false) {
                 queryParams.append('clienteName', appState.filtros.clienteName);
             } else if (appState.filtros.concepto) {
                 queryParams.append('concepto', appState.filtros.concepto);
+            }
+            if (appState.filtros.articulo) {
+                queryParams.append('articulo', appState.filtros.articulo);
+            }
+            if (appState.filtros.canal_origen) {
+                queryParams.append('canal_origen', appState.filtros.canal_origen);
+            }
+            if (appState.filtros.canal_facturacion) {
+                queryParams.append('canal_facturacion', appState.filtros.canal_facturacion);
             }
             // Agregar filtro por estado - Filtro por Estado – 2024-12-19
             if (appState.filtros.estado && appState.filtros.estado.length > 0) {
@@ -862,6 +916,16 @@ async function executeSyncronization() {
         const data = await response.json();
         console.log('[SYNC-BIDI][FRONT][RESP]', data);
 
+        // Forzar sincronización B2B adicionalmente
+        console.log('🔄 Sincronizando con Supabase B2B en paralelo...');
+        try {
+            await fetch(`${CONFIG.API_BASE_URL}/sync/b2b-force`, {
+                method: 'POST'
+            });
+        } catch (e) {
+            console.error('Error al forzar sync B2B:', e);
+        }
+
         if (response.ok && data.success) {
             const pushEnviados = data.push?.enviados ?? 0;
             const pullRecibidos = data.pull?.recibidos ?? 0;
@@ -944,6 +1008,64 @@ function handleFiltroCategoria(event) {
 
     appState.filtros.categoria = categoria;
     saveFiltersToStorage();
+    applyFilters();
+}
+
+/**
+ * Handler: Filtro por Canal / Origen (Portal B2B vs Local)
+ */
+function handleFiltroCanalOrigen(event) {
+    const origen = event.target.value;
+    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por origen/canal: ${origen || 'todos'}`);
+    appState.filtros.canal_origen = origen;
+    saveFiltersToStorage();
+    applyFilters();
+}
+
+/**
+ * Handler: Filtro por Canal de Facturación (ARCA, Local, Pendiente, Lomasoft)
+ */
+function handleFiltroCanalFacturacion(event) {
+    const facturacion = event.target.value;
+    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por facturación: ${facturacion || 'todas'}`);
+    appState.filtros.canal_facturacion = facturacion;
+    saveFiltersToStorage();
+    applyFilters();
+}
+
+/**
+ * Handler: Limpiar y reiniciar todos los filtros
+ */
+function handleLimpiarFiltros() {
+    console.log('🔄 [PRESUPUESTOS-JS] Restableciendo todos los filtros...');
+
+    // Restablecer appState
+    appState.filtros = { ...PRESET_FILTROS_EMPTY };
+    if (appState.tabStates && appState.tabStates[appState.activeTab]) {
+        appState.tabStates[appState.activeTab].filtros = { ...PRESET_FILTROS_EMPTY };
+    }
+
+    // Restablecer controles visuales
+    const inputCliente = document.getElementById('buscar-cliente');
+    if (inputCliente) inputCliente.value = '';
+
+    const inputArticulo = document.getElementById('buscar-articulo');
+    if (inputArticulo) inputArticulo.value = '';
+
+    const selectCategoria = document.getElementById('filtro-categoria');
+    if (selectCategoria) selectCategoria.value = '';
+
+    const selectOrigen = document.getElementById('filtro-canal-origen');
+    if (selectOrigen) selectOrigen.value = '';
+
+    const selectFacturacion = document.getElementById('filtro-canal-facturacion');
+    if (selectFacturacion) selectFacturacion.value = '';
+
+    // Desactivar botones de estado
+    document.querySelectorAll('.btn-estado').forEach(btn => btn.classList.remove('active'));
+
+    hideSugerenciasClientes();
+    clearSavedFilters();
     applyFilters();
 }
 
@@ -1091,6 +1213,17 @@ function handleBuscarConcepto(event) {
 }
 
 /**
+ * Handler: Filtrar por artículo (Universal Search LAMDA)
+ */
+function handleBuscarArticulo(event) {
+    const articulo = event.target.value;
+    console.log(`🔍 [PRESUPUESTOS-JS] Filtrando por artículo: ${articulo}`);
+    appState.filtros.articulo = articulo.trim();
+    saveFiltersToStorage();
+    applyFilters();
+}
+
+/**
  * Aplicar filtros con paginación - Orden por fecha DESC + paginación + Estado – 2024-12-19
  */
 function applyFilters() {
@@ -1215,15 +1348,36 @@ function updatePresupuestosTable(data) {
             syncButtonHTML = '';
         }
 
-        // Bloqueo estricto para registros ya conciliados en Lomasoft
-        if (item.comprobante_lomasoft) {
+        // Bloqueo estricto para registros ya conciliados en Lomasoft o anulados por el cliente
+        if (item.comprobante_lomasoft || item.estado === 'Anulado por el Cliente') {
             editButtonHTML = '';
             deleteButtonHTML = '';
             syncButtonHTML = '';
         }
 
+        const esAnuladoCliente = item.estado === 'Anulado por el Cliente';
+        const esStandby = item.estado === 'Sin Confirmar' || item.estado === 'Standby' || item.estado === 'Muestra de Fraccionados' || item.secuencia === 'Standby';
+
+        // Botón 1-Click para Standby / Confirmar
+        let standbyButtonHTML = '';
+        if (!item.esta_facturado && !retiroProcesado && item.estado !== 'Anulado por el Cliente' && item.estado !== 'Anulado') {
+            if (esStandby) {
+                standbyButtonHTML = `
+                    <button class="btn-action btn-confirmar-standby" onclick="cambiarEstadoStandby(${item.id}, false)" title="Confirmar presupuesto (Activar para Producción y Promociones)" style="background:transparent; border:1px solid #28a745; border-radius: 4px; cursor:pointer; color: #28a745; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.1rem;">▶️</span>
+                    </button>
+                `;
+            } else {
+                standbyButtonHTML = `
+                    <button class="btn-action btn-standby" onclick="cambiarEstadoStandby(${item.id}, true)" title="Poner en Standby / Sin Confirmar (Pausar Producción y Promociones)" style="background:transparent; border:1px solid #ff9800; border-radius: 4px; cursor:pointer; color: #ff9800; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
+                        <span style="font-size: 1.1rem;">⏳</span>
+                    </button>
+                `;
+            }
+        }
+
         return `
-        <tr class="slide-up" data-presupuesto-id="${item.id}">
+        <tr class="slide-up ${esStandby ? 'fila-standby' : ''}" data-presupuesto-id="${item.id}" style="${esAnuladoCliente ? 'opacity: 0.55; background-color: rgba(239, 68, 68, 0.05); border-left: 4px solid #ef4444;' : (esStandby ? 'border-left: 4px solid #ff9800;' : '')}">
             <td class="text-center">
                 <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
                     <span class="expand-icon">+</span>
@@ -1234,13 +1388,35 @@ function updatePresupuestosTable(data) {
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
             <td class="text-right"><strong>$${formatNumber(item.total_final !== undefined ? item.total_final : (item.monto || 0))}</strong></td>
             <td class="text-center">
-                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">
-                    ${escapeHtml(item.estado || 'Sin estado')}
+                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}"
+                      style="${esAnuladoCliente ? 'background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; font-weight: bold; padding: 0.25rem 0.6rem; border-radius: 4px; display: inline-block;' : ''}">
+                    ${item.estado === 'Sin Confirmar' ? '⏳ Sin Confirmar' : escapeHtml(item.estado || 'Sin estado')}
                 </span>
+                ${item.secuencia === 'Standby' && item.estado !== 'Sin Confirmar' ? `
+                <span class="estado-badge estado-sin-confirmar" style="display:block; margin-top:5px; background-color: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; font-weight: bold; font-size: 0.75rem;">
+                    ⏳ En Standby
+                </span>` : ''}
+                ${item.agente === 'Portal B2B' ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #e8f0fe; color: #1a73e8; border: 1px solid #d2e3fc; font-weight: bold; font-size: 0.75rem;">
+                    🌐 Creado en Portal
+                </span>` : ''}
+                ${item.modificado_portal ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-weight: bold; font-size: 0.75rem;">
+                    🌐 Modificado en Portal
+                </span>` : ''}
                 ${item.esta_facturado ?
-                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
-                🧾 Facturado
-            </span>` : ''}
+                (item.origen_factura_canal === 'ARCA' ?
+                    `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;">
+                        🧾 Facturado ARCA
+                    </span>` :
+                    `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;">
+                        🧾 Facturado Local
+                    </span>`
+                ) : (item.origen_facturacion === 'DIFERIDO' ?
+                    `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: bold;">
+                        ⏳ Factura Diferida
+                    </span>` : ''
+                )}
                 ${item.comprobante_lomasoft ?
                 `<span class="estado-badge" style="background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; display:block; margin-top:5px;">
                     ✅ Conciliado: ${escapeHtml(item.comprobante_lomasoft)}
@@ -1274,8 +1450,14 @@ function updatePresupuestosTable(data) {
                     <button class="btn-action btn-facturar" onclick="enviarAFacturador(${item.id})" title="Emitir NC Local" style="background:transparent; border:1px solid #28a745; border-radius: 4px; cursor:pointer; color: #28a745; min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 4px;">
                         <span style="font-size: 1.2rem;">🧾</span>
                     </button>` : ''}
+                    ${standbyButtonHTML}
                     ${editButtonHTML}
                     ${deleteButtonHTML}
+                    ${(item.estado === 'Anulado por el Cliente' || item.estado === 'Anulado') ? `
+                    <button class="btn-action btn-archive" onclick="archivarPresupuesto(${item.id})" title="Archivar presupuesto" style="background-color: transparent; border: 1px solid #e67e22; border-radius: 4px; cursor: pointer; color: #e67e22; display: inline-flex; align-items: center; justify-content: center; padding: 4px; min-width: 32px; height: 32px;">
+                        <span style="font-size: 1.1em;">🗂️</span>
+                    </button>
+                    ` : ''}
                     ${syncButtonHTML ? `<span class="separator" style="border-left: 1px solid #ccc; height: 20px; margin: 0 2px;"></span>${syncButtonHTML}` : ''}
                 </div>
             </td>
@@ -1292,87 +1474,80 @@ function updatePresupuestosTable(data) {
 }
 
 /**
- * Actualizar filtro de categorías
+ * Constantes canónicas de Tipos de Comprobante por Solapa
  */
-function updateCategoriasFilter(categorias) {
-    // Validar que categorias sea un array
-    if (!Array.isArray(categorias)) {
-        console.log('⚠️ [PRESUPUESTOS-JS] Categorías no es un array válido:', categorias);
-        categorias = []; // Usar array vacío como fallback
-    }
+const COMPROBANTES_VENTA = [
+    { value: '', label: 'Todos los comprobantes' },
+    { value: 'Factura', label: 'Factura' },
+    { value: 'Remito-Efectivo', label: 'Remito-Efectivo' },
+    { value: 'Efectivo', label: 'Efectivo' }
+];
 
-    console.log(`🔍[PRESUPUESTOS - JS] Actualizando filtro de categorías: ${categorias.length} categorías`);
+const COMPROBANTES_RETIRO = [
+    { value: '', label: 'Todos los comprobantes' },
+    { value: 'Orden de Retiro', label: 'Orden de Retiro' },
+    { value: 'Remito-Efectivo', label: 'Remito-Efectivo' }
+];
 
+/**
+ * Constantes canónicas de Estados Operativos por Solapa
+ */
+const ESTADOS_VENTA = [
+    'Entregado',
+    'Facturado',
+    'Enviado a Facturación',
+    'Anulado por el Cliente',
+    'Anulado'
+];
+
+const ESTADOS_RETIRO = [
+    'Orden de Retiro',
+    'Retirado',
+    'Recibido',
+    'En Auditoría',
+    'Conciliado',
+    'Administrativa NC',
+    'Anulado'
+];
+
+/**
+ * Actualizar filtro de categorías / tipos de comprobante según la solapa activa
+ */
+function updateCategoriasFilter() {
     const select = document.getElementById('filtro-categoria');
     if (!select) {
         console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento filtro-categoria');
         return;
     }
 
-    // Limpiar opciones existentes (excepto la primera)
-    while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-    }
+    const valorPrevio = appState.filtros.categoria || select.value;
+    select.innerHTML = '';
 
-    // Agregar nuevas opciones
-    categorias.forEach(categoria => {
-        if (categoria) {
-            const option = document.createElement('option');
-            option.value = categoria;
-            option.textContent = categoria;
-            select.appendChild(option);
-        }
+    const opciones = appState.activeTab === 'retiros' ? COMPROBANTES_RETIRO : COMPROBANTES_VENTA;
+    opciones.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        select.appendChild(option);
     });
 
-    // Restaurar valor seleccionado si existe en filtros
-    if (appState.filtros.categoria) {
-        select.value = appState.filtros.categoria;
+    // Mantener selección si aún es válida
+    const existeOpcion = opciones.some(opt => opt.value === valorPrevio);
+    if (existeOpcion && valorPrevio) {
+        select.value = valorPrevio;
+        appState.filtros.categoria = valorPrevio;
+    } else {
+        select.value = '';
+        appState.filtros.categoria = '';
     }
 
-    console.log('✅ [PRESUPUESTOS-JS] Filtro de categorías actualizado');
+    console.log(`✅ [PRESUPUESTOS-JS] Filtro de comprobantes actualizado para tab ${appState.activeTab}`);
 }
 
 /**
- * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
+ * Actualizar filtro de estados con botones - Contextual y Canónico por Solapa
  */
-// Constantes de Estados
-const ESTADOS_RETIRO = [
-    'Orden de Retiro',
-    'Retirado',
-    'Pendiente de Retiro',
-    'Recibido',
-    'En Auditoría',
-    'Conciliado',
-    'Anulado' // Compartido, pero relevante
-];
-
-// Estados de venta (si se quisiera whitelisting, por ahora usamos exclusión)
-// const ESTADOS_VENTA = []; 
-
-/**
- * Actualizar filtro de estados con botones - Filtro por Estado con Botones – 2024-12-19
- */
-function updateEstadosFilter(estados) {
-    // Validar que estados sea un array
-    if (!Array.isArray(estados)) {
-        console.log('⚠️ [PRESUPUESTOS-JS] Estados no es un array válido:', estados);
-        estados = []; // Usar array vacío como fallback
-    }
-
-    // FILTRADO CONTEXTUAL POR SOLAPA
-    let estadosFiltrados = estados;
-
-    if (appState.activeTab === 'retiros') {
-        // En Retiros, solo mostrar estados de retiro
-        estadosFiltrados = estados.filter(e => ESTADOS_RETIRO.includes(e));
-    } else {
-        // En Ventas, excluir estados exclusivos de retiro (excepto los compartidos como Anulado si se desea)
-        // Estrategia: Mostrar todo lo que NO sea exclusivo de retiro
-        estadosFiltrados = estados.filter(e => !ESTADOS_RETIRO.includes(e) || e === 'Anulado');
-    }
-
-    console.log(`🔍[PRESUPUESTOS - JS] Actualizando filtro de estados(${appState.activeTab}): ${estadosFiltrados.length} estados(de ${estados.length} totales)`);
-
+function updateEstadosFilter() {
     const container = document.getElementById('botones-estado');
     if (!container) {
         console.log('⚠️ [PRESUPUESTOS-JS] No se encontró elemento botones-estado');
@@ -1382,36 +1557,32 @@ function updateEstadosFilter(estados) {
     // Limpiar contenido existente
     container.innerHTML = '';
 
-    // Si no hay estados, mostrar mensaje
-    if (estadosFiltrados.length === 0) {
-        container.innerHTML = '<span class="estado-loading">(Sin estados relevantes)</span>';
-        return;
-    }
+    const estadosVisibles = appState.activeTab === 'retiros' ? ESTADOS_RETIRO : ESTADOS_VENTA;
 
-    // Crear botones para cada estado
-    estadosFiltrados.forEach(estado => {
-        if (estado) {
-            const button = document.createElement('button');
-            button.className = 'btn-estado';
-            button.textContent = estado;
-            button.dataset.estado = estado;
-            button.type = 'button';
+    console.log(`🔍 [PRESUPUESTOS-JS] Actualizando filtro de estados (${appState.activeTab}): ${estadosVisibles.length} estados`);
 
-            // Marcar como activo si está en los filtros guardados
-            if (appState.filtros.estado.includes(estado)) {
-                button.classList.add('active');
-            }
+    // Crear botones para cada estado canónico
+    estadosVisibles.forEach(estado => {
+        const button = document.createElement('button');
+        button.className = 'btn-estado';
+        button.textContent = estado;
+        button.dataset.estado = estado;
+        button.type = 'button';
 
-            // Event listener para toggle del estado
-            button.addEventListener('click', function () {
-                toggleEstadoButton(this);
-            });
-
-            container.appendChild(button);
+        // Marcar como activo si está en los filtros guardados
+        if (appState.filtros.estado && appState.filtros.estado.includes(estado)) {
+            button.classList.add('active');
         }
+
+        // Event listener para toggle del estado
+        button.addEventListener('click', function () {
+            toggleEstadoButton(this);
+        });
+
+        container.appendChild(button);
     });
 
-    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado con botones');
+    console.log('✅ [PRESUPUESTOS-JS] Filtro de estados actualizado con botones canónicos');
 }
 
 /**
@@ -1766,10 +1937,21 @@ function renderDetallesArticulos(data) {
     let tbodyHTML = '';
     let footerHTML = '';
 
-    // CALCULO UNIFICADO COMPLETO DEL FOOTER (Subtotal Neto, Descuento, IVA Discriminado y Total)
+    // CALCULO UNIFICADO COMPLETO DEL FOOTER (Subtotal Neto, Descuento General, Descuentos Especiales, IVA y Total)
     const subtotalGeneral = detalles.reduce((t, i) => t + ((parseFloat(i.cantidad) || 0) * (parseFloat(i.valor1) || 0)), 0);
-    const montoDescuento = subtotalGeneral * descuentoDecimal;
-    const baseConDescuento = subtotalGeneral - montoDescuento;
+    const montoDescuentoGeneral = subtotalGeneral * descuentoDecimal;
+
+    let montoDescuentosEspeciales = 0;
+    detalles.forEach(item => {
+        const cantidad = parseFloat(item.cantidad) || 0;
+        const valor1 = parseFloat(item.valor1) || 0;
+        const descEsp = parseFloat(item.descuento_adicional) || 0;
+        if (descEsp > 0) {
+            montoDescuentosEspeciales += (cantidad * valor1) * (descEsp / 100);
+        }
+    });
+
+    const baseConDescuento = subtotalGeneral - montoDescuentoGeneral - montoDescuentosEspeciales;
 
     let iva21Total = 0;
     let iva105Total = 0;
@@ -1777,7 +1959,9 @@ function renderDetallesArticulos(data) {
     detalles.forEach(item => {
         const camp2 = parseFloat(item.camp2) || 0;
         const sl = (parseFloat(item.cantidad) || 0) * (parseFloat(item.valor1) || 0);
-        const baseLinea = descuentoDecimal > 0 ? sl * (1 - descuentoDecimal) : sl;
+        const descEsp = parseFloat(item.descuento_adicional) || 0;
+        const descTotalLinea = (descuentoPorcentaje + descEsp) / 100;
+        const baseLinea = descTotalLinea > 0 ? sl * (1 - descTotalLinea) : sl;
         const ivaLinea = baseLinea * camp2;
         if (Math.abs(camp2 - 0.210) < 0.001) iva21Total += ivaLinea;
         else if (Math.abs(camp2 - 0.105) < 0.001) iva105Total += ivaLinea;
@@ -1785,38 +1969,90 @@ function renderDetallesArticulos(data) {
 
     const totalFinal = baseConDescuento + iva21Total + iva105Total;
 
-    footerHTML = `
-        <tr class="totales-row">
-            <td colspan="4" class="text-right"><strong>Subtotal Neto:</strong></td>
-            <td class="text-right">$${formatNumber(subtotalGeneral)}</td>
-        </tr>
-        ${descuentoDecimal > 0 ? `
-        <tr class="totales-row">
-            <td colspan="4" class="text-right"><strong>Descuento (${formatNumber(descuentoPorcentaje)}%):</strong></td>
-            <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescuento)}</td>
-        </tr>
-        <tr class="totales-row">
-            <td colspan="4" class="text-right"><strong>Subtotal c/Desc:</strong></td>
-            <td class="text-right">$${formatNumber(baseConDescuento)}</td>
-        </tr>
-        ` : ''}
-        ${iva21Total > 0 ? `
-        <tr class="totales-row">
-            <td colspan="4" class="text-right"><strong>IVA 21.00%:</strong></td>
-            <td class="text-right">$${formatNumber(iva21Total)}</td>
-        </tr>
-        ` : ''}
-        ${iva105Total > 0 ? `
-        <tr class="totales-row">
-            <td colspan="4" class="text-right"><strong>IVA 10.50%:</strong></td>
-            <td class="text-right">$${formatNumber(iva105Total)}</td>
-        </tr>
-        ` : ''}
-        <tr class="totales-row" style="background-color: #e9ecef;">
-            <td colspan="4" class="text-right"><strong style="font-size: 1.1em;">TOTAL FINAL:</strong></td>
-            <td class="text-right total-cell"><strong style="font-size: 1.1em; color: #2c3e50;">$${formatNumber(totalFinal)}</strong></td>
-        </tr>
-    `;
+    if (formatoActual === 'IVA_INCLUIDO') {
+        const subtotalConIva = detalles.reduce((t, i) => {
+            const cant = parseFloat(i.cantidad) || 0;
+            const v1 = parseFloat(i.valor1) || 0;
+            const c2 = parseFloat(i.camp2) || 0;
+            return t + (cant * v1 * (1 + c2));
+        }, 0);
+        const montoDescGeneralConIva = subtotalConIva * descuentoDecimal;
+        let montoDescEspConIva = 0;
+        detalles.forEach(item => {
+            const cant = parseFloat(item.cantidad) || 0;
+            const v1 = parseFloat(item.valor1) || 0;
+            const c2 = parseFloat(item.camp2) || 0;
+            const dEsp = parseFloat(item.descuento_adicional) || 0;
+            if (dEsp > 0) {
+                montoDescEspConIva += (cant * v1 * (1 + c2)) * (dEsp / 100);
+            }
+        });
+        const totalFinalConIva = subtotalConIva - montoDescGeneralConIva - montoDescEspConIva;
+
+        footerHTML = `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Subtotal:</strong></td>
+                <td class="text-right">$${formatNumber(subtotalConIva)}</td>
+            </tr>
+            ${descuentoDecimal > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Descuento General (${formatNumber(descuentoPorcentaje)}%):</strong></td>
+                <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescGeneralConIva)}</td>
+            </tr>
+            ` : ''}
+            ${montoDescEspConIva > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Desc. Especiales:</strong></td>
+                <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescEspConIva)}</td>
+            </tr>
+            ` : ''}
+            <tr class="totales-row" style="background-color: #e9ecef;">
+                <td colspan="4" class="text-right"><strong style="font-size: 1.1em;">TOTAL FINAL:</strong></td>
+                <td class="text-right total-cell"><strong style="font-size: 1.1em; color: #2c3e50;">$${formatNumber(totalFinalConIva)}</strong></td>
+            </tr>
+        `;
+    } else {
+        footerHTML = `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Subtotal Neto:</strong></td>
+                <td class="text-right">$${formatNumber(subtotalGeneral)}</td>
+            </tr>
+            ${descuentoDecimal > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Descuento General (${formatNumber(descuentoPorcentaje)}%):</strong></td>
+                <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescuentoGeneral)}</td>
+            </tr>
+            ` : ''}
+            ${montoDescuentosEspeciales > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Desc. Especiales:</strong></td>
+                <td class="text-right" style="color: #e74c3c;">-$${formatNumber(montoDescuentosEspeciales)}</td>
+            </tr>
+            ` : ''}
+            ${(descuentoDecimal > 0 || montoDescuentosEspeciales > 0) ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>Subtotal c/Desc:</strong></td>
+                <td class="text-right">$${formatNumber(baseConDescuento)}</td>
+            </tr>
+            ` : ''}
+            ${iva21Total > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>IVA 21.00%:</strong></td>
+                <td class="text-right">$${formatNumber(iva21Total)}</td>
+            </tr>
+            ` : ''}
+            ${iva105Total > 0 ? `
+            <tr class="totales-row">
+                <td colspan="4" class="text-right"><strong>IVA 10.50%:</strong></td>
+                <td class="text-right">$${formatNumber(iva105Total)}</td>
+            </tr>
+            ` : ''}
+            <tr class="totales-row" style="background-color: #e9ecef;">
+                <td colspan="4" class="text-right"><strong style="font-size: 1.1em;">TOTAL FINAL:</strong></td>
+                <td class="text-right total-cell"><strong style="font-size: 1.1em; color: #2c3e50;">$${formatNumber(totalFinal)}</strong></td>
+            </tr>
+        `;
+    }
 
     if (formatoActual === 'IVA_DISCRIMINADO') {
         tableHeaders = `
@@ -1835,6 +2071,7 @@ function renderDetallesArticulos(data) {
             const camp2 = parseFloat(item.camp2) || 0;
             const ivaPorcentaje = camp2 * 100;
             const descripcion = item.descripcion_articulo || item.descripcion || item.articulo || 'Sin descripción';
+            const descEsp = parseFloat(item.descuento_adicional) || 0;
 
             const precioUnitario = valor1;
             const subtotalLinea = cantidad * valor1;
@@ -1844,6 +2081,13 @@ function renderDetallesArticulos(data) {
                     <td class="articulo-cell">
                         <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
                         ${item.articulo && item.descripcion_articulo !== item.articulo ? `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                        ${descEsp > 0 ? `
+                            <div style="margin-top: 3px;">
+                                <span class="badge" style="display: inline-block; font-size: 0.75rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+                                    🏷️ Bonificación especial: ${formatNumber(descEsp)}% (Desc. total aplicado: ${formatNumber(descuentoPorcentaje + descEsp)}%)
+                                </span>
+                            </div>
+                        ` : ''}
                     </td>
                     <td class="text-center">${formatNumber(cantidad)}</td>
                     <td class="text-right">$${formatNumber(precioUnitario)}</td>
@@ -1867,6 +2111,7 @@ function renderDetallesArticulos(data) {
             const valor1 = parseFloat(item.valor1) || 0;
             const camp2 = parseFloat(item.camp2) || 0;
             const descripcion = item.descripcion_articulo || item.descripcion || item.articulo || 'Sin descripción';
+            const descEsp = parseFloat(item.descuento_adicional) || 0;
 
             const precioUnitario = valor1 * (1 + camp2);
             const subtotalLinea = cantidad * precioUnitario;
@@ -1876,6 +2121,13 @@ function renderDetallesArticulos(data) {
                     <td class="articulo-cell" colspan="2">
                         <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
                         ${item.articulo && item.descripcion_articulo !== item.articulo ? `<small class="articulo-codigo">(${escapeHtml(item.articulo)})</small>` : ''}
+                        ${descEsp > 0 ? `
+                            <div style="margin-top: 3px;">
+                                <span class="badge" style="display: inline-block; font-size: 0.75rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+                                    🏷️ Bonificación especial: ${formatNumber(descEsp)}% (Desc. total aplicado: ${formatNumber(descuentoPorcentaje + descEsp)}%)
+                                </span>
+                            </div>
+                        ` : ''}
                     </td>
                     <td class="text-center">${formatNumber(cantidad)}</td>
                     <td class="text-right">$${formatNumber(precioUnitario)}</td>
@@ -2391,9 +2643,13 @@ function saveFiltersToStorage() {
             presupuestoId: appState.filtros.presupuestoId || '',
             clienteName: appState.filtros.clienteName || '',
             concepto: appState.filtros.concepto || '',
+            articulo: appState.filtros.articulo || '',
+            canal_origen: appState.filtros.canal_origen || '',
+            canal_facturacion: appState.filtros.canal_facturacion || '',
             estado: appState.filtros.estado || [],
             // Guardar también el texto del input de búsqueda
-            buscarClienteText: document.getElementById('buscar-cliente')?.value || ''
+            buscarClienteText: document.getElementById('buscar-cliente')?.value || '',
+            buscarArticuloText: document.getElementById('buscar-articulo')?.value || ''
         };
 
         sessionStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filtrosParaGuardar));
@@ -2424,6 +2680,9 @@ function restoreFiltersFromStorage() {
         appState.filtros.presupuestoId = filtros.presupuestoId || '';
         appState.filtros.clienteName = filtros.clienteName || '';
         appState.filtros.concepto = filtros.concepto || '';
+        appState.filtros.articulo = filtros.articulo || '';
+        appState.filtros.canal_origen = filtros.canal_origen || '';
+        appState.filtros.canal_facturacion = filtros.canal_facturacion || '';
         appState.filtros.estado = filtros.estado || [];
 
         // Restaurar valores visuales en los controles
@@ -2433,7 +2692,11 @@ function restoreFiltersFromStorage() {
         const hayFiltrosActivos = filtros.categoria ||
             filtros.clienteId ||
             filtros.clienteName ||
+            filtros.presupuestoId ||
             filtros.concepto ||
+            filtros.articulo ||
+            filtros.canal_origen ||
+            filtros.canal_facturacion ||
             (filtros.estado && filtros.estado.length > 0);
 
         if (hayFiltrosActivos) {
@@ -2453,22 +2716,41 @@ function restoreFilterControls(filtros) {
 
     // Restaurar select de categoría
     const selectCategoria = document.getElementById('filtro-categoria');
-    if (selectCategoria && filtros.categoria) {
-        // Esperar a que las opciones se carguen
-        setTimeout(() => {
-            selectCategoria.value = filtros.categoria;
-            console.log(`✅ [FILTROS-PERSIST] Categoría restaurada: ${filtros.categoria}`);
-        }, 100);
+    if (selectCategoria && filtros.categoria !== undefined) {
+        selectCategoria.value = filtros.categoria;
+        console.log(`✅ [FILTROS-PERSIST] Categoría restaurada: ${filtros.categoria}`);
+    }
+
+    // Restaurar select de canal origen
+    const selectOrigen = document.getElementById('filtro-canal-origen');
+    if (selectOrigen && filtros.canal_origen !== undefined) {
+        selectOrigen.value = filtros.canal_origen;
+        console.log(`✅ [FILTROS-PERSIST] Canal origen restaurado: ${filtros.canal_origen}`);
+    }
+
+    // Restaurar select de canal facturación
+    const selectFacturacion = document.getElementById('filtro-canal-facturacion');
+    if (selectFacturacion && filtros.canal_facturacion !== undefined) {
+        selectFacturacion.value = filtros.canal_facturacion;
+        console.log(`✅ [FILTROS-PERSIST] Canal facturación restaurado: ${filtros.canal_facturacion}`);
     }
 
     // Restaurar input de búsqueda de cliente
     const inputBuscarCliente = document.getElementById('buscar-cliente');
-    if (inputBuscarCliente && filtros.buscarClienteText) {
+    if (inputBuscarCliente && filtros.buscarClienteText !== undefined) {
         inputBuscarCliente.value = filtros.buscarClienteText;
         console.log(`✅ [FILTROS-PERSIST] Texto de búsqueda restaurado: ${filtros.buscarClienteText}`);
     }
 
-    // Restaurar botones de estado (se hace en updateEstadosFilter cuando se cargan los estados)
+    // Restaurar input de búsqueda de artículo
+    const inputBuscarArticulo = document.getElementById('buscar-articulo');
+    if (inputBuscarArticulo) {
+        const textoArticulo = filtros.buscarArticuloText !== undefined ? filtros.buscarArticuloText : (filtros.articulo || '');
+        inputBuscarArticulo.value = textoArticulo;
+        console.log(`✅ [FILTROS-PERSIST] Texto de búsqueda de artículo restaurado: ${textoArticulo}`);
+    }
+
+    // Restaurar botones de estado (se hace en updateEstadosFilter)
     if (filtros.estado && filtros.estado.length > 0) {
         console.log(`✅ [FILTROS-PERSIST] Estados a restaurar: [${filtros.estado.join(', ')}]`);
     }
@@ -2521,9 +2803,12 @@ function toggleAccordion(accordionId) {
 function updateStandByAccordion() {
     console.log('🔍 [ACCORDION] Actualizando acordeón de presupuestos sin confirmar...');
 
-    // Filtrar presupuestos con estado exactamente "Muestra de Fraccionados"
+    // Filtrar presupuestos sin confirmar / en standby
     const standByPresupuestos = appState.presupuestos.filter(item =>
-        item.estado === 'Muestra de Fraccionados'
+        item.estado === 'Sin Confirmar' ||
+        item.estado === 'Standby' ||
+        item.estado === 'Muestra de Fraccionados' ||
+        item.secuencia === 'Standby'
     );
 
     console.log(`✅ [ACCORDION] Encontrados ${standByPresupuestos.length} presupuestos sin confirmar`);
@@ -2559,8 +2844,9 @@ function updateStandByAccordion() {
         if (categoriaDisplay.toLowerCase() === 'factura') {
             categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
         }
+        const esAnuladoCliente = item.estado === 'Anulado por el Cliente';
         return `
-        <tr class="slide-up" data-presupuesto-id="${item.id}">
+        <tr class="slide-up fila-standby" data-presupuesto-id="${item.id}" style="${esAnuladoCliente ? 'opacity: 0.55; background-color: rgba(239, 68, 68, 0.05); border-left: 4px solid #ef4444;' : 'border-left: 4px solid #ff9800;'}">
             <td class="text-center">
                 <button class="btn-expand" onclick="toggleDetalles(${item.id})" title="Ver detalles de artículos">
                     <span class="expand-icon">+</span>
@@ -2571,10 +2857,33 @@ function updateStandByAccordion() {
             <td>${formatDateDDMMYYYYWithTime(item.fecha_registro)}</td>
             <td class="text-right"><strong>$${formatNumber(item.total_final !== undefined ? item.total_final : (item.monto || 0))}</strong></td>
             <td class="text-center">
-                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}">${escapeHtml(item.estado || 'Sin estado')}</span>
+                <span class="estado-badge estado-${(item.estado || 'sin-estado').toLowerCase().replace(/\s+/g, '-')}"
+                      style="${esAnuladoCliente ? 'background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; font-weight: bold; padding: 0.25rem 0.6rem; border-radius: 4px; display: inline-block;' : ''}">
+                    ${item.estado === 'Sin Confirmar' ? '⏳ Sin Confirmar' : escapeHtml(item.estado || 'Sin estado')}
+                </span>
+                ${item.secuencia === 'Standby' && item.estado !== 'Sin Confirmar' ? `
+                <span class="estado-badge estado-sin-confirmar" style="display:block; margin-top:5px; background-color: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; font-weight: bold; font-size: 0.75rem;">
+                    ⏳ En Standby
+                </span>` : ''}
+                ${item.agente === 'Portal B2B' ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #e8f0fe; color: #1a73e8; border: 1px solid #d2e3fc; font-weight: bold; font-size: 0.75rem;">
+                    🌐 Creado en Portal
+                </span>` : ''}
+                ${item.modificado_portal ?
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-weight: bold; font-size: 0.75rem;">
+                    🌐 Modificado en Portal
+                </span>` : ''}
             </td>
             <td class="text-center">
-                <div class="action-buttons">
+                <div class="action-buttons" style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+                    ${(item.estado === 'Anulado por el Cliente' || item.estado === 'Anulado') ? `
+                    <button class="btn-action btn-archive" onclick="archivarPresupuesto(${item.id})" title="Archivar presupuesto" style="background-color: transparent; border: 1px solid #e67e22; border-radius: 4px; cursor: pointer; color: #e67e22; display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; font-size: 0.85rem; height: 32px; gap: 4px;">
+                        <span>🗂️ Archivar</span>
+                    </button>
+                    ` : `
+                    <button class="btn-action btn-confirmar-standby" onclick="cambiarEstadoStandby(${item.id}, false)" title="Confirmar presupuesto (Activar para Producción y Promociones)" style="background:transparent; border:1px solid #28a745; border-radius: 4px; cursor:pointer; color: #28a745; display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; font-size: 0.85rem; height: 32px; gap: 4px;">
+                        <span>▶️ Confirmar</span>
+                    </button>
                     <button class="btn-action btn-print" onclick="imprimirPresupuestoDesdeTabla(${item.id})" title="Imprimir presupuesto">
                         Imprimir
                     </button>
@@ -2584,6 +2893,7 @@ function updateStandByAccordion() {
                     <button class="btn-action btn-delete" onclick="anularPresupuesto(${item.id})" title="Anular presupuesto">
                         Eliminar
                     </button>
+                    `}
                 </div>
             </td>
         </tr>
@@ -2600,6 +2910,93 @@ function updateStandByAccordion() {
 
 // Exponer función toggleAccordion globalmente para uso en onclick
 window.toggleAccordion = toggleAccordion;
+
+/**
+ * Cambiar estado de presupuesto entre Standby (Sin Confirmar) y Confirmado (Presupuesto/Orden)
+ * A un solo clic desde la tabla principal o acordeón.
+ */
+window.cambiarEstadoStandby = async function (id, ponerEnStandby) {
+    if (!id) return;
+    const nuevoEstado = ponerEnStandby ? 'Sin Confirmar' : 'Presupuesto/Orden';
+    const nuevaSecuencia = ponerEnStandby ? 'Standby' : 'Imprimir';
+    const titulo = ponerEnStandby ? '¿Poner en Standby (Sin Confirmar)?' : '¿Confirmar Presupuesto?';
+    const texto = ponerEnStandby
+        ? `El presupuesto #${id} quedará en Standby: NO consumirá stock de promociones ni se enviará a la bandeja de Producción para armar o imprimir.`
+        : `El presupuesto #${id} pasará a estado activo: reservará stock/promociones y quedará disponible para impresión en Producción.`;
+    const confirmButtonText = ponerEnStandby ? '⏳ Sí, poner en Standby' : '▶️ Sí, Confirmar';
+    const confirmButtonColor = ponerEnStandby ? '#ff9800' : '#28a745';
+
+    if (typeof Swal !== 'undefined') {
+        const result = await Swal.fire({
+            title: titulo,
+            text: texto,
+            icon: ponerEnStandby ? 'warning' : 'question',
+            showCancelButton: true,
+            confirmButtonText: confirmButtonText,
+            confirmButtonColor: confirmButtonColor,
+            cancelButtonText: 'Cancelar'
+        });
+        if (!result.isConfirmed) return;
+    } else {
+        if (!confirm(`${titulo}\n\n${texto}`)) return;
+    }
+
+    try {
+        setLoading(true);
+        const response = await fetch(`/api/presupuestos/${id}/estado`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                estado: nuevoEstado,
+                secuencia: nuevaSecuencia
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Actualizar localmente en appState.presupuestos
+            const presu = appState.presupuestos.find(p => p.id === parseInt(id));
+            if (presu) {
+                presu.estado = nuevoEstado;
+                presu.secuencia = nuevaSecuencia;
+            }
+            updatePresupuestosTable(appState.presupuestos);
+            updateStandByAccordion();
+            if (typeof loadEstadisticas === 'function') {
+                loadEstadisticas();
+            }
+
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: ponerEnStandby ? 'Presupuesto en Standby' : 'Presupuesto Confirmado',
+                    text: `El presupuesto #${id} ahora está ${nuevoEstado}.`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                showMessage(`Estado de presupuesto #${id} actualizado a ${nuevoEstado}`, 'success');
+            }
+        } else {
+            throw new Error(data.error || data.message || 'Error al actualizar estado');
+        }
+    } catch (err) {
+        console.error('❌ Error al cambiar estado standby:', err);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: err.message || 'No se pudo actualizar el estado del presupuesto.'
+            });
+        } else {
+            showMessage(err.message, 'error');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
 
 console.log('✅ [PRESUPUESTOS-JS] Módulo frontend cargado completamente con paginación, auto-update, persistencia de filtros y acordeón de stand-by');
 
@@ -2700,6 +3097,8 @@ window.crearFacturaBorrador = async function (presupuestoId) {
     let preferencia = 'PREGUNTAR';
     let clienteId = null;
     let clienteNombre = '';
+    let clienteCuit = '';
+    let clienteDni = '';
 
     // 1. Mostrar loader de obtención de datos
     if (typeof Swal !== 'undefined') {
@@ -2722,6 +3121,8 @@ window.crearFacturaBorrador = async function (presupuestoId) {
                 preferencia = resData.data.preferencia_facturacion || 'PREGUNTAR';
                 clienteId = resData.data.id_cliente;
                 clienteNombre = resData.data.concepto || 'Cliente';
+                clienteCuit = (resData.data.cuit || '').trim();
+                clienteDni = (resData.data.dni || '').trim();
             }
         }
     } catch (err) {
@@ -2733,27 +3134,62 @@ window.crearFacturaBorrador = async function (presupuestoId) {
         Swal.close();
     }
 
+    const tieneDocumentoFiscal = (clienteCuit && clienteCuit.length >= 10) || 
+                                 (clienteDni && clienteDni !== '0' && clienteDni.length >= 7);
+
     // 2. Evaluar preferencia
-    if (preferencia === 'ARCA') {
+    if (preferencia === 'ARCA' && tieneDocumentoFiscal) {
         ejecutarFacturacionBorrador(presupuestoId, 'arca');
     } else if (preferencia === 'INTERNO') {
         ejecutarFacturacionBorrador(presupuestoId, 'interno');
+    } else if (preferencia === 'ARCA' && !tieneDocumentoFiscal) {
+        // El cliente tenía ARCA guardado pero no posee CUIT/DNI
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Cliente sin CUIT para AFIP',
+                html: `
+                    <p>El cliente <strong>${clienteNombre}</strong> tiene configurada facturación oficial ARCA, pero <strong>no posee CUIT/CUIL/DNI registrado</strong>.</p>
+                    <p style="margin-top: 10px; color: #555;">¿Deseas enviarlo como <strong>Presupuesto Aprobado (Interno)</strong>?</p>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '📄 Sí, enviar a Presupuestos Aprobados',
+                cancelButtonText: 'Cancelar'
+            }).then((r) => {
+                if (r.isConfirmed) {
+                    ejecutarFacturacionBorrador(presupuestoId, 'interno');
+                }
+            });
+        } else {
+            ejecutarFacturacionBorrador(presupuestoId, 'interno');
+        }
     } else {
-        // Si es PREGUNTAR o cualquier otra cosa, preguntar al usuario
+        // Si es PREGUNTAR, consultar al usuario preseleccionando la opción óptima
+        const radioArcaChecked = tieneDocumentoFiscal ? 'checked' : '';
+        const radioInternoChecked = !tieneDocumentoFiscal ? 'checked' : '';
+        const advertenciaDoc = !tieneDocumentoFiscal ? `
+            <div style="background-color: #fff3cd; color: #856404; padding: 10px 12px; border-radius: 6px; font-size: 0.9em; margin-bottom: 14px; border-left: 4px solid #ffc107; line-height: 1.4;">
+                ⚠️ <strong>Sin CUIT/DNI:</strong> Este cliente no tiene documento fiscal registrado. AFIP rechazará la factura oficial. <strong>Se recomienda Presupuestos Aprobados (Interno).</strong>
+            </div>
+        ` : '';
+
         if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title: '¿Cómo deseas facturar?',
                 html: `
                     <div style="text-align: left; margin-top: 15px;">
+                        ${advertenciaDoc}
                         <p style="margin-bottom: 15px; font-size: 1.05em;">Selecciona el destino para el presupuesto de <strong>${clienteNombre}</strong>:</p>
                         
                         <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                            <input type="radio" id="fact-dest-arca" name="fact-dest" value="arca" checked style="cursor: pointer; width: 18px; height: 18px;">
-                            <label for="fact-dest-arca" style="cursor: pointer; font-weight: 600; font-size: 1em;">Verificador de Arca (Oficial)</label>
+                            <input type="radio" id="fact-dest-interno" name="fact-dest" value="interno" ${radioInternoChecked} style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em; color: ${!tieneDocumentoFiscal ? '#2e7d32' : 'inherit'};">Presupuestos Aprobados (Interno) ${!tieneDocumentoFiscal ? '⭐ Recomendado' : ''}</label>
                         </div>
                         <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-                            <input type="radio" id="fact-dest-interno" name="fact-dest" value="interno" style="cursor: pointer; width: 18px; height: 18px;">
-                            <label for="fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em;">Presupuestos Aprobados (Interno)</label>
+                            <input type="radio" id="fact-dest-arca" name="fact-dest" value="arca" ${radioArcaChecked} style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="fact-dest-arca" style="cursor: pointer; font-weight: 600; font-size: 1em;">Verificador de Arca (Oficial AFIP)</label>
                         </div>
                         
                         <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.15); margin: 15px 0;">
@@ -2771,8 +3207,8 @@ window.crearFacturaBorrador = async function (presupuestoId) {
                 confirmButtonText: 'Continuar',
                 cancelButtonText: 'Cancelar',
                 preConfirm: () => {
-                    const selectedDest = document.querySelector('input[name="fact-dest"]:checked').value;
-                    const remember = document.getElementById('fact-remember').checked;
+                    const selectedDest = document.querySelector('input[name="fact-dest"]:checked')?.value || 'interno';
+                    const remember = document.getElementById('fact-remember')?.checked || false;
                     return { selectedDest, remember };
                 }
             }).then(async (result) => {
@@ -2795,7 +3231,9 @@ window.crearFacturaBorrador = async function (presupuestoId) {
             });
         } else {
             // Fallback con confirm tradicional
-            if (confirm(`¿Enviar presupuesto de ${clienteNombre} a Factura Oficial Arca? (Aceptar = Oficial, Cancelar = Interno/Presupuesto Aprobado)`)) {
+            if (!tieneDocumentoFiscal) {
+                ejecutarFacturacionBorrador(presupuestoId, 'interno');
+            } else if (confirm(`¿Enviar presupuesto de ${clienteNombre} a Factura Oficial Arca? (Aceptar = Oficial, Cancelar = Interno/Presupuesto Aprobado)`)) {
                 ejecutarFacturacionBorrador(presupuestoId, 'arca');
             } else {
                 ejecutarFacturacionBorrador(presupuestoId, 'interno');
@@ -2855,14 +3293,41 @@ async function ejecutarFacturacionBorrador(presupuestoId, tipoFactura) {
 
     } catch (error) {
         console.error('❌ [SMART-SYNC] Error al enviar a facturación:', error);
+        const errorMsg = error.message || 'Error de comunicación con el servidor';
+        const esErrorDocumento = errorMsg.toLowerCase().includes('documento') || 
+                                 errorMsg.toLowerCase().includes('cuit') || 
+                                 errorMsg.toLowerCase().includes('afip');
+
         if (typeof Swal !== 'undefined') {
-            Swal.fire(
-                'Error',
-                error.message || 'Error de comunicación con el servidor',
-                'error'
-            );
+            if (isInterno || !esErrorDocumento) {
+                Swal.fire(
+                    'Error',
+                    errorMsg,
+                    'error'
+                );
+            } else {
+                // Si falló por falta de CUIT al intentar AFIP oficial, ofrecer enviar a interno directamente
+                Swal.fire({
+                    title: 'Cliente sin CUIT para AFIP',
+                    html: `
+                        <p style="margin-bottom: 12px; color: #d32f2f;">${errorMsg}</p>
+                        <p style="font-size: 0.95em; color: #424242;">El comprobante oficial de AFIP requiere CUIT/CUIL/DNI.<br><br>
+                        ¿Deseas enviarlo ahora mismo como <strong>Presupuesto Aprobado (Interno)</strong>?</p>
+                    `,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#28a745',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: '📄 Sí, enviar a Presupuestos Aprobados',
+                    cancelButtonText: 'Cerrar'
+                }).then((res) => {
+                    if (res.isConfirmed) {
+                        ejecutarFacturacionBorrador(presupuestoId, 'interno');
+                    }
+                });
+            }
         } else {
-            alert('Error al facturar: ' + (error.message || 'Error de comunicación con el servidor'));
+            alert('Error al facturar: ' + errorMsg);
         }
     }
 }
@@ -3222,3 +3687,61 @@ window.enviarAFacturador = async function (presupuestoId) {
         );
     }
 };
+
+async function archivarPresupuesto(id) {
+    Swal.fire({
+        title: '¿Archivar presupuesto?',
+        text: 'El registro se ocultará permanentemente de la vista de armado diario y se moverá al historial pasivo. ¿Deseas continuar?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, archivar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#e67e22',
+        cancelButtonColor: 'rgba(255,255,255,0.05)',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)',
+        iconColor: '#e67e22'
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                const response = await fetch(`/api/presupuestos/${id}/archivar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    Swal.fire({
+                        title: 'Presupuesto Archivado',
+                        text: 'El registro ha sido archivado exitosamente.',
+                        icon: 'success',
+                        confirmButtonText: 'Aceptar',
+                        confirmButtonColor: 'var(--accent)',
+                        background: 'hsl(222, 47%, 11%)',
+                        color: 'var(--text-primary)'
+                    });
+                    // Recargar la grilla
+                    if (typeof handleCargarDatos === 'function') {
+                        await handleCargarDatos(appState.pagination.currentPage, true);
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    throw new Error(data.error || 'Error al archivar');
+                }
+            } catch (err) {
+                console.error('Error al archivar presupuesto:', err);
+                Swal.fire({
+                    title: 'Error al archivar',
+                    text: err.message,
+                    icon: 'error',
+                    confirmButtonText: 'Aceptar',
+                    background: 'hsl(222, 47%, 11%)',
+                    color: 'var(--text-primary)'
+                });
+            }
+        }
+    });
+}
+window.archivarPresupuesto = archivarPresupuesto;

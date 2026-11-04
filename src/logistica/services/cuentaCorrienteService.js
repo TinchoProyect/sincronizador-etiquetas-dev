@@ -17,7 +17,7 @@ class CuentaCorrienteService {
         console.log(`🔍 [CC-SERVICE] Buscando cuentas corrientes para cliente: ${codigoBunkerCliente}`);
         
         const res = await pool.query(
-            `SELECT id, codigo_bunker_cliente, nombre_cuenta, moneda, saldo, saldo_apertura, estado, creada_en, actualizada_en 
+            `SELECT id, codigo_bunker_cliente, nombre_cuenta, moneda, saldo, saldo_apertura, estado, creada_en, actualizada_en, configuracion_reporte 
              FROM public.factura_cuentas_corrientes 
              WHERE codigo_bunker_cliente = $1 
              ORDER BY creada_en ASC`,
@@ -108,6 +108,14 @@ class CuentaCorrienteService {
                 const cc = ccRes.rows[0];
                 const saldoApertura = parseFloat(cc.saldo_apertura) || 0;
                 if (saldoApertura !== 0) {
+                    // Establecer fecha de apertura previa al movimiento más antiguo para que quede al pie en orden descendente
+                    let fechaApertura = cc.creada_en ? new Date(cc.creada_en) : new Date();
+                    if (rows.length > 0) {
+                        const minFechaMov = new Date(rows[rows.length - 1].fecha_movimiento);
+                        if (minFechaMov <= fechaApertura) {
+                            fechaApertura = new Date(minFechaMov.getTime() - 1000);
+                        }
+                    }
                     rows.push({
                         id: `apertura-${cuentaId}`,
                         cuenta_corriente_id: cuentaId,
@@ -118,8 +126,8 @@ class CuentaCorrienteService {
                         comprobante_id: null,
                         presupuesto_id: null,
                         descripcion: 'Ajuste de Apertura / Saldo Inicial de Cuenta',
-                        fecha_movimiento: cc.creada_en || new Date(),
-                        creado_en: cc.creada_en || new Date(),
+                        fecha_movimiento: fechaApertura,
+                        creado_en: fechaApertura,
                         metadatos: null
                     });
                 }
@@ -246,7 +254,7 @@ class CuentaCorrienteService {
             const nuevoSaldo = esCredito ? (saldoActual - absSaldo) : (saldoActual + absSaldo);
             const nuevoSaldoSanitizado = parseFloat(nuevoSaldo.toFixed(2));
 
-            // 2. Insertar movimiento
+            // 2. Insertar movimiento (con saldo_resultante temporal que será recalculado cronológicamente)
             const queryInsertMov = `
                 INSERT INTO public.factura_cuenta_corriente_movimientos (
                     cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, 
@@ -264,15 +272,10 @@ class CuentaCorrienteService {
                 new Date()
             ]);
 
-            // 3. Actualizar saldo en cuenta corriente
-            await client.query(
-                `UPDATE public.factura_cuentas_corrientes 
-                 SET saldo = $1, actualizada_en = CURRENT_TIMESTAMP 
-                 WHERE id = $2`,
-                [nuevoSaldoSanitizado, cuentaId]
-            );
+            // 3. Recalcular robustamente todos los saldos de la cuenta de forma cronológica
+            await this.recalcularSaldos(cuentaId, client);
 
-            console.log(`✅ [CC-SERVICE] Ajuste automático registrado. Nuevo Saldo: ${nuevoSaldoSanitizado}`);
+            console.log(`✅ [CC-SERVICE] Ajuste automático registrado y saldos recalculados exitosamente.`);
             return resInsert.rows[0];
         });
     }
@@ -660,6 +663,24 @@ class CuentaCorrienteService {
 
             return true;
         });
+    }
+
+    /**
+     * Actualiza la parametrización predeterminada del reporte PDF para una cuenta
+     * @param {number} cuentaId - ID de la cuenta corriente
+     * @param {Object} config - Configuración { detallar_balance, detallado, desde_ultimo_cero }
+     * @returns {Promise<Object>} Registro actualizado
+     */
+    static async actualizarConfiguracionReporte(cuentaId, config) {
+        console.log(`💾 [CC-SERVICE] Guardando configuración de reporte predeterminada para cuenta ID ${cuentaId}:`, config);
+        const res = await pool.query(
+            `UPDATE public.factura_cuentas_corrientes 
+             SET configuracion_reporte = $1, actualizada_en = CURRENT_TIMESTAMP 
+             WHERE id = $2 
+             RETURNING id, codigo_bunker_cliente, nombre_cuenta, saldo, configuracion_reporte`,
+            [JSON.stringify(config), cuentaId]
+        );
+        return res.rows[0] || null;
     }
 }
 

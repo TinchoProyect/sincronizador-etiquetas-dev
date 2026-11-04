@@ -120,9 +120,10 @@ async function cargarIngredientesDisponibles() {
         const ingredientes = await response.json();
 
         const normalizeUnit = (u) => {
-            const val = (u || '').trim().toLowerCase();
-            if (val === 'kg') return 'kilo';
-            if (val === 'g' || val === 'gr') return 'gramos';
+            const val = (u || '').toString().trim().toLowerCase();
+            if (val === 'kg' || val === 'kilos' || val === 'kilo') return 'kilo';
+            if (val === 'g' || val === 'gr' || val === 'gramo' || val === 'gramos') return 'gramos';
+            if (val === 'u' || val === 'un' || val === 'unidad' || val === 'unidades') return 'unidad';
             return val;
         };
         const destUnit = normalizeUnit(estadoSustitucion.ingredienteDestino.unidad);
@@ -242,7 +243,7 @@ window.seleccionarIngredienteOrigen = function (ingredienteId) {
  */
 function validarCantidad() {
     const input = document.getElementById('sustitucion-cantidad-input');
-    const cantidad = parseFloat(input.value);
+    const cantidad = parseFloat(String(input.value || '').replace(',', '.'));
     const btnConfirmar = document.getElementById('sustitucion-btn-confirmar');
 
     limpiarMensajeValidacion();
@@ -353,7 +354,8 @@ async function confirmarSustitucion() {
             return;
         }
 
-        const cantidad = parseFloat(document.getElementById('sustitucion-cantidad-input').value);
+        const valorInput = document.getElementById('sustitucion-cantidad-input').value;
+        const cantidad = parseFloat(String(valorInput || '').replace(',', '.'));
         const ingredienteOrigenNombre = estadoSustitucion.ingredienteOrigen.nombre;
         const ingredienteOrigenId = estadoSustitucion.ingredienteOrigen.id;
 
@@ -384,8 +386,8 @@ async function confirmarSustitucion() {
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al realizar la sustitución');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detalle || errorData.error || 'Error al realizar la sustitución');
         }
 
         const resultado = await response.json();

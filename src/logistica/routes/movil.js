@@ -9,8 +9,124 @@ const router = express.Router();
 // Importar modelos y controladores del escritorio (Dashboard Gerencial)
 const { obtenerPresupuestosDisponibles } = require('../models/presupuestosModel.js');
 const { crearRuta, asignarPresupuestos, eliminarRuta } = require('../controllers/rutasController.js');
+const { obtenerClienteUnificado, resolverDestinatariosAlertaEntrega } = require('../services/clienteResolver.js');
+const { obtenerDestinatariosInicioRuta, despacharNotificacionesInicioRuta } = require('../services/notificacionInicioRutaService.js');
+const PagosEfectivoService = require('../services/pagosEfectivoService.js');
+
+/**
+ * Helper: envía un aviso corto por WhatsApp al cliente confirmando que su sobre fue retirado por el chofer.
+ * Solo menciona el número de sobre (#SOB-XXXX), nunca el importe.
+ */
+async function enviarAvisoWhatsAppSobreRetirado(dbPool, sobre) {
+    try {
+        if (!sobre || !sobre.codigo_sobre) {
+            return { enviado: false, destinatarios: [], errores: ['Sobre inválido'] };
+        }
+
+        const contactInfo = await obtenerClienteUnificado(dbPool, sobre.cliente_id);
+        const destinatariosObjetos = contactInfo ? resolverDestinatariosAlertaEntrega(contactInfo) : [];
+        let whatsappDestinatarios = destinatariosObjetos.map(d => d.numero).filter(Boolean);
+
+        if (whatsappDestinatarios.length === 0 && sobre.colaborador_telefono) {
+            const digits = String(sobre.colaborador_telefono).replace(/\D/g, '');
+            if (digits.length >= 8) {
+                whatsappDestinatarios.push(digits);
+            }
+        }
+
+        if (whatsappDestinatarios.length === 0) {
+            return { enviado: false, destinatarios: [], errores: ['El cliente no tiene número de WhatsApp configurado'] };
+        }
+
+        const nombreCliente = contactInfo?.cliente_nombre || contactInfo?.razon_social || sobre.colaborador_nombre || 'Cliente';
+        const mensajeTexto = `💵 *Sobre Retirado*\n\nHola *${nombreCliente}*, te avisamos que ya fue retirado el sobre *#${sobre.codigo_sobre}*.\n\n¡Muchas gracias!\n*LAMDA*`;
+
+        const facturacionUrl = process.env.FACTURACION_API_URL || 'http://localhost:3004';
+        let enviados = 0;
+        const errores = [];
+
+        for (const whatsappDestino of whatsappDestinatarios) {
+            try {
+                const resMsg = await fetch(`${facturacionUrl}/facturacion/whatsapp/enviar-mensaje`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        destinatarios: whatsappDestino,
+                        mensajeTexto
+                    })
+                });
+                const dataMsg = await resMsg.json().catch(() => ({}));
+                if (resMsg.ok && dataMsg.success) {
+                    enviados++;
+                    console.log(`[MOVIL-SOBRE-WA] ✅ Aviso de sobre retirado #${sobre.codigo_sobre} enviado a ${whatsappDestino}`);
+                } else {
+                    errores.push(dataMsg.error || dataMsg.message || `Error HTTP ${resMsg.status}`);
+                }
+            } catch (errWa) {
+                errores.push(errWa.message);
+            }
+        }
+
+        return {
+            enviado: enviados > 0,
+            enviados,
+            destinatarios: whatsappDestinatarios,
+            errores
+        };
+    } catch (err) {
+        console.error('[MOVIL-SOBRE-WA] ❌ Error enviando aviso de sobre retirado:', err.message);
+        return { enviado: false, destinatarios: [], errores: [err.message] };
+    }
+}
 
 console.log('🔍 [MOVIL] Configurando rutas del módulo móvil...');
+
+/**
+ * @route GET /api/logistica/public-qr-resolve/:token
+ * @desc Resolver cualquier token de QR (UUID, token corto msf... o ID local entero) a su UUID de Supabase B2B.
+ * @access Público (Sin autenticación para lectura de QR B2B)
+ */
+router.get('/public-qr-resolve/:token', async (req, res) => {
+    try {
+        const token = String(req.params.token || '').trim();
+        if (!token) {
+            return res.status(400).json({ success: false, error: 'Token no especificado' });
+        }
+
+        // Si ya es un UUID válido de 36 caracteres, devolverlo directamente
+        const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token);
+        if (esUUID) {
+            return res.json({ success: true, supabase_pedido_id: token });
+        }
+
+        const pool = req.app.get('db');
+        if (!pool) {
+            return res.status(500).json({ success: false, error: 'Base de datos no disponible' });
+        }
+
+        const queryFind = `
+            SELECT m.supabase_pedido_id 
+            FROM public.presupuestos p
+            LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
+            WHERE p.id_presupuesto_ext = $1 
+               OR (CASE WHEN $1 ~ '^[0-9]+$' THEN p.id = $1::integer ELSE false END)
+            LIMIT 1
+        `;
+        const resFind = await pool.query(queryFind, [token]);
+
+        if (resFind.rowCount > 0 && resFind.rows[0].supabase_pedido_id) {
+            return res.json({
+                success: true,
+                supabase_pedido_id: resFind.rows[0].supabase_pedido_id
+            });
+        }
+
+        return res.status(404).json({ success: false, error: 'Mapeo no encontrado' });
+    } catch (err) {
+        console.error('❌ Error en public-qr-resolve:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 /**
  * @route POST /api/logistica/movil/login
@@ -219,7 +335,10 @@ router.get('/mis-rutas', async (req, res) => {
                 r.nombre_ruta,
                 r.fecha_salida,
                 r.estado,
-                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) as total_entregas
+                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) +
+                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) +
+                (SELECT COUNT(*) FROM public.factura_pagos_efectivo s WHERE s.id_ruta = r.id) +
+                (SELECT COUNT(*) FROM public.bunker_prospectos pr WHERE pr.id_ruta = r.id AND pr.activo = true) as total_entregas
             FROM rutas r
             WHERE r.id_chofer = $1 
               AND r.estado IN ('ARMANDO', 'EN_CAMINO')
@@ -390,13 +509,14 @@ router.get('/ruta-activa', async (req, res) => {
                 (SELECT json_agg(json_build_object('id', d.id, 'direccion', d.direccion, 'localidad', d.localidad, 'latitud', d.latitud, 'longitud', d.longitud)) 
                  FROM clientes_domicilios d WHERE d.id_cliente = c.id OR d.id_cliente::text = c.cliente_id::text) as domicilios_alternativos,
                 COALESCE(
-                    (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)), 2)
+                    (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)), 2)
                      FROM presupuestos_detalles pd
                      WHERE pd.id_presupuesto_ext = p.id_presupuesto_ext),
                     0
                 ) as total,
                 (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
-                EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
+                EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')) as esta_facturado,
+                (SELECT m.supabase_pedido_id::text FROM public.b2b_pedidos_mapeo m WHERE m.local_presupuesto_id = p.id LIMIT 1) as supabase_pedido_id
             FROM presupuestos p
             INNER JOIN clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
@@ -411,6 +531,8 @@ router.get('/ruta-activa', async (req, res) => {
         // Formatear entregas
         const entregas = resultEntregas.rows.map(e => ({
             id_presupuesto: e.id_presupuesto,
+            id_presupuesto_ext: e.id_presupuesto_ext,
+            supabase_pedido_id: e.supabase_pedido_id || null,
             orden_entrega: e.orden_entrega,
             estado: e.estado,
             estado_logistico: e.estado_logistico,
@@ -506,12 +628,170 @@ router.get('/ruta-activa', async (req, res) => {
 
         console.log(`[MOVIL] ✅ Retiros de Mantenimiento encontrados: ${retirosMantenimiento.length}`);
 
+        // INYECCIÓN DE SOBRES DE EFECTIVO ASIGNADOS A LA RUTA (FASE 4)
+        const querySobres = `
+            SELECT 
+                s.id as id_sobre,
+                s.codigo_sobre,
+                s.monto_declarado,
+                s.foto_frente_url,
+                s.foto_dorso_url,
+                s.estado,
+                s.orden_entrega,
+                s.observaciones_cliente,
+                s.fecha_creacion,
+                c.cliente_id as cliente_id,
+                s.cliente_id as codigo_bunker_cliente,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, bc.cliente_nombre, bc.razon_social, s.cliente_id) as cliente_nombre,
+                COALESCE(c.telefono, bc.whatsapp_facturas, s.colaborador_telefono) as cliente_telefono,
+                cd.id as domicilio_id,
+                cd.alias as domicilio_alias,
+                COALESCE(cd.direccion, bc.domicilio_fiscal, 'Retiro de Sobre') as domicilio_direccion,
+                COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
+                COALESCE(cd.provincia, bc.provincia, '') as domicilio_provincia,
+                cd.telefono_contacto as domicilio_telefono,
+                cd.instrucciones_entrega as domicilio_instrucciones,
+                cd.latitud as domicilio_latitud,
+                cd.longitud as domicilio_longitud
+            FROM public.factura_pagos_efectivo s
+            LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = s.cliente_id OR bc.lomas_soft_id = s.cliente_id
+            LEFT JOIN public.clientes c ON (bc.lomas_soft_id IS NOT NULL AND c.cliente_id::text = ltrim(bc.lomas_soft_id, '0'))
+                                        OR (bc.id IS NULL AND c.cliente_id::text = ltrim(s.cliente_id, '0'))
+            LEFT JOIN public.clientes_domicilios cd ON cd.id = COALESCE(
+                s.id_domicilio_entrega,
+                (
+                    SELECT cd_sub.id 
+                    FROM public.clientes_domicilios cd_sub
+                    WHERE (
+                        cd_sub.id_cliente = bc.id
+                        OR cd_sub.id_cliente = c.id
+                        OR cd_sub.id_cliente::text = bc.lomas_soft_id
+                        OR cd_sub.id_cliente::text = c.cliente_id::text
+                    ) AND cd_sub.activo = true
+                    ORDER BY cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
+                    LIMIT 1
+                )
+            )
+            WHERE s.id_ruta = $1
+            ORDER BY COALESCE(s.orden_entrega, 999) ASC, s.id ASC
+        `;
+        const resultSobres = await req.db.query(querySobres, [ruta.id]);
+
+        const sobresEfectivo = resultSobres.rows.map(s => ({
+            id_sobre: s.id_sobre,
+            codigo_sobre: s.codigo_sobre,
+            es_sobre_efectivo: true,
+            orden_entrega: s.orden_entrega,
+            estado: s.estado,
+            estado_logistico: ['EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO'].includes(s.estado) ? 'RETIRADO' : 'ASIGNADO',
+            monto_declarado: parseFloat(s.monto_declarado || 0),
+            foto_frente_url: s.foto_frente_url,
+            foto_dorso_url: s.foto_dorso_url,
+            observaciones_cliente: s.observaciones_cliente,
+            fecha_creacion: s.fecha_creacion,
+            cliente: {
+                id: s.cliente_id || s.codigo_bunker_cliente,
+                codigo_bunker: s.codigo_bunker_cliente,
+                nombre: s.cliente_nombre,
+                telefono: s.cliente_telefono
+            },
+            domicilio: {
+                id: s.domicilio_id,
+                alias: s.domicilio_alias,
+                direccion: s.domicilio_direccion,
+                localidad: s.domicilio_localidad,
+                provincia: s.domicilio_provincia,
+                telefono_contacto: s.domicilio_telefono,
+                instrucciones_entrega: s.domicilio_instrucciones,
+                latitud: s.domicilio_latitud,
+                longitud: s.domicilio_longitud
+            }
+        }));
+
+        console.log(`[MOVIL] ✅ Sobres de Efectivo en ruta encontrados: ${sobresEfectivo.length}`);
+
+        // INYECCIÓN DE VISITAS COMERCIALES DE PREVENTA ASIGNADAS A LA RUTA (FASE 5)
+        const queryProspectosRuta = `
+            SELECT 
+                p.id as id_prospecto,
+                p.codigo_prospecto,
+                p.origen_contacto,
+                p.cliente_activo_id,
+                p.cliente_domicilio_id,
+                p.nombre_fantasia,
+                p.rubro,
+                p.direccion,
+                p.localidad,
+                p.zona,
+                p.latitud,
+                p.longitud,
+                p.contacto_nombre,
+                p.contacto_rol,
+                p.telefono_whatsapp,
+                p.email,
+                p.estado as estado_prospecto,
+                p.estado_ruta,
+                p.orden_entrega,
+                p.notas,
+                p.imagen_url,
+                p.web_redes,
+                p.lista_precios_sugerida_id
+            FROM public.bunker_prospectos p
+            WHERE p.id_ruta = $1 AND p.activo = true
+            ORDER BY COALESCE(p.orden_entrega, 999) ASC, p.id ASC
+        `;
+        const resultProspectos = await req.db.query(queryProspectosRuta, [ruta.id]);
+
+        const visitasPreventa = resultProspectos.rows.map(p => ({
+            id_prospecto: p.id_prospecto,
+            codigo_prospecto: p.codigo_prospecto,
+            origen_contacto: p.origen_contacto,
+            cliente_activo_id: p.cliente_activo_id,
+            cliente_domicilio_id: p.cliente_domicilio_id,
+            es_visita_preventa: true,
+            orden_entrega: p.orden_entrega,
+            estado: p.estado_prospecto,
+            estado_ruta: p.estado_ruta || 'PENDIENTE',
+            estado_logistico: p.estado_ruta === 'VISITADO'
+                ? 'ENTREGADO'
+                : (['NO_ENCONTRADO', 'NO_CONCRETADA'].includes(p.estado_ruta) ? 'RECHAZADO' : 'ASIGNADO'),
+            rubro: p.rubro,
+            contacto_nombre: p.contacto_nombre,
+            contacto_rol: p.contacto_rol,
+            telefono_whatsapp: p.telefono_whatsapp,
+            email: p.email,
+            notas: p.notas,
+            imagen_url: p.imagen_url,
+            web_redes: p.web_redes,
+            lista_precios_sugerida_id: p.lista_precios_sugerida_id,
+            cliente: {
+                id: p.codigo_prospecto,
+                nombre: p.nombre_fantasia,
+                telefono: p.telefono_whatsapp
+            },
+            domicilio: {
+                id: `dom_pr_${p.id_prospecto}`,
+                alias: p.zona || p.localidad || 'Preventa',
+                direccion: p.direccion || 'Presentación Comercial',
+                localidad: p.zona || p.localidad || 'Gran La Plata',
+                provincia: 'Buenos Aires',
+                telefono_contacto: p.telefono_whatsapp,
+                instrucciones_entrega: p.notas,
+                latitud: p.latitud,
+                longitud: p.longitud
+            }
+        }));
+
+        console.log(`[MOVIL] ✅ Visitas de Preventa en ruta encontradas: ${visitasPreventa.length}`);
+
         res.json({
             success: true,
             data: {
                 ruta: ruta,
                 entregas: entregas,
-                retiros: retirosMantenimiento
+                retiros: retirosMantenimiento,
+                sobres: sobresEfectivo,
+                visitas_preventa: visitasPreventa
             }
         });
 
@@ -535,17 +815,30 @@ router.get('/pedidos/:id/detalles', async (req, res) => {
 
     try {
         const { id } = req.params;
+        const rawId = String(id || '').trim();
 
-        console.log('[MOVIL] Buscando detalles para presupuesto ID:', id);
+        console.log('[MOVIL] Buscando detalles para presupuesto identificador:', rawId);
 
-        // Obtener id_presupuesto_ext del presupuesto
+        const isNumeric = /^\d+$/.test(rawId);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+
+        // Resolver presupuesto por ID numérico local, id_presupuesto_ext o supabase_pedido_id (QR de remito)
         const presupuestoQuery = `
-            SELECT id_presupuesto_ext
-            FROM presupuestos
-            WHERE id = $1
+            SELECT p.id, p.id_presupuesto_ext
+            FROM public.presupuestos p
+            LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
+            WHERE ($1::int IS NOT NULL AND p.id = $1::int)
+               OR p.id_presupuesto_ext = $2
+               OR ($3::uuid IS NOT NULL AND m.supabase_pedido_id = $3::uuid)
+            ORDER BY p.id DESC
+            LIMIT 1
         `;
 
-        const presupuestoResult = await req.db.query(presupuestoQuery, [parseInt(id)]);
+        const presupuestoResult = await req.db.query(presupuestoQuery, [
+            isNumeric ? parseInt(rawId, 10) : null,
+            rawId,
+            isUuid ? rawId : null
+        ]);
 
         if (presupuestoResult.rows.length === 0) {
             return res.status(404).json({
@@ -554,21 +847,23 @@ router.get('/pedidos/:id/detalles', async (req, res) => {
             });
         }
 
+        const localPresupuestoId = presupuestoResult.rows[0].id;
         const idPresupuestoExt = presupuestoResult.rows[0].id_presupuesto_ext;
 
-        // Obtener detalles de artículos
+        // Obtener detalles de artículos con resolución determinista Búnker/Legacy
         const detallesQuery = `
             SELECT 
-                pd.articulo as codigo_barras,
-                pd.cantidad,
-                COALESCE(a.nombre, pd.articulo) as descripcion
-            FROM presupuestos_detalles pd
-            LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
-            WHERE pd.id_presupuesto_ext = $1
-            ORDER BY pd.articulo
+                articulo as codigo_barras,
+                cantidad,
+                descripcion,
+                descripcion_bunker
+            FROM public.v_presupuestos_detalles_resueltos
+            WHERE id_presupuesto_ext = $1
+               OR id_presupuesto = $2
+            ORDER BY id ASC
         `;
 
-        const detallesResult = await req.db.query(detallesQuery, [idPresupuestoExt]);
+        const detallesResult = await req.db.query(detallesQuery, [idPresupuestoExt, localPresupuestoId]);
 
         console.log('[MOVIL] ✅ Detalles encontrados:', detallesResult.rows.length, 'artículos');
 
@@ -586,6 +881,702 @@ router.get('/pedidos/:id/detalles', async (req, res) => {
         });
     }
 });
+
+/**
+ * @route POST /api/logistica/movil/entregas/escanear-qr
+ * @desc Escaneo de remito QR. Confirma entrega automáticamente y busca retiros pendientes.
+ */
+router.post('/entregas/escanear-qr', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta POST /entregas/escanear-qr - Procesando escaneo');
+    const fs = require('fs');
+    const path = require('path');
+    const emailService = require('../../facturacion/services/emailService');
+    
+    try {
+        const { uuid, foto_remito, foto_bulto, latitud, longitud, itemsModificados, observaciones_chofer } = req.body;
+        if (!uuid) {
+            return res.status(400).json({ success: false, error: 'Código UUID/Token es requerido.' });
+        }
+
+        // Normalizar token: si es una URL, extraer el último segmento del path o parámetro de consulta (soportando hash router)
+        let token = uuid.trim();
+        if (token.startsWith('http://') || token.startsWith('https://')) {
+            try {
+                const urlObj = new URL(token);
+                if (urlObj.hash) {
+                    const hashPath = urlObj.hash.replace(/^#/, '');
+                    const qIndex = hashPath.indexOf('?');
+                    let cleanHashPath = qIndex !== -1 ? hashPath.substring(0, qIndex) : hashPath;
+                    const hashSegments = cleanHashPath.split('/').filter(s => s.length > 0);
+                    if (hashSegments.length > 0) {
+                        token = hashSegments[hashSegments.length - 1].trim();
+                    }
+                } else {
+                    const queryId = urlObj.searchParams.get('id') || urlObj.searchParams.get('hash') || urlObj.searchParams.get('p');
+                    if (queryId) {
+                        token = queryId.trim();
+                    } else {
+                        const pathSegments = urlObj.pathname.split('/').filter(s => s.length > 0);
+                        if (pathSegments.length > 0) {
+                            token = pathSegments[pathSegments.length - 1].trim();
+                        }
+                    }
+                }
+            } catch (urlErr) {
+                console.warn('[MOVIL-SCAN] Error parseando URL de QR, usando fallback:', urlErr.message);
+                const matchParam = token.match(/[?&](id|hash|p)=([^&#]+)/);
+                if (matchParam) {
+                    token = matchParam[2];
+                } else {
+                    const matchSegment = token.match(/\/([^/?#]+)[/?#]*$/);
+                    if (matchSegment) {
+                        token = matchSegment[1];
+                    }
+                }
+            }
+        }
+
+        // Extraer UUID si lo contiene
+        const uuidMatch = token.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        if (uuidMatch) {
+            token = uuidMatch[0];
+        }
+
+        // Si el token tiene el formato de bulto de presupuesto local (ej: "8234586-1"), quedarnos solo con el ID de presupuesto ("8234586")
+        const localPackageMatch = token.match(/^([0-9]+)-[0-9]+$/);
+        if (localPackageMatch) {
+            token = localPackageMatch[1];
+        }
+
+        console.log('🔍 [MOVIL-SCAN] Recibido uuid:', uuid, '-> Token normalizado:', token);
+
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Buscar el presupuesto por UUID en id_presupuesto_ext o en b2b_pedidos_mapeo
+            const queryFind = `
+                SELECT p.id, p.id_cliente, p.id_presupuesto_ext, p.estado_logistico, c.cliente_id,
+                       COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Cliente') as cliente_nombre
+                FROM public.presupuestos p
+                LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
+                LEFT JOIN public.clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text
+                WHERE p.id_presupuesto_ext = $1 
+                   OR (CASE WHEN $1 ~ '^[0-9]+$' THEN p.id = $1::integer ELSE false END)
+                   OR (CASE WHEN $1 ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN m.supabase_pedido_id = $1::uuid ELSE false END)
+                LIMIT 1
+            `;
+            const resFind = await client.query(queryFind, [token]);
+
+            if (resFind.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Pedido no encontrado en el sistema local.' });
+            }
+
+            const p = resFind.rows[0];
+
+            // 2. Procesar imágenes opcionales y guardarlas físicamente en logistica/public/uploads
+            let foto_remito_url = null;
+            let foto_bulto_url = null;
+            const uploadsDir = path.join(__dirname, '../public/uploads');
+
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+
+            if (foto_remito) {
+                const base64Clean = foto_remito.replace(/^data:image\/\w+;base64,/, "");
+                const filename = `${p.id}_remito_${Date.now()}.jpg`;
+                const filepath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filepath, base64Clean, 'base64');
+                foto_remito_url = `/public/uploads/${filename}`;
+                console.log(`[MOVIL-SCAN] 📷 Foto de remito firmada guardada en: ${foto_remito_url}`);
+            }
+
+            if (foto_bulto) {
+                const base64Clean = foto_bulto.replace(/^data:image\/\w+;base64,/, "");
+                const filename = `${p.id}_bulto_${Date.now()}.jpg`;
+                const filepath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filepath, base64Clean, 'base64');
+                foto_bulto_url = `/public/uploads/${filename}`;
+                console.log(`[MOVIL-SCAN] 📷 Foto de bultos/conformidad guardada en: ${foto_bulto_url}`);
+            }
+
+            // 2.5 Si hay observaciones del chofer o artículos devueltos (Entrega Parcial)
+            let itemsDevueltosResumen = [];
+            if (itemsModificados && Array.isArray(itemsModificados) && itemsModificados.length > 0) {
+                for (const itemMod of itemsModificados) {
+                    const { codigo_barras, cantidad: nuevaCantidad } = itemMod;
+                    const qtyVal = parseFloat(nuevaCantidad);
+
+                    // Buscar detalle original para calcular la diferencia no entregada SIN mutar el presupuesto original
+                    const origItemRes = await client.query(
+                        `SELECT 
+                            id_presupuesto,
+                            cantidad,
+                            articulo_numero,
+                            descripcion as articulo_nombre
+                         FROM public.v_presupuestos_detalles_resueltos
+                         WHERE id_presupuesto_ext = $1 AND articulo = $2
+                         LIMIT 1`,
+                        [p.id_presupuesto_ext, codigo_barras]
+                    );
+
+                    if (origItemRes.rows.length > 0) {
+                        const orig = origItemRes.rows[0];
+                        const cantOriginal = parseFloat(orig.cantidad || 0);
+                        const cantDevuelta = Math.max(0, cantOriginal - qtyVal);
+
+                        if (cantDevuelta > 0) {
+                            itemsDevueltosResumen.push(`${cantDevuelta} u. de ${orig.articulo_nombre}`);
+
+                            // Inyectar atómicamente la devolución en Mantenimiento (Cuarentena / Pendiente NC)
+                            const checkDup = await client.query(`
+                                SELECT id FROM public.mantenimiento_movimientos
+                                WHERE id_presupuesto_origen = $1 AND articulo_numero = $2 AND estado = 'PENDIENTE'
+                            `, [p.id, orig.articulo_numero]);
+
+                            if (checkDup.rowCount === 0) {
+                                await client.query(`
+                                    INSERT INTO public.mantenimiento_movimientos
+                                    (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                                    VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
+                                `, [
+                                    orig.articulo_numero,
+                                    cantDevuelta,
+                                    p.id,
+                                    'Logística Móvil (Chofer QR)',
+                                    `Retorno por entrega parcial: ${cantDevuelta} u. de ${orig.articulo_nombre} (Cliente ${p.id_cliente})`
+                                ]);
+                                console.log(`[MOVIL-SCAN] 📦 Inyectada devolución a Mantenimiento: ${cantDevuelta} u. de ${orig.articulo_nombre} (Presupuesto #${p.id})`);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Guardar observaciones del chofer en presupuestos.nota si existen
+            if (observaciones_chofer || itemsDevueltosResumen.length > 0) {
+                const notasTexto = [
+                    observaciones_chofer ? `[Chofer]: ${observaciones_chofer}` : null,
+                    itemsDevueltosResumen.length > 0 ? `[Devolución en camión]: ${itemsDevueltosResumen.join(', ')}` : null
+                ].filter(Boolean).join(' | ');
+
+                await client.query(
+                    `UPDATE public.presupuestos 
+                     SET nota = CASE 
+                         WHEN nota IS NULL OR TRIM(nota) = '' THEN $1
+                         ELSE nota || ' | ' || $1
+                     END
+                     WHERE id = $2`,
+                    [notasTexto, p.id]
+                );
+            }
+
+            // 3. Si no está ENTREGADO, actualizar localmente el estado logístico
+            if (p.estado_logistico !== 'ENTREGADO') {
+                await client.query(
+                    `UPDATE public.presupuestos 
+                     SET secuencia = 'Entregado',
+                         estado = 'Entregado',
+                         estado_logistico = 'ENTREGADO',
+                         fecha_entrega_real = NOW(),
+                         motivo_no_entrega = NULL,
+                         fecha_actualizacion = NOW()
+                     WHERE id = $1`,
+                    [p.id]
+                );
+                console.log(`[MOVIL-SCAN] ✅ Presupuesto #${p.id} marcado localmente como ENTREGADO`);
+                
+                // Intentar actualizar Supabase B2B si es un UUID válido
+                const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
+                const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
+                if (SUPABASE_URL && SUPABASE_KEY) {
+                    try {
+                        const url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?id=eq.${uuid}`;
+                        const patchBody = {
+                            estado: 'Entregado',
+                            entregado_chofer_fecha: new Date().toISOString(),
+                            entregado_chofer_nombre: 'Chofer (QR)',
+                            recibido_fecha: null,
+                            recibido_por_nombre: null,
+                            recibido_por_apellido: null,
+                            recibido_por_telefono: null
+                        };
+                        await fetch(url, {
+                            method: 'PATCH',
+                            headers: {
+                                'apikey': SUPABASE_KEY,
+                                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=minimal'
+                            },
+                            body: JSON.stringify(patchBody)
+                        });
+                        console.log(`[MOVIL-SCAN] ✅ Supabase pedido ${uuid} actualizado a Entregado (montos sincronizados: ${newTotal !== null})`);
+                    } catch (supErr) {
+                        console.error(`[MOVIL-SCAN] Error silencioso actualizando Supabase: ${supErr.message}`);
+                    }
+                }
+            } else {
+                console.log(`[MOVIL-SCAN] Presupuesto #${p.id} ya figuraba como ENTREGADO`);
+            }
+
+            // 4. Registrar evento de entrega en entregas_eventos (con fotos y observaciones del chofer si existen)
+            let observacionesCombined = '';
+            if (foto_bulto_url) {
+                observacionesCombined += `Foto bulto: ${foto_bulto_url}`;
+            }
+            if (observaciones_chofer) {
+                observacionesCombined += (observacionesCombined ? ' | ' : '') + `Obs Chofer: ${observaciones_chofer}`;
+            }
+
+            const tipoEvento = (itemsModificados && itemsModificados.length > 0) ? 'ENTREGA_PARCIAL' : 'ENTREGA';
+
+            await client.query(
+                `INSERT INTO public.entregas_eventos 
+                 (id_presupuesto, receptor_nombre, receptor_vinculo, dni_receptor,
+                  foto_conformidad_url, latitud_confirmacion, longitud_confirmacion,
+                  firma_digital, fecha_entrega, observaciones, tipo_evento)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10)`,
+                [
+                    p.id,
+                    'Chofer (QR)',
+                    'Chofer',
+                    null,
+                    foto_remito_url || null,
+                    latitud ? parseFloat(latitud) : null,
+                    longitud ? parseFloat(longitud) : null,
+                    null, // firma_digital
+                    observacionesCombined || null,
+                    tipoEvento
+                ]
+            );
+            console.log('[MOVIL-SCAN] ✅ Evento de entrega insertado en public.entregas_eventos');
+
+            // 5. Buscar retiros pendientes reales para este cliente (excluyendo órdenes ya en el camión o huérfanas de rutas cerradas)
+            const queryRetiros = `
+                SELECT 
+                    o.id as id_orden,
+                    o.orden_entrega,
+                    o.estado_logistico,
+                    o.estado_tratamiento,
+                    o.codigo_qr_hash,
+                    o.fecha_creacion,
+                    (SELECT json_agg(json_build_object(
+                        'articulo_numero', d.articulo_numero,
+                        'descripcion_externa', d.descripcion_externa,
+                        'kilos', d.kilos,
+                        'bultos', d.bultos
+                    )) FROM public.ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = o.id) as detalles
+                FROM public.ordenes_tratamiento o
+                LEFT JOIN public.rutas r ON r.id = o.id_ruta
+                WHERE (o.id_cliente::text = $1 OR o.id_cliente::text = LTRIM($1, '0'))
+                  AND o.estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
+                  AND (o.id_ruta IS NULL OR o.id_ruta = $2 OR r.estado IN ('ARMANDO', 'EN_CAMINO', 'PAUSADA'))
+                ORDER BY o.id ASC
+            `;
+            const clientQueryId = p.cliente_id ? String(p.cliente_id) : String(p.id_cliente);
+            const resRetiros = await client.query(queryRetiros, [clientQueryId, p.id_ruta || null]);
+
+            const retirosPendientes = resRetiros.rows.map(r => ({
+                id_orden: r.id_orden,
+                orden_entrega: r.orden_entrega,
+                estado_logistico: r.estado_logistico,
+                estado_tratamiento: r.estado_tratamiento,
+                codigo_qr_hash: r.codigo_qr_hash,
+                fecha_creacion: r.fecha_creacion,
+                cliente_nombre: p.cliente_nombre,
+                cliente_id: clientQueryId,
+                detalles: r.detalles || []
+            }));
+
+            // 5.b Buscar sobres de efectivo ensobrado pendientes para este cliente (Modalidad CHOFER)
+            let sobresEfectivoPendientes = [];
+            try {
+                const resSobres = await client.query(`
+                    SELECT id, codigo_sobre, monto_declarado, estado, foto_frente_url, foto_dorso_url
+                    FROM public.factura_pagos_efectivo
+                    WHERE (cliente_id = $1 OR cliente_id = ('CB-' || LPAD($1, 4, '0')) OR cliente_id = LTRIM($1, '0'))
+                      AND estado IN ('PREPARADO', 'EN_TRANSITO')
+                      AND modalidad_entrega = 'CHOFER'
+                    ORDER BY id ASC
+                `, [clientQueryId]);
+
+                sobresEfectivoPendientes = resSobres.rows.map(s => ({
+                    id: s.id,
+                    codigo_sobre: s.codigo_sobre,
+                    monto_declarado: parseFloat(s.monto_declarado),
+                    estado: s.estado,
+                    foto_frente_url: s.foto_frente_url
+                }));
+            } catch (eSob) {
+                console.warn('[MOVIL] ⚠️ Error al consultar sobres de efectivo (no bloqueante):', eSob.message);
+            }
+
+            // 6. Obtener toda la información de contacto unificada del cliente (1-a-1 Búnker/Legacy)
+            const clienteUnificado = await obtenerClienteUnificado(client, p.id_cliente);
+            const contactInfo = clienteUnificado || {};
+
+            // 7. Obtener detalles de artículos para el desglose con resolución determinista Búnker
+            const itemsRes = await client.query(
+                `SELECT 
+                     codigo_barras,
+                     cantidad,
+                     cantidad_original,
+                     diferencia,
+                     descripcion,
+                     descripcion_bunker
+                 FROM public.v_presupuestos_detalles_resueltos
+                 WHERE id_presupuesto_ext = $1
+                 ORDER BY id ASC`,
+                [p.id_presupuesto_ext]
+            );
+
+            await client.query('COMMIT');
+
+            // Responder inmediatamente al chofer
+            res.json({
+                success: true,
+                id_presupuesto: p.id,
+                cliente_nombre: p.cliente_nombre,
+                retirosPendientes,
+                sobresEfectivoPendientes
+            });
+
+            // Disparar envío asíncrono headless en background (si la notificación está activa)
+            const { notificar } = req.body;
+            if (notificar !== false) { // Por defecto true
+                setTimeout(async () => {
+                    try {
+                        const clientName = contactInfo.cliente_nombre || p.cliente_nombre;
+
+                        // Construir desglose separado para entregados vs devueltos
+                        let desgloseEntregado = '';
+                        let desgloseDevuelto = '';
+
+                        itemsRes.rows.forEach(item => {
+                            const cantEntregada = parseFloat(item.cantidad || 0);
+                            const cantOriginal = (item.cantidad_original !== null && item.cantidad_original !== undefined) ? parseFloat(item.cantidad_original) : null;
+                            const cantDevuelta = (cantOriginal !== null && cantOriginal > cantEntregada) ? (cantOriginal - cantEntregada) : 0;
+
+                            if (cantEntregada > 0) {
+                                desgloseEntregado += `• ${cantEntregada} u. - ${item.descripcion}\n`;
+                            }
+                            if (cantDevuelta > 0) {
+                                desgloseDevuelto += `• ${cantDevuelta} u. - ${item.descripcion}\n`;
+                            }
+                        });
+
+                        let notificationMsg = `📦 *¡Entrega Confirmada!*\n\nEstimado/a *${clientName}*,\nSu pedido #${p.id} ha sido entregado por nuestro chofer.`;
+
+                        if (desgloseEntregado) {
+                            notificationMsg += `\n\n*Detalle de mercadería entregada:*\n${desgloseEntregado.trim()}`;
+                        }
+                        if (desgloseDevuelto) {
+                            notificationMsg += `\n\n*Ajuste / Mercadería devuelta:*\n${desgloseDevuelto.trim()}`;
+                        }
+                        notificationMsg += `\n\n¡Muchas gracias por elegir LAMDA!`;
+
+                        console.log(`[NOTI-BG] 📨 Iniciando envío de notificación para pedido #${p.id}.`);
+
+                        // 1. Resolver lista estricta de destinatarios de WhatsApp mediante clienteResolver
+                        const destinatariosObjetos = resolverDestinatariosAlertaEntrega(contactInfo);
+                        const whatsappDestinatarios = destinatariosObjetos.map(d => d.numero);
+
+                        // 2. Obtener lista de correos destinatarios
+                        const emailDestinatarios = [];
+                        if (contactInfo.email_facturas) {
+                            try {
+                                const list = JSON.parse(contactInfo.email_facturas);
+                                if (Array.isArray(list)) {
+                                    list.forEach(c => {
+                                        if (c.email && c.enviar_alerta !== false) {
+                                            emailDestinatarios.push(c.email);
+                                        }
+                                    });
+                                }
+                            } catch (e) {
+                                const simpleEmails = String(contactInfo.email_facturas).split(',').map(e => e.trim()).filter(Boolean);
+                                simpleEmails.forEach(email => emailDestinatarios.push(email));
+                            }
+                        }
+                        
+                        if (emailDestinatarios.length === 0 && contactInfo.email) {
+                            emailDestinatarios.push(contactInfo.email.trim());
+                        }
+
+                        // 3. Despachar WhatsApps en masa (en paralelo)
+                        const waPromises = whatsappDestinatarios.map(async (whatsappDestino) => {
+                            try {
+                                const facturacionUrl = process.env.FACTURACION_API_URL || 'http://localhost:3004';
+                                if (foto_remito) {
+                                    // Enviar remito
+                                    const resRemito = await fetch(`${facturacionUrl}/facturacion/whatsapp/enviar-imagen`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            destinatarios: whatsappDestino,
+                                            base64Data: foto_remito.replace(/^data:image\/\w+;base64,/, ""),
+                                            mimeType: 'image/jpeg',
+                                            filename: `remito_${p.id}.jpg`,
+                                            mensajeTexto: notificationMsg
+                                        })
+                                    });
+                                    const dataRemito = await resRemito.json();
+                                    if (!dataRemito.success) {
+                                        throw new Error(dataRemito.error || 'Error al enviar remito por WhatsApp');
+                                    }
+
+                                    if (foto_bulto) {
+                                        // Enviar bulto
+                                        const resBulto = await fetch(`${facturacionUrl}/facturacion/whatsapp/enviar-imagen`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                destinatarios: whatsappDestino,
+                                                base64Data: foto_bulto.replace(/^data:image\/\w+;base64,/, ""),
+                                                mimeType: 'image/jpeg',
+                                                filename: `bulto_${p.id}.jpg`,
+                                                mensajeTexto: 'Foto de conformidad de bultos/entrega.'
+                                            })
+                                        });
+                                        const dataBulto = await resBulto.json();
+                                        if (!dataBulto.success) {
+                                            throw new Error(dataBulto.error || 'Error al enviar foto de bulto por WhatsApp');
+                                        }
+                                    }
+                                } else if (foto_bulto) {
+                                    // Enviar bulto únicamente
+                                    const resBulto = await fetch(`${facturacionUrl}/facturacion/whatsapp/enviar-imagen`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            destinatarios: whatsappDestino,
+                                            base64Data: foto_bulto.replace(/^data:image\/\w+;base64,/, ""),
+                                            mimeType: 'image/jpeg',
+                                            filename: `bulto_${p.id}.jpg`,
+                                            mensajeTexto: notificationMsg
+                                        })
+                                    });
+                                    const dataBulto = await resBulto.json();
+                                    if (!dataBulto.success) {
+                                        throw new Error(dataBulto.error || 'Error al enviar foto de bulto por WhatsApp');
+                                    }
+                                } else {
+                                    // Enviar mensaje de texto únicamente
+                                    const resMsg = await fetch(`${facturacionUrl}/facturacion/whatsapp/enviar-mensaje`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            destinatarios: whatsappDestino,
+                                            mensajeTexto: notificationMsg
+                                        })
+                                    });
+                                    const dataMsg = await resMsg.json();
+                                    if (!dataMsg.success) {
+                                        throw new Error(dataMsg.error || 'Error al enviar mensaje por WhatsApp');
+                                    }
+                                }
+                                console.log(`[NOTI-BG] ✅ Notificación WhatsApp enviada a: ${whatsappDestino}`);
+                            } catch (wsErr) {
+                                console.error(`[NOTI-BG] ⚠️ Falló WhatsApp para ${whatsappDestino}, se omitió. Detalle:`, wsErr.message);
+                            }
+                        });
+
+                        // 4. Despachar Emails en masa (en paralelo)
+                        const emailPromises = emailDestinatarios.map(async (emailDestino) => {
+                            try {
+                                await enviarNotificacionEmail(emailDestino, clientName, p.id, itemsRes.rows, foto_remito, foto_bulto, emailService);
+                            } catch (mailErr) {
+                                console.error(`[NOTI-BG] ⚠️ Falló Email para ${emailDestino}. Detalle:`, mailErr.message);
+                            }
+                        });
+
+                        await Promise.all([...waPromises, ...emailPromises]);
+
+                    } catch (notiErr) {
+                        console.error('❌ [NOTI-BG] Error en proceso asíncrono de notificación:', notiErr.message);
+                    }
+                }, 100);
+            } else {
+                console.log(`[MOVIL-SCAN] 💾 Guardado sin notificación (notificar = false) para pedido #${p.id}`);
+            }
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al procesar escaneo QR:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al procesar escaneo QR',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/entregas/incidencia
+ * @desc Registrar una incidencia / visita fallida para un pedido en la ruta activa
+ * @access Privado (requiere token)
+ */
+router.post('/entregas/incidencia', async (req, res) => {
+    console.log('🔍 [MOVIL] Ruta POST /entregas/incidencia - Procesando visita fallida');
+    const client = await req.db.connect();
+    try {
+        const { id_presupuesto, motivo, latitud, longitud } = req.body;
+        
+        if (!id_presupuesto || !motivo) {
+            return res.status(400).json({ success: false, error: 'ID de presupuesto y motivo son requeridos.' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Obtener información del presupuesto y el cliente
+        const queryFind = `
+            SELECT p.id, p.id_cliente, p.id_ruta, p.id_presupuesto_ext, p.estado_logistico, p.estado,
+                   COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Cliente') as cliente_nombre
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text
+            WHERE p.id = $1
+            LIMIT 1
+        `;
+        const resFind = await client.query(queryFind, [id_presupuesto]);
+        if (resFind.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Pedido no encontrado.' });
+        }
+        const p = resFind.rows[0];
+
+        // GUARD: No permitir registrar incidencia en un pedido que ya está entregado o retirado
+        if (p.estado_logistico === 'ENTREGADO' || p.estado_logistico === 'RETIRADO' || p.estado === 'Entregado' || p.estado === 'Retirado') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Este pedido ya fue entregado/retirado y debe permanecer en la Hoja de Ruta.' 
+            });
+        }
+
+        // 2. Registrar el evento de incidencia en public.entregas_eventos
+        await client.query(
+            `INSERT INTO public.entregas_eventos 
+             (id_presupuesto, receptor_nombre, receptor_vinculo, dni_receptor,
+              latitud_confirmacion, longitud_confirmacion, fecha_entrega, observaciones, tipo_evento, motivo_incidencia)
+             VALUES ($1, 'Chofer', 'Incidencia', null, $2, $3, NOW(), $4, 'INCIDENCIA', $4)`,
+            [
+                p.id,
+                latitud ? parseFloat(latitud) : null,
+                longitud ? parseFloat(longitud) : null,
+                motivo
+            ]
+        );
+        console.log(`[MOVIL-INCIDENCIA] ✅ Evento de incidencia registrado para pedido #${p.id}: ${motivo}`);
+
+        // 3. Devolver presupuesto al pool de pendientes
+        await client.query(
+            `UPDATE public.presupuestos 
+             SET id_ruta = NULL,
+                 estado_logistico = 'PENDIENTE_ASIGNAR',
+                 secuencia = 'Pedido_Listo',
+                 orden_entrega = NULL,
+                 fecha_asignacion_ruta = NULL,
+                 motivo_no_entrega = $1,
+                 fecha_actualizacion = NOW()
+             WHERE id = $2`,
+            [motivo, p.id]
+        );
+        console.log(`[MOVIL-INCIDENCIA] ✅ Presupuesto #${p.id} desvinculado de la ruta y retornado a pendientes.`);
+
+        await client.query('COMMIT');
+
+        // 4. Intentar actualizar Supabase B2B si es un pedido mapeado
+        const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
+        const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
+        if (SUPABASE_URL && SUPABASE_KEY) {
+            const mappingRes = await req.db.query(
+                'SELECT supabase_pedido_id FROM public.b2b_pedidos_mapeo WHERE local_presupuesto_id = $1 LIMIT 1',
+                [p.id]
+            );
+            if (mappingRes.rowCount > 0) {
+                const uuid = mappingRes.rows[0].supabase_pedido_id;
+                try {
+                    const url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?id=eq.${uuid}`;
+                    await fetch(url, {
+                        method: 'PATCH',
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=minimal'
+                        },
+                        body: JSON.stringify({
+                            estado: 'Listo para Entregar',
+                            updated_at: new Date().toISOString()
+                        })
+                    });
+                    console.log(`[MOVIL-INCIDENCIA] ☁️ [Supabase] Pedido B2B ${uuid} actualizado a 'Listo para Entregar'.`);
+                } catch (supabaseErr) {
+                    console.error('[MOVIL-INCIDENCIA] ⚠️ No se pudo actualizar Supabase, se resolverá en el sync daemon:', supabaseErr.message);
+                }
+            }
+        }
+
+        res.json({ success: true, message: 'Incidencia registrada con éxito. Pedido retornado a pendientes.' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MOVIL] Error al registrar incidencia:', error);
+        res.status(500).json({ success: false, error: 'Error al registrar incidencia', message: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+
+async function enviarNotificacionEmail(toEmail, clientName, pedidoId, items, base64Remito, base64Bulto, emailService) {
+    const datosDetalle = [
+        { label: 'Pedido Nro', value: `#${pedidoId}` },
+        { label: 'Estado de Entrega', value: 'Entregado por chofer' },
+        { label: 'Detalle de Productos', value: items.map(item => `• ${parseFloat(item.cantidad)} u. - ${item.descripcion}`).join('<br>') }
+    ];
+
+    const htmlBody = emailService.obtenerPlantillaHtml({
+        titulo: 'Confirmación de Entrega - LAMDA',
+        clienteNombre: clientName,
+        mensajePrincipal: `Su pedido #${pedidoId} ha sido entregado exitosamente por nuestro chofer.`,
+        datosDetalle,
+        piePagina: 'Este es un mensaje automático enviado por el departamento de logística de LAMDA.',
+        mostrarTransferencia: false
+    });
+
+    const attachments = [];
+    if (base64Remito) {
+        attachments.push({
+            filename: `remito_${pedidoId}.jpg`,
+            content: Buffer.from(base64Remito.replace(/^data:image\/\w+;base64,/, ""), 'base64'),
+            contentType: 'image/jpeg'
+        });
+    }
+    if (base64Bulto) {
+        attachments.push({
+            filename: `foto_bulto_${pedidoId}.jpg`,
+            content: Buffer.from(base64Bulto.replace(/^data:image\/\w+;base64,/, ""), 'base64'),
+            contentType: 'image/jpeg'
+        });
+    }
+
+    await emailService.enviarEmail({
+        to: toEmail,
+        subject: `Confirmación de Entrega - Pedido #${pedidoId}`,
+        htmlBody,
+        attachments
+    });
+    console.log(`[NOTI-BG] ✅ Notificación enviada por Email a: ${toEmail}`);
+}
 
 /**
  * @route POST /api/logistica/movil/entregas/confirmar
@@ -714,11 +1705,26 @@ router.post('/retiros/:id/validar', async (req, res) => {
             const getOrden = await client.query(`SELECT id, estado_logistico FROM ordenes_tratamiento WHERE id = $1 FOR UPDATE`, [id]);
             if (getOrden.rowCount === 0) throw new Error('Orden no encontrada');
             
+            let choferNombre = req.body?.chofer_nombre || null;
+            if (!choferNombre && req.headers.authorization) {
+                try {
+                    const token = req.headers.authorization.substring(7);
+                    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+                    const choferId = parseInt(decoded.split(':')[0]);
+                    if (choferId) {
+                        const uRes = await client.query('SELECT nombre_completo FROM usuarios WHERE id = $1', [choferId]);
+                        if (uRes.rows.length > 0) choferNombre = uRes.rows[0].nombre_completo;
+                    }
+                } catch(e) {}
+            }
+
             await client.query(`
                 UPDATE ordenes_tratamiento 
-                SET estado_logistico = 'EN_CAMINO', fecha_validacion_chofer = NOW()
+                SET estado_logistico = 'EN_CAMINO', 
+                    fecha_validacion_chofer = NOW(),
+                    chofer_nombre = COALESCE($2, chofer_nombre)
                 WHERE id = $1
-            `, [id]);
+            `, [id, choferNombre]);
             
             await client.query('COMMIT');
             res.json({ success: true, message: 'Validación exitosa (EN_CAMINO)' });
@@ -861,19 +1867,32 @@ router.post('/rutas/finalizar', async (req, res) => {
             });
         }
 
-        console.log('[MOVIL] Finalizando ruta del chofer ID:', choferId);
+        const rutaIdSolicitada = parseInt(req.body?.id_ruta || req.body?.ruta_id, 10) || null;
+        console.log('[MOVIL] Finalizando ruta del chofer ID:', choferId, 'Ruta ID solicitada:', rutaIdSolicitada);
 
-        // Buscar ruta activa
-        const rutaQuery = `
-            SELECT id, nombre_ruta
-            FROM rutas
-            WHERE id_chofer = $1 
-              AND estado = 'EN_CAMINO'
-            ORDER BY id DESC
-            LIMIT 1
-        `;
+        // Buscar ruta activa (soporta estado EN_CAMINO o ARMANDO si se completaron todas las paradas sin pulsar Iniciar Ruta)
+        let rutaResult;
+        if (rutaIdSolicitada) {
+            rutaResult = await req.db.query(`
+                SELECT id, nombre_ruta, estado
+                FROM rutas
+                WHERE id = $1
+                  AND estado IN ('EN_CAMINO', 'ARMANDO')
+                LIMIT 1
+            `, [rutaIdSolicitada]);
+        }
 
-        const rutaResult = await req.db.query(rutaQuery, [choferId]);
+        if (!rutaResult || rutaResult.rows.length === 0) {
+            const rutaQuery = `
+                SELECT id, nombre_ruta, estado
+                FROM rutas
+                WHERE id_chofer = $1 
+                  AND estado IN ('EN_CAMINO', 'ARMANDO')
+                ORDER BY CASE WHEN estado = 'EN_CAMINO' THEN 0 ELSE 1 END, id DESC
+                LIMIT 1
+            `;
+            rutaResult = await req.db.query(rutaQuery, [choferId]);
+        }
 
         if (rutaResult.rows.length === 0) {
             return res.status(404).json({
@@ -902,12 +1921,20 @@ router.post('/rutas/finalizar', async (req, res) => {
             const pendientes = parseInt(pendientesResult.rows[0].pendientes);
 
             // 2. PROCESAR ÓRDENES DE TRATAMIENTO (Integración Fase 3 y 4)
-            // Marcar todas las ordenes_tratamiento que estaban en la ruta como "INGRESADO_LOCAL"
+            // Desvincular órdenes que quedaron en PENDIENTE_CLIENTE o PENDIENTE_VALIDACION (nunca retiradas en la calle) para que vuelvan al Pool
+            await client.query(`
+                UPDATE ordenes_tratamiento
+                SET id_ruta = NULL,
+                    orden_entrega = 999
+                WHERE id_ruta = $1 AND estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
+            `, [ruta.id]);
+
+            // Marcar únicamente las ordenes_tratamiento efectivamente retiradas en la ruta como "INGRESADO_LOCAL"
             const updatedTR = await client.query(`
                 UPDATE ordenes_tratamiento
                 SET estado_logistico = 'INGRESADO_LOCAL',
                     fecha_ingreso_mantenimiento = NOW()
-                WHERE id_ruta = $1 AND estado_logistico != 'PENDIENTE_CLIENTE'
+                WHERE id_ruta = $1 AND estado_logistico IN ('EN_CAMINO', 'RETIRADO')
                 RETURNING id, chofer_nombre
             `, [ruta.id]);
 
@@ -927,10 +1954,10 @@ router.post('/rutas/finalizar', async (req, res) => {
                     SELECT 
                         ot.id,
                         COALESCE((SELECT SUM(bultos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
-                        ot.chofer_nombre,
+                        COALESCE(ot.chofer_nombre, (SELECT u.nombre_completo FROM rutas r JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = ot.id_ruta), 'Chofer Móvil'),
                         'RETIRO_TRATAMIENTO',
-                        (SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
-                         FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id),
+                        COALESCE((SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
+                         FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), '[]'),
                         NOW(),
                         'PENDIENTE'
                     FROM ordenes_tratamiento ot
@@ -976,17 +2003,116 @@ router.post('/rutas/finalizar', async (req, res) => {
                 }
             }
 
+            // [TICKET #025] 2d. Procesar Mercadería No Entregada / Entregas Parciales (Artículos con cantidad_original > cantidad)
+            const partialItemsQuery = `
+                SELECT 
+                    pd.id_presupuesto,
+                    pd.articulo,
+                    COALESCE(a.numero, pd.articulo) as articulo_numero,
+                    COALESCE(a.nombre, pd.articulo) as articulo_nombre,
+                    (pd.cantidad_original - pd.cantidad) as cantidad_no_entregada,
+                    p.id_cliente
+                FROM presupuestos_detalles pd
+                JOIN presupuestos p ON p.id = pd.id_presupuesto
+                LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                WHERE p.id_ruta = $1
+                  AND pd.cantidad_original IS NOT NULL
+                  AND pd.cantidad_original > pd.cantidad
+            `;
+            const resPartialItems = await client.query(partialItemsQuery, [ruta.id]);
+            if (resPartialItems.rows.length > 0) {
+                console.log(`[MOVIL] 📦 Procesando ${resPartialItems.rows.length} artículos no entregados por entregas parciales/rechazos...`);
+                for (const item of resPartialItems.rows) {
+                    const checkDup = await client.query(`
+                        SELECT id FROM mantenimiento_movimientos
+                        WHERE id_presupuesto_origen = $1 AND articulo_numero = $2 AND estado = 'PENDIENTE'
+                    `, [item.id_presupuesto, item.articulo_numero]);
+
+                    if (checkDup.rowCount === 0) {
+                        await client.query(`
+                            INSERT INTO mantenimiento_movimientos
+                            (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                            VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
+                        `, [
+                            item.articulo_numero,
+                            parseFloat(item.cantidad_no_entregada),
+                            item.id_presupuesto,
+                            'Logística Móvil (Chofer)',
+                            `Retorno automático por entrega parcial / rechazo: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Cliente ${item.id_cliente})`
+                        ]);
+                        console.log(`[MOVIL] ✅ Inyectado a Mantenimiento: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Presupuesto #${item.id_presupuesto})`);
+                    }
+                }
+            }
+
+            // 2e. Visitas de Contacto / Cliente Activo en la ruta:
+            // Si es visita a un Cliente Activo (sin pedido) aún en PENDIENTE al liquidar la ruta, se asienta automáticamente como VISITADO.
+            // Todas las paradas de contacto de la ruta salen del Pool (en_pool_logistica = false).
+            await client.query(`
+                UPDATE public.bunker_prospectos
+                SET estado_ruta = CASE 
+                        WHEN origen_contacto = 'CLIENTE_ACTIVO' AND COALESCE(estado_ruta, 'PENDIENTE') = 'PENDIENTE' THEN 'VISITADO'
+                        ELSE estado_ruta
+                    END,
+                    fecha_visita_ruta = CASE 
+                        WHEN origen_contacto = 'CLIENTE_ACTIVO' AND COALESCE(estado_ruta, 'PENDIENTE') = 'PENDIENTE' THEN NOW()
+                        ELSE fecha_visita_ruta
+                    END,
+                    id_ruta = CASE 
+                        WHEN origen_contacto != 'CLIENTE_ACTIVO' AND COALESCE(estado_ruta, 'PENDIENTE') = 'PENDIENTE' THEN NULL
+                        ELSE id_ruta
+                    END,
+                    en_pool_logistica = false,
+                    orden_entrega = CASE 
+                        WHEN origen_contacto != 'CLIENTE_ACTIVO' AND COALESCE(estado_ruta, 'PENDIENTE') = 'PENDIENTE' THEN 999
+                        ELSE orden_entrega
+                    END,
+                    updated_at = NOW()
+                WHERE id_ruta = $1
+            `, [ruta.id]);
+
+            // 2f. Sobres de Efectivo no retirados (aún en PREPARADO): desvincular de la ruta para que vuelvan al Pool
+            await client.query(`
+                UPDATE public.factura_pagos_efectivo
+                SET id_ruta = NULL,
+                    orden_entrega = 999,
+                    fecha_actualizacion = NOW()
+                WHERE id_ruta = $1 AND estado = 'PREPARADO'
+            `, [ruta.id]);
+
+            // 2g. Sobres de Efectivo efectivamente retirados en la ruta (EN_TRANSITO): pasan a RECIBIDO_LOCAL al asentar la hoja de ruta
+            const sobresRecibidosRes = await client.query(`
+                UPDATE public.factura_pagos_efectivo
+                SET estado = 'RECIBIDO_LOCAL',
+                    sincronizado_supabase = false,
+                    fecha_actualizacion = NOW()
+                WHERE id_ruta = $1 AND estado = 'EN_TRANSITO'
+                RETURNING id, codigo_sobre, cliente_id, monto_declarado
+            `, [ruta.id]);
+
             // 3. Actualizar estado de ruta y calcular duración neta
             await client.query(
                 `UPDATE rutas 
                  SET estado = 'FINALIZADA',
+                     fecha_salida = COALESCE(fecha_salida, fecha_creacion, NOW()),
                      fecha_finalizacion = NOW(),
-                     duracion_neta_minutos = FLOOR(EXTRACT(EPOCH FROM (NOW() - fecha_salida))/60) - COALESCE(tiempo_pausado_minutos, 0)
+                     duracion_neta_minutos = GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - COALESCE(fecha_salida, fecha_creacion, NOW())))/60) - COALESCE(tiempo_pausado_minutos, 0))
                  WHERE id = $1`,
                 [ruta.id]
             );
 
             await client.query('COMMIT');
+
+            // Sincronizar en segundo plano a Supabase los sobres que ingresaron al local
+            if (sobresRecibidosRes.rows.length > 0) {
+                for (const s of sobresRecibidosRes.rows) {
+                    PagosEfectivoService.actualizarEstado({
+                        sobreId: s.id,
+                        nuevoEstado: 'RECIBIDO_LOCAL',
+                        operador: 'Cierre Hoja de Ruta'
+                    }).catch(err => console.warn('[MOVIL] ⚠️ Error sincronizando sobre RECIBIDO_LOCAL en Supabase:', err.message));
+                }
+            }
 
             console.log('[MOVIL] ✅ Ruta finalizada y retiros procesados exitosamente:', ruta.nombre_ruta);
 
@@ -996,7 +2122,8 @@ router.post('/rutas/finalizar', async (req, res) => {
                 data: {
                     ruta_id: ruta.id,
                     nombre_ruta: ruta.nombre_ruta,
-                    pedidos_pendientes: pendientes
+                    pedidos_pendientes: pendientes,
+                    sobres_recibidos_local: sobresRecibidosRes.rows
                 }
             });
 
@@ -1071,6 +2198,97 @@ router.delete('/retiros/:id', async (req, res) => {
         }
     } catch (error) {
         console.error('❌ [MOVIL] Error al descartar retiro:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/sobres-efectivo/:id/retirar
+ * @desc El Chofer confirma que retiró físicamente el sobre de efectivo en la dirección del cliente
+ * @access Privado
+ */
+router.post('/sobres-efectivo/:id/retirar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { chofer_nombre, notificar } = req.body || {};
+
+        let choferResuelto = chofer_nombre || null;
+        if (!choferResuelto && req.headers.authorization) {
+            try {
+                const token = req.headers.authorization.substring(7);
+                const decoded = Buffer.from(token, 'base64').toString('utf-8');
+                const choferId = parseInt(decoded.split(':')[0]);
+                if (choferId) {
+                    const uRes = await req.db.query('SELECT nombre_completo FROM usuarios WHERE id = $1', [choferId]);
+                    if (uRes.rows.length > 0) choferResuelto = uRes.rows[0].nombre_completo;
+                }
+            } catch (e) {}
+        }
+
+        const sobreActualizado = await PagosEfectivoService.actualizarEstado({
+            sobreId: id,
+            nuevoEstado: 'EN_TRANSITO',
+            choferNombre: choferResuelto || 'Chofer LAMDA'
+        });
+
+        console.log(`[MOVIL] 🚚 Chofer ${choferResuelto || 'LAMDA'} confirmó retiro del sobre ${sobreActualizado.codigo_sobre}`);
+
+        let resultadoWa = { enviado: false, destinatarios: [], errores: [] };
+        if (notificar !== false) {
+            resultadoWa = await enviarAvisoWhatsAppSobreRetirado(req.db, sobreActualizado);
+        }
+
+        res.json({
+            success: true,
+            mensaje: `Sobre ${sobreActualizado.codigo_sobre} retirado y en camino al depósito.`,
+            sobre: sobreActualizado,
+            whatsapp_enviado: resultadoWa.enviado,
+            destinatarios: resultadoWa.destinatarios,
+            whatsapp_errores: resultadoWa.errores
+        });
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al confirmar retiro de sobre:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route POST /api/logistica/movil/sobres-efectivo/:id/notificar-retiro
+ * @desc Envía el mensaje corto de WhatsApp confirmando al cliente que su sobre fue retirado (#SOB-XXXX)
+ * @access Privado
+ */
+router.post('/sobres-efectivo/:id/notificar-retiro', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isId = !isNaN(parseInt(id)) && !String(id).startsWith('SOB-');
+        const resSobre = await req.db.query(
+            `SELECT * FROM public.factura_pagos_efectivo WHERE ${isId ? 'id = $1' : 'codigo_sobre = $1'} LIMIT 1`,
+            [id]
+        );
+        if (resSobre.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Sobre no encontrado.' });
+        }
+
+        const sobre = resSobre.rows[0];
+        const resultadoWa = await enviarAvisoWhatsAppSobreRetirado(req.db, sobre);
+
+        if (!resultadoWa.enviado) {
+            return res.status(400).json({
+                success: false,
+                error: resultadoWa.errores.join(' | ') || 'No se pudo enviar el aviso por WhatsApp.',
+                codigo_sobre: sobre.codigo_sobre
+            });
+        }
+
+        res.json({
+            success: true,
+            whatsapp_enviado: true,
+            codigo_sobre: sobre.codigo_sobre,
+            destinatarios: resultadoWa.destinatarios,
+            mensaje: `Aviso de sobre retirado (#${sobre.codigo_sobre}) enviado por WhatsApp.`
+        });
+    } catch (error) {
+        console.error('❌ [MOVIL] Error al notificar retiro de sobre:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1199,7 +2417,7 @@ router.get('/rutas/:id/detalle-completo', validarTokenMovil, async (req, res) =>
         const queryPresupuestos = `
             SELECT p.id, p.estado, p.estado_logistico, p.comprobante_lomasoft, p.id_factura_lomasoft, 
             COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
-            COALESCE( (SELECT SUM(pd.cantidad * pd.precio1) FROM presupuestos_detalles pd WHERE pd.id_presupuesto = p.id), 0) as total_monto
+            COALESCE( (SELECT SUM(pd.cantidad * pd.precio1) FROM presupuestos_detalles pd WHERE pd.id_presupuesto = p.id), 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as total_monto
             FROM presupuestos p 
             INNER JOIN clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text 
             WHERE p.id_ruta = $1
@@ -1211,21 +2429,77 @@ router.get('/rutas/:id/detalle-completo', validarTokenMovil, async (req, res) =>
         let items = [];
         if(idsPresupuestos.length > 0) {
             const queryItems = `
-                SELECT pd.id_presupuesto, pd.cantidad,
-                COALESCE(a.nombre, pd.articulo) as articulo
-                FROM presupuestos_detalles pd
-                LEFT JOIN articulos a ON pd.articulo::text = a.numero::text OR pd.articulo::text = a.codigo_barras::text
-                WHERE pd.id_presupuesto = ANY($1)
+                SELECT 
+                    id_presupuesto, 
+                    cantidad,
+                    descripcion as articulo
+                FROM public.v_presupuestos_detalles_resueltos
+                WHERE id_presupuesto = ANY($1)
+                ORDER BY id ASC
             `;
             const resultItems = await req.db.query(queryItems, [idsPresupuestos]);
             items = resultItems.rows;
         }
 
         // 3. Vincular los items anidados
-        ruta.entregas = resultPresupuestos.rows.map(p => ({
+        const entregasPresupuestos = resultPresupuestos.rows.map(p => ({
             ...p,
             articulos: items.filter(i => i.id_presupuesto === p.id)
         }));
+
+        // 4. Obtener Sobres de Efectivo de la ruta para auditoría de historial
+        const resSobresHist = await req.db.query(`
+            SELECT 
+                s.codigo_sobre as id,
+                'Sobre de Efectivo' as estado,
+                CASE 
+                    WHEN s.estado IN ('EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO') THEN 'RETIRADO (' || s.estado || ')'
+                    ELSE s.estado
+                END as estado_logistico,
+                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, bc.cliente_nombre, bc.razon_social, s.cliente_id) as cliente_nombre,
+                COALESCE(s.monto_declarado, 0) as total_monto,
+                s.orden_entrega
+            FROM public.factura_pagos_efectivo s
+            LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = s.cliente_id OR bc.lomas_soft_id = s.cliente_id
+            LEFT JOIN public.clientes c ON (bc.lomas_soft_id IS NOT NULL AND c.cliente_id::text = ltrim(bc.lomas_soft_id, '0'))
+                                        OR (bc.id IS NULL AND c.cliente_id::text = ltrim(s.cliente_id, '0'))
+            WHERE s.id_ruta = $1
+            ORDER BY s.orden_entrega ASC NULLS LAST, s.id ASC
+        `, [id]);
+
+        const entregasSobres = resSobresHist.rows.map(s => ({
+            ...s,
+            es_sobre_efectivo: true,
+            articulos: [{ cantidad: 1, articulo: `Sobre de efectivo #${s.id}` }]
+        }));
+
+        // 5. Obtener Visitas Comerciales de Preventa de la ruta para auditoría de historial
+        const resVisitasHist = await req.db.query(`
+            SELECT 
+                p.codigo_prospecto as id,
+                'Visita Comercial' as estado,
+                CASE 
+                    WHEN p.estado_ruta = 'VISITADO' THEN 'VISITADO'
+                    WHEN p.estado_ruta IN ('NO_ENCONTRADO', 'NO_CONCRETADA') THEN 'LOCAL NO ENCONTRADO'
+                    ELSE COALESCE(p.estado_ruta, 'PENDIENTE')
+                END as estado_logistico,
+                p.nombre_fantasia as cliente_nombre,
+                0 as total_monto,
+                p.notas,
+                p.direccion,
+                p.orden_entrega
+            FROM public.bunker_prospectos p
+            WHERE p.id_ruta = $1 AND p.activo = true
+            ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC
+        `, [id]);
+
+        const entregasVisitas = resVisitasHist.rows.map(v => ({
+            ...v,
+            es_visita_preventa: true,
+            articulos: [{ cantidad: 1, articulo: `${v.direccion || 'Visita Preventa'}${v.notas ? ' — ' + v.notas : ''}` }]
+        }));
+
+        ruta.entregas = [...entregasPresupuestos, ...entregasSobres, ...entregasVisitas];
 
         res.json({ success: true, data: ruta });
     } catch(e) {
@@ -1266,10 +2540,40 @@ router.put('/rutas/:id/reordenar', validarTokenMovil, async (req, res) => {
         try {
             await client.query('BEGIN');
             for (let i = 0; i < orden.length; i++) {
-                await client.query(
-                    `UPDATE presupuestos SET orden_entrega = $1 WHERE id = $2 AND id_ruta = $3`,
-                    [i + 1, orden[i], id]
-                );
+                const item = orden[i];
+                if (typeof item === 'string' && item.toUpperCase().startsWith('RT-')) {
+                    const idTrat = parseInt(item.toUpperCase().replace('RT-', ''), 10);
+                    if (!isNaN(idTrat)) {
+                        await client.query(
+                            `UPDATE ordenes_tratamiento SET orden_entrega = $1 WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idTrat, id]
+                        );
+                    }
+                } else if (typeof item === 'string' && item.toUpperCase().startsWith('PR-')) {
+                    const idProsp = parseInt(item.toUpperCase().replace('PR-', ''), 10);
+                    if (!isNaN(idProsp)) {
+                        await client.query(
+                            `UPDATE public.bunker_prospectos SET orden_entrega = $1, updated_at = NOW() WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idProsp, id]
+                        );
+                    }
+                } else if (typeof item === 'string' && item.toUpperCase().startsWith('SOB-')) {
+                    const idSobre = parseInt(item.toUpperCase().replace('SOB-', ''), 10);
+                    if (!isNaN(idSobre)) {
+                        await client.query(
+                            `UPDATE public.factura_pagos_efectivo SET orden_entrega = $1, fecha_actualizacion = NOW() WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idSobre, id]
+                        );
+                    }
+                } else {
+                    const idPresu = parseInt(item, 10);
+                    if (!isNaN(idPresu)) {
+                        await client.query(
+                            `UPDATE presupuestos SET orden_entrega = $1 WHERE id = $2 AND id_ruta = $3`,
+                            [i + 1, idPresu, id]
+                        );
+                    }
+                }
             }
             await client.query('COMMIT');
             res.json({ success: true, message: 'Reordenado via PWA' });
@@ -1290,25 +2594,64 @@ router.put('/pedidos/:id/domicilio', validarTokenMovil, async (req, res) => {
     const { id } = req.params;
     const { id_domicilio_entrega } = req.body;
     try {
-        await req.db.query(`UPDATE presupuestos SET id_domicilio_entrega = $1 WHERE id = $2`, [id_domicilio_entrega, id]);
+        const idStr = String(id);
+        if (idStr.startsWith('SOB-')) {
+            const cleanSobreId = parseInt(idStr.replace('SOB-', ''), 10);
+            await req.db.query(`UPDATE public.factura_pagos_efectivo SET id_domicilio_entrega = $1, fecha_actualizacion = NOW() WHERE id = $2`, [id_domicilio_entrega, cleanSobreId]);
+        } else if (idStr.startsWith('RT-')) {
+            const cleanRtId = parseInt(idStr.replace('RT-', ''), 10);
+            await req.db.query(`UPDATE ordenes_tratamiento SET id_domicilio_entrega = $1 WHERE id = $2`, [id_domicilio_entrega, cleanRtId]);
+        } else {
+            await req.db.query(`UPDATE presupuestos SET id_domicilio_entrega = $1 WHERE id = $2`, [id_domicilio_entrega, id]);
+        }
         res.json({ success: true });
     } catch(err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 /**
+ * @route GET /api/logistica/movil/rutas/:id/destinatarios-inicio
+ * @desc Obtener clientes, tipo de parada y destinatarios de WhatsApp para modal de inicio de ruta
+ */
+router.get('/rutas/:id/destinatarios-inicio', validarTokenMovil, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const clientes = await obtenerDestinatariosInicioRuta(id);
+        res.json({ success: true, clientes });
+    } catch (error) {
+        console.error(`❌ [MOVIL] Error obteniendo destinatarios de inicio de ruta ${req.params.id}:`, error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * @route PUT /api/logistica/movil/rutas/:id/estado
- * @desc Cambiar estado a EN_CAMINO o regresar a ARMANDO desde PWA
+ * @desc Cambiar estado a EN_CAMINO o regresar a ARMANDO desde PWA con despacho opcional de WhatsApps
  */
 router.put('/rutas/:id/estado', validarTokenMovil, async (req, res) => {
     const { id } = req.params;
-    const { estado } = req.body;
+    const { estado, notificar_clientes, clientes_ids } = req.body;
     try {
         if (estado === 'EN_CAMINO') {
             await req.db.query(`UPDATE rutas SET estado = $1, fecha_salida = NOW() WHERE id = $2`, [estado, id]);
+
+            // Despachar notificaciones asíncronas en background si fueron requeridas
+            if (notificar_clientes === true && Array.isArray(clientes_ids) && clientes_ids.length > 0) {
+                setImmediate(async () => {
+                    try {
+                        await despacharNotificacionesInicioRuta(id, clientes_ids);
+                    } catch (errNoti) {
+                        console.error(`[MOVIL] ⚠️ Error en background al despachar notificaciones de inicio para ruta #${id}:`, errNoti.message);
+                    }
+                });
+            }
         } else {
             await req.db.query(`UPDATE rutas SET estado = $1 WHERE id = $2`, [estado, id]);
         }
-        res.json({ success: true, message: `Ruta movida a ${estado}` });
+        res.json({ 
+            success: true, 
+            message: `Ruta movida a ${estado}`, 
+            notificados: (notificar_clientes && clientes_ids) ? clientes_ids.length : 0 
+        });
     } catch(err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -1354,10 +2697,53 @@ router.delete('/rutas/:id/pedidos/:presupuestoId', validarTokenMovil, async (req
             await req.db.query(
                 `UPDATE ordenes_tratamiento 
                  SET id_ruta = NULL
-                 WHERE id = $1 AND id_ruta = $2`,
+                 WHERE id = $1 AND id_ruta = $2 AND estado_logistico NOT IN ('ENTREGADO', 'RETIRADO', 'INGRESADO_LOCAL')`,
                 [idOrden, id]
             );
+        } else if (String(presupuestoId).startsWith('PR-')) {
+            const idProsp = parseInt(String(presupuestoId).replace('PR-', ''), 10);
+            await req.db.query(
+                `UPDATE public.bunker_prospectos
+                 SET id_ruta = NULL, en_pool_logistica = true, orden_entrega = 999, estado_ruta = 'PENDIENTE', updated_at = NOW()
+                 WHERE id = $1 AND id_ruta = $2`,
+                [idProsp, id]
+            );
+        } else if (String(presupuestoId).startsWith('SOB-')) {
+            const idSobre = parseInt(String(presupuestoId).replace('SOB-', ''), 10);
+            const checkSobre = await req.db.query(
+                `SELECT estado, codigo_sobre FROM public.factura_pagos_efectivo WHERE id = $1 AND id_ruta = $2`,
+                [idSobre, id]
+            );
+            if (checkSobre.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Sobre no encontrado en esta ruta.' });
+            }
+            if (['EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO'].includes(checkSobre.rows[0].estado)) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Imposible desvincular: El sobre ${checkSobre.rows[0].codigo_sobre} ya fue RETIRADO.`
+                });
+            }
+            await req.db.query(
+                `UPDATE public.factura_pagos_efectivo 
+                 SET id_ruta = NULL, orden_entrega = 999, fecha_actualizacion = NOW()
+                 WHERE id = $1 AND id_ruta = $2`,
+                [idSobre, id]
+            );
         } else {
+            const check = await req.db.query(
+                `SELECT estado_logistico, estado FROM presupuestos WHERE id = $1 AND id_ruta = $2`,
+                [presupuestoId, id]
+            );
+            if (check.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Pedido no encontrado en esta ruta.' });
+            }
+            const p = check.rows[0];
+            if (p.estado_logistico === 'ENTREGADO' || p.estado_logistico === 'RETIRADO' || p.estado === 'Entregado' || p.estado === 'Retirado') {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Imposible desvincular: Este pedido ya fue ENTREGADO/RETIRADO y debe permanecer en la Hoja de Ruta para su asentamiento.' 
+                });
+            }
             await req.db.query(
                 `UPDATE presupuestos 
                  SET id_ruta = NULL, estado_logistico = 'PENDIENTE_ASIGNAR', secuencia = 'Pedido_Listo', orden_entrega = NULL, fecha_asignacion_ruta = NULL 

@@ -5,6 +5,7 @@
 
 const RutasModel = require('../models/rutasModel');
 const presupuestosModel = require('../models/presupuestosModel');
+const { obtenerDestinatariosInicioRuta, despacharNotificacionesInicioRuta } = require('../services/notificacionInicioRutaService');
 
 /**
  * Obtener todas las rutas con filtros
@@ -263,18 +264,20 @@ async function asignarPresupuestos(req, res) {
             });
         }
         
-        // Validar que todos los IDs sean enteros positivos o strings numéricos, o strings tipo 'RT-XX'
+        // Validar que todos los IDs sean enteros positivos o strings numéricos, o strings tipo 'RT-XX' / 'SOB-XX' / 'PR-XX'
         const idsValidos = ids_presupuestos.every(id => {
             if (Number.isInteger(id) && id > 0) return true;
             if (typeof id === 'string' && !isNaN(id) && Number.isInteger(Number(id)) && Number(id) > 0) return true;
             if (typeof id === 'string' && id.toUpperCase().startsWith('RT-') && !isNaN(parseInt(id.toUpperCase().replace('RT-', '')))) return true;
+            if (typeof id === 'string' && id.toUpperCase().startsWith('SOB-') && !isNaN(parseInt(id.toUpperCase().replace('SOB-', '')))) return true;
+            if (typeof id === 'string' && id.toUpperCase().startsWith('PR-') && !isNaN(parseInt(id.toUpperCase().replace('PR-', '')))) return true;
             return false;
         });
         
         if (!idsValidos) {
             return res.status(400).json({
                 success: false,
-                error: 'Todos los IDs deben ser numéricos o retiros válidos (RT-)'
+                error: 'Todos los IDs deben ser numéricos, retiros válidos (RT-), sobres válidos (SOB-) o contactos válidos (PR-)'
             });
         }
         
@@ -378,6 +381,18 @@ async function cambiarEstado(req, res) {
         // Cambiar estado
         const rutaActualizada = await RutasModel.cambiarEstado(parseInt(id), estado);
         
+        // Despachar notificaciones de inicio de ruta en background si fueron solicitadas
+        const { notificar_clientes, clientes_ids } = req.body;
+        if (estado === 'EN_CAMINO' && notificar_clientes === true && Array.isArray(clientes_ids) && clientes_ids.length > 0) {
+            setImmediate(async () => {
+                try {
+                    await despacharNotificacionesInicioRuta(id, clientes_ids);
+                } catch (errNoti) {
+                    console.error(`[RUTAS-PC] ⚠️ Error en background al despachar notificaciones de inicio para ruta #${id}:`, errNoti.message);
+                }
+            });
+        }
+        
         // [TICKET #024] Si se fuerza FINALIZADA desde el Backend/PC, replicar inyección atómica de Mantenimiento
         if (estado === 'FINALIZADA') {
             const client = await req.db.connect();
@@ -385,11 +400,19 @@ async function cambiarEstado(req, res) {
                 await client.query('BEGIN');
                 
                 // 1. Órdenes de Tratamiento
+                // Desvincular órdenes no retiradas (PENDIENTE_CLIENTE / PENDIENTE_VALIDACION) para que no queden atrapadas en la ruta cerrada
+                await client.query(`
+                    UPDATE ordenes_tratamiento
+                    SET id_ruta = NULL,
+                        orden_entrega = 999
+                    WHERE id_ruta = $1 AND estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
+                `, [id]);
+
                 const updatedTR = await client.query(`
                     UPDATE ordenes_tratamiento
                     SET estado_logistico = 'INGRESADO_LOCAL',
                         fecha_ingreso_mantenimiento = NOW()
-                    WHERE id_ruta = $1 AND estado_logistico != 'PENDIENTE_CLIENTE'
+                    WHERE id_ruta = $1 AND estado_logistico IN ('EN_CAMINO', 'RETIRADO')
                     RETURNING id, chofer_nombre
                 `, [id]);
 
@@ -443,8 +466,90 @@ async function cambiarEstado(req, res) {
                         ]);
                     }
                 }
+
+                // [TICKET #025] 3. Mercadería No Entregada / Entregas Parciales (Artículos con cantidad_original > cantidad)
+                const partialItemsQuery = `
+                    SELECT 
+                        pd.id_presupuesto,
+                        pd.articulo,
+                        COALESCE(a.numero, pd.articulo) as articulo_numero,
+                        COALESCE(a.nombre, pd.articulo) as articulo_nombre,
+                        (pd.cantidad_original - pd.cantidad) as cantidad_no_entregada,
+                        p.id_cliente
+                    FROM presupuestos_detalles pd
+                    JOIN presupuestos p ON p.id = pd.id_presupuesto
+                    LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                    WHERE p.id_ruta = $1
+                      AND pd.cantidad_original IS NOT NULL
+                      AND pd.cantidad_original > pd.cantidad
+                `;
+                const resPartialItems = await client.query(partialItemsQuery, [id]);
+                if (resPartialItems.rows.length > 0) {
+                    console.log(`[RUTAS-PC] 📦 Procesando ${resPartialItems.rows.length} artículos no entregados por entregas parciales/rechazos...`);
+                    for (const item of resPartialItems.rows) {
+                        const checkDup = await client.query(`
+                            SELECT id FROM mantenimiento_movimientos
+                            WHERE id_presupuesto_origen = $1 AND articulo_numero = $2 AND estado = 'PENDIENTE'
+                        `, [item.id_presupuesto, item.articulo_numero]);
+
+                        if (checkDup.rowCount === 0) {
+                            await client.query(`
+                                INSERT INTO mantenimiento_movimientos
+                                (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
+                                VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
+                            `, [
+                                item.articulo_numero,
+                                parseFloat(item.cantidad_no_entregada),
+                                item.id_presupuesto,
+                                'Logística Desktop (Admin)',
+                                `Retorno automático por entrega parcial / rechazo: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Cliente ${item.id_cliente})`
+                            ]);
+                            console.log(`[RUTAS-PC] ✅ Inyectado a Mantenimiento: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Presupuesto #${item.id_presupuesto})`);
+                        }
+                    }
+                }
+
+                // 4a. Visitas de Preventa no realizadas (aún en PENDIENTE): desvincular de la ruta cerrada
+                await client.query(`
+                    UPDATE public.bunker_prospectos
+                    SET id_ruta = NULL,
+                        en_pool_logistica = false,
+                        orden_entrega = 999,
+                        updated_at = NOW()
+                    WHERE id_ruta = $1 AND COALESCE(estado_ruta, 'PENDIENTE') = 'PENDIENTE'
+                `, [id]);
+
+                // 4b. Sobres de Efectivo no retirados (aún en PREPARADO): desvincular de la ruta para que vuelvan al Pool
+                await client.query(`
+                    UPDATE public.factura_pagos_efectivo
+                    SET id_ruta = NULL,
+                        orden_entrega = 999,
+                        fecha_actualizacion = NOW()
+                    WHERE id_ruta = $1 AND estado = 'PREPARADO'
+                `, [id]);
+
+                // 4c. Sobres de Efectivo efectivamente retirados en la ruta (EN_TRANSITO): pasan a RECIBIDO_LOCAL
+                const sobresRecibidosRes = await client.query(`
+                    UPDATE public.factura_pagos_efectivo
+                    SET estado = 'RECIBIDO_LOCAL',
+                        sincronizado_supabase = false,
+                        fecha_actualizacion = NOW()
+                    WHERE id_ruta = $1 AND estado = 'EN_TRANSITO'
+                    RETURNING id, codigo_sobre
+                `, [id]);
                 
                 await client.query('COMMIT');
+
+                if (sobresRecibidosRes.rows.length > 0) {
+                    const PagosEfectivoService = require('../services/pagosEfectivoService');
+                    for (const s of sobresRecibidosRes.rows) {
+                        PagosEfectivoService.actualizarEstado({
+                            sobreId: s.id,
+                            nuevoEstado: 'RECIBIDO_LOCAL',
+                            operador: 'Cierre Hoja de Ruta (Desktop)'
+                        }).catch(err => console.warn('[RUTAS-PC] ⚠️ Error sincronizando sobre RECIBIDO_LOCAL en Supabase:', err.message));
+                    }
+                }
             } catch (error) {
                 await client.query('ROLLBACK');
                 console.error('[RUTAS-PC] ❌ Error inyectando mantenimiento:', error);
@@ -553,6 +658,21 @@ async function eliminarRuta(req, res) {
     }
 }
 
+/**
+ * Obtener clientes y paradas para modal de inicio de ruta en Desktop
+ * GET /api/logistica/rutas/:id/destinatarios-inicio
+ */
+async function obtenerDestinatariosInicio(req, res) {
+    try {
+        const { id } = req.params;
+        const clientes = await obtenerDestinatariosInicioRuta(id);
+        res.json({ success: true, clientes });
+    } catch (error) {
+        console.error(`[RUTAS-PC] Error obteniendo destinatarios inicio para ruta ${req.params.id}:`, error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     obtenerRutas,
     obtenerRutaPorId,
@@ -561,5 +681,6 @@ module.exports = {
     asignarPresupuestos,
     cambiarEstado,
     obtenerPresupuestosDisponibles,
-    eliminarRuta
+    eliminarRuta,
+    obtenerDestinatariosInicio
 };

@@ -18,17 +18,24 @@ app.use(cors({
     'http://localhost:3002',
     'http://localhost:3005',
     'http://127.0.0.1:3005',
+    // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
+    'https://logistica.lamdaser.com',
+    'http://logistica.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',
     'http://lamda-logistica.tplinkdns.com'
   ],
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
 
-// 🔐 Importar rutas del sistema de usuarios
+// 🔐 Importar rutas del sistema de usuarios y jornadas de colaboradores
 const rutasUsuarios = require('../usuarios/rutas');
+const rutasJornadas = require('../usuarios/rutasJornadas');
+const rutasCrmSeguimientos = require('./routes/crmSeguimientos');
+const rutasCrmWhatsappHub = require('./routes/crmWhatsappHub');
+const rutasOfertasDinamicas = require('./routes/ofertasDinamicasRoutes');
 
 // Middleware para registrar todas las solicitudes
 app.use((req, res, next) => {
@@ -84,7 +91,16 @@ app.use('/api/logistica', createProxyMiddleware({
   }
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ limit: '30mb', extended: true }));
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html') || req.path.endsWith('.js')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
 
 // Configurar el middleware para servir archivos estáticos
 const staticPath = path.join(__dirname);
@@ -113,6 +129,9 @@ app.get('/presupuestos', (req, res) => {
 
 // Importar pool centralizado de usuarios
 const pool = require('../usuarios/pool');
+const { reconciliarFaltantesConStock } = require('../produccion/services/reconciliacionStock');
+const { obtenerDemandaFaltantes, cambiarEstadoFaltante } = require('../presupuestos/services/demandaFaltantesService');
+const { obtenerPlanTrabajoDeposito, invalidarCachePlanDeposito } = require('./services/planTrabajoDepositoService');
 
 console.log('🔌 [ETIQUETAS-SERVER] Usando pool centralizado de usuarios');
 
@@ -145,9 +164,19 @@ router.get('/articulos', async (req, res) => {
 
 router.post('/imprimir', (req, res) => {
   const datos = req.body;
-  const cantidad = datos.cantidad || 2;
+  const cantidad = Math.max(1, Math.ceil(parseFloat(datos?.cantidad) || 2));
 
-  if (!datos) {
+  const tieneDatosArticulo = datos && (
+    (datos.articulo && typeof datos.articulo === 'object') ||
+    datos.nombre ||
+    datos.descripcion ||
+    datos.numero ||
+    datos.articulo_numero ||
+    datos.codigo_barras ||
+    datos.codigo
+  );
+
+  if (!tieneDatosArticulo) {
     return res.status(400).json({ error: 'Faltan datos para imprimir' });
   }
 
@@ -156,14 +185,16 @@ router.post('/imprimir', (req, res) => {
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
-  const tempDataPath = path.join(tempDir, 'temp-data.json');
+  const uniqueId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+  const tempDataPath = path.join(tempDir, `temp-data-${uniqueId}.json`);
   fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
-  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidad}`;
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidad} "${tempDataPath}"`;
 
   exec(command, (error, stdout, stderr) => {
+    fs.unlink(tempDataPath, () => {});
     if (error) {
       console.error('Error al imprimir:', error);
-      return res.status(500).json({ error: 'Error al imprimir' });
+      return res.status(500).json({ error: 'Error al imprimir', detalle: error.message });
     }
     console.log('Impresión enviada correctamente.');
     res.json({ message: 'Impresión enviada correctamente' });
@@ -208,28 +239,30 @@ router.post('/etiquetas/ingrediente', (req, res) => {
 
   const datos = {
     id,
-    nombre,
-    codigo,
-    sector: sector || ''
+    nombre: String(nombre || ''),
+    codigo: String(codigo || '00000000'),
+    sector: String(sector || '')
   };
 
-  // Usar cantidad recibida o fallback a 1
-  // El script de impresión espera un entero
-  const cantidadImpresion = parseInt(cantidad) || 1;
+  const cantidadImpresion = Math.max(1, Math.ceil(parseFloat(cantidad) || 1));
 
   const scriptPath = path.resolve(__dirname, '../scripts/imprimirEtiquetaIngrediente.js');
   const tempDir = path.join(__dirname, 'temp');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
-  const tempDataPath = path.join(tempDir, 'temp-ingrediente.json');
+  const uniqueId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+  const tempDataPath = path.join(tempDir, `temp-ingrediente-${uniqueId}.json`);
   fs.writeFileSync(tempDataPath, JSON.stringify(datos, null, 2));
 
-  // Ejecutar script con la cantidad dinámica
-  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidadImpresion}`;
+  // Ejecutar script con la cantidad dinámica y archivo JSON único
+  const command = `cd "${path.dirname(__dirname)}" && node "${scriptPath}" ${cantidadImpresion} "${tempDataPath}"`;
 
   exec(command, (error, stdout, stderr) => {
+    fs.unlink(tempDataPath, () => {});
     if (error) {
+      console.error('Error al imprimir etiqueta de ingrediente:', error);
+      return res.status(500).json({ error: 'Error al imprimir etiqueta de ingrediente', detalle: error.message });
     }
     console.log(`Etiqueta de ingrediente enviada a imprimir (Cant: ${cantidadImpresion}).`);
     res.json({ message: 'Etiqueta enviada a imprimir' });
@@ -370,6 +403,9 @@ router.post('/sync-b2b', async (req, res) => {
     { name: 'Catálogo y Precios', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js') },
     { name: 'Cuentas Corrientes', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BCuentas.js') },
     { name: 'Clientes y Listas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BClientesListas.js') },
+    { name: 'Políticas Comerciales', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPoliticas.js') },
+    { name: 'Ofertas Dinámicas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BOfertas.js') },
+    { name: 'Servicios Colaborador', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BColaboradores.js') },
     { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
     { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
   ];
@@ -399,7 +435,7 @@ router.post('/sync-b2b', async (req, res) => {
 
     isSyncingB2B = false;
     console.log('✅ [MANUAL-SYNC] Sincronización integral manual completada con éxito.');
-    res.json({ success: true, message: 'La sincronización integral (Precios, Cuentas, Listas, Pedidos y Estados) se completó exitosamente.' });
+    res.json({ success: true, message: 'La sincronización integral (Precios, Cuentas, Listas, Políticas, Ofertas, Colaboradores, Pedidos y Estados) se completó exitosamente.' });
 
   } catch (err) {
     isSyncingB2B = false;
@@ -416,6 +452,9 @@ router.post('/sync-b2b/:step', async (req, res) => {
     precios: { name: 'Catálogo y Precios', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPrecios.js') },
     cuentas: { name: 'Cuentas Corrientes', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BCuentas.js') },
     listas: { name: 'Clientes y Listas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BClientesListas.js') },
+    politicas: { name: 'Políticas Comerciales', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPoliticas.js') },
+    ofertas: { name: 'Ofertas Dinámicas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BOfertas.js') },
+    colaboradores: { name: 'Servicios Colaborador', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BColaboradores.js') },
     pedidos: { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
     estados: { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
   };
@@ -496,15 +535,17 @@ router.get('/pizarra/resumen_faltantes_parciales', async (req, res) => {
   try {
     const data = await httpGetJson('http://localhost:3002/api/produccion/pedidos-articulos');
     const articulos = data.data || [];
-    // Filtrar por estado FALTANTE o PARCIAL
-    const faltantes = articulos.filter(a => a.estado === 'FALTANTE' || a.estado === 'PARCIAL');
+    // Filtrar por estado FALTANTE o PARCIAL, omitiendo ingredientes kit de colaborador
+    const faltantes = articulos.filter(a => (a.estado === 'FALTANTE' || a.estado === 'PARCIAL') && !a.es_ingrediente);
     res.json({
       success: true,
       data: faltantes.map(a => ({
         articulo_numero: a.articulo_numero,
         descripcion: a.descripcion,
         faltante: parseFloat(a.faltante) || 0,
-        estado: a.estado
+        estado: a.estado,
+        id_presupuesto_local: a.id_presupuesto_local,
+        id_presupuesto_ext: a.id_presupuesto_ext
       }))
     });
   } catch (error) {
@@ -516,18 +557,36 @@ router.get('/pizarra/resumen_faltantes_parciales', async (req, res) => {
 // Módulo Logística/Impresión (bandeja_imprimir_modificado)
 router.get('/pizarra/bandeja_imprimir_modificado', async (req, res) => {
   try {
-    // Usamos el pool centralizado para contar presupuestos activos en 'Imprimir' o 'Imprimir_Modificado' y estado 'Presupuesto/Orden'
+    // Usamos el pool centralizado para contar presupuestos activos segregando por su origen.
+    // Los presupuestos del portal B2B se cuentan siempre que estén activos y en 'Presupuesto/Orden',
+    // sin requerir secuencia de impresión ya que son ingresados directamente para preparación.
     const query = `
-      SELECT COUNT(*) as count
+      SELECT 
+        COUNT(*)::integer as count,
+        COUNT(CASE WHEN (agente = 'Portal B2B' OR modificado_portal = true) AND estado = 'Presupuesto/Orden' THEN 1 END)::integer as portal,
+        COUNT(CASE WHEN COALESCE(agente, '') != 'Portal B2B' AND COALESCE(modificado_portal, false) = false AND secuencia IN ('Imprimir', 'Imprimir_Modificado') AND estado = 'Presupuesto/Orden' THEN 1 END)::integer as presupuestos
       FROM public.presupuestos
       WHERE activo = true
-        AND secuencia IN ('Imprimir', 'Imprimir_Modificado')
-        AND estado = 'Presupuesto/Orden'
+        AND id NOT IN (
+          SELECT id_presupuesto_local 
+          FROM public.faltantes_pendientes_compra 
+          WHERE estado = 'En espera'
+        )
+        AND (
+          -- Pedidos locales: deben estar listos en secuencia Imprimir/Imprimir_Modificado
+          (COALESCE(agente, '') != 'Portal B2B' AND COALESCE(modificado_portal, false) = false AND secuencia IN ('Imprimir', 'Imprimir_Modificado') AND estado = 'Presupuesto/Orden')
+          OR
+          -- Pedidos del portal: ingresan listos para su preparación
+          ((agente = 'Portal B2B' OR modificado_portal = true) AND estado = 'Presupuesto/Orden')
+        )
     `;
     const result = await pool.query(query);
+    const row = result.rows[0];
     res.json({
       success: true,
-      count: parseInt(result.rows[0].count) || 0
+      count: row.count || 0,
+      portal: row.portal || 0,
+      presupuestos: row.presupuestos || 0
     });
   } catch (error) {
     console.error('Error in /pizarra/bandeja_imprimir_modificado:', error);
@@ -560,10 +619,797 @@ router.get('/pizarra/mantenimiento_carpas', async (req, res) => {
   }
 });
 
+// Módulo Compras Pendientes (artículos derivados en espera)
+router.get('/pizarra/compras_pendientes', async (req, res) => {
+  try {
+    await reconciliarFaltantesConStock(pool);
+
+    const query = `
+      SELECT 
+        fpc.articulo_numero,
+        COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
+        SUM(fpc.cantidad_faltante::numeric) as cantidad_faltante
+      FROM public.faltantes_pendientes_compra fpc
+      INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
+      LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
+      LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
+      WHERE fpc.estado = 'En espera'
+        AND p.estado = 'Presupuesto/Orden'
+        AND p.activo = true
+      GROUP BY fpc.articulo_numero, src.descripcion, a.nombre
+      ORDER BY fpc.articulo_numero
+    `;
+    const result = await pool.query(query);
+    res.json({
+      success: true,
+      data: result.rows.map(r => ({
+        articulo_numero: r.articulo_numero,
+        descripcion: r.descripcion,
+        cantidad_faltante: parseFloat(r.cantidad_faltante) || 0
+      }))
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/compras_pendientes:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Resumen Operativo Completo para la Pizarra Inteligente (Pedidos Activos, Armados 12h y Compras en Espera)
+router.get('/pizarra/resumen_operativo', async (req, res) => {
+  try {
+    await reconciliarFaltantesConStock(pool);
+
+    const activosQuery = `
+      WITH todos_presupuestos_activos AS (
+        SELECT DISTINCT p2.id, p2.id_presupuesto_ext
+        FROM public.presupuestos p2
+        WHERE p2.activo = true 
+          AND p2.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
+          AND p2.estado = 'Presupuesto/Orden'
+      ),
+      pedidos_listos_reservados AS (
+        SELECT 
+          pd_listo.articulo,
+          SUM(COALESCE(pd_listo.cantidad, 0)) as stock_reservado
+        FROM public.presupuestos p_listo
+        JOIN public.presupuestos_detalles pd_listo ON (pd_listo.id_presupuesto_ext = p_listo.id_presupuesto_ext OR pd_listo.id_presupuesto = p_listo.id)
+        WHERE p_listo.activo = true
+          AND p_listo.estado = 'Presupuesto/Orden'
+          AND p_listo.secuencia IN ('Pedido_Listo', 'Retira_Deposito')
+          AND COALESCE(pd_listo.es_saldo_ingrediente, false) = false
+          AND p_listo.fecha_actualizacion >= NOW() - INTERVAL '24 hours'
+        GROUP BY pd_listo.articulo
+      ),
+      demanda_global_activa AS (
+        SELECT 
+          pd_act.articulo,
+          SUM(COALESCE(pd_act.cantidad, 0)) as demanda_total,
+          COUNT(DISTINCT tpa.id) as pedidos_count
+        FROM todos_presupuestos_activos tpa
+        JOIN public.presupuestos_detalles pd_act ON (pd_act.id_presupuesto_ext = tpa.id_presupuesto_ext OR pd_act.id_presupuesto = tpa.id)
+        WHERE COALESCE(pd_act.es_saldo_ingrediente, false) = false
+        GROUP BY pd_act.articulo
+      )
+      SELECT 
+        p.id,
+        p.id_presupuesto_ext,
+        p.id_cliente,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+        p.agente,
+        p.secuencia,
+        CASE 
+          WHEN p.agente = 'Portal B2B' OR p.modificado_portal = true THEN 'Portal'
+          ELSE 'Presupuestos'
+        END as origen,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'articulo', pd.articulo,
+                'descripcion', COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion, pd.articulo),
+                'cantidad', pd.cantidad,
+                'es_saldo_ingrediente', COALESCE(pd.es_saldo_ingrediente, false),
+                'kilos_saldo', pd.kilos_saldo,
+                'stock_disponible', GREATEST(0, (
+                  CASE 
+                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                    THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                    ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                  END
+                ) - COALESCE(plr.stock_reservado, 0)),
+                'demanda_global', COALESCE(dga.demanda_total, pd.cantidad),
+                'pedidos_demandantes', COALESCE(dga.pedidos_count, 1),
+                'faltante', CASE 
+                  WHEN COALESCE(pd.es_saldo_ingrediente, false) = true THEN 0
+                  WHEN (pd.cantidad - GREATEST(0, (
+                    CASE 
+                      WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                      THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                      ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                    END
+                  ) - COALESCE(plr.stock_reservado, 0))) <= 0.005 THEN 0
+                  ELSE ROUND((pd.cantidad - GREATEST(0, (
+                    CASE 
+                      WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                      THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                      ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                    END
+                  ) - COALESCE(plr.stock_reservado, 0)))::numeric, 2)
+                END,
+                'en_disputa', CASE
+                  WHEN COALESCE(pd.es_saldo_ingrediente, false) = true THEN false
+                  ELSE (
+                    pd.cantidad <= GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0))
+                    AND COALESCE(dga.demanda_total, 0) > GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0))
+                    AND GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0)) > 0
+                  )
+                END,
+                'estado_stock', CASE
+                  WHEN COALESCE(pd.es_saldo_ingrediente, false) = true THEN 'COMPLETO'
+                  WHEN (pd.cantidad - GREATEST(0, (
+                    CASE 
+                      WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                      THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                      ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                    END
+                  ) - COALESCE(plr.stock_reservado, 0))) > 0.005 THEN 'FALTANTE'
+                  WHEN (
+                    pd.cantidad <= GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0))
+                    AND COALESCE(dga.demanda_total, 0) > GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0))
+                    AND GREATEST(0, (
+                      CASE 
+                        WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                        THEN COALESCE(src.stock_consolidado, 0) + FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                        ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                      END
+                    ) - COALESCE(plr.stock_reservado, 0)) > 0
+                  ) THEN 'EN_DISPUTA'
+                  ELSE 'COMPLETO'
+                END
+              )
+            )
+            FROM public.presupuestos_detalles pd
+            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
+            LEFT JOIN public.stock_real_consolidado hijo ON (hijo.codigo_barras = src.pack_hijo_codigo OR hijo.articulo_numero = src.pack_hijo_codigo)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = src.articulo_numero)
+            LEFT JOIN pedidos_listos_reservados plr ON plr.articulo = pd.articulo
+            LEFT JOIN demanda_global_activa dga ON dga.articulo = pd.articulo
+            WHERE (pd.id_presupuesto_ext = p.id_presupuesto_ext OR pd.id_presupuesto = p.id)
+          ),
+          '[]'::json
+        ) as articulos
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+      WHERE p.activo = true
+        AND p.estado = 'Presupuesto/Orden'
+        AND p.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
+        AND p.id NOT IN (
+          SELECT id_presupuesto_local 
+          FROM public.faltantes_pendientes_compra 
+          WHERE estado = 'En espera'
+        )
+      ORDER BY p.fecha DESC
+    `;
+    const listosQuery = `
+      SELECT 
+        p.id,
+        p.id_presupuesto_ext,
+        p.id_cliente,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+        p.secuencia,
+        p.fecha_actualizacion
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+      WHERE p.activo = true
+        AND p.secuencia IN ('Pedido_Listo', 'Retira_Deposito', 'Entregado')
+        AND p.fecha_actualizacion >= NOW() - INTERVAL '12 hours'
+      ORDER BY p.fecha_actualizacion DESC
+      LIMIT 15
+    `;
+    const esperaQuery = `
+      SELECT 
+        fpc.articulo_numero,
+        COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
+        SUM(fpc.cantidad_faltante::numeric) as cantidad_faltante
+      FROM public.faltantes_pendientes_compra fpc
+      INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
+      LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
+      LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
+      WHERE fpc.estado = 'En espera'
+        AND p.estado = 'Presupuesto/Orden'
+        AND p.activo = true
+      GROUP BY fpc.articulo_numero, src.descripcion, a.nombre
+      ORDER BY fpc.articulo_numero
+    `;
+    const produccionRealizadaQuery = `
+      SELECT 
+        ca.id,
+        ca.carro_id,
+        ca.articulo_numero,
+        COALESCE(NULLIF(TRIM(ba.descripcion_generada), ''), NULLIF(TRIM(ba.descripcion), ''), NULLIF(TRIM(src.descripcion), ''), ca.descripcion) as descripcion,
+        ca.cantidad,
+        cp.fecha_confirmacion
+      FROM public.carros_articulos ca
+      JOIN public.carros_produccion cp ON cp.id = ca.carro_id
+      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = ca.articulo_numero
+      LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = ca.articulo_numero OR src.codigo_barras = ca.articulo_numero)
+      WHERE cp.fecha_confirmacion >= NOW() - INTERVAL '12 hours'
+      ORDER BY cp.fecha_confirmacion DESC
+    `;
+
+    const entregadosSinFacturarQuery = `
+      SELECT 
+        p.id,
+        p.id_cliente,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+        p.estado,
+        p.estado_logistico,
+        p.fecha,
+        p.fecha_entrega,
+        p.fecha_entrega_real,
+        p.id_ruta,
+        r.nombre_ruta,
+        (
+          SELECT COALESCE(SUM(pd.cantidad * pd.precio1), 0)
+          FROM public.presupuestos_detalles pd
+          WHERE pd.id_presupuesto = p.id OR pd.id_presupuesto_ext = p.id_presupuesto_ext
+        ) as total
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+      LEFT JOIN public.rutas r ON r.id = p.id_ruta
+      LEFT JOIN LATERAL (
+        SELECT id, estado, cae
+        FROM public.factura_facturas
+        WHERE (presupuesto_id = p.id OR (p.factura_id IS NOT NULL AND id = p.factura_id))
+          AND tipo_cbte NOT IN (3, 8, 13)
+          AND (
+            (cae IS NOT NULL AND cae != '')
+            OR estado IN ('APROBADA', 'APROBADA_LOCAL')
+          )
+        ORDER BY id DESC LIMIT 1
+      ) f ON true
+      WHERE p.activo = true
+        AND (
+          p.estado_logistico IN ('ENTREGADO', 'ENTREGADO_DEPOSITO', 'RETIRADO')
+          OR p.fecha_entrega_real IS NOT NULL
+          OR (p.estado IN ('Entregado', 'Retirado') AND (p.fecha >= NOW() - INTERVAL '30 days' OR p.fecha_actualizacion >= NOW() - INTERVAL '30 days'))
+        )
+        AND f.id IS NULL
+        AND (p.id_factura_lomasoft IS NULL OR p.id_factura_lomasoft = '')
+        AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
+        AND p.estado != 'Facturado'
+        AND p.estado NOT IN ('Anulado', 'Cancelado')
+        AND COALESCE(p.tipo_comprobante, '') NOT IN ('Orden de Retiro')
+        AND (p.archivado IS NOT TRUE)
+        AND COALESCE(p.fecha_entrega_real, p.fecha_entrega::timestamp, p.fecha::timestamp) >= NOW() - INTERVAL '60 days'
+      ORDER BY COALESCE(p.fecha_entrega_real, p.fecha_entrega::timestamp, p.fecha::timestamp) DESC
+    `;
+
+    const facturadosRecientesQuery = `
+      SELECT 
+        p.id,
+        p.id_cliente,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+        p.estado,
+        p.estado_logistico,
+        p.fecha_entrega_real,
+        p.id_ruta,
+        r.nombre_ruta,
+        f.id as factura_id,
+        f.cbte_nro,
+        f.pto_vta,
+        f.tipo_cbte,
+        f.serie_interna,
+        f.nro_interno,
+        f.imp_total,
+        f.emitida_en
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+      LEFT JOIN public.rutas r ON r.id = p.id_ruta
+      JOIN LATERAL (
+        SELECT id, estado, cbte_nro, imp_total, tipo_cbte, pto_vta, serie_interna, nro_interno, emitida_en
+        FROM public.factura_facturas
+        WHERE (presupuesto_id = p.id OR (p.factura_id IS NOT NULL AND id = p.factura_id))
+          AND tipo_cbte NOT IN (3, 8, 13)
+          AND (
+            (cae IS NOT NULL AND cae != '')
+            OR estado IN ('APROBADA', 'APROBADA_LOCAL')
+          )
+        ORDER BY id DESC LIMIT 1
+      ) f ON true
+      WHERE p.activo = true
+        AND (
+          (p.fecha_entrega_real IS NOT NULL AND f.emitida_en > p.fecha_entrega_real)
+          OR (p.fecha_asignacion_ruta IS NOT NULL AND f.emitida_en > p.fecha_asignacion_ruta)
+          OR (p.estado_logistico IN ('ENTREGADO', 'ENTREGADO_DEPOSITO', 'RETIRADO') AND f.emitida_en > COALESCE(p.fecha_entrega_real, p.fecha_actualizacion, p.fecha::timestamp))
+        )
+        AND f.emitida_en >= NOW() - INTERVAL '12 hours'
+      ORDER BY f.emitida_en DESC
+    `;
+
+    const [activosRes, listosRes, esperaRes, produccionRealizadaRes, demandaSatisfecha, entregadosSinFacturarRes, facturadosRecientesRes, planTrabajoDeposito] = await Promise.all([
+      pool.query(activosQuery),
+      pool.query(listosQuery),
+      pool.query(esperaQuery),
+      pool.query(produccionRealizadaQuery),
+      obtenerDemandaFaltantes(pool, { soloConStock: true, estado: 'Pendiente' }).catch(err => {
+        console.warn('⚠️ Error consultando demanda satisfecha en /pizarra/resumen_operativo:', err.message);
+        return [];
+      }),
+      pool.query(entregadosSinFacturarQuery).catch(err => {
+        console.warn('⚠️ Error consultando entregados sin facturar en /pizarra/resumen_operativo:', err.message);
+        return { rows: [] };
+      }),
+      pool.query(facturadosRecientesQuery).catch(err => {
+        console.warn('⚠️ Error consultando facturados recientes en /pizarra/resumen_operativo:', err.message);
+        return { rows: [] };
+      }),
+      obtenerPlanTrabajoDeposito(pool).catch(err => {
+        console.warn('⚠️ Error consultando plan de trabajo de depósito en /pizarra/resumen_operativo:', err.message);
+        return null;
+      })
+    ]);
+
+    res.json({
+      success: true,
+      pedidos_activos: activosRes.rows,
+      pedidos_armados_12h: listosRes.rows,
+      produccion_realizada_12h: produccionRealizadaRes.rows,
+      compras_en_espera: esperaRes.rows.map(r => ({
+        articulo_numero: r.articulo_numero,
+        descripcion: r.descripcion,
+        cantidad_faltante: parseFloat(r.cantidad_faltante) || 0
+      })),
+      demanda_satisfecha: demandaSatisfecha || [],
+      presupuestos_entregados_sin_facturar: entregadosSinFacturarRes.rows || [],
+      presupuestos_facturados_12h: facturadosRecientesRes.rows || [],
+      plan_trabajo_deposito: planTrabajoDeposito
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/resumen_operativo:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint dedicado para el Plan de Trabajo Finito de Depósito (Metas por Horizonte 7d / 15d / 30d + Mirada Consciente)
+router.get('/pizarra/plan_trabajo_deposito', async (req, res) => {
+  try {
+    const forceRefresh = req.query.force === 'true' || req.query.force === '1';
+    const plan = await obtenerPlanTrabajoDeposito(pool, { forceRefresh });
+    res.json(plan);
+  } catch (error) {
+    console.error('Error in /pizarra/plan_trabajo_deposito:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint para consultar trazabilidad integral y empírica de un presupuesto
+router.get('/pizarra/presupuestos/:id/trazabilidad', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ success: false, error: 'ID de presupuesto inválido' });
+    }
+
+    // 1. Presupuesto base + Cliente + Domicilio + Mapeo B2B
+    const pQuery = `
+      SELECT 
+        p.id,
+        p.id_presupuesto_ext,
+        p.id_cliente,
+        p.fecha,
+        p.fecha_entrega,
+        p.fecha_entrega_real,
+        p.fecha_actualizacion,
+        p.agente,
+        p.tipo_comprobante,
+        p.nota,
+        p.estado,
+        p.secuencia,
+        p.estado_logistico,
+        p.descuento,
+        p.id_ruta,
+        p.orden_entrega,
+        p.id_domicilio_entrega,
+        p.fecha_asignacion_ruta,
+        p.origen_facturacion,
+        p.origen_numero_factura,
+        p.factura_id,
+        p.id_factura_lomasoft,
+        p.comprobante_lomasoft,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+        c.telefono as cliente_telefono,
+        c.celular as cliente_celular,
+        c.domicilio as cliente_domicilio,
+        c.localidad as cliente_localidad,
+        bc.codigo_bunker_cliente,
+        bc.razon_social,
+        bc.whatsapp_facturas,
+        cd.alias as domicilio_alias,
+        cd.direccion as domicilio_direccion,
+        cd.localidad as domicilio_localidad,
+        cd.latitud as domicilio_lat,
+        cd.longitud as domicilio_lng,
+        b2b.supabase_pedido_id,
+        b2b.created_at as b2b_created_at
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+      LEFT JOIN public.bunker_clientes bc ON (CASE WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer ELSE NULL END) = c.cliente_id
+      LEFT JOIN public.clientes_domicilios cd ON cd.id = p.id_domicilio_entrega
+      LEFT JOIN public.b2b_pedidos_mapeo b2b ON b2b.local_presupuesto_id = p.id
+      WHERE p.id = $1
+      LIMIT 1
+    `;
+    const pRes = await pool.query(pQuery, [id]);
+    if (pRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Presupuesto no encontrado' });
+    }
+    const p = pRes.rows[0];
+
+    // 2. Ruta y Chofer
+    let ruta = null;
+    if (p.id_ruta) {
+      const rQuery = `
+        SELECT 
+          r.id,
+          r.nombre_ruta,
+          r.estado as estado_ruta,
+          r.fecha_salida,
+          r.fecha_finalizacion,
+          r.id_chofer,
+          u.nombre_completo as chofer_nombre
+        FROM public.rutas r
+        LEFT JOIN public.usuarios u ON u.id = r.id_chofer
+        WHERE r.id = $1
+        LIMIT 1
+      `;
+      const rRes = await pool.query(rQuery, [p.id_ruta]);
+      if (rRes.rows.length > 0) ruta = rRes.rows[0];
+    }
+
+    // 3. Eventos de entrega
+    const eeQuery = `
+      SELECT 
+        id,
+        tipo_evento,
+        fecha_entrega,
+        receptor_nombre,
+        receptor_vinculo,
+        latitud_confirmacion,
+        longitud_confirmacion,
+        foto_conformidad_url,
+        observaciones,
+        created_at
+      FROM public.entregas_eventos
+      WHERE id_presupuesto = $1
+      ORDER BY created_at ASC
+    `;
+    const eeRes = await pool.query(eeQuery, [id]);
+
+    // 4. Snapshots de producción / armado
+    const psQuery = `
+      SELECT 
+        id,
+        motivo,
+        secuencia_en_snapshot,
+        numero_impresion,
+        fecha_snapshot
+      FROM public.presupuestos_snapshots
+      WHERE id_presupuesto = $1
+      ORDER BY fecha_snapshot ASC, id ASC
+    `;
+    const psRes = await pool.query(psQuery, [id]);
+
+    // 5. Historial de cambios de estado
+    const pehQuery = `
+      SELECT 
+        peh.id,
+        peh.estado_anterior,
+        peh.estado_nuevo,
+        peh.metadata,
+        peh.fecha_cambio,
+        u.nombre_completo as usuario_nombre
+      FROM public.presupuestos_estados_historial peh
+      LEFT JOIN public.usuarios u ON u.id = peh.usuario_id
+      WHERE peh.id_presupuesto = $1
+      ORDER BY peh.fecha_cambio ASC
+    `;
+    const pehRes = await pool.query(pehQuery, [id]);
+
+    // 6. Facturas vinculadas
+    const ffQuery = `
+      SELECT 
+        id,
+        pto_vta,
+        cbte_nro,
+        tipo_cbte,
+        imp_total,
+        cae,
+        cae_vto,
+        resultado,
+        estado,
+        emitida_en,
+        es_enviado,
+        enviado_at,
+        enviado_canal,
+        created_at,
+        updated_at
+      FROM public.factura_facturas
+      WHERE presupuesto_id = $1 OR (id = $2 AND $2 IS NOT NULL)
+      ORDER BY id DESC
+    `;
+    const ffRes = await pool.query(ffQuery, [id, p.factura_id]);
+
+    // 7. Resumen de ítems del presupuesto
+    const pdQuery = `
+      SELECT 
+        pd.id,
+        pd.articulo,
+        pd.cantidad,
+        pd.precio1 as precio_unitario,
+        (pd.cantidad * pd.precio1) as subtotal,
+        COALESCE(
+          NULLIF(TRIM(ba.descripcion_generada), ''),
+          NULLIF(TRIM(ba.descripcion), ''),
+          NULLIF(TRIM(a.nombre), ''),
+          pd.articulo
+        ) as descripcion
+      FROM public.presupuestos_detalles pd
+      LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
+      LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
+      WHERE pd.id_presupuesto = $1
+      ORDER BY pd.id ASC
+    `;
+    const pdRes = await pool.query(pdQuery, [id]);
+
+    // Parsear contactos whatsapp de bunker
+    let contactosWhatsapp = [];
+    if (p.whatsapp_facturas) {
+      try {
+        const parsed = typeof p.whatsapp_facturas === 'string' ? JSON.parse(p.whatsapp_facturas) : p.whatsapp_facturas;
+        if (Array.isArray(parsed)) {
+          contactosWhatsapp = parsed.map(c => ({
+            nombre: c.nombre || 'Contacto',
+            cargo: c.cargo || '',
+            numero: c.numero || '',
+            es_default: c.default === true || c.default_factura === true || c.default_presupuesto === true
+          }));
+        }
+      } catch (e) {}
+    }
+
+    const totalImporte = pdRes.rows.reduce((sum, item) => sum + parseFloat(item.subtotal || 0), 0);
+    const totalUnidades = pdRes.rows.reduce((sum, item) => sum + parseFloat(item.cantidad || 0), 0);
+
+    res.json({
+      success: true,
+      presupuesto: {
+        id: p.id,
+        id_presupuesto_ext: p.id_presupuesto_ext,
+        fecha_administrativa: p.fecha,
+        fecha_creacion_portal: p.b2b_created_at,
+        supabase_pedido_id: p.supabase_pedido_id,
+        agente: p.agente,
+        tipo_comprobante: p.tipo_comprobante,
+        nota: p.nota,
+        estado: p.estado,
+        secuencia: p.secuencia,
+        estado_logistico: p.estado_logistico,
+        descuento: p.descuento,
+        total: totalImporte,
+        total_unidades: totalUnidades,
+        cant_items: pdRes.rows.length,
+        origen_canal: p.supabase_pedido_id ? 'Portal B2B' : (p.agente === 'Portal B2B' ? 'Portal B2B' : 'Local / Taller')
+      },
+      cliente: {
+        id: p.id_cliente,
+        nombre: p.cliente_nombre,
+        codigo_bunker: p.codigo_bunker_cliente,
+        razon_social: p.razon_social,
+        telefono: p.cliente_telefono,
+        celular: p.cliente_celular,
+        domicilio: p.cliente_domicilio,
+        localidad: p.cliente_localidad,
+        contactos_whatsapp: contactosWhatsapp
+      },
+      domicilio_entrega: {
+        id: p.id_domicilio_entrega,
+        alias: p.domicilio_alias,
+        direccion: p.domicilio_direccion || p.cliente_domicilio,
+        localidad: p.domicilio_localidad || p.cliente_localidad,
+        lat: p.domicilio_lat,
+        lng: p.domicilio_lng
+      },
+      produccion: {
+        secuencia_actual: p.secuencia,
+        snapshots: psRes.rows.map(s => ({
+          id: s.id,
+          motivo: s.motivo,
+          secuencia: s.secuencia_en_snapshot,
+          numero_impresion: s.numero_impresion,
+          fecha: s.fecha_snapshot
+        }))
+      },
+      logistica: {
+        id_ruta: p.id_ruta,
+        orden_entrega: p.orden_entrega,
+        fecha_asignacion_ruta: p.fecha_asignacion_ruta,
+        nombre_ruta: ruta ? ruta.nombre_ruta : null,
+        estado_ruta: ruta ? ruta.estado_ruta : null,
+        chofer_nombre: ruta ? ruta.chofer_nombre : null,
+        fecha_salida_ruta: ruta ? ruta.fecha_salida : null,
+        fecha_finalizacion_ruta: ruta ? ruta.fecha_finalizacion : null,
+        fecha_entrega_real: p.fecha_entrega_real,
+        eventos_entrega: eeRes.rows.map(e => ({
+          id: e.id,
+          tipo_evento: e.tipo_evento,
+          fecha_entrega: e.fecha_entrega,
+          receptor_nombre: e.receptor_nombre,
+          receptor_vinculo: e.receptor_vinculo,
+          lat: e.latitud_confirmacion,
+          lng: e.longitud_confirmacion
+        }))
+      },
+      comunicacion: {
+        contactos_whatsapp: contactosWhatsapp,
+        envios_factura_whatsapp: ffRes.rows.filter(f => f.es_enviado).map(f => ({
+          factura_id: f.id,
+          cbte: `${f.pto_vta}-${f.cbte_nro}`,
+          enviado_at: f.enviado_at,
+          canal: f.enviado_canal
+        })),
+        hubo_envio_whatsapp: ffRes.rows.some(f => f.es_enviado)
+      },
+      facturacion: {
+        factura_id_asignada: p.factura_id,
+        origen_facturacion: p.origen_facturacion,
+        origen_numero_factura: p.origen_numero_factura,
+        id_factura_lomasoft: p.id_factura_lomasoft,
+        comprobante_lomasoft: p.comprobante_lomasoft,
+        facturas: ffRes.rows.map(f => ({
+          id: f.id,
+          tipo_cbte: f.tipo_cbte,
+          pto_vta: f.pto_vta,
+          cbte_nro: f.cbte_nro,
+          imp_total: parseFloat(f.imp_total),
+          cae: f.cae,
+          estado: f.estado,
+          emitida_en: f.emitida_en,
+          es_enviado: f.es_enviado,
+          enviado_at: f.enviado_at
+        }))
+      },
+      items: pdRes.rows
+    });
+  } catch (error) {
+    console.error('Error in /pizarra/presupuestos/:id/trazabilidad:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint para actualizar estado de demanda faltante (Cubierto, Desestimado, Pendiente)
+router.post('/pizarra/demanda-faltantes/:id/estado', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { nuevoEstado, motivo } = req.body;
+    const actualizado = await cambiarEstadoFaltante(pool, {
+      id,
+      nuevoEstado,
+      motivo,
+      origen: 'pizarra_frontal'
+    });
+    res.json({ success: true, data: actualizado });
+  } catch (error) {
+    console.error('Error in POST /pizarra/demanda-faltantes/:id/estado:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint para consultar demanda faltante con filtros
+router.get('/pizarra/demanda-faltantes', async (req, res) => {
+  try {
+    const { estado, solo_stock } = req.query;
+    const datos = await obtenerDemandaFaltantes(pool, {
+      estado: estado || null,
+      soloConStock: solo_stock === 'true'
+    });
+    res.json({ success: true, data: datos });
+  } catch (error) {
+    console.error('Error in GET /pizarra/demanda-faltantes:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Proxy para enviar mensaje de WhatsApp desde microservicio de facturación (puerto 3004)
+router.post('/whatsapp/enviar-mensaje', async (req, res) => {
+  try {
+    const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Error proxy WhatsApp enviar-mensaje:', error.message);
+    res.status(500).json({ success: false, error: 'Servicio de mensajería no disponible', message: error.message });
+  }
+});
+
+// Proxy para enviar notificación por Email desde microservicio de facturación (puerto 3004)
+router.post('/email/enviar-notificacion', async (req, res) => {
+  try {
+    const response = await fetch('http://localhost:3004/facturacion/email/notificacion/enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Error proxy Email enviar-notificacion:', error.message);
+    res.status(500).json({ success: false, error: 'Servicio de correo no disponible', message: error.message });
+  }
+});
+
+// Proxy para actualizar contactos de Bunker en Logística (puerto 3005)
+router.patch('/logistica/bunker/clientes/:id/whatsapp-contacts', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const response = await fetch(`http://localhost:3005/api/logistica/bunker/clientes/${id}/whatsapp-contacts`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Error proxy actualizar contactos bunker:', error.message);
+    res.status(500).json({ success: false, error: 'Servicio de logística no disponible', message: error.message });
+  }
+});
+
+// ⚡ Auto-Sync B2B reactivo en segundo plano tras modificaciones locales (ofertas dinámicas, jornadas/tarifas)
+const { createB2BAutoSyncMiddleware } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+app.use('/api', createB2BAutoSyncMiddleware('etiquetas'));
 
 // Montar las rutas API
 app.use('/api', router);
 app.use('/api', rutasUsuarios); // 🟩 NUEVAS rutas de usuarios
+app.use('/api', rutasJornadas); // ⏱️ NUEVAS rutas de jornadas de colaboradores
+app.use('/api', rutasCrmSeguimientos); // 📱 NUEVAS rutas de seguimientos CRM WhatsApp
+app.use('/api', rutasCrmWhatsappHub); // 💬 NUEVAS rutas horizontales WhatsApp CRM Bidireccional & Consola 3 Columnas
+app.use('/api', rutasOfertasDinamicas); // 🏷️ NUEVAS rutas de ofertas dinámicas y cuotas de stock
 
 // Middleware para manejar errores 404
 app.use((req, res, next) => {

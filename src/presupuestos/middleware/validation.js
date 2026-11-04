@@ -73,6 +73,20 @@ const sanitizarDatos = (req, res, next) => {
               item[k] = Number.isFinite(n) ? n : item[k];
             }
           });
+          // Campos de Saldo de Ingrediente (Venta fraccionada desde stock de ingredientes)
+          item.es_saldo_ingrediente = item.es_saldo_ingrediente === true || item.es_saldo_ingrediente === 'true';
+          if (item.ingrediente_id_saldo !== undefined && item.ingrediente_id_saldo !== null && item.ingrediente_id_saldo !== '') {
+            const idIng = parseInt(item.ingrediente_id_saldo, 10);
+            item.ingrediente_id_saldo = Number.isFinite(idIng) ? idIng : null;
+          } else {
+            item.ingrediente_id_saldo = null;
+          }
+          if (item.kilos_saldo !== undefined && item.kilos_saldo !== null && item.kilos_saldo !== '') {
+            const ks = toNum(item.kilos_saldo);
+            item.kilos_saldo = Number.isFinite(ks) ? ks : null;
+          } else {
+            item.kilos_saldo = null;
+          }
           return item;
         });
       }

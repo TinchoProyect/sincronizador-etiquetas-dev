@@ -633,3 +633,146 @@ font-weight: bold;
     color: #adb5bd;
     font-style: italic;
 }
+
+/* ==========================================
+   ESTILOS DUALES: KILOS + BULTOS POR LOTE
+   ========================================== */
+.dual-section-block {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+
+.dual-section-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #475569;
+    margin: 0 0 8px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.badge-lote {
+    background: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #ddd6fe;
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.lote-counter-row {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.lote-info-col {
+    flex: 1;
+}
+
+.lote-info-col .lote-meta {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.lote-counter-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-lote-qty {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    color: #1e293b;
+    font-size: 1.3rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+.btn-lote-qty:active {
+    background: #cbd5e1;
+    transform: scale(0.95);
+}
+
+.input-lote-cajas {
+    width: 48px;
+    height: 36px;
+    text-align: center;
+    font-size: 1.15rem;
+    font-weight: 800;
+    border: 2px solid #94a3b8;
+    border-radius: 6px;
+    color: #0f172a;
+    background: #ffffff;
+}
+
+.total-consolidado-box {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.total-consolidado-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e40af;
+}
+
+.total-consolidado-val {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #1d4ed8;
+    font-family: monospace;
+}
+
+.badge-dual-pendientes {
+    display: inline-flex;
+    gap: 6px;
+    font-size: 0.76rem;
+    margin-top: 4px;
+}
+
+.badge-dual-kilos {
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.badge-dual-cajas {
+    background: #f3e8ff;
+    color: #7e22ce;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+}

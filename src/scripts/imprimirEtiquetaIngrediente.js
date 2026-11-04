@@ -3,7 +3,11 @@ const fsSync = require('fs');
 const { exec } = require('child_process');
 const path = require('path');
 
-function generarParEtiquetasIngrediente({ nombre, codigo, sector }) {
+function generarParEtiquetasIngrediente(datos) {
+  const nombre = String(datos?.nombre || 'INGREDIENTE').trim();
+  const codigo = String(datos?.codigo || datos?.id || '0000').trim();
+  const sector = String(datos?.sector || '').trim();
+
   // Configuración de codificación para caracteres especiales
   const encabezadoZPL = '^XA^CI28'; // CI28 para Latin-1/Windows-1252
 
@@ -64,8 +68,9 @@ async function main() {
     const tempDir = path.resolve(__dirname, '../app-etiquetas/temp');
     console.log('Directorio temporal:', tempDir);
 
-    // Leer datos del archivo JSON
-    const jsonPath = path.join(tempDir, 'temp-ingrediente.json');
+    // Leer datos del archivo JSON (soporta ruta personalizada en argv[3] para concurrencia)
+    const customJsonPath = process.argv[3] ? path.resolve(process.argv[3]) : null;
+    const jsonPath = customJsonPath || path.join(tempDir, 'temp-ingrediente.json');
     console.log('Leyendo archivo JSON:', jsonPath);
 
     const jsonContent = await fs.readFile(jsonPath, 'utf8');
@@ -75,7 +80,7 @@ async function main() {
     console.log('JSON parseado:', datos);
 
     // Procesar cantidad
-    const cantidad = parseInt(process.argv[2], 10) || 1;
+    const cantidad = Math.max(1, Math.ceil(parseFloat(process.argv[2]) || 1));
     const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
 
     // Crear directorio temporal si no existe
@@ -102,32 +107,34 @@ async function main() {
       contenido += generarParEtiquetasIngrediente(datos);
     }
 
-    // Escribir archivo
-    const nombreArchivo = path.join(tempDir, 'etiqueta_ingrediente.zpl');
+    // Escribir archivo único y copia de referencia
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const nombreArchivo = path.join(tempDir, `etiqueta_ingrediente_${uniqueSuffix}.zpl`);
+    const nombreArchivoDebug = path.join(tempDir, 'etiqueta_ingrediente.zpl');
     try {
       await fs.writeFile(nombreArchivo, contenido, { encoding: 'utf8' });
+      await fs.writeFile(nombreArchivoDebug, contenido, { encoding: 'utf8' }).catch(() => {});
       console.log('Archivo ZPL creado exitosamente');
-
-      // Verificar que el archivo existe y su tamaño
-      const stats = await fs.stat(nombreArchivo);
-      console.log('Tamaño del archivo:', stats.size, 'bytes');
-
-      // Listar contenido del directorio
-      const files = await fs.readdir(tempDir);
-      console.log('Archivos en el directorio temporal:', files);
     } catch (err) {
       console.error('Error al escribir archivo:', err);
       throw new Error(`Error al escribir archivo: ${err.message}`);
     }
 
-    // Enviar a impresora
+    // Enviar a impresora esperando finalización del comando COPY
     const nombreImpresora = 'Zebra';
-    exec(`COPY /B "${nombreArchivo}" \\\\localhost\\${nombreImpresora}`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Error al imprimir: ${error.message}`);
-        process.exit(1);
-      }
-      console.log('Etiqueta de ingrediente enviada a imprimir correctamente.');
+    await new Promise((resolve, reject) => {
+      exec(`COPY /B "${nombreArchivo}" \\\\localhost\\${nombreImpresora}`, async (error, stdout, stderr) => {
+        try { await fs.unlink(nombreArchivo); } catch (_) {}
+        if (customJsonPath) {
+          try { await fs.unlink(customJsonPath); } catch (_) {}
+        }
+        if (error) {
+          console.error(`Error al imprimir: ${error.message}`);
+          return reject(error);
+        }
+        console.log('Etiqueta de ingrediente enviada a imprimir correctamente.');
+        resolve(stdout);
+      });
     });
 
   } catch (error) {

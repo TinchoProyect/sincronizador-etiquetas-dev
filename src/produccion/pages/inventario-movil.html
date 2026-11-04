@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/css/inventario-movil.css">
 
     <!-- Librerías -->
-    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js" defer></script>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 
@@ -19,8 +19,11 @@
 
     <!-- NAVBAR SUPERIOR -->
     <nav class="navbar">
-        <div class="nav-brand">
-            📱 Inv. <span id="info-sectores" class="sector-badge">...</span>
+        <div class="nav-brand" style="display: flex; align-items: center; gap: 8px;">
+            <span>📱 Inv. <span id="info-sectores" class="sector-badge">...</span></span>
+            <div id="cronometro-movil" style="display: none; align-items: center; gap: 4px; background: #e0e7ff; border: 1px solid #818cf8; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 800; color: #312e81; font-family: monospace;">
+                ⏱️ <span id="display-tiempo-movil">00:00:00</span>
+            </div>
         </div>
         <div class="nav-actions">
             <button id="btn-cancelar-global" class="btn-icon-danger" title="Cancelar Inventario">⛔</button>
@@ -50,55 +53,117 @@
             <div class="sector-actions-row" style="display: flex; gap: 10px; justify-content: space-between;">
                 <button id="btn-print-sector-movil" class="btn-secondary-small">🖨️ Imprimir Sector</button>
                 <button id="btn-finalizar-movil" class="btn-secondary-small"
-                    style="background-color: #ffcccc; color: #d32f2f; border: 1px solid #d32f2f;">🏁 Finalizar</button>
+                    style="background-color: #fee2e2; color: #b91c1c; border: 1.5px solid #f87171; font-weight: 700; border-radius: 6px; padding: 6px 12px; cursor: pointer;">🏁 Finalizar</button>
             </div>
 
-            <!-- INPUT PRINCIPAL (SCANNER/SEARCH) -->
-            <div class="input-group main-search-group">
-                <input type="text" id="buscador-movil" class="main-input" placeholder="Escanear o Buscar..."
-                    autocomplete="off">
-                <button id="btn-camera-toggle" class="btn-icon-small">📷</button>
+            <!-- ENTRADA DUAL DE ESCANEO (BALANZA VS BULTOS CERRADOS) -->
+            <div class="dual-scan-inputs-container" style="margin-bottom: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <!-- 1. MODO BALANZA: INGREDIENTE / KILOS SUELTOS -->
+                <div class="scan-input-card scan-card-balanza" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>⚖️ 1. MODO BALANZA (Kilos Sueltos)</span>
+                        <small style="color: #15803d; font-weight: 500;">Pesar en balanza</small>
+                    </div>
+                    <div class="input-group" style="position: relative; margin: 0;">
+                        <input type="text" id="buscador-movil" class="main-input" placeholder="Escanear etiqueta de ingrediente o buscar..."
+                            style="padding: 10px 40px 10px 12px; font-size: 0.95rem; border-color: #86efac; background: #fff;" autocomplete="off">
+                        <button id="btn-camera-toggle" class="btn-icon-small" style="position: absolute; right: 5px; top: 5px;" title="Abrir Cámara">📷</button>
+                        <!-- DROPDOWN SUGERENCIAS -->
+                        <div id="search-dropdown" class="dropdown-list" style="display:none"></div>
+                    </div>
+                </div>
 
-                <!-- DROPDOWN SUGERENCIAS -->
-                <div id="search-dropdown" class="dropdown-list" style="display:none"></div>
+                <!-- 2. MODO BULTOS CERRADOS: ESCÁNER DE LOTES -->
+                <div class="scan-input-card scan-card-lote" style="background: #faf5ff; border: 1.5px solid #d8b4fe; border-radius: 10px; padding: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #6b21a8; text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>📦 2. MODO BULTOS CERRADOS (Lotes)</span>
+                        <small style="color: #7e22ce; font-weight: 500;">+1 bolsa por disparo</small>
+                    </div>
+                    <div class="input-group" style="position: relative; margin: 0;">
+                        <input type="text" id="buscador-lote-global" class="main-input" placeholder="Disparar a etiqueta de lote del bulto cerrado..."
+                            style="padding: 10px 40px 10px 12px; font-size: 0.95rem; border-color: #d8b4fe; background: #fff;" autocomplete="off">
+                        <span style="position: absolute; right: 12px; top: 10px; font-size: 1.1rem; opacity: 0.6;">🏷️</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- TARJETA DE PRODUCTO ACTIVO -->
+            <!-- TARJETA DE PRODUCTO ACTIVO (SOPORTE DUAL: KILOS + LOTES) -->
             <div id="info-articulo" class="product-card fade-in" style="display: none;">
-                <div class="card-header">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div style="flex: 1">
                         <h3 id="nombre-articulo" class="product-name">Nombre del Producto</h3>
                         <div class="product-meta-row">
                             <small id="codigo-articulo" class="text-muted">COD: --</small>
-                            <small id="stock-sistema-badge" class="badge-neutral">Sys: 0</small>
+                            <small id="stock-sistema-badge" class="badge-neutral">Sys: 0 kg | 0 cj</small>
                         </div>
                     </div>
-                    <!-- Botón Imprimir -->
-                    <button id="btn-imprimir" class="btn-action-icon" title="Imprimir Etiqueta">🖨️</button>
+                    <div style="display: flex; gap: 6px;">
+                        <button id="btn-imprimir" class="btn-action-icon" title="Imprimir Etiqueta">🖨️</button>
+                        <button id="btn-cerrar-tarjeta" class="btn-action-icon" title="Cerrar Ficha" style="background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">✕</button>
+                    </div>
                 </div>
 
                 <div class="card-body">
-                    <!-- Diferencia Visual -->
-                    <div id="diff-bar" class="diff-bar neutral">
-                        <span id="diff-text">Diferencia: 0</span>
+                    <!-- 1. BLOQUE KILOS SUELTOS -->
+                    <div class="dual-section-block" style="border-left: 4px solid #16a34a;">
+                        <div class="dual-section-title">
+                            <span>⚖️ SECCIÓN 1: Kilos Sueltos (Balanza)</span>
+                            <small id="kilos-sys-label" style="color: #64748b; font-weight: normal;">Sys: 0.00 kg</small>
+                        </div>
+                        <div id="diff-bar" class="diff-bar neutral">
+                            <span id="diff-text">Diferencia: 0.00 kg</span>
+                        </div>
+                        <div class="input-row centered-row">
+                            <input type="text" id="cantidad" class="qty-input" placeholder="0.00" inputmode="decimal"
+                                autocomplete="off">
+                            <span class="unit-label" id="unidad-label">kg</span>
+                        </div>
+                        <div style="margin-top: 10px; text-align: center;">
+                            <button type="button" id="btn-confirmar-sugerido-movil" class="btn-secondary" style="display: none; width: 100%; padding: 10px; font-weight: 700; background: #ecfdf5; color: #047857; border: 1.5px solid #10b981; border-radius: 8px; font-size: 0.95rem;">
+                                ✅ Es correcto (<span id="txt-sugerido-kilos-movil">0.00</span> kg) ➔ Ir a Bultos
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Input Cantidad -->
-                    <div class="input-row centered-row">
-                        <!-- FIX: type="text" para permitir coma libremente en Android -->
-                        <input type="text" id="cantidad" class="qty-input" placeholder="0.00" inputmode="decimal"
-                            autocomplete="off">
-                        <span class="unit-label">kg</span>
+                    <!-- 2. BLOQUE CAJAS CERRADAS POR LOTE -->
+                    <div class="dual-section-block" id="seccion-lotes-block" style="border-left: 4px solid #9333ea;">
+                        <div class="dual-section-title">
+                            <span>📦 SECCIÓN 2: Bultos Cerrados por Lote</span>
+                            <span id="badge-total-cajas-contadas" class="badge-dual-cajas">0 cj</span>
+                        </div>
+
+                        <!-- Banner guiado para escaneo continuo de lotes -->
+                        <div id="banner-instruccion-lote-movil" style="display: none; background: #f3e8ff; border: 1.5px dashed #a855f7; border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: #6b21a8; font-weight: 600; margin-bottom: 10px; text-align: center;">
+                            🎯 <strong>MODO BULTOS:</strong> Dispará a la etiqueta de lote de cada bolsa (+1 por disparo)
+                        </div>
+
+                        <!-- Input dedicado para disparar a etiquetas de lote -->
+                        <div class="input-group" style="margin-bottom: 10px; position: relative;">
+                            <input type="text" id="input-scan-lote" class="main-input" placeholder="📦 Disparar a etiqueta de Lote aquí..."
+                                style="padding: 10px 40px 10px 12px; font-size: 0.95rem; border-color: #cbd5e1;" autocomplete="off">
+                            <span style="position: absolute; right: 12px; top: 10px; font-size: 1.1rem; opacity: 0.6;">🏷️</span>
+                        </div>
+
+                        <div id="contenedor-lotes-articulo">
+                            <!-- Los lotes se renderizan dinámicamente aquí -->
+                        </div>
+                    </div>
+
+                    <!-- 3. TOTAL CONSOLIDADO EN VIVO -->
+                    <div class="total-consolidado-box">
+                        <span class="total-consolidado-label">Stock Potencial Total:</span>
+                        <span class="total-consolidado-val" id="total-potencial-live">0.00 kg</span>
                     </div>
                 </div>
+
                 <!-- Confirmar en tarjeta -->
-                <div class="card-actions">
-                    <button id="btn-cargar" class="btn-primary-block" disabled>CONFIRMAR PESO</button>
+                <div class="card-actions" style="padding: 0 20px 20px 20px;">
+                    <button id="btn-cargar" class="btn-primary-block" disabled>💾 CONFIRMAR Y GUARDAR CONTEO</button>
                 </div>
             </div>
 
             <div class="empty-state-placeholder" id="placeholder-carga">
-                <p>Escanea un producto o selecciona de "Pendientes"</p>
+                <p>💡 Escaneá un producto para balanza o una bolsa de lote para contar bultos</p>
             </div>
         </div>
 
@@ -118,7 +183,6 @@
                 <!-- Items contados -->
             </div>
         </div>
-
 
         <!-- MODAL CAMARA -->
         <div id="modal-scanner" class="camera-modal" style="display: none;">
@@ -144,13 +208,49 @@
             </div>
         </div>
 
-        <!-- MODAL RESUMEN CIERRE (Cierre solo desde PC, pero avisamos) -->
+        <!-- MODAL RESULTADO INVENTARIO (MÓVIL) -->
+        <div id="modal-resultado-movil" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 9999; background: rgba(0,0,0,0.65);">
+            <div class="modal-card" style="width: 92%; max-width: 440px; background: white; border-radius: 14px; padding: 22px; text-align: center; box-shadow: 0 12px 30px rgba(0,0,0,0.25);">
+                <div style="font-size: 3.2rem; margin-bottom: 8px;">📋</div>
+                <h3 style="margin-bottom: 6px; color: #1e293b; font-size: 1.3rem;">¡Inventario Finalizado!</h3>
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 18px;">
+                    El recuento de stock y ajustes se asentaron correctamente en el sistema.
+                </p>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 20px; font-size: 0.9rem; text-align: left; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #64748b;">Evaluados:</span>
+                        <strong id="res-movil-total" style="color: #1e293b;">0</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #64748b;">Ajustados:</span>
+                        <strong id="res-movil-ajustados" style="color: #dc2626;">0</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #64748b;">Bultos Totales:</span>
+                        <strong id="res-movil-bultos" style="color: #7e22ce;">0 cj</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 2px;">
+                        <span style="color: #64748b;">Duración Conteo:</span>
+                        <strong id="res-movil-duracion" style="color: #4338ca;">--</strong>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button type="button" id="btn-abrir-pdf-movil" class="btn-primary-block" style="background: #2563eb; color: white; padding: 12px; font-size: 1rem; border-radius: 8px; font-weight: 700; border: none;">
+                        🖨️ Descargar / Ver Informe PDF
+                    </button>
+                    <button type="button" id="btn-cerrar-resultado-movil" class="btn-secondary" style="padding: 10px; font-size: 0.9rem; border-radius: 8px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">
+                        ✕ Cerrar Sesión
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- TOAST -->
         <div id="confirmacion" class="toast-message" style="display: none;">✅ Guardado</div>
 
     </div>
 
-    <script type="module" src="/js/inventarioMovil.js?v=6.0"></script>
+    <script type="module" src="/js/inventarioMovil.js?v=7.9"></script>
 </body>
 
 </html>

@@ -1,0 +1,14 @@
+
+==================================================
+        MOCK COMPROBANTE OFICIAL - SISTEMA LAMDA
+==================================================
+ID Movimiento Local: 81
+Tipo Comprobante:    NC
+Detalle:             Rem 0007-00000121
+Debe:                $ 0
+Haber:               $ 372438
+Fecha de Emision:    21/6/2026
+==================================================
+Este documento es una simulacion de caja negra en local
+para desarrollo y depuracion en el sandbox.
+==================================================

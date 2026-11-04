@@ -1,3 +1,59 @@
+
+/**
+ * Clasificador Canónico de Línea Productiva para Producción Externa
+ * Línea 4: Tostadero (Almendras, Castañas, Maní UP Simple)
+ * Línea 5: Barritas (BFXP / Barritas UP)
+ * Línea 6: Granolas (GFGN, GSGN / Granolas UP)
+ */
+function clasificarLineaNegocioArticulo(numero, nombre) {
+    const num = (numero || '').toUpperCase();
+    const nom = (nombre || '').toUpperCase();
+    if (num.startsWith('BF') || nom.includes('BARRA')) {
+        return 5;
+    }
+    if ((num.startsWith('G') && num.includes('GN')) || num.startsWith('GRA') || nom.includes('GRANA') || nom.includes('GRANOLA')) {
+        return 6;
+    }
+    return 4;
+}
+
+/**
+ * Clasificador Determinístico de Línea de Negocio 3 (Artículos Puente Internos / Mezclas a Granel x Kilo)
+ * vs Línea de Negocio 2 (Fracciones Comerciales)
+ */
+export function esArticuloLinea3PuenteMix(art) {
+    if (!art || art.solo_produccion_externa) return false;
+    if (art.es_articulo_sugerido === true || art.tiene_ingrediente_compuesto === true) return true;
+    const desc = (art.descripcion_generada || art.nombre || '').toUpperCase();
+    if (desc.includes('PROD AP INTERNO') || desc.startsWith('MEZCLA ')) return true;
+    if (Number(art.familia_id) === 42 && !desc.includes('PROD AP EXT')) return true;
+    return false;
+}
+window.esArticuloLinea3PuenteMix = esArticuloLinea3PuenteMix;
+
+// Motor Universal de Búsqueda LAMDA (Single Source of Truth)
+window.obtenerTextoBusquedaArticulo = window.obtenerTextoBusquedaArticulo || function(art) {
+    if (!art) return '';
+    const estaticos = [
+        art.numero,
+        art.codigo_barras,
+        art.nombre,
+        art.descripcion_generada,
+        art.articulo_principal_texto,
+        art.subcategoria,
+        art.familia_nombre,
+        art.marca,
+        art.unidad_medida
+    ].filter(Boolean).join(' ');
+    let dinamicos = '';
+    if (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object') {
+        dinamicos = Object.values(art.propiedades_dinamicas)
+            .map(v => (typeof v === 'object' && v !== null) ? (v.valor || v.texto || v.nombre || JSON.stringify(v)) : String(v || ''))
+            .join(' ');
+    }
+    return `${estaticos} ${dinamicos}`.toLowerCase();
+};
+
 import { mostrarError } from './utils.js';
 import { mostrarArticulosDelCarro, obtenerResumenIngredientesCarro, mostrarResumenIngredientes, obtenerResumenMixesCarro, mostrarResumenMixes, obtenerResumenArticulosCarro, mostrarResumenArticulos } from './carro.js';
 import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente } from './components/modalIngrediente.js';
@@ -11,8 +67,71 @@ const state = {
     ultimoArticuloEditado: null,
     existeReceta: false,
     tipoCarro: 'interna',
+    lineaNegocio: null,
+    forzarVerTodosLineaInterna: false,
     // Mejora solicitada por Martín - selección persistente en modal de artículos
     selectedArticles: new Map() // Map<numero_articulo, {nombre, cantidad, esIntegra}>
+};
+
+function renderizarBannerFiltroLineaModal() {
+    const banner = document.getElementById('banner-filtro-linea-modal');
+    if (!banner) return;
+
+    if (state.tipoCarro === 'interna' && Number(state.lineaNegocio) === 3) {
+        banner.style.display = 'block';
+        const totalPuente = (state.todosLosArticulos || []).filter(a => !a.no_producido_por_lambda && esArticuloLinea3PuenteMix(a)).length;
+        banner.innerHTML = `
+            <div style="background: ${state.forzarVerTodosLineaInterna ? '#fffbeb' : '#f0fdf4'}; border: 1.5px solid ${state.forzarVerTodosLineaInterna ? '#fde68a' : '#86efac'}; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+                    <span style="font-size: 22px;">🥣</span>
+                    <div>
+                        <div style="font-weight: 700; font-size: 13px; color: #166534;">
+                            ${state.forzarVerTodosLineaInterna
+                                ? '⚠️ Mostrando catálogo completo (incluye fracciones de Línea 2)'
+                                : `Línea de Negocio 3 Activa — Mostrando solo Artículos Puente / Mixes x Kilo (${totalPuente} disponibles)`}
+                        </div>
+                        <div style="font-size: 11.5px; color: #15803d; margin-top: 2px;">
+                            <strong>1° Etapa:</strong> Acá seleccionás el Mix a granel por kilo que vas a elaborar (se ocultan las fracciones comerciales ej: x 2kg para evitar errores).
+                        </div>
+                    </div>
+                </div>
+                <button type="button" onclick="window.alternarFiltroLineaInternaModal()" style="background: #ffffff; color: #166534; border: 1px solid #86efac; padding: 5px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                    ${state.forzarVerTodosLineaInterna ? '🔒 Volver a solo Artículos Puente (Línea 3)' : '👁️ Ver todos los artículos'}
+                </button>
+            </div>
+        `;
+    } else if (state.tipoCarro === 'interna' && Number(state.lineaNegocio) === 2) {
+        banner.style.display = 'block';
+        banner.innerHTML = `
+            <div style="background: ${state.forzarVerTodosLineaInterna ? '#fffbeb' : '#f0f9ff'}; border: 1.5px solid ${state.forzarVerTodosLineaInterna ? '#fde68a' : '#7dd3fc'}; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+                    <span style="font-size: 22px;">📦</span>
+                    <div>
+                        <div style="font-weight: 700; font-size: 13px; color: #075985;">
+                            ${state.forzarVerTodosLineaInterna
+                                ? '⚠️ Mostrando catálogo completo (incluye Artículos Puente de Línea 3)'
+                                : 'Línea de Negocio 2 Activa — Mostrando solo Fracciones Comerciales (2° Etapa)'}
+                        </div>
+                        <div style="font-size: 11.5px; color: #0369a1; margin-top: 2px;">
+                            <strong>2° Etapa:</strong> Acá seleccionás las fracciones comerciales (ej: x 2kg, x 5kg) que se nutren del ingrediente simple + envase.
+                        </div>
+                    </div>
+                </div>
+                <button type="button" onclick="window.alternarFiltroLineaInternaModal()" style="background: #ffffff; color: #075985; border: 1px solid #7dd3fc; padding: 5px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                    ${state.forzarVerTodosLineaInterna ? '🔒 Volver a solo Fracciones (Línea 2)' : '👁️ Ver también Artículos Puente'}
+                </button>
+            </div>
+        `;
+    } else {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+    }
+}
+
+window.alternarFiltroLineaInternaModal = function() {
+    state.forzarVerTodosLineaInterna = !state.forzarVerTodosLineaInterna;
+    renderizarBannerFiltroLineaModal();
+    aplicarFiltros(0);
 };
 
 let ingredientesDisponibles = [];
@@ -69,19 +188,27 @@ export async function abrirModalArticulos() {
         }
 
         let tipoCarro = 'interna';
+        let lineaNegocio = null;
         const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
 
+        let carroInfo = window._carroActivoInfo || null;
         if (carroId) {
             try {
                 const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
                 if (carroResponse.ok) {
-                    const carroData = await carroResponse.json();
-                    tipoCarro = carroData.tipo_carro || 'interna';
+                    carroInfo = await carroResponse.json();
+                    window._carroActivoInfo = carroInfo;
+                    tipoCarro = carroInfo.tipo_carro || 'interna';
+                    lineaNegocio = carroInfo.linea_negocio || null;
                 }
             } catch (error) {
                 console.warn('Error al obtener tipo de carro:', error);
             }
         }
+
+        state.tipoCarro = tipoCarro;
+        state.lineaNegocio = lineaNegocio;
+        state.forzarVerTodosLineaInterna = false;
 
         const cacheKey = `articulos_${tipoCarro}`;
         if (!state[cacheKey] || state[cacheKey].length === 0) {
@@ -118,6 +245,7 @@ export async function abrirModalArticulos() {
             state[cacheKey] = articulosDisponibles;
             state.todosLosArticulos = articulosDisponibles;
             state.articulosFiltrados = [...articulosDisponibles];
+            renderizarBannerFiltroLineaModal();
             aplicarFiltros(0);
         } else {
             // 🔍 FASE 1: Aplicar filtro también al usar caché (solo producción interna)
@@ -140,14 +268,28 @@ export async function abrirModalArticulos() {
 
             state.todosLosArticulos = articulosDisponibles;
             state.articulosFiltrados = [...articulosDisponibles];
+            renderizarBannerFiltroLineaModal();
             aplicarFiltros(0);
         }
 
         const modalTitle = modal.querySelector('h2');
+        const inputBusqueda = document.getElementById('busqueda-inteligente');
         if (modalTitle) {
-            const tipoTexto = tipoCarro === 'externa' ? 'Producción Externa' : 'Producción Interna';
-            const icono = tipoCarro === 'externa' ? '' : '🏭 '; // Sin icono para externos
-            modalTitle.textContent = `${icono}Seleccionar Artículo - ${tipoTexto}`;
+            if (tipoCarro === 'externa') {
+                const lNom = carroInfo?.nombre_linea_negocio || 'Producción Externa';
+                const lIco = carroInfo?.icono_linea_negocio || '🥜';
+                const lNum = carroInfo?.linea_negocio ? ` (Línea ${carroInfo.linea_negocio})` : '';
+                modalTitle.innerHTML = `<span style="font-size: 20px; margin-right: 6px;">${lIco}</span>Seleccionar Artículo — <span style="color: #2563eb;">${lNom}${lNum}</span>`;
+            } else if (Number(lineaNegocio) === 3) {
+                modalTitle.innerHTML = `🥣 Seleccionar Artículo Puente / Mix x Kilo — <span style="color: #166534;">Línea de Negocio 3 (1° Etapa)</span>`;
+                if (inputBusqueda) inputBusqueda.placeholder = 'Buscar Artículo Puente / Mix por kilo (ej: color tropical, energetico)...';
+            } else if (Number(lineaNegocio) === 2) {
+                modalTitle.innerHTML = `📦 Seleccionar Fracción Comercial — <span style="color: #075985;">Línea de Negocio 2 (2° Etapa)</span>`;
+                if (inputBusqueda) inputBusqueda.placeholder = 'Buscar fracción comercial a envasar (ej: mix tropical 2kg)...';
+            } else {
+                modalTitle.textContent = '🏭 Seleccionar Artículo — Producción Interna';
+                if (inputBusqueda) inputBusqueda.placeholder = 'Buscar artículo (ej: mix fruto seco)...';
+            }
         }
 
         // 🎯 AJUSTE UI: Ocultar botón "Agregar al carro" para Producción Externa
@@ -385,13 +527,17 @@ export async function actualizarTablaArticulos(articulos) {
 
                 // 🔍 [FASE 2] Generar HTML diferente según tipo de carro
                 if (tipoCarro === 'interna') {
+                    const esPuenteL3 = esArticuloLinea3PuenteMix(articulo);
+                    const badgeEtapaFila = esPuenteL3
+                        ? `<span style="background: #dcfce7; color: #166534; font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #86efac; white-space: nowrap;">🥣 Art. Puente / Mix x Kilo (L3)</span>`
+                        : `<span style="background: #e0f2fe; color: #075985; font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #bae6fd; white-space: nowrap;">📦 Fracción (L2)</span>`;
                     // PRODUCCIÓN INTERNA: Checkbox + cantidad editable + botones de receta
                     tr.innerHTML = `
                         <td style="text-align: center;">
                             ${tieneReceta ? `<input type="checkbox" class="seleccionar-articulo modal-articulos-interna-multiple" data-numero="${articulo.numero}" data-nombre="${articulo.nombre.replace(/'/g, "\\'")}" data-integra="${esIntegra}">` : ''}
                         </td>
                         <td>${articulo.numero}</td>
-                        <td>${articulo.nombre.replace(/'/g, "\\'")}</td>
+                        <td>${articulo.nombre.replace(/'/g, "\\'")} ${badgeEtapaFila}</td>
                         <td style="text-align: center; font-weight: bold; color: ${articulo.stock_consolidado > 0 ? '#28a745' : '#dc3545'};">
                             ${formatearStock(articulo.stock_consolidado || 0)}
                         </td>
@@ -473,16 +619,24 @@ export async function actualizarTablaArticulos(articulos) {
         const filtroProduccionSwitch = document.getElementById('filtroProduccionSwitch');
         const mostrarSoloProduccion = filtroProduccionSwitch ? filtroProduccionSwitch.checked : false;
 
+        const tituloGrupoProduccion = (tipoCarro === 'interna' && !state.forzarVerTodosLineaInterna)
+            ? (Number(state.lineaNegocio) === 3
+                ? '🥣 Artículos Puente / Mixes a Granel x Kilo (Línea 3 — 1° Etapa)'
+                : (Number(state.lineaNegocio) === 2
+                    ? '📦 Fracciones Comerciales a Envasar (Línea 2 — 2° Etapa)'
+                    : 'Artículos de producción'))
+            : 'Artículos de producción';
+
         if (mostrarSoloProduccion) {
             if (produccion.length === 0) {
                 const colspanValue = tipoCarro === 'interna' ? 5 : 4;
-                tbody.innerHTML = `<tr><td colspan="${colspanValue}" class="text-center">No hay artículos de producción disponibles</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${colspanValue}" class="text-center">No hay artículos de producción disponibles para este filtro</td></tr>`;
             } else {
-                renderGroup('Artículos de producción', produccion);
+                renderGroup(tituloGrupoProduccion, produccion);
             }
         } else {
             if (produccion.length > 0) {
-                renderGroup('Artículos de producción', produccion);
+                renderGroup(tituloGrupoProduccion, produccion);
             }
             if (resto.length > 0) {
                 renderGroup('Resto de los artículos', resto);
@@ -544,27 +698,26 @@ export function aplicarFiltros(filtroIndex) {
 
     let resultados = state.todosLosArticulos;
 
-    // Aplicar búsqueda inteligente multi-término
-    if (textoBusqueda) {
-        // Normalizar el texto de búsqueda
-        const textoNormalizado = normalizarTexto(textoBusqueda);
+    // 🎯 FILTRO POR LÍNEA DE NEGOCIO INTERNA (Línea 3: Artículos Puente / Mixes vs Línea 2: Fracciones)
+    if (state.tipoCarro === 'interna' && !state.forzarVerTodosLineaInterna) {
+        if (Number(state.lineaNegocio) === 3) {
+            resultados = resultados.filter(art => esArticuloLinea3PuenteMix(art));
+        } else if (Number(state.lineaNegocio) === 2) {
+            resultados = resultados.filter(art => !esArticuloLinea3PuenteMix(art));
+        }
+    }
 
-        // Dividir por espacios para obtener términos individuales
+    // Aplicar búsqueda inteligente multi-término (Motor Universal LAMDA)
+    if (textoBusqueda) {
+        const textoNormalizado = normalizarTexto(textoBusqueda);
         const terminos = textoNormalizado.split(/\s+/).filter(t => t.length > 0);
 
         console.log(`🔍 [BÚSQUEDA INTELIGENTE] Buscando con ${terminos.length} término(s):`, terminos);
 
         if (terminos.length > 0) {
-            // Filtrar artículos que contengan TODOS los términos
             resultados = resultados.filter(art => {
-                const nombreNormalizado = normalizarTexto(art.nombre);
-
-                // Verificar que el nombre contenga TODOS los términos
-                const contieneTodasLasPalabras = terminos.every(termino =>
-                    nombreNormalizado.includes(termino)
-                );
-
-                return contieneTodasLasPalabras;
+                const bolsaBusqueda = normalizarTexto(window.obtenerTextoBusquedaArticulo(art));
+                return terminos.every(termino => bolsaBusqueda.includes(termino));
             });
 
             console.log(`🔍 [BÚSQUEDA INTELIGENTE] Resultados encontrados: ${resultados.length}`);
@@ -2206,9 +2359,23 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             return;
         }
 
-        // Obtener recetas de todos los artículos de una vez
-        const colaboradorData = localStorage.getItem('colaboradorActivo');
-        const colaborador = colaboradorData ? JSON.parse(colaboradorData) : null;
+        const carroInfo = window._carroActivoInfo || null;
+        const lineaActiva = carroInfo?.linea_negocio ? parseInt(carroInfo.linea_negocio, 10) : null;
+        const nomLineaActiva = carroInfo?.nombre_linea_negocio || 'Producción Externa';
+        const icoLineaActiva = carroInfo?.icono_linea_negocio || '🥜';
+
+        // Clasificar artículos entre los de la línea activa y los de otras líneas
+        const articulosLinea = [];
+        const articulosOtras = [];
+
+        for (const art of articulos) {
+            const lineaArt = clasificarLineaNegocioArticulo(art.numero, art.nombre);
+            if (!lineaActiva || lineaArt === lineaActiva) {
+                articulosLinea.push({ ...art, lineaPertenece: lineaArt });
+            } else {
+                articulosOtras.push({ ...art, lineaPertenece: lineaArt });
+            }
+        }
 
         // Obtener recetas completas para mostrar insumos base
         let recetasPorArticulo = {};
@@ -2224,18 +2391,74 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             }
         }
 
-        for (const articulo of articulos) {
+        // Limpiar contenedor
+        contenedor.innerHTML = '';
+
+        // Inyectar Barra Informativa y de Control si hay línea activa
+        if (lineaActiva) {
+            const barraControl = document.createElement('div');
+            barraControl.id = 'barra-linea-externa-filtro';
+            barraControl.style.cssText = 'grid-column: 1 / -1; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;';
+            barraControl.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 24px;">${icoLineaActiva}</span>
+                    <div>
+                        <strong style="color: #1e293b; font-size: 14px;">Línea Productiva: ${nomLineaActiva} (Línea ${lineaActiva})</strong>
+                        <div style="font-size: 12px; color: #64748b; margin-top: 1px;">
+                            Mostrando ${articulosLinea.length} Unidad${articulosLinea.length !== 1 ? 'es' : ''} Productiva${articulosLinea.length !== 1 ? 's' : ''} correspondiente${articulosLinea.length !== 1 ? 's' : ''} a este flujo.
+                        </div>
+                    </div>
+                </div>
+                ${articulosOtras.length > 0 ? `
+                    <button id="btn-toggle-otras-lineas" type="button" class="btn btn-sm" style="font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: 1.5px solid #94a3b8; background: #ffffff; cursor: pointer; color: #334155; display: flex; align-items: center; gap: 6px; transition: all 0.2s;">
+                        <span id="icono-toggle-otras">👁️</span> 
+                        <span id="texto-toggle-otras">Mostrar otras líneas (${articulosOtras.length})</span>
+                    </button>
+                ` : ''}
+            `;
+            contenedor.appendChild(barraControl);
+        }
+
+        // Renderizar lista combinada: primero los de la línea activa, luego los de otras líneas
+        const listaRender = [...articulosLinea, ...articulosOtras];
+
+        for (const articulo of listaRender) {
             const tieneReceta = estadoRecetas[articulo.numero];
             const esIntegra = integridadRecetas[articulo.numero];
             const receta = recetasPorArticulo[articulo.numero] || null;
+            const lineaArticulo = clasificarLineaNegocioArticulo(articulo.numero, articulo.nombre);
+            const esDeOtraLinea = lineaActiva && (lineaArticulo !== lineaActiva);
 
             // Crear tarjeta
             const tarjeta = document.createElement('div');
-            tarjeta.className = 'tarjeta-articulo-externo';
+            tarjeta.className = 'tarjeta-articulo-externo' + (esDeOtraLinea ? ' tarjeta-otra-linea' : '');
             tarjeta.dataset.numero = articulo.numero;
+            tarjeta.dataset.linea = lineaArticulo;
+
+            if (esDeOtraLinea) {
+                tarjeta.style.display = 'none'; // Oculto por defecto
+                tarjeta.style.opacity = '0.55';
+                tarjeta.style.border = '2px dashed #cbd5e1';
+                tarjeta.style.backgroundColor = '#f8fafc';
+                tarjeta.style.transition = 'all 0.2s';
+                tarjeta.addEventListener('mouseenter', () => { tarjeta.style.opacity = '0.9'; });
+                tarjeta.addEventListener('mouseleave', () => { tarjeta.style.opacity = '0.55'; });
+            }
+
+            let nombreLineaArt = 'Tostadero (L4)';
+            if (lineaArticulo === 5) nombreLineaArt = 'Barritas (L5)';
+            else if (lineaArticulo === 6) nombreLineaArt = 'Granolas (L6)';
+
+            const bannerOtraLinea = esDeOtraLinea ? `
+                <div style="background: #fff7ed; border-bottom: 1.5px solid #fed7aa; padding: 6px 12px; font-size: 11.5px; font-weight: 700; color: #c2410c; display: flex; align-items: center; justify-content: space-between;">
+                    <span>⚠️ Otra Línea Productiva</span>
+                    <span style="background: #ffedd5; padding: 1px 6px; border-radius: 4px;">${nombreLineaArt}</span>
+                </div>
+            ` : '';
 
             // Cabecera de la tarjeta
             const cabecera = `
+                ${bannerOtraLinea}
                 <div class="tarjeta-cabecera">
                     <h3 class="tarjeta-titulo">${articulo.nombre}</h3>
                     <span class="tarjeta-codigo">${articulo.numero}</span>
@@ -2243,11 +2466,8 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             `;
 
             // Información del ARTÍCULO BASE (insumo que compone la UP)
-            // 🔧 CORRECCIÓN: Usar datos reales del backend en lugar de buscar en state
             let infoInsumoBase = '';
-
             if (articulo.articulo_base_codigo) {
-                // Hay artículo base configurado - usar datos del backend
                 const stockInsumo = articulo.articulo_base_stock || 0;
                 const colorStock = stockInsumo > 0 ? '#28a745' : '#dc3545';
                 const nombreBase = articulo.articulo_base_nombre || articulo.articulo_base_codigo;
@@ -2349,6 +2569,26 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             contenedor.appendChild(tarjeta);
         }
 
+        // Listener para alternar artículos de otras líneas
+        const btnToggleOtras = contenedor.querySelector('#btn-toggle-otras-lineas');
+        if (btnToggleOtras) {
+            let mostrandoOtras = false;
+            btnToggleOtras.addEventListener('click', () => {
+                mostrandoOtras = !mostrandoOtras;
+                const tarjetasOtras = contenedor.querySelectorAll('.tarjeta-otra-linea');
+                tarjetasOtras.forEach(t => {
+                    t.style.display = mostrandoOtras ? 'grid' : 'none';
+                });
+                const iconoToggle = document.getElementById('icono-toggle-otras');
+                const textoToggle = document.getElementById('texto-toggle-otras');
+                if (iconoToggle) iconoToggle.textContent = mostrandoOtras ? '🙈' : '👁️';
+                if (textoToggle) textoToggle.textContent = mostrandoOtras 
+                    ? `Ocultar otras líneas (${articulosOtras.length})` 
+                    : `Mostrar otras líneas (${articulosOtras.length})`;
+                btnToggleOtras.style.background = mostrandoOtras ? '#e2e8f0' : '#ffffff';
+            });
+        }
+
         // Agregar event listeners para botones de selección
         contenedor.querySelectorAll('.btn-seleccionar-tarjeta').forEach(btn => {
             btn.addEventListener('click', async () => {
@@ -2360,7 +2600,7 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             });
         });
 
-        console.log(`🎨 [TARJETAS] ${articulos.length} tarjetas renderizadas`);
+        console.log(`🎨 [TARJETAS] ${listaRender.length} tarjetas procesadas (${articulosLinea.length} activas, ${articulosOtras.length} otras líneas)`);
 
     } catch (error) {
         console.error('🎨 [TARJETAS] Error al renderizar tarjetas:', error);

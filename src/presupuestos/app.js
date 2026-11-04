@@ -34,6 +34,11 @@ const corsOptions = {
         'http://localhost:3003',  // Este mismo servidor (para desarrollo)
         'http://localhost:3005',  // Logistica Front
         'http://127.0.0.1:3005',
+        'http://localhost:5173',  // Portal B2B Vite Dev
+        'http://127.0.0.1:5173',
+        // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
+        'https://logistica.lamdaser.com',
+        'http://logistica.lamdaser.com',
         // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
         'http://lamda-logistica.tplinkdns.com:3005',
         'https://lamda-logistica.tplinkdns.com:3005',
@@ -47,9 +52,17 @@ const corsOptions = {
 app.use(cors(corsOptions));
 console.log('[PRESUPUESTOS-BACK] ✅ CORS configurado para orígenes:', corsOptions.origin);
 
+const { createProxyMiddleware } = require('http-proxy-middleware');
+
 // Middleware básico
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Proxy para el módulo de producción (3002) - Necesario para el endpoint del Kit SSOT
+app.use('/api/produccion', createProxyMiddleware({
+    target: 'http://localhost:3002/api/produccion',
+    changeOrigin: true
+}));
 
 // Middleware de logging personalizado
 app.use(requestLogger);
@@ -72,6 +85,10 @@ app.get('/', (req, res) => {
     res.redirect('/pages/presupuestos.html');
 });
 
+// Disparador reactivo automático en 2do plano hacia Portal B2B ante cambios de presupuestos, políticas u ofertas
+const { createB2BAutoSyncMiddleware } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+app.use(createB2BAutoSyncMiddleware('presupuestos'));
+
 // Rutas API CON LOGS DE DEPURACIÓN COMPLETOS
 app.use('/api/presupuestos', presupuestosRoutes);
 
@@ -86,6 +103,37 @@ if (GSHEETS_PANEL_ENABLED) {
 }
 
 console.log('[PRESUPUESTOS-BACK] ✅ Rutas API CON LOGS COMPLETOS montadas en /api/presupuestos');
+
+// Rutas de ofertas dinámicas accesibles en el módulo de presupuestos
+try {
+    const rutasOfertasDinamicas = require('../app-etiquetas/routes/ofertasDinamicasRoutes');
+    app.use('/api', rutasOfertasDinamicas);
+    console.log('[PRESUPUESTOS-BACK] ✅ Rutas de Ofertas Dinámicas montadas en /api');
+} catch (eOfertasRoutes) {
+    console.warn('[PRESUPUESTOS-BACK] ⚠️ No se pudieron montar rutas de Ofertas Dinámicas:', eOfertasRoutes.message);
+}
+
+// Proxy para actualizar destinatarios en el módulo de logística (puerto 3005)
+app.patch('/api/logistica/bunker/clientes/:id/whatsapp-contacts', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const logisticaPort = process.env.PORT_LOGISTICA || 3005;
+        const targetUrl = `http://localhost:${logisticaPort}/api/logistica/bunker/clientes/${id}/whatsapp-contacts`;
+        console.log(`🔄 [PRESUPUESTOS-PROXY] Reenviando actualización de contactos del cliente ID ${id} a Logística (${targetUrl})...`);
+
+        const response = await fetch(targetUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body)
+        });
+
+        const data = await response.json().catch(() => ({}));
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS-PROXY] Error al reenviar actualización a Logística:', error.message);
+        res.status(500).json({ success: false, error: 'Servidor de logística no disponible', details: error.message });
+    }
+});
 
 // Ruta de health check general del servidor
 app.get('/health', (req, res) => {

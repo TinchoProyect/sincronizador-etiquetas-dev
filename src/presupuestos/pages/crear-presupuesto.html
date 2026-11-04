@@ -135,6 +135,43 @@
             display: block;
         }
 
+        /* Estilos para Kit de Insumos Anidados */
+        .child-row {
+            background-color: #f8fafc;
+        }
+        .child-row td {
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            font-size: 0.9em;
+            color: #475569;
+            border-bottom: 1px dashed #cbd5e1 !important;
+        }
+        .child-row td:first-child {
+            padding-left: 40px !important;
+            position: relative;
+        }
+        .child-row td:first-child::before {
+            content: '↳';
+            position: absolute;
+            left: 20px;
+            color: #94a3b8;
+        }
+        .btn-kit-toggle {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .btn-kit-toggle:hover {
+            background-color: #059669;
+        }
+
         /* Acordeón para campos secundarios */
         .accordion-section {
             margin-bottom: 25px;
@@ -209,7 +246,8 @@
         }
 
         .accordion-content.active {
-            max-height: 1000px;
+            max-height: none;
+            overflow: visible;
             padding: 20px;
         }
 
@@ -569,15 +607,30 @@
 
         .historial-grupo-header {
             background: #f8f9fa;
-            padding: 6px 12px;
-            border-radius: 4px;
+            padding: 8px 12px;
+            border-radius: 6px;
             margin-bottom: 6px;
             font-weight: 600;
-            color: #495057;
+            color: #334155;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 0.9em;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s ease;
+        }
+
+        .historial-grupo-header:hover {
+            background: #f1f5f9;
+        }
+
+        .historial-grupo-toggle-icon {
+            font-size: 10px;
+            color: #64748b;
+            transition: transform 0.2s ease;
+            margin-right: 6px;
+            display: inline-block;
         }
 
         .historial-grupo-badge {
@@ -589,14 +642,101 @@
             font-weight: 500;
         }
 
-        /* ✅ SCROLL INTERNO: Contenedor con altura máxima y scroll */
+        /* Toolbar de búsqueda en Historial */
+        .historial-toolbar {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: #f8fafc;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .historial-filtro-wrapper {
+            position: relative;
+            flex: 1;
+            max-width: 450px;
+        }
+
+        .historial-filtro-input {
+            width: 100%;
+            padding: 7px 30px 7px 32px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            background: white;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .historial-filtro-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+
+        .btn-limpiar-filtro-historial {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 50%;
+        }
+
+        .btn-limpiar-filtro-historial:hover {
+            color: #475569;
+            background: #f1f5f9;
+        }
+
+        .btn-agregar-desde-historial {
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            white-space: nowrap;
+        }
+
+        .btn-agregar-desde-historial:hover {
+            background: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-agregar-desde-historial:active {
+            transform: translateY(0);
+        }
+
+        .historial-no-matches {
+            text-align: center;
+            padding: 24px 16px;
+            background: #fffbeb;
+            border: 1px solid #fef3c7;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        /* Lista de productos sin scroll anidado restrictivo */
         .historial-productos-list {
             list-style: none;
             padding: 0;
             margin: 0;
-            max-height: 300px;
-            overflow-y: auto;
-            overflow-x: hidden;
             border: 1px solid #e9ecef;
             border-radius: 4px;
         }
@@ -844,6 +984,21 @@
                 <!-- Mensajes -->
                 <div id="message-container"></div>
 
+                <!-- Banner de Modo Factura Directa / Refacturación (visible cuando se abre con ?modo=factura_directa) -->
+                <div id="banner-modo-factura-directa" style="display: none; background: #f0f9ff; border: 2px solid #0284c7; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; color: #0c4a6e;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <strong style="font-size: 1.02em; color: #0369a1;">🧾 Armador Libre de Factura / Presupuesto</strong>
+                            <div style="font-size: 0.88em; color: #334155; margin-top: 3px;">
+                                Usá el buscador de artículos para cargar o quitar lo que necesites, editá precios o cantidades, y al pie elegí entre <strong>🧾 Enviar Directo a Bandeja de Facturas (Sin armar pedido en depósito)</strong> o <strong>💾 Guardar Presupuesto</strong>.
+                            </div>
+                        </div>
+                        <a href="http://localhost:3004/pages/facturas.html" target="_blank" style="background: #0284c7; color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.85em; white-space: nowrap;">
+                            🏛️ Abrir Bandeja de Facturas ↗
+                        </a>
+                    </div>
+                </div>
+
                 <!-- CHECKBOX: TRÁMITE ADMINISTRATIVO (Solo visible en MODO_RETIRO) -->
                 <!-- NUEVA ESTRUCTURA DE EXCLUSIÓN MUTUA PARA RETIROS -->
                 <div id="contenedor-opciones-retiro" style="display: none; margin-bottom: 20px;">
@@ -951,13 +1106,14 @@
                         <div id="cliente-info-extra" class="cliente-info-extra"></div>
 
                         <!-- Conmutador Estructura Precios Bunker (Fase 3) -->
-                        <div class="bunker-switch-container" id="bunker-switch-wrapper" style="display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <div class="bunker-switch-container" id="bunker-switch-wrapper" style="display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: fit-content;">
                             <span style="font-size: 0.9em; font-weight: bold; color: #166534; display: flex; align-items: center; gap: 4px;">🛡️ Precios Bunker</span>
                             <label class="switch" style="margin: 0;">
                                 <input type="checkbox" id="usar_precios_bunker" name="usar_precios_bunker" onchange="conmutarModoBunker()">
                                 <span class="slider round"></span>
                             </label>
                             <span id="bunker-switch-label" style="font-size: 0.85em; color: #475569; font-weight: 600;">Inactivo</span>
+                            <span id="bunker-lista-badge" class="bunker-lista-badge" style="display: none; font-size: 0.82em; font-weight: 600; padding: 3px 8px; border-radius: 6px;"></span>
                         </div>
                     </div>
 
@@ -1006,6 +1162,7 @@
                                 <div class="form-group">
                                     <label for="estado">Estado *</label>
                                     <select id="estado" name="estado" required>
+                                        <option value="Sin Confirmar">⏳ Sin Confirmar (Standby)</option>
                                         <option value="Muestra de Fraccionados">Muestra de Fraccionados</option>
                                         <option value="Presupuesto/Orden" selected>Presupuesto/Orden</option>
                                         <option value="Confirmado">Confirmado</option>
@@ -1034,6 +1191,7 @@
                                         <option value="Imprimir_Modificado">Imprimir Modificado</option>
                                         <option value="Armar_Pedido">Armar Pedido</option>
                                         <option value="Pedido_Listo">Pedido Listo</option>
+                                        <option value="Standby">Standby (Sin Confirmar)</option>
                                     </select>
                                 </div>
 
@@ -1086,11 +1244,12 @@
                             <thead>
                                 <tr>
                                     <th width="200">Artículo *</th>
-                                    <th width="100">Cantidad *</th>
-                                    <th width="120">Valor Unitario *</th>
-                                    <th width="100">IVA %</th>
-                                    <th width="120">Precio c/IVA</th>
-                                    <th width="140">Subtotal</th>
+                                    <th width="90">Cantidad *</th>
+                                    <th width="110">Valor Unitario *</th>
+                                    <th width="85" title="Descuento adicional a sumar al descuento general">Desc. Esp. %</th>
+                                    <th width="90">IVA %</th>
+                                    <th width="110">Precio c/IVA</th>
+                                    <th width="120">Subtotal</th>
                                     <th width="80">Acciones</th>
                                 </tr>
                             </thead>
@@ -1119,6 +1278,11 @@
                                 <div class="total-row descuento-row">
                                     <span class="label" id="label-descuento">Descuento:</span>
                                     <span class="value total-descuento" data-total="descuento"
+                                        style="color: #e74c3c;">-$0.00</span>
+                                </div>
+                                <div class="total-row descuento-especial-row" id="row-descuentos-especiales" style="display: none;">
+                                    <span class="label" id="label-descuentos-especiales">Desc. Especiales:</span>
+                                    <span class="value total-descuentos-especiales" data-total="descuentos-especiales"
                                         style="color: #e74c3c;">-$0.00</span>
                                 </div>
                                 <div class="total-row">
@@ -1165,13 +1329,25 @@
                 </div> <!-- Cierre de contenedor-opciones-retiro -->
 
                     <!-- Acciones -->
-                    <div class="form-actions">
+                    <div class="form-actions" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                        <div style="display: inline-flex; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #93c5fd; padding: 6px 12px; border-radius: 8px; order: 10; margin-left: auto;">
+                            <button type="button" id="btn-enviar-bandeja-facturas" onclick="window.enviarDirectoABandejaFacturas && window.enviarDirectoABandejaFacturas()" class="btn" style="background: #1d4ed8; color: #fff; font-weight: 700; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer;">
+                                🧾 Enviar Directo a Bandeja de Facturas (Sin Pedido)
+                            </button>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #1e3a8a; font-weight: 600; cursor: pointer; margin: 0;" title="Destildar si es una refacturación administrativa y la mercadería ya fue entregada anteriormente">
+                                <input type="checkbox" id="chk-factura-directa-stock" style="width: 16px; height: 16px; cursor: pointer;">
+                                Descontar stock al emitir CAE
+                            </label>
+                        </div>
                         <a href="/pages/presupuestos.html" class="btn btn-secondary">
                             Cancelar
                         </a>
                         <button type="submit" id="btn-guardar" class="btn btn-primary">
                             <span class="loading-spinner"></span>
                             💾 Guardar Presupuesto
+                        </button>
+                        <button type="button" id="btn-guardar-standby" class="btn btn-warning" style="background-color: #ff9800; border-color: #f57c00; color: #fff; margin-left: 10px;">
+                            ⏳ Guardar en Standby
                         </button>
                     </div>
                 </form>
@@ -1349,7 +1525,9 @@
         // Exponer función globalmente para que presupuestosCreate.js pueda usarla
         window.mostrarNombreCliente = mostrarNombreCliente;
     </script>
-    <script src="/js/presupuestosCreate.js?v=026_hotfix"></script>
+    <script src="/js/evaluadorPoliticasFrontend.js?v=039_desbloqueo_operador"></script>
+    <script src="/js/saldoIngredienteModal.js?v=036_saldo_ingrediente"></script>
+    <script src="/js/presupuestosCreate.js?v=043_ganancia_real"></script>
 </body>
 
 </html>

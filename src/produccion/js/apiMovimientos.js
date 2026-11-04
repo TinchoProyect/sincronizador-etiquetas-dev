@@ -5,6 +5,7 @@
 export async function registrarMovimientoIngrediente({ ingredienteId, articuloNumero, kilos, carroId, observaciones }) {
   const payload = {
     ingrediente_id: ingredienteId,
+    articulo_numero: articuloNumero || null,
     kilos,
     tipo: 'ingreso',
     carro_id: carroId,

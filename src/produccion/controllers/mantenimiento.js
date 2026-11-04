@@ -83,14 +83,14 @@ async function getStockMantenimiento(req, res) {
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
                 CASE 
-                    WHEN sc.estado_presupuesto = 'Conciliado' THEN 'CONCILIADO'
                     WHEN nc.nro_comprobante_externo IS NOT NULL THEN 'CONCILIADO'
+                    WHEN nc_estado.fact_cae IS NOT NULL AND nc_estado.fact_cae != '' THEN 'CONCILIADO'
                     ELSE sc.transaccion_estado
                 END as estado,
                 sc.cliente_nombre,
-                COALESCE(nc.nro_comprobante_externo, sc.presup_comprobante_lomasoft) as nc_nro,
-                COALESCE(nc.tipo_comprobante, 'NC ERP') as nc_tipo,
-                COALESCE(nc.fecha_comprobante, sc.presup_fecha) as nc_fecha,
+                nc.nro_comprobante_externo as nc_nro,
+                nc.tipo_comprobante as nc_tipo,
+                nc.fecha_comprobante as nc_fecha,
                 CASE 
                     WHEN nc_estado.fact_cae IS NOT NULL AND nc_estado.fact_cae != '' THEN 'COMPLETADO'
                     WHEN nc_estado.fact_estado IS NOT NULL THEN 'BORRADOR'
@@ -122,18 +122,25 @@ async function getStockMantenimiento(req, res) {
                     ff.estado AS fact_estado,
                     ff.cae AS fact_cae
                 FROM public.mantenimiento_movimientos mm_nc
-                LEFT JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
-                WHERE sc.id_presupuesto_origen IS NOT NULL
-                  AND mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen
-                  AND (
-                      mm_nc.articulo_numero = sc.articulo_numero 
-                      OR mm_nc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = sc.articulo_numero LIMIT 1)
-                      OR sc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = mm_nc.articulo_numero LIMIT 1)
-                  )
-                  AND mm_nc.tipo_movimiento = 'EMISION_NC'
+                JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
+                WHERE mm_nc.tipo_movimiento = 'EMISION_NC'
                   AND mm_nc.estado IS DISTINCT FROM 'ANULADO'
                   AND mm_nc.estado IS DISTINCT FROM 'REVERTIDO'
-                ORDER BY mm_nc.fecha_movimiento DESC
+                  AND (
+                      (mm_nc.observaciones LIKE '%[MovID: ' || sc.id_movimiento || ']%')
+                      OR
+                      (
+                          sc.id_presupuesto_origen IS NOT NULL 
+                          AND mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen
+                          AND (
+                              mm_nc.articulo_numero = sc.articulo_numero 
+                              OR mm_nc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = sc.articulo_numero LIMIT 1)
+                              OR sc.articulo_numero = (SELECT numero FROM public.articulos WHERE codigo_barras = mm_nc.articulo_numero LIMIT 1)
+                          )
+                          AND mm_nc.id > sc.id_movimiento
+                      )
+                  )
+                ORDER BY ff.id DESC
                 LIMIT 1
             ) nc_estado ON true
             LEFT JOIN LATERAL (
@@ -991,60 +998,145 @@ async function emitirNotaCreditoBorrador(req, res) {
 
         await client.query('BEGIN');
 
-        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA ORDEN DE RETIRO (Fix Fuga Financiera NC)
-        if (itemsInfo && itemsInfo.length > 0) {
-            const primerArticulo = itemsInfo[0].articulo || (itemsInfo[0].descripcion?.match(/Devolución:\s*(.+)/)?.[1]?.trim());
-            if (primerArticulo) {
-                // Resolucion de codigo de barras a SKU real
-                const resArt = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [primerArticulo]);
-                let primerArticuloReal = primerArticulo;
-                let primerCodigoBarras = '';
-                if (resArt.rows.length > 0) {
-                    primerArticuloReal = resArt.rows[0].numero;
-                    primerCodigoBarras = resArt.rows[0].codigo_barras || '';
-                }
-
-                console.log(`[MANTENIMIENTO_ORQ] Intentando recuperar descuento de la Orden de Retiro origen para Art: ${primerArticuloReal}, Cliente: ${cliente_id}`);
-                const descQuery = `
-                    SELECT COALESCE(p.descuento, 0) as descuento_decimal
-                    FROM public.mantenimiento_movimientos mm
-                    JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                    WHERE p.id_cliente::text = $1
-                      AND (mm.articulo_numero = $2 OR (mm.articulo_numero = $3 AND $3 != ''))
-                      AND mm.estado IS DISTINCT FROM 'REVERTIDO' 
-                      AND mm.estado IS DISTINCT FROM 'FINALIZADO'
-                      AND mm.estado IS DISTINCT FROM 'ANULADO'
-                    ORDER BY mm.id DESC
-                    LIMIT 1
-                `;
-                const resDesc = await client.query(descQuery, [cliente_id.toString(), primerArticuloReal, primerCodigoBarras]);
-
-                if (resDesc.rowCount > 0) {
-                    const descuentoDecimal = parseFloat(resDesc.rows[0].descuento_decimal) || 0; // ej: 0.04
-                    if (descuentoDecimal > 0) {
-                        const factorDescuento = 1 - descuentoDecimal; // ej: 0.96
-                        console.log(`[MANTENIMIENTO_ORQ] Descuento activo detectado: ${descuentoDecimal * 100}%. Factor de prorrateo temporal Mantenimiento->Facturación: ${factorDescuento}`);
-
-                        // 1. APLICAMOS LA MATEMÁTICA BRUTA A LOS ITEMS:
-                        // Como Facturación y AFIP calculan basándose netamente en Suma(p_unit * qty), 
-                        // debemos prorrater el precio unitario del payload antes de despacharlo.
-                        itemsInfo.forEach(item => {
-                            if (item.p_unit) {
-                                item.p_unit = parseFloat((parseFloat(item.p_unit) * factorDescuento).toFixed(4));
-                            }
-                        });
-
-                        // 2. Inyección Explícita de Variable en Payload JSON:
-                        // Cumplimos la firma enviando el descuento original
-                        payloadFacturacion.descuento = descuentoDecimal * 100;
-                        console.log(`[MANTENIMIENTO_ORQ] Items prorrateados exitosamente en la memoria del orquestador.`);
-                    }
-                }
+        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA FACTURA / PRESUPUESTO ORIGEN (Fix Fuga Financiera NC)
+        let descuentoDecimal = 0;
+        if (idPresupuestoOrigen) {
+            const resP = await client.query('SELECT descuento FROM public.presupuestos WHERE id = $1', [idPresupuestoOrigen]);
+            if (resP.rows.length > 0) {
+                descuentoDecimal = parseFloat(resP.rows[0].descuento) || 0;
+            }
+        }
+        if (descuentoDecimal === 0 && payloadFacturacion.factura_asociada_id) {
+            const resFa = await client.query(`
+                SELECT COALESCE(NULLIF(fa.descuento, 0), p.descuento, 0) as descuento
+                FROM public.factura_facturas fa 
+                LEFT JOIN public.presupuestos p ON fa.presupuesto_id = p.id 
+                WHERE fa.id = $1
+            `, [payloadFacturacion.factura_asociada_id]);
+            if (resFa.rows.length > 0) {
+                descuentoDecimal = parseFloat(resFa.rows[0].descuento) || 0;
             }
         }
 
-        // 1. Enviar a Facturación PRIMERO (Server-to-Server)
-        console.log(`📡 [MANTENIMIENTO_ORQ] Solicitando Borrador a Facturación...`);
+        if (descuentoDecimal > 0) {
+            console.log(`[MANTENIMIENTO_ORQ] Descuento activo detectado en comprobante origen: ${descuentoDecimal * 100}%. Conservando precio unitario original (${itemsInfo[0]?.p_unit}).`);
+            payloadFacturacion.descuento = descuentoDecimal * 100;
+        }
+
+        if (!payloadFacturacion.presupuesto_id && idPresupuestoOrigen) {
+            payloadFacturacion.presupuesto_id = idPresupuestoOrigen;
+        }
+
+        // Blindaje Estructural de Stock: La NC emitida desde Mantenimiento NO debe mover stock en depósito
+        // porque la mercadería física permanece en Mantenimiento para su procesamiento.
+        payloadFacturacion.mover_stock = false;
+        payloadFacturacion.stock_descontado = true;
+        payloadFacturacion.origen_comprobante = 'MANTENIMIENTO';
+
+        // 0.8. Pre-validar y enriquecer ítems ANTES de llamar al microservicio de Facturación
+        // Esto evita crear borradores huérfanos o duplicados en Facturación si falla alguna validación local.
+        const itemsResueltos = [];
+        for (const item of itemsInfo) {
+            let articulo = item.articulo;
+
+            // Fallback si no viene explícito
+            if (!articulo && item.descripcion) {
+                const match = item.descripcion.match(/Devolución:\s*(.+)/);
+                if (match) articulo = match[1].trim();
+            }
+
+            if (!articulo) {
+                throw new Error("No se pudo extraer el código del artículo en el payload.");
+            }
+
+            // Resolución de código de barras a SKU real y descripción oficial (incluyendo Bunker)
+            let articuloReal = articulo;
+            let codigoBarras = '';
+            let descripcionOficial = item.descripcion || articulo;
+            const resArt = await client.query(`
+                SELECT a.numero, a.codigo_barras, COALESCE(ba.descripcion_generada, a.nombre) AS descripcion_oficial
+                FROM public.articulos a
+                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                WHERE a.numero = $1 OR a.codigo_barras = $1
+                LIMIT 1
+            `, [articulo]);
+            if (resArt.rows.length > 0) {
+                articuloReal = resArt.rows[0].numero;
+                codigoBarras = resArt.rows[0].codigo_barras || '';
+                if (resArt.rows[0].descripcion_oficial) {
+                    descripcionOficial = resArt.rows[0].descripcion_oficial;
+                }
+            }
+
+            // Actualizar el item que viajará a Facturación con el SKU y descripción oficiales
+            item.articulo = articuloReal;
+            item.articulo_id = articuloReal;
+            item.descripcion = descripcionOficial;
+
+            // CHECK EXCLUSIÓN MUTUA: Verificar que este movimiento específico no haya sido conciliado ya
+            const lomaCheck = `
+                SELECT 1
+                FROM public.mantenimiento_conciliacion_items mci
+                JOIN public.mantenimiento_movimientos mm ON mm.id = mci.id_movimiento_origen
+                WHERE mm.id_presupuesto_origen = $1
+                  AND (mm.articulo_numero = $2 OR (mm.articulo_numero = $3 AND $3 != ''))
+                LIMIT 1
+            `;
+            const resLomaCheck = await client.query(lomaCheck, [idPresupuestoOrigen, articuloReal, codigoBarras]);
+            if (resLomaCheck.rowCount > 0) {
+                throw new Error(`Exclusión Mutua: El artículo ${articuloReal} ya ha sido conciliado vía Lomasoft.`);
+            }
+
+            // Verificar si el movimiento ya posee una EMISION_NC activa
+            const rawMovId = item.id_movimiento || (req.body ? req.body.id_movimiento : null);
+            if (rawMovId) {
+                const dupNcCheck = await client.query(`
+                    SELECT id, observaciones FROM public.mantenimiento_movimientos
+                    WHERE tipo_movimiento = 'EMISION_NC'
+                      AND estado NOT IN ('ANULADO', 'REVERTIDO')
+                      AND observaciones LIKE '%[MovID: ' || $1::text || ']%'
+                    ORDER BY id DESC
+                    LIMIT 1
+                `, [String(rawMovId)]);
+                if (dupNcCheck.rowCount > 0) {
+                    const obsPrev = dupNcCheck.rows[0].observaciones || '';
+                    const matchId = obsPrev.match(/\[NC Generada ID:\s*(\d+)\]/);
+                    const existingNcId = matchId ? parseInt(matchId[1]) : null;
+                    if (existingNcId) {
+                        const resCheckFac = await client.query('SELECT id, estado FROM public.factura_facturas WHERE id = $1', [existingNcId]);
+                        if (resCheckFac.rowCount > 0) {
+                            const estadoFac = resCheckFac.rows[0].estado;
+                            if (estadoFac === 'BORRADOR') {
+                                await client.query('COMMIT');
+                                console.log(`ℹ️ [MANTENIMIENTO_ORQ] Idempotencia: El movimiento #${rawMovId} ya está vinculado al Borrador NC #${existingNcId}.`);
+                                return res.json({
+                                    success: true,
+                                    idempotente: true,
+                                    message: 'Borrador ya generado y disponible en Facturación.',
+                                    factura_id: existingNcId
+                                });
+                            } else if (estadoFac === 'APROBADA' || estadoFac === 'APROBADA_LOCAL') {
+                                throw new Error(`El movimiento #${rawMovId} ya posee una Nota de Crédito emitida y aprobada (#${existingNcId}).`);
+                            }
+                        } else {
+                            // El borrador previo fue eliminado en Facturación: anulamos la auditoría huérfana y permitimos regenerar
+                            await client.query("UPDATE public.mantenimiento_movimientos SET estado = 'ANULADO' WHERE id = $1", [dupNcCheck.rows[0].id]);
+                        }
+                    }
+                }
+            }
+
+            itemsResueltos.push({
+                item,
+                articuloReal,
+                codigoBarras,
+                rawMovId,
+                cantidadEmitida: parseFloat(item.qty || 0)
+            });
+        }
+
+        // 1. Enviar a Facturación (Server-to-Server)
+        console.log(`📡 [MANTENIMIENTO_ORQ] Solicitando Borrador a Facturación (Mover Stock: false)...`);
         let factura_generada_id = null;
 
         const facturacionUrl = process.env.FACTURACION_API_URL || 'http://localhost:3004';
@@ -1063,43 +1155,8 @@ async function emitirNotaCreditoBorrador(req, res) {
         factura_generada_id = resultFacturacion.data.id;
         console.log(`✅ [MANTENIMIENTO_ORQ] Facturación respondió con Borrador ID: ${factura_generada_id}`);
 
-        for (const item of itemsInfo) {
-            let articulo = item.articulo;
-
-            // Fallback si no viene explícito
-            if (!articulo && item.descripcion) {
-                const match = item.descripcion.match(/Devolución:\s*(.+)/);
-                if (match) articulo = match[1].trim();
-            }
-
-            if (!articulo) {
-                throw new Error("No se pudo extraer el código del artículo en el payload.");
-            }
-
-            // Resolucion de codigo de barras a SKU real
-            let articuloReal = articulo;
-            let codigoBarras = '';
-            const resArt = await client.query('SELECT numero, codigo_barras FROM public.articulos WHERE numero = $1 OR codigo_barras = $1', [articulo]);
-            if (resArt.rows.length > 0) {
-                articuloReal = resArt.rows[0].numero;
-                codigoBarras = resArt.rows[0].codigo_barras || '';
-            }
-
-            // 0. CHECK EXCLUSIÓN MUTUA CORREGIDO: Verificar que este movimiento específico no haya sido conciliado ya
-            const lomaCheck = `
-                SELECT 1
-                FROM public.mantenimiento_conciliacion_items mci
-                JOIN public.mantenimiento_movimientos mm ON mm.id = mci.id_movimiento_origen
-                WHERE mm.id_presupuesto_origen = $1
-                  AND (mm.articulo_numero = $2 OR (mm.articulo_numero = $3 AND $3 != ''))
-                LIMIT 1
-            `;
-            const resLomaCheck = await client.query(lomaCheck, [idPresupuestoOrigen, articuloReal, codigoBarras]);
-            if (resLomaCheck.rowCount > 0) {
-                throw new Error(`Exclusión Mutua: El artículo ${articuloReal} ya ha sido conciliado vía Lomasoft.`);
-            }
-
-            const cantidadEmitida = parseFloat(item.qty || 0);
+        for (const resolved of itemsResueltos) {
+            const { articuloReal, rawMovId, cantidadEmitida } = resolved;
 
             // 1. Obtener Stock Actual (SIN DEDUCIRLO: Modelo Lomasoft)
             const stockQuery = `
@@ -1122,7 +1179,8 @@ async function emitirNotaCreditoBorrador(req, res) {
             }
 
             // 2. REGISTRAR MOVIMIENTO DE SALIDA (AUDITORÍA LÓGICA / MUTEX)
-            const obsFinal = `[NC Generada ID: ${factura_generada_id || 'SBD'}] Emisión de NC Borrador. Cliente #${cliente_id}`;
+            const movIdTag = rawMovId ? String(rawMovId) : '';
+            const obsFinal = `[NC Generada ID: ${factura_generada_id || 'SBD'}]${movIdTag ? ` [MovID: ${movIdTag}]` : ''} Emisión de NC Borrador. Cliente #${cliente_id}`;
 
             const insertMov = `
                 INSERT INTO public.mantenimiento_movimientos 
@@ -1131,17 +1189,31 @@ async function emitirNotaCreditoBorrador(req, res) {
                 RETURNING id
             `;
             await client.query(insertMov, [idPresupuestoOrigen, articuloReal, cantidadEmitida, usuario, obsFinal]);
+
+            // 3. ANOTAR EN EL MOVIMIENTO FÍSICO DE ORIGEN LA NC VINCULADA SIN FINALIZAR EL STOCK FÍSICO
+            // El stock físico permanece en Mantenimiento para su posterior destino (Tratamiento / Ventas / Ingredientes)
+            if (rawMovId) {
+                await client.query(`
+                    UPDATE public.mantenimiento_movimientos
+                    SET articulo_numero = $3,
+                        observaciones = COALESCE(observaciones, '') || ' [NC Generada ID: ' || $1::text || ']'
+                    WHERE id = $2
+                `, [String(factura_generada_id), parseInt(rawMovId), articuloReal]);
+                console.log(`🔒 [MANTENIMIENTO_ORQ] Movimiento origen #${rawMovId} anotado con NC ID #${factura_generada_id}.`);
+            }
         }
 
-        // Sincronización Inversa: Marcar la Orden de Retiro como Conciliada para bloquear UI en Presupuestos
+        // Sincronización Inversa: Marcar la Orden de Retiro generada como Conciliada para bloquear UI en Presupuestos
         if (idPresupuestoOrigen) {
             const updatePresupuesto = `
                 UPDATE public.presupuestos
                 SET estado = 'Conciliado'
-                WHERE id = $1 AND (estado IS NULL OR estado != 'Conciliado')
+                WHERE (origen_numero_factura = $1::text OR id::text = $1::text)
+                  AND tipo_comprobante = 'Orden de Retiro'
+                  AND (estado IS NULL OR estado != 'Conciliado')
             `;
-            await client.query(updatePresupuesto, [idPresupuestoOrigen]);
-            console.log(`🔒 [MANTENIMIENTO_ORQ] Orden de Retiro (Presupuesto #${idPresupuestoOrigen}) bloqueada como Conciliada.`);
+            await client.query(updatePresupuesto, [String(idPresupuestoOrigen)]);
+            console.log(`🔒 [MANTENIMIENTO_ORQ] Orden de Retiro vinculada al presupuesto #${idPresupuestoOrigen} bloqueada como Conciliada.`);
         }
 
         await client.query('COMMIT');
@@ -1387,13 +1459,13 @@ async function deshacerConciliacion(req, res) {
  */
 async function trazarFacturaOriginal(req, res) {
     try {
-        const { articulo, cliente_id } = req.query;
+        const { articulo, cliente_id, id_movimiento, cantidad } = req.query;
 
         if (!articulo || !cliente_id) {
             return res.status(400).json({ error: 'Artículo y Cliente requeridos' });
         }
 
-        console.log(`🔍 [MANTENIMIENTO] Trazando Factura Original para Art: ${articulo}, Cliente: ${cliente_id}`);
+        console.log(`🔍 [MANTENIMIENTO] Trazando Factura Original para Art: ${articulo}, Cliente: ${cliente_id}, Mov: ${id_movimiento || 'N/A'}`);
 
         const query = `
             SELECT 
@@ -1405,12 +1477,12 @@ async function trazarFacturaOriginal(req, res) {
                 f.imp_total,
                 f.fecha_emision,
                 f.estado,
+                COALESCE(NULLIF(f.descuento, 0), p.descuento, 0) as descuento,
                 pd.valor1 as precio_unitario,
-                pd.camp2 as iva_alicuota
+                pd.camp2 as iva_alicuota,
+                p.modificado_portal
             FROM public.factura_facturas f
-            -- RESTORE STRICT TRACEABILITY: 
-            -- Inner JOIN guarantees the invoice ACTUALLY sold the article being returned.
-            -- This fixes the issue of blindly attaching to "the last invoice".
+            JOIN public.presupuestos p ON f.presupuesto_id = p.id
             JOIN public.presupuestos_detalles pd
               ON f.presupuesto_id = pd.id_presupuesto
                  AND (
@@ -1418,128 +1490,230 @@ async function trazarFacturaOriginal(req, res) {
                      =
                      COALESCE((SELECT numero FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1), $1)
                  )
-            WHERE f.cliente_id::text = $2::text
+            WHERE (f.cliente_id::text = $2::text OR LTRIM(f.cliente_id::text, '0') = LTRIM($2::text, '0'))
               AND f.estado = 'APROBADA'
             ORDER BY 
               f.fecha_emision DESC
-            LIMIT 1
+            LIMIT 15
         `;
 
         const result = await pool.query(query, [articulo, cliente_id]);
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'No hay factura original trazable vinculada a este ingreso.' });
+            return res.status(404).json({ success: false, message: 'No hay factura original aprobada trazable vinculada a este ingreso.' });
         }
 
-        const factura = result.rows[0];
+        // Si se especificó un id_movimiento concreto, obtener sus datos específicos
+        let specificQty = null;
+        let specificSku = null;
+        if (id_movimiento) {
+            const resMov = await pool.query('SELECT articulo_numero, cantidad FROM public.mantenimiento_movimientos WHERE id = $1', [parseInt(id_movimiento)]);
+            if (resMov.rows.length > 0) {
+                specificQty = parseFloat(resMov.rows[0].cantidad);
+                specificSku = resMov.rows[0].articulo_numero;
+            }
+        }
 
-        // 2. Obtain all articles currently in Quarantine for this same invoice
-        const queryItems = `
-            WITH quarantine_stock AS (
-                SELECT 
-                    mm.articulo_numero,
-                    SUM(mm.cantidad) AS stock_actual
-                FROM public.mantenimiento_movimientos mm
-                LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                WHERE p.id_cliente::text = $1::text
-                  AND mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
-                  AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
-                  AND mm.id NOT IN (
-                      -- Exclude movements already conciliated with an ARCA Credit Note by mapping via unique movement ID
-                      SELECT COALESCE(mci.id_movimiento_origen, -1)
-                      FROM public.mantenimiento_conciliaciones mc
-                      JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
-                      WHERE mc.id_cliente::text = $1::text AND mci.id_movimiento_origen IS NOT NULL
+        const candidates = [];
+        
+        let queryItems;
+        let queryItemsParams;
+
+        if (specificQty !== null && specificSku) {
+            // Modo Trazabilidad Exacta por Movimiento Individual (Aislamiento Total de Tickets)
+            queryItems = `
+                SELECT DISTINCT ON (COALESCE(a.numero, pd.articulo))
+                    COALESCE(a.numero, $2::text) AS articulo_numero,
+                    a.codigo_barras,
+                    COALESCE(ba.descripcion_generada, a.nombre, $2::text) AS descripcion,
+                    $3::numeric AS cantidad_devuelta,
+                    pd.valor1 as precio_historico,
+                    pd.camp2 as iva_alicuota,
+                    COALESCE(p.descuento, 0) as descuento_global,
+                    pd.cantidad as cantidad_original_facturada
+                FROM public.presupuestos_detalles pd
+                JOIN public.presupuestos p ON p.id = pd.id_presupuesto
+                LEFT JOIN public.articulos a ON (a.numero = $2 OR a.codigo_barras = $2)
+                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                WHERE pd.id_presupuesto = $1
+                  AND (
+                      COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                      =
+                      COALESCE((SELECT numero FROM public.articulos WHERE numero = $2 OR codigo_barras = $2 LIMIT 1), $2)
                   )
-                GROUP BY mm.articulo_numero
-                HAVING SUM(mm.cantidad) > 0
-            )
-            SELECT 
-                qs.articulo_numero,
-                COALESCE(a.nombre, qs.articulo_numero) AS descripcion,
-                qs.stock_actual as cantidad_devuelta,
-                pd.valor1 as precio_historico,
-                pd.camp2 as iva_alicuota,
-                COALESCE(p.descuento, 0) as descuento_global,
-                pd.cantidad as cantidad_original_facturada -- Trazabilidad de tope físico
-            FROM quarantine_stock qs
-            -- Join with original invoice details to get the historical price for EVERY returned item
-            JOIN public.presupuestos_detalles pd 
-              ON pd.id_presupuesto = $2
-              AND (
-                  COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
-                  =
-                  COALESCE((SELECT numero FROM public.articulos WHERE numero = qs.articulo_numero OR codigo_barras = qs.articulo_numero LIMIT 1), qs.articulo_numero)
-              )
-            JOIN public.factura_facturas f ON f.presupuesto_id = pd.id_presupuesto
-            JOIN public.presupuestos p ON p.id = f.presupuesto_id
-            LEFT JOIN public.articulos a ON (a.numero = qs.articulo_numero OR a.codigo_barras = qs.articulo_numero)
-            ORDER BY qs.articulo_numero ASC
-        `;
-        const resultItems = await pool.query(queryItems, [cliente_id, factura.presupuesto_id]);
+                ORDER BY COALESCE(a.numero, pd.articulo) ASC
+            `;
+        } else {
+            // Modo Fallback con exclusión estricta de movimientos ya acreditados/conciliados
+            queryItems = `
+                WITH uncredited_movements AS (
+                    SELECT mm.id, mm.articulo_numero, mm.cantidad
+                    FROM public.mantenimiento_movimientos mm
+                    LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                    LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
+                    WHERE COALESCE(p.id_cliente::text, ot.id_cliente::text) = $1::text
+                      AND mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
+                      AND mm.tipo_movimiento IN ('INGRESO', 'TRASLADO_INTERNO_VENTAS', 'TRASLADO_INTERNO_INGREDIENTES', 'RETORNO_TRATAMIENTO', 'RETIRO_TRATAMIENTO')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.mantenimiento_movimientos mm_nc
+                          WHERE mm_nc.tipo_movimiento = 'EMISION_NC'
+                            AND mm_nc.estado NOT IN ('ANULADO', 'REVERTIDO')
+                            AND (
+                                mm_nc.observaciones LIKE '%[MovID: ' || mm.id || ']%'
+                                OR (
+                                    mm.id_presupuesto_origen IS NOT NULL 
+                                    AND mm_nc.id_presupuesto_origen = mm.id_presupuesto_origen
+                                    AND mm_nc.articulo_numero = mm.articulo_numero
+                                    AND mm_nc.id > mm.id
+                                )
+                            )
+                      )
+                      AND mm.id NOT IN (
+                          SELECT COALESCE(mci.id_movimiento_origen, -1)
+                          FROM public.mantenimiento_conciliaciones mc
+                          JOIN public.mantenimiento_conciliacion_items mci ON mc.id = mci.id_conciliacion
+                          WHERE mc.id_cliente::text = $1::text AND mci.id_movimiento_origen IS NOT NULL
+                      )
+                ),
+                quarantine_stock AS (
+                    SELECT 
+                        articulo_numero,
+                        SUM(cantidad) AS stock_actual
+                    FROM uncredited_movements
+                    GROUP BY articulo_numero
+                    HAVING SUM(cantidad) > 0
+                )
+                SELECT DISTINCT ON (qs.articulo_numero)
+                    COALESCE(a.numero, qs.articulo_numero) AS articulo_numero,
+                    a.codigo_barras,
+                    COALESCE(ba.descripcion_generada, a.nombre, qs.articulo_numero) AS descripcion,
+                    qs.stock_actual as cantidad_devuelta,
+                    pd.valor1 as precio_historico,
+                    pd.camp2 as iva_alicuota,
+                    COALESCE(p.descuento, 0) as descuento_global,
+                    pd.cantidad as cantidad_original_facturada
+                FROM quarantine_stock qs
+                JOIN public.presupuestos_detalles pd 
+                  ON pd.id_presupuesto = $2
+                  AND (
+                      COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                      =
+                      COALESCE((SELECT numero FROM public.articulos WHERE numero = qs.articulo_numero OR codigo_barras = qs.articulo_numero LIMIT 1), qs.articulo_numero)
+                  )
+                JOIN public.presupuestos p ON p.id = pd.id_presupuesto
+                LEFT JOIN public.articulos a ON (a.numero = qs.articulo_numero OR a.codigo_barras = qs.articulo_numero)
+                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                ORDER BY qs.articulo_numero ASC
+            `;
+        }
 
-        // Map items and their correct backend IVA ID
-        const itemsAsociados = resultItems.rows.map(item => {
-            let afipIvaId = 1; // Default 21% (Internal ID 1)
-            if (item.iva_alicuota !== undefined && item.iva_alicuota !== null) {
-                const alicNum = parseFloat(item.iva_alicuota);
-                if (alicNum === 0.105 || alicNum === 10.5) afipIvaId = 2; // Internal ID 2 = 10.5%
-                else if (alicNum === 0 || item.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
-                else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
+        const queryOriginales = `
+            SELECT DISTINCT ON (pd.articulo)
+                COALESCE(a.numero, pd.articulo) as articulo_numero,
+                COALESCE(ba.descripcion_generada, a.nombre, pd.articulo) AS descripcion,
+                pd.cantidad,
+                pd.valor1 as precio_unitario,
+                pd.camp2 as iva_alicuota
+            FROM public.presupuestos_detalles pd
+            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+            LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+            WHERE pd.id_presupuesto = $1
+            ORDER BY pd.articulo ASC
+        `;
+
+        for (const factura of result.rows) {
+            let resultItems;
+            if (specificQty !== null && specificSku) {
+                resultItems = await pool.query(queryItems, [factura.presupuesto_id, specificSku, specificQty]);
+            } else {
+                resultItems = await pool.query(queryItems, [cliente_id, factura.presupuesto_id]);
             }
 
-            const precioHistoricoPuro = parseFloat(item.precio_historico) || 0;
-            // Eliminamos el prorrateo erróneo en el Frontend.
-            // El backend orquestador (emitirNotaCreditoBorrador) se encargará 
-            // de aplicar matemáticamente este porcentaje a cada ítem de forma precisa.
+            const itemsAsociados = resultItems.rows.map(item => {
+                let afipIvaId = 1; // Default 21% (Internal ID 1)
+                if (item.iva_alicuota !== undefined && item.iva_alicuota !== null) {
+                    const alicNum = parseFloat(item.iva_alicuota);
+                    if (alicNum === 0.105 || alicNum === 10.5) afipIvaId = 2; // Internal ID 2 = 10.5%
+                    else if (alicNum === 0 || item.iva_alicuota.toString().toLowerCase() === 'exento') afipIvaId = 3; // Internal ID 3 = Exento
+                    else if (alicNum === 0.21 || alicNum === 21) afipIvaId = 1; // Internal ID 1 = 21%
+                }
 
-            return {
-                articulo_numero: item.articulo_numero,
-                descripcion: item.descripcion,
-                cantidad: parseFloat(item.cantidad_devuelta),
-                precio_historico: precioHistoricoPuro,
-                alic_iva_id: afipIvaId,
-                limite_fisico_facturado: parseFloat(item.cantidad_original_facturada) // Necesario para la doble alerta frontend
-            };
-        });
+                const precioHistoricoPuro = parseFloat(item.precio_historico) || 0;
 
-        // Derivar tipo de Nota de Crédito de forma estricta
-        // Factura A (1) -> NC A (3)
-        // Factura B (6) -> NC B (8)
-        // Factura C (11) -> NC C (13)
-        let nc_tipo_cbte = null;
-        let nc_tipo_nombre = '';
+                const descGlobal = parseFloat(factura.descuento || item.descuento_global || 0);
+                return {
+                    id_movimiento: id_movimiento ? parseInt(id_movimiento) : null,
+                    articulo_numero: item.articulo_numero,
+                    codigo_barras: item.codigo_barras || null,
+                    descripcion: item.descripcion,
+                    cantidad: parseFloat(item.cantidad_devuelta),
+                    precio_historico: precioHistoricoPuro,
+                    descuento_global: descGlobal,
+                    alic_iva_id: afipIvaId,
+                    limite_fisico_facturado: parseFloat(item.cantidad_original_facturada)
+                };
+            });
 
-        switch (parseInt(factura.tipo_cbte)) {
-            case 1:
-                nc_tipo_cbte = 3;
-                nc_tipo_nombre = 'Nota de Crédito A (03)';
-                break;
-            case 6:
-                nc_tipo_cbte = 8;
-                nc_tipo_nombre = 'Nota de Crédito B (08)';
-                break;
-            case 11:
-                nc_tipo_cbte = 13;
-                nc_tipo_nombre = 'Nota de Crédito C (13)';
-                break;
-            default:
-                return res.status(400).json({ success: false, message: `Tipo de comprobante original (${factura.tipo_cbte}) no soportado para Notas de Crédito automatizadas.` });
+            // Fetch the full original items in the invoice
+            const resultOriginales = await pool.query(queryOriginales, [factura.presupuesto_id]);
+            const itemsOriginales = resultOriginales.rows.map(item => {
+                return {
+                    articulo_numero: item.articulo_numero,
+                    descripcion: item.descripcion,
+                    cantidad: parseFloat(item.cantidad) || 0,
+                    precio_unitario: parseFloat(item.precio_unitario) || 0,
+                    iva_alicuota: parseFloat(item.iva_alicuota) || 0
+                };
+            });
+
+            let nc_tipo_cbte = null;
+            let nc_tipo_nombre = '';
+
+            switch (parseInt(factura.tipo_cbte)) {
+                case 1:
+                    nc_tipo_cbte = 3;
+                    nc_tipo_nombre = 'Nota de Crédito A (03)';
+                    break;
+                case 6:
+                    nc_tipo_cbte = 8;
+                    nc_tipo_nombre = 'Nota de Crédito B (08)';
+                    break;
+                case 11:
+                    nc_tipo_cbte = 13;
+                    nc_tipo_nombre = 'Nota de Crédito C (13)';
+                    break;
+            }
+
+            if (nc_tipo_cbte !== null) {
+                const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
+                candidates.push({
+                    factura_id: factura.factura_id,
+                    presupuesto_id: factura.presupuesto_id,
+                    tipo_cbte: factura.tipo_cbte,
+                    pto_vta: factura.pto_vta,
+                    cbte_nro: factura.cbte_nro,
+                    imp_total: parseFloat(factura.imp_total) || 0,
+                    descuento: parseFloat(factura.descuento) || 0,
+                    fecha_emision: factura.fecha_emision,
+                    canal: factura.modificado_portal ? 'Plataforma Web (Portal B2B)' : 'Puesto Facturación Local',
+                    factura_nombre: `Factura ${tipoLetra} - Nro ${factura.pto_vta.toString().padStart(4, '0')}-${factura.cbte_nro.toString().padStart(8, '0')}`,
+                    nota_credito: {
+                        tipo_cbte: nc_tipo_cbte,
+                        nombre: nc_tipo_nombre
+                    },
+                    items_asociados: itemsAsociados,
+                    items_originales: itemsOriginales
+                });
+            }
         }
 
-        const tipoLetra = parseInt(factura.tipo_cbte) === 1 ? 'A' : (parseInt(factura.tipo_cbte) === 6 ? 'B' : 'C');
+        if (candidates.length === 0) {
+            return res.status(404).json({ success: false, message: 'No se encontraron comprobantes compatibles para emitir Nota de Crédito.' });
+        }
 
         res.json({
             success: true,
-            factura: {
-                ...factura,
-                factura_nombre: `Factura ${tipoLetra} - Nro ${factura.pto_vta}-${factura.cbte_nro}`
-            },
-            nota_credito: {
-                tipo_cbte: nc_tipo_cbte,
-                nombre: nc_tipo_nombre
-            },
-            items_asociados: itemsAsociados
+            candidates: candidates
         });
 
     } catch (error) {
@@ -1774,15 +1948,79 @@ async function recibirRetiroLocal(req, res) {
 async function revertirIngresoLocal(req, res) {
     const client = await pool.connect();
     try {
-        const { cliente_id, articulo_numero } = req.body;
+        const { cliente_id, articulo_numero, movimiento_id, id_orden_tratamiento } = req.body;
 
-        if (!cliente_id || !articulo_numero) {
-            return res.status(400).json({ success: false, error: 'Faltan parámetros obligatorios (cliente_id, articulo_numero).' });
-        }
-
-        console.log(`↩️ [MANTENIMIENTO] Revirtiendo recepción local para Art: ${articulo_numero}, Cliente: ${cliente_id}`);
+        console.log(`↩️ [MANTENIMIENTO] Revirtiendo recepción local:`, { cliente_id, articulo_numero, movimiento_id, id_orden_tratamiento });
 
         await client.query('BEGIN');
+
+        // CASO A: Recepción originada en Orden de Tratamiento o identificada por ID de Movimiento
+        if (movimiento_id || id_orden_tratamiento || (!articulo_numero && cliente_id)) {
+            let movRow = null;
+            if (movimiento_id) {
+                const resM = await client.query('SELECT * FROM public.mantenimiento_movimientos WHERE id = $1 FOR UPDATE', [movimiento_id]);
+                if (resM.rows.length > 0) movRow = resM.rows[0];
+            } else if (id_orden_tratamiento) {
+                const resM = await client.query('SELECT * FROM public.mantenimiento_movimientos WHERE id_orden_tratamiento = $1 AND estado != \'FINALIZADO\' FOR UPDATE', [id_orden_tratamiento]);
+                if (resM.rows.length > 0) movRow = resM.rows[0];
+            } else if (cliente_id) {
+                // Búsqueda por cliente sin artículo
+                const resM = await client.query(`
+                    SELECT mm.* FROM public.mantenimiento_movimientos mm
+                    LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
+                    LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+                    WHERE (ot.id_cliente::text = $1 OR p.id_cliente::text = $1)
+                      AND mm.estado IN ('PENDIENTE', 'BORRADOR')
+                    ORDER BY mm.id DESC LIMIT 1 FOR UPDATE
+                `, [cliente_id.toString()]);
+                if (resM.rows.length > 0) movRow = resM.rows[0];
+            }
+
+            if (movRow) {
+                // 1. Si tenía artículo asociado, restar de stock_mantenimiento
+                if (movRow.articulo_numero && parseFloat(movRow.cantidad) > 0) {
+                    await client.query(`
+                        UPDATE public.stock_real_consolidado
+                        SET stock_mantenimiento = GREATEST(0, stock_mantenimiento - $1),
+                            ultima_actualizacion = NOW()
+                        WHERE articulo_numero = $2
+                    `, [parseFloat(movRow.cantidad), movRow.articulo_numero]);
+                }
+
+                // 2. Eliminar movimiento físico de mantenimiento
+                await client.query('DELETE FROM public.mantenimiento_movimientos WHERE id = $1', [movRow.id]);
+
+                // 3. Si tenía orden de tratamiento, marcarla como CANCELADO
+                const otId = movRow.id_orden_tratamiento || id_orden_tratamiento;
+                if (otId) {
+                    await client.query(`
+                        UPDATE public.ordenes_tratamiento
+                        SET estado_logistico = 'CANCELADO',
+                            fecha_ingreso_mantenimiento = NULL
+                        WHERE id = $1
+                    `, [otId]);
+                }
+
+                // 4. Si tenía presupuesto origen, devolver a mostrador
+                if (movRow.id_presupuesto_origen) {
+                    await client.query(`
+                        UPDATE public.presupuestos
+                        SET estado_logistico = 'ESPERANDO_MOSTRADOR',
+                            estado = 'Orden de Retiro',
+                            fecha_actualizacion = NOW()
+                        WHERE id = $1
+                    `, [movRow.id_presupuesto_origen]);
+                }
+
+                await client.query('COMMIT');
+                return res.json({ success: true, message: 'La recepción fue eliminada correctamente y el registro se limpió.' });
+            }
+        }
+
+        // CASO B: Reversión tradicional por cliente_id y articulo_numero (Presupuestos de Venta)
+        if (!cliente_id || !articulo_numero) {
+            throw new Error('No se encontró el registro de recepción a revertir.');
+        }
 
         // 1. Encontrar los movimientos 'INGRESO' en estado 'PENDIENTE' o NULL para este artículo y cliente agrupados en Presupuestos
         const movQuery = `
@@ -1821,7 +2059,6 @@ async function revertirIngresoLocal(req, res) {
         await client.query(restoreStockQuery, [totalSobrante, articulo_numero]);
 
         // 3. Eliminar los movimientos 'INGRESO' de la auditoría (Hard Delete)
-        // Eliminamos físicamente en lugar de Revertir lógicamente para prevenir basuras si la orden se borra después.
         const deleteMovs = `DELETE FROM public.mantenimiento_movimientos WHERE id = ANY($1::int[])`;
         await client.query(deleteMovs, [movs_a_eliminar]);
 
@@ -2721,7 +2958,7 @@ async function imprimirComprobanteArribo(req, res) {
 }
 
 /**
- * Asignar Artículo Oficial a un ingreso genérico (Bulto)
+ * Asignar o Reasignar Artículo Oficial a un ingreso genérico (Bulto)
  */
 const asignarArticuloOficial = async (req, res) => {
     const client = await pool.connect();
@@ -2733,35 +2970,181 @@ const asignarArticuloOficial = async (req, res) => {
 
         await client.query('BEGIN');
 
-        // Actualizamos mantenimiento_movimientos
+        // 1. Validar que el movimiento exista y no tenga presupuesto ni NC activa
+        const resMov = await client.query('SELECT * FROM public.mantenimiento_movimientos WHERE id = $1 FOR UPDATE', [movimiento_id]);
+        if (resMov.rows.length === 0) {
+            throw new Error('Movimiento no encontrado.');
+        }
+        const mov = resMov.rows[0];
+
+        if (mov.id_presupuesto_origen) {
+            throw new Error('No se puede reasignar el artículo mientras tenga un presupuesto o comprobante vinculado. Desvincule el documento primero.');
+        }
+
+        const checkNC = await client.query(`
+            SELECT 1 FROM public.mantenimiento_movimientos
+            WHERE tipo_movimiento = 'EMISION_NC'
+              AND observaciones LIKE '%[MovID: ' || $1 || ']%'
+              AND estado NOT IN ('ANULADO', 'REVERTIDO')
+            LIMIT 1
+        `, [movimiento_id]);
+        if (checkNC.rows.length > 0) {
+            throw new Error('No se puede reasignar el artículo porque ya posee una Nota de Crédito en trámite o emitida.');
+        }
+
+        // Resolver al SKU oficial (articulos.numero) si se recibió un código de barras
+        let skuOficial = articulo_numero;
+        const resArtOficial = await client.query(
+            'SELECT numero FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1',
+            [String(articulo_numero).trim()]
+        );
+        if (resArtOficial.rows.length > 0 && resArtOficial.rows[0].numero) {
+            skuOficial = resArtOficial.rows[0].numero;
+        }
+
+        // 2. Sincronizar stock_mantenimiento en stock_real_consolidado
+        if (mov.articulo_numero) {
+            await client.query(`
+                UPDATE public.stock_real_consolidado
+                SET stock_mantenimiento = GREATEST(0, COALESCE(stock_mantenimiento, 0) - $1),
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2 OR codigo_barras = $2
+            `, [parseFloat(mov.cantidad) || 0, mov.articulo_numero]);
+        }
+        await client.query(`
+            UPDATE public.stock_real_consolidado
+            SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1,
+                ultima_actualizacion = NOW()
+            WHERE articulo_numero = $2 OR codigo_barras = $2
+        `, [parseFloat(cantidad) || 0, skuOficial]);
+
+        // 2.5. Actualizamos mantenimiento_movimientos
         const updateMov = await client.query(`
             UPDATE public.mantenimiento_movimientos
             SET articulo_numero = $1, cantidad = $3
-            WHERE id = $2 AND articulo_numero IS NULL
+            WHERE id = $2
             RETURNING id_orden_tratamiento
-        `, [articulo_numero, movimiento_id, cantidad]);
-
-        if (updateMov.rowCount === 0) {
-            throw new Error('Movimiento no encontrado o ya posee un artículo oficial asignado.');
-        }
+        `, [skuOficial, movimiento_id, cantidad]);
 
         const id_orden_tratamiento = updateMov.rows[0].id_orden_tratamiento;
 
-        // Propagación Lógica a la orden original (para trazabilidad y PDF de Arribo)
+        // 3. Propagación a la orden original (para trazabilidad y PDF de Arribo)
         if (id_orden_tratamiento) {
             await client.query(`
                 UPDATE public.ordenes_tratamiento_detalles
                 SET articulo_numero = $1
-                WHERE id_orden_tratamiento = $2 AND articulo_numero IS NULL
-            `, [articulo_numero, id_orden_tratamiento]);
+                WHERE id_orden_tratamiento = $2
+            `, [skuOficial, id_orden_tratamiento]);
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, message: 'Artículo vinculado exitosamente' });
+        res.json({ success: true, message: 'Artículo oficial asignado exitosamente.' });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error('❌ [MANTENIMIENTO] Error al vincular articulo oficial:', e);
         res.status(500).json({ error: e.message });
+    } finally {
+        client.release();
+    }
+};
+
+/**
+ * Desasignar Artículo Oficial (Retrotraer Calificación)
+ * Permite desvincular el SKU asignado erróneamente para volver al estado [FALTA ARTÍCULO].
+ */
+const desasignarArticuloOficial = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id } = req.body;
+        if (!movimiento_id) {
+            return res.status(400).json({ success: false, error: 'ID de movimiento requerido.' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Obtener movimiento
+        const resMov = await client.query('SELECT * FROM public.mantenimiento_movimientos WHERE id = $1 FOR UPDATE', [movimiento_id]);
+        if (resMov.rows.length === 0) {
+            throw new Error('Movimiento no encontrado.');
+        }
+        const mov = resMov.rows[0];
+
+        // 2. Validar que no posea NC activa ni conciliación
+        const checkNC = await client.query(`
+            SELECT 1 FROM public.mantenimiento_movimientos
+            WHERE tipo_movimiento = 'EMISION_NC'
+              AND observaciones LIKE '%[MovID: ' || $1 || ']%'
+              AND estado NOT IN ('ANULADO', 'REVERTIDO')
+            LIMIT 1
+        `, [movimiento_id]);
+        if (checkNC.rows.length > 0) {
+            throw new Error('No se puede desvincular el artículo porque ya posee una Nota de Crédito en trámite o emitida.');
+        }
+
+        // 3. Si tenía presupuesto vinculado, revertir Orden de Retiro
+        if (mov.id_presupuesto_origen) {
+            const presRes = await client.query(`
+                SELECT id FROM public.presupuestos 
+                WHERE origen_numero_factura = $1::text 
+                  AND tipo_comprobante = 'Orden de Retiro' 
+                  AND estado = 'Recibido'
+                ORDER BY fecha DESC LIMIT 1
+            `, [String(mov.id_presupuesto_origen)]);
+
+            if (presRes.rows.length > 0) {
+                const idOrdenRetiro = presRes.rows[0].id;
+                await client.query('DELETE FROM public.presupuestos_detalles WHERE id_presupuesto = $1', [idOrdenRetiro]);
+                await client.query('DELETE FROM public.presupuestos WHERE id = $1', [idOrdenRetiro]);
+            }
+        }
+
+        // 4. Restaurar cantidad en base a observaciones (bultos originales)
+        let bultosOriginales = 1;
+        try {
+            const obs = typeof mov.observaciones === 'string' ? JSON.parse(mov.observaciones) : mov.observaciones;
+            if (Array.isArray(obs) && obs.length > 0) {
+                bultosOriginales = parseInt(obs[0].bultos) || 1;
+            }
+        } catch (e) {
+            bultosOriginales = 1;
+        }
+
+        // 4.5. Revertir stock_mantenimiento en stock_real_consolidado si tenía artículo asignado
+        if (mov.articulo_numero) {
+            await client.query(`
+                UPDATE public.stock_real_consolidado
+                SET stock_mantenimiento = GREATEST(0, COALESCE(stock_mantenimiento, 0) - $1),
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2 OR codigo_barras = $2
+            `, [parseFloat(mov.cantidad) || 0, mov.articulo_numero]);
+        }
+
+        // 5. Resetear en mantenimiento_movimientos
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET articulo_numero = NULL,
+                cantidad = $1,
+                id_presupuesto_origen = NULL
+            WHERE id = $2
+        `, [bultosOriginales, movimiento_id]);
+
+        // 6. Resetear en ordenes_tratamiento_detalles
+        if (mov.id_orden_tratamiento) {
+            await client.query(`
+                UPDATE public.ordenes_tratamiento_detalles
+                SET articulo_numero = NULL
+                WHERE id_orden_tratamiento = $1
+            `, [mov.id_orden_tratamiento]);
+        }
+
+        await client.query('COMMIT');
+        console.log(`✅ [MANTENIMIENTO] Artículo desvinculado para movimiento #${movimiento_id}. Retornado a [FALTA ARTÍCULO].`);
+        res.json({ success: true, message: 'Artículo oficial desvinculado exitosamente. El ticket ha retornado al estado [FALTA ARTÍCULO].' });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al desasignar artículo oficial:', e);
+        res.status(500).json({ success: false, error: e.message });
     } finally {
         client.release();
     }
@@ -2932,11 +3315,11 @@ const desvincularPresupuesto = async (req, res) => {
         // 2. Buscar y eliminar la "Orden de Retiro" generada
         const presRes = await client.query(`
             SELECT id FROM public.presupuestos 
-            WHERE origen_numero_factura = $1 
+            WHERE origen_numero_factura = $1::text 
             AND tipo_comprobante = 'Orden de Retiro' 
             AND estado = 'Recibido'
             ORDER BY fecha DESC LIMIT 1
-        `, [id_presupuesto_origen]);
+        `, [String(id_presupuesto_origen)]);
 
         if (presRes.rows.length > 0) {
             const idOrdenRetiro = presRes.rows[0].id;
@@ -3133,6 +3516,354 @@ async function transformarConIngrediente(req, res) {
     }
 }
 
+/**
+ * Buscar clientes para el autocompletado en modales
+ */
+async function buscarClientesModal(req, res) {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 1) {
+            return res.json({ success: true, clientes: [] });
+        }
+        const query = `
+            SELECT cliente_id, nombre, apellido, otros
+            FROM public.clientes
+            WHERE cliente_id::text ILIKE $1
+               OR nombre ILIKE $1
+               OR apellido ILIKE $1
+               OR otros ILIKE $1
+            ORDER BY cliente_id::int ASC
+            LIMIT 10
+        `;
+        const result = await pool.query(query, [`%${q}%`]);
+        res.json({ success: true, clientes: result.rows });
+    } catch (error) {
+        console.error('❌ Error buscando clientes para modal:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Obtener rutas y presupuestos recientes de un cliente
+ * Para la selección de origen en el retiro retroactivo
+ */
+async function obtenerRutasRecientesCliente(req, res) {
+    try {
+        const { cliente_id } = req.query;
+        if (!cliente_id) {
+            return res.status(400).json({ success: false, error: 'cliente_id es requerido' });
+        }
+
+        const query = `
+            SELECT DISTINCT
+                r.id AS id_ruta,
+                r.nombre_ruta,
+                r.fecha_salida,
+                r.estado AS estado_ruta,
+                p.id AS presupuesto_id,
+                p.fecha AS fecha_pedido
+            FROM public.rutas r
+            JOIN public.presupuestos p ON p.id_ruta = r.id
+            WHERE p.id_cliente::text = $1
+            ORDER BY r.fecha_salida DESC, r.id DESC
+            LIMIT 15
+        `;
+        const result = await pool.query(query, [String(cliente_id)]);
+        res.json({ success: true, pedidos: result.rows });
+    } catch (error) {
+        console.error('❌ Error obteniendo rutas recientes del cliente:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Registrar Retiro Retroactivo ("Con el diario del lunes")
+ * Genera un nuevo ticket de retiro RT-XX y registra su movimiento físico en Cuarentena
+ */
+async function registrarRetiroRetroactivo(req, res) {
+    const client = await pool.connect();
+    try {
+        const { cliente_id, id_presupuesto_origen, id_ruta, articulo_numero, cantidad, kilos, motivo } = req.body;
+        const usuario = req.user ? req.user.username : 'SISTEMA';
+
+        if (!cliente_id) {
+            return res.status(400).json({ success: false, error: 'Debe seleccionar un cliente.' });
+        }
+        if (!articulo_numero) {
+            return res.status(400).json({ success: false, error: 'Debe seleccionar un artículo maestro.' });
+        }
+        const qty = parseFloat(cantidad || 0);
+        if (qty <= 0) {
+            return res.status(400).json({ success: false, error: 'La cantidad debe ser mayor a 0.' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Resolver código y nombre del artículo
+        let articuloReal = articulo_numero;
+        let nombreArticulo = articulo_numero;
+        const resArt = await client.query('SELECT numero, codigo_barras, nombre FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1', [articulo_numero]);
+        if (resArt.rows.length > 0) {
+            articuloReal = resArt.rows[0].numero;
+            nombreArticulo = resArt.rows[0].nombre || articulo_numero;
+        }
+
+        // 2. Crear Ticket digital RT-XX en public.ordenes_tratamiento
+        const crypto = require('crypto');
+        const hash = crypto.createHash('sha256').update(Date.now().toString() + Math.random().toString()).digest('hex');
+
+        const insertOt = `
+            INSERT INTO public.ordenes_tratamiento
+            (id_cliente, id_ruta, estado_logistico, estado_tratamiento, responsable_nombre, fecha_creacion, codigo_qr_hash, chofer_nombre)
+            VALUES ($1, $2, 'INGRESADO_LOCAL', 'RETIRO_PENDIENTE', $3, NOW(), $4, $5)
+            RETURNING id
+        `;
+        const resOt = await client.query(insertOt, [
+            cliente_id,
+            id_ruta ? parseInt(id_ruta) : null,
+            usuario,
+            hash,
+            usuario
+        ]);
+        const otId = resOt.rows[0].id;
+        const ticketRT = `RT-${otId}`;
+
+        // 3. Insertar Movimiento Físico en mantenimiento_movimientos
+        const jsonObs = JSON.stringify([{
+            desc: nombreArticulo,
+            kilos: parseFloat(kilos || 0) || qty,
+            bultos: 1,
+            motivo: motivo || 'Devolución retroactiva de reparto'
+        }]);
+
+        const insertMov = `
+            INSERT INTO public.mantenimiento_movimientos
+            (id_presupuesto_origen, articulo_numero, cantidad, usuario, tipo_movimiento, id_orden_tratamiento, estado, observaciones, fecha_movimiento)
+            VALUES ($1, $2, $3, $4, 'RETIRO_TRATAMIENTO', $5, 'PENDIENTE', $6, NOW())
+            RETURNING id
+        `;
+        const resMov = await client.query(insertMov, [
+            id_presupuesto_origen ? parseInt(id_presupuesto_origen) : null,
+            articuloReal,
+            qty,
+            usuario,
+            otId,
+            jsonObs
+        ]);
+
+        await client.query('COMMIT');
+
+        console.log(`✅ [RETIRO_RETROACTIVO] Ticket ${ticketRT} registrado exitosamente para cliente #${cliente_id}.`);
+        res.json({
+            success: true,
+            ticket_rt: ticketRT,
+            id_movimiento: resMov.rows[0].id,
+            message: `Ticket ${ticketRT} registrado e ingresado a Cuarentena exitosamente.`
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error registrando retiro retroactivo:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Generar datos completos de trazabilidad de ítems seleccionados para reporte PDF/Impresión de Depósito
+ */
+async function generarReporteTrazabilidadDatos(req, res) {
+    try {
+        const { ids } = req.query;
+        if (!ids) {
+            return res.status(400).json({ success: false, error: 'Debe especificar al menos un id de movimiento' });
+        }
+
+        const idsArray = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        if (idsArray.length === 0) {
+            return res.status(400).json({ success: false, error: 'IDs inválidos' });
+        }
+
+        const query = `
+            SELECT DISTINCT ON (sc.id)
+                sc.id AS id_movimiento,
+                sc.articulo_numero,
+                sc.cantidad,
+                sc.usuario,
+                COALESCE(u.nombre_completo, u.usuario, sc.usuario, 'Operador Depósito') AS operador_nombre,
+                sc.tipo_movimiento,
+                sc.estado,
+                sc.id_presupuesto_origen,
+                sc.observaciones,
+                sc.fecha_movimiento,
+                sc.id_orden_tratamiento,
+                COALESCE(ba.articulo_id, a.numero, sc.articulo_numero) AS articulo_sku,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, src.descripcion, 'Sin asignar') AS articulo_nombre,
+                COALESCE(a.codigo_barras, src.codigo_barras) AS codigo_barras,
+                COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0), 1.0)::numeric AS kilos_unidad,
+                (sc.cantidad * COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0), 1.0)::numeric)::numeric AS total_kilos,
+                c.cliente_id,
+                c.nombre AS cliente_nombre,
+                c.apellido AS cliente_apellido,
+                c.otros AS cliente_otros,
+                ot.id AS ot_id,
+                ot.id_ruta,
+                ot.chofer_nombre,
+                ot.responsable_nombre,
+                ot.responsable_apellido,
+                ot.fecha_validacion_chofer,
+                ot.fecha_ingreso_mantenimiento,
+                r.nombre_ruta,
+                r.fecha_salida AS fecha_ruta,
+                otd.motivo AS otd_motivo,
+                otd.descripcion_externa AS otd_desc,
+                nc_estado.fact_estado,
+                nc_estado.fact_cae,
+                nc_estado.cbte_nro,
+                nc_estado.pto_vta
+            FROM public.mantenimiento_movimientos sc
+            LEFT JOIN public.articulos a ON (sc.articulo_numero = a.numero OR sc.articulo_numero = a.codigo_barras)
+            LEFT JOIN public.bunker_articulos ba ON (
+                LOWER(ba.articulo_id) = LOWER(sc.articulo_numero) 
+                OR (a.numero IS NOT NULL AND LOWER(ba.articulo_id) = LOWER(a.numero))
+                OR (a.codigo_barras IS NOT NULL AND LOWER(ba.articulo_id) = LOWER(a.codigo_barras))
+            )
+            LEFT JOIN public.stock_real_consolidado src ON (
+                LOWER(src.articulo_numero) = LOWER(sc.articulo_numero) 
+                OR (a.numero IS NOT NULL AND LOWER(src.articulo_numero) = LOWER(a.numero))
+                OR (src.codigo_barras IS NOT NULL AND LOWER(src.codigo_barras) = LOWER(sc.articulo_numero))
+            )
+            LEFT JOIN public.usuarios u ON (u.id::text = sc.usuario OR LOWER(u.usuario) = LOWER(sc.usuario) OR LOWER(u.nombre_completo) = LOWER(sc.usuario))
+            LEFT JOIN public.ordenes_tratamiento ot ON sc.id_orden_tratamiento = ot.id
+            LEFT JOIN public.ordenes_tratamiento_detalles otd ON ot.id = otd.id_orden_tratamiento
+            LEFT JOIN public.clientes c ON (ot.id_cliente::text = c.cliente_id::text)
+            LEFT JOIN public.rutas r ON (ot.id_ruta = r.id)
+            LEFT JOIN LATERAL (
+                SELECT 
+                    ff.estado AS fact_estado,
+                    ff.cae AS fact_cae,
+                    ff.cbte_nro,
+                    ff.pto_vta
+                FROM public.mantenimiento_movimientos mm_nc
+                JOIN public.factura_facturas ff ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
+                WHERE mm_nc.tipo_movimiento = 'EMISION_NC'
+                  AND mm_nc.estado IS DISTINCT FROM 'ANULADO'
+                  AND (
+                      (mm_nc.observaciones LIKE '%[MovID: ' || sc.id || ']%')
+                      OR
+                      (sc.id_presupuesto_origen IS NOT NULL AND mm_nc.id_presupuesto_origen = sc.id_presupuesto_origen AND mm_nc.id > sc.id)
+                  )
+                ORDER BY ff.id DESC
+                LIMIT 1
+            ) nc_estado ON true
+            WHERE sc.id = ANY($1)
+            ORDER BY sc.id DESC
+        `;
+
+        let logoBase64 = '';
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const logoPath = path.join(__dirname, '../../facturacion/img/logo_LAMDA_grande.png');
+            if (fs.existsSync(logoPath)) {
+                const buf = fs.readFileSync(logoPath);
+                logoBase64 = `data:image/png;base64,${buf.toString('base64')}`;
+            }
+        } catch (e) {
+            console.error('Error leyendo logo:', e);
+        }
+
+        const result = await pool.query(query, [idsArray]);
+        res.json({ success: true, items: result.rows, logo_base64: logoBase64 });
+
+    } catch (error) {
+        console.error('❌ Error generando datos de reporte de trazabilidad:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Corregir Datos de Recepción Física de un Ticket RT (Bultos, Kilos, Motivo, Descripción)
+ * Permite al operario de depósito rectificar errores de carga del chofer o cliente.
+ */
+async function corregirRecepcionRT(req, res) {
+    const client = await pool.connect();
+    try {
+        const { movimiento_id, bultos, kilos, descripcion, motivo } = req.body;
+        if (!movimiento_id) {
+            return res.status(400).json({ success: false, error: 'ID de movimiento requerido.' });
+        }
+
+        const bultosVal = parseInt(bultos);
+        const kilosVal = parseFloat(kilos);
+
+        if (isNaN(bultosVal) || bultosVal <= 0) {
+            return res.status(400).json({ success: false, error: 'La cantidad de bultos debe ser un número entero mayor a 0.' });
+        }
+        if (isNaN(kilosVal) || kilosVal <= 0) {
+            return res.status(400).json({ success: false, error: 'Los kilos deben ser un valor numérico mayor a 0.' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Obtener movimiento
+        const resMov = await client.query('SELECT * FROM public.mantenimiento_movimientos WHERE id = $1 FOR UPDATE', [movimiento_id]);
+        if (resMov.rows.length === 0) {
+            throw new Error('Movimiento no encontrado.');
+        }
+        const mov = resMov.rows[0];
+
+        // 2. Parsear observaciones existentes
+        let obsArr = [];
+        try {
+            obsArr = typeof mov.observaciones === 'string' ? JSON.parse(mov.observaciones) : mov.observaciones;
+            if (!Array.isArray(obsArr)) obsArr = [];
+        } catch (e) {
+            obsArr = [];
+        }
+
+        const descFinal = descripcion || (obsArr[0]?.desc || 'Mercadería');
+        const motivoFinal = motivo || (obsArr[0]?.motivo || 'Devolución / Tratamiento');
+
+        const newObsArr = [{
+            desc: descFinal,
+            kilos: kilosVal,
+            bultos: bultosVal,
+            motivo: motivoFinal,
+            chofer: obsArr[0]?.chofer || null,
+            responsable: obsArr[0]?.responsable || null
+        }];
+
+        // 3. Actualizar movimiento
+        await client.query(`
+            UPDATE public.mantenimiento_movimientos
+            SET observaciones = $1
+            WHERE id = $2
+        `, [JSON.stringify(newObsArr), movimiento_id]);
+
+        // 4. Si tiene id_orden_tratamiento, actualizar ordenes_tratamiento_detalles
+        if (mov.id_orden_tratamiento) {
+            await client.query(`
+                UPDATE public.ordenes_tratamiento_detalles
+                SET bultos = $1, kilos = $2, descripcion_externa = $3, motivo = $4
+                WHERE id_orden_tratamiento = $5
+            `, [bultosVal, kilosVal, descFinal, motivoFinal, mov.id_orden_tratamiento]);
+        }
+
+        await client.query('COMMIT');
+        console.log(`✅ [MANTENIMIENTO] Datos de recepción corregidos para movimiento #${movimiento_id} (RT-${mov.id_orden_tratamiento || 'S/N'}).`);
+        res.json({ success: true, message: 'Datos de recepción física corregidos exitosamente.' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error corregirRecepcionRT:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     getStockMantenimiento,
     diagnosticoVigiaAuditor,
@@ -3167,5 +3898,11 @@ module.exports = {
     vincularPresupuesto,
     desvincularPresupuesto,
     buscarOrdenRetiro,
-    transformarConIngrediente
+    buscarClientesModal,
+    obtenerRutasRecientesCliente,
+    registrarRetiroRetroactivo,
+    generarReporteTrazabilidadDatos,
+    transformarConIngrediente,
+    corregirRecepcionRT,
+    desasignarArticuloOficial
 };

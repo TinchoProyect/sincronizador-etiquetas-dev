@@ -1,0 +1,31 @@
+# .antigravityignore
+# Exclusiones de búsqueda y contexto para optimización de tokens en Antigravity v2.0
+
+# Dependencias pesadas
+node_modules/
+package-lock.json
+
+# Directorios de Caché y Sesión de Automatización de WhatsApp
+.wwebjs_cache/
+src/facturacion/.wwebjs_auth/
+.wwebjs_auth/
+
+# Archivos de Sistema y Entorno Local
+.git/
+.env
+.env.backup
+.env.bak
+.env.test
+
+# Archivos de salida de depuración y dumps temporales
+debug_*.json
+debug_*.txt
+debug_*.log
+mantenimiento_out*.json
+devoluciones_*.json
+diag_*.json
+temp_*.json
+temp_*.txt
+*.pdf
+*.zip
+*.log

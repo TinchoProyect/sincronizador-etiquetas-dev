@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de Ofertas Dinámicas & Cuotas de Stock — LAMDA CRM</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background-color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #1e293b;
+    }
+
+    .monitor-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0 20px 0;
+      border-bottom: 1.5px solid #e2e8f0;
+      margin-bottom: 24px;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-title {
+      margin: 0;
+      font-size: 1.5rem;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+
+    .btn-nav-top {
+      text-decoration: none;
+      font-size: 0.88rem;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-nav-top:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      border-color: #94a3b8;
+    }
+
+    .btn-primary-action {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+
+    .btn-primary-action:hover {
+      background: #4338ca;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+    }
+
+    /* Estado de Sincronización B2B Cloud Automática */
+    .cloud-sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cloud-sync-badge:hover {
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+    .sync-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+    }
+    .sync-dot.syncing {
+      background: #3b82f6;
+      animation: pulseSync 0.8s infinite alternate;
+    }
+    .sync-dot.error {
+      background: #ef4444;
+    }
+    @keyframes pulseSync {
+      from { opacity: 0.4; transform: scale(0.85); }
+      to { opacity: 1; transform: scale(1.25); }
+    }
+
+    /* Buscador Universal Estilizado (Fase 49) */
+    .search-box-container {
+      position: relative;
+      flex: 1;
+      max-width: 480px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-input-wrapper {
+      position: relative;
+      width: 100%;
+      display: flex;
+      align-items: center;
+    }
+    .search-icon-left {
+      position: absolute;
+      left: 12px;
+      color: #94a3b8;
+      font-size: 0.95rem;
+      pointer-events: none;
+    }
+    .search-input-styled {
+      width: 100%;
+      padding: 9px 34px 9px 36px;
+      border-radius: 8px;
+      border: 1.5px solid #cbd5e1;
+      background: white;
+      font-size: 0.88rem;
+      color: #0f172a;
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .search-input-styled:focus {
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      background: #e2e8f0;
+      border: none;
+      color: #64748b;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .search-clear-btn:hover {
+      background: #cbd5e1;
+      color: #0f172a;
+    }
+    .search-counter-badge {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #64748b;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 5px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    /* Buscador & Selector de Artículos en Modal */
+    .search-article-box {
+      position: relative;
+    }
+    .articulos-live-dropdown {
+      max-height: 230px;
+      overflow-y: auto;
+      background: white;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      margin-top: 6px;
+      box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
+    }
+    .art-group-header {
+      background: #f8fafc;
+      padding: 6px 12px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #475569;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .art-item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      transition: background 0.15s;
+      gap: 10px;
+    }
+    .art-item-row:hover {
+      background: #f0f9ff;
+    }
+    .art-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+    }
+    .art-code-pill {
+      font-family: monospace;
+      font-size: 0.76rem;
+      font-weight: 700;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 1px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .art-desc-text {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .art-sub-meta {
+      font-size: 0.74rem;
+      color: #64748b;
+    }
+    .btn-add-art {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      color: #4338ca;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-add-art:hover {
+      background: #4f46e5;
+      color: white;
+      border-color: #4f46e5;
+    }
+    .btn-add-art.added {
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #15803d;
+      cursor: default;
+    }
+
+    /* Bandeja de Presentaciones Seleccionadas (Deck) */
+    .deck-presentaciones-wrapper {
+      margin-top: 10px;
+      background: #f8fafc;
+      border: 1.5px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .deck-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .deck-chips-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .art-chip {
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: all 0.15s;
+    }
+    .art-chip:hover {
+      border-color: #94a3b8;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .art-chip-kilos {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      font-size: 0.76rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .art-chip-del {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0 3px;
+      line-height: 1;
+    }
+    .art-chip-del:hover {
+      color: #ef4444;
+    }
+    .deck-empty-notice {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      text-align: center;
+      padding: 14px 10px;
+    }
+    .btn-text-danger {
+      background: none;
+      border: none;
+      color: #ef4444;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+    .btn-text-danger:hover {
+      text-decoration: underline;
+    }
+
+    /* Panel de Telemetría de Stock de Referencia */
+    .stock-referencia-panel {
+      background: #ecfdf5;
+      border: 1.5px solid #a7f3d0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-top: 10px;
+      margin-bottom: 12px;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .stock-ref-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .stock-ref-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #065f46;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stock-ref-kilos {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #047857;
+      line-height: 1.1;
+      margin-top: 2px;
+    }
+    .stock-ref-desglose {
+      font-size: 0.78rem;
+      color: #166534;
+      line-height: 1.4;
+      text-align: right;
+    }
+    .stock-ref-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #a7f3d0;
+      flex-wrap: wrap;
+    }
+    .btn-sugerencia-cuota {
+      background: white;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sugerencia-cuota:hover {
+      background: #047857;
+      color: white;
+      border-color: #047857;
+    }
+
+    /* KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .kpi-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+
+    .kpi-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+
+    .kpi-label {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    /* Filtros y Tabs */
+    .filter-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .tab-pills {
+      display: flex;
+      gap: 6px;
+      background: #e2e8f0;
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .tab-pill {
+      border: none;
+      background: transparent;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tab-pill.active {
+      background: white;
+      color: #0f172a;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Cards de Ofertas */
+    .ofertas-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .oferta-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      transition: all 0.2s;
+    }
+
+    .oferta-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .oferta-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .oferta-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .oferta-desc {
+      font-size: 0.88rem;
+      color: #64748b;
+      margin: 0;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-activa {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-pausada {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+
+    .status-agotada {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+
+    /* Barra de Progreso de Cuota */
+    .cuota-container {
+      margin: 16px 0;
+      background: #f8fafc;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .cuota-info-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .progress-bar-bg {
+      height: 12px;
+      background: #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: #10b981;
+      border-radius: 6px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-bar-fill.warning {
+      background: #f59e0b;
+    }
+
+    .progress-bar-fill.danger {
+      background: #ef4444;
+    }
+
+    .progress-segment-consumido {
+      height: 100%;
+      background: #10b981;
+      transition: width 0.4s ease;
+    }
+
+    .progress-segment-reservado {
+      height: 100%;
+      background: #f59e0b;
+      transition: width 0.4s ease;
+    }
+
+    /* Desglose de Pedidos en Bandeja / Reservando Cuota */
+    .pedidos-reserva-wrapper {
+      margin-top: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .pedidos-reserva-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 6px;
+    }
+
+    .pedidos-reserva-table th {
+      text-align: left;
+      padding: 5px 8px;
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 700;
+      border-bottom: 1px solid #cbd5e1;
+    }
+
+    .pedidos-reserva-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+    }
+
+    .btn-toggle-pedidos {
+      background: none;
+      border: none;
+      color: #4f46e5;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 0;
+    }
+    .btn-toggle-pedidos:hover {
+      text-decoration: underline;
+    }
+
+    /* Metadata pills */
+    .meta-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .meta-pill {
+      font-size: 0.78rem;
+      padding: 3px 8px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      color: #475569;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .meta-pill.highlight {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #4338ca;
+      font-weight: 600;
+    }
+
+    /* Acciones */
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #f1f5f9;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .btn-action {
+      background: white;
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-action:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .btn-action.btn-wa {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+    .btn-action.btn-wa:hover {
+      background: #d1fae5;
+    }
+
+    .btn-action.btn-danger {
+      color: #b91c1c;
+    }
+    .btn-action.btn-danger:hover {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+
+    /* Modal Form Styling */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: white;
+      width: 100%;
+      max-width: 680px;
+      max-height: 90vh;
+      overflow-y: auto;
+      border-radius: 14px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+      padding: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 5px;
+    }
+
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.86rem;
+      cursor: pointer;
+      color: #1e293b;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="monitor-container">
+    <!-- Encabezado Principal -->
+    <header class="admin-header">
+      <div class="header-left">
+        <a href="../index.html" class="btn-nav-top">
+          <i class="fa-solid fa-arrow-left"></i> Menú Principal
+        </a>
+        <h1 class="header-title">
+          <span>🏷️</span> Gestión de Ofertas Dinámicas & Cuotas de Stock
+        </h1>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <a href="#" onclick="navegarAPoliticasComerciales(event)" class="btn-nav-top" title="Configurar escalas de bonificación por volumen, multi-listas y condición de saldo en cuenta" style="border: 1.5px solid #0284c7; color: #0284c7; background: #f0f9ff; font-weight: 700; box-shadow: 0 1px 3px rgba(2, 132, 199, 0.12);">
+          <i class="fa-solid fa-chart-line"></i> Políticas Comerciales & Volumen
+        </a>
+        <div id="cloud-sync-badge" class="cloud-sync-badge" onclick="forzarSyncB2BManual()" title="Sincronización automática con Supabase Cloud activa (Clic para verificar)">
+          <span class="sync-dot" id="sync-dot"></span>
+          <span id="cloud-sync-text">B2B Cloud Conectado</span>
+        </div>
+        <button class="btn-primary-action" onclick="abrirModalNuevaOferta()">
+          <i class="fa-solid fa-plus"></i> Nueva Oferta Dinámica
+        </button>
+      </div>
+    </header>
+
+    <!-- Indicadores Rápidos (KPIs) -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #eef2ff; color: #4f46e5;">🏷️</div>
+        <div>
+          <div class="kpi-value" id="kpi-activas">0</div>
+          <div class="kpi-label">Ofertas Activas</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #ecfdf5; color: #10b981;">⚖️</div>
+        <div>
+          <div class="kpi-value" id="kpi-cuota-total">0 kg</div>
+          <div class="kpi-label">Cuota Asignada Total</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #fff7ed; color: #ea580c;">⏳</div>
+        <div>
+          <div class="kpi-value" id="kpi-cuota-reservada">0 kg</div>
+          <div class="kpi-label">Reservado en Bandeja/Pedidos</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #eff6ff; color: #3b82f6;">📦</div>
+        <div>
+          <div class="kpi-value" id="kpi-cuota-disponible">0 kg</div>
+          <div class="kpi-label">Stock Remanente Disponible</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #fef3c7; color: #d97706;">👥</div>
+        <div>
+          <div class="kpi-value" id="kpi-listas-cubiertas">0</div>
+          <div class="kpi-label">Listas de Precios Actuando</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Filtros y Buscador Universal -->
+    <div class="filter-bar">
+      <div class="tab-pills">
+        <button class="tab-pill active" onclick="filtrarEstado('TODAS', this)">Todas</button>
+        <button class="tab-pill" onclick="filtrarEstado('ACTIVA', this)">🟢 Activas</button>
+        <button class="tab-pill" onclick="filtrarEstado('PAUSADA', this)">🟡 Pausadas</button>
+        <button class="tab-pill" onclick="filtrarEstado('AGOTADA', this)">🔴 Agotadas</button>
+      </div>
+      <div class="search-box-container">
+        <div class="search-input-wrapper">
+          <i class="fa-solid fa-magnifying-glass search-icon-left"></i>
+          <input type="text" id="input-buscar-oferta" class="search-input-styled" 
+                 placeholder="Buscar por oferta, artículo (ej: mani, cascara), código o familia..." 
+                 autocomplete="off" oninput="filtrarOfertasEnVivo()">
+          <button type="button" id="btn-limpiar-busqueda" class="search-clear-btn" onclick="limpiarBuscadorOfertas()" title="Limpiar búsqueda (Esc)">✕</button>
+        </div>
+        <span id="search-counter-badge" class="search-counter-badge">0 ofertas</span>
+      </div>
+    </div>
+
+    <!-- Grilla de Ofertas -->
+    <div id="ofertas-container" class="ofertas-grid">
+      <div style="text-align: center; padding: 40px; color: #64748b;">
+        <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+        <p style="margin-top: 10px;">Cargando ofertas dinámicas...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Crear / Editar Oferta -->
+  <div id="modal-oferta" class="modal-overlay">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
+        <h3 id="modal-oferta-titulo" style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #0f172a;">
+          ➕ Nueva Oferta Dinámica
+        </h3>
+        <button onclick="cerrarModalOferta()" style="background: none; border: none; font-size: 1.3rem; color: #94a3b8; cursor: pointer;">&times;</button>
+      </div>
+
+      <form id="form-oferta" onsubmit="guardarOfertaSubmit(event)">
+        <input type="hidden" id="oferta-id-input" value="">
+
+        <div class="form-group">
+          <label class="form-label" for="oferta-titulo-input">Título de la Oferta / Promo *</label>
+          <input type="text" id="oferta-titulo-input" class="form-input" placeholder="Ej: Promo Maní Cáscara Virginia - Lote Especial" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="oferta-desc-input">Descripción / Razón de la Oferta (Opcional)</label>
+          <textarea id="oferta-desc-input" class="form-textarea" rows="2" placeholder="Ej: Oferta de 2 bolsones para rotar stock entrante."></textarea>
+        </div>
+
+        <!-- Selección de Artículos y Presentaciones Afectadas con Buscador Universal -->
+        <div class="form-group">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span>Artículos y Presentaciones Afectadas *</span>
+            <span style="font-size: 0.76rem; font-weight: normal; color: #64748b;">(Busca y agrega las presentaciones que debitan de la cuota)</span>
+          </label>
+
+          <!-- Input de Búsqueda de Artículos para la Oferta -->
+          <div class="search-article-box">
+            <div class="search-input-wrapper">
+              <i class="fa-solid fa-magnifying-glass search-icon-left"></i>
+              <input type="text" id="input-buscar-articulo-modal" class="search-input-styled" 
+                     placeholder="Escribe para buscar artículos (ej: mani, cascara, nuez, pasas, MCVX20)..." 
+                     autocomplete="off" oninput="filtrarArticulosModalEnVivo()">
+              <button type="button" id="btn-limpiar-art-modal" class="search-clear-btn" onclick="limpiarBuscadorArticulosModal()">✕</button>
+            </div>
+
+            <!-- Panel de Resultados de Búsqueda en Vivo -->
+            <div id="dropdown-resultados-articulos" class="articulos-live-dropdown" style="display: none;"></div>
+          </div>
+
+          <!-- Bandeja de Presentaciones Seleccionadas -->
+          <div class="deck-presentaciones-wrapper">
+            <div class="deck-header">
+              <span style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">
+                📦 Presentaciones vinculadas a esta cuota (<span id="total-articulos-seleccionados">0</span>):
+              </span>
+              <button type="button" id="btn-desmarcar-todos" class="btn-text-danger" style="display: none;" onclick="limpiarTodosArticulosSeleccionados()">
+                Desmarcar todas
+              </button>
+            </div>
+            <div id="deck-articulos-chips" class="deck-chips-grid"></div>
+            <div id="deck-empty-notice" class="deck-empty-notice">
+              💡 Busca y agrega arriba las presentaciones de tu artículo (ej: <strong>MCVX20</strong> bolsón 20kg, <strong>MCVX5</strong> 5kg, <strong>MCVX2</strong> 2kg). Todas debitarán de la misma cuota global.
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetría de Stock de Referencia (Materia Prima & Productos Terminados) -->
+        <div id="panel-stock-referencia" class="stock-referencia-panel" style="display: none;">
+          <div class="stock-ref-header">
+            <div>
+              <span class="stock-ref-title">📊 Stock Total Disponible en la Empresa:</span>
+              <div class="stock-ref-kilos" id="stock-ref-kilos-total">0.00 kg</div>
+            </div>
+            <div class="stock-ref-desglose" id="stock-ref-desglose-text">
+              <!-- Se puebla dinámicamente -->
+            </div>
+          </div>
+          <div class="stock-ref-actions">
+            <span style="font-size: 0.76rem; color: #065f46; font-weight: 700;">Sugerencias rápidas:</span>
+            <button type="button" class="btn-sugerencia-cuota" onclick="asignarSugerenciaCuota(0.25)">⚡ 25% del stock</button>
+            <button type="button" class="btn-sugerencia-cuota" onclick="asignarSugerenciaCuota(0.50)">⚡ 50% del stock</button>
+            <button type="button" class="btn-sugerencia-cuota" onclick="asignarSugerenciaCuota(1.00)">⚡ 100% Stock Total</button>
+          </div>
+        </div>
+
+        <!-- Parámetros de Cuota y Beneficio -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="oferta-cuota-input">Cuota Total a Ofertar *</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="number" id="oferta-cuota-input" class="form-input" step="0.01" min="0.1" placeholder="Ej: 40" required>
+              <select id="oferta-unidad-cuota-select" class="form-select" style="width: 110px;">
+                <option value="KILOS">Kilos</option>
+                <option value="UNIDADES">Unidades</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="oferta-descuento-input">Descuento Ofrecido (%) *</label>
+            <input type="number" id="oferta-descuento-input" class="form-input" step="0.1" min="0.5" max="100" value="5.0" required>
+          </div>
+        </div>
+
+        <!-- Condición de Finalización y Vigencia (Doble Criterio: Cuota y/o Fecha) -->
+        <div class="form-group" style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 14px;">
+          <label class="form-label" style="margin-bottom: 8px;">Condición de Finalización de la Oferta *</label>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Opción 1: Cuota de stock -->
+            <label class="checkbox-label" style="font-weight: 600; color: #1e293b;">
+              <input type="checkbox" id="condicion-agotar-stock-check" checked onchange="actualizarCondicionCierreUI()">
+              <span>📦 Finalizar al agotar la cuota de stock asignada</span>
+            </label>
+
+            <!-- Opción 2: Fecha Límite fija -->
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label class="checkbox-label" style="font-weight: 600; color: #1e293b;">
+                <input type="checkbox" id="condicion-fecha-limite-check" onchange="actualizarCondicionCierreUI()">
+                <span>📅 Finalizar en fecha límite de vigencia:</span>
+              </label>
+              <input type="date" id="oferta-fecha-fin-input" class="form-input" style="width: auto; min-width: 170px; display: none;" onchange="actualizarCondicionCierreUI()">
+            </div>
+          </div>
+
+          <!-- Resumen explicativo de la condición activa -->
+          <div id="resumen-condicion-cierre" style="font-size: 0.8rem; color: #334155; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+            📌 <strong>Condición:</strong> Finaliza exclusivamente hasta agotar la cuota de stock.
+          </div>
+          <input type="hidden" id="oferta-condicion-hidden" value="HASTA_AGOTAR_STOCK">
+        </div>
+
+        <!-- Listas de Precios Participantes -->
+        <div class="form-group">
+          <label class="form-label">Listas de Precios Habilitadas *</label>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px;" id="contenedor-listas-checks">
+            <span style="color: #64748b; font-size: 0.85rem;">Cargando listas de precios...</span>
+          </div>
+        </div>
+
+        <!-- Regla de Conflicto 300k -->
+        <div class="form-group" style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 12px;">
+          <label class="checkbox-label" style="font-weight: 600; color: #3730a3;">
+            <input type="checkbox" id="oferta-no-acumulable-check" checked>
+            🛡️ Blindaje Comercial: No sumar al 5% de pedidos superiores a $300.000
+          </label>
+          <p style="margin: 4px 0 0 24px; font-size: 0.78rem; color: #4338ca;">
+            El importe en oferta sumará al volumen de compra del cliente para alcanzar el umbral de $300.000, pero no recibirá bonificación duplicada (evita llegar a un 10% indebido).
+          </p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+          <div>
+            <button type="button" id="btn-eliminar-modal-oferta" class="btn-action btn-danger" style="display: none; color: #b91c1c; border-color: #fecaca; background: #fef2f2; font-weight: 700;" onclick="eliminarOfertaDesdeModal()">
+              🗑️ Eliminar esta Oferta
+            </button>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-nav-top" onclick="cerrarModalOferta()">Cancelar</button>
+            <button type="submit" class="btn-primary-action">Guardar Oferta</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Difusión en Cascada Omnicanal (WhatsApp + Email) -->
+  <div id="modal-difusion" class="modal-overlay">
+    <div class="modal-card" style="max-width: 860px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+      <!-- Header del Modal -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+        <div>
+          <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #065f46; display: flex; align-items: center; gap: 8px;">
+            <span>📢 Difusión en Cascada Omnicanal</span>
+            <span style="font-size: 0.75rem; background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-weight: 600;">WhatsApp + Email</span>
+          </h3>
+          <span id="difusion-oferta-titulo" style="font-size: 0.85rem; color: #047857; font-weight: 600; margin-top: 2px; display: block;">...</span>
+        </div>
+        <button onclick="cerrarModalDifusion()" style="background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer;">&times;</button>
+      </div>
+
+      <input type="hidden" id="difusion-oferta-id" value="">
+
+      <!-- Scrollable Body -->
+      <div style="overflow-y: auto; padding-right: 6px; flex: 1;">
+        <!-- Banner Informativo -->
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.3rem;">⚡</span>
+          <p style="margin: 0; font-size: 0.82rem; color: #15803d; line-height: 1.4;">
+            Los mensajes de WhatsApp se despacharán secuencialmente cada <strong>1.8 segundos</strong> para garantizar naturalidad humana y evitar penalizaciones. Los correos se transmitirán mediante el servidor de notificaciones local.
+          </p>
+        </div>
+
+        <!-- Mensaje Base Compartido (Unificado para WhatsApp y Correo) -->
+        <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+            <label class="form-label" style="margin: 0; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+              <span>📝 Mensaje de Difusión (Compartido para WhatsApp y Correo):</span>
+            </label>
+            <span style="font-size: 0.74rem; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; padding: 2px 8px; border-radius: 6px;">
+              ⚡ Se reutiliza automáticamente en ambos canales
+            </span>
+          </div>
+
+          <div style="margin-bottom: 8px;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: #475569; display: block; margin-bottom: 3px;">
+              ✉️ Asunto del Correo Electrónico:
+            </label>
+            <input type="text" id="difusion-email-asunto" class="form-input" style="font-size: 0.82rem;" placeholder="Asunto del correo...">
+          </div>
+
+          <div>
+            <label style="font-size: 0.78rem; font-weight: 600; color: #475569; display: block; margin-bottom: 3px;">
+              💬 Cuerpo del Mensaje:
+            </label>
+            <textarea id="difusion-mensaje-textarea" class="form-textarea" rows="4" style="font-size: 0.84rem; resize: vertical;"></textarea>
+            <span style="font-size: 0.72rem; color: #64748b; margin-top: 4px; display: block;">
+              Variables automáticas disponibles: <code>{contacto}</code>, <code>{cliente}</code>, <code>{titulo}</code>, <code>{descuento}</code>, <code>{cuota}</code>.
+            </span>
+          </div>
+        </div>
+
+        <!-- Barra de Destinatarios y Filtros -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 0.88rem; color: #1e293b;">Receptores Agrupados por Lista:</strong>
+              <span id="difusion-resumen-badges" style="font-size: 0.8rem; font-weight: 600; color: #475569;">
+                0 clientes (<span id="count-wa" style="color: #16a34a;">0 WhatsApp</span> | <span id="count-em" style="color: #2563eb;">0 Email</span>)
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+              <button type="button" class="btn-action" style="font-size: 0.75rem; padding: 4px 10px; background: #faf5ff; border-color: #d8b4fe; color: #7e22ce; font-weight: 700;" onclick="guardarPredeterminadosDifusion()" title="Guardar la configuración de contactos seleccionados como exclusiva para difusión en cascada">
+                💾 Guardar Predeterminados
+              </button>
+              <button type="button" class="btn-action" style="font-size: 0.75rem; padding: 4px 8px; background: #ecfdf5; border-color: #86efac; color: #166534;" onclick="toggleCanalDestinatarios('wa')">
+                🟢 Todos WhatsApp
+              </button>
+              <button type="button" class="btn-action" style="font-size: 0.75rem; padding: 4px 8px; background: #eff6ff; border-color: #93c5fd; color: #1d4ed8;" onclick="toggleCanalDestinatarios('email')">
+                ✉️ Todos Email
+              </button>
+            </div>
+          </div>
+
+          <!-- Buscador en Vivo de Clientes en el Modal -->
+          <div style="position: relative;">
+            <input type="text" id="difusion-filtro-input" class="form-input" 
+                   placeholder="🔍 Filtrar por lista, cliente, razón social, teléfono o correo..." 
+                   style="font-size: 0.82rem; padding: 6px 12px;"
+                   oninput="filtrarClientesModalDifusion()">
+          </div>
+        </div>
+
+        <!-- Lista de Clientes con Desglose de Teléfonos y Emails -->
+        <div id="difusion-clientes-list" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; max-height: 280px; overflow-y: auto;">
+          <span style="color: #64748b; font-size: 0.85rem;">Cargando destinatarios...</span>
+        </div>
+
+        <!-- Checkbox para guardar selección como predeterminada -->
+        <div style="margin-top: 10px; padding: 8px 12px; background: #f8fafc; border-radius: 6px; border: 1px dashed #cbd5e1; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="difusion-guardar-predeterminados" checked style="cursor: pointer; width: 16px; height: 16px;">
+          <label for="difusion-guardar-predeterminados" style="font-size: 0.82rem; color: #334155; cursor: pointer; user-select: none;">
+            💾 <strong>Actualizar predeterminados de difusión al despachar</strong> (guarda esta configuración exclusivamente para difusiones).
+          </label>
+        </div>
+      </div>
+
+      <!-- Footer de Acciones -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+        <span id="difusion-footer-info" style="font-size: 0.8rem; color: #64748b;">
+          Seleccione los canales a difundir.
+        </span>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn-nav-top" onclick="cerrarModalDifusion()">Cancelar</button>
+          <button type="button" class="btn-primary-action" id="btn-iniciar-difusion" style="background: linear-gradient(135deg, #059669, #0d9488); border: none; box-shadow: 0 2px 4px rgba(5,150,105,0.3);" onclick="ejecutarDifusionCascada()">
+            🚀 Iniciar Cascada Omnicanal
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function navegarAPoliticasComerciales(e) {
+      if (e) e.preventDefault();
+      const protocol = window.location.protocol;
+      const host = window.location.hostname || 'localhost';
+      window.location.href = `${protocol}//${host}:3003/pages/presupuestos.html?politicas=true`;
+    }
+  </script>
+  <script src="../js/ofertas-dinamicas.js?v=1.5_omnicanal_grupos_predet"></script>
+</body>
+</html>

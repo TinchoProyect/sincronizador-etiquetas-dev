@@ -86,6 +86,8 @@ async function obtenerIngredientes() {
                 i.categoria_id,
                 i.stock_actual,
                 COALESCE(i.stock_bultos, 0) as stock_bultos,
+                i.articulo_vinculado_numero,
+                21.00 as porcentaje_iva,
                 i.sector_id,
                 s.nombre as sector_nombre,
                 s.descripcion as sector_descripcion,
@@ -96,6 +98,8 @@ async function obtenerIngredientes() {
                             json_build_object(
                                 'vinculo_id', d.vinculo_id,
                                 'lote_id_supabase', v.lote_id_supabase,
+                                'lote_codigo_corto', v.lote_codigo_corto,
+                                'id_corto', COALESCE(v.lote_codigo_corto, SUBSTRING(v.lote_id_supabase FROM 1 FOR 8)),
                                 'cantidad_asignada', d.cantidad_asignada,
                                 'cantidad_abierta', COALESCE(d.cantidad_abierta, 0),
                                 'cajas_disponibles', d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0),
@@ -346,6 +350,72 @@ async function obtenerIngrediente(id) {
                 s.nombre as sector_nombre,
                 s.descripcion as sector_descripcion,
                 i.es_insumo,
+                i.articulo_vinculado_numero,
+                (
+                    SELECT COALESCE(
+                        -- PARTE 1: Materia Prima (Receta, sobrescrito multilista o ERP/Búnker base)
+                        COALESCE(
+                            -- PRIORIDAD 1: Costo base sobrescrito en listas (ej: simulación de tostadero guardada)
+                            (
+                                SELECT la.costo_base_sobrescrito 
+                                FROM public.bunker_lista_articulos la 
+                                WHERE la.articulo_numero = ba.articulo_id 
+                                  AND la.costo_base_sobrescrito IS NOT NULL 
+                                  AND la.costo_base_sobrescrito > 0
+                                ORDER BY la.es_patron DESC, la.lista_id ASC 
+                                LIMIT 1
+                            ),
+                            -- PRIORIDAD 2: Receta explotada
+                            NULLIF(
+                                (
+                                    SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                    FROM public.receta_ingredientes ri2
+                                    JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
+                                    WHERE ri2.receta_id = (
+                                        SELECT r2.id 
+                                        FROM public.recetas r2 
+                                        WHERE r2.articulo_numero = i.articulo_vinculado_numero 
+                                        ORDER BY r2.fecha_creacion DESC 
+                                        LIMIT 1
+                                    )
+                                ),
+                                0.00
+                            ),
+                            pa.costo,
+                            ba.costo_base,
+                            0.00
+                        ) +
+                        -- PARTE 2: Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
+                        COALESCE(
+                            (
+                                SELECT 
+                                    (
+                                        COALESCE(la.costo_tiempo, 0.00) + 
+                                        COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
+                                                  FROM public.bunker_lista_insumos li 
+                                                  WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
+                                    ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
+                                FROM public.bunker_lista_articulos la
+                                WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
+                                ORDER BY la.lista_id ASC
+                                LIMIT 1
+                            ),
+                            0.00
+                        ),
+                        0.00
+                    )::numeric(12,2)
+                    FROM public.bunker_articulos ba
+                    LEFT JOIN public.precios_articulos pa ON ba.articulo_id = pa.articulo
+                    WHERE ba.articulo_id = i.articulo_vinculado_numero
+                    LIMIT 1
+                ) as costo_articulo_vinculado_base,
+                (
+                    SELECT COALESCE(ba.descripcion_generada, ba.descripcion, s.descripcion) 
+                    FROM public.bunker_articulos ba 
+                    FULL OUTER JOIN public.stock_real_consolidado s ON (ba.articulo_id = s.articulo_numero)
+                    WHERE ba.articulo_id = i.articulo_vinculado_numero OR s.articulo_numero = i.articulo_vinculado_numero
+                    LIMIT 1
+                ) as articulo_vinculado_descripcion,
                 -- ✅ CÁLCULO DE STOCK POTENCIAL (Dinámico y en caliente)
                 COALESCE(
                     i.stock_actual + (
@@ -520,6 +590,7 @@ async function actualizarIngrediente(id, datos) {
         const receta_base_kg = (datos.receta_base_kg === undefined) ? existing.receta_base_kg : datos.receta_base_kg;
         const es_insumo = (datos.es_insumo === undefined) ? existing.es_insumo : (datos.es_insumo === true || datos.es_insumo === 'true');
         const costo_patron = (datos.costo_patron === undefined) ? existing.costo_patron : parseFloat(datos.costo_patron || 0);
+        const articulo_vinculado_numero = (datos.articulo_vinculado_numero === undefined) ? existing.articulo_vinculado_numero : (datos.articulo_vinculado_numero || null);
 
         // Manejar sector_id con compatibilidad para null
         let sector_id;
@@ -552,22 +623,57 @@ async function actualizarIngrediente(id, datos) {
             receta_base_kg = $7,
             sector_id = $8,
             es_insumo = $9,
-            costo_patron = $10
-            WHERE id = $11
+            costo_patron = $10,
+            articulo_vinculado_numero = COALESCE($11, articulo_vinculado_numero)
+            WHERE id = $12
             RETURNING *;
         `;
 
-        const values = [nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, receta_base_kg, sector_id, es_insumo, costo_patron, id];
+        const values = [nombre, descripcion, unidad_medida, categoria_id, stock_actual, padre_id, receta_base_kg, sector_id, es_insumo, costo_patron, articulo_vinculado_numero, id];
         const result = await pool.query(query, values);
 
         if (result.rows.length === 0) {
             throw new Error('Ingrediente no encontrado');
         }
 
+        // 🔗 SOPORTE MULTI-ARTÍCULO N->1: Registrar en la tabla relacional public.ingrediente_bunker_articulos
+        if (articulo_vinculado_numero) {
+            const checkArt = await pool.query(
+                `SELECT 1 FROM public.bunker_articulos WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($1))`,
+                [articulo_vinculado_numero]
+            );
+            if (checkArt.rows.length > 0) {
+                await pool.query(
+                    `INSERT INTO public.ingrediente_bunker_articulos (ingrediente_id, bunker_articulo_id)
+                     VALUES ($1, $2) ON CONFLICT (ingrediente_id, bunker_articulo_id) DO NOTHING`,
+                    [id, articulo_vinculado_numero]
+                );
+            } else {
+                console.warn(`⚠️ [INGREDIENTES] Artículo "${articulo_vinculado_numero}" no existe en bunker_articulos; omitiendo inserción en ingrediente_bunker_articulos.`);
+            }
+        }
+
+        // 🗑️ REVOCACIÓN GRANULAR N->1
+        if (datos.revocar_articulo_id) {
+            await pool.query(
+                `DELETE FROM public.ingrediente_bunker_articulos WHERE ingrediente_id = $1 AND bunker_articulo_id = $2`,
+                [id, datos.revocar_articulo_id]
+            );
+            // Actualizar articulo_vinculado_numero si era el principal
+            if (existing.articulo_vinculado_numero === datos.revocar_articulo_id) {
+                const rest = await pool.query(`SELECT bunker_articulo_id FROM public.ingrediente_bunker_articulos WHERE ingrediente_id = $1 LIMIT 1`, [id]);
+                const nextArt = rest.rows.length > 0 ? rest.rows[0].bunker_articulo_id : null;
+                await pool.query(`UPDATE public.ingredientes SET articulo_vinculado_numero = $1 WHERE id = $2`, [nextArt, id]);
+            }
+        } else if (datos.articulo_vinculado_numero === null) {
+            await pool.query(`DELETE FROM public.ingrediente_bunker_articulos WHERE ingrediente_id = $1`, [id]);
+            await pool.query(`UPDATE public.ingredientes SET articulo_vinculado_numero = NULL WHERE id = $1`, [id]);
+        }
+
         return result.rows[0];
     } catch (error) {
         console.error('❌ [SECTORES] Error en actualizarIngrediente:', error);
-        throw new Error('No se pudo actualizar el ingrediente');
+        throw new Error(error.message || 'No se pudo actualizar el ingrediente');
     }
 }
 
@@ -631,6 +737,7 @@ async function obtenerStockPorUsuario(usuarioId) {
         // con su costo patrón vigente y valorización total calculada (comentarios en español)
         const query = `
             SELECT 
+                i.id,
                 i.id as ingrediente_id,
                 i.codigo,
                 i.nombre as nombre_ingrediente,
@@ -638,6 +745,9 @@ async function obtenerStockPorUsuario(usuarioId) {
                 i.unidad_medida,
                 c.nombre as categoria,
                 i.categoria_id,
+                i.sector_id,
+                s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion,
                 COALESCE(SUM(isu.cantidad), 0) as stock_total,
                 COALESCE(i.costo_patron, 0.00) as costo_patron,
                 (COALESCE(i.costo_patron, 0.00) * COALESCE(SUM(isu.cantidad), 0)) as valorizacion_total,
@@ -655,16 +765,20 @@ async function obtenerStockPorUsuario(usuarioId) {
                     ELSE 'Simple'
                 END as tipo
             FROM public.ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
-            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre, i.costo_patron
+            GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre, i.costo_patron, i.sector_id, s.nombre, s.descripcion
             ORDER BY i.nombre ASC;
         `;
 
         const result = await pool.query(query, [usuarioId]);
 
-        return result.rows;
+        return result.rows.map(ing => ({
+            ...ing,
+            sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
+        }));
     } catch (error) {
         console.error(`❌ Error en obtenerStockPorUsuario para usuario ${usuarioId}:`, error);
         throw new Error('No se pudo obtener el stock del usuario');
@@ -853,10 +967,12 @@ async function buscarIngredientePorCodigo(codigo) {
             FROM ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
-            WHERE i.codigo = $1;
+            WHERE i.codigo::text = $1
+               OR (LTRIM(i.codigo::text, '0') <> '' AND LTRIM(i.codigo::text, '0') = LTRIM($1, '0'))
+            LIMIT 1;
         `;
 
-        const result = await pool.query(query, [codigo.trim()]);
+        const result = await pool.query(query, [String(codigo).trim()]);
 
         if (result.rows.length === 0) {
             throw new Error('Ingrediente no encontrado');
@@ -882,23 +998,63 @@ async function obtenerIngredientesPorSectores(sectores) {
         let query;
         let params = [];
 
+        const selectCampos = `
+            SELECT 
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.descripcion,
+                i.unidad_medida,
+                c.nombre as categoria,
+                i.categoria_id,
+                i.stock_actual,
+                COALESCE(i.stock_bultos, 0) as stock_bultos,
+                i.sector_id,
+                s.nombre as sector_nombre,
+                s.descripcion as sector_descripcion,
+                -- ✅ CAJAS CERRADAS CON IDENTIDAD DE LOTE PRESERVADA
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'vinculo_id', d.vinculo_id,
+                                'lote_id_supabase', v.lote_id_supabase,
+                                'lote_codigo_corto', v.lote_codigo_corto,
+                                'id_corto', COALESCE(v.lote_codigo_corto, SUBSTRING(v.lote_id_supabase FROM 1 FOR 8)),
+                                'cantidad_asignada', d.cantidad_asignada,
+                                'cantidad_abierta', COALESCE(d.cantidad_abierta, 0),
+                                'cajas_disponibles', d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0),
+                                'kilos_por_caja', COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0),
+                                'costo_kilo', COALESCE(d.costo_kilo_al_momento, v.costo_kilo_calculado, 0),
+                                'fecha_vinculacion', v.fecha_vinculacion
+                            ) ORDER BY v.fecha_vinculacion ASC
+                        )
+                        FROM public.bunker_lotes_destinos d
+                        JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text 
+                          AND (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0
+                    ),
+                    '[]'::json
+                ) as lotes_cajas_cerradas,
+                -- ✅ CÁLCULO DE STOCK POTENCIAL (stock_actual + bultos * kilos_por_bulto)
+                COALESCE(
+                    i.stock_actual + (
+                        SELECT COALESCE(SUM((d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) * (COALESCE(d.kilos_asignados, 0) / NULLIF(d.cantidad_asignada, 0))), 0)
+                        FROM public.bunker_lotes_destinos d
+                        WHERE d.tipo_destino = 'INGREDIENTE_PRODUCCION' 
+                          AND d.destino_id = i.id::text
+                    ),
+                    i.stock_actual
+                ) as stock_potencial
+            FROM ingredientes i
+            LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
+            LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
+        `;
+
         if (sectores === 'TODOS') {
             query = `
-                SELECT 
-                    i.id,
-                    i.codigo,
-                    i.nombre,
-                    i.descripcion,
-                    i.unidad_medida,
-                    c.nombre as categoria,
-                    i.categoria_id,
-                    i.stock_actual,
-                    i.sector_id,
-                    s.nombre as sector_nombre,
-                    s.descripcion as sector_descripcion
-                FROM ingredientes i
-                LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
-                LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
+                ${selectCampos}
                 ORDER BY i.nombre ASC;
             `;
         } else if (Array.isArray(sectores) && sectores.length > 0) {
@@ -906,21 +1062,7 @@ async function obtenerIngredientesPorSectores(sectores) {
             const placeholders = sectores.map((_, index) => `$${index + 1}`).join(', ');
 
             query = `
-                SELECT 
-                    i.id,
-                    i.codigo,
-                    i.nombre,
-                    i.descripcion,
-                    i.unidad_medida,
-                    c.nombre as categoria,
-                    i.categoria_id,
-                    i.stock_actual,
-                    i.sector_id,
-                    s.nombre as sector_nombre,
-                    s.descripcion as sector_descripcion
-                FROM ingredientes i
-                LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
-                LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
+                ${selectCampos}
                 WHERE i.sector_id IN (${placeholders})
                 ORDER BY i.nombre ASC;
             `;

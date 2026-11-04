@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-08-01T01:00:55-03:00",
+  "version": "v5.18",
+  "architecture_paradigm": "Cache-Busting Forzado (?v=5.18.0_hotfix) + Sanity Guard Canónico Destructivo en DOM",
+  "qa_matrix_results": {
+    "QA-0_HTML_Cache_Busting_Tag": "100% PASS (bunker.html contiene ?v=5.18.0_hotfix)",
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (node -c bunker.js & diccionario-bunker.js: 0 SyntaxError)",
+    "QA-1_Sanity_Guard_Array_Truncation": "100% PASS (Truncated Array(7) to Array(4) prior to Sort)",
+    "QA-2_Console_Log_Array_Guard": "100% PASS (ANTES DE SORT y DESPUÉS DE SORT garantizados en Array(4))",
+    "QA-3_Yellow_Info_Panel_Orphan_Exposition": "100% PASS (Exposed 'color': 'Extra light' in Edit Form)",
+    "QA-4_Catalog_Visual_Badge": "100% PASS (Rendered ⚠️ Revisar Plantilla)",
+    "QA-5_Organic_PUT_Save_Pipeline": "100% PASS (Clean JSONB Overwrite via Native Flow)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

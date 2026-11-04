@@ -10,7 +10,7 @@ const API_BASE_URL = window.PUBLIC_BASE_URL || window.location.origin;
  * Realizar petición con autenticación
  */
 async function fetchConAuth(url, options = {}) {
-    const sesion = JSON.parse(localStorage.getItem('sesion_chofer') || '{}');
+    const sesion = JSON.parse(localStorage.getItem('sesion_chofer') || sessionStorage.getItem('sesion_chofer') || '{}');
     
     const headers = {
         'Content-Type': 'application/json',
@@ -89,9 +89,11 @@ export async function confirmarEntregaTratamiento(idOrden, datos) {
 /**
  * API de Finalizar Ruta
  */
-export async function finalizarRuta() {
+export async function finalizarRuta(idRuta = null) {
+    const targetId = idRuta || window.state?.ruta?.id || sessionStorage.getItem('activeRouteId') || null;
     return fetchConAuth(`${API_BASE_URL}/api/logistica/movil/rutas/finalizar`, {
-        method: 'POST'
+        method: 'POST',
+        body: JSON.stringify({ id_ruta: targetId ? parseInt(targetId, 10) : null })
     });
 }
 

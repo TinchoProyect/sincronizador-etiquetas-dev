@@ -21,11 +21,11 @@ export function actualizarListaIngredientes(lista) {
 
 export async function esMix(ingredienteId) {
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`);
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/composicion`);
         if (response.status === 404) return false;
         if (!response.ok) throw new Error('Error al verificar composición');
         const data = await response.json();
-        const ingredienteResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
+        const ingredienteResponse = await fetch(`/api/produccion/ingredientes/${ingredienteId}`);
         if (!ingredienteResponse.ok) throw new Error('Error al obtener ingrediente');
         const ingrediente = await ingredienteResponse.json();
         return (data.composicion && data.composicion.length > 0) && !ingrediente.padre_id;
@@ -275,33 +275,50 @@ export async function abrirEdicionMix(mixId) {
     pendientesApi = []; // RESET BUFFER
     composicionVisual = [];
 
+    const cerrarModal = () => {
+        const confirmacion = pendientesApi.length > 0 ? confirm('¿Descartar cambios no guardados?') : true;
+        if (confirmacion) {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            modal.style.opacity = '0';
+            modal.style.visibility = 'hidden';
+            pendientesApi = []; // Wipe Buffer
+        }
+    };
+
     try {
         if (ingredientesLista.length === 0) {
-            const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+            const response = await fetch('/api/produccion/ingredientes');
             if (response.ok) ingredientesLista = await response.json();
         }
 
-        const compResponse = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`);
+        const compResponse = await fetch(`/api/produccion/ingredientes/${mixId}/composicion`);
         if (compResponse.ok) {
             const data = await compResponse.json();
             composicionVisual = Array.isArray(data.composicion) ? data.composicion : [];
             
             const titulo = modal.querySelector('#modal-mix-titulo') || modal.querySelector('h5');
-            if (titulo) titulo.textContent = `Composición de: ${data.mix.nombre}`;
+            if (titulo) titulo.textContent = `Composición de: ${data.mix?.nombre || 'Mix'}`;
         }
 
         renderizarTablaMix(mixId);
 
         const inputBusqueda = document.getElementById('buscar-ingrediente-mix');
-        inputBusqueda.value = '';
-        inputBusqueda.removeEventListener('input', manejarBusquedaMix);
-        inputBusqueda.addEventListener('input', manejarBusquedaMix);
+        if (inputBusqueda) {
+            inputBusqueda.value = '';
+            inputBusqueda.removeEventListener('input', manejarBusquedaMix);
+            inputBusqueda.addEventListener('input', manejarBusquedaMix);
+        }
 
         const btnAgregar = modal.querySelector('#btn-agregar-a-mix');
-        btnAgregar.onclick = () => agregarIngredienteAMixTemp(mixId);
+        if (btnAgregar) {
+            btnAgregar.onclick = () => agregarIngredienteAMixTemp(mixId);
+        }
 
         const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
-        btnGuardarMix.onclick = () => procesarGuardadoFinal(mixId);
+        if (btnGuardarMix) {
+            btnGuardarMix.onclick = () => procesarGuardadoFinal(mixId);
+        }
 
         const btnEliminarFormula = modal.querySelector('#btn-eliminar-formula');
         if (btnEliminarFormula) {
@@ -310,36 +327,50 @@ export async function abrirEdicionMix(mixId) {
                 if (confirmed) {
                     try {
                         if (window.eliminarComposicionMix) {
-                            modal.style.display = 'none';
+                            cerrarModal();
                             await window.eliminarComposicionMix(mixId);
                         } else {
-                            const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, { method: 'DELETE' });
+                            const response = await fetch(`/api/produccion/ingredientes/${mixId}/composicion`, { method: 'DELETE' });
                             if (!response.ok) throw new Error('Error eliminando formula');
-                            await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ padre_id: null }) });
+                            await fetch(`/api/produccion/ingredientes/${mixId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ padre_id: null }) });
+                            modal.classList.remove('show');
                             modal.style.display = 'none';
+                            modal.style.opacity = '0';
+                            modal.style.visibility = 'hidden';
+                            pendientesApi = [];
                             alert('Fórmula eliminada');
-                            if (typeof window.cargarIngredientes === 'function') await window.cargarIngredientes(); else location.reload();
+                            if (typeof window.actualizarResumenIngredientes === 'function') {
+                                await window.actualizarResumenIngredientes();
+                            } else if (typeof window.cargarIngredientes === 'function') {
+                                await window.cargarIngredientes();
+                            } else {
+                                location.reload();
+                            }
                         }
                     } catch (error) { alert(error.message); }
                 }
             };
         }
 
+        modal.classList.add('show');
         modal.style.display = 'flex';
         modal.style.justifyContent = 'center';
         modal.style.alignItems = 'flex-start';
+        modal.style.opacity = '1';
+        modal.style.visibility = 'visible';
 
-        // Cierre solo con Cancelar o X (Destruye temporal)
+        // Cierre con Cancelar o X (Destruye temporal)
         const closeBtns = modal.querySelectorAll('.close-modal, .close-modal-btn');
         closeBtns.forEach((b) => {
-            b.onclick = () => {
-                const confirmacion = pendientesApi.length > 0 ? confirm('¿Descartar cambios no guardados?') : true;
-                if (confirmacion) {
-                    modal.style.display = 'none';
-                    pendientesApi = []; // Wipe Buffer
-                }
-            };
+            b.onclick = cerrarModal;
         });
+
+        // Cierre al hacer click fuera del contenido (backdrop)
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                cerrarModal();
+            }
+        };
 
     } catch (error) {
         console.error('Error al abrir edición:', error);
@@ -413,9 +444,17 @@ async function procesarGuardadoFinal(mixId) {
     const modal = document.getElementById('modal-mix');
     const btnGuardarMix = modal.querySelector('#btn-guardar-mix');
     
+    const forzarCierre = () => {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+        modal.style.opacity = '0';
+        modal.style.visibility = 'hidden';
+        pendientesApi = [];
+    };
+
     if (pendientesApi.length === 0) {
         // Nada que guardar, cerramos
-        modal.style.display = 'none';
+        forzarCierre();
         return;
     }
 
@@ -425,24 +464,24 @@ async function procesarGuardadoFinal(mixId) {
     try {
         for (let task of pendientesApi) {
             if (task.type === 'POST') {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion`, {
+                const response = await fetch(`/api/produccion/ingredientes/${mixId}/composicion`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ingrediente_id: task.ingredienteId, cantidad: task.cantidad })
                 });
                 if (response.ok) {
-                    await fetch(`http://localhost:3002/api/produccion/ingredientes/${task.ingredienteId}`, {
+                    await fetch(`/api/produccion/ingredientes/${task.ingredienteId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ padre_id: mixId })
                     });
                 }
             } else if (task.type === 'DELETE') {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${mixId}/composicion/${task.ingredienteId}`, { 
+                const response = await fetch(`/api/produccion/ingredientes/${mixId}/composicion/${task.ingredienteId}`, { 
                     method: 'DELETE' 
                 });
                 if (response.ok) {
-                    await fetch(`http://localhost:3002/api/produccion/ingredientes/${task.ingredienteId}`, {
+                    await fetch(`/api/produccion/ingredientes/${task.ingredienteId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ padre_id: null })
@@ -452,8 +491,7 @@ async function procesarGuardadoFinal(mixId) {
         }
         
         // Finalizamos
-        pendientesApi = [];
-        modal.style.display = 'none';
+        forzarCierre();
         
         if (window.actualizarResumenIngredientes) {
             await window.actualizarResumenIngredientes();

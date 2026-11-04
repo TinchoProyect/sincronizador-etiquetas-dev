@@ -392,9 +392,9 @@ const puedeEmitirse = (factura) => {
     
     const errores = [];
     
-    // Se pueden emitir borradores y reprocesar rechazadas
-    if (factura.estado !== 'BORRADOR' && factura.estado !== 'RECHAZADA') {
-        errores.push(`Factura en estado ${factura.estado}, solo se pueden emitir borradores o reprocesar rechazadas`);
+    // Se pueden emitir borradores, diferidas y reprocesar rechazadas
+    if (factura.estado !== 'BORRADOR' && factura.estado !== 'RECHAZADA' && factura.estado !== 'PENDIENTE_FACTURACION') {
+        errores.push(`Factura en estado ${factura.estado}, solo se pueden emitir borradores, diferidas o reprocesar rechazadas`);
     }
     
     // Si es RECHAZADA, permitir reprocesar (limpiar CAE y número anterior)
@@ -404,13 +404,13 @@ const puedeEmitirse = (factura) => {
         return { valido: true, esReproceso: true };
     }
     
-    // Para BORRADOR, validar que no tenga CAE
+    // Para BORRADOR o PENDIENTE_FACTURACION, validar que no tenga CAE
     if (factura.cae) {
         errores.push('Factura ya tiene CAE asignado');
     }
     
-    // Solo validar cbte_nro si no es borrador
-    if (factura.cbte_nro && factura.estado !== 'BORRADOR') {
+    // Solo validar cbte_nro si no es borrador ni diferida
+    if (factura.cbte_nro && factura.estado !== 'BORRADOR' && factura.estado !== 'PENDIENTE_FACTURACION') {
         errores.push('Factura ya tiene número de comprobante asignado');
     }
     

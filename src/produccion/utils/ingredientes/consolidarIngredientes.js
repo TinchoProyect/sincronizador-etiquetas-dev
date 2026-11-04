@@ -71,11 +71,15 @@ function consolidarIngredientes(ingredientes) {
             // Preservar origen_mix_id (priorizar el existente, luego el nuevo)
             consolidados[key].origen_mix_id = consolidados[key].origen_mix_id || ing.origen_mix_id || null;
             consolidados[key].sector_letra = consolidados[key].sector_letra || ing.sector_letra || null;
+            consolidados[key].fase_produccion = consolidados[key].fase_produccion || ing.fase_produccion || null;
+            consolidados[key].es_post_coccion = consolidados[key].es_post_coccion || ing.es_post_coccion || false;
             console.log(`➕ SUMANDO cantidades para ID ${key}:`);
             console.log(`   ${anterior} + ${ing.cantidad} = ${consolidados[key].cantidad}`);
             console.log(`   es_primario: ${consolidados[key].es_primario}`);
             console.log(`   es_insumo: ${consolidados[key].es_insumo}`);
             console.log(`   origen_mix_id: ${consolidados[key].origen_mix_id}`);
+            console.log(`   fase_produccion: ${consolidados[key].fase_produccion}`);
+            console.log(`   es_post_coccion: ${consolidados[key].es_post_coccion}`);
         } else {
             console.log(`🆕 NUEVO INGREDIENTE (ID: ${key})`);
             // Asegurar que la cantidad inicial tenga alta precisión
@@ -87,7 +91,9 @@ function consolidarIngredientes(ingredientes) {
                 es_primario: ing.es_primario || false,
                 es_insumo: ing.es_insumo || false, // Preservar es_insumo
                 origen_mix_id: ing.origen_mix_id || null, // Preservar origen_mix_id
-                sector_letra: ing.sector_letra || null // Preservar sector_letra
+                sector_letra: ing.sector_letra || null, // Preservar sector_letra
+                fase_produccion: ing.fase_produccion || null, // Preservar fase_produccion
+                es_post_coccion: ing.es_post_coccion || false
             };
         }
     });

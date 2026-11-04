@@ -11,15 +11,28 @@ async function obtenerArticulosParaEtiquetas(req, res) {
     }
 
     try {
-        // Obtener artículos del carro con su información completa
+        // Obtener artículos del carro con su información completa (con fallback a stock_real_consolidado y bunker_articulos)
         const { rows: articulos } = await req.db.query(`
             SELECT 
                 ca.articulo_numero,
                 ca.cantidad,
-                a.codigo_barras,
-                a.nombre as descripcion
+                COALESCE(
+                    NULLIF(TRIM(a.codigo_barras), ''),
+                    NULLIF(TRIM(src.codigo_barras), ''),
+                    ca.articulo_numero
+                ) as codigo_barras,
+                COALESCE(
+                    NULLIF(TRIM(a.nombre), ''),
+                    NULLIF(TRIM(src.descripcion), ''),
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(ca.descripcion), ''),
+                    ca.articulo_numero
+                ) as descripcion
             FROM carros_articulos ca
             LEFT JOIN articulos a ON a.numero = ca.articulo_numero
+            LEFT JOIN stock_real_consolidado src ON src.articulo_numero = ca.articulo_numero
+            LEFT JOIN bunker_articulos ba ON ba.articulo_id = ca.articulo_numero
             WHERE ca.carro_id = $1
         `, [carroId]);
 
@@ -53,9 +66,9 @@ async function obtenerPadresParaImpresion(req, res) {
         // Buscar los padres de los artículos del carro usando la tabla de relaciones
         const { rows: padres } = await req.db.query(`
             SELECT DISTINCT
-                src.codigo_barras as padre_articulo_numero,
+                COALESCE(src.articulo_numero, a_padre.numero, src.codigo_barras) as padre_articulo_numero,
                 COALESCE(a_padre.nombre, src.descripcion, src.codigo_barras) as padre_descripcion,
-                src.codigo_barras as padre_codigo_barras,
+                COALESCE(a_padre.codigo_barras, src.codigo_barras) as padre_codigo_barras,
                 ca.articulo_numero as hijo_articulo_numero,
                 COALESCE(
                     SUBSTRING(COALESCE(a_padre.nombre, src.descripcion) FROM '[0-9]+\\s*[xX]\\s*[0-9]+(?:\\s*(?:g|G|kg|Kg|KG))?'),
@@ -64,9 +77,12 @@ async function obtenerPadresParaImpresion(req, res) {
             FROM carros_articulos ca
             LEFT JOIN articulos a_hijo ON a_hijo.numero = ca.articulo_numero
             INNER JOIN stock_real_consolidado src 
-                ON src.pack_hijo_codigo = COALESCE(a_hijo.codigo_barras, ca.articulo_numero)
-            LEFT JOIN articulos a_padre ON a_padre.codigo_barras = src.codigo_barras
+                ON (src.pack_hijo_codigo = ca.articulo_numero 
+                    OR src.pack_hijo_codigo = a_hijo.numero 
+                    OR (a_hijo.codigo_barras IS NOT NULL AND src.pack_hijo_codigo = a_hijo.codigo_barras))
+            LEFT JOIN articulos a_padre ON (a_padre.codigo_barras = src.codigo_barras OR a_padre.numero = src.articulo_numero)
             WHERE ca.carro_id = $1 AND src.es_pack = true
+            ORDER BY presentacion_padre ASC, padre_articulo_numero ASC
         `, [carroId]);
 
         return res.json(padres);

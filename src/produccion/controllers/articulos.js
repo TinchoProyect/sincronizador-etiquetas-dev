@@ -13,9 +13,9 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
         let params = [];
         let paramIndex = 1;
         
-        // Filtro por código de barras (tiene prioridad)
+        // Filtro por código de barras o número (tiene prioridad)
         if (codigoBarras) {
-            whereClauses.push(`a.codigo_barras = $${paramIndex}`);
+            whereClauses.push(`(a.codigo_barras = $${paramIndex} OR a.numero = $${paramIndex})`);
             params.push(codigoBarras);
             paramIndex++;
         }
@@ -27,22 +27,38 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
         
         const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
         
-        // 🔧 CONSULTA MEJORADA: Incluir información del artículo base de la receta
+        // 🔧 CONSULTA MEJORADA: Incluir información del artículo base de la receta y datos estructurales de Búnker + Clasificación Línea 3 vs Línea 2
         const query = `
             SELECT DISTINCT
                 a.numero,
-                a.nombre,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre) as nombre,
+                a.nombre as nombre_legacy,
+                ba.descripcion_generada,
+                ba.familia_id,
+                ba.propiedades_dinamicas,
                 a.codigo_barras,
                 COALESCE(src.stock_consolidado, 0) as stock_consolidado,
                 COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda,
                 COALESCE(src.solo_produccion_externa, false) as solo_produccion_externa,
                 src.kilos_unidad,
+                -- Clasificadores deterministas para Línea 3 (Artículos Puente / Mixes a Granel)
+                EXISTS (
+                    SELECT 1 FROM public.recetas r2
+                    JOIN public.receta_ingredientes ri2 ON ri2.receta_id = r2.id
+                    JOIN public.ingrediente_composicion ic ON ic.mix_id = ri2.ingrediente_id
+                    WHERE r2.articulo_numero = a.numero
+                ) as tiene_ingrediente_compuesto,
+                EXISTS (
+                    SELECT 1 FROM public.recetas r3
+                    WHERE r3.articulo_sugerido_numero = a.numero
+                ) as es_articulo_sugerido,
                 -- Información del artículo base de la receta (para UPs)
                 ra.articulo_numero as articulo_base_codigo,
                 a_base.nombre as articulo_base_nombre,
                 COALESCE(src_base.stock_consolidado, 0) as articulo_base_stock
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
             -- Join con receta para obtener el artículo base (insumo)
             LEFT JOIN public.recetas r ON r.articulo_numero = a.numero
             LEFT JOIN public.receta_articulos ra ON ra.receta_id = r.id
@@ -51,7 +67,7 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
             -- Join con stock del artículo base
             LEFT JOIN public.stock_real_consolidado src_base ON src_base.articulo_numero = ra.articulo_numero
             ${whereClause}
-            ORDER BY a.nombre ASC
+            ORDER BY nombre ASC
         `;
         
         const result = await pool.query(query, params);
@@ -96,14 +112,15 @@ async function buscarArticuloPorCodigo(codigoBarras) {
         const query = `
             SELECT 
                 a.numero,
-                a.nombre,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre) as nombre,
                 a.codigo_barras,
                 COALESCE(src.stock_consolidado, 0) as stock_ventas,
                 COALESCE(src.stock_consolidado, 0) as stock_consolidado,
                 COALESCE(src.no_producido_por_lambda, false) as no_producido_por_lambda
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
-            WHERE a.codigo_barras = $1
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
+            WHERE (a.codigo_barras = $1 OR a.numero = $1)
         `;
         
         const result = await pool.query(query, [codigoBarras]);
@@ -330,7 +347,7 @@ async function buscarArticulos(req, res) {
             terminos.forEach((term, index) => {
                 const paramIdx = index + 1;
                 // El token debe estar en la descripcion o ser un match al codigo
-                whereConds.push(`(src.descripcion ILIKE $${paramIdx} OR src.articulo_numero ILIKE $${paramIdx})`);
+                whereConds.push(`(COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) ILIKE $${paramIdx} OR src.articulo_numero ILIKE $${paramIdx} OR src.codigo_barras ILIKE $${paramIdx})`);
                 params.push(`%${term}%`);
             });
             const filterSQL = whereConds.length > 0 ? whereConds.join(' AND ') : '1=1';
@@ -338,7 +355,7 @@ async function buscarArticulos(req, res) {
             query = `
                 SELECT 
                     src.articulo_numero as codigo,
-                    src.descripcion,
+                    COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) as descripcion,
                     src.codigo_barras,
                     src.stock_consolidado,
                     src.es_pack,
@@ -346,8 +363,9 @@ async function buscarArticulos(req, res) {
                     src.pack_unidades,
                     src.kilos_unidad
                 FROM stock_real_consolidado src
+                LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
                 WHERE ${filterSQL}
-                ORDER BY src.descripcion
+                ORDER BY descripcion
                 LIMIT 50
             `;
         }
@@ -374,8 +392,43 @@ async function buscarArticulos(req, res) {
     }
 }
 
+/**
+ * Obtiene la lista determinista de todos los Artículos Puente (AP)
+ * Definición estructural: Familia 'Producción' + Artículo Principal 'Articulo Puente' (no-WIP)
+ */
+async function obtenerArticulosPuente() {
+    try {
+        const query = `
+            SELECT 
+                ba.articulo_id as numero,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre) as nombre,
+                a.nombre as nombre_legacy,
+                ba.descripcion_generada,
+                a.codigo_barras,
+                COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                src.kilos_unidad,
+                ba.propiedades_dinamicas
+            FROM public.bunker_articulos ba
+            LEFT JOIN public.articulos a ON a.numero = ba.articulo_id
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ba.articulo_id
+            WHERE ((ba.propiedades_dinamicas->>'familia_id')::int = 42 
+                   OR ba.propiedades_dinamicas->>'familia_nombre' ILIKE '%producci%')
+              AND (ba.propiedades_dinamicas->>'articulo_principal' ILIKE '%puente%')
+              AND COALESCE((ba.propiedades_dinamicas->>'presentacion_variable_wip')::boolean, false) = false
+            ORDER BY nombre ASC
+        `;
+        const result = await pool.query(query);
+        console.log(`🌉 [ARTICULOS-PUENTE] Obtenidos ${result.rows.length} Artículos Puente deterministas`);
+        return result.rows;
+    } catch (error) {
+        console.error('❌ [ARTICULOS-PUENTE] Error:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     obtenerArticulos,
+    obtenerArticulosPuente,
     buscarArticuloPorCodigo,
     actualizarProduccionLambda,
     actualizarProduccionExterna,

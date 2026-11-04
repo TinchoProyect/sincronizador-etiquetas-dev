@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T09:01:30-03:00",
+  "version": "v5.23",
+  "architecture_paradigm": "Estado Pasivo de Espera (👆) + Estado Vacío Explícito (📭) + RESTRICT Lógico (HTTP 400) + DELETE por Integer IDs",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerDiccionarioController.js & diccionario-bunker.js: 0 SyntaxError)",
+    "QA-1_Passive_Wait_State_onChange": "100% PASS (familiaCambiada sets passive waiting card 👆 without automatic fetch)",
+    "QA-2_Explicit_Empty_State_No_Phantom_Rows": "100% PASS (tienePlantillaExplicita=false renders empty state banner 📭 with 0 phantom rows)",
+    "QA-3_RESTRICT_Child_Dependencies_Check": "100% PASS (SELECT COUNT(*) detected child dependencies and aborted transaction with HTTP 400)",
+    "QA-4_Tear_down_Clean_Integer_Delete": "100% PASS (Unlinked Produccion principal with 0 child dependencies, rowCount = 1)",
+    "QA-5_Reactive_DOM_Zero_F5": "100% PASS (selectedOpt.remove() updates UI in real time without F5)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

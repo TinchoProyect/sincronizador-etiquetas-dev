@@ -9,6 +9,11 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
+// Catch pool errors to prevent process crashes on idle connection losses
+pool.on('error', (err) => {
+  console.error('⚠️ [DB-USUARIOS] Unexpected error on idle client:', err.message);
+});
+
 // Log de conexión con información del entorno
 console.log(`🔌 [DB-USUARIOS] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'})`);
 
@@ -45,6 +50,46 @@ const inicializarTablaTarifas = async () => {
   }
 };
 
+// Inicialización de la tabla de jornadas/asistencia de colaboradores
+const inicializarTablaJornadas = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.colaboradores_jornadas (
+          id SERIAL PRIMARY KEY,
+          usuario_id INTEGER NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+          fecha_ingreso TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          fecha_egreso TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+          horas_totales NUMERIC(10, 2) DEFAULT 0,
+          minutos_totales INTEGER DEFAULT 0,
+          valor_hora_aplicado NUMERIC(15, 2) DEFAULT NULL,
+          monto_total NUMERIC(15, 2) DEFAULT 0,
+          estado VARCHAR(20) NOT NULL DEFAULT 'EN_CURSO',
+          observacion_ingreso TEXT DEFAULT NULL,
+          observacion_egreso TEXT DEFAULT NULL,
+          liquidada_en TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+          cuenta_corriente_movimiento_id INTEGER REFERENCES public.factura_cuenta_corriente_movimientos(id) ON DELETE SET NULL,
+          creado_en TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          actualizado_en TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_colaboradores_jornadas_usuario_estado 
+      ON public.colaboradores_jornadas(usuario_id, estado);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_colaboradores_jornadas_fecha 
+      ON public.colaboradores_jornadas(fecha_ingreso);
+    `);
+
+    console.log('✅ [DB-USUARIOS] Tabla public.colaboradores_jornadas verificada/creada.');
+  } catch (err) {
+    console.error('❌ [DB-USUARIOS] Error al inicializar tabla colaboradores_jornadas:', err.message);
+  }
+};
+
 inicializarTablaTarifas();
+inicializarTablaJornadas();
 
 module.exports = pool;

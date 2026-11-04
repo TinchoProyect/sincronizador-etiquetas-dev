@@ -27,7 +27,10 @@ window.guardarAcomodacion = async () => {
     btn.disabled = true;
 
     const nuevoOrdenEntregas = paradasTemporales.flatMap(p => p.entregas);
-    const nuevoOrdenIds = nuevoOrdenEntregas.map(e => parseInt(e.id_presupuesto));
+    const nuevoOrdenIds = nuevoOrdenEntregas.map(e => {
+        const val = String(e.id_presupuesto);
+        return (val.startsWith('RT-') || val.startsWith('SOB-') || val.startsWith('PR-')) ? val : parseInt(val);
+    });
     
     try {
         const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/reordenar`, {

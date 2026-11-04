@@ -119,7 +119,28 @@ secrets/*.json
 # Archivos backup locales
 *.backup
 *-backup.js
+*.dump
+backups/
 # Ignorar archivos temporales de impresión en src
 src/app-etiquetas/temp/*.zpl
 src/app-etiquetas/temp/*.json
 src/app-etiquetas/temp/
+
+# Sesión WhatsApp Web y caché de navegador
+.wwebjs_auth/
+**/.wwebjs_auth/
+src/facturacion/.wwebjs_auth/
+.wwebjs_cache/
+**/.wwebjs_cache/
+
+# Caché local de producción
+src/produccion/cache/
+
+# Uploads de bultos
+src/logistica/public/uploads/
+
+# Scripts scratch locales
+src/scratch_*.js
+src/scratch_inspect_constraints.js
+scratch/
+

@@ -112,3 +112,152 @@ exports.desvincularLote = async (req, res) => {
         res.status(500).json({ success: false, error: error.message || 'Error interno al desvincular lote.' });
     }
 };
+
+/**
+ * Obtener auditoría y landed cost de un lote
+ */
+exports.obtenerAuditoriaCostos = async (req, res) => {
+    try {
+        const { loteId } = req.params;
+        const url = "https://wofttcnpipozwupmpuul.supabase.co";
+        const key = (process.env.SUPABASE_SERVICE_KEY || 'sb_secret_B29ym1JcTqTIe8dWnvpmZg_ByV_ZxcL').trim();
+        
+        const headers = {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+        };
+
+        // 1. Consultar la vista vw_inventario_consolidado
+        const viewUrl = `${url}/rest/v1/vw_inventario_consolidado?id=eq.${loteId}`;
+        const resView = await fetch(viewUrl, { headers });
+        let landedData = null;
+        if (resView.ok) {
+            const arr = await resView.json();
+            if (arr && arr.length > 0) landedData = arr[0];
+        }
+
+        // 2. Consultar el detalle de auditoría / trazabilidad de fletes
+        const auditUrl = `${url}/rest/v1/recepciones_fisicas_items?id=eq.${loteId}&select=id,costo_unitario,recepciones_fisicas_cabecera(id,numero_remito,envio_tipo,costo_logistico_estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_descripcion),costos_adicionales_distribucion(id,tipo_costo,monto_adicional_asignado,facturas_raw(id,tipo_comprobante,punto_venta,numero_comprobante,importe_total,proveedores(id,nombre)))`;
+        const resAudit = await fetch(auditUrl, { headers });
+        let auditData = null;
+        if (resAudit.ok) {
+            const arr = await resAudit.json();
+            if (arr && arr.length > 0) auditData = arr[0];
+        }
+
+        res.json({
+            success: true,
+            landedData,
+            auditData
+        });
+    } catch (error) {
+        console.error('❌ [BUNKER-LOTES] Error obteniendo auditoría de costos:', error);
+        res.status(500).json({ success: false, error: 'Error interno obteniendo auditoría de costos.' });
+    }
+};
+
+/**
+ * Sincronizar costo local de lote con Landed Cost de Supabase
+ */
+exports.sincronizarCostoLote = async (req, res) => {
+    try {
+        const { loteId } = req.params;
+        const url = "https://wofttcnpipozwupmpuul.supabase.co";
+        const key = (process.env.SUPABASE_SERVICE_KEY || 'sb_secret_B29ym1JcTqTIe8dWnvpmZg_ByV_ZxcL').trim();
+        
+        const headers = {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+        };
+
+        // 1. Obtener costo de vw_inventario_consolidado en Supabase
+        const viewUrl = `${url}/rest/v1/vw_inventario_consolidado?id=eq.${loteId}`;
+        const resView = await fetch(viewUrl, { headers });
+        if (!resView.ok) {
+            throw new Error(`Error en Supabase: ${await resView.text()}`);
+        }
+        const arr = await resView.json();
+        if (!arr || arr.length === 0) {
+            return res.status(404).json({ success: false, error: 'No se encontró el lote en Supabase.' });
+        }
+        
+        const landed = arr[0];
+        const nuevoCostoKilo = parseFloat(landed.costo_total_unitario);
+        if (isNaN(nuevoCostoKilo)) {
+            return res.status(400).json({ success: false, error: 'El costo total unitario en Supabase no es válido.' });
+        }
+
+        // 2. Realizar la actualización en la BD local de forma transaccional
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+
+            // A. Buscar el vínculo local para recalcular costo bruto
+            const vinRes = await client.query(
+                'SELECT id, cantidad_total_lote FROM public.bunker_lotes_vinculos WHERE lote_id_supabase = $1',
+                [loteId]
+            );
+            if (vinRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'No existe vinculación local para este lote.' });
+            }
+
+            const vinculo = vinRes.rows[0];
+            const vinculoId = vinculo.id;
+            const cantTotal = parseFloat(vinculo.cantidad_total_lote || 0);
+            const nuevoCostoBruto = nuevoCostoKilo * cantTotal;
+
+            // B. Actualizar cabecera local
+            await client.query(
+                `UPDATE public.bunker_lotes_vinculos 
+                 SET costo_kilo_calculado = $1, costo_bruto_ingresado = $2
+                 WHERE id = $3`,
+                [nuevoCostoKilo, nuevoCostoBruto, vinculoId]
+            );
+
+            // C. Actualizar destinos locales
+            await client.query(
+                `UPDATE public.bunker_lotes_destinos 
+                 SET costo_kilo_al_momento = $1
+                 WHERE vinculo_id = $2`,
+                [nuevoCostoKilo, vinculoId]
+            );
+
+            // D. Si hay destinos tipo ingrediente, actualizar su costo_patron en ingredientes
+            const destRes = await client.query(
+                `SELECT destino_id FROM public.bunker_lotes_destinos 
+                 WHERE vinculo_id = $1 AND tipo_destino = 'INGREDIENTE_PRODUCCION'`,
+                [vinculoId]
+            );
+            
+            for (const row of destRes.rows) {
+                const ingredienteId = parseInt(row.destino_id, 10);
+                if (!isNaN(ingredienteId)) {
+                    await client.query(
+                        `UPDATE public.ingredientes 
+                         SET costo_patron = $1 
+                         WHERE id = $2`,
+                        [nuevoCostoKilo, ingredienteId]
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+            res.json({
+                success: true,
+                message: 'Costo de lote y costo patrón de ingredientes actualizados con éxito.',
+                nuevoCostoKilo,
+                nuevoCostoBruto
+            });
+        } catch(e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+
+    } catch(error) {
+        console.error('❌ [BUNKER-LOTES] Error sincronizando costo:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error interno sincronizando costo.' });
+    }
+};

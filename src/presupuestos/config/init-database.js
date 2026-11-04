@@ -225,6 +225,22 @@ const crearTablas = async () => {
             console.log('[PRESUPUESTOS-BACK] ✅ Verificado cutoff_at en configuración existente');
         }
         
+        // Agregar columna 'archivado' a presupuestos si no existe
+        const addArchivadoColumn = `
+            ALTER TABLE public.presupuestos 
+            ADD COLUMN IF NOT EXISTS archivado BOOLEAN DEFAULT false;
+        `;
+        await pool.query(addArchivadoColumn);
+        console.log('[PRESUPUESTOS-BACK] ✅ Columna archivado verificada/creada');
+        
+        // Agregar columna 'modificado_portal' a presupuestos si no existe
+        const addModificadoPortalColumn = `
+            ALTER TABLE public.presupuestos 
+            ADD COLUMN IF NOT EXISTS modificado_portal BOOLEAN DEFAULT false;
+        `;
+        await pool.query(addModificadoPortalColumn);
+        console.log('[PRESUPUESTOS-BACK] ✅ Columna modificado_portal verificada/creada');
+        
         // Verificar datos existentes
         const contarPresupuestos = `SELECT COUNT(*) as total FROM presupuestos WHERE activo = true`;
         const presupuestosResult = await pool.query(contarPresupuestos);

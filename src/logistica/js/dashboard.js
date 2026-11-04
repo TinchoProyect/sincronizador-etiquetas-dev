@@ -12,7 +12,8 @@ let state = {
     choferes: [],
     rutaSeleccionada: null,
     map: null,
-    markers: []
+    markers: [],
+    filtroTipoPool: 'TODOS'
 };
 
 /**
@@ -55,7 +56,13 @@ async function cargarPedidos() {
         const result = await response.json();
 
         if (result.success) {
-            state.pedidos = result.data;
+            const vistos = new Set();
+            state.pedidos = (result.data || []).filter(p => {
+                const key = String(p.id);
+                if (vistos.has(key)) return false;
+                vistos.add(key);
+                return true;
+            });
             renderizarPedidos();
             console.log('[DASHBOARD] Pedidos cargados:', state.pedidos.length);
         } else {
@@ -363,10 +370,149 @@ async function cargarChoferes() {
 function obtenerPedidoHtml(pedido) {
     const tieneDomicilio = pedido.id_domicilio_entrega && pedido.domicilio_direccion;
     const pedidoJson = JSON.stringify(pedido).replace(/'/g, "\\'");
+    const esSobre = String(pedido.id).startsWith('SOB-') || pedido.es_sobre_efectivo === true;
+    const esContacto = String(pedido.id).startsWith('PR-') || pedido.es_visita_preventa === true || pedido.estado === 'Visita Comercial';
     const esTratamiento = pedido.estado === 'Orden de Tratamiento';
     const esOrdenRetiro = pedido.estado === 'Orden de Retiro';
     const esDevolucion = esTratamiento && pedido.estado_tratamiento === 'COMPLETADO';
-    const esRetiro = (esTratamiento && !esDevolucion) || esOrdenRetiro;
+    const esRetiro = !esSobre && !esContacto && ((esTratamiento && !esDevolucion) || esOrdenRetiro);
+
+    // Fallbacks para edge cases
+    const clienteId = pedido.cliente_id || pedido.id_cliente || 'S/N';
+    const clienteNombre = pedido.cliente_nombre || 'Cliente Desconocido';
+    const idCliNorm = String(clienteId).trim().replace(/^0+/, '');
+
+    // Tarjeta especial para Contactos Comerciales / Preventa en Calle (Entidad separada, SIN facturación ni bultos)
+    if (esContacto) {
+        const codigoProsp = pedido.codigo_prospecto || pedido.id_presupuesto_ext || pedido.id;
+        const idNumProsp = pedido.prospecto_id_numerico || String(pedido.id).replace('PR-', '');
+        const rubroProsp = pedido.rubro || 'Comercio';
+        const encargadoTxt = pedido.contacto_nombre
+            ? `${pedido.contacto_nombre}${pedido.contacto_rol ? ` (${pedido.contacto_rol})` : ''}`
+            : '';
+
+        return `
+            <div class="pedido-card tipo-contacto" 
+                 draggable="true" 
+                 data-id="${pedido.id}"
+                 data-tipo="contacto"
+                 data-pedido='${pedidoJson}'
+                 ondragstart="handleDragStart(event)" 
+                 ondragend="handleDragEnd(event)"
+                 style="border-left: 5px solid #0d9488; background-color: #f0fdfa;">
+                
+                <div class="pedido-domicilio-indicator" style="background-color: #0d9488;" title="Contacto Comercial / Visita de Presentación"></div>
+                
+                <div class="pedido-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <span class="pedido-cliente-id" style="font-size: 1.02rem; font-weight: 800; color: #0f766e;">
+                            ${pedido.origen_contacto === 'CLIENTE_ACTIVO' ? '⭐ VISITA CLIENTE' : '🎯 CONTACTO'} • ${codigoProsp}
+                        </span>
+                    </div>
+                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                        <span class="pedido-badge" style="background-color:#0d9488; color:white; font-weight:bold;">
+                            ${pedido.origen_contacto === 'CLIENTE_ACTIVO' ? '⭐ VISITA SIN PEDIDO' : '🤝 VISITA COMERCIAL'}
+                        </span>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
+                    <div style="background: #ccfbf1; color: #115e59; border: 1px solid #99f6e4; padding: 2px 8px; border-radius: 4px; font-size: 0.74rem; display: inline-block; font-weight: bold;">
+                        🏷️ ${rubroProsp}
+                    </div>
+                    ${encargadoTxt ? `<div style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 2px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">👤 ${encargadoTxt}</div>` : ''}
+                </div>
+
+                <div class="pedido-cliente-nombre" style="font-weight: 800; margin-top: 0.25rem; color: #0f172a; font-size: 0.95rem;">
+                    ${clienteNombre}
+                </div>
+                <div class="pedido-direccion" style="margin-top: 0.2rem; color: #334155;">
+                    📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}${pedido.domicilio_localidad ? ` • <b>${pedido.domicilio_localidad}</b>` : ''}
+                </div>
+                ${pedido.nota ? `<div style="margin-top: 0.25rem; font-size: 0.74rem; color: #475569; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${(pedido.nota || '').replace(/"/g, '&quot;')}">💡 ${pedido.nota}</div>` : ''}
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <div style="font-weight: 700; color: #0f766e; font-size: 0.78rem;">
+                        ${pedido.cliente_telefono ? `📱 ${pedido.cliente_telefono}` : '🚶 Visita en local'}
+                    </div>
+                    <div style="display:flex; gap:0.25rem;">
+                        <button type="button" onclick="event.stopPropagation(); window.quitarContactoDePoolLogistica('${idNumProsp}', '${(clienteNombre || '').replace(/'/g, "\\'")}')" class="btn-sm" style="padding: 2px 8px; font-size: 0.73rem; background-color: #ffffff; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer; font-weight: 700;" title="Retirar este contacto del Pool de Logística">
+                            ↩️ Quitar de Logística
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Tarjeta especial para Ensobrados Activos (estado PREPARADO)
+    if (esSobre) {
+        const codigoSobre = pedido.codigo_sobre || pedido.id_presupuesto_ext || pedido.id;
+        const montoSobre = parseFloat(pedido.monto_declarado || pedido.total || 0);
+        const tieneFotos = Boolean(pedido.foto_frente_url || pedido.foto_dorso_url);
+        const clienteTienePedidoEnPool = state.pedidos.some(p => {
+            const pEsSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true;
+            const pCliNorm = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
+            return !pEsSobre && pCliNorm && pCliNorm === idCliNorm;
+        });
+
+        return `
+            <div class="pedido-card tipo-sobre" 
+                 draggable="true" 
+                 data-id="${pedido.id}"
+                 data-tipo="sobre"
+                 data-pedido='${pedidoJson}'
+                 ondragstart="handleDragStart(event)" 
+                 ondragend="handleDragEnd(event)"
+                 oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')"
+                 style="border-left: 5px solid #7c3aed; background-color: #f5f3ff;">
+                
+                <div class="pedido-domicilio-indicator" style="background-color: #7c3aed;" title="Retiro de Sobre de Efectivo"></div>
+                
+                <div class="pedido-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <span class="pedido-cliente-id" style="font-size: 1.05rem; font-weight: 700; color: #6d28d9;">
+                            💵 SOBRE • Cli #${clienteId}
+                        </span>
+                    </div>
+                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                        <span class="pedido-badge" style="background-color:#7c3aed; color:white; font-weight:bold;">
+                            ✅ PREPARADO
+                        </span>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
+                    <div class="badge-retiro-visual" style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; font-weight: bold;">
+                        💵 Retiro Efectivo #${codigoSobre}
+                    </div>
+                    ${clienteTienePedidoEnPool ? `<div style="background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">📦 Tiene pedido en pool</div>` : ''}
+                </div>
+
+                <div class="pedido-cliente-nombre" style="font-weight: 700; margin-top: 0.25rem; color: #1e293b;">
+                    ${clienteNombre}
+                </div>
+                <div class="pedido-direccion" style="margin-top: 0.2rem;">
+                    📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <div class="pedido-monto" style="font-weight: 800; color: #059669; font-size: 0.92rem;">
+                        💵 $${montoSobre.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div style="display:flex; gap:0.25rem;">
+                        ${tieneFotos ? `<button onclick="event.stopPropagation(); window.verFotosSobreLogistica('${codigoSobre}', '${pedido.foto_frente_url || ''}', '${pedido.foto_dorso_url || ''}')" class="btn-sm" style="padding: 2px 8px; font-size: 0.74rem; background-color: #6d28d9; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;" title="Ver fotos del sobre cerrado">📷 Fotos</button>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Detectar si este mismo cliente tiene un sobre PREPARADO en el pool para avisar visualmente
+    const clienteTieneSobreEnPool = state.pedidos.some(p => {
+        const pEsSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true;
+        const pCliNorm = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
+        return pEsSobre && pCliNorm && pCliNorm === idCliNorm;
+    });
 
     // Estilos específicos para Tratamientos/Retiros/Devoluciones
     let estiloCard = '';
@@ -375,23 +521,22 @@ function obtenerPedidoHtml(pedido) {
 
     const iconoCliente = esRetiro ? '🔙' : (esDevolucion ? '🚚' : '👤');
 
-    // Fallbacks para edge cases
-    const clienteId = pedido.cliente_id || 'S/N';
-    const clienteNombre = pedido.cliente_nombre || 'Cliente Desconocido';
-
     // Lógica de checkbox y badges de facturación para presupuestos ordinarios
-    const esPresupuesto = !pedido.id.toString().startsWith('RT-');
+    const esPresupuesto = !pedido.id.toString().startsWith('RT-') && !esSobre && !esContacto;
     let checkboxHTML = '';
     let badgeFacturacionHTML = '';
 
     if (esPresupuesto) {
         if (pedido.factura_id) {
             const esFacturado = (pedido.factura_estado === 'APROBADA' || pedido.factura_estado === 'APROBADA_LOCAL');
-            const badgeColor = esFacturado ? '#10b981' : '#f59e0b';
-            const badgeText = esFacturado ? '✅ FACTURADO' : '📄 ENVIADO A FACTURACIÓN';
+            const isLocal = pedido.factura_estado === 'APROBADA_LOCAL';
+            const badgeColor = esFacturado ? (isLocal ? '#d4edda' : '#d1ecf1') : '#f59e0b';
+            const textColor = esFacturado ? (isLocal ? '#155724' : '#0c5460') : 'white';
+            const borderColor = esFacturado ? (isLocal ? '#c3e6cb' : '#bee5eb') : 'transparent';
+            const badgeText = esFacturado ? (isLocal ? '✅ FACTURADO LOCAL' : '✅ FACTURADO ARCA') : '📄 ENVIADO A FACTURACIÓN';
             
             checkboxHTML = `<input type="checkbox" disabled style="margin-right: 0.5rem; width: 16px; height: 16px; min-width: 16px; cursor: not-allowed;">`;
-            badgeFacturacionHTML = `<span onclick="event.stopPropagation(); window.verFacturaDetalle(${pedido.factura_id})" class="pedido-badge" style="background-color: ${badgeColor}; color: white; cursor: pointer; font-weight: bold; border-radius: 4px;" title="Haga clic para ver el detalle de la factura">${badgeText}</span>`;
+            badgeFacturacionHTML = `<span onclick="event.stopPropagation(); window.verFacturaDetalle(${pedido.factura_id})" class="pedido-badge" style="background-color: ${badgeColor}; color: ${textColor}; border: 1px solid ${borderColor}; cursor: pointer; font-weight: bold; border-radius: 4px;" title="Haga clic para ver el detalle de la factura">${badgeText}</span>`;
         } else {
             checkboxHTML = `<input type="checkbox" class="pedido-selector" data-id="${pedido.id}" onchange="actualizarSeleccionPedidos()" onclick="event.stopPropagation()" style="margin-right: 0.5rem; width: 16px; height: 16px; min-width: 16px; cursor: pointer;">`;
         }
@@ -441,6 +586,7 @@ function obtenerPedidoHtml(pedido) {
 
             ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ${esOrdenRetiro ? 'ORDEN DE RETIRO' : 'Orden de Tratamiento'}</div>` : ''}
             ${esDevolucion ? `<div class="badge-retiro-visual" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🚚 Entrega Mantenimiento</div>` : ''}
+            ${clienteTieneSobreEnPool ? `<div style="background: #f5f3ff; color: #6d28d9; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.74rem; display: inline-block; margin-bottom: 4px; font-weight: 700;">💵 Tiene sobre listo para retirar</div>` : ''}
 
             <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
                  ${clienteNombre}
@@ -463,38 +609,118 @@ function obtenerPedidoHtml(pedido) {
                 </div>
             </div>
             ${pedido.bloqueo_entrega ? '<div class="pedido-badge badge-bloqueado" style="margin-top:0.25rem;">🔒 Bloqueado</div>' : ''}
+            ${pedido.motivo_no_entrega ? `<div class="pedido-badge badge-incidencia" style="margin-top:0.25rem; background-color:#ffedd5; color:#ea580c; border: 1px solid #fed7aa; font-weight:bold; border-radius:4px; padding:2px 6px; font-size:0.75rem; display:inline-block;">⚠️ Regreso: ${pedido.motivo_no_entrega}</div>` : ''}
         </div>
     `;
 }
 
 /**
+ * Actualizar contadores de la barra de segmentación del Pool
+ */
+function actualizarContadoresPool() {
+    const lista = state.pedidos || [];
+    let cantPedidos = 0;
+    let cantSobres = 0;
+    let cantRetiros = 0;
+    let cantContactos = 0;
+
+    lista.forEach(p => {
+        const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true;
+        const esContacto = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
+        const esRetiro = !esSobre && !esContacto && (p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro');
+        if (esSobre) cantSobres++;
+        else if (esContacto) cantContactos++;
+        else if (esRetiro) cantRetiros++;
+        else cantPedidos++;
+    });
+
+    const elTodos = document.getElementById('count-pool-todos');
+    const elPedidos = document.getElementById('count-pool-pedidos');
+    const elSobres = document.getElementById('count-pool-sobres');
+    const elRetiros = document.getElementById('count-pool-retiros');
+    const elContactos = document.getElementById('count-pool-contactos');
+
+    if (elTodos) elTodos.textContent = `(${lista.length})`;
+    if (elPedidos) elPedidos.textContent = `(${cantPedidos})`;
+    if (elSobres) elSobres.textContent = `(${cantSobres})`;
+    if (elRetiros) elRetiros.textContent = `(${cantRetiros})`;
+    if (elContactos) elContactos.textContent = `(${cantContactos})`;
+}
+
+/**
+ * Cambiar el filtro rápido por tipo en el Pool de Pendientes
+ */
+function cambiarFiltroTipoPool(tipo) {
+    state.filtroTipoPool = tipo || 'TODOS';
+    document.querySelectorAll('#pool-tipo-tabs .pool-tab-btn').forEach(btn => {
+        const btnTipo = btn.getAttribute('data-tipo');
+        const activo = btnTipo === state.filtroTipoPool;
+        btn.classList.toggle('active', activo);
+        if (activo) {
+            const activeBg = btnTipo === 'SOBRES'
+                ? '#7c3aed'
+                : (btnTipo === 'RETIROS' ? '#ea580c' : (btnTipo === 'CONTACTOS' ? '#0d9488' : '#2563eb'));
+            btn.style.background = activeBg;
+            btn.style.borderColor = activeBg;
+            btn.style.color = 'white';
+            btn.style.fontWeight = '700';
+        } else {
+            btn.style.background = 'white';
+            btn.style.borderColor = '#cbd5e1';
+            btn.style.color = btnTipo === 'SOBRES'
+                ? '#6d28d9'
+                : (btnTipo === 'RETIROS' ? '#c2410c' : (btnTipo === 'CONTACTOS' ? '#0f766e' : '#334155'));
+            btn.style.fontWeight = '600';
+        }
+    });
+    filtrarPedidos();
+}
+window.cambiarFiltroTipoPool = cambiarFiltroTipoPool;
+
+/**
+ * Quitar un contacto comercial del Pool de Logística manualmente
+ */
+window.quitarContactoDePoolLogistica = async function(idProspecto, nombreComercio) {
+    try {
+        const res = await fetch(`/api/logistica/prospectos/${idProspecto}/pool-logistica`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ en_pool_logistica: false })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'No se pudo quitar del pool');
+        await cargarPedidos();
+    } catch (e) {
+        console.error('[DASHBOARD] Error al quitar contacto del pool:', e);
+        mostrarError('Error al quitar contacto de logística: ' + e.message);
+    }
+};
+
+/**
+ * Visor rápido de fotos del sobre desde Logística
+ */
+window.verFotosSobreLogistica = function(codigoSobre, fotoFrente, fotoDorso) {
+    if (typeof Swal === 'undefined') return;
+    Swal.fire({
+        title: `💵 Sobre #${codigoSobre}`,
+        html: `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 8px;">
+                ${fotoFrente ? `<div><div style="font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">Frente del Sobre</div><img src="${fotoFrente}" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; max-height:260px; object-fit:contain;"></div>` : ''}
+                ${fotoDorso ? `<div><div style="font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px;">Dorso / Cierre</div><img src="${fotoDorso}" style="width:100%; border-radius:8px; border:1px solid #cbd5e1; max-height:260px; object-fit:contain;"></div>` : ''}
+            </div>
+        `,
+        width: 560,
+        confirmButtonText: 'Cerrar',
+        confirmButtonColor: '#7c3aed'
+    });
+};
+
+/**
  * Renderizar lista de pedidos
  */
 function renderizarPedidos() {
-    const container = document.getElementById('pedidos-list');
-
-    if (!state.pedidos || state.pedidos.length === 0) {
-        container.innerHTML = '<div class="loading">No hay pedidos disponibles</div>';
-        const selectAll = document.getElementById('select-all-pedidos');
-        if (selectAll) selectAll.checked = false;
-        actualizarSeleccionPedidos();
-        return;
-    }
-
-    // ORDENAMIENTO: Retiros primero, luego por fecha/id (implícito)
-    const pedidosOrdenados = [...state.pedidos].sort((a, b) => {
-        const aEsRetiro = a.estado === 'Orden de Tratamiento' || a.estado === 'Orden de Retiro';
-        const bEsRetiro = b.estado === 'Orden de Tratamiento' || b.estado === 'Orden de Retiro';
-        if (aEsRetiro && !bEsRetiro) return -1;
-        if (!aEsRetiro && bEsRetiro) return 1;
-        return 0;
-    });
-
-    container.innerHTML = pedidosOrdenados.map(pedido => obtenerPedidoHtml(pedido)).join('');
-
-    const selectAll = document.getElementById('select-all-pedidos');
-    if (selectAll) selectAll.checked = false;
-    actualizarSeleccionPedidos();
+    actualizarContadoresPool();
+    filtrarPedidos();
 }
 
 /**
@@ -585,7 +811,7 @@ window.verFacturaDetalle = function(facturaId) {
 };
 
 /**
- * Enviar presupuestos seleccionados a facturación en lote
+ * Enviar presupuestos seleccionados a facturación respetando la preferencia comercial del cliente
  */
 async function enviarAFacturacionSeleccionados() {
     const checkedSelectors = document.querySelectorAll('.pedidos-list .pedido-selector:checked');
@@ -593,84 +819,221 @@ async function enviarAFacturacionSeleccionados() {
 
     if (ids.length === 0) return;
 
-    Swal.fire({
+    const selectedPedidos = ids.map(id => (state.pedidos || []).find(p => String(p.id) === String(id)) || { id });
+
+    // Caso 1: Envío individual
+    if (selectedPedidos.length === 1) {
+        const p = selectedPedidos[0];
+        const pref = p.preferencia_facturacion || 'PREGUNTAR';
+        const clienteNombre = p.cliente_nombre || 'Cliente';
+        const clienteId = p.cliente_id;
+
+        if (pref === 'INTERNO') {
+            return procesarEnvioFacturacionLote([{ id: p.id, dest: 'interno' }]);
+        } else if (pref === 'ARCA') {
+            return procesarEnvioFacturacionLote([{ id: p.id, dest: 'arca' }]);
+        } else {
+            // Modal de consulta interactiva (idéntico al de Presupuestos)
+            Swal.fire({
+                title: '¿Cómo deseas facturar?',
+                html: `
+                    <div style="text-align: left; margin-top: 15px;">
+                        <p style="margin-bottom: 15px; font-size: 1.05em;">Selecciona el destino para el pedido de <strong>${clienteNombre}</strong>:</p>
+                        
+                        <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" id="log-fact-dest-interno" name="log-fact-dest" value="interno" checked style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="log-fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em;">🏢 Presupuestos Aprobados (Interno / Sin ARCA)</label>
+                        </div>
+                        <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" id="log-fact-dest-arca" name="log-fact-dest" value="arca" style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="log-fact-dest-arca" style="cursor: pointer; font-weight: 600; font-size: 1em;">📄 Verificador de ARCA (Oficial)</label>
+                        </div>
+                        
+                        <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
+                        
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                            <input type="checkbox" id="log-fact-remember" style="cursor: pointer; width: 16px; height: 16px;">
+                            <label for="log-fact-remember" style="cursor: pointer; font-size: 0.9em; color: #64748b;">Establecer como opción predeterminada para este cliente</label>
+                        </div>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Continuar',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const selectedDest = document.querySelector('input[name="log-fact-dest"]:checked').value;
+                    const remember = document.getElementById('log-fact-remember').checked;
+                    return { selectedDest, remember };
+                }
+            }).then(async (result) => {
+                if (!result.isConfirmed) return;
+                const { selectedDest, remember } = result.value;
+                if (remember && clienteId) {
+                    try {
+                        const prefValue = selectedDest === 'arca' ? 'ARCA' : 'INTERNO';
+                        await fetch(`/api/presupuestos/clientes/${clienteId}/preferencia-facturacion`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ preferencia_facturacion: prefValue })
+                        });
+                        p.preferencia_facturacion = prefValue;
+                    } catch (err) {
+                        console.error('Error al guardar preferencia del cliente:', err);
+                    }
+                }
+                procesarEnvioFacturacionLote([{ id: p.id, dest: selectedDest }]);
+            });
+            return;
+        }
+    }
+
+    // Caso 2: Múltiples pedidos seleccionados
+    const countInterno = selectedPedidos.filter(p => p.preferencia_facturacion === 'INTERNO').length;
+    const countArca = selectedPedidos.filter(p => p.preferencia_facturacion === 'ARCA').length;
+    const countPreguntar = selectedPedidos.filter(p => !p.preferencia_facturacion || p.preferencia_facturacion === 'PREGUNTAR').length;
+
+    let desgloseHtml = `<ul style="text-align: left; margin: 12px 0 16px 20px; font-size: 0.95em;">`;
+    if (countInterno > 0) desgloseHtml += `<li>🏢 <b>${countInterno}</b> pedido(s) irán a <b>Presupuestos Aprobados (Interno)</b> según su ficha.</li>`;
+    if (countArca > 0) desgloseHtml += `<li>📄 <b>${countArca}</b> pedido(s) irán a <b>Factura Oficial (ARCA)</b> según su ficha.</li>`;
+    if (countPreguntar > 0) desgloseHtml += `<li>❓ <b>${countPreguntar}</b> pedido(s) no tienen preferencia configurada.</li>`;
+    desgloseHtml += `</ul>`;
+
+    let htmlModal = `<p>Se enviarán <b>${selectedPedidos.length}</b> pedido(s) a Facturación.</p>${desgloseHtml}`;
+
+    if (countPreguntar > 0) {
+        htmlModal += `
+            <div style="text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-top: 10px;">
+                <label style="display: block; font-weight: 600; font-size: 0.9em; margin-bottom: 8px; color: #1e293b;">
+                    ¿A qué destino enviar los ${countPreguntar} pedido(s) sin preferencia definida?
+                </label>
+                <div style="display: flex; gap: 15px;">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9em;">
+                        <input type="radio" name="log-batch-undef-dest" value="interno" checked>
+                        <span>🏢 Presupuestos Aprobados (Interno)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9em;">
+                        <input type="radio" name="log-batch-undef-dest" value="arca">
+                        <span>📄 Factura Oficial (ARCA)</span>
+                    </label>
+                </div>
+            </div>
+        `;
+    }
+
+    const confirmResult = await Swal.fire({
         title: '¿Enviar a Facturación?',
-        text: `Se enviarán ${ids.length} pedido(s) al módulo de facturación para generar borradores de factura locales.`,
+        html: htmlModal,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Sí, enviar',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#10b981',
-        cancelButtonColor: '#64748b'
-    }).then(async (result) => {
-        if (!result.isConfirmed) return;
-
-        // Mostrar progreso
-        Swal.fire({
-            title: 'Procesando...',
-            html: `Enviando pedido <b>1</b> de ${ids.length}...`,
-            allowOutsideClick: false,
-            didOpen: () => {
-                Swal.showLoading();
-            }
-        });
-
-        let successCount = 0;
-        let failCount = 0;
-        const errors = [];
-
-        for (let i = 0; i < ids.length; i++) {
-            const id = ids[i];
-            const currentElement = Swal.getHtmlContainer()?.querySelector('b');
-            if (currentElement) {
-                currentElement.textContent = i + 1;
-            }
-
-            try {
-                const response = await fetch(`/api/facturacion/presupuestos/${id}/facturar`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    successCount++;
-                } else {
-                    failCount++;
-                    errors.push(`Pedido #${id}: ${data.error || data.message || 'Error desconocido'}`);
-                }
-            } catch (err) {
-                failCount++;
-                errors.push(`Pedido #${id}: ${err.message}`);
-            }
-        }
-
-        // Finalizar y reportar resultados
-        if (failCount === 0) {
-            Swal.fire({
-                title: '¡Envío Completado!',
-                text: `Se enviaron exitosamente ${successCount} pedido(s) a facturación.`,
-                icon: 'success'
-            }).then(() => {
-                cargarPedidos();
-            });
-        } else {
-            const errorHtml = `<div style="text-align: left; max-height: 150px; overflow-y: auto; font-size: 0.85rem; margin-top: 1rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px; border: 1px solid #fca5a5; color: #991b1b;">
-                ${errors.map(e => `• ${e}`).join('<br>')}
-            </div>`;
-
-            Swal.fire({
-                title: 'Envío parcial',
-                html: `Se enviaron ${successCount} pedido(s) correctamente, pero fallaron ${failCount}.<br>${errorHtml}`,
-                icon: 'warning'
-            }).then(() => {
-                cargarPedidos();
-            });
+        cancelButtonColor: '#64748b',
+        preConfirm: () => {
+            const rad = document.querySelector('input[name="log-batch-undef-dest"]:checked');
+            return rad ? rad.value : 'interno';
         }
     });
+
+    if (!confirmResult.isConfirmed) return;
+    const defaultParaIndefinidos = confirmResult.value || 'interno';
+
+    const itemsAProcesar = selectedPedidos.map(p => {
+        let dest = 'interno';
+        if (p.preferencia_facturacion === 'ARCA') dest = 'arca';
+        else if (p.preferencia_facturacion === 'INTERNO') dest = 'interno';
+        else dest = defaultParaIndefinidos;
+        return { id: p.id, dest };
+    });
+
+    procesarEnvioFacturacionLote(itemsAProcesar);
+}
+
+/**
+ * Procesa el envío a facturación ejecutando el endpoint correspondiente por pedido
+ */
+async function procesarEnvioFacturacionLote(items) {
+    Swal.fire({
+        title: 'Procesando...',
+        html: `Enviando pedido <b>1</b> de ${items.length}...`,
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const currentElement = Swal.getHtmlContainer()?.querySelector('b');
+        if (currentElement) {
+            currentElement.textContent = i + 1;
+        }
+
+        try {
+            const endpoint = item.dest === 'interno'
+                ? `/api/facturacion/presupuestos/${item.id}/facturar-local`
+                : `/api/facturacion/presupuestos/${item.id}/facturar`;
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                successCount++;
+            } else {
+                failCount++;
+                errors.push(`Pedido #${item.id}: ${data.error || data.message || 'Error desconocido'}`);
+            }
+        } catch (err) {
+            failCount++;
+            errors.push(`Pedido #${item.id}: ${err.message}`);
+        }
+    }
+
+    if (failCount === 0) {
+        Swal.fire({
+            title: '¡Envío Completado!',
+            text: `Se enviaron exitosamente ${successCount} pedido(s) a facturación según sus destinos configurados.`,
+            icon: 'success',
+            showCancelButton: true,
+            confirmButtonText: '🧾 Ir a Gestión de Facturas',
+            cancelButtonText: 'Seguir en Logística',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#64748b'
+        }).then((res) => {
+            cargarPedidos();
+            if (res.isConfirmed) {
+                window.location.href = 'http://localhost:3004';
+            }
+        });
+    } else {
+        const errorHtml = `<div style="text-align: left; max-height: 150px; overflow-y: auto; font-size: 0.85rem; margin-top: 1rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px; border: 1px solid #fca5a5; color: #991b1b;">
+            ${errors.map(e => `• ${e}`).join('<br>')}
+        </div>`;
+
+        Swal.fire({
+            title: 'Envío parcial',
+            html: `Se enviaron ${successCount} pedido(s) correctamente, pero fallaron ${failCount}.<br>${errorHtml}`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '🧾 Ir a Gestión de Facturas',
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#2563eb'
+        }).then((res) => {
+            cargarPedidos();
+            if (res.isConfirmed) {
+                window.location.href = 'http://localhost:3004';
+            }
+        });
+    }
 }
 
 /**
@@ -696,11 +1059,13 @@ async function enviarRutaAFacturacion(rutaId) {
         }
 
         const pendingBudgets = ruta.presupuestos.filter(p => {
+            const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+            const esContacto = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
             const esTratamiento = p.estado === 'Orden de Tratamiento';
             const esOrdenRetiro = p.estado === 'Orden de Retiro';
-            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA';
+            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' || p.factura_estado === 'APROBADA_LOCAL';
             const esEnviado = p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación';
-            return !esTratamiento && !esOrdenRetiro && !esFacturado && !esEnviado;
+            return !esSobre && !esContacto && !esTratamiento && !esOrdenRetiro && !esFacturado && !esEnviado;
         });
 
         if (pendingBudgets.length === 0) {
@@ -715,7 +1080,7 @@ async function enviarRutaAFacturacion(rutaId) {
         const listIds = pendingBudgets.map(p => `#${p.id}`).join(', ');
         const confirmResult = await Swal.fire({
             title: '¿Facturar Ruta por Lote?',
-            html: `Se enviarán <b>${pendingBudgets.length}</b> pedido(s) pendientes (${listIds}) al módulo de facturación para generar borradores de factura locales.`,
+            html: `Se enviarán <b>${pendingBudgets.length}</b> pedido(s) pendientes (${listIds}) al módulo de facturación según la preferencia comercial de cada cliente (Presupuestos Aprobados / ARCA).`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Sí, facturar',
@@ -747,7 +1112,12 @@ async function enviarRutaAFacturacion(rutaId) {
             }
 
             try {
-                const res = await fetch(`/api/facturacion/presupuestos/${p.id}/facturar`, {
+                const dest = p.preferencia_facturacion === 'ARCA' ? 'arca' : 'interno';
+                const endpoint = dest === 'interno'
+                    ? `/api/facturacion/presupuestos/${p.id}/facturar-local`
+                    : `/api/facturacion/presupuestos/${p.id}/facturar`;
+
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -777,7 +1147,16 @@ async function enviarRutaAFacturacion(rutaId) {
             Swal.fire({
                 title: '¡Proceso Finalizado!',
                 text: `Se enviaron exitosamente ${successCount} pedido(s) a facturación.`,
-                icon: 'success'
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: '🧾 Ir a Gestión de Facturas',
+                cancelButtonText: 'Seguir en Logística',
+                confirmButtonColor: '#2563eb',
+                cancelButtonColor: '#64748b'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    window.location.href = 'http://localhost:3004';
+                }
             });
         } else {
             const errorHtml = `<div style="text-align: left; max-height: 150px; overflow-y: auto; font-size: 0.85rem; margin-top: 1rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px; border: 1px solid #fca5a5; color: #991b1b;">
@@ -787,7 +1166,15 @@ async function enviarRutaAFacturacion(rutaId) {
             Swal.fire({
                 title: 'Proceso con Errores',
                 html: `Se enviaron ${successCount} pedido(s) correctamente, pero fallaron ${failCount}.<br>${errorHtml}`,
-                icon: 'warning'
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: '🧾 Ir a Gestión de Facturas',
+                cancelButtonText: 'Cerrar',
+                confirmButtonColor: '#2563eb'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    window.location.href = 'http://localhost:3004';
+                }
             });
         }
 
@@ -798,6 +1185,31 @@ async function enviarRutaAFacturacion(rutaId) {
 }
 
 window.enviarRutaAFacturacion = enviarRutaAFacturacion;
+
+function toggleHeaderToolsMenu(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('header-tools-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('open');
+    }
+}
+
+function cerrarHeaderToolsMenu() {
+    const dropdown = document.getElementById('header-tools-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('open');
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('header-tools-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+    }
+});
+
+window.toggleHeaderToolsMenu = toggleHeaderToolsMenu;
+window.cerrarHeaderToolsMenu = cerrarHeaderToolsMenu;
 
 /**
  * Renderizar lista de rutas con agrupación
@@ -1134,15 +1546,17 @@ function toggleGrupoMes(año, mes) {
  * Renderizar tarjeta individual de ruta
  */
 function renderizarTarjetaRuta(ruta) {
-    // Calcular cantidad de presupuestos pendientes de facturación
+    // Calcular cantidad de presupuestos pendientes de facturación (excluyendo sobres, contactos y retiros)
     let cantPendientesFacturacion = 0;
     if (ruta.presupuestos && ruta.presupuestos.length > 0) {
         cantPendientesFacturacion = ruta.presupuestos.filter(p => {
+            const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+            const esContacto = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
             const esTratamiento = p.estado === 'Orden de Tratamiento';
             const esOrdenRetiro = p.estado === 'Orden de Retiro';
-            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA';
+            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' || p.factura_estado === 'APROBADA_LOCAL';
             const esEnviado = p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación';
-            return !esTratamiento && !esOrdenRetiro && !esFacturado && !esEnviado;
+            return !esSobre && !esContacto && !esTratamiento && !esOrdenRetiro && !esFacturado && !esEnviado;
         }).length;
     }
 
@@ -1162,38 +1576,53 @@ function renderizarTarjetaRuta(ruta) {
                  style="margin-top: 0.75rem; font-size: 0.75rem;">
                 ${paradas.map((parada, index) => {
             const idsPresupuestos = JSON.stringify(parada.presupuestos.map(p => p.id));
-            const primerPedido = parada.presupuestos[0];
+            // Preferir un item con dirección/coordenadas como cabecera de la parada
+            const primerPedido = parada.presupuestos.find(p => !String(p.id).startsWith('SOB-') && p.domicilio_direccion)
+                || parada.presupuestos.find(p => p.domicilio_direccion)
+                || parada.presupuestos[0];
 
             // Fallbacks
             const clienteId = primerPedido.id_cliente || primerPedido.cliente_id || 'S/N';
             const clienteNombre = primerPedido.cliente_nombre || 'Cliente Desconocido';
 
-            // DETECTAR SI ES RETIRO (O SI EL GRUPO CONTIENE UN RETIRO)
-            // Asumimos que si agrupa por parada, todos son del mismo tipo o al menos mostramos estilo si el primero lo es.
-            const esTratamiento = primerPedido.estado === 'Orden de Tratamiento';
-            const esOrdenRetiro = primerPedido.estado === 'Orden de Retiro';
-            const esDevolucion = esTratamiento && primerPedido.estado_tratamiento === 'COMPLETADO';
-            const esRetiro = (esTratamiento && !esDevolucion) || esOrdenRetiro;
+            const sobresParada = parada.presupuestos.filter(p => String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo');
+            const contactosParada = parada.presupuestos.filter(p => String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial');
+            const itemsNoSobre = parada.presupuestos.filter(p => {
+                const pSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+                const pContacto = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
+                return !pSobre && !pContacto;
+            });
 
-            // Estilos Austeros para Retiro/Devolucion en Ruta
+            const tieneSobre = sobresParada.length > 0;
+            const tieneContacto = contactosParada.length > 0;
+            const esSoloSobre = tieneSobre && itemsNoSobre.length === 0 && !tieneContacto;
+            const esSoloContacto = tieneContacto && itemsNoSobre.length === 0 && !tieneSobre;
+
+            const algunRetiro = itemsNoSobre.some(p => (p.estado === 'Orden de Tratamiento' && p.estado_tratamiento !== 'COMPLETADO') || p.estado === 'Orden de Retiro');
+            const algunaDevolucion = itemsNoSobre.some(p => p.estado === 'Orden de Tratamiento' && p.estado_tratamiento === 'COMPLETADO');
+            const esRetiro = !esSoloSobre && !esSoloContacto && algunRetiro && itemsNoSobre.every(p => p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro');
+            const esDevolucion = !esSoloSobre && !esSoloContacto && !esRetiro && algunaDevolucion;
+
+            // Estilos para parada en Ruta
             let estiloItem = 'background-color: white;';
-            if (esRetiro) estiloItem = 'background-color: #fdf2e9; border-left: 4px solid #d35400;';
-            if (esDevolucion) estiloItem = 'background-color: #eff6ff; border-left: 4px solid #2563eb;';
+            if (esSoloSobre) estiloItem = 'background-color: #faf5ff; border-left: 4px solid #7c3aed;';
+            else if (esSoloContacto) estiloItem = 'background-color: #f0fdfa; border-left: 4px solid #0d9488;';
+            else if (esRetiro) estiloItem = 'background-color: #fdf2e9; border-left: 4px solid #d35400;';
+            else if (esDevolucion) estiloItem = 'background-color: #eff6ff; border-left: 4px solid #2563eb;';
+            else if (tieneSobre) estiloItem = 'background-color: #fcfaff; border-left: 4px solid #7c3aed;';
             
-            const iconoCliente = esRetiro ? '🔙' : (esDevolucion ? '🚚' : '👤');
+            const iconoCliente = esSoloSobre ? '💵' : (esSoloContacto ? '🎯' : (esRetiro ? '🔙' : (esDevolucion ? '🚚' : '👤')));
 
-            // Totales agrupados
-            const totalMonto = parada.presupuestos.reduce((sum, p) => sum + parseFloat(p.total || 0), 0);
-            const cantidadPedidos = parada.presupuestos.length;
-
-            // Lista de IDs visual
-            const listaIds = parada.presupuestos.map(p => `#${p.id}`).join(', ');
+            // Totales de pedidos (sin mezclar el monto del sobre con el total comercial de mercadería)
+            const totalMontoPedidos = itemsNoSobre.reduce((sum, p) => sum + parseFloat(p.total || 0), 0);
+            const cantidadPedidos = itemsNoSobre.length;
+            const listaIdsPedidos = itemsNoSobre.map(p => `#${p.id}`).join(', ');
 
             return `
-                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''} ${esRetiro ? 'item-retiro' : ''} ${esDevolucion ? 'item-entrega-mant' : ''}" 
+                    <div class="ruta-pedido-item ${esArmando ? 'sortable' : ''} ${esRetiro ? 'item-retiro' : ''} ${esDevolucion ? 'item-entrega-mant' : ''} ${esSoloSobre ? 'item-sobre' : ''} ${esSoloContacto ? 'item-contacto' : ''}" 
                          data-presupuesto-ids='${idsPresupuestos}'
                          data-cliente-id="${clienteId}"
-                         data-tipo="${esRetiro ? 'retiro' : (esDevolucion ? 'entrega_mantenimiento' : 'venta')}"
+                         data-tipo="${esSoloSobre ? 'sobre' : (esSoloContacto ? 'contacto' : (esRetiro ? 'retiro' : (esDevolucion ? 'entrega_mantenimiento' : 'venta')))}"
                          draggable="${esArmando}"
                          ondragstart="${esArmando ? 'handlePedidoDragStart(event)' : ''}"
                          ondragover="${esArmando ? 'handlePedidoDragOver(event)' : ''}"
@@ -1212,11 +1641,13 @@ function renderizarTarjetaRuta(ruta) {
                                 <div style="font-weight: 700; color: #0f172a; font-size: 0.85rem;">
                                     ${iconoCliente} ${clienteNombre}
                                 </div>
-                                <div style="font-weight: 600; color: ${esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')}; font-size: 0.8rem; background: ${esRetiro ? '#fae5d3' : (esDevolucion ? '#dbeafe' : '#dbeafe')}; padding: 0 0.25rem; border-radius: 0.25rem;">
-                                    Cli #${clienteId}
+                                <div style="font-weight: 600; color: ${esSoloSobre ? '#6d28d9' : (esSoloContacto ? '#0f766e' : (esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')))}; font-size: 0.8rem; background: ${esSoloSobre ? '#ede9fe' : (esSoloContacto ? '#ccfbf1' : (esRetiro ? '#fae5d3' : '#dbeafe'))}; padding: 0 0.25rem; border-radius: 0.25rem;">
+                                    ${esSoloContacto ? (primerPedido.codigo_prospecto || clienteId) : `Cli #${clienteId}`}
                                 </div>
                             </div>
                             
+                            ${esSoloSobre ? `<div style="font-size: 0.7rem; font-weight: bold; color: #6d28d9; margin-top: 0.1rem;">💵 PASO A RETIRAR SOBRE</div>` : ''}
+                            ${esSoloContacto ? `<div style="font-size: 0.7rem; font-weight: bold; color: #0f766e; margin-top: 0.1rem;">🎯 VISITA DE CONTACTO COMERCIAL${primerPedido.rubro ? ` • ${primerPedido.rubro}` : ''}</div>` : ''}
                             ${esRetiro ? `<div style="font-size: 0.7rem; font-weight: bold; color: #d35400; margin-top: 0.1rem;">🔙 RETIRO</div>` : ''}
                             ${esDevolucion ? `<div style="font-size: 0.7rem; font-weight: bold; color: #2563eb; margin-top: 0.1rem;">🚚 ENTREGA MANTENIMIENTO</div>` : ''}
 
@@ -1224,76 +1655,138 @@ function renderizarTarjetaRuta(ruta) {
                                 📍 ${primerPedido.domicilio_direccion || 'Sin dirección'}
                             </div>
                             
+                            ${cantidadPedidos > 0 ? `
                             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; align-items: center;">
                                 <div style="color: #64748b; font-weight: 500;">
                                     ${esRetiro ? '↩️' : (esDevolucion ? '🚚' : '📦')} ${cantidadPedidos > 1 ? 'Pedidos:' : 'Pedido:'} 
-                                    <span style="color: #334155; font-weight: 600;">${listaIds} ${esRetiro ? '(Retiro)' : (esDevolucion ? '(Entrega Mant.)' : '')}</span>
+                                    <span style="color: #334155; font-weight: 600;">${listaIdsPedidos} ${esRetiro ? '(Retiro)' : (esDevolucion ? '(Entrega Mant.)' : '')}</span>
                                 </div>
-                                ${totalMonto > 0 ? `
+                                ${totalMontoPedidos > 0 ? `
                                     <div style="color: #059669; font-weight: 600; font-size: 0.7rem;">
-                                        💰 $${totalMonto.toFixed(2)}
+                                        💰 $${totalMontoPedidos.toFixed(2)}
                                     </div>
                                 ` : ''}
                             </div>
+                            ` : ''}
+
+                            ${contactosParada.map(c => {
+                                const codP = c.codigo_prospecto || c.id;
+                                const encP = c.contacto_nombre ? `👤 ${c.contacto_nombre}` : '';
+                                const telP = c.cliente_telefono || c.telefono_whatsapp || '';
+                                return `
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; align-items: center; background: #ccfbf1; border: 1px solid #99f6e4; padding: 2px 6px; border-radius: 4px;">
+                                    <span style="color: #115e59; font-weight: 700; font-size: 0.71rem;">
+                                        🤝 Presentación (${codP})
+                                    </span>
+                                    ${encP ? `<span style="color: #0f766e; font-weight: 600; font-size: 0.7rem;">${encP}</span>` : ''}
+                                    ${telP ? `<span style="color: #047857; font-weight: 700; font-size: 0.7rem;">📱 ${telP}</span>` : ''}
+                                </div>
+                                `;
+                            }).join('')}
+
+                            ${sobresParada.map(s => {
+                                const cod = s.codigo_sobre || String(s.id).replace('SOB-', '');
+                                const montoS = parseFloat(s.monto_declarado || s.total || 0);
+                                const tieneFotosS = Boolean(s.foto_frente_url || s.foto_dorso_url);
+                                const yaRetirado = s.estado_logistico === 'RETIRADO' || s.estado_sobre === 'RETIRADO';
+                                return `
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; align-items: center; background: #ede9fe; border: 1px solid #ddd6fe; padding: 2px 6px; border-radius: 4px;">
+                                    <span style="color: #5b21b6; font-weight: 700; font-size: 0.72rem;">
+                                        💵 Sobre #${cod}
+                                    </span>
+                                    <span style="color: #6d28d9; font-weight: 700; font-size: 0.72rem;">
+                                        $${montoS.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                    ${yaRetirado ? `<span style="background:#dcfce7; color:#166534; font-weight:700; font-size:0.65rem; padding:1px 4px; border-radius:3px;">✅ RETIRADO</span>` : ''}
+                                    ${tieneFotosS ? `<button type="button" onclick="event.stopPropagation(); verFotosSobreLogistica('${cod}', '${s.foto_frente_url || ''}', '${s.foto_dorso_url || ''}')" style="background:#7c3aed; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:0.65rem; cursor:pointer;" title="Ver fotos del sobre">📷</button>` : ''}
+                                </div>
+                                `;
+                            }).join('')}
                         </div>
                         
-                        ${esArmando ? `
-                            <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-                                ${parada.presupuestos.map(p => `
-                                    <div style="display:flex; gap:2px; align-items:center;">
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            ${parada.presupuestos.map(p => {
+                                const esSobreP = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+                                const esContactoP = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
+                                const esTratP = p.estado === 'Orden de Tratamiento';
+                                const esRetP = p.estado === 'Orden de Retiro';
+                                const labelCorto = esSobreP ? (p.codigo_sobre || p.id) : (esContactoP ? (p.codigo_prospecto || p.id) : p.id);
+                                const yaCompletado = p.estado_logistico === 'ENTREGADO' || p.estado_logistico === 'RETIRADO' || p.estado === 'Entregado' || p.estado === 'Retirado' || p.estado_ruta === 'VISITADO';
+
+                                if (esContactoP) {
+                                    return `
+                                    <div style="display:flex; gap:2px; align-items:center; justify-content:flex-end;">
+                                        ${(esArmando && !yaCompletado) ? `
+                                            <button class="btn-icon-danger" 
+                                                    onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, '${p.id}')"
+                                                    title="Quitar contacto ${labelCorto} de la ruta"
+                                                    style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #0d9488; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.9;">
+                                                🗑️ ${labelCorto}
+                                            </button>
+                                        ` : `
+                                            <span style="padding: 0.1rem 0.3rem; font-size: 0.68rem; border-radius: 0.25rem; font-weight: bold; color: ${yaCompletado ? '#166534' : '#0f766e'}; background: ${yaCompletado ? '#dcfce7' : '#ccfbf1'};">
+                                                ${yaCompletado ? '✅ Visitado' : '🎯 En Ruta'}
+                                            </span>
+                                        `}
+                                    </div>
+                                    `;
+                                }
+
+                                if (esSobreP) {
+                                    return `
+                                    <div style="display:flex; gap:2px; align-items:center; justify-content:flex-end;">
+                                        ${(esArmando && !yaCompletado) ? `
+                                            <button class="btn-icon-danger" 
+                                                    onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, '${p.id}')"
+                                                    title="Quitar sobre #${labelCorto}"
+                                                    style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #7c3aed; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.9;">
+                                                🗑️ #${labelCorto}
+                                            </button>
+                                        ` : `
+                                            <span style="padding: 0.1rem 0.3rem; font-size: 0.68rem; border-radius: 0.25rem; font-weight: bold; color: ${yaCompletado ? '#166534' : '#5b21b6'}; background: ${yaCompletado ? '#dcfce7' : '#ede9fe'};">
+                                                ${yaCompletado ? '✅ Retirado' : '💵 En Ruta'}
+                                            </span>
+                                        `}
+                                    </div>
+                                    `;
+                                }
+
+                                return `
+                                <div style="display:flex; gap:2px; align-items:center;">
+                                    ${(esArmando && !yaCompletado) ? `
                                         <button class="btn-icon-danger" 
                                                 onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, '${p.id}')"
                                                 title="Quitar pedido #${p.id}"
                                                 style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
                                             🗑️ #${p.id}
                                         </button>
-                                        ${(!esTratamiento && !esOrdenRetiro) ? `
-                                            <span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; border-radius: 0.25rem; font-weight: bold; color: white; background: ${p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' ? '#10b981' : (p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación' ? '#f59e0b' : '#64748b')};">
-                                                ${p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' ? '🧾 Facturado' : (p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación' ? '📄 Enviado' : '⏳ Pendiente')}
-                                            </span>
-                                        ` : ''}
-                                        ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
-                                            ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
-                                            : (!p.esta_facturado && p.factura_estado !== 'APROBADA' && !esTratamiento && !esOrdenRetiro
-                                                ? `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
-                                                : ''
-                                              )
-                                        }
-                                        <button class="btn-icon-lamda" 
-                                                onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
-                                                title="Imprimir LAMDA #${p.id}"
-                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                            🖨️
-                                        </button>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : `
-                            <div style="display: flex; flex-direction: column; gap: 0.2rem;">
-                                ${parada.presupuestos.map(p => `
-                                    <div style="display:flex; gap:2px; align-items:center;">
-                                        ${(!esTratamiento && !esOrdenRetiro) ? `
-                                            <span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; border-radius: 0.25rem; font-weight: bold; color: white; background: ${p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' ? '#10b981' : (p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación' ? '#f59e0b' : '#64748b')};">
-                                                ${p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' ? '🧾 Facturado' : (p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación' ? '📄 Enviado' : '⏳ Pendiente')}
-                                            </span>
-                                        ` : ''}
-                                        ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
-                                            ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
-                                            : (!p.esta_facturado && p.factura_estado !== 'APROBADA' && !esTratamiento && !esOrdenRetiro
-                                                ? `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
-                                                : ''
-                                              )
-                                        }
-                                        <button class="btn-icon-lamda" 
-                                                onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
-                                                title="Imprimir LAMDA #${p.id}"
-                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                            🖨️
-                                        </button>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `}
+                                    ` : ''}
+                                    ${(!esTratP && !esRetP) ? (() => {
+                                        const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' || p.factura_estado === 'APROBADA_LOCAL';
+                                        const esEnviado = p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación';
+                                        const bg = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '#d4edda' : '#d1ecf1') : (esEnviado ? '#f59e0b' : '#64748b');
+                                        const color = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '#155724' : '#0c5460') : 'white';
+                                        const border = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '1px solid #c3e6cb' : '1px solid #bee5eb') : 'none';
+                                        const text = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '🧾 Facturado Local' : '🧾 Facturado ARCA') : (esEnviado ? '📄 Enviado' : '⏳ Pendiente');
+                                        return `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; border-radius: 0.25rem; font-weight: bold; color: ${color}; background: ${bg}; border: ${border};">${text}</span>`;
+                                    })() : ''}
+                                    ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
+                                        ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
+                                        : (!p.esta_facturado && p.factura_estado !== 'APROBADA' && p.factura_estado !== 'APROBADA_LOCAL' && !esTratP && !esRetP
+                                            ? `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                            : ''
+                                          )
+                                    }
+                                    <button class="btn-icon-lamda" 
+                                            onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
+                                            title="Imprimir LAMDA #${p.id}"
+                                            style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                        🖨️
+                                    </button>
+                                </div>
+                                `;
+                            }).join('')}
+                        </div>
                     </div>
                 `;
         }).join('')}
@@ -1383,6 +1876,11 @@ function renderizarTarjetaRuta(ruta) {
                     Ver en Mapa
                 </button>
                 <button class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                        onclick="event.stopPropagation(); window.open('/api/logistica/rutas/${ruta.id}/manifiesto', '_blank')"
+                        title="Imprimir Manifiesto de Carga">
+                    🖨️
+                </button>
+                <button class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
                         onclick="event.stopPropagation(); generarQRAcceso(${ruta.id})"
                         title="Generar QR de acceso rápido">
                     📱
@@ -1414,17 +1912,37 @@ function renderizarTarjetaRuta(ruta) {
 
 /**
  * Agrupar presupuestos por Cliente + Domicilio (lógica de Paradas)
+ * Regla de Negocio LAMDA: Todo lo que pertenece a un cliente en la hoja de ruta
+ * (Pedido + Sobre + Retiro) se unifica determinísticamente en la misma parada.
  */
 function agruparPresupuestosEnParadas(presupuestos) {
     if (!presupuestos || presupuestos.length === 0) return [];
 
+    const normClienteId = (p) => String(p.id_cliente || p.cliente_id || '').trim().replace(/^0+/, '');
+
+    // Mapa auxiliar: si un cliente tiene un pedido/retiro con domicilio definido en la ruta,
+    // cualquier sobre (o item sin domicilio específico distinto) de ese mismo cliente se acopla a esa parada.
+    const domicilioPrincipalPorCliente = new Map();
+    presupuestos.forEach(p => {
+        const cid = normClienteId(p);
+        const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+        if (cid && p.id_domicilio_entrega && (!domicilioPrincipalPorCliente.has(cid) || !esSobre)) {
+            domicilioPrincipalPorCliente.set(cid, p.id_domicilio_entrega);
+        }
+    });
+
     const paradas = [];
-    const mapaParadas = new Map(); // Key: "idCliente_idDomicilio"
+    const mapaParadas = new Map(); // Key: "idClienteNorm_idDomicilio"
 
     presupuestos.forEach(p => {
-        // Generar clave única de agrupación
-        // IMPORTANTE: Si es distinta dirección pero mismo cliente -> Distinta parada
-        const key = `${p.id_cliente}_${p.id_domicilio_entrega}`;
+        const cid = normClienteId(p);
+        const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+        // Si es un sobre de un cliente que ya tiene parada en la ruta, o si no tiene domicilio propio, unificar con el domicilio del cliente en la ruta
+        const domId = (esSobre && domicilioPrincipalPorCliente.has(cid))
+            ? domicilioPrincipalPorCliente.get(cid)
+            : (p.id_domicilio_entrega || domicilioPrincipalPorCliente.get(cid) || 'default');
+
+        const key = `${cid}_${domId}`;
 
         if (!mapaParadas.has(key)) {
             const nuevaParada = {
@@ -1438,8 +1956,7 @@ function agruparPresupuestosEnParadas(presupuestos) {
         mapaParadas.get(key).presupuestos.push(p);
     });
 
-    // Importante: Mantener el orden relativo basado en el primer elemento de cada grupo
-    // (Asumiendo que 'presupuestos' ya viene ordenado por secuencia)
+    // Mantener el orden relativo basado en el primer elemento de cada grupo
     return paradas;
 }
 
@@ -1655,18 +2172,36 @@ function configurarEventListeners() {
  * Filtrar pedidos
  */
 function filtrarPedidos() {
-    const searchTerm = document.getElementById('search-pedidos')?.value.toLowerCase() || '';
+    actualizarContadoresPool();
+
+    const searchTerm = document.getElementById('search-pedidos')?.value.toLowerCase().trim() || '';
     const estadoFilter = document.getElementById('filter-estado')?.value || '';
     const zonaFilter = document.getElementById('filter-zona')?.value || '';
+    const tipoFilter = state.filtroTipoPool || 'TODOS';
 
-    const pedidosFiltrados = state.pedidos.filter(pedido => {
+    const pedidosFiltrados = (state.pedidos || []).filter(pedido => {
+        const esSobre = String(pedido.id).startsWith('SOB-') || pedido.es_sobre_efectivo === true || pedido.estado === 'Sobre de Efectivo';
+        const esContacto = String(pedido.id).startsWith('PR-') || pedido.es_visita_preventa === true || pedido.estado === 'Visita Comercial';
+        const esTratamiento = pedido.estado === 'Orden de Tratamiento';
+        const esOrdenRetiro = pedido.estado === 'Orden de Retiro';
+        const esDevolucion = esTratamiento && pedido.estado_tratamiento === 'COMPLETADO';
+        const esRetiro = !esSobre && !esContacto && ((esTratamiento && !esDevolucion) || esOrdenRetiro);
+        const esPedido = !esSobre && !esContacto && !esRetiro;
+
+        if (tipoFilter === 'PEDIDOS' && !esPedido) return false;
+        if (tipoFilter === 'SOBRES' && !esSobre) return false;
+        if (tipoFilter === 'RETIROS' && !esRetiro) return false;
+        if (tipoFilter === 'CONTACTOS' && !esContacto) return false;
+
         const matchSearch = !searchTerm ||
-            pedido.id.toString().includes(searchTerm) ||
-            (pedido.cliente_nombre || '').toLowerCase().includes(searchTerm);
+            String(pedido.id || '').toLowerCase().includes(searchTerm) ||
+            String(pedido.codigo_sobre || '').toLowerCase().includes(searchTerm) ||
+            String(pedido.codigo_prospecto || '').toLowerCase().includes(searchTerm) ||
+            String(pedido.id_cliente || pedido.cliente_id || '').toLowerCase().includes(searchTerm) ||
+            (pedido.cliente_nombre || '').toLowerCase().includes(searchTerm) ||
+            (pedido.domicilio_direccion || '').toLowerCase().includes(searchTerm);
 
         const matchEstado = !estadoFilter || pedido.estado_logistico === estadoFilter;
-
-        // TODO: Implementar filtro por zona cuando esté disponible
         const matchZona = !zonaFilter;
 
         return matchSearch && matchEstado && matchZona;
@@ -1675,7 +2210,14 @@ function filtrarPedidos() {
     // Renderizar pedidos filtrados
     const container = document.getElementById('pedidos-list');
     if (pedidosFiltrados.length === 0) {
-        container.innerHTML = '<div class="loading">No se encontraron pedidos</div>';
+        const msgVacio = tipoFilter === 'SOBRES'
+            ? 'No hay sobres cerrados pendientes de retiro'
+            : (tipoFilter === 'RETIROS'
+                ? 'No hay retiros pendientes'
+                : (tipoFilter === 'CONTACTOS'
+                    ? 'No hay contactos enviados manualmente a logística'
+                    : 'No se encontraron elementos'));
+        container.innerHTML = `<div class="loading">${msgVacio}</div>`;
         const selectAll = document.getElementById('select-all-pedidos');
         if (selectAll) selectAll.checked = false;
         actualizarSeleccionPedidos();
@@ -1898,28 +2440,36 @@ async function verDetallesRuta(rutaId) {
                 }
 
                 if (ruta.presupuestos && ruta.presupuestos.length > 0) {
-                    pedidosHTML = '<div style="margin-top: 1rem;"><strong>Pedidos en ruta:</strong><ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
+                    pedidosHTML = '<div style="margin-top: 1rem;"><strong>Paradas / Elementos en ruta:</strong><ol style="margin: 0.5rem 0; padding-left: 1.5rem;">';
                     ruta.presupuestos.forEach((p, index) => {
-                        // Fallbacks para edge cases (QA requirement)
-                        // NOTA: El backend retorna 'id_cliente' (no 'cliente_id')
                         const clienteId = p.id_cliente || p.cliente_id || 'S/N';
                         const clienteNombre = p.cliente_nombre || 'Cliente Desconocido';
 
+                        const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+                        const esContacto = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
                         const esTratamiento = p.estado === 'Orden de Tratamiento';
                         const esOrdenRetiro = p.estado === 'Orden de Retiro';
                         let badgeFacturacionHTML = '';
-                        if (!esTratamiento && !esOrdenRetiro) {
-                            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA';
+                        if (esSobre) {
+                            const codSobre = p.codigo_sobre || String(p.id).replace('SOB-', '');
+                            const montoS = parseFloat(p.monto_declarado || p.total || 0);
+                            badgeFacturacionHTML = `<span style="padding: 0.1rem 0.35rem; font-size: 0.65rem; border-radius: 0.25rem; font-weight: bold; color: #5b21b6; background: #ede9fe; border: 1px solid #ddd6fe; margin-left: 0.5rem; display: inline-block; vertical-align: middle;">💵 Sobre #${codSobre} ($${montoS.toLocaleString('es-AR', { minimumFractionDigits: 2 })})</span>`;
+                        } else if (esContacto) {
+                            badgeFacturacionHTML = `<span style="padding: 0.1rem 0.35rem; font-size: 0.65rem; border-radius: 0.25rem; font-weight: bold; color: #0f766e; background: #ccfbf1; border: 1px solid #99f6e4; margin-left: 0.5rem; display: inline-block; vertical-align: middle;">🤝 Visita Comercial${p.rubro ? ` (${p.rubro})` : ''}</span>`;
+                        } else if (!esTratamiento && !esOrdenRetiro) {
+                            const esFacturado = p.esta_facturado || p.comprobante_lomasoft || p.factura_estado === 'APROBADA' || p.factura_estado === 'APROBADA_LOCAL';
                             const esEnviado = p.factura_estado === 'BORRADOR' || p.estado === 'Enviado a Facturación';
-                            const bg = esFacturado ? '#10b981' : (esEnviado ? '#f59e0b' : '#64748b');
-                            const label = esFacturado ? '🧾 Facturado' : (esEnviado ? '📄 Enviado' : '⏳ Pendiente');
-                            badgeFacturacionHTML = `<span style="padding: 0.1rem 0.3rem; font-size: 0.65rem; border-radius: 0.25rem; font-weight: bold; color: white; background: ${bg}; margin-left: 0.5rem; display: inline-block; vertical-align: middle;">${label}</span>`;
+                            const bg = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '#d4edda' : '#d1ecf1') : (esEnviado ? '#f59e0b' : '#64748b');
+                            const color = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '#155724' : '#0c5460') : 'white';
+                            const border = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '1px solid #c3e6cb' : '1px solid #bee5eb') : 'none';
+                            const label = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '🧾 Facturado Local' : '🧾 Facturado ARCA') : (esEnviado ? '📄 Enviado' : '⏳ Pendiente');
+                            badgeFacturacionHTML = `<span style="padding: 0.1rem 0.3rem; font-size: 0.65rem; border-radius: 0.25rem; font-weight: bold; color: ${color}; background: ${bg}; border: ${border}; margin-left: 0.5rem; display: inline-block; vertical-align: middle;">${label}</span>`;
                         }
 
                         pedidosHTML += `
                             <li style="margin: 0.25rem 0;">
-                                <strong style="color: #1e40af;">👤 Cliente #${clienteId}</strong> - ${clienteNombre}
-                                <br><small style="color: #64748b;">Pedido #${p.id}</small>${badgeFacturacionHTML}
+                                <strong style="color: ${esSobre ? '#6d28d9' : (esContacto ? '#0f766e' : '#1e40af')};">${esSobre ? '💵' : (esContacto ? '🎯' : '👤')} ${esContacto ? `Contacto ${p.codigo_prospecto || clienteId}` : `Cliente #${clienteId}`}</strong> - ${clienteNombre}
+                                <br><small style="color: #64748b;">${esSobre ? `Sobre #${p.codigo_sobre || p.id}` : (esContacto ? `Visita de Presentación` : `Pedido #${p.id}`)}</small>${badgeFacturacionHTML}
                                 <br><small style="color: #64748b;">📍 ${p.domicilio_direccion || 'Sin dirección'}</small>
                             </li>
                         `;
@@ -2117,28 +2667,246 @@ async function eliminarRuta(rutaId, cantidadPedidos) {
  * Iniciar ruta
  */
 async function iniciarRuta(rutaId) {
-    if (!confirm('¿Está seguro de iniciar esta ruta? No podrá agregar más pedidos.')) {
+    if (typeof Swal === 'undefined') {
+        if (!confirm('¿Está seguro de iniciar esta ruta? No podrá agregar más pedidos.')) return;
+        try {
+            const response = await fetch(`/api/logistica/rutas/${rutaId}/estado`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: 'EN_CAMINO' })
+            });
+            const result = await response.json();
+            if (result.success) {
+                mostrarExito('Ruta iniciada exitosamente');
+                await cargarRutas();
+            } else throw new Error(result.error || 'Error al iniciar ruta');
+        } catch (error) {
+            console.error('[DASHBOARD] Error al iniciar ruta:', error);
+            mostrarError('Error al iniciar ruta: ' + error.message);
+        }
         return;
     }
+
+    // 1. Mostrar loader breve y consultar destinatarios
+    Swal.fire({
+        title: 'Preparando ruta...',
+        html: '<div style="font-size:0.9rem; color:#64748b;">Obteniendo clientes y datos de contacto...</div>',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    let clientesRuta = [];
+    try {
+        const resp = await fetch(`/api/logistica/rutas/${rutaId}/destinatarios-inicio`);
+        const d = await resp.json();
+        if (d.success && Array.isArray(d.clientes)) {
+            clientesRuta = d.clientes;
+        }
+    } catch (e) {
+        console.warn('[DASHBOARD] Error consultando destinatarios de inicio:', e.message);
+    }
+
+    if (clientesRuta.length === 0) {
+        const resSimple = await Swal.fire({
+            title: '🚀 Iniciar Ruta',
+            text: '¿Está seguro de iniciar esta ruta? No podrá agregar más pedidos.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Iniciar Ruta',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#059669',
+            cancelButtonColor: '#64748b'
+        });
+        if (!resSimple.isConfirmed) return;
+
+        try {
+            const response = await fetch(`/api/logistica/rutas/${rutaId}/estado`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: 'EN_CAMINO', notificar_clientes: false })
+            });
+            const result = await response.json();
+            if (result.success) {
+                mostrarExito('Ruta iniciada exitosamente');
+                await cargarRutas();
+            } else throw new Error(result.error || 'Error al iniciar ruta');
+        } catch (err) {
+            mostrarError('Error al iniciar ruta: ' + err.message);
+        }
+        return;
+    }
+
+    // 2. Construir listado de clientes
+    const conWhatsApp = clientesRuta.filter(c => c.tiene_whatsapp);
+    let cantSeleccionados = conWhatsApp.length;
+
+    const listaHtml = clientesRuta.map((c, idx) => {
+        const partesBadge = [];
+        if (Array.isArray(c.pedidos) && c.pedidos.length > 0) partesBadge.push(`📦 Pedido #${c.pedidos.join(', #')}`);
+        if (Array.isArray(c.retiros) && c.retiros.length > 0) partesBadge.push(`🔄 Retiro #${c.retiros.join(', #')}`);
+        if (Array.isArray(c.sobres) && c.sobres.length > 0) partesBadge.push(`💵 Sobre #${c.sobres.join(', #')}`);
+
+        let badgeStyle = 'background: #dcfce7; color: #166534;';
+        if (c.tipo_parada === 'SOLO_SOBRE') badgeStyle = 'background: #ede9fe; color: #5b21b6;';
+        else if (c.tipo_parada === 'SOLO_RETIRO') badgeStyle = 'background: #ffedd5; color: #c2410c;';
+        else if (partesBadge.length > 1) badgeStyle = 'background: #e0e7ff; color: #3730a3;';
+
+        const badgeTipo = `<span style="${badgeStyle} padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: bold;">${partesBadge.join(' + ')}</span>`;
+
+        const infoContacto = c.tiene_whatsapp
+            ? `<div style="font-size: 0.75rem; color: #059669; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                 <span>📱</span> <span>${c.destinatarios.map(d => `${d.nombre}: ${d.numero}`).join(' • ')}</span>
+               </div>`
+            : `<div style="font-size: 0.72rem; color: #dc2626; font-weight: bold; margin-top: 2px;">
+                 ⚠️ Sin WhatsApp configurado
+               </div>`;
+
+        return `
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid #f1f5f9; background: ${c.tiene_whatsapp ? '#ffffff' : '#f8fafc'}; text-align: left;">
+                <input type="checkbox" 
+                       class="chk-cliente-inicio-desktop" 
+                       data-id="${c.cliente_id}" 
+                       ${c.tiene_whatsapp ? 'checked' : 'disabled'}
+                       style="margin-top: 3px; width: 18px; height: 18px; cursor: pointer; accent-color: #059669; flex-shrink: 0;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-weight: 700; font-size: 0.88rem; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${idx + 1}. ${c.nombre}
+                        </span>
+                        ${badgeTipo}
+                    </div>
+                    <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        📍 ${c.direccion}
+                    </div>
+                    ${infoContacto}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const modalHtml = `
+        <div style="font-family: inherit; width: 100%; box-sizing: border-box;">
+            <p style="font-size: 0.88rem; color: #475569; margin: 0 0 12px 0; text-align: center;">
+                Seleccione a qué clientes desea notificar por WhatsApp que la logística está en camino:
+            </p>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;">
+                <span id="txt-contador-desktop" style="font-size: 0.8rem; font-weight: bold; color: #334155;">
+                    Notificar: ${cantSeleccionados} de ${clientesRuta.length} clientes
+                </span>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" id="btn-desktop-sel-todos" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; color: #334155; cursor: pointer;">
+                        Todos
+                    </button>
+                    <button type="button" id="btn-desktop-des-todos" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; color: #334155; cursor: pointer;">
+                        Ninguno
+                    </button>
+                </div>
+            </div>
+
+            <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+                ${listaHtml}
+            </div>
+
+            <div style="margin-top: 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.75rem; color: #64748b; text-align: left;">
+                💬 <strong>Mensaje corto a enviar:</strong><br>
+                <em>"Hola {Cliente}, le avisamos que nuestro chofer ya inició el recorrido de entregas de hoy y su orden se encuentra en camino. ¡Pronto estaremos allí!"</em>
+            </div>
+        </div>
+    `;
+
+    const result = await Swal.fire({
+        title: '🚀 Iniciar Hoja de Ruta',
+        html: modalHtml,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: `🚀 Iniciar y Notificar (${cantSeleccionados})`,
+        denyButtonText: '⏩ Iniciar sin Notificar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        denyButtonColor: '#64748b',
+        cancelButtonColor: '#94a3b8',
+        customClass: {
+            confirmButton: 'swal2-confirm swal2-styled',
+            denyButton: 'swal2-deny swal2-styled',
+            cancelButton: 'swal2-cancel swal2-styled'
+        },
+        didOpen: () => {
+            const getCheckboxes = () => document.querySelectorAll('.chk-cliente-inicio-desktop:not(:disabled)');
+            const updateCount = () => {
+                const checked = document.querySelectorAll('.chk-cliente-inicio-desktop:checked');
+                cantSeleccionados = checked.length;
+                const txtCont = document.getElementById('txt-contador-desktop');
+                if (txtCont) txtCont.innerText = `Notificar: ${cantSeleccionados} de ${clientesRuta.length} clientes`;
+                
+                const btnConfirm = Swal.getConfirmButton();
+                if (btnConfirm) {
+                    btnConfirm.innerText = `🚀 Iniciar y Notificar (${cantSeleccionados})`;
+                }
+            };
+
+            document.querySelectorAll('.chk-cliente-inicio-desktop').forEach(chk => {
+                chk.addEventListener('change', updateCount);
+            });
+
+            document.getElementById('btn-desktop-sel-todos')?.addEventListener('click', () => {
+                getCheckboxes().forEach(c => c.checked = true);
+                updateCount();
+            });
+
+            document.getElementById('btn-desktop-des-todos')?.addEventListener('click', () => {
+                getCheckboxes().forEach(c => c.checked = false);
+                updateCount();
+            });
+        }
+    });
+
+    if (!result.isConfirmed && !result.isDenied) return;
+
+    const notificar = result.isConfirmed;
+    const selectedIds = notificar 
+        ? Array.from(document.querySelectorAll('.chk-cliente-inicio-desktop:checked')).map(el => el.getAttribute('data-id'))
+        : [];
+
+    Swal.fire({
+        title: 'Iniciando ruta...',
+        html: notificar && selectedIds.length > 0
+            ? 'Actualizando estado y despachando avisos de WhatsApp en segundo plano...'
+            : 'Actualizando estado de la ruta...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
 
     try {
         const response = await fetch(`/api/logistica/rutas/${rutaId}/estado`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: 'EN_CAMINO' })
+            body: JSON.stringify({ 
+                estado: 'EN_CAMINO',
+                notificar_clientes: notificar,
+                clientes_ids: selectedIds
+            })
         });
 
-        const result = await response.json();
+        const resData = await response.json();
 
-        if (result.success) {
-            mostrarExito('Ruta iniciada exitosamente');
+        if (resData.success) {
+            Swal.fire({
+                icon: 'success',
+                title: '🚀 ¡Ruta Iniciada!',
+                text: notificar && selectedIds.length > 0
+                    ? `Ruta en camino. Notificando por WhatsApp a ${selectedIds.length} clientes en segundo plano.`
+                    : 'Ruta iniciada correctamente en modo silencioso.',
+                timer: 2500,
+                showConfirmButton: false
+            });
             await cargarRutas();
         } else {
-            throw new Error(result.error || 'Error al iniciar ruta');
+            throw new Error(resData.error || 'Error al iniciar ruta');
         }
     } catch (error) {
         console.error('[DASHBOARD] Error al iniciar ruta:', error);
-        mostrarError('Error al iniciar ruta: ' + error.message);
+        Swal.fire('Error', 'Error al iniciar ruta: ' + error.message, 'error');
     }
 }
 
@@ -2203,19 +2971,24 @@ async function handleDrop(event, rutaId) {
     const tipoPedidoActual = draggedPedidoTipo;
 
     try {
+        const esStringId = String(draggedPedidoId).startsWith('RT-') || String(draggedPedidoId).startsWith('SOB-') || String(draggedPedidoId).startsWith('PR-');
         const response = await fetch(`/api/logistica/rutas/${rutaId}/asignar`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids_presupuestos: [String(draggedPedidoId).startsWith('RT-') ? draggedPedidoId : parseInt(draggedPedidoId)] })
+            body: JSON.stringify({ ids_presupuestos: [esStringId ? String(draggedPedidoId) : parseInt(draggedPedidoId)] })
         });
 
         const result = await response.json();
 
         if (result.success) {
             // Feedback contextual según el tipo (usando variable local segura)
-            const mensaje = tipoPedidoActual === 'retiro'
-                ? '✅ Orden de Tratamiento asignada exitosamente'
-                : 'Pedido asignado exitosamente';
+            const mensaje = tipoPedidoActual === 'sobre'
+                ? '💵 Sobre de efectivo asignado a la ruta'
+                : (tipoPedidoActual === 'contacto'
+                    ? '🎯 Visita de contacto asignada a la ruta'
+                    : (tipoPedidoActual === 'retiro'
+                        ? '✅ Orden de Tratamiento asignada exitosamente'
+                        : 'Pedido asignado exitosamente'));
 
             mostrarExito(mensaje);
             await Promise.all([cargarPedidos(), cargarRutas()]);

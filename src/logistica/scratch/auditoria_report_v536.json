@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-02T02:15:25-03:00",
+  "version": "v5.36",
+  "architecture_paradigm": "Garantía de Título Dinámico Sin Undefined con Fallbacks Seguros (currentData.descripcion || mermasData.descripcion_entrada) + Ingesta Síncrona Real de Costo Origen desde Finanzas via fetch('/api/logistica/bunker/finanzas/:id') + Desduplicación de SKU en Opciones Nivel 2 + Bifurcación Taxonómica Incondicional de Modo Unidad (sub_rubro === 'Unidad Productiva' => MO_total = Tarifa_Unidad * Unidades)",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController, bunkerService, bunker.js & listado-bunker.js: 0 SyntaxError)",
+    "QA-1_Dynamic_Title_Without_Undefined": "100% PASS (Swal.fire title dynamically renders '🏭 Unidad Productiva: Barritas 20x50 (SKU: BFX50G)' without undefined)",
+    "QA-2_Clean_Nivel_2_Single_SKU_Dropdown": "100% PASS (Select option renders 'Servicio Maquila / Proceso (BFXUNI) — $175,00 / un' without duplicate SKU text)",
+    "QA-3_Unconditional_Taxonomic_Unidad_Mode_Bifurcation": "100% PASS (sub_rubro === 'Unidad Productiva' evaluates esModoUnidad = true, liquidating 96 units at $175/un to $16800.00 MO, bypassing kilos multiplier)",
+    "QA-4_Real_Finance_Cost_Hydration": "100% PASS (currentCostoCrudo fetches active Finance cost $7.907,27/kg via async fetch prior to modal build, overriding static $15.000)",
+    "QA-5_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

@@ -13,27 +13,8 @@ async function obtenerDomicilios(req, res) {
     try {
         console.log('[DOMICILIOS] Obteniendo domicilios con filtros:', req.query);
         
-        let id_cliente_interno = undefined;
-        
-        // Si se proporciona id_cliente, convertir a ID interno
-        if (req.query.id_cliente) {
-            id_cliente_interno = await DomiciliosModel.obtenerIdInternoCliente(req.query.id_cliente);
-            
-            if (!id_cliente_interno) {
-                console.log(`[DOMICILIOS] ⚠️ Cliente ${req.query.id_cliente} no encontrado`);
-                // Retornar array vacío en lugar de error (el cliente puede no tener domicilios)
-                return res.json({
-                    success: true,
-                    data: [],
-                    total: 0
-                });
-            }
-            
-            console.log(`[DOMICILIOS] Cliente convertido: ${req.query.id_cliente} -> ${id_cliente_interno}`);
-        }
-        
         const filtros = {
-            id_cliente: id_cliente_interno,
+            id_cliente: req.query.id_cliente,
             activo: req.query.activo !== undefined ? req.query.activo === 'true' : true,
             es_predeterminado: req.query.es_predeterminado !== undefined ? req.query.es_predeterminado === 'true' : undefined
         };

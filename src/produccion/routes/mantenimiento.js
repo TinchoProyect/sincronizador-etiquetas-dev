@@ -24,6 +24,10 @@ router.get('/buscar-orden-retiro/:idFactura/:articulo', mantenimientoCtrl.buscar
 // Rutas Logística Inversa
 router.get('/retiros/local', mantenimientoCtrl.getRetirosLocal);
 router.get('/retiros/ruta', mantenimientoCtrl.getRetirosRuta);
+router.get('/buscar-clientes-modal', mantenimientoCtrl.buscarClientesModal);
+router.get('/rutas-recientes-cliente', mantenimientoCtrl.obtenerRutasRecientesCliente);
+router.get('/reporte-trazabilidad-datos', mantenimientoCtrl.generarReporteTrazabilidadDatos);
+router.post('/registrar-retiro-retroactivo', mantenimientoCtrl.registrarRetiroRetroactivo);
 router.post('/retiros/recibir-local/:id', mantenimientoCtrl.recibirRetiroLocal);
 // Revertir Recepción Local (Devuelve de Stock Mantenimiento a Orden de Retiro PENDIENTE)
 router.delete('/ingreso', mantenimientoCtrl.revertirIngresoLocal);
@@ -50,8 +54,10 @@ router.post('/tratamientos/:id/finalizar', mantenimientoCtrl.finalizarTratamient
 router.post('/retorno-a-logistica', mantenimientoCtrl.retornoALogistica);
 router.get('/reporte-arribo/:id', mantenimientoCtrl.imprimirComprobanteArribo);
 router.post('/asignar-articulo', mantenimientoCtrl.asignarArticuloOficial);
+router.post('/desasignar-articulo', mantenimientoCtrl.desasignarArticuloOficial);
 router.get('/presupuestos-entregados', mantenimientoCtrl.getPresupuestosEntregados);
 router.post('/vincular-presupuesto', mantenimientoCtrl.vincularPresupuesto);
 router.post('/desvincular-presupuesto', mantenimientoCtrl.desvincularPresupuesto);
+router.post('/corregir-recepcion-rt', mantenimientoCtrl.corregirRecepcionRT);
 
 module.exports = router;

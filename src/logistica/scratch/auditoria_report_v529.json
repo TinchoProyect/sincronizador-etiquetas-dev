@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T13:46:10-03:00",
+  "version": "v5.29",
+  "architecture_paradigm": "Fuente Única de Verdad en Costos (Hidratación desde Finanzas + COALESCE) + Simulador Dinámico Anti-Inflación (Modificador Porcentual en Modo AUTOMATIC) + Purgado Histórico Atómico de 776 Registros Corrompidos (purgar_costos_sobrescritos_corrompidos_v529.js) + Control Manual Absoluto por Defecto",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController, bunkerService, bunker.js & listado-bunker.js: 0 SyntaxError)",
+    "QA-1_Single_Source_of_Truth_Cost_Protection": "100% PASS (bunker.html hydrates from active Finance cost; backend COALESCE prevents $0 overwrites)",
+    "QA-2_Anti_Inflation_Dynamic_Discount_Simulator": "100% PASS (Discount percentage applies on top of recalculated price in AUTOMATIC mode, protecting against inflation)",
+    "QA-3_Historical_Corrupted_Cost_Purging": "100% PASS (purgar_costos_sobrescritos_corrompidos_v529.js purged all 776 corrupted records to NULL, 0 remaining)",
+    "QA-4_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)",
+    "QA-5_RESTRICT_Child_Dependencies_Check": "100% PASS (SELECT COUNT(*) check retains relational integrity on unlinking)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

@@ -275,6 +275,56 @@ async function cargarRutaActiva(rutaIdForzada = null) {
                 state.entregas = [...state.entregas, ...retirosAdaptados];
             }
 
+            // FASE 4: Mezclar Sobres de Efectivo (Ensobrados) asignados a la ruta
+            if (result.data.sobres && result.data.sobres.length > 0) {
+                const sobresAdaptados = result.data.sobres.map(s => ({
+                    id_presupuesto: `SOB-${s.id_sobre}`,
+                    es_sobre_efectivo: true,
+                    id_sobre_real: s.id_sobre,
+                    codigo_sobre: s.codigo_sobre,
+                    monto_declarado: s.monto_declarado,
+                    foto_frente_url: s.foto_frente_url,
+                    foto_dorso_url: s.foto_dorso_url,
+                    orden_entrega: s.orden_entrega,
+                    estado: 'Sobre de Efectivo',
+                    estado_sobre: s.estado,
+                    estado_logistico: s.estado_logistico,
+                    total: 0,
+                    cliente: s.cliente,
+                    domicilio: s.domicilio
+                }));
+                state.entregas = [...state.entregas, ...sobresAdaptados];
+            }
+
+            // FASE 5: Mezclar Visitas Comerciales de Preventa asignadas a la ruta
+            if (result.data.visitas_preventa && result.data.visitas_preventa.length > 0) {
+                const visitasAdaptadas = result.data.visitas_preventa.map(v => ({
+                    id_presupuesto: `PR-${v.id_prospecto}`,
+                    es_visita_preventa: true,
+                    id_prospecto_real: v.id_prospecto,
+                    codigo_prospecto: v.codigo_prospecto,
+                    origen_contacto: v.origen_contacto,
+                    rubro: v.rubro,
+                    contacto_nombre: v.contacto_nombre,
+                    contacto_rol: v.contacto_rol,
+                    telefono_whatsapp: v.telefono_whatsapp,
+                    email: v.email,
+                    notas: v.notas,
+                    imagen_url: v.imagen_url,
+                    web_redes: v.web_redes,
+                    lista_precios_sugerida_id: v.lista_precios_sugerida_id,
+                    orden_entrega: v.orden_entrega,
+                    estado: 'Visita Comercial',
+                    estado_prospecto: v.estado,
+                    estado_ruta: v.estado_ruta,
+                    estado_logistico: v.estado_logistico,
+                    total: 0,
+                    cliente: v.cliente,
+                    domicilio: v.domicilio
+                }));
+                state.entregas = [...state.entregas, ...visitasAdaptadas];
+            }
+
             // Consolidar y garantizar ordenamiento estricto
             state.entregas.sort((a, b) => (a.orden_entrega ?? 999) - (b.orden_entrega ?? 999));
 
@@ -337,7 +387,7 @@ function actualizarHeader() {
 
     // Estadísticas
     const totalEntregas = state.entregas.length;
-    const completadas = state.entregas.filter(e => e.estado_logistico === 'ENTREGADO').length;
+    const completadas = state.entregas.filter(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO').length;
     const pendientes = totalEntregas - completadas;
 
     const totalEl = document.getElementById('total-entregas');
@@ -425,6 +475,29 @@ function cerrarModalEntrega() {
 }
 
 // ===== UTILIDADES =====
+
+/**
+ * Ver fotos del sobre de efectivo en modal móvil
+ */
+window.verFotosSobreMovil = function(codigoSobre, frenteUrl, dorsoUrl) {
+    let htmlFotos = '<div style="display:flex; flex-direction:column; gap:12px;">';
+    if (frenteUrl) {
+        htmlFotos += `<div><div style="font-size:0.8rem; font-weight:700; color:#475569; margin-bottom:4px;">📷 Frente del Sobre</div><img src="${frenteUrl}" style="width:100%; max-height:280px; object-fit:contain; border-radius:8px; border:1px solid #cbd5e1;"></div>`;
+    }
+    if (dorsoUrl) {
+        htmlFotos += `<div><div style="font-size:0.8rem; font-weight:700; color:#475569; margin-bottom:4px;">📷 Dorso del Sobre</div><img src="${dorsoUrl}" style="width:100%; max-height:280px; object-fit:contain; border-radius:8px; border:1px solid #cbd5e1;"></div>`;
+    }
+    htmlFotos += '</div>';
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: `💵 Sobre #${codigoSobre}`,
+            html: htmlFotos,
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#7c3aed'
+        });
+    }
+};
 
 /**
  * Formatear fecha en formato legible (español argentino)
@@ -717,19 +790,179 @@ function refrescarTabActual() {
 // FUNCIONES CRUD DE RUTAS (APP GERENCIAL)
 // ==========================================
 
-/* ===== SIDEBAR / MENÚ GLOBAL ===== */
-window.abrirSidebar = () => {
-    const isReady = document.getElementById('sidebar-menu');
-    if(isReady) {
-        isReady.classList.add('active');
-        document.getElementById('sidebar-overlay').classList.add('active');
+/* ===== SIDEBAR / MENÚ GLOBAL UNIVERSAL ===== */
+
+window.inicializarSidebarUniversal = () => {
+    let overlay = document.getElementById('sidebar-overlay');
+    let sidebar = document.getElementById('sidebar-menu');
+
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'sidebar-overlay';
+        overlay.className = 'sidebar-overlay';
+        overlay.onclick = () => window.cerrarSidebar();
+        document.body.appendChild(overlay);
+    }
+
+    const sesion = (typeof obtenerSesion === 'function') ? obtenerSesion() : null;
+    const userName = (sesion && (sesion.nombre || sesion.usuario)) ? (sesion.nombre || sesion.usuario) : 'Usuario LAMDA';
+    const userRole = (sesion && sesion.rol) ? sesion.rol : 'Operador';
+    const initial = userName.charAt(0).toUpperCase() || 'L';
+
+    // Determinar la página activa
+    const currentPath = window.location.pathname.toLowerCase();
+    const isHome = currentPath.endsWith('home.html') || currentPath.endsWith('/mobile/') || currentPath.endsWith('/mobile');
+    const isRuta = currentPath.includes('ruta.html');
+    const isPresupuestos = currentPath.includes('presupuestos.html') && !currentPath.includes('crear-presupuesto');
+    const isCotizador = currentPath.includes('crear-presupuesto-movil.html');
+    const isClientes = currentPath.includes('clientes.html') && !currentPath.includes('crear-cliente');
+    const isCrearCliente = currentPath.includes('crear-cliente-movil.html');
+    const isProspectos = currentPath.includes('prospectos.html');
+    const isFotosDeposito = currentPath.includes('fotos-deposito.html');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    if (!sidebar) {
+        sidebar = document.createElement('div');
+        sidebar.id = 'sidebar-menu';
+        sidebar.className = 'sidebar-menu';
+        document.body.appendChild(sidebar);
+    }
+
+    sidebar.innerHTML = `
+        <div class="sidebar-header">
+            <div class="sidebar-brand-box">
+                <div class="sidebar-brand-avatar">${initial}</div>
+                <div>
+                    <h2>${userName}</h2>
+                    <p><span>🟢</span> ${userRole}</p>
+                </div>
+            </div>
+            <button class="sidebar-close-btn" onclick="window.cerrarSidebar()" title="Cerrar Menú">✕</button>
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-nav-title">Principal</div>
+            
+            <a href="home.html" class="sidebar-item ${isHome ? 'active-module' : ''}">
+                <span class="sidebar-icon">🏠</span>
+                <span>Inicio</span>
+            </a>
+
+            <div class="sidebar-nav-title">Módulos de Gestión</div>
+            
+            <a href="prospectos.html" class="sidebar-item ${isProspectos ? 'active-module' : ''}">
+                <span class="sidebar-icon">🎯</span>
+                <span>Contacto Calle</span>
+                <span class="sidebar-badge" style="border-color:rgba(234,88,12,0.4); color:#fdba74; background:rgba(234,88,12,0.15);">Calle</span>
+            </a>
+
+            <a href="ruta.html" class="sidebar-item ${isRuta ? 'active-module' : ''}">
+                <span class="sidebar-icon">🚚</span>
+                <span>Logística (Hoja de Ruta)</span>
+                <span class="sidebar-badge" style="border-color:rgba(59,130,246,0.4); color:#93c5fd; background:rgba(59,130,246,0.15);">Rutas</span>
+            </a>
+            
+            <a href="presupuestos.html" class="sidebar-item ${isPresupuestos ? 'active-module' : ''}">
+                <span class="sidebar-icon">💰</span>
+                <span>Ventas / Presupuestos</span>
+                <span class="sidebar-badge" style="border-color:rgba(16,185,129,0.4); color:#6ee7b7; background:rgba(16,185,129,0.15);">Búnker</span>
+            </a>
+
+            <a href="clientes.html" class="sidebar-item ${isClientes ? 'active-module' : ''}">
+                <span class="sidebar-icon">👥</span>
+                <span>Clientes</span>
+                <span class="sidebar-badge">Directorio</span>
+            </a>
+
+            <a href="fotos-deposito.html" class="sidebar-item ${isFotosDeposito ? 'active-module' : ''}">
+                <span class="sidebar-icon">📸</span>
+                <span>Fotos Depósito (B2B)</span>
+                <span class="sidebar-badge" style="border-color:rgba(13,148,136,0.4); color:#99f6e4; background:rgba(13,148,136,0.15);">Lotes</span>
+            </a>
+
+            <div class="sidebar-nav-title">Accesos Directos</div>
+
+            <a href="crear-presupuesto-movil.html" class="sidebar-item ${isCotizador ? 'active-module' : ''}">
+                <span class="sidebar-icon">➕</span>
+                <span>Nueva Cotización</span>
+            </a>
+
+            <a href="crear-cliente-movil.html" class="sidebar-item ${isCrearCliente ? 'active-module' : ''}">
+                <span class="sidebar-icon">➕</span>
+                <span>Alta de Cliente</span>
+            </a>
+
+            <a href="#" onclick="window.cerrarSidebar(); if (typeof window.abrirAsistenteInmunizacionChofer === 'function') { window.abrirAsistenteInmunizacionChofer(); } else { window.location.href = 'ruta.html'; }" class="sidebar-item">
+                <span class="sidebar-icon">🦠</span>
+                <span>Registro de Tratamiento</span>
+            </a>
+
+            ${!isStandalone ? `
+            <a href="#" onclick="window.cerrarSidebar(); if (typeof window.instalarAccesoDirecto === 'function') { window.instalarAccesoDirecto(); } else { window.location.href = 'home.html'; }" class="sidebar-item" style="color: #38bdf8;">
+                <span class="sidebar-icon">📲</span>
+                <span>Agregar Acceso Directo</span>
+                <span class="sidebar-badge" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8; background: rgba(56, 189, 248, 0.15);">App</span>
+            </a>` : ''}
+        </div>
+        <div class="sidebar-footer">
+            <button class="sidebar-logout" onclick="cerrarSesion()">
+                <span>🚪</span> Cerrar Sesión
+            </button>
+        </div>
+    `;
+
+    // Cerrar al pulsar Escape
+    if (!window._sidebarEscBound) {
+        window._sidebarEscBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') window.cerrarSidebar();
+        });
     }
 };
 
-window.cerrarSidebar = () => {
-    const isReady = document.getElementById('sidebar-menu');
-    if(isReady) {
-        isReady.classList.remove('active');
-        document.getElementById('sidebar-overlay').classList.remove('active');
+window.abrirSidebar = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    let sidebar = document.getElementById('sidebar-menu');
+    let overlay = document.getElementById('sidebar-overlay');
+
+    if (!sidebar || !overlay) {
+        window.inicializarSidebarUniversal();
+        sidebar = document.getElementById('sidebar-menu');
+        overlay = document.getElementById('sidebar-overlay');
+    }
+
+    if (sidebar && overlay) {
+        sidebar.classList.add('active');
+        overlay.classList.add('active');
+        sidebar.style.transform = 'translateX(0)';
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+        document.body.style.overflow = 'hidden';
     }
 };
+
+window.cerrarSidebar = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const sidebar = document.getElementById('sidebar-menu');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) {
+        sidebar.classList.remove('active');
+        sidebar.style.transform = '';
+    }
+    if (overlay) {
+        overlay.classList.remove('active');
+        overlay.style.opacity = '';
+        overlay.style.pointerEvents = '';
+    }
+    document.body.style.overflow = '';
+};
+
+// Auto-inicializar cuando el DOM esté listo
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.inicializarSidebarUniversal());
+} else {
+    window.inicializarSidebarUniversal();
+}
+
+

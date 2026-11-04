@@ -20,6 +20,11 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000,
 });
 
+// Catch pool errors to prevent process crashes on idle connection losses
+pool.on('error', (err) => {
+    console.error('⚠️ [DB-LOGISTICA] Unexpected error on idle client:', err.message);
+});
+
 // Log de conexión con información del entorno
 console.log(`🔌 [LOGISTICA] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'})`);
 
@@ -43,15 +48,31 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ADD COLUMN IF NOT EXISTS modo_iva VARCHAR(20) DEFAULT 'COMPLETO',
                 ADD COLUMN IF NOT EXISTS es_patron BOOLEAN DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS fuente_costo_default VARCHAR(50),
-                ADD COLUMN IF NOT EXISTS disponible BOOLEAN DEFAULT TRUE;
+                ADD COLUMN IF NOT EXISTS disponible BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS rendimiento_activo BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS mano_obra_activa BOOLEAN DEFAULT TRUE;
             `);
-            console.log('✅ [LOGISTICA] Columnas modo_iva, es_patron y disponible verificadas/agregadas a bunker_lista_articulos');
+            console.log('✅ [LOGISTICA] Columnas modo_iva, es_patron, disponible, rendimiento_activo y mano_obra_activa verificadas/agregadas a bunker_lista_articulos');
+
+            await pool.query(`
+                ALTER TABLE public.bunker_articulos 
+                ADD COLUMN IF NOT EXISTS pack_unidades INTEGER DEFAULT 1;
+            `);
+            console.log('✅ [LOGISTICA] Columna pack_unidades verificada/agregada a bunker_articulos');
 
             await pool.query(`
                 ALTER TABLE public.ordenes_tratamiento 
                 ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id);
             `);
             console.log('✅ [LOGISTICA] Columna id_domicilio_entrega verificada/agregada a ordenes_tratamiento');
+
+            await pool.query(`
+                ALTER TABLE public.factura_pagos_efectivo 
+                ADD COLUMN IF NOT EXISTS id_ruta INTEGER REFERENCES public.rutas(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS orden_entrega INTEGER DEFAULT 999,
+                ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id) ON DELETE SET NULL;
+            `);
+            console.log('✅ [LOGISTICA] Columnas id_ruta, orden_entrega e id_domicilio_entrega verificadas/agregadas a factura_pagos_efectivo');
 
             // Crear tabla de clientes búnker si no existe
             await pool.query(`
@@ -140,6 +161,7 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ALTER TABLE public.bunker_clientes ALTER COLUMN whatsapp_facturas TYPE TEXT;
                 
                 ALTER TABLE public.factura_cuentas_corrientes ADD COLUMN IF NOT EXISTS saldo_apertura NUMERIC(15, 2) DEFAULT 0.00;
+                ALTER TABLE public.factura_cuentas_corrientes ADD COLUMN IF NOT EXISTS configuracion_reporte JSONB DEFAULT '{}';
                 ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS presupuesto_id bigint DEFAULT NULL;
                 ALTER TABLE public.factura_cuenta_corriente_movimientos ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
@@ -154,8 +176,76 @@ pool.query('SELECT NOW()', async (err, res) => {
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'MPBX25' WHERE articulo_id = 'MPBX5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'MPBX25');
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAx5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAX1' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GFGNFX1' WHERE articulo_id IN ('GDFX1', 'GDFX500G', 'GDFX200G', 'GDF5x1') AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'GFGNFX1');
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GSGNFX1' WHERE articulo_id IN ('GSX1', 'GSX500G', 'GSX200G', 'GS5X1') AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'GSGNFX1');
             `);
             console.log('✅ [LOGISTICA] Relaciones de hermanos comerciales (pack_hijo_codigo) verificadas y configuradas');
+
+            // [MIGRACIÓN 32] Índices y vista determinista para resolución de artículos en logística y entregas
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_articulos_codigo_barras ON public.articulos(codigo_barras);
+                CREATE INDEX IF NOT EXISTS idx_articulos_numero ON public.articulos(numero);
+                CREATE INDEX IF NOT EXISTS idx_presupuestos_detalles_articulo ON public.presupuestos_detalles(articulo);
+                CREATE INDEX IF NOT EXISTS idx_presupuestos_detalles_pext ON public.presupuestos_detalles(id_presupuesto_ext);
+                CREATE INDEX IF NOT EXISTS idx_stock_real_art_num ON public.stock_real_consolidado(articulo_numero);
+                CREATE INDEX IF NOT EXISTS idx_stock_real_cod_bar ON public.stock_real_consolidado(codigo_barras);
+
+                CREATE OR REPLACE VIEW public.v_presupuestos_detalles_resueltos AS
+                SELECT 
+                    pd.id,
+                    pd.id_presupuesto,
+                    pd.id_presupuesto_ext,
+                    pd.articulo,
+                    pd.articulo AS codigo_barras,
+                    pd.cantidad,
+                    pd.cantidad_original,
+                    pd.precio1,
+                    pd.valor1,
+                    pd.iva1,
+                    pd.diferencia,
+                    pd.fecha_actualizacion,
+                    COALESCE(ba.articulo_id, a.numero, src.articulo_numero, pd.articulo) AS articulo_numero,
+                    COALESCE(
+                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                        NULLIF(TRIM(ba.descripcion), ''),
+                        NULLIF(TRIM(a.nombre), ''),
+                        NULLIF(TRIM(src.descripcion), ''),
+                        pd.articulo
+                    ) AS descripcion,
+                    COALESCE(
+                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                        NULLIF(TRIM(ba.descripcion), '')
+                    ) AS descripcion_bunker,
+                    NULLIF(TRIM(a.nombre), '') AS descripcion_legacy,
+                    NULLIF(TRIM(src.descripcion), '') AS descripcion_stock
+                FROM public.presupuestos_detalles pd
+                LEFT JOIN LATERAL (
+                    SELECT nombre, numero, codigo_barras 
+                    FROM public.articulos 
+                    WHERE codigo_barras = pd.articulo OR numero = pd.articulo 
+                    ORDER BY (codigo_barras = pd.articulo) DESC 
+                    LIMIT 1
+                ) a ON true
+                LEFT JOIN LATERAL (
+                    SELECT descripcion_generada, descripcion, articulo_id
+                    FROM public.bunker_articulos
+                    WHERE articulo_id = pd.articulo 
+                       OR (a.numero IS NOT NULL AND articulo_id = a.numero)
+                    ORDER BY (articulo_id = pd.articulo) DESC
+                    LIMIT 1
+                ) ba ON true
+                LEFT JOIN LATERAL (
+                    SELECT descripcion, articulo_numero, codigo_barras
+                    FROM public.stock_real_consolidado
+                    WHERE articulo_numero = pd.articulo OR codigo_barras = pd.articulo
+                    ORDER BY (codigo_barras = pd.articulo) DESC
+                    LIMIT 1
+                ) src ON true;
+            `);
+            await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS en_pool_logistica BOOLEAN DEFAULT false;");
+            await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS cliente_activo_id INTEGER;");
+            await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS cliente_domicilio_id INTEGER;");
+            console.log('✅ [LOGISTICA] Vista v_presupuestos_detalles_resueltos e índices verificados/creados');
         } catch (alterErr) {
             console.error('❌ [LOGISTICA] Error al realizar ALTER TABLE o vinculaciones en base de datos:', alterErr.message);
         }

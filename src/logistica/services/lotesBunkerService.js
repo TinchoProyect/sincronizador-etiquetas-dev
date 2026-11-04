@@ -10,17 +10,29 @@ class LotesBunkerService {
                 b.descripcion, 
                 b.descripcion_generada,
                 'ARTICULO_BUNKER' as tipo_destino,
-                COALESCE((
-                    SELECT SUM(d.kilos_asignados) 
-                    FROM public.bunker_lotes_destinos d 
-                    WHERE d.destino_id = b.articulo_id AND d.tipo_destino = 'ARTICULO_BUNKER'
-                ), 0) as stock_actual,
-                COALESCE((
-                    SELECT SUM(d.cantidad_asignada) 
-                    FROM public.bunker_lotes_destinos d 
-                    WHERE d.destino_id = b.articulo_id AND d.tipo_destino = 'ARTICULO_BUNKER'
-                ), 0) as stock_bultos
+                ROUND((
+                    CASE
+                      WHEN (COALESCE(b.es_pack, false) = true OR b.pack_hijo_codigo IS NOT NULL)
+                           AND COALESCE(b.pack_unidades, 1) > 1
+                      THEN
+                        COALESCE(s.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(b.pack_unidades, 1))
+                      ELSE
+                        COALESCE(s.stock_consolidado, 0)
+                    END
+                ) * COALESCE(b.kilos_unidad, 1), 2) as stock_actual,
+                (
+                    CASE
+                      WHEN (COALESCE(b.es_pack, false) = true OR b.pack_hijo_codigo IS NOT NULL)
+                           AND COALESCE(b.pack_unidades, 1) > 1
+                      THEN
+                        COALESCE(s.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(b.pack_unidades, 1))
+                      ELSE
+                        COALESCE(s.stock_consolidado, 0)
+                    END
+                ) as stock_bultos
             FROM public.bunker_articulos b
+            LEFT JOIN public.stock_real_consolidado s ON s.articulo_numero = b.articulo_id
+            LEFT JOIN public.stock_real_consolidado src_hijo ON src_hijo.articulo_numero = b.pack_hijo_codigo
         `;
         
         const sqlIngredientes = `
@@ -81,30 +93,50 @@ class LotesBunkerService {
         try {
             await client.query('BEGIN');
 
-            // Generar alias corto de lote único
-            const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+            // 1. Verificar si ya existe una cabecera para este lote (para asignaciones parciales agregadas)
+            const checkExisting = await client.query(
+                'SELECT id FROM public.bunker_lotes_vinculos WHERE lote_id_supabase = $1',
+                [data.lote_id_supabase]
+            );
 
-            // 1. Insertar Cabecera (El vínculo matemático)
-            const sqlVinculo = `
-                INSERT INTO public.bunker_lotes_vinculos (
-                    lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
-                    cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
-                    lote_codigo_corto
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING id
-            `;
-            const valuesVinculo = [
-                data.lote_id_supabase,
-                data.costo_bruto_ingresado,
-                data.costo_kilo_calculado,
-                data.cantidad_total_lote,
-                data.iva !== undefined ? data.iva : 0,
-                data.iibb !== undefined ? data.iibb : 0,
-                data.usuario || 'SISTEMA',
-                loteCodigoCorto
-            ];
-            const resVinculo = await client.query(sqlVinculo, valuesVinculo);
-            const vinculoId = resVinculo.rows[0].id;
+            let vinculoId;
+            if (checkExisting.rows.length > 0) {
+                vinculoId = checkExisting.rows[0].id;
+            } else {
+                // Generar alias corto de lote único
+                const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+
+                const proveedorNombre = data.proveedor_nombre || data.proveedor || null;
+                const articuloDescripcion = data.articulo_descripcion || data.producto_descripcion || data.descripcion || null;
+                const productoCodigo = data.producto_codigo || null;
+                const numeroRemito = data.numero_remito || data.remito || null;
+
+                // Insertar Cabecera (El vínculo matemático enriquecido)
+                const sqlVinculo = `
+                    INSERT INTO public.bunker_lotes_vinculos (
+                        lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
+                        cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
+                        lote_codigo_corto, proveedor_nombre, articulo_descripcion, producto_codigo, numero_remito
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id
+                `;
+                const valuesVinculo = [
+                    data.lote_id_supabase,
+                    data.costo_bruto_ingresado,
+                    data.costo_kilo_calculado,
+                    data.cantidad_total_lote,
+                    data.iva !== undefined ? data.iva : 0,
+                    data.iibb !== undefined ? data.iibb : 0,
+                    data.usuario || 'SISTEMA',
+                    loteCodigoCorto,
+                    proveedorNombre,
+                    articuloDescripcion,
+                    productoCodigo,
+                    numeroRemito
+                ];
+                const resVinculo = await client.query(sqlVinculo, valuesVinculo);
+                vinculoId = resVinculo.rows[0].id;
+            }
 
             // 2. Insertar Destinos (Split)
             if (data.destinos && Array.isArray(data.destinos)) {
@@ -137,6 +169,9 @@ class LotesBunkerService {
                             'ingreso',
                             'Ingreso por vinculación de lote: ' + data.lote_id_supabase
                         ]);
+
+                        // Auto-aprendizaje: si el ingrediente no tenía artículo vinculado, deducirlo y vincularlo
+                        await this.autoVincularIngredienteDesdeLote(client, parseInt(destino.id), data, destino);
                     }
 
                     // Si deriva a artículos búnker, inyectamos la cascada hacia el stock legacy de Lomas Soft
@@ -218,6 +253,12 @@ class LotesBunkerService {
             }
 
             await client.query('COMMIT');
+            try {
+                const FotosLotesService = require('./fotosLotesService');
+                await FotosLotesService.evaluarCaducidadAutomaticaLotes(db);
+            } catch (eFotos) {
+                console.warn('⚠️ [LOTES-BUNKER] Advertencia evaluando caducidad de fotos de lote:', eFotos.message);
+            }
             return { success: true, vinculo_id: vinculoId };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -242,30 +283,50 @@ class LotesBunkerService {
             const vinculosCreados = [];
 
             for (const loteData of data.lotes) {
-                // Generar alias corto de lote único
-                const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+                // 1. Verificar si ya existe una cabecera para este lote (para asignaciones parciales agregadas)
+                const checkExisting = await client.query(
+                    'SELECT id FROM public.bunker_lotes_vinculos WHERE lote_id_supabase = $1',
+                    [loteData.lote_id_supabase]
+                );
 
-                // 1. Insertar Cabecera
-                const sqlVinculo = `
-                    INSERT INTO public.bunker_lotes_vinculos (
-                        lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
-                        cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
-                        lote_codigo_corto
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id
-                `;
-                const valuesVinculo = [
-                    loteData.lote_id_supabase,
-                    loteData.costo_bruto_ingresado,
-                    loteData.costo_kilo_calculado,
-                    loteData.cantidad_total_lote,
-                    loteData.iva !== undefined ? loteData.iva : 0,
-                    loteData.iibb !== undefined ? loteData.iibb : 0,
-                    loteData.usuario || 'SISTEMA',
-                    loteCodigoCorto
-                ];
-                const resVinculo = await client.query(sqlVinculo, valuesVinculo);
-                const vinculoId = resVinculo.rows[0].id;
+                let vinculoId;
+                if (checkExisting.rows.length > 0) {
+                    vinculoId = checkExisting.rows[0].id;
+                } else {
+                    // Generar alias corto de lote único
+                    const loteCodigoCorto = await this.generarAliasLoteCortoUnico(client);
+
+                    const proveedorNombre = loteData.proveedor_nombre || loteData.proveedor || null;
+                    const articuloDescripcion = loteData.articulo_descripcion || loteData.producto_descripcion || loteData.descripcion || null;
+                    const productoCodigo = loteData.producto_codigo || null;
+                    const numeroRemito = loteData.numero_remito || loteData.remito || null;
+
+                    // Insertar Cabecera enriquecida
+                    const sqlVinculo = `
+                        INSERT INTO public.bunker_lotes_vinculos (
+                            lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, 
+                            cantidad_total_lote, impuesto_iva, impuesto_iibb, usuario_vinculador,
+                            lote_codigo_corto, proveedor_nombre, articulo_descripcion, producto_codigo, numero_remito
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        RETURNING id
+                    `;
+                    const valuesVinculo = [
+                        loteData.lote_id_supabase,
+                        loteData.costo_bruto_ingresado,
+                        loteData.costo_kilo_calculado,
+                        loteData.cantidad_total_lote,
+                        loteData.iva !== undefined ? loteData.iva : 0,
+                        loteData.iibb !== undefined ? loteData.iibb : 0,
+                        loteData.usuario || 'SISTEMA',
+                        loteCodigoCorto,
+                        proveedorNombre,
+                        articuloDescripcion,
+                        productoCodigo,
+                        numeroRemito
+                    ];
+                    const resVinculo = await client.query(sqlVinculo, valuesVinculo);
+                    vinculoId = resVinculo.rows[0].id;
+                }
                 vinculosCreados.push(vinculoId);
 
                 // 2. Insertar Destinos (Split)
@@ -299,6 +360,9 @@ class LotesBunkerService {
                                 'ingreso',
                                 'Ingreso por vinculación batch de lote: ' + loteData.lote_id_supabase
                             ]);
+
+                            // Auto-aprendizaje: si el ingrediente no tenía artículo vinculado, deducirlo y vincularlo
+                            await this.autoVincularIngredienteDesdeLote(client, parseInt(destino.id), loteData, destino);
                         }
 
                         // Si deriva a artículos búnker, inyectamos la cascada hacia el stock legacy de Lomas Soft (Batch)
@@ -382,6 +446,12 @@ class LotesBunkerService {
             }
 
             await client.query('COMMIT');
+            try {
+                const FotosLotesService = require('./fotosLotesService');
+                await FotosLotesService.evaluarCaducidadAutomaticaLotes(db);
+            } catch (eFotos) {
+                console.warn('⚠️ [LOTES-BUNKER] Advertencia evaluando caducidad de fotos de lote en batch:', eFotos.message);
+            }
             return { success: true, vinculo_ids: vinculosCreados };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -452,6 +522,12 @@ class LotesBunkerService {
             ]);
 
             await client.query('COMMIT');
+            try {
+                const FotosLotesService = require('./fotosLotesService');
+                await FotosLotesService.evaluarCaducidadAutomaticaLotes(db);
+            } catch (eFotos) {
+                console.warn('⚠️ [LOTES-BUNKER] Advertencia evaluando caducidad de fotos de lote tras abrir caja:', eFotos.message);
+            }
             return { success: true, nuevas_abiertas: abiertas + cantidad };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -653,6 +729,86 @@ class LotesBunkerService {
             throw error;
         } finally {
             client.release();
+        }
+    }
+
+    /**
+     * Auto-aprende y vincula estructuralmente un ingrediente con su artículo Búnker correspondiente
+     * al ingresar un lote en taller (si el ingrediente aún no tenía articulo_vinculado_numero).
+     */
+    static async autoVincularIngredienteDesdeLote(client, ingredienteId, loteData, destino) {
+        try {
+            // 1. Verificar si el ingrediente ya cuenta con SKU vinculado
+            const checkRes = await client.query(
+                'SELECT articulo_vinculado_numero FROM public.ingredientes WHERE id = $1',
+                [ingredienteId]
+            );
+            if (checkRes.rows.length === 0 || checkRes.rows[0].articulo_vinculado_numero) {
+                return; // Ya vinculado
+            }
+
+            let skuSugerido = null;
+
+            // 2. Estrategia A: Si en el mismo lote hay otro destino que sea ARTICULO_BUNKER
+            if (loteData && loteData.destinos && Array.isArray(loteData.destinos)) {
+                const bunkerDest = loteData.destinos.find(d => d.tipo_destino === 'ARTICULO_BUNKER' && d.id);
+                if (bunkerDest) {
+                    skuSugerido = bunkerDest.id;
+                }
+            }
+
+            // 3. Estrategia B: Buscar en el historial de carros/movimientos atómicos con UUID
+            if (!skuSugerido) {
+                const histRes = await client.query(`
+                    SELECT svm.articulo_numero
+                    FROM public.stock_ventas_movimientos svm
+                    JOIN public.ingredientes_movimientos im 
+                      ON substring(svm.observaciones from 'UUID: ([a-f0-9\\-]+)') = substring(im.observaciones from 'UUID: ([a-f0-9\\-]+)')
+                     AND substring(svm.observaciones from 'UUID: ([a-f0-9\\-]+)') IS NOT NULL
+                    JOIN public.bunker_articulos ba ON ba.articulo_id = svm.articulo_numero
+                    WHERE im.ingrediente_id = $1
+                    GROUP BY svm.articulo_numero
+                    ORDER BY COUNT(*) DESC, MAX(svm.fecha) DESC
+                    LIMIT 1
+                `, [ingredienteId]);
+                if (histRes.rows.length > 0) {
+                    skuSugerido = histRes.rows[0].articulo_numero;
+                }
+            }
+
+            // 4. Estrategia C: Si tenemos lote_id_supabase, buscar si hay algún lote previo vinculado a bunker
+            if (!skuSugerido && loteData && loteData.lote_id_supabase) {
+                const prevDestRes = await client.query(`
+                    SELECT d.destino_id
+                    FROM public.bunker_lotes_destinos d
+                    JOIN public.bunker_lotes_vinculos v ON v.id = d.vinculo_id
+                    WHERE v.lote_id_supabase = $1 AND d.tipo_destino = 'ARTICULO_BUNKER'
+                    LIMIT 1
+                `, [loteData.lote_id_supabase]);
+                if (prevDestRes.rows.length > 0) {
+                    skuSugerido = prevDestRes.rows[0].destino_id;
+                }
+            }
+
+            // 5. Si encontramos un SKU válido de Bunker, ejecutar la vinculación permanente
+            if (skuSugerido) {
+                const skuLimpio = skuSugerido.trim().toUpperCase();
+                const baValido = await client.query(
+                    'SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(articulo_id) = $1',
+                    [skuLimpio]
+                );
+                if (baValido.rows.length > 0) {
+                    const finalSku = baValido.rows[0].articulo_id;
+                    await client.query(`
+                        UPDATE public.ingredientes
+                        SET articulo_vinculado_numero = $1
+                        WHERE id = $2 AND articulo_vinculado_numero IS NULL
+                    `, [finalSku, ingredienteId]);
+                    console.log(`🔗 [AUTO-APRENDIZAJE LOTES] Ingrediente ${ingredienteId} auto-vinculado permanentemente al SKU ${finalSku}`);
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ [AUTO-APRENDIZAJE LOTES] Error no bloqueante al auto-vincular ingrediente:', error.message);
         }
     }
 }

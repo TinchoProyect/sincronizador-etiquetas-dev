@@ -34,14 +34,36 @@ router.put('/:id/domicilio',
                 });
             }
             
-            // Actualizar presupuesto
-            const result = await req.db.query(
-                `UPDATE presupuestos 
-                 SET id_domicilio_entrega = $1
-                 WHERE id = $2
-                 RETURNING id, id_domicilio_entrega`,
-                [id_domicilio_entrega, id]
-            );
+            // Actualizar entidad según prefijo (SOB-, RT- o Presupuesto numérico)
+            let result;
+            const idStr = String(id);
+            if (idStr.startsWith('SOB-')) {
+                const cleanSobreId = parseInt(idStr.replace('SOB-', ''), 10);
+                result = await req.db.query(
+                    `UPDATE public.factura_pagos_efectivo 
+                     SET id_domicilio_entrega = $1, fecha_actualizacion = NOW()
+                     WHERE id = $2
+                     RETURNING ('SOB-' || id) as id, id_domicilio_entrega`,
+                    [id_domicilio_entrega, cleanSobreId]
+                );
+            } else if (idStr.startsWith('RT-')) {
+                const cleanRtId = parseInt(idStr.replace('RT-', ''), 10);
+                result = await req.db.query(
+                    `UPDATE public.ordenes_tratamiento 
+                     SET id_domicilio_entrega = $1
+                     WHERE id = $2
+                     RETURNING ('RT-' || id) as id, id_domicilio_entrega`,
+                    [id_domicilio_entrega, cleanRtId]
+                );
+            } else {
+                result = await req.db.query(
+                    `UPDATE presupuestos 
+                     SET id_domicilio_entrega = $1
+                     WHERE id = $2
+                     RETURNING id, id_domicilio_entrega`,
+                    [id_domicilio_entrega, id]
+                );
+            }
             
             if (result.rows.length === 0) {
                 return res.status(404).json({

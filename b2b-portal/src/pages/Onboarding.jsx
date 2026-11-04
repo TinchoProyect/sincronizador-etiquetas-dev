@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Loader2, ArrowLeft, User, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft, User, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import {
+  sincronizarDirectorioCloud,
+  encontrarClienteB2BAsync,
+  buscarInvitacionActivaCloud
+} from '../utils/clientesB2B';
 
 const API_BASE_URL = import.meta.env.DEV 
   ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005') 
   : '';
 
 export default function Onboarding({ onNavigate }) {
-  const [tokenInput, setTokenInput] = useState(''); // Estado para la clave corta (primeros 6 caracteres)
+  const [tokenInput, setTokenInput] = useState(''); // Estado para la clave corta (6 caracteres) o código de cliente
   const [token, setToken] = useState(''); // Estado para la clave de 64 caracteres final de registro
   const [validating, setValidating] = useState(false);
   const [isValid, setIsValid] = useState(false);
@@ -21,30 +26,12 @@ export default function Onboarding({ onNavigate }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [nombreContacto, setNombreContacto] = useState('');
-  const [cargo, setCargo] = useState('Dueño / Titular');
-  const [otroCargo, setOtroCargo] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const suggestions = ['@gmail.com', '@hotmail.com', '.com', '.com.ar'];
-
-  const handleSuggestionClick = (suggestion) => {
-    let current = email.trim();
-    if (suggestion.startsWith('@')) {
-      const atIndex = current.indexOf('@');
-      if (atIndex > -1) {
-        current = current.substring(0, atIndex) + suggestion;
-      } else {
-        current = current + suggestion;
-      }
-    } else {
-      current = current + suggestion;
-    }
-    setEmail(current);
-  };
-
-  // Leer token de la URL en el montaje
+  // Leer token o código corto (?t=...) de la URL en el montaje
   useEffect(() => {
+    sincronizarDirectorioCloud(supabase).catch(() => {});
+
     let urlToken = null;
     const params = new URLSearchParams(window.location.search);
     urlToken = params.get('token');
@@ -52,42 +39,78 @@ export default function Onboarding({ onNavigate }) {
     if (!urlToken && window.location.hash.includes('?')) {
       const hashQuery = window.location.hash.split('?')[1];
       const hashParams = new URLSearchParams(hashQuery);
-      urlToken = hashParams.get('token');
+      urlToken = hashParams.get('token') || hashParams.get('t');
+    }
+
+    if (!urlToken) {
+      const shortT = params.get('t');
+      if (shortT && /^[a-f0-9]{6,64}$/i.test(shortT.trim())) {
+        urlToken = shortT.trim();
+      }
     }
     
     if (urlToken) {
-      // Mostrar al usuario solo los primeros 6 caracteres en el campo de texto
-      setTokenInput(urlToken.substring(0, 6));
+      const cleanToken = urlToken.trim();
+      setTokenInput(cleanToken.substring(0, 6));
+      validarTokenInvitacion(cleanToken);
     }
   }, []);
 
   const validarTokenInvitacion = async (tokenParaValidar) => {
     setValidating(true);
     try {
-      const isShortCode = tokenParaValidar.trim().length === 6;
-      console.log(`📡 [Supabase Cloud] Validando código: ${tokenParaValidar}`);
-      
-      let query = supabase
-        .from('clientes_b2b_invitaciones')
-        .select('*')
-        .eq('usado', false);
-        
-      if (isShortCode) {
-        query = query.like('token', `${tokenParaValidar.trim()}%`);
-      } else {
-        query = query.eq('token', tokenParaValidar.trim());
-      }
-      
-      const { data: supaData, error: supaErr } = await query
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const cleanInput = (tokenParaValidar || '').trim();
+      console.log(`📡 [Supabase Cloud] Validando código o cliente en Onboarding: ${cleanInput}`);
 
-      if (supaErr) {
-        throw new Error(`Error en base de datos cloud: ${supaErr.message}`);
+      // Buscar invitación activa por código corto (6 chars), token completo (64 chars) o Nº de Cliente / Legacy / CUIT
+      let supaData = await buscarInvitacionActivaCloud(cleanInput, supabase);
+
+      if (!supaData) {
+        // Intento directo adicional por prefijo de token
+        const isShortCode = cleanInput.length === 6;
+        let query = supabase
+          .from('clientes_b2b_invitaciones')
+          .select('*')
+          .eq('usado', false);
+
+        if (isShortCode) {
+          query = query.ilike('token', `${cleanInput}%`);
+        } else {
+          query = query.eq('token', cleanInput);
+        }
+
+        const { data: fallbackInv } = await query
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (fallbackInv && new Date(fallbackInv.expires_at) > new Date()) {
+          supaData = fallbackInv;
+        }
       }
 
       if (!supaData) {
+        // Si ingresó un código de cliente válido (ej: 010 o CB-0059) pero no hay invitación sin usar, ofrecer validación por WhatsApp
+        const clienteMatch = await encontrarClienteB2BAsync(cleanInput, supabase);
+        if (clienteMatch) {
+          setValidating(false);
+          const resSwal = await Swal.fire({
+            title: `Hola, ${clienteMatch.razon_social || clienteMatch.nombre}`,
+            text: 'No encontramos un código de invitación pendiente, pero podemos enviarte un código de 4 números a tu WhatsApp ahora mismo para activar tu cuenta.',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: 'Activar por WhatsApp',
+            cancelButtonText: 'Probar otro código',
+            confirmButtonColor: 'var(--accent)',
+            background: 'hsl(222, 47%, 11%)',
+            color: 'var(--text-primary)',
+          });
+          if (resSwal.isConfirmed) {
+            localStorage.setItem('prefilled_identifier', clienteMatch.bunker_id);
+            onNavigate('#/activar');
+          }
+          return;
+        }
         throw new Error('El código de activación no es válido, ya fue utilizado o ha expirado.');
       }
 
@@ -97,26 +120,34 @@ export default function Onboarding({ onNavigate }) {
 
       setClientData(supaData);
       if (supaData.token) {
-        setToken(supaData.token); // Guardar el token completo de 64 caracteres
+        setToken(supaData.token);
       }
-      if (supaData.email_portal) {
-        setEmail(supaData.email_portal);
+      if (supaData.email_portal && !supaData.email_portal.endsWith('@lamdaclientes.com')) {
+        setEmail(supaData.email_portal.trim());
       }
-      if (supaData.email_portal_nombre) {
-        setNombreContacto(supaData.email_portal_nombre);
+
+      let inferredName = (supaData.email_portal_nombre || '').trim();
+      if (!inferredName && supaData.email_portal_cargo && String(supaData.email_portal_cargo).trim().startsWith('{')) {
+        try {
+          const meta = JSON.parse(supaData.email_portal_cargo);
+          if (meta.contact_name) inferredName = String(meta.contact_name).trim();
+        } catch (e) {}
       }
-      if (supaData.email_portal_cargo) {
-        const c = supaData.email_portal_cargo;
-        const opcionesPredeterminadas = ['Dueño / Titular', 'Socio', 'Encargado de Compras', 'Administración', 'Colaborador'];
-        if (opcionesPredeterminadas.includes(c)) {
-          setCargo(c);
-        } else {
-          setCargo('Otro');
-          setOtroCargo(c);
-        }
+
+      if (
+        inferredName &&
+        !inferredName.includes('@') &&
+        !inferredName.toLowerCase().endsWith('.com') &&
+        !inferredName.toLowerCase().endsWith('.com.ar') &&
+        inferredName.toLowerCase() !== 'cliente b2b'
+      ) {
+        setNombreContacto(inferredName);
+      } else {
+        setNombreContacto('');
       }
+
       setIsValid(true);
-      setStep(2); // Avanzar al paso de contraseña
+      setStep(2);
 
     } catch (err) {
       console.error('Error validando token en la nube:', err.message);
@@ -137,23 +168,13 @@ export default function Onboarding({ onNavigate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password || !confirmPassword || !nombreContacto) {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanNombre = nombreContacto.trim();
+
+    if (!cleanEmail || !password || !confirmPassword || !cleanNombre) {
       Swal.fire({
         title: 'Campos Incompletos',
-        text: 'Por favor, complete todos los campos obligatorios, incluyendo su nombre y apellido.',
-        icon: 'warning',
-        confirmButtonText: 'Entendido',
-        confirmButtonColor: 'var(--accent)',
-        background: 'hsl(222, 47%, 11%)',
-        color: 'var(--text-primary)',
-      });
-      return;
-    }
-
-    if (cargo === 'Otro' && !otroCargo.trim()) {
-      Swal.fire({
-        title: 'Especificar Cargo',
-        text: 'Por favor, especifique su cargo en la empresa.',
+        text: 'Por favor, ingrese su nombre, correo y contraseña.',
         icon: 'warning',
         confirmButtonText: 'Entendido',
         confirmButtonColor: 'var(--accent)',
@@ -191,82 +212,126 @@ export default function Onboarding({ onNavigate }) {
 
     setSubmitting(true);
     try {
-      const cargoFinal = cargo === 'Otro' ? otroCargo.trim() : cargo;
-      
+      const cargoFinal = 'Dueño / Titular';
       let onboardingCompleted = false;
-      // Intentar primero a través del backend local
-      try {
-        console.log("📡 [Onboarding] Intentando completar registro vía backend local...");
-        const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/completar-onboarding`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token, // Clave larga de 64 caracteres
-            email: email.trim(),
-            password,
-            nombre_contacto: nombreContacto.trim(),
-            cargo_contacto: cargoFinal
-          })
-        });
 
-        const resJson = await response.json();
-        if (response.ok && resJson.success) {
-          onboardingCompleted = true;
-          console.log("✅ [Onboarding] Registro completado en backend local.");
-        } else {
-          throw new Error(resJson.message || 'Error en backend local.');
+      // 1. Si estamos en red local / desarrollo, intentar directamente con el backend local
+      if (import.meta.env.DEV) {
+        try {
+          console.log('📡 [Onboarding] Intentando completar registro vía backend local...');
+          const response = await fetch(`${API_BASE_URL}/api/logistica/b2b-onboarding/completar-onboarding`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              email: cleanEmail,
+              password,
+              nombre_contacto: cleanNombre,
+              cargo_contacto: cargoFinal
+            })
+          });
+
+          const resJson = await response.json();
+          if (response.ok && resJson.success) {
+            onboardingCompleted = true;
+            console.log('✅ [Onboarding] Registro completado en backend local.');
+          }
+        } catch (localErr) {
+          console.warn('⚠️ [Onboarding] Backend local no disponible en DEV:', localErr.message);
         }
-      } catch (backendErr) {
-        console.warn("⚠️ [Onboarding] Backend local offline o error. Iniciando alta directa en Supabase Cloud:", backendErr.message);
+      }
 
-        // Registrar directamente en Supabase Auth
-        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-          email: email.trim(),
+      // 2. Canal Cloud Dispatcher (ONBOARD-REQ vía telemetria_accesos): provisiona Auth, Perfil y Listas Reales con Service Key
+      if (!onboardingCompleted && clientData?.cliente_id) {
+        try {
+          const reqId = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const payloadB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
+            token,
+            email: cleanEmail,
+            password,
+            nombre_contacto: cleanNombre,
+            cargo_contacto: cargoFinal
+          }))));
+
+          const { error: insErr } = await supabase
+            .from('telemetria_accesos')
+            .insert([{
+              cliente_nombre: clientData.cliente_id,
+              dispositivo: payloadB64,
+              tipo_acceso: `ONBOARD-REQ-${reqId}-${clientData.cliente_id}`
+            }]);
+
+          if (!insErr) {
+            for (let attempt = 1; attempt <= 8; attempt++) {
+              await new Promise(r => setTimeout(r, 600));
+              const { data: resRow } = await supabase
+                .from('telemetria_accesos')
+                .select('tipo_acceso, dispositivo')
+                .or(`tipo_acceso.eq.ONBOARD-RES-${reqId}-DONE,tipo_acceso.eq.ONBOARD-RES-${reqId}-ERROR`)
+                .limit(1)
+                .maybeSingle();
+
+              if (resRow) {
+                if (resRow.tipo_acceso.endsWith('-DONE')) {
+                  onboardingCompleted = true;
+                  console.log('✅ [Onboarding] Alta aprovisionada vía Cloud Dispatcher (Service Key).');
+                }
+                break;
+              }
+            }
+          }
+        } catch (dispErr) {
+          console.warn('⚠️ [Onboarding] Advertencia en Cloud Dispatcher:', dispErr.message);
+        }
+      }
+
+      // 3. Fallback autónomo 24/7 en Supabase Cloud (por si el servidor de la oficina está apagado)
+      if (!onboardingCompleted) {
+        console.log('☁️ [Onboarding] Ejecutando alta autónoma en Supabase Auth...');
+        const { error: signUpErr } = await supabase.auth.signUp({
+          email: cleanEmail,
           password: password,
           options: {
             data: {
               cliente_id: clientData.cliente_id,
-              nombre_completo: nombreContacto.trim(),
+              nombre_completo: cleanNombre,
               nombre_empresa: clientData.razon_social,
-              invitation_token: token // Se inyecta para que el trigger lo tome
+              invitation_token: token
             }
           }
         });
 
-        if (signUpErr) {
+        if (signUpErr && !String(signUpErr.message || '').toLowerCase().includes('already registered')) {
           throw signUpErr;
         }
-
         onboardingCompleted = true;
-        console.log("✅ [Onboarding] Registro completado de forma autónoma en Supabase Cloud.");
       }
 
-      localStorage.setItem('prefilled_email', email.trim());
+      localStorage.setItem('prefilled_email', cleanEmail);
 
       // Autologin en Supabase Auth
       console.log('☁️  [Onboarding] Autologin iniciado...');
       let loginSuccess = false;
       try {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
           password: password,
         });
         if (authError) throw authError;
+        await supabase.auth.refreshSession().catch(() => {});
         loginSuccess = true;
       } catch (authErr) {
         console.warn('⚠️ Autologin falló, redirigiendo a login manual:', authErr.message);
       }
 
-      // Detectar si el dispositivo es un iPhone / iPad (iOS Safari)
-      const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
       if (loginSuccess) {
         sessionStorage.setItem('just_activated', 'true');
+        localStorage.removeItem('pwa_install_dismissed');
         await Swal.fire({
           title: '¡Cuenta Activada!',
-          text: 'Tu cuenta ha sido activada con éxito. Redirigiendo al portal...',
+          text: 'Tu cuenta ha sido activada con éxito. Ingresando al portal...',
           icon: 'success',
-          timer: 2000,
+          timer: 1500,
           showConfirmButton: false,
           background: 'hsl(222, 47%, 11%)',
           color: 'var(--text-primary)',
@@ -274,7 +339,8 @@ export default function Onboarding({ onNavigate }) {
         });
         onNavigate('/');
       } else {
-        // Redirigir a login manual si falló autologin
+        sessionStorage.setItem('just_activated', 'true');
+        localStorage.removeItem('pwa_install_dismissed');
         Swal.fire({
           title: '¡Activación Exitosa!',
           text: 'Su cuenta ha sido vinculada correctamente. Ingrese con su correo y contraseña.',
@@ -315,7 +381,7 @@ export default function Onboarding({ onNavigate }) {
     );
   }
 
-  // Paso 1: Introducir / Confirmar el Código de Acceso
+  // Paso 1: Introducir / Confirmar el Código de Acceso o Nº de Cliente
   if (step === 1) {
     return (
       <div className="login-wrapper">
@@ -328,15 +394,15 @@ export default function Onboarding({ onNavigate }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
               <h3 style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontWeight: '700' }}>
-                Ingresá tu Código de Acceso
+                Activá tu Cuenta Comercial
               </h3>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                Introducí la clave de activación recibida por WhatsApp o Correo para validar tu identidad.
+                Ingresá el código de activación recibido por WhatsApp o tu Nº de Cliente (ej: 010 o CB-0059).
               </p>
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="token-input">Código de Activación</label>
+              <label className="form-label" htmlFor="token-input">Código de Activación o Nº de Cliente</label>
               <div className="input-wrapper">
                 <Lock className="input-icon" size={18} />
                 <input
@@ -344,9 +410,15 @@ export default function Onboarding({ onNavigate }) {
                   type="text"
                   required
                   className="form-input"
-                  placeholder="Ingrese el código de seguridad"
+                  placeholder="Código de WhatsApp o Nº de cliente"
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && tokenInput.trim()) {
+                      e.preventDefault();
+                      validarTokenInvitacion(tokenInput.trim());
+                    }
+                  }}
                   style={{ textTransform: 'none' }}
                 />
               </div>
@@ -358,7 +430,7 @@ export default function Onboarding({ onNavigate }) {
                 if (!tokenInput.trim()) {
                   Swal.fire({
                     title: 'Código Requerido',
-                    text: 'Por favor, ingrese el código de activación.',
+                    text: 'Por favor, ingrese su código de activación o número de cliente.',
                     icon: 'warning',
                     confirmButtonColor: 'var(--accent)',
                     background: 'hsl(222, 47%, 11%)',
@@ -371,7 +443,7 @@ export default function Onboarding({ onNavigate }) {
               className="btn-primary"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.5rem' }}
             >
-              <span>Validar Código y Continuar</span>
+              <span>Validar y Continuar</span>
             </button>
 
             <button
@@ -403,89 +475,29 @@ export default function Onboarding({ onNavigate }) {
   }
 
   // Paso 2: Completar Datos y Crear Contraseña
-  const isEmailPredefined = !!(clientData && clientData.email_portal);
-
   return (
     <div className="login-wrapper">
       <div className="login-card">
         {/* Encabezado */}
-        <div className="login-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem' }}>
-          <img src="/logo_LAMDA.png?v=4" alt="LAMDA Logo" style={{ maxHeight: '54px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.05em', marginTop: '-0.25rem', textTransform: 'lowercase' }}>activar cuenta comercial</span>
+        <div className="login-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', marginBottom: '1.75rem' }}>
+          <img src="/logo_LAMDA.png?v=4" alt="LAMDA Logo" style={{ maxHeight: '48px', maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }} />
+          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--accent)', letterSpacing: '0.04em' }}>
+            activar cuenta comercial
+          </span>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Distribuidor Asociado</span>
-            <h3 style={{ color: 'var(--text-primary)', fontSize: '1.25rem', fontWeight: '700', marginTop: '0.25rem' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '0.5rem', paddingBottom: '0.65rem', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            <h3 style={{ color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>
               {clientData?.razon_social || 'Cliente Comercial'}
             </h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Código: {clientData?.cliente_id}
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.2rem', display: 'inline-block' }}>
+              Código de Cliente: {clientData?.cliente_id}
             </span>
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="email">{isEmailPredefined ? 'Correo de Acceso (Confirmado)' : 'Correo de Acceso'}</label>
-            <div className="input-wrapper">
-              <Mail className="input-icon" size={18} />
-              <input
-                id="email"
-                type="email"
-                required
-                disabled={submitting}
-                readOnly={isEmailPredefined}
-                className="form-input"
-                style={{ backgroundColor: isEmailPredefined ? 'rgba(255, 255, 255, 0.05)' : '', cursor: isEmailPredefined ? 'not-allowed' : '' }}
-                placeholder="ejemplo@portal.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onFocus={() => !isEmailPredefined && setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                autoComplete="email"
-              />
-            </div>
-            {showSuggestions && (
-              <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
-                {suggestions.map((sug) => (
-                  <button
-                    key={sug}
-                    type="button"
-                    onClick={() => handleSuggestionClick(sug)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-glass)',
-                      borderRadius: '4px',
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.75rem',
-                      padding: '0.2rem 0.45rem',
-                      cursor: 'pointer',
-                      transition: 'var(--transition-smooth)',
-                      outline: 'none'
-                    }}
-                    onMouseOver={(e) => {
-                      e.target.style.background = 'var(--accent)';
-                      e.target.style.color = 'var(--text-primary)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.target.style.background = 'rgba(255, 255, 255, 0.05)';
-                      e.target.style.color = 'var(--text-secondary)';
-                    }}
-                  >
-                    {sug}
-                  </button>
-                ))}
-              </div>
-            )}
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {isEmailPredefined 
-                ? 'Este correo ha sido verificado por administración para su acceso.'
-                : 'Este correo será su usuario para iniciar sesión en el portal.'}
-            </span>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="nombreContacto">Nombre y Apellido del Responsable</label>
+            <label className="form-label" htmlFor="nombreContacto">Nombre y Apellido</label>
             <div className="input-wrapper">
               <User className="input-icon" size={18} />
               <input
@@ -494,63 +506,34 @@ export default function Onboarding({ onNavigate }) {
                 required
                 disabled={submitting}
                 className="form-input"
-                placeholder="Ej: Nicolás Serrano"
+                placeholder="Tu nombre y apellido"
                 value={nombreContacto}
                 onChange={(e) => setNombreContacto(e.target.value)}
+                autoComplete="name"
               />
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Nombre de la persona física encargada de operar la cuenta comercial.
-            </span>
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="cargo">Cargo / Rol en la Empresa</label>
+            <label className="form-label" htmlFor="email">Correo Electrónico</label>
             <div className="input-wrapper">
-              <Briefcase className="input-icon" size={18} />
-              <select
-                id="cargo"
-                className="form-input"
+              <Mail className="input-icon" size={18} />
+              <input
+                id="email"
+                type="email"
+                required
                 disabled={submitting}
-                value={cargo}
-                onChange={(e) => setCargo(e.target.value)}
-                style={{ backgroundColor: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-md)' }}
-              >
-                <option value="Dueño / Titular" style={{ background: '#0f172a' }}>Dueño / Titular</option>
-                <option value="Socio" style={{ background: '#0f172a' }}>Socio</option>
-                <option value="Encargado de Compras" style={{ background: '#0f172a' }}>Encargado de Compras</option>
-                <option value="Administración" style={{ background: '#0f172a' }}>Administración</option>
-                <option value="Colaborador" style={{ background: '#0f172a' }}>Colaborador</option>
-                <option value="Otro" style={{ background: '#0f172a' }}>Otro (Especificar)</option>
-              </select>
+                className="form-input"
+                placeholder="tu@correo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
             </div>
-          </div>
-
-          {cargo === 'Otro' && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="otroCargo">Especifique su Cargo</label>
-              <div className="input-wrapper">
-                <input
-                  id="otroCargo"
-                  type="text"
-                  required
-                  disabled={submitting}
-                  className="form-input"
-                  placeholder="Ej: Gerente de Ventas"
-                  value={otroCargo}
-                  onChange={(e) => setOtroCargo(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Advertencia Humana de Encriptación y Seguridad */}
-          <div style={{ background: 'rgba(142, 71, 133, 0.1)', borderLeft: '4px solid var(--accent)', padding: '12px', borderRadius: '6px', fontSize: '0.85rem', lineHeight: '1.45', color: 'var(--text-primary)', fontFamily: 'sans-serif' }}>
-            Establecé tu contraseña para el portal. Esta clave es absolutamente personal, está encriptada de forma segura y el único que puede visualizarla sos vos mismo.
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="password">Crea tu contraseña para el portal</label>
+            <label className="form-label" htmlFor="password">Contraseña</label>
             <div className="input-wrapper" style={{ position: 'relative' }}>
               <Lock className="input-icon" size={18} />
               <input
@@ -589,7 +572,7 @@ export default function Onboarding({ onNavigate }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="confirmPassword">Repite tu contraseña</label>
+            <label className="form-label" htmlFor="confirmPassword">Confirmar Contraseña</label>
             <div className="input-wrapper" style={{ position: 'relative' }}>
               <Lock className="input-icon" size={18} />
               <input
@@ -599,7 +582,7 @@ export default function Onboarding({ onNavigate }) {
                 disabled={submitting}
                 className="form-input"
                 style={{ paddingRight: '40px' }}
-                placeholder="Repita la contraseña"
+                placeholder="Repetí tu contraseña"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
@@ -636,7 +619,7 @@ export default function Onboarding({ onNavigate }) {
             {submitting ? (
               <>
                 <Loader2 className="spinner" style={{ width: '18px', height: '18px', borderTopColor: 'var(--text-primary)' }} />
-                <span>Registrando...</span>
+                <span>Activando cuenta...</span>
               </>
             ) : (
               <span>Activar mi Cuenta</span>
@@ -650,20 +633,17 @@ export default function Onboarding({ onNavigate }) {
               background: 'transparent',
               border: 'none',
               color: 'var(--text-secondary)',
-              fontSize: '0.875rem',
+              fontSize: '0.85rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.5rem',
-              marginTop: '0.5rem',
-              textDecoration: 'none'
+              gap: '0.4rem',
+              marginTop: '0.25rem'
             }}
-            onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
-            onMouseOut={(e) => e.target.style.color = 'var(--text-secondary)'}
           >
-            <ArrowLeft size={16} />
-            Volver al código
+            <ArrowLeft size={15} />
+            <span>Volver</span>
           </button>
         </form>
       </div>

@@ -1,18 +1,22 @@
 import React from 'react';
-import { BookOpen, Receipt, ClipboardList, LogOut, User, Layers, Home, Truck } from 'lucide-react';
+import { BookOpen, Receipt, ClipboardList, LogOut, User, Layers, Home, Truck, Banknote, Smartphone, Wrench } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function Sidebar({ profile, currentTab, setCurrentTab }) {
+export default function Sidebar({ profile, currentTab, setCurrentTab, totalAlerts = 0, onOpenVincularModal }) {
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
+
+  const isColaborador = profile?.permisos?.includes('servicios_colaborador') || profile?.cliente_id === 'CB-0006';
 
   const menuItems = [
     { id: 'home', label: 'Inicio', icon: Home },
     { id: 'articulos', label: 'Artículos', icon: BookOpen },
     { id: 'pedidos', label: 'Mis Pedidos', icon: ClipboardList },
     { id: 'cc', label: 'Cuenta Corriente', icon: Receipt },
-    { id: 'retiros', label: 'Devoluciones', icon: Truck }
+    { id: 'pagos_efectivo', label: 'Aviso de Ensobrado (Efectivo)', icon: Banknote },
+    { id: 'retiros', label: 'Devoluciones', icon: Truck },
+    ...(isColaborador ? [{ id: 'servicios_colaborador', label: 'Mis Servicios y Tarifas', icon: Wrench }] : [])
   ];
 
   return (
@@ -33,30 +37,6 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
               <span>Rol:</span>
               <span style={{ textTransform: 'capitalize' }}>{profile.rol || 'Cliente'}</span>
             </div>
-            {profile.listas_precios && profile.listas_precios.length > 0 && (
-              <div className="client-detail" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem', marginTop: '0.75rem' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  <Layers size={14} /> Listas de Precios Activas:
-                </span>
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                  {profile.listas_precios.map(listId => (
-                    <span 
-                      key={listId} 
-                      style={{ 
-                        background: 'rgba(59, 130, 246, 0.15)', 
-                        color: 'var(--accent)', 
-                        padding: '0.1rem 0.4rem', 
-                        borderRadius: '4px',
-                        fontSize: '0.75rem',
-                        fontWeight: '600'
-                      }}
-                    >
-                      L-{listId}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -64,15 +44,21 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
           {menuItems.map(item => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
+            const hasAlerts = item.id === 'pedidos' && totalAlerts > 0;
             return (
               <button
                 key={item.id}
                 onClick={() => setCurrentTab(item.id)}
                 className={`nav-item ${isActive ? 'active' : ''}`}
-                style={{ background: 'none', width: '100%', border: '1px solid transparent', textAlign: 'left', font: 'inherit' }}
+                style={{ background: 'none', width: '100%', border: '1px solid transparent', textAlign: 'left', font: 'inherit', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
               >
                 <Icon size={20} />
                 <span>{item.label}</span>
+                {hasAlerts && (
+                  <span className="b2b-nav-badge">
+                    {totalAlerts}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -94,6 +80,42 @@ export default function Sidebar({ profile, currentTab, setCurrentTab }) {
               </p>
             </div>
           </div>
+        )}
+        {onOpenVincularModal && (
+          <button 
+            type="button"
+            className="btn-vincular-dispositivo" 
+            onClick={onOpenVincularModal}
+            style={{
+              width: '100%',
+              background: 'rgba(142, 71, 133, 0.12)',
+              border: '1px solid rgba(142, 71, 133, 0.3)',
+              borderRadius: '10px',
+              padding: '0.6rem 0.75rem',
+              color: 'var(--text-primary)',
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              cursor: 'pointer',
+              marginBottom: '0.65rem',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'rgba(142, 71, 133, 0.25)';
+              e.currentTarget.style.borderColor = 'var(--accent)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'rgba(142, 71, 133, 0.12)';
+              e.currentTarget.style.borderColor = 'rgba(142, 71, 133, 0.3)';
+            }}
+            title="Vincular celular o computadora mediante QR o WhatsApp"
+          >
+            <Smartphone size={16} style={{ color: 'var(--accent)' }} />
+            <span>Vincular otro equipo</span>
+          </button>
         )}
         <button className="btn-logout" onClick={handleLogout}>
           <LogOut size={18} />

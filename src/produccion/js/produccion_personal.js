@@ -12,7 +12,9 @@ import {
     obtenerResumenMixesCarro,
     mostrarResumenMixes,
     obtenerResumenArticulosCarro,
-    mostrarResumenArticulos
+    mostrarResumenArticulos,
+    cerrarModalEditarVinculo,
+    procesarGuardadoVinculo
 } from './carro.js';
 import {
     abrirModalArticulos,
@@ -46,22 +48,63 @@ window.imprimirOrdenProduccion = imprimirOrdenProduccion;
 window.abrirModalGuardadoIngredientes = abrirModalGuardadoIngredientes;
 window.abrirModalSalvavidas = abrirModalSalvavidas;
 
-// === NUEVO: Ejecutor Unificado de Creación de Carros ===
-window.ejecutarCreacionCarro = async function(tipoCarro) {
+// === Navegación y Ejecución de Creación de Carros y Línea Productiva ===
+window.mostrarPasoLineaNegocio = function(modo) {
+    const pasoTipo = document.getElementById('modal-paso-tipo');
+    const pasoLineaExterna = document.getElementById('modal-paso-linea');
+    const pasoLineaInterna = document.getElementById('modal-paso-linea-interna');
+
+    if (!pasoTipo) return;
+
+    if (modo === 'interna') {
+        pasoTipo.style.display = 'none';
+        if (pasoLineaInterna) pasoLineaInterna.style.display = 'block';
+        if (pasoLineaExterna) pasoLineaExterna.style.display = 'none';
+    } else if (modo === 'externa' || modo === true) {
+        pasoTipo.style.display = 'none';
+        if (pasoLineaInterna) pasoLineaInterna.style.display = 'none';
+        if (pasoLineaExterna) pasoLineaExterna.style.display = 'block';
+    } else {
+        pasoTipo.style.display = 'block';
+        if (pasoLineaInterna) pasoLineaInterna.style.display = 'none';
+        if (pasoLineaExterna) pasoLineaExterna.style.display = 'none';
+    }
+};
+
+window.cerrarModalTipoCarro = function() {
+    const modal = document.getElementById('modal-tipo-carro');
+    if (modal) modal.style.display = 'none';
+    window.mostrarPasoLineaNegocio(false);
+};
+
+// Escuchar cuando desde "Configurar Carros" (otra pestaña) se arma un nuevo carro y se solicita activarlo inmediatamente
+window.addEventListener('storage', async (event) => {
+    if (event.key === 'carroActivoSolicitado' && event.newValue) {
+        const nuevoCarroId = event.newValue;
+        localStorage.removeItem('carroActivoSolicitado');
+        console.log('🔄 [CROSS-TAB] Activando carro recién configurado desde Configurar Carros:', nuevoCarroId);
+        await seleccionarCarro(nuevoCarroId);
+    }
+});
+
+window.ejecutarCreacionCarro = async function(tipoCarro, lineaNegocio = null) {
     try {
-        const modal = document.getElementById('modal-tipo-carro');
-        if (modal) modal.style.display = 'none';
+        window.cerrarModalTipoCarro();
 
         // Primero deseleccionar el carro actual
         await deseleccionarCarro();
-        // Luego crear el nuevo carro con el tipo elegido
-        await crearNuevoCarro(tipoCarro);
+        // Luego crear el nuevo carro con el tipo elegido y su línea productiva
+        await crearNuevoCarro(tipoCarro, lineaNegocio);
         // Finalmente mostrar los artículos
         await mostrarArticulosDelCarro();
-
         
         // Cargar y mostrar resumen de ingredientes y mixes
         await cargarResumenIngredientes();
+
+        if (typeof window.actualizarInformeIngresosManuales === 'function') {
+            await window.actualizarInformeIngresosManuales();
+        }
+        configurarInputDual();
     } catch (error) {
         console.error('Error al ejecutar creación unificada de carro:', error);
     }
@@ -69,88 +112,20 @@ window.ejecutarCreacionCarro = async function(tipoCarro) {
 // 🚀 [DIAGNÓSTICO] Verificar después de asignar
 console.log('🔍 [DIAGNÓSTICO] Función asignada correctamente:', typeof window.abrirModalGuardadoIngredientes);
 
-// Importar y hacer disponibles las funciones del modal simplificado
-import { cerrarModalEditarVinculo, procesarGuardadoVinculo } from './carro.js';
+// Hacer disponibles las funciones del modal simplificado
 window.cerrarModalEditarVinculo = cerrarModalEditarVinculo;
 window.procesarGuardadoVinculo = procesarGuardadoVinculo;
 
 // CONFIGURACIÓN: Artículos que permiten ingreso por unidades
 // Key: Parte del nombre o ID del artículo (minúsculas)
 // Value: Peso por unidad en KG
-const CONVERSION_ARTICULOS = {
-    'barra flor': 0.05,       // Barritas (4.8kg / 96u = 0.05kg)
-    'alfajor': 0.06        // Ejemplo futuro
-};
-
 /**
- * Configura la entrada dual (Kilos <-> Unidades) si el artículo lo permite.
- * @param {string} nombreArticulo - Descripción del artículo principal del carro
+ * Configura la entrada dual (Kilos <-> Unidades) delegando al motor unificado en carroPreparado.js
  */
-function configurarInputDual(nombreArticulo) {
-    const containerUnidades = document.getElementById('container-unidades-helper');
-    const inputKilos = document.getElementById('kilos-producidos');
-    const inputUnidades = document.getElementById('unidades-producidas');
-    const labelFactor = document.getElementById('factor-conversion-texto');
-
-    if (!nombreArticulo || !containerUnidades || !inputKilos || !inputUnidades) return;
-
-    // 1. Buscar si el artículo coincide con alguna configuración
-    const nombreNormalizado = nombreArticulo.toLowerCase();
-    let factorConversion = null;
-
-    for (const [clave, factor] of Object.entries(CONVERSION_ARTICULOS)) {
-        if (nombreNormalizado.includes(clave)) {
-            factorConversion = factor;
-            break;
-        }
+function configurarInputDual() {
+    if (typeof window.verificarYConfigurarModoDual === 'function') {
+        window.verificarYConfigurarModoDual();
     }
-
-    // 2. Si no hay configuración, ocultar el helper y salir
-    if (!factorConversion) {
-        containerUnidades.style.display = 'none';
-        // Limpiamos listeners previos clonando el nodo
-        const newKilos = inputKilos.cloneNode(true);
-        inputKilos.parentNode.replaceChild(newKilos, inputKilos);
-        return;
-    }
-
-    // 3. Activar modo dual
-    console.log(`⚖️ Activando modo unidades para: ${nombreArticulo} (Factor: ${factorConversion})`);
-    containerUnidades.style.display = 'block';
-    labelFactor.textContent = `1 unidad ≈ ${factorConversion} kg`;
-
-    // Limpiar input de unidades
-    inputUnidades.value = '';
-
-    // Si ya hay kilos cargados, calcular las unidades iniciales
-    if (inputKilos.value) {
-        inputUnidades.value = Math.round(parseFloat(inputKilos.value) / factorConversion);
-    }
-
-    // --- EVENT LISTENERS (Bidireccionales) ---
-
-    // A. Si Matías escribe Unidades -> Calculamos Kilos
-    inputUnidades.oninput = function () {
-        const unidades = parseFloat(this.value);
-        if (!isNaN(unidades)) {
-            const kilos = (unidades * factorConversion).toFixed(2);
-            inputKilos.value = kilos;
-        } else {
-            inputKilos.value = '';
-        }
-    };
-
-    // B. Si Matías escribe Kilos -> Calculamos Unidades
-    // Reemplazamos el nodo de kilos primero para asegurar un listener limpio (ya hecho arriba si no aplica, pero aqui lo asignamos directo)
-    inputKilos.oninput = function () {
-        const kilos = parseFloat(this.value);
-        if (!isNaN(kilos)) {
-            const unidades = Math.round(kilos / factorConversion);
-            inputUnidades.value = unidades;
-        } else {
-            inputUnidades.value = '';
-        }
-    };
 }
 
 // Función asíncrona para inicializar el espacio de trabajo
@@ -184,6 +159,9 @@ async function inicializarEspacioTrabajo() {
         if (typeof window.actualizarInformeIngresosManuales === 'function') {
             await window.actualizarInformeIngresosManuales();
         }
+
+        // Configurar modo dual si aplica a los artículos cargados
+        configurarInputDual();
 
     } catch (error) {
         console.error('Error al inicializar espacio de trabajo:', error);
@@ -219,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCrearCarro = document.getElementById('crear-carro');
     if (btnCrearCarro) {
         btnCrearCarro.addEventListener('click', () => {
+            window.mostrarPasoLineaNegocio(false);
             const modal = document.getElementById('modal-tipo-carro');
             if (modal) {
                 modal.style.display = 'flex';
@@ -246,12 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnAgregarArticulo.hasEventListener = true;
                 }
 
-                // 2. NUEVO: Detectar artículo para conversión de unidades (Barritas)
-                // Buscamos si se renderizó la descripción del artículo en el carro
-                const descripcionElement = document.querySelector('.articulo-descripcion');
-                if (descripcionElement) {
-                    configurarInputDual(descripcionElement.textContent);
-                }
+                // 2. NUEVO: Detectar artículo para conversión de unidades (Barritas / Modo Dual)
+                configurarInputDual();
             }
         });
     });

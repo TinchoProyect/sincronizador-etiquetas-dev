@@ -1,0 +1,286 @@
+Match #1 | Line 1424 | Tool: multi_replace_file_content
+Instruction: Add Switch HTML and CSS toggle elements and read-only banner to listado-bunker.html.
+TargetContent:
+undefined
+ReplacementContent:
+[
+  {
+    "AllowMultiple": false,
+    "EndLine": 16,
+    "ReplacementContent": "    <style>\n        /* Estilos del Switch / Toggle */\n        .switch-container input:checked + .switch-slider {\n            background-color: #8e4785;\n        }\n        .switch-slider:before {\n            position: absolute;\n            content: \"\";\n            height: 16px;\n            width: 16px;\n            left: 3px;\n            bottom: 3px;\n            background-color: white;\n            transition: .3s;\n            border-radius: 50%;\n        }\n        .switch-container input:checked + .switch-slider:before {\n            transform: translateX(22px);\n        }",
+    "StartLine": 15,
+    "TargetContent": "    <style>"
+  },
+  {
+    "AllowMultiple": false,
+    "EndLine": 936,
+    "ReplacementContent": "                <h4 style=\"margin-top: 0; color: #475569; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em;\">\n                    <span style=\"display: flex; align-items: center; gap: 6px;\">📜 Estructura de Receta de Producción (Origen)</span>\n                    <span id=\"gp-receta-info-badge\" style=\"font-size: 0.8em; background: #cbd5e1; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold;\">Sin Receta</span>\n                </h4>\n                <!-- Switch Enlace de Producción Externa (Mezclas Puente) -->\n                <div id=\"gp-switch-enlace-container\" style=\"display: none; align-items: center; justify-content: space-between; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;\">\n                    <span style=\"font-size: 0.85em; font-weight: bold; color: #6b21a8; display: flex; align-items: center; gap: 6px;\">\n                        🔌 Enlazar a Producción Externa\n                    </span>\n                    <label class=\"switch-container\" style=\"position: relative; display: inline-block; width: 44px; height: 22px; cursor: pointer; margin: 0;\">\n                        <input type=\"checkbox\" id=\"gp-switch-enlace\" style=\"opacity: 0; width: 0; height: 0;\" onchange=\"window.toggleEnlaceProduccionExterna(this.checked)\">\n                        <span class=\"switch-slider\" style=\"position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 34px;\"></span>\n                    </label>\n                </div>",
+    "StartLine": 932,
+    "TargetContent": "                <h4 style=\"margin-top: 0; color: #475569; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em;\">\n                    <span style=\"display: flex; align-items: center; gap: 6px;\">📜 Estructura de Receta de Producción (Origen)</span>\n                    <span id=\"gp-receta-info-badge\" style=\"font-size: 0.8em; background: #cbd5e1; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold;\">Sin Receta</span>\n                </h4>"
+  },
+  {
+    "AllowMultiple": false,
+    "EndLine": 1207,
+    "ReplacementContent": "            <!-- Contenido del Modal -->\n            <div style=\"flex: 1; display: flex; flex-direction: column; gap: 15px;\">\n                <!-- Banner Informativo Enlace de Producción Externa -->\n                <div id=\"gp-receta-modal-vinculo-info\" style=\"display: none; align-items: center; gap: 8px; padding: 10px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 6px; color: #6b21a8; font-weight: bold; margin-bottom: 5px; font-size: 0.9em;\">\n                    <span>🔗</span>\n                    <span>Este artículo está enlazado a la producción externa y sus cantidades se actualizan automáticamente en tiempo real.</span>\n                </div>",
+    "StartLine": 1205,
+    "TargetContent": "            <!-- Contenido del Modal -->\n            <div style=\"flex: 1; display: flex; flex-direction: column; gap: 15px;\">"
+  }
+]
+-------------------------------------------------------------
+
+Match #2 | Line 1770 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                    <button type="button" id="gp-btn-editar-receta" class="btn-primary" onclick="abrirModalRecetaBunker()" style="padding: 6px 12px; font-size: 0.85em; border-radius: 4px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        ✏️ Editar Receta
+                    </button>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #3 | Line 1772 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                    
+                </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #4 | Line 1776 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+
+                </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #5 | Line 1780 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                </div>
+
+            </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #6 | Line 1784 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                <div id="gp-receta-ingredientes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px;">
+                    <!-- Rendered by JS -->
+
+
+            <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #7 | Line 1790 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                    </label>
+                </div>
+ 
+                 <button type="button" class="btn-secondary" onclick="cerrarGestorPrecios()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #8 | Line 1792 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                        <span class="switch-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 34px;"></span>
+                    </label>
+                </div>
+
+                <button type="button" class="btn-secondary" onclick="cerrarGestorPrecios()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #9 | Line 1796 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                    <label class="switch-container" style="position: relative; display: inline-block; width: 44px; height: 22px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" id="gp-switch-enlace" style="opacity: 0; width: 0; height: 0;" onchange="window.toggleEnlaceProduccionExterna(this.checked)">
+
+                <button type="button" class="btn-submit" id="gp-btn-guardar" onclick="guardarEstructuraFinanciera()" style="padding: 8px 16px; border-radius: 4px; background: #10b981; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px;">💾 Guardar Cambios en Lista</button>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #10 | Line 1800 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+            <!-- Receta Activa del Producto (Solo lectura) -->
+            <div id="gp-receta-seccion" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 15px;">
+                <h4 style="margin-top: 0; color: #475569; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em;">
+                    <span style="display: flex; align-items: center; gap: 6px;">📜 Estructura de Receta de Producción (Origen)</span>
+                    <span id="gp-receta-info-badge" style="font-size: 0.8em; background: #cbd5e1; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: bold;">Sin Receta</span>
+                </h4>
+                <!-- Switch Enlace de Producción Externa (Mezclas Puente) -->
+                <div id="gp-switch-enlace-container" style="display: none; align-items: center; justify-content: space-between; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;">
+                    <span style="font-size: 0.85em; font-weight: bold; color: #6b21a8; display: flex; align-items: center; gap: 6px;">
+                        🔌 Enlazar a Producción Externa
+                    </span>
+
+            </div>
+            <!-- Hidden input para guardar el ID -->
+            <input type="hidden" id="gp-articulo-id">
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #11 | Line 1804 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+            </div>
+
+
+        </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #12 | Line 1808 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                </div>
+
+    </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #13 | Line 1812 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                    </div>
+
+
+    <!-- Modal Previsualizador
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #14 | Line 1816 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                            </div>
+                        </div>
+  y Configurador de Impresión PDF -->
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #15 | Line 1820 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                        </div>
+                    </div>
+
+    <!-- Modal de Previsualización
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #16 | Line 1824 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                        </div>
+                    </div>
+                </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #17 | Line 1828 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                            </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #18 | Line 1832 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                                </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #19 | Line 1836 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                                     ⚠️ Atención: Existe un nuevo costo de reposición por lote en el ingrediente base
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #20 | Line 1840 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #21 | Line 1844 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                    </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #22 | Line 1848 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                        </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #23 | Line 1852 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                            </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #24 | Line 1866 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                    <button type="button" id="gp-btn-editar-receta" class="btn-primary" onclick="abrirModalRecetaBunker()" style="padding: 6px 12px; font-size: 0.85em; border-radius: 4px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        ✏️ Editar Receta
+                    </button>
+                </div>
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+
+Match #25 | Line 1870 | Tool: replace_file_content
+Instruction: undefined
+TargetContent:
+                </div>
+
+ReplacementContent:
+undefined
+-------------------------------------------------------------
+

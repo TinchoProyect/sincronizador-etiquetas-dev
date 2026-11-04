@@ -26,7 +26,19 @@ const BunkerModal = {
         const costoOriginal = vu * kilosPorBultoFisico * cantRecibida;
         const cantidadTotalKilos = cantRecibida * kilosPorBultoFisico; // bultos físicos recibidos * kilos por bulto
         
-        document.getElementById('bm-bultos').innerText = cantRecibida.toString();
+        const estadoData = window.LotesTrazabilidadCache ? window.LotesTrazabilidadCache[lote.id] : null;
+        let kilosPendientes = cantidadTotalKilos;
+        let bultosPendientes = cantRecibida;
+        
+        if (estadoData && estadoData.estado === 'ASIGNADO_PARCIAL') {
+            const kilosYaAsignados = parseFloat(estadoData.suma_asignada || 0);
+            kilosPendientes = Math.max(0, cantidadTotalKilos - kilosYaAsignados);
+            bultosPendientes = kilosPendientes / kilosPorBultoFisico;
+        }
+
+        document.getElementById('bm-bultos').innerText = estadoData && estadoData.estado === 'ASIGNADO_PARCIAL'
+            ? `${cantRecibida} (${bultosPendientes} pend.)`
+            : cantRecibida.toString();
         document.getElementById('bm-kilos-unidad').innerText = kilosPorBultoFisico.toString() + ' kg';
         
         // Alerta de Inconsistencia Flagrante
@@ -37,22 +49,32 @@ const BunkerModal = {
                 warningDiv.style.display = 'block';
                 const safeDescEscaped = (item.producto_descripcion || 'Sin descripción').replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, ' ');
                 warningDiv.innerHTML = `⚠️ ADVERTENCIA CRÍTICA: Se ha detectado una inconsistencia de factor de conversión (1x1) en este artículo mayorista premium ($ ${vu.toLocaleString('es-AR')}/kg).<br>Por favor, <a href="#" onclick="BunkerModal.cerrar(); window.corregirPresentacion('${lote.id}', ${bult}, ${val}, '${safeDescEscaped}'); return false;" style="color: #ef4444; font-weight: bold; text-decoration: underline;">corrija la presentación manualmente aquí</a> antes de vincular para evitar balances de inventario erróneos.`;
+            } else if (estadoData && estadoData.estado === 'ASIGNADO_PARCIAL') {
+                warningDiv.style.display = 'block';
+                warningDiv.style.backgroundColor = '#e0f2fe';
+                warningDiv.style.color = '#0369a1';
+                warningDiv.style.borderColor = '#bae6fd';
+                warningDiv.innerHTML = `ℹ️ <b>Asignación Parcial Previa:</b> Se están vinculando los <b>${bultosPendientes} bultos remanentes</b> (${kilosPendientes} kg pendientes de un total de ${cantidadTotalKilos} kg).`;
             } else {
                 warningDiv.style.display = 'none';
             }
         }
         
-        document.getElementById('bm-costo-bruto').value = costoOriginal.toFixed(2);
-        document.getElementById('bm-cantidad-total').value = cantidadTotalKilos.toFixed(2);
+        document.getElementById('bm-costo-bruto').value = (vu * kilosPorBultoFisico * bultosPendientes).toFixed(2);
+        document.getElementById('bm-cantidad-total').value = kilosPendientes.toFixed(2);
         
         document.getElementById('bm-destinos-container').innerHTML = '';
         document.getElementById('bm-validacion-manual').checked = false;
         
         this.recalcularCostos();
-        this.renderDestinos();
-        this.verificarBotonGuardar();
         
-        document.getElementById('bm-validacion-manual').addEventListener('change', () => this.verificarBotonGuardar());
+        // Auto-crear el primer destino con el 100% del saldo pendiente disponible
+        this.agregarDestino();
+        
+        const checkValidacion = document.getElementById('bm-validacion-manual');
+        if (checkValidacion) {
+            checkValidacion.onchange = () => this.verificarBotonGuardar();
+        }
         
         document.getElementById('modal-bunker').classList.add('show');
     },
@@ -74,13 +96,24 @@ const BunkerModal = {
     },
 
     agregarDestino() {
+        const totalKilos = parseFloat(document.getElementById('bm-cantidad-total').value) || 0;
+        const yaAsignadoKilos = this.destinos.reduce((acc, curr) => acc + (parseFloat(curr.kilos_asignados) || 0), 0);
+        const remanenteKilos = Math.max(0, totalKilos - yaAsignadoKilos);
+        const factorInicial = this.kilosPorBultoLote > 0 ? this.kilosPorBultoLote : 1;
+        const remanenteCajas = factorInicial > 0 ? (remanenteKilos / factorInicial) : 0;
+        
+        const autoCajas = remanenteCajas % 1 === 0 ? remanenteCajas : parseFloat(remanenteCajas.toFixed(2));
+        const autoKilos = remanenteKilos % 1 === 0 ? remanenteKilos : parseFloat(remanenteKilos.toFixed(2));
+
         this.destinos.push({
-            idTemp: Date.now(),
+            idTemp: Date.now() + Math.floor(Math.random() * 1000),
             tipo_destino: 'ARTICULO_BUNKER',
             id: '',
             descripcion: '',
-            cantidad_asignada: 0,
-            kilos_asignados: 0
+            factor_pack: factorInicial,
+            cantidad_asignada: autoCajas,
+            kilos_asignados: autoKilos,
+            _lastEdited: null
         });
         this.renderDestinos();
     },
@@ -176,13 +209,47 @@ const BunkerModal = {
     actualizarPorCajas(idTemp) {
         const destino = this.destinos.find(d => d.idTemp === idTemp);
         if (destino) {
+            destino._lastEdited = 'cajas';
             const cajasInput = document.getElementById(`cajas-${idTemp}`);
+            const factorInput = document.getElementById(`factor-${idTemp}`);
             const cajasVal = parseFloat(cajasInput.value) || 0;
-            const kilosVal = cajasVal * this.kilosPorBultoLote;
+            const factorVal = (factorInput ? parseFloat(factorInput.value) : destino.factor_pack) || this.kilosPorBultoLote || 1;
+            const kilosVal = cajasVal * factorVal;
             
             document.getElementById(`kilos-${idTemp}`).value = kilosVal % 1 === 0 ? kilosVal.toFixed(0) : kilosVal.toFixed(2);
+            destino.factor_pack = factorVal;
             destino.cantidad_asignada = cajasVal;
             destino.kilos_asignados = kilosVal;
+        }
+        this.renderCantidades();
+    },
+
+    actualizarPorFactor(idTemp) {
+        const destino = this.destinos.find(d => d.idTemp === idTemp);
+        if (destino) {
+            const factorInput = document.getElementById(`factor-${idTemp}`);
+            const cajasInput = document.getElementById(`cajas-${idTemp}`);
+            const kilosInput = document.getElementById(`kilos-${idTemp}`);
+            const factorVal = parseFloat(factorInput.value) || 0;
+            destino.factor_pack = factorVal;
+
+            if (factorVal > 0) {
+                if (destino._lastEdited === 'cajas') {
+                    // Si el operador primero escribió los bultos/packs (ej: 5) y luego el factor (ej: 20), calcula 5 * 20 = 100
+                    const cajasVal = parseFloat(cajasInput.value) || 0;
+                    const kilosVal = cajasVal * factorVal;
+                    kilosInput.value = kilosVal % 1 === 0 ? kilosVal.toFixed(0) : kilosVal.toFixed(2);
+                    destino.cantidad_asignada = cajasVal;
+                    destino.kilos_asignados = kilosVal;
+                } else {
+                    // Por defecto mantiene el total neto (ej: 100) y calcula cuántos packs físicos son (100 / 20 = 5)
+                    const kilosVal = parseFloat(kilosInput.value) || 0;
+                    const cajasVal = kilosVal / factorVal;
+                    cajasInput.value = cajasVal % 1 === 0 ? cajasVal.toFixed(0) : cajasVal.toFixed(2);
+                    destino.cantidad_asignada = cajasVal;
+                    destino.kilos_asignados = kilosVal;
+                }
+            }
         }
         this.renderCantidades();
     },
@@ -191,12 +258,29 @@ const BunkerModal = {
         const destino = this.destinos.find(d => d.idTemp === idTemp);
         if (destino) {
             const kilosInput = document.getElementById(`kilos-${idTemp}`);
+            const cajasInput = document.getElementById(`cajas-${idTemp}`);
+            const factorInput = document.getElementById(`factor-${idTemp}`);
             const kilosVal = parseFloat(kilosInput.value) || 0;
-            const cajasVal = kilosVal / this.kilosPorBultoLote;
-            
-            document.getElementById(`cajas-${idTemp}`).value = cajasVal % 1 === 0 ? cajasVal.toFixed(0) : cajasVal.toFixed(2);
-            destino.cantidad_asignada = cajasVal;
-            destino.kilos_asignados = kilosVal;
+
+            if (destino._lastEdited === 'cajas' && (parseFloat(cajasInput.value) || 0) > 0) {
+                const cajasVal = parseFloat(cajasInput.value);
+                const nuevoFactor = kilosVal > 0 ? (kilosVal / cajasVal) : 1;
+                if (factorInput) {
+                    factorInput.value = nuevoFactor % 1 === 0 ? nuevoFactor.toFixed(0) : nuevoFactor.toFixed(2);
+                }
+                destino.factor_pack = nuevoFactor;
+                destino.cantidad_asignada = cajasVal;
+                destino.kilos_asignados = kilosVal;
+            } else {
+                destino._lastEdited = 'kilos';
+                const factorVal = (factorInput ? parseFloat(factorInput.value) : destino.factor_pack) || this.kilosPorBultoLote || 1;
+                const cajasVal = factorVal > 0 ? (kilosVal / factorVal) : 0;
+                
+                cajasInput.value = cajasVal % 1 === 0 ? cajasVal.toFixed(0) : cajasVal.toFixed(2);
+                destino.factor_pack = factorVal;
+                destino.cantidad_asignada = cajasVal;
+                destino.kilos_asignados = kilosVal;
+            }
         }
         this.renderCantidades();
     },
@@ -207,6 +291,7 @@ const BunkerModal = {
         this.destinos.forEach(d => {
             const div = document.createElement('div');
             div.style.cssText = 'display: flex; gap: 10px; align-items: center; background: #fff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 4px;';
+            const factorMostrar = d.factor_pack !== undefined ? d.factor_pack : (this.kilosPorBultoLote || 1);
             div.innerHTML = `
                 <div style="flex: 2; display: flex; flex-direction: column; gap: 4px;">
                     <input type="text" placeholder="🔍 Buscar Búnker / Ingrediente..." style="padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;" onkeyup="BunkerModal.buscarDestinoRemoto(this.value, ${d.idTemp})">
@@ -216,20 +301,27 @@ const BunkerModal = {
                         <option value="">-- Seleccionar Destino --</option>
                     </select>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center; background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                <div style="display: flex; gap: 6px; align-items: center; background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                        <span style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px;">Cajas Cerradas</span>
-                        <div style="display: flex; align-items: center; gap: 4px;">
-                            <input type="number" id="cajas-${d.idTemp}" placeholder="Bultos" style="width: 70px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; text-align: center; font-weight: 600; color: #1e293b;" value="${d.cantidad_asignada}" oninput="BunkerModal.actualizarPorCajas(${d.idTemp})">
+                        <span style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px;">Bultos / Packs</span>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <input type="number" id="cajas-${d.idTemp}" step="any" placeholder="Bultos" style="width: 62px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; text-align: center; font-weight: 600; color: #1e293b;" value="${d.cantidad_asignada}" onfocus="this.select()" oninput="BunkerModal.actualizarPorCajas(${d.idTemp})">
                             <span style="font-size: 11px; color: #64748b; font-weight: 600;">cj</span>
                         </div>
                     </div>
-                    <div style="font-size: 12px; color: #94a3b8; font-weight: bold; margin-top: 12px;">⇄</div>
+                    <div style="font-size: 12px; color: #94a3b8; font-weight: bold; margin-top: 12px;">×</div>
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                        <span style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px;">Kilos Netos Equiv.</span>
-                        <div style="display: flex; align-items: center; gap: 4px;">
-                            <input type="number" id="kilos-${d.idTemp}" placeholder="Kilos" style="width: 80px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; text-align: center; font-weight: 600; color: #1e293b;" value="${d.kilos_asignados}" oninput="BunkerModal.actualizarPorKilos(${d.idTemp})">
-                            <span style="font-size: 11px; color: #64748b; font-weight: 600;">kg</span>
+                        <span style="font-size: 9px; color: #0284c7; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px;" title="Unidades o Kilos agrupados en cada bulto/pack físico">x Pack</span>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <input type="number" id="factor-${d.idTemp}" step="any" placeholder="x Pack" style="width: 58px; padding: 4px; border: 1px solid #7dd3fc; background: #f0f9ff; border-radius: 4px; font-size: 13px; text-align: center; font-weight: 700; color: #0369a1;" value="${factorMostrar}" onfocus="this.select()" oninput="BunkerModal.actualizarPorFactor(${d.idTemp})">
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: #94a3b8; font-weight: bold; margin-top: 12px;">=</div>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                        <span style="font-size: 9px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px;">Total Neto</span>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <input type="number" id="kilos-${d.idTemp}" step="any" placeholder="Kilos/Unid" style="width: 72px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; text-align: center; font-weight: 600; color: #1e293b;" value="${d.kilos_asignados}" onfocus="this.select()" oninput="BunkerModal.actualizarPorKilos(${d.idTemp})">
+                            <span style="font-size: 11px; color: #64748b; font-weight: 600;">kg/u</span>
                         </div>
                     </div>
                 </div>
@@ -247,16 +339,49 @@ const BunkerModal = {
     },
 
     renderCantidades() {
-        const total = parseFloat(document.getElementById('bm-cantidad-total').value) || 0;
-        const asignado = this.destinos.reduce((acc, curr) => acc + (curr.kilos_asignados || 0), 0);
+        const totalKilos = parseFloat(document.getElementById('bm-cantidad-total').value) || 0;
+        const asignadoKilos = this.destinos.reduce((acc, curr) => acc + (parseFloat(curr.kilos_asignados) || 0), 0);
+        const totalCajas = this.kilosPorBultoLote > 0 ? (totalKilos / this.kilosPorBultoLote) : 0;
+        const asignadoCajas = this.destinos.reduce((acc, curr) => acc + (parseFloat(curr.cantidad_asignada) || 0), 0);
+
+        const fmtTotalCj = totalCajas % 1 === 0 ? totalCajas.toFixed(0) : totalCajas.toFixed(1);
+        const fmtAsigCj = asignadoCajas % 1 === 0 ? asignadoCajas.toFixed(0) : asignadoCajas.toFixed(1);
+
+        const dispEl = document.getElementById('bm-disponible-total');
+        const asigEl = document.getElementById('bm-asignado-total');
+        if (dispEl) dispEl.innerText = `${totalKilos.toFixed(2)} kg/u (${fmtTotalCj} bultos orig.)`;
+        if (asigEl) asigEl.innerText = `${asignadoKilos.toFixed(2)} kg/u (${fmtAsigCj} packs/cj)`;
         
-        document.getElementById('bm-disponible-total').innerText = total.toFixed(2);
-        document.getElementById('bm-asignado-total').innerText = asignado.toFixed(2);
-        
-        if (asignado > total) {
-            document.getElementById('bm-asignado-total').style.color = '#ef4444'; // Red
+        const alertaParcialEl = document.getElementById('bm-alerta-parcial');
+        if (asignadoKilos > (totalKilos + 0.001)) {
+            if (asigEl) asigEl.style.color = '#ef4444'; // Red
+            if (alertaParcialEl) {
+                alertaParcialEl.style.display = 'block';
+                alertaParcialEl.style.backgroundColor = '#fee2e2';
+                alertaParcialEl.style.color = '#b91c1c';
+                alertaParcialEl.style.borderColor = '#fca5a5';
+                alertaParcialEl.innerHTML = `⚠️ Exceso: Se están asignando ${(asignadoKilos - totalKilos).toFixed(2)} kg/u de más.`;
+            }
+        } else if (asignadoKilos < (totalKilos - 0.001)) {
+            if (asigEl) asigEl.style.color = '#f59e0b'; // Amber
+            if (alertaParcialEl) {
+                const remCj = (totalCajas - (this.kilosPorBultoLote > 0 ? (asignadoKilos / this.kilosPorBultoLote) : 0));
+                const fmtRemCj = remCj % 1 === 0 ? remCj.toFixed(0) : remCj.toFixed(1);
+                alertaParcialEl.style.display = 'block';
+                alertaParcialEl.style.backgroundColor = '#fef3c7';
+                alertaParcialEl.style.color = '#b45309';
+                alertaParcialEl.style.borderColor = '#fde68a';
+                alertaParcialEl.innerHTML = `⚠️ Asignación Parcial: Quedarán <b>${fmtRemCj} cj (${(totalKilos - asignadoKilos).toFixed(2)} kg/u)</b> pendientes.`;
+            }
         } else {
-            document.getElementById('bm-asignado-total').style.color = '#10b981'; // Green
+            if (asigEl) asigEl.style.color = '#10b981'; // Green
+            if (alertaParcialEl) {
+                alertaParcialEl.style.display = 'block';
+                alertaParcialEl.style.backgroundColor = '#f0fdf4';
+                alertaParcialEl.style.color = '#15803d';
+                alertaParcialEl.style.borderColor = '#bbf7d0';
+                alertaParcialEl.innerHTML = `✅ Asignación Completa (100% asignado en ${fmtAsigCj} bultos/packs)`;
+            }
         }
         
         this.verificarBotonGuardar();
@@ -270,7 +395,7 @@ const BunkerModal = {
         
         const tieneDestinosValidos = this.destinos.length > 0 && this.destinos.every(d => d.id && d.kilos_asignados > 0);
         
-        if (validacionCheckbox && asignado <= total && tieneDestinosValidos) {
+        if (validacionCheckbox && asignado <= (total + 0.001) && tieneDestinosValidos) {
             btn.disabled = false;
             btn.style.opacity = '1';
         } else {
@@ -281,6 +406,48 @@ const BunkerModal = {
 
     async guardar() {
         if (document.getElementById('bm-btn-guardar').disabled) return;
+
+        // 1. Sincronizar explícitamente desde los inputs del DOM por seguridad absoluta
+        this.destinos.forEach(d => {
+            const inputCajas = document.getElementById(`cajas-${d.idTemp}`);
+            const inputFactor = document.getElementById(`factor-${d.idTemp}`);
+            const inputKilos = document.getElementById(`kilos-${d.idTemp}`);
+            if (inputCajas && inputKilos) {
+                const cjVal = parseFloat(inputCajas.value) || 0;
+                const kgVal = parseFloat(inputKilos.value) || 0;
+                d.cantidad_asignada = cjVal;
+                d.kilos_asignados = kgVal;
+                if (inputFactor) {
+                    d.factor_pack = parseFloat(inputFactor.value) || 1;
+                }
+            }
+        });
+
+        // 2. Control anti-distracción: si es asignación parcial, pedir confirmación al usuario
+        const totalKilos = parseFloat(document.getElementById('bm-cantidad-total').value) || 0;
+        const asignadoKilos = this.destinos.reduce((acc, curr) => acc + (curr.kilos_asignados || 0), 0);
+        const remanenteKilos = totalKilos - asignadoKilos;
+        if (remanenteKilos > 0.01) {
+            const remanenteCajas = this.kilosPorBultoLote > 0 ? (remanenteKilos / this.kilosPorBultoLote) : 0;
+            const fmtRemCj = remanenteCajas % 1 === 0 ? remanenteCajas.toFixed(0) : remanenteCajas.toFixed(1);
+            const asigCj = this.kilosPorBultoLote > 0 ? (asignadoKilos / this.kilosPorBultoLote) : 0;
+            const fmtAsigCj = asigCj % 1 === 0 ? asigCj.toFixed(0) : asigCj.toFixed(1);
+            const totalCj = this.kilosPorBultoLote > 0 ? (totalKilos / this.kilosPorBultoLote) : 0;
+            const fmtTotalCj = totalCj % 1 === 0 ? totalCj.toFixed(0) : totalCj.toFixed(1);
+
+            const confirm = await Swal.fire({
+                title: '¿Confirmar Asignación Parcial?',
+                html: `<p style="margin-bottom: 8px;">Estás asignando <b>${fmtAsigCj} cj (${asignadoKilos.toFixed(1)} kg)</b> de un total de <b>${fmtTotalCj} cj (${totalKilos.toFixed(1)} kg)</b>.</p><p style="color: #ea580c; font-weight: bold; background: #fff7ed; padding: 8px; border-radius: 6px; border: 1px solid #ffedd5;">Quedarán ${fmtRemCj} cajas pendientes de asignación.</p>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, guardar como parcial',
+                cancelButtonText: 'Revisar y corregir',
+                confirmButtonColor: '#fd7e14'
+            });
+            if (!confirm.isConfirmed) {
+                return;
+            }
+        }
         
         Swal.fire({ title: 'Guardando Vínculo...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         
@@ -291,6 +458,10 @@ const BunkerModal = {
             iva: parseFloat(document.getElementById('bm-iva').value),
             iibb: 0, // Removed UI field, default 0 for DB
             costo_kilo_calculado: parseFloat(document.getElementById('bm-costo-bruto').value) / parseFloat(document.getElementById('bm-cantidad-total').value),
+            proveedor_nombre: this.loteActual?.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedores?.nombre || '',
+            articulo_descripcion: this.loteActual?.pedidos_b2b_items?.producto_descripcion || '',
+            producto_codigo: this.loteActual?.pedidos_b2b_items?.producto_codigo || '',
+            numero_remito: this.loteActual?.recepciones_fisicas_cabecera?.numero_remito || '',
             destinos: this.destinos
         };
 

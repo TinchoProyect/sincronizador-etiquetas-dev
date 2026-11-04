@@ -708,13 +708,9 @@ function generarPDF_Rediseñado(res, clienteData) {
                     doc.rect(50, currentY, colWidths[0], rowHeight).stroke();
                     doc.text(articulo.articulo_numero, 55, currentY + 4, { width: colWidths[0] - 10 });
                     
-                    // Descripción (truncar si es muy larga)
+                    // Descripción (completa sin recortes innecesarios)
                     doc.rect(50 + colWidths[0], currentY, colWidths[1], rowHeight).stroke();
                     let descripcion = articulo.descripcion;
-                    let descMaxLen = hasPrecioKilo ? 55 : 70;
-                    if (descripcion.length > descMaxLen) {
-                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
-                    }
                     doc.text(descripcion, 55 + colWidths[0], currentY + 4, { width: colWidths[1] - 10 });
                     
                     // Cantidad

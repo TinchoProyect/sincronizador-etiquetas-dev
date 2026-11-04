@@ -124,8 +124,8 @@ export function abrirModalIngresoManual(ingredienteId, carroId, esMix = false) {
         modalTitle.textContent = esMix ? 'Ingreso Manual de Mix' : 'Ingreso Manual de Ingrediente';
       }
 
-      // 🆕 Cargar artículos sugeridos basados en el nombre del ingrediente
-      cargarArticulosSugeridos(ingrediente.nombre);
+      // 🆕 Cargar artículos sugeridos basados en vínculos maestros e historial
+      cargarArticulosSugeridos(ingrediente.id || ingredienteId);
     })
     .catch(err => {
       console.error('❌ Error al obtener ingrediente:', err);
@@ -1266,38 +1266,36 @@ async function registrarIngresoManualEnInforme(datosIngreso) {
           return;
         }
 
-        // 🔧 CORRECCIÓN: Usar código del artículo seleccionado
-        const codigoArticulo = datosIngreso.articuloNumero;
-
-        // 🔧 CORRECCIÓN: Extraer letra del sector si existe
+        // 🔧 CORRECCIÓN: Extraer datos del ingrediente (nombre, código y sector) en una sola llamada
         let sectorLetra = '';
+        let nombreIngredienteEtiqueta = datosIngreso.articuloNombre || 'Ingrediente Manual';
+        let codigoIngredienteEtiqueta = datosIngreso.ingredienteId ? datosIngreso.ingredienteId.toString() : '';
+
         try {
           const ingredienteData = await obtenerIngrediente(datosIngreso.ingredienteId);
-          if (ingredienteData && ingredienteData.sector_descripcion) {
-            const match = ingredienteData.sector_descripcion.match(/"([^"]+)"/);
-            if (match && match[1]) {
-              sectorLetra = match[1];
-            } else {
-              sectorLetra = '';
+          if (ingredienteData) {
+            if (ingredienteData.nombre) {
+              nombreIngredienteEtiqueta = ingredienteData.nombre;
+            }
+            if (ingredienteData.codigo) {
+              codigoIngredienteEtiqueta = ingredienteData.codigo.toString();
+            }
+            if (ingredienteData.sector_descripcion) {
+              const match = ingredienteData.sector_descripcion.match(/"([^"]+)"/);
+              if (match && match[1]) {
+                sectorLetra = match[1];
+              }
             }
           }
         } catch (err) {
-          console.warn('⚠️ No se pudo obtener sector para etiqueta:', err);
+          console.warn('⚠️ No se pudo obtener datos completos del ingrediente para etiqueta:', err);
         }
-
-        let nombreIngredienteEtiqueta = datosIngreso.articuloNombre || 'Ingrediente Manual';
-        try {
-          const infoIng = await obtenerIngrediente(datosIngreso.ingredienteId);
-          if (infoIng && infoIng.nombre) {
-            nombreIngredienteEtiqueta = infoIng.nombre;
-          }
-        } catch (e) { console.warn('No se pudo obtener nombre ingrediente exacto'); }
 
         await imprimirEtiquetaIngrediente(
           datosIngreso.ingredienteId,
           nombreIngredienteEtiqueta, // ✅ Nombre exacto del ingrediente
           cantidadEtiquetas, // ✅ Cantidad calculada estrictamente
-          codigoArticulo,
+          codigoIngredienteEtiqueta, // ✅ CORRECCIÓN: Usar código del ingrediente, no del artículo
           sectorLetra
         );
         console.log('✅ Orden de impresión enviada con cantidad:', cantidadEtiquetas);
@@ -1458,10 +1456,14 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
         // Determinar iconografía y texto según el tipo de artículo
         const esMix = tipoArticulo === 'mix';
         const esSustitucion = tipoArticulo === 'sustitucion';
+        const esRecetaUp = tipoArticulo === 'receta_up';
 
         // 🔧 CORRECCIÓN: Íconos diferenciados
         let icono, tipoBadge;
-        if (esSustitucion) {
+        if (esRecetaUp) {
+          icono = '🍫';
+          tipoBadge = 'Receta UP (Automático)';
+        } else if (esSustitucion) {
           icono = '🌾'; // Ícono de ingrediente/grano para sustituciones
           tipoBadge = 'Sustitución';
         } else if (esMix) {
@@ -1472,25 +1474,33 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
           tipoBadge = 'Simple';
         }
 
-        // Para MIX, omitir las columnas de stock anterior y nuevo
-        const columnasStock = esMix ?
-          '<td colspan="2" class="mix-info">Artículo compuesto</td>' :
-          '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
+        // Para MIX o Receta UP, omitir las columnas de stock anterior y nuevo
+        const columnasStock = esRecetaUp
+          ? '<td colspan="2" class="mix-info" style="color: #5b21b6; font-weight: 600;">Descontado de Depósito (Receta UP)</td>'
+          : esMix ?
+            '<td colspan="2" class="mix-info">Artículo compuesto</td>' :
+            '<td class="stock-anterior">-</td><td class="stock-nuevo">-</td>';
 
         // TICKET #013: Escapado seguro y atributos de datos para evitar fallos por comillas y XSS
         const nombreSeguro = nombreArticulo.replace(/"/g, '&quot;');
+        const badgeStyle = esRecetaUp
+          ? 'background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; font-weight: 700; padding: 2px 7px; border-radius: 9999px; font-size: 0.78em; margin-left: 6px;'
+          : '';
         
         html += `
-          <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}" data-ingreso-uuid="${uuid}">
+          <tr data-tipo="backend" data-articulo-tipo="${tipoArticulo}" data-ingreso-id="${ingreso.id}" data-ingreso-uuid="${uuid}" ${esRecetaUp ? 'style="background: #faf5ff;"' : ''}>
             <td>
-              ${icono} ${nombreSeguro} 
-              <span class="tipo-badge tipo-${tipoArticulo}">${tipoBadge}</span>
+              ${icono} ${ingreso.articulo_numero ? `<strong>[${ingreso.articulo_numero}]</strong> ` : ''}${nombreSeguro} 
+              <span class="tipo-badge tipo-${tipoArticulo}" style="${badgeStyle}">${tipoBadge}</span>
             </td>
             <td>1</td>
             <td>${kilos.toFixed(2)}</td>
             ${columnasStock}
             <td>${fecha}</td>
             <td style="white-space: nowrap;">
+              ${esRecetaUp ? `
+              <span style="color: #16a34a; font-weight: 700; font-size: 0.85em;">✅ Cargado en UP</span>
+              ` : `
               ${uuid && !esMix && !esSustitucion ? `
               <button class="btn-editar-ingreso" style="cursor:pointer; background:none; border:none; font-size:1.2rem; margin-right:5px;" 
                 data-uuid="${uuid}" 
@@ -1513,6 +1523,7 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
                       title="Imprimir etiqueta del ingrediente">
                 🏷️
               </button>
+              `}
             </td>
           </tr>
         `;
@@ -1531,6 +1542,11 @@ async function actualizarInformeIngresosManuales(delayMs = 0) {
     // PASO 5: Actualizar DOM
     console.log('🖥️ PASO 5: Actualizando DOM...');
     contenedor.innerHTML = html;
+
+    const seccionIngresosManuales = document.getElementById('resumen-ingresos-manuales');
+    if (seccionIngresosManuales && ingresosFiltrados.length > 0) {
+      seccionIngresosManuales.classList.remove('collapsed');
+    }
 
     // TICKET #013: Delegación de eventos segura (después de hidratar DOM)
     contenedor.querySelectorAll('.btn-editar-ingreso').forEach(btn => {
@@ -1886,89 +1902,76 @@ export function limpiarInformeIngresosManuales() {
 async function imprimirEtiquetaIngredienteDesdeIngreso(ingredienteId, ingredienteNombre, articuloNumero) {
   try {
     console.log('🏷️ INICIANDO IMPRESIÓN DE ETIQUETA DE INGREDIENTE');
-    console.log('================================================================');
     console.log('📋 Datos recibidos (parámetros originales):', {
       ingredienteId,
       ingredienteNombre,
       articuloNumero
     });
 
-    // Validar datos de entrada
-    if (!ingredienteId) {
-      throw new Error('ID del ingrediente es requerido para imprimir la etiqueta');
+    const idValido = ingredienteId && ingredienteId !== 'null' && ingredienteId !== 'undefined' && !isNaN(Number(ingredienteId));
+
+    let nombreIngredienteCorrect = ingredienteNombre || 'Ingrediente';
+    let codigoIngredienteCorrect = articuloNumero || '00000000';
+    let sectorLetra = '';
+
+    if (idValido) {
+      const ingredienteData = await obtenerIngrediente(ingredienteId).catch(() => null);
+      if (ingredienteData) {
+        nombreIngredienteCorrect = ingredienteData.nombre || nombreIngredienteCorrect;
+        codigoIngredienteCorrect = ingredienteData.codigo || ingredienteId.toString();
+        const sectorFull = ingredienteData.sector_letra || '';
+        sectorLetra = sectorFull ? sectorFull.split('-')[0].trim() : (ingredienteData.sector_descripcion ? (ingredienteData.sector_descripcion.match(/"([^"]+)"/)?.[1] || '') : '');
+      }
+    } else if (articuloNumero && articuloNumero !== 'null' && articuloNumero !== 'undefined') {
+      // Si no vino ingredienteId pero tenemos articuloNumero, imprimir como artículo o ingrediente con código del artículo
+      codigoIngredienteCorrect = String(articuloNumero).trim();
+    } else {
+      throw new Error('No se encontraron datos de código o ID para imprimir la etiqueta');
     }
 
-    // 🔧 CORRECCIÓN: Consultar los datos correctos del ingrediente
-    console.log('🔍 [ETIQUETA-DEBUG] Consultando datos del ingrediente para obtener nombre y código correctos...');
+    const payload = {
+      nombre: nombreIngredienteCorrect,
+      codigo: codigoIngredienteCorrect,
+      cantidad: 1,
+      sector: sectorLetra
+    };
 
-    const ingredienteData = await obtenerIngrediente(ingredienteId);
-
-    if (!ingredienteData) {
-      throw new Error(`No se encontraron datos para el ingrediente ID: ${ingredienteId}`);
-    }
-
-    // ✅ USAR DATOS CORRECTOS DEL INGREDIENTE (no del artículo)
-    const nombreIngredienteCorrect = ingredienteData.nombre;
-    // CORRECCIÓN: TICKET #013 - Usar estrictamente el código numérico del ingrediente
-    // La directiva anterior de usar el articuloNumero rompía el sistema de etiquetado
-    const codigoIngredienteCorrect = ingredienteData.codigo || ingredienteId.toString();
-
-    console.log('🔍 [ETIQUETA-DEBUG] Comparación de datos:');
-    console.log('❌ DATOS INCORRECTOS (artículo):');
-    console.log(`   - Nombre del artículo: "${ingredienteNombre}"`);
-    console.log(`   - Código del artículo: "${articuloNumero}"`);
-    console.log('✅ DATOS CORRECTOS (ingrediente):');
-    console.log(`   - Nombre del ingrediente: "${nombreIngredienteCorrect}"`);
-    console.log(`   - Código del ingrediente: "${codigoIngredienteCorrect}"`);
-
-    console.log('📡 Enviando solicitud al servidor de etiquetas...');
-
-    // Llamar al endpoint de impresión de etiquetas de ingredientes
-    const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+    // Llamar primero al endpoint del servidor de producción (mismo origen, puerto 3002) con fallback a puerto 3000
+    let response = await fetch('/api/produccion/ingredientes/imprimir-etiqueta', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        nombre: nombreIngredienteCorrect,
-        codigo: codigoIngredienteCorrect,
-        cantidad: 1, // Default 1 si se llama desde botón 'Etiqueta' (aunque este botón usa la función imprimirEtiquetaIngredienteDesdeIngreso normalmente con parámetros)
-        sector: ingredienteData.sector_descripcion ? (ingredienteData.sector_descripcion.match(/"([^"]+)"/)?.[1] || '') : ''
-      })
-    });
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => null);
 
-    console.log(`📡 Respuesta del servidor: Status ${response.status}`);
+    if (!response || !response.ok) {
+      response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Error del servidor: ${errorData.error || 'Error desconocido'}`);
+      throw new Error(`Error del servidor: ${errorData.error || errorData.details || 'Error desconocido'}`);
     }
 
     const result = await response.json();
     console.log('✅ Respuesta exitosa del servidor:', result);
 
-    // Mostrar confirmación visual
-    alert(`✅ Etiqueta del ingrediente "${nombreIngredienteCorrect}" enviada a imprimir correctamente\nCódigo: ${codigoIngredienteCorrect}`);
-
-    console.log('✅ IMPRESIÓN DE ETIQUETA COMPLETADA EXITOSAMENTE');
-    console.log('================================================================');
+    alert(`✅ Etiqueta "${nombreIngredienteCorrect}" enviada a imprimir correctamente\nCódigo: ${codigoIngredienteCorrect}`);
 
   } catch (error) {
-    console.error('❌ ERROR AL IMPRIMIR ETIQUETA DE INGREDIENTE');
-    console.error('================================================================');
-    console.error('❌ Detalles del error:', error);
-    console.error('❌ Stack trace:', error.stack);
-    console.error('================================================================');
-
-    // Mostrar error al usuario
+    console.error('❌ ERROR AL IMPRIMIR ETIQUETA DE INGREDIENTE:', error);
     alert(`❌ Error al imprimir etiqueta: ${error.message}`);
   }
 }
 
-// 🆕 NUEVA FUNCIÓN: Cargar artículos sugeridos basados en HISTORIAL REAL de uso
-async function cargarArticulosSugeridos(nombreIngrediente) {
+// 🆕 FUNCIÓN MEJORADA: Cargar artículos sugeridos basados en vínculos maestros e historial real
+async function cargarArticulosSugeridos(ingredienteIdParam) {
   try {
-    console.log('⚡ [SUGERIDOS] Cargando artículos sugeridos basados en historial para ingrediente ID:', ingredienteSeleccionado);
+    const idIngrediente = Number(ingredienteIdParam) || Number(ingredienteSeleccionado);
+    console.log('⚡ [SUGERIDOS] Cargando artículos sugeridos para ingrediente ID:', idIngrediente);
 
     const container = document.getElementById('articulos-sugeridos-container');
     const grid = document.getElementById('articulos-sugeridos-grid');
@@ -1978,19 +1981,25 @@ async function cargarArticulosSugeridos(nombreIngrediente) {
       return;
     }
 
-    // ✅ CORRECCIÓN: Consultar el endpoint de historial real
-    const response = await fetch(`/api/produccion/ingredientes/${ingredienteSeleccionado}/articulos-sugeridos`);
+    if (!idIngrediente || isNaN(idIngrediente)) {
+      console.warn('⚠️ [SUGERIDOS] ID de ingrediente no válido');
+      container.style.display = 'none';
+      return;
+    }
+
+    // Consultar el endpoint multi-tier de sugeridos
+    const response = await fetch(`/api/produccion/ingredientes/${idIngrediente}/articulos-sugeridos`);
 
     if (!response.ok) {
-      throw new Error('Error al obtener artículos sugeridos del historial');
+      throw new Error(`Error ${response.status} al obtener artículos sugeridos`);
     }
 
     const articulosSugeridos = await response.json();
 
-    console.log(`⚡ [SUGERIDOS] Encontrados ${articulosSugeridos.length} artículos del historial real`);
+    console.log(`⚡ [SUGERIDOS] Encontrados ${articulosSugeridos.length} artículos sugeridos para ID ${idIngrediente}`);
 
-    if (articulosSugeridos.length === 0) {
-      console.log('ℹ️ [SUGERIDOS] No hay historial de uso para este ingrediente - ocultando panel');
+    if (!articulosSugeridos || articulosSugeridos.length === 0) {
+      console.log('ℹ️ [SUGERIDOS] No se encontraron artículos sugeridos para este ingrediente - ocultando panel');
       container.style.display = 'none';
       return;
     }
@@ -2000,24 +2009,40 @@ async function cargarArticulosSugeridos(nombreIngrediente) {
     articulosSugeridos.forEach((art, index) => {
       const stock = parseFloat(art.stock_actual) || 0;
       const stockClass = stock > 0 ? '' : 'sin-stock';
-      const esMasReciente = index === 0; // El primero es el más reciente
+      const esVinculado = art.tier === 1;
+      const esPrimero = index === 0;
 
       const card = document.createElement('div');
       card.className = 'articulo-sugerido-card';
-      if (esMasReciente) {
+      if (esVinculado) {
         card.style.borderColor = '#007bff';
-        card.style.backgroundColor = '#f8f9ff';
+        card.style.backgroundColor = '#f4f7ff';
+      } else if (esPrimero) {
+        card.style.borderColor = '#17a2b8';
+        card.style.backgroundColor = '#f8f9fa';
       }
 
+      const badgeTexto = esVinculado ? '⭐ Insumo Vinculado' : (art.frecuencia_uso ? `Historial (${art.frecuencia_uso}x)` : '');
+      const badgeHtml = badgeTexto ? `<span style="font-size: 10px; color: ${esVinculado ? '#0056b3' : '#6c757d'}; display: block; font-weight: 700; margin-bottom: 2px;">${badgeTexto}</span>` : '';
+
       card.innerHTML = `
-        <p class="articulo-sugerido-nombre">${esMasReciente ? '⭐ ' : ''}${art.articulo_nombre}</p>
+        ${badgeHtml}
+        <p class="articulo-sugerido-nombre">${art.articulo_nombre}</p>
         <p class="articulo-sugerido-stock ${stockClass}">Stock: ${stock.toFixed(2)} kg</p>
       `;
 
-      // Al hacer clic, seleccionar el artículo automáticamente
+      // Al hacer clic, seleccionar el artículo automáticamente y marcar la tarjeta
       card.addEventListener('click', () => {
-        console.log('⚡ [SUGERIDOS] Artículo seleccionado desde historial:', art.articulo_nombre);
-        console.log(`📊 [SUGERIDOS] Última vez usado: ${art.ultima_fecha_uso}, Frecuencia: ${art.frecuencia_uso}`);
+        console.log('⚡ [SUGERIDOS] Artículo seleccionado:', art.articulo_nombre);
+        console.log(`📊 [SUGERIDOS] SKU: ${art.articulo_numero}, Stock: ${art.stock_actual}, Origen: ${art.origenes}`);
+
+        // Feedback visual en la tarjeta
+        grid.querySelectorAll('.articulo-sugerido-card').forEach(c => {
+          c.style.outline = 'none';
+          c.style.boxShadow = 'none';
+        });
+        card.style.outline = '2px solid #28a745';
+        card.style.boxShadow = '0 0 8px rgba(40, 167, 69, 0.35)';
 
         // Crear objeto artículo compatible con seleccionarArticulo()
         const articuloParaSeleccionar = {
@@ -2035,11 +2060,10 @@ async function cargarArticulosSugeridos(nombreIngrediente) {
 
     // Mostrar el contenedor
     container.style.display = 'block';
-    console.log('✅ [SUGERIDOS] Panel de sugeridos cargado correctamente desde historial real');
+    console.log('✅ [SUGERIDOS] Panel de selección rápida desplegado exitosamente con', articulosSugeridos.length, 'opciones');
 
   } catch (error) {
     console.error('❌ [SUGERIDOS] Error al cargar artículos sugeridos:', error);
-    // No mostrar el panel si hay error
     const container = document.getElementById('articulos-sugeridos-container');
     if (container) {
       container.style.display = 'none';

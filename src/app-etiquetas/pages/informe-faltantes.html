@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
+    <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demanda No Satisfecha - Gestiones Lamda</title>
     <!-- Reutilizando estilos de la aplicación principal -->
     <link rel="stylesheet" href="../css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,7 +19,7 @@
         }
 
         .dashboard-container {
-            max-width: 1000px;
+            max-width: 1100px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -55,10 +56,88 @@
             background-color: #5a6268;
         }
 
+        /* Barra de Filtros y Búsqueda */
+        .toolbar-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-tab {
+            border: 1px solid #d1d5db;
+            background: white;
+            color: #4b5563;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-tab:hover {
+            background-color: #f3f4f6;
+        }
+
+        .filter-tab.active {
+            background-color: #1e3a8a;
+            color: white;
+            border-color: #1e3a8a;
+        }
+
+        .filter-tab.active.tab-stock {
+            background-color: #15803d;
+            border-color: #15803d;
+        }
+
+        .tab-badge {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 0.78rem;
+        }
+        .filter-tab.active .tab-badge {
+            background: rgba(255,255,255,0.25);
+        }
+
+        .search-box {
+            position: relative;
+            min-width: 250px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px 8px 34px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+        }
+
         /* Acordeón Grid */
         .grid-header {
             display: grid;
-            grid-template-columns: 2fr 1fr 50px;
+            grid-template-columns: 2fr 1.5fr 50px;
             background-color: #34495e;
             color: white;
             padding: 12px 15px;
@@ -68,7 +147,7 @@
 
         .item-row {
             display: grid;
-            grid-template-columns: 2fr 1fr 50px;
+            grid-template-columns: 2fr 1.5fr 50px;
             align-items: center;
             padding: 15px;
             border-bottom: 1px solid #ddd;
@@ -83,7 +162,13 @@
 
         .item-row.expanded {
             background-color: #e9ecef;
-            border-left: 4px solid #e74c3c;
+            border-left: 4px solid #16a34a;
+        }
+
+        .item-title-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .item-title {
@@ -91,9 +176,43 @@
             color: #2c3e50;
         }
 
+        .item-qty-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         .item-qty {
             font-weight: bold;
             color: #e74c3c;
+        }
+
+        .stock-badge-pill {
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stock-badge-pill.con-stock {
+            background-color: #dcfce7;
+            color: #15803d;
+            border: 1px solid #86efac;
+        }
+
+        .stock-badge-pill.granel {
+            background-color: #fef9c3;
+            color: #854d0e;
+            border: 1px solid #fef08a;
+        }
+
+        .stock-badge-pill.sin-stock {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
         }
 
         .chevron-icon {
@@ -124,7 +243,7 @@
         }
 
         .details-table th, .details-table td {
-            padding: 10px 15px;
+            padding: 10px 14px;
             text-align: left;
             border-bottom: 1px solid #eee;
             font-size: 0.9em;
@@ -150,11 +269,69 @@
         }
 
         .reason-badge {
-            background-color: #ffe0e0;
-            color: #d32f2f;
+            background-color: #f3f4f6;
+            color: #4b5563;
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 0.85em;
+        }
+
+        /* Botones de Acción en Tabla de Detalle */
+        .table-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-table-action {
+            border: none;
+            border-radius: 4px;
+            padding: 5px 9px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+
+        .btn-table-action:active {
+            transform: scale(0.96);
+        }
+
+        .btn-table-action.btn-wa {
+            background-color: #25D366;
+            color: white;
+        }
+        .btn-table-action.btn-wa:hover {
+            background-color: #1ebd5b;
+        }
+
+        .btn-table-action.btn-cubierto {
+            background-color: #16a34a;
+            color: white;
+        }
+        .btn-table-action.btn-cubierto:hover {
+            background-color: #15803d;
+        }
+
+        .btn-table-action.btn-desestimar {
+            background-color: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+        }
+        .btn-table-action.btn-desestimar:hover {
+            background-color: #fecaca;
+        }
+
+        .btn-table-action.btn-presup {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .btn-table-action.btn-presup:hover {
+            background-color: #2563eb;
         }
 
         .loader {
@@ -175,25 +352,53 @@
             margin-bottom: 15px;
             color: #bdc3c7;
         }
-
     </style>
 </head>
 <body>
 
     <div class="dashboard-container">
         <div class="header-section">
-            <h1><i class="fas fa-chart-line" style="color: #e74c3c; margin-right: 10px;"></i> Demanda No Satisfecha (Faltantes)</h1>
-            <a href="../index.html" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Inicio</a>
+            <div>
+                <h1><i class="fas fa-chart-line" style="color: #e74c3c; margin-right: 10px;"></i> Demanda No Satisfecha (Faltantes)</h1>
+                <p style="margin: 5px 0 0 0; color: #6b7280; font-size: 0.9em;">Monitoreo y reconciliación en tiempo real de artículos sin stock y arribos de mercadería.</p>
+            </div>
+            <a href="../index.html" class="btn-back"><i class="fas fa-arrow-left"></i> Volver a la Portada</a>
+        </div>
+
+        <!-- Filtros y Buscador -->
+        <div class="toolbar-section">
+            <div class="filter-tabs">
+                <button class="filter-tab active tab-stock" onclick="filtrarVista('ConStock', this)">
+                    <i class="fas fa-box-check"></i> Con Stock Disponible <span id="badge-con-stock" class="tab-badge">0</span>
+                </button>
+                <button class="filter-tab" onclick="filtrarVista('Pendiente', this)">
+                    <i class="fas fa-clock"></i> Pendientes Sin Stock <span id="badge-sin-stock" class="tab-badge">0</span>
+                </button>
+                <button class="filter-tab" onclick="filtrarVista('Cubierto', this)">
+                    <i class="fas fa-check-circle"></i> Historial Cubiertos
+                </button>
+                <button class="filter-tab" onclick="filtrarVista('Desestimado', this)">
+                    <i class="fas fa-ban"></i> Desestimados
+                </button>
+                <button class="filter-tab" onclick="filtrarVista('Todos', this)">
+                    <i class="fas fa-list"></i> Todos
+                </button>
+            </div>
+
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="input-busqueda" placeholder="Buscar artículo o cliente..." oninput="filtrarPorTexto()">
+            </div>
         </div>
 
         <div id="loading" class="loader">
-            <i class="fas fa-spinner fa-spin"></i> Cargando datos de faltantes...
+            <i class="fas fa-spinner fa-spin"></i> Consultando stock consolidado y demanda...
         </div>
 
         <div id="dashboard-content" style="display: none;">
             <div class="grid-header">
-                <div>Artículo</div>
-                <div>Demanda Total Perdida</div>
+                <div>Artículo / Producto</div>
+                <div>Demanda Faltante & Stock Actual</div>
                 <div></div>
             </div>
             <div id="grid-body">
@@ -202,7 +407,8 @@
         </div>
     </div>
 
-    <!-- Script de lógica de UI separada -->
+    <!-- Script de lógica de UI -->
+    <script src="../js/modal-gestion-demanda.js?v=1.0"></script>
     <script src="../js/informe-faltantes.js"></script>
 </body>
 </html>

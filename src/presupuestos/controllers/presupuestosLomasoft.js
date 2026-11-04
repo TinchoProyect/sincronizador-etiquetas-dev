@@ -10,7 +10,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
                 p.fecha, 
                 p.estado,
                 p.tipo_comprobante,
-                SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - COALESCE(p.descuento, 0)) AS monto_total,
+                SUM(pd.cantidad * COALESCE(pd.precio1, pd.valor1, 0)) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) AS monto_total,
                 json_agg(
                     COALESCE(a.numero, pd.articulo)
                 ) FILTER (WHERE pd.articulo IS NOT NULL) as codigos_articulos,
@@ -302,7 +302,7 @@ const buscarCandidatasLomasoft = async (req, res) => {
                         SELECT SUM(d.cantidad * d.precio1) 
                         FROM public.presupuestos_detalles d 
                         WHERE d.id_presupuesto = p.id
-                    ), 0) * (1 - COALESCE(p.descuento, 0)) as total_final
+                    ), 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as total_final
                 FROM presupuestos p
                 LEFT JOIN clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
                 WHERE p.comprobante_lomasoft IS NOT NULL

@@ -223,6 +223,9 @@ async function eliminarRegistrosRelacionados(carroId) {
         await pool.query('DELETE FROM carros_articulos WHERE carro_id = $1', [carroId]);
         console.log(`Eliminados ${conteos.articulos} artículos del carro`);
 
+        // 4b. Eliminar métricas temporales del carro (si tuviera)
+        await pool.query('DELETE FROM produccion_metricas_articulos WHERE carro_id = $1', [carroId]);
+
         // 5. Finalmente eliminar el carro
         await pool.query('DELETE FROM carros_produccion WHERE id = $1', [carroId]);
         console.log(`Carro ${carroId} eliminado de carros_produccion`);

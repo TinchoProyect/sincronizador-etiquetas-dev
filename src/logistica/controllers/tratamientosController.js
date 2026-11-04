@@ -1,4 +1,16 @@
 const TratamientosModel = require('../models/tratamientosModel');
+const { fork } = require('child_process');
+const path = require('path');
+
+function dispararSyncRetirosBackground() {
+    try {
+        const scriptPath = path.join(__dirname, '../../actualizaPrecios/syncB2BRetiros.js');
+        const child = fork(scriptPath, [], { detached: true, stdio: 'ignore' });
+        child.unref();
+    } catch (e) {
+        console.warn('[TRATAMIENTOS] No se pudo disparar syncB2BRetiros en background:', e.message);
+    }
+}
 
 /**
  * Controller: Tratamientos y Devoluciones Especiales (Inmunización)
@@ -13,6 +25,9 @@ async function generarQR(req, res) {
         }
 
         const orden = await TratamientosModel.crearQRPreCheckIn(id_cliente);
+        
+        // Disparar sincronización inmediata a Supabase en background
+        dispararSyncRetirosBackground();
         
         res.status(201).json({
             success: true,
@@ -87,6 +102,9 @@ async function generarQRChofer(req, res) {
         const publicBaseUrl = process.env.PUBLIC_BASE_URL || `http://${req.headers.host}`;
         const generatedLink = `${publicBaseUrl}/pages/tratamiento-checkin.html?hash=${orden.codigo_qr_hash}`;
 
+        // Disparar sincronización inmediata a Supabase en background
+        dispararSyncRetirosBackground();
+
         res.status(200).json({ 
             success: true, 
             data: {
@@ -106,10 +124,57 @@ async function obtenerSesion(req, res) {
         const { hash } = req.params;
         if (!hash) return res.status(400).json({ success: false, error: 'Falta proveer el parámetro hash' });
 
-        const sesion = await TratamientosModel.obtenerInfoSesion(hash);
+        let sesion = await TratamientosModel.obtenerInfoSesion(hash);
         
         if (!sesion) {
             return res.status(404).json({ success: false, error: 'Sesión no encontrada o QR expirado' });
+        }
+
+        // 🚀 Verificación y sincronización On-Demand con Supabase si el cliente completó el check-in en el Portal B2B
+        if (sesion.estado_logistico === 'PENDIENTE_CLIENTE' || !sesion.detalles || !sesion.detalles.descripcion_externa) {
+            try {
+                const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
+                const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
+                if (SUPABASE_URL && SUPABASE_KEY) {
+                    const supaRes = await fetch(`${SUPABASE_URL}/rest/v1/clientes_b2b_retiros?codigo_qr_hash=eq.${hash}&limit=1`, {
+                        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+                        signal: AbortSignal.timeout(3000)
+                    });
+                    if (supaRes.ok) {
+                        const supaData = await supaRes.json();
+                        if (supaData && supaData.length > 0 && supaData[0].estado_logistico === 'PENDIENTE_VALIDACION') {
+                            const ret = supaData[0];
+                            const { pool } = require('../config/database');
+                            await pool.query(`
+                                UPDATE public.ordenes_tratamiento
+                                SET estado_logistico = 'PENDIENTE_VALIDACION', responsable_nombre = $1, responsable_apellido = $2, responsable_celular = $3
+                                WHERE id = $4
+                            `, [ret.responsable_nombre, ret.responsable_apellido, ret.responsable_celular, sesion.id]);
+                            
+                            await pool.query('DELETE FROM public.ordenes_tratamiento_detalles WHERE id_orden_tratamiento = $1', [sesion.id]);
+                            await pool.query(`
+                                INSERT INTO public.ordenes_tratamiento_detalles (id_orden_tratamiento, articulo_numero, descripcion_externa, kilos, bultos, motivo)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                            `, [sesion.id, ret.articulo_numero || null, ret.descripcion_externa || null, ret.kilos ? parseFloat(ret.kilos) : null, ret.bultos ? parseInt(ret.bultos) : null, ret.motivo || null]);
+                            
+                            // Actualizar objeto sesión en memoria
+                            sesion.estado_logistico = 'PENDIENTE_VALIDACION';
+                            sesion.responsable_nombre = ret.responsable_nombre;
+                            sesion.responsable_apellido = ret.responsable_apellido;
+                            sesion.responsable_celular = ret.responsable_celular;
+                            sesion.detalles = {
+                                articulo_numero: ret.articulo_numero,
+                                descripcion_externa: ret.descripcion_externa,
+                                kilos: ret.kilos,
+                                bultos: ret.bultos,
+                                motivo: ret.motivo
+                            };
+                        }
+                    }
+                }
+            } catch(e) {
+                console.warn('[TRATAMIENTOS] No se pudo verificar check-in en Supabase on-demand:', e.message);
+            }
         }
 
         res.status(200).json({

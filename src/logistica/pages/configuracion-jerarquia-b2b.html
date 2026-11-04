@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuración de Jerarquía y Subcategorías B2B | Sistema LAMDA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --accent: #8e4785;
+      --accent-light: #c084fc;
+      --accent-glow: rgba(142, 71, 133, 0.35);
+      --cyan: hsl(185, 68%, 45%);
+      --cyan-glow: rgba(16, 185, 129, 0.2);
+      --amber: #f59e0b;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --success: #22c55e;
+      --success-glow: rgba(34, 197, 94, 0.2);
+    }
+    body {
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+    }
+    .header-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .header-title h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-title p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+    .btn-sync {
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.25rem;
+      font-weight: 700;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    .btn-sync:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    /* Sección de Configuración de IVA */
+    .iva-section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    .iva-section-header {
+      padding: 0.85rem 1.25rem;
+      background: rgba(142, 71, 133, 0.08);
+      border-left: 4px solid var(--accent-light);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    .iva-section-header:hover {
+      background: rgba(142, 71, 133, 0.15);
+    }
+    .iva-grid {
+      padding: 1rem 1.25rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .iva-list-item {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-glass);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .iva-list-name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 0.15rem;
+    }
+    .iva-list-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    /* Switch toggle */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .3s;
+      border-radius: 24px;
+      border: 1px solid var(--border-glass);
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .search-box {
+      width: 100%;
+      margin-bottom: 1.25rem;
+      position: relative;
+    }
+    .search-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: white;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .fam-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+    .fam-header {
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 4px solid var(--accent);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    .fam-header:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .fam-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .fam-badge {
+      background: rgba(142, 71, 133, 0.2);
+      color: var(--accent-light);
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .fam-body {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border-glass);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .art-block {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-glass);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .art-row {
+      padding: 0.75rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .art-info {
+      flex: 1;
+      min-width: 200px;
+    }
+    .art-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 0.2rem;
+    }
+    .art-detected-ejes {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .art-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .eje-select {
+      background: #0b1120;
+      border: 1px solid rgba(142, 71, 133, 0.4);
+      color: white;
+      padding: 0.45rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+      min-width: 230px;
+    }
+    .eje-select:focus {
+      outline: none;
+      border-color: var(--accent-light);
+    }
+    .eje-select.sub4 {
+      border-color: rgba(16, 79, 85, 0.6);
+      min-width: 200px;
+      font-size: 0.8rem;
+    }
+    .eje-select.sub5 {
+      border-color: rgba(245, 158, 11, 0.6);
+      min-width: 190px;
+      font-size: 0.78rem;
+    }
+    .status-pill {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .status-pill.active {
+      background: var(--success-glow);
+      color: var(--success);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .status-pill.none {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+    .eje-order-badge {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--accent-light);
+      background: rgba(142, 71, 133, 0.25);
+      border: 1px solid rgba(192, 132, 252, 0.35);
+      padding: 0.25rem 0.45rem;
+      border-radius: 4px;
+      min-width: 18px;
+      text-align: center;
+      display: inline-block;
+    }
+    .btn-arrow {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-primary);
+      border-radius: 4px;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.68rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: all 0.15s;
+    }
+    .btn-arrow:hover:not(:disabled) {
+      background: rgba(142, 71, 133, 0.4);
+      border-color: var(--accent-light);
+    }
+    .btn-arrow:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+    .btn-remove-eje {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      border-radius: 4px;
+      padding: 0.25rem 0.45rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: all 0.15s;
+    }
+    .btn-remove-eje:hover {
+      background: rgba(239, 68, 68, 0.25);
+      color: #ef4444;
+      border-color: #ef4444;
+    }
+    .btn-clear-ejes {
+      background: transparent;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      border-radius: 6px;
+      padding: 0.3rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-clear-ejes:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: #ef4444;
+    }
+
+    /* Sub-ramas de Nivel 4 */
+    .subramas-container {
+      background: rgba(0, 0, 0, 0.35);
+      border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      padding: 0.6rem 1rem 0.8rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .subrama-header-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent-light);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.2rem;
+    }
+    .subrama-block {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-left: 3px solid var(--cyan);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .subrama-row {
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .subrama-name {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin: 0;
+    }
+    .subrama-ejes {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* Sub-subramas de Nivel 5 */
+    .subsubramas-container {
+      background: rgba(0, 0, 0, 0.4);
+      border-top: 1px dashed rgba(255, 255, 255, 0.06);
+      padding: 0.5rem 0.75rem 0.6rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .subsubrama-header-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .subsubrama-row {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-left: 3px solid var(--amber);
+      border-radius: 5px;
+      padding: 0.4rem 0.65rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .subsubrama-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #fde68a;
+      margin: 0;
+    }
+    .subsubrama-ejes {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-box">
+      <div class="header-title">
+        <h1>🌿 Jerarquía y Subcategorías B2B</h1>
+        <p>Configuración de taxonomía en 5 niveles en cascada y modalidad de IVA por lista para el catálogo de clientes</p>
+      </div>
+      <button class="btn-sync" onclick="sincronizarCatalogo()">
+        <span>🔄 Sincronizar Catálogo Ahora</span>
+      </button>
+    </div>
+
+    <!-- Sección de Configuración de Modalidad de IVA por Lista -->
+    <div class="iva-section-card">
+      <div class="iva-section-header" onclick="toggleSeccionIva()">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-size:1.15rem;">⚙️</span>
+          <div>
+            <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--text-primary);">
+              Modalidad de IVA y Ruedita (⚙️) por Lista de Precios
+            </h3>
+            <p style="margin:0; font-size:0.78rem; color:var(--text-secondary);">
+              Seleccioná qué listas de precios tendrán activa la ruedita de configuración (Con IVA / Sin IVA) y discriminación de alícuotas (21%, 10,5%).
+            </p>
+          </div>
+        </div>
+        <span id="iva-toggle-icon" style="color:var(--accent-light); font-size:0.85rem;">▼</span>
+      </div>
+
+      <div id="iva-section-body" class="iva-grid">
+        <div style="color:var(--text-muted); font-size:0.85rem; padding:1rem;">Cargando listas de precios...</div>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <input 
+        type="text" 
+        id="search-input" 
+        class="search-input" 
+        placeholder="Buscar por Familia o Artículo Principal (ej: Avena, Nuez, Maíz, Frutos Secos)..."
+        oninput="filtrarArbol()"
+      >
+    </div>
+
+    <div id="familias-list">
+      <div style="text-align:center; padding: 3rem; color: var(--text-muted);">
+        Cargando taxonomía y configuraciones...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let arbolFamilias = [];
+    let listasIvaConfig = [];
+    const openFamilias = new Set();
+    let seccionIvaAbierta = true;
+
+    function toggleSeccionIva() {
+      seccionIvaAbierta = !seccionIvaAbierta;
+      document.getElementById('iva-section-body').style.display = seccionIvaAbierta ? 'grid' : 'none';
+      document.getElementById('iva-toggle-icon').textContent = seccionIvaAbierta ? '▼' : '▶';
+    }
+
+    async function cargarListasIva() {
+      try {
+        const resp = await fetch('/api/logistica/b2b-jerarquia/listas-iva');
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+
+        listasIvaConfig = data.listas || [];
+        renderListasIva();
+      } catch (err) {
+        console.error('Error al cargar listas IVA:', err);
+        document.getElementById('iva-section-body').innerHTML = `
+          <div style="color:#ef4444; font-size:0.85rem; padding:0.5rem;">Error al cargar listas: ${err.message}</div>
+        `;
+      }
+    }
+
+    function renderListasIva() {
+      const container = document.getElementById('iva-section-body');
+      if (listasIvaConfig.length === 0) {
+        container.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;">No hay listas de precios activas.</div>`;
+        return;
+      }
+
+      container.innerHTML = listasIvaConfig.map(l => `
+        <div class="iva-list-item">
+          <div>
+            <div class="iva-list-name">${l.nombre}</div>
+            <div class="iva-list-desc">ID ${l.id} ${l.descripcion ? '· ' + l.descripcion : ''}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <label class="switch">
+              <input 
+                type="checkbox" 
+                ${l.permitir_toggle_iva ? 'checked' : ''} 
+                onchange="guardarToggleIva(${l.id}, this.checked)"
+              >
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function guardarToggleIva(listaId, permitir) {
+      try {
+        const resp = await fetch('/api/logistica/b2b-jerarquia/listas-iva', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lista_id: listaId, permitir_toggle_iva: permitir })
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+
+        const listObj = listasIvaConfig.find(l => l.id === listaId);
+        if (listObj) listObj.permitir_toggle_iva = permitir;
+
+        mostrarToast(`IVA para ${listObj?.nombre || 'Lista'}: ${permitir ? 'Ruedita Habilitada' : 'Deshabilitada'}`);
+      } catch (err) {
+        console.error(err);
+        Swal.fire('Error', 'No se pudo guardar: ' + err.message, 'error');
+      }
+    }
+
+    async function cargarJerarquia() {
+      try {
+        const resp = await fetch('/api/logistica/b2b-jerarquia');
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+
+        arbolFamilias = data.familias || [];
+        if (arbolFamilias.length > 0 && openFamilias.size === 0) {
+          openFamilias.add(arbolFamilias[0].familia_id);
+        }
+        renderArbol();
+      } catch (err) {
+        console.error(err);
+        document.getElementById('familias-list').innerHTML = `
+          <div style="text-align:center; padding: 2rem; color: #ef4444;">
+            Error al cargar jerarquía: ${err.message}
+          </div>
+        `;
+      }
+    }
+
+    function toggleFamilia(famId) {
+      if (openFamilias.has(famId)) {
+        openFamilias.delete(famId);
+      } else {
+        openFamilias.add(famId);
+      }
+      renderArbol();
+    }
+
+    function filtrarArbol() {
+      renderArbol();
+    }
+
+    function renderArbol() {
+      const filter = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+      const container = document.getElementById('familias-list');
+
+      let html = '';
+
+      arbolFamilias.forEach(fam => {
+        const matchingArts = fam.articulos_principales.filter(art => {
+          if (!filter) return true;
+          return fam.familia_nombre.toLowerCase().includes(filter) ||
+                 art.articulo_principal.toLowerCase().includes(filter);
+        });
+
+        if (matchingArts.length === 0) return;
+
+        const isOpen = filter ? true : openFamilias.has(fam.familia_id);
+
+        html += `
+          <div class="fam-card">
+            <div class="fam-header" onclick="toggleFamilia(${fam.familia_id})">
+              <div class="fam-title">
+                <span style="color:var(--accent); font-size:0.8rem;">${isOpen ? '▼' : '▶'}</span>
+                <span>${fam.familia_nombre}</span>
+                <span class="fam-badge">${matchingArts.length} categorías</span>
+              </div>
+            </div>
+            ${isOpen ? `
+              <div class="fam-body">
+                ${matchingArts.map(art => {
+                  const ejesN3 = Array.isArray(art.ejes_nivel_3) && art.ejes_nivel_3.length > 0
+                    ? art.ejes_nivel_3
+                    : (art.eje_nivel_3 ? String(art.eje_nivel_3).split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
+                  const hasEjesN3 = ejesN3.length > 0;
+                  const reglasN4 = art.reglas_nivel_4 || {};
+                  const reglasN5 = art.reglas_nivel_5 || {};
+
+                  // Renderizar sub-ramas de Nivel 4 y Nivel 5 si hay Nivel 3 activo
+                  let subramasHtml = '';
+                  if (hasEjesN3 && art.subramas && art.subramas.length > 0) {
+                    subramasHtml = `
+                      <div class="subramas-container">
+                        <div class="subrama-header-title">↳ 2º Grado (Nivel 4) — Sub-divisiones por Rama:</div>
+                        ${art.subramas.map(subrama => {
+                          const rawEjesN4 = subrama.ejes_nivel_4 || reglasN4[subrama.subcategoria] || '';
+                          const currentEjesN4 = Array.isArray(rawEjesN4)
+                            ? rawEjesN4
+                            : (rawEjesN4 ? String(rawEjesN4).split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
+                          const hasEjeN4 = currentEjesN4.length > 0;
+
+                          // Renderizar sub-sub-ramas de Nivel 5 si hay Nivel 4 activo en esta subrama
+                          let subsubramasHtml = '';
+                          if (hasEjeN4 && subrama.sub_subramas && subrama.sub_subramas.length > 0) {
+                            subsubramasHtml = `
+                              <div class="subsubramas-container">
+                                <div class="subsubrama-header-title">↳ 3º Grado (Nivel 5) — Sub-sub-divisiones (${subrama.subcategoria}):</div>
+                                ${subrama.sub_subramas.map(subsub => {
+                                  const rawEjesN5 = subsub.ejes_nivel_5 || reglasN5[subsub.path_key] || '';
+                                  const currentEjesN5 = Array.isArray(rawEjesN5)
+                                    ? rawEjesN5
+                                    : (rawEjesN5 ? String(rawEjesN5).split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
+
+                                  return `
+                                    <div class="subsubrama-row">
+                                      <div>
+                                        <div class="subsubrama-name">Sub-rama: <strong>${subsub.sub_subcategoria}</strong></div>
+                                        <div class="subsubrama-ejes">
+                                          ${subsub.ejes_disponibles.length > 0 
+                                            ? 'Ejes disponibles: ' + subsub.ejes_disponibles.map(e => `<em>${e.eje}</em>`).join(', ')
+                                            : 'Sin ejes adicionales'}
+                                        </div>
+                                      </div>
+                                      <div style="min-width: 320px;">
+                                        ${renderEjesControl(fam.familia_id, art.articulo_principal, 5, subsub.path_key, currentEjesN5, subsub.ejes_disponibles, 'sub5')}
+                                      </div>
+                                    </div>
+                                  `;
+                                }).join('')}
+                              </div>
+                            `;
+                          }
+
+                          return `
+                            <div class="subrama-block">
+                              <div class="subrama-row">
+                                <div>
+                                  <div class="subrama-name">Rama: <strong>${subrama.subcategoria}</strong></div>
+                                  <div class="subrama-ejes">
+                                    ${subrama.ejes_disponibles.length > 0 
+                                      ? 'Ejes disponibles: ' + subrama.ejes_disponibles.map(e => `<em>${e.eje}</em>`).join(', ')
+                                      : 'Sin ejes adicionales'}
+                                  </div>
+                                </div>
+                                <div style="min-width: 360px;">
+                                  ${renderEjesControl(fam.familia_id, art.articulo_principal, 4, subrama.subcategoria, currentEjesN4, subrama.ejes_disponibles, 'sub4')}
+                                </div>
+                              </div>
+                              ${subsubramasHtml}
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `;
+                  }
+
+                  return `
+                    <div class="art-block">
+                      <div class="art-row">
+                        <div class="art-info">
+                          <div class="art-name">${art.articulo_principal}</div>
+                          <div class="art-detected-ejes">
+                            ${art.ejes_disponibles.length > 0 
+                              ? `Ejes detectados: ` + art.ejes_disponibles.map(e => `<strong>${e.eje}</strong> (${e.valores.length})`).join(' · ')
+                              : 'Sin ejes dinámicos registrados'}
+                          </div>
+                        </div>
+                        <div class="art-control" style="min-width: 380px;">
+                          ${renderEjesControl(fam.familia_id, art.articulo_principal, 3, '', ejesN3, art.ejes_disponibles, '')}
+                        </div>
+                      </div>
+                      ${subramasHtml}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+
+      if (!html) {
+        html = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">No se encontraron coincidencias para "${filter}"</div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    /**
+     * Construye el control interactivo de ejes con selección visible, cambio dinámico,
+     * flechas de reordenar prioridad, botón de remover y opción de sumar ejes.
+     */
+    function renderEjesControl(famId, artPrincipal, nivel, ramaKey, ejesConfigurados, ejesDisponibles, extraClass = '') {
+      const artPrincipalEsc = artPrincipal.replace(/'/g, "\\'");
+      const ramaKeyEsc = ramaKey ? ramaKey.replace(/'/g, "\\'") : '';
+      const currentEjes = Array.isArray(ejesConfigurados)
+        ? ejesConfigurados
+        : (ejesConfigurados ? String(ejesConfigurados).split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []);
+      const hasEjes = currentEjes.length > 0;
+
+      const formatValores = (vals) => {
+        if (!vals || vals.length === 0) return '';
+        return vals.slice(0, 3).join(', ') + (vals.length > 3 ? '...' : '');
+      };
+
+      const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+
+      if (!hasEjes) {
+        if (!ejesDisponibles || ejesDisponibles.length === 0) {
+          return `
+            <div style="display:flex; align-items:center; gap:0.4rem; justify-content:flex-end;">
+              <span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">Sin ejes adicionales</span>
+              <span class="status-pill none" style="font-size:${nivel === 5 ? '0.65rem' : (nivel === 4 ? '0.68rem' : '0.72rem')};">
+                Directo
+              </span>
+            </div>
+          `;
+        }
+
+        let optionsHtml = `<option value="">-- Directo (Sin Nivel ${nivel}) --</option>`;
+        ejesDisponibles.forEach(eObj => {
+          const nom = capitalize(eObj.eje);
+          const prev = formatValores(eObj.valores);
+          const prevStr = prev ? ` (${prev})` : '';
+          optionsHtml += `<option value="${eObj.eje}">Subdividir Nivel ${nivel} por: ${nom}${prevStr}</option>`;
+        });
+
+        return `
+          <div style="display:flex; align-items:center; gap:0.4rem; justify-content:flex-end;">
+            <select 
+              class="eje-select ${extraClass}" 
+              onchange="if(this.value) agregarEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', this.value)"
+            >
+              ${optionsHtml}
+            </select>
+            <span class="status-pill none" style="font-size:${nivel === 5 ? '0.65rem' : (nivel === 4 ? '0.68rem' : '0.72rem')};">
+              Directo
+            </span>
+          </div>
+        `;
+      }
+
+      const rowsHtml = currentEjes.map((ejeKey, idx) => {
+        const isFirst = idx === 0;
+        const isLast = idx === currentEjes.length - 1;
+
+        const otherUsedEjes = currentEjes.filter((_, i) => i !== idx);
+        const selectableOptions = (ejesDisponibles || []).filter(e => !otherUsedEjes.includes(e.eje.toLowerCase()));
+
+        // Asegurar que el eje configurado actualmente siempre esté presente en las opciones del selector
+        const hasCurrent = selectableOptions.some(e => e.eje.toLowerCase() === ejeKey.toLowerCase());
+        if (!hasCurrent) {
+          selectableOptions.unshift({ eje: ejeKey, valores: [] });
+        }
+
+        let optionsHtml = '';
+        selectableOptions.forEach(eObj => {
+          const isSel = eObj.eje.toLowerCase() === ejeKey.toLowerCase() ? 'selected' : '';
+          const nom = capitalize(eObj.eje);
+          const prev = formatValores(eObj.valores);
+          const prevStr = prev ? ` (${prev})` : '';
+          optionsHtml += `<option value="${eObj.eje}" ${isSel}>${nom}${prevStr}</option>`;
+        });
+
+        const badgeLabel = currentEjes.length === 1 ? 'Eje' : (idx === 0 ? '1º (Principal)' : `${idx + 1}º (Fallback)`);
+
+        return `
+          <div style="display:flex; align-items:center; gap:0.35rem; justify-content:flex-end;">
+            <span class="eje-order-badge" title="Prioridad / Fallback ${idx + 1}">${badgeLabel}</span>
+            <select 
+              class="eje-select ${extraClass}" 
+              style="border-color: rgba(142, 71, 133, 0.6); font-weight:600;"
+              onchange="cambiarEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', ${idx}, this.value)"
+            >
+              ${optionsHtml}
+            </select>
+            <div style="display:inline-flex; align-items:center; gap:0.2rem;">
+              <button 
+                class="btn-arrow" 
+                title="Subir prioridad" 
+                ${isFirst ? 'disabled' : ''}
+                onclick="event.stopPropagation(); moverEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', ${idx}, -1)"
+              >▲</button>
+              <button 
+                class="btn-arrow" 
+                title="Bajar prioridad" 
+                ${isLast ? 'disabled' : ''}
+                onclick="event.stopPropagation(); moverEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', ${idx}, 1)"
+              >▼</button>
+              <button 
+                class="btn-remove-eje" 
+                title="Quitar este eje del Nivel ${nivel}"
+                onclick="event.stopPropagation(); removerEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', ${idx})"
+              >✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const availableToAdd = (ejesDisponibles || []).filter(e => !currentEjes.includes(e.eje.toLowerCase()));
+      let addSelectHtml = '';
+      if (availableToAdd.length > 0) {
+        let addOpts = `<option value="">➕ Sumar eje alternativo de rescate (fallback)...</option>`;
+        availableToAdd.forEach(eObj => {
+          const nom = capitalize(eObj.eje);
+          const prev = formatValores(eObj.valores);
+          const prevStr = prev ? ` (${prev})` : '';
+          addOpts += `<option value="${eObj.eje}">+ Agregar: ${nom}${prevStr}</option>`;
+        });
+
+        addSelectHtml = `
+          <select 
+            class="eje-select ${extraClass}" 
+            style="border-color: rgba(192, 132, 252, 0.5); font-size:0.78rem;"
+            onchange="if(this.value) { agregarEjeGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}', this.value); this.value=''; }"
+          >
+            ${addOpts}
+          </select>
+        `;
+      } else {
+        addSelectHtml = `<span style="font-size:0.72rem; color:var(--text-muted); font-style:italic;">Todos los ejes asignados</span>`;
+      }
+
+      const statusLabel = `Nivel ${nivel} (${currentEjes.length} ${currentEjes.length === 1 ? 'eje' : 'ejes'})`;
+
+      return `
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.35rem; width:100%;">
+          <div style="display:flex; flex-direction:column; gap:0.3rem; width:100%;">
+            ${rowsHtml}
+          </div>
+          <div style="display:flex; align-items:center; gap:0.4rem; justify-content:flex-end; flex-wrap:wrap; margin-top:0.15rem;">
+            ${addSelectHtml}
+            <button 
+              class="btn-clear-ejes" 
+              title="Quitar todos los ejes y volver a Directo"
+              onclick="event.stopPropagation(); limpiarEjesGenerico(${famId}, '${artPrincipalEsc}', ${nivel}, '${ramaKeyEsc}')"
+            >Directo</button>
+            <span class="status-pill active" style="font-size:${nivel === 5 ? '0.65rem' : (nivel === 4 ? '0.68rem' : '0.72rem')};">
+              ${statusLabel}
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    async function agregarEjeGenerico(famId, artPrincipal, nivel, ramaKey, nuevoEje) {
+      if (!nuevoEje) return;
+      const fam = arbolFamilias.find(f => f.familia_id === famId);
+      const art = fam?.articulos_principales.find(a => a.articulo_principal === artPrincipal);
+      if (!art) return;
+
+      const ejeNorm = nuevoEje.trim().toLowerCase();
+
+      if (nivel === 3) {
+        const currentEjes = Array.isArray(art.ejes_nivel_3) ? [...art.ejes_nivel_3] : (art.eje_nivel_3 ? [art.eje_nivel_3] : []);
+        if (!currentEjes.includes(ejeNorm)) currentEjes.push(ejeNorm);
+        art.ejes_nivel_3 = currentEjes;
+      } else if (nivel === 4) {
+        const reglasN4 = { ...(art.reglas_nivel_4 || {}) };
+        const raw = reglasN4[ramaKey];
+        const currentEjes = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+        if (!currentEjes.includes(ejeNorm)) currentEjes.push(ejeNorm);
+        reglasN4[ramaKey] = currentEjes;
+        art.reglas_nivel_4 = reglasN4;
+      } else if (nivel === 5) {
+        const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+        const raw = reglasN5[ramaKey];
+        const currentEjes = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+        if (!currentEjes.includes(ejeNorm)) currentEjes.push(ejeNorm);
+        reglasN5[ramaKey] = currentEjes;
+        art.reglas_nivel_5 = reglasN5;
+      }
+
+      await persistirJerarquia(famId, artPrincipal, art);
+    }
+
+    async function cambiarEjeGenerico(famId, artPrincipal, nivel, ramaKey, idx, nuevoEje) {
+      if (!nuevoEje) return;
+      const fam = arbolFamilias.find(f => f.familia_id === famId);
+      const art = fam?.articulos_principales.find(a => a.articulo_principal === artPrincipal);
+      if (!art) return;
+
+      const ejeNorm = nuevoEje.trim().toLowerCase();
+
+      if (nivel === 3) {
+        const currentEjes = Array.isArray(art.ejes_nivel_3) ? [...art.ejes_nivel_3] : (art.eje_nivel_3 ? [art.eje_nivel_3] : []);
+        currentEjes[idx] = ejeNorm;
+        art.ejes_nivel_3 = currentEjes;
+      } else if (nivel === 4) {
+        const reglasN4 = { ...(art.reglas_nivel_4 || {}) };
+        const raw = reglasN4[ramaKey];
+        const currentEjes = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+        currentEjes[idx] = ejeNorm;
+        reglasN4[ramaKey] = currentEjes;
+        art.reglas_nivel_4 = reglasN4;
+      } else if (nivel === 5) {
+        const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+        const raw = reglasN5[ramaKey];
+        const currentEjes = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+        currentEjes[idx] = ejeNorm;
+        reglasN5[ramaKey] = currentEjes;
+        art.reglas_nivel_5 = reglasN5;
+      }
+
+      await persistirJerarquia(famId, artPrincipal, art);
+    }
+
+    async function moverEjeGenerico(famId, artPrincipal, nivel, ramaKey, idx, delta) {
+      const fam = arbolFamilias.find(f => f.familia_id === famId);
+      const art = fam?.articulos_principales.find(a => a.articulo_principal === artPrincipal);
+      if (!art) return;
+
+      let list = [];
+      if (nivel === 3) {
+        list = Array.isArray(art.ejes_nivel_3) ? [...art.ejes_nivel_3] : (art.eje_nivel_3 ? [art.eje_nivel_3] : []);
+      } else if (nivel === 4) {
+        const raw = (art.reglas_nivel_4 || {})[ramaKey];
+        list = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+      } else if (nivel === 5) {
+        const raw = (art.reglas_nivel_5 || {})[ramaKey];
+        list = Array.isArray(raw) ? [...raw] : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []);
+      }
+
+      const targetIdx = idx + delta;
+      if (targetIdx < 0 || targetIdx >= list.length) return;
+
+      const temp = list[idx];
+      list[idx] = list[targetIdx];
+      list[targetIdx] = temp;
+
+      if (nivel === 3) {
+        art.ejes_nivel_3 = list;
+      } else if (nivel === 4) {
+        art.reglas_nivel_4 = { ...(art.reglas_nivel_4 || {}), [ramaKey]: list };
+      } else if (nivel === 5) {
+        art.reglas_nivel_5 = { ...(art.reglas_nivel_5 || {}), [ramaKey]: list };
+      }
+
+      await persistirJerarquia(famId, artPrincipal, art);
+    }
+
+    async function removerEjeGenerico(famId, artPrincipal, nivel, ramaKey, idx) {
+      const fam = arbolFamilias.find(f => f.familia_id === famId);
+      const art = fam?.articulos_principales.find(a => a.articulo_principal === artPrincipal);
+      if (!art) return;
+
+      if (nivel === 3) {
+        const currentEjes = (Array.isArray(art.ejes_nivel_3) ? art.ejes_nivel_3 : (art.eje_nivel_3 ? [art.eje_nivel_3] : []))
+          .filter((_, i) => i !== idx);
+        art.ejes_nivel_3 = currentEjes;
+        if (currentEjes.length === 0) {
+          art.reglas_nivel_4 = {};
+          art.reglas_nivel_5 = {};
+        }
+      } else if (nivel === 4) {
+        const reglasN4 = { ...(art.reglas_nivel_4 || {}) };
+        const raw = reglasN4[ramaKey];
+        const currentEjes = (Array.isArray(raw) ? raw : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []))
+          .filter((_, i) => i !== idx);
+        if (currentEjes.length > 0) {
+          reglasN4[ramaKey] = currentEjes;
+        } else {
+          delete reglasN4[ramaKey];
+          // Limpiar sub-ramas de N5 asociadas a esta rama
+          const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+          Object.keys(reglasN5).forEach(pk => {
+            if (pk.startsWith(`${ramaKey}___`)) delete reglasN5[pk];
+          });
+          art.reglas_nivel_5 = reglasN5;
+        }
+        art.reglas_nivel_4 = reglasN4;
+      } else if (nivel === 5) {
+        const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+        const raw = reglasN5[ramaKey];
+        const currentEjes = (Array.isArray(raw) ? raw : (raw ? String(raw).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : []))
+          .filter((_, i) => i !== idx);
+        if (currentEjes.length > 0) {
+          reglasN5[ramaKey] = currentEjes;
+        } else {
+          delete reglasN5[ramaKey];
+        }
+        art.reglas_nivel_5 = reglasN5;
+      }
+
+      await persistirJerarquia(famId, artPrincipal, art);
+    }
+
+    async function limpiarEjesGenerico(famId, artPrincipal, nivel, ramaKey) {
+      const fam = arbolFamilias.find(f => f.familia_id === famId);
+      const art = fam?.articulos_principales.find(a => a.articulo_principal === artPrincipal);
+      if (!art) return;
+
+      if (nivel === 3) {
+        art.ejes_nivel_3 = [];
+        art.reglas_nivel_4 = {};
+        art.reglas_nivel_5 = {};
+      } else if (nivel === 4) {
+        const reglasN4 = { ...(art.reglas_nivel_4 || {}) };
+        delete reglasN4[ramaKey];
+        const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+        Object.keys(reglasN5).forEach(pk => {
+          if (pk.startsWith(`${ramaKey}___`)) delete reglasN5[pk];
+        });
+        art.reglas_nivel_4 = reglasN4;
+        art.reglas_nivel_5 = reglasN5;
+      } else if (nivel === 5) {
+        const reglasN5 = { ...(art.reglas_nivel_5 || {}) };
+        delete reglasN5[ramaKey];
+        art.reglas_nivel_5 = reglasN5;
+      }
+
+      await persistirJerarquia(famId, artPrincipal, art);
+    }
+
+    async function persistirJerarquia(famId, artPrincipal, art) {
+      try {
+        const resp = await fetch('/api/logistica/b2b-jerarquia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            familia_id: famId,
+            articulo_principal: artPrincipal,
+            ejes_nivel_3: art.ejes_nivel_3 || [],
+            reglas_nivel_4: art.reglas_nivel_4 || {},
+            reglas_nivel_5: art.reglas_nivel_5 || {}
+          })
+        });
+
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error);
+
+        mostrarToast(`Configuración actualizada para ${artPrincipal}`);
+        cargarJerarquia();
+      } catch (err) {
+        console.error(err);
+        Swal.fire('Error', 'No se pudo guardar la configuración: ' + err.message, 'error');
+      }
+    }
+
+    function mostrarToast(msg) {
+      const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 2000,
+        background: '#1e293b',
+        color: '#fff'
+      });
+      Toast.fire({ icon: 'success', title: msg });
+    }
+
+    async function sincronizarCatalogo() {
+      Swal.fire({
+        title: 'Sincronizando Catálogo B2B...',
+        text: 'Subiendo jerarquías, artículos y configuración de IVA a Supabase Cloud...',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        const resp = await fetch('/api/logistica/b2b-jerarquia/sincronizar', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+          throw new Error(data.error || 'Error al ejecutar sincronización');
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: '¡Catálogo Sincronizado!',
+          text: 'Las jerarquías de Nivel 3, Nivel 4, Nivel 5, alícuotas de IVA y precios se actualizaron correctamente en la nube.',
+          confirmButtonColor: '#8e4785',
+          confirmButtonText: 'Entendido'
+        });
+      } catch (err) {
+        console.error('Error en sincronización:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error de Sincronización',
+          text: err.message || 'No se pudo contactar al servicio de sincronización',
+          confirmButtonColor: '#ef4444'
+        });
+      }
+    }
+
+    cargarListasIva();
+    cargarJerarquia();
+  </script>
+</body>
+</html>

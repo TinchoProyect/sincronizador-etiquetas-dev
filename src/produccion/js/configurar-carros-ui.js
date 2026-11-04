@@ -196,7 +196,17 @@
             return;
         }
 
-        container.innerHTML = '';
+        container.innerHTML = `
+            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 1.5px solid #7dd3fc; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <strong style="color: #075985; font-size: 13.5px;">📦 2° Etapa — Fracciones Comerciales Pedidas (Línea de Negocio 2)</strong>
+                    <span style="background: #ffffff; color: #0369a1; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; border: 1px solid #7dd3fc;">Envasado Final</span>
+                </div>
+                <div style="font-size: 12px; color: #0c4a6e; margin-top: 4px;">
+                    Estos son los artículos fraccionados que pidieron los clientes (ej: x 2kg, x 5kg). Se arman a partir del <strong>ingrediente simple</strong> (que recibe al Artículo Puente del mix). Si primero necesitás preparar la mezcla a granel, armá el carro desde <strong>"Sugerencias de Producción (Línea 3 — 1° Etapa)"</strong> más abajo.
+                </div>
+            </div>
+        `;
 
         // Renderizar faltantes y parciales
         for (const articulo of faltantesYParciales) {
@@ -236,7 +246,8 @@
 
             const faltantesYParciales = articulos.filter(art => {
                 const estado = (art.estado || '').toUpperCase();
-                return estado === 'FALTANTE' || estado === 'PARCIAL';
+                const faltante = parseFloat(art.faltante || 0);
+                return estado === 'FALTANTE' || estado === 'PARCIAL' || faltante > 0;
             });
 
             renderCarrosDesdeResumen(faltantesYParciales);
@@ -404,7 +415,7 @@
             checkbox.className = 'carros-item-checkbox';
             checkbox.setAttribute('data-articulo', articulo.articulo_numero);
             checkbox.addEventListener('change', (e) => {
-                manejarSeleccionArticuloSimple(articulo, e.target.checked);
+                manejarSeleccionArticuloSimple(articulo, e.target.checked, e.target);
             });
 
             const infoDiv = document.createElement('div');
@@ -415,7 +426,8 @@
 
             const descripcionSpan = document.createElement('span');
             descripcionSpan.className = 'carros-item-descripcion';
-            descripcionSpan.textContent = articulo.descripcion || articulo.articulo_numero || 'Sin descripción';
+            const textoDescSimple = articulo.descripcion || articulo.articulo_numero || 'Sin descripción';
+            descripcionSpan.innerHTML = `${textoDescSimple} <span style="background: #e0f2fe; color: #075985; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #bae6fd; margin-left: 6px; white-space: nowrap;">📦 L2 Fracción (2° Etapa)</span>`;
 
             const codigoSpan = document.createElement('span');
             codigoSpan.className = 'carros-item-codigo';
@@ -424,7 +436,8 @@
 
             const estadoSpan = document.createElement('span');
             estadoSpan.className = `carros-item-estado ${estado}`;
-            estadoSpan.textContent = `${estadoTexto} (${faltante.toFixed(2)})`;
+            const infoPedidos = articulo.total_pedidos && articulo.total_pedidos > 1 ? ` · ${articulo.total_pedidos} pedidos` : '';
+            estadoSpan.textContent = `${estadoTexto} (${faltante.toFixed(2)}${infoPedidos})`;
 
             infoDiv.appendChild(descripcionSpan);
             infoDiv.appendChild(codigoSpan);
@@ -474,18 +487,48 @@
         return null;
     }
 
-    function manejarSeleccionArticuloSimple(articulo, seleccionado) {
+    /**
+     * Determina la línea de negocio actual de los artículos ya seleccionados en estadoCarros
+     * @returns {number|null} 3 (Artículos Puente / Mixes), 2 (Fracciones Comerciales) o null si vacío
+     */
+    function obtenerLineaNegocioSeleccionada() {
+        for (const [, it] of estadoCarros.articulosSeleccionados) {
+            if (it.lineaNegocio) return it.lineaNegocio;
+            if (it.esSugerencia) return 3;
+            return 2;
+        }
+        return null;
+    }
+
+    function validarCompatibilidadLineaSeleccion(nuevaLinea, checkboxEl) {
+        const lineaActual = obtenerLineaNegocioSeleccionada();
+        if (lineaActual && lineaActual !== nuevaLinea) {
+            if (checkboxEl) checkboxEl.checked = false;
+            const msg = lineaActual === 3
+                ? '⚠️ Ya seleccionaste un Artículo Puente / Mix x Kilo (Línea 3 — 1° Etapa). Armá primero el carro del Mix y en otro carro separado las Fracciones (Línea 2).'
+                : '⚠️ Ya seleccionaste Fracciones Comerciales (Línea 2 — 2° Etapa). No mezcles en el mismo carro una fracción comercial con un Artículo Puente de 1° Etapa (Línea 3).';
+            mostrarMensaje(msg, 'error');
+            return false;
+        }
+        return true;
+    }
+
+    function manejarSeleccionArticuloSimple(articulo, seleccionado, checkboxEl) {
         const articuloNumero = articulo.articulo_numero;
 
         if (seleccionado) {
-            const faltante = parseFloat(articulo.faltante || 0);
+            if (!validarCompatibilidadLineaSeleccion(2, checkboxEl)) return;
+            const inputCant = document.querySelector(`.carros-item:not(.carros-item-sugerencia) input[type="number"][data-articulo="${articuloNumero}"]`);
+            const faltante = inputCant ? (parseFloat(inputCant.value) || parseFloat(articulo.faltante || 0)) : parseFloat(articulo.faltante || 0);
             estadoCarros.articulosSeleccionados.set(articuloNumero, {
                 articulo: articulo,
                 cantidad: faltante,
                 esHijo: false,
-                codigoPadre: null
+                codigoPadre: null,
+                esSugerencia: false,
+                lineaNegocio: 2
             });
-            console.log(`[CARROS-UI] Artículo SIMPLE seleccionado: ${articuloNumero} (${faltante})`);
+            console.log(`[CARROS-UI] Artículo SIMPLE (Línea 2) seleccionado: ${articuloNumero} (${faltante})`);
         } else {
             estadoCarros.articulosSeleccionados.delete(articuloNumero);
             console.log(`[CARROS-UI] Artículo SIMPLE deseleccionado: ${articuloNumero}`);
@@ -499,6 +542,8 @@
         const codigoPadre = articuloPadre.articulo_numero;
 
         if (seleccionado) {
+            const checkboxEl = document.querySelector(`.carros-item-checkbox[data-articulo="${codigoHijo}"][data-es-hijo="true"]`);
+            if (!validarCompatibilidadLineaSeleccion(2, checkboxEl)) return;
             estadoCarros.articulosSeleccionados.set(codigoHijo, {
                 articulo: {
                     articulo_numero: packMapping.articulo_kilo_numero || codigoHijo,
@@ -509,9 +554,11 @@
                 cantidad: cantidadCalculada,
                 esHijo: true,
                 codigoPadre: codigoPadre,
-                unidadesPorPack: packMapping.unidades || packMapping.multiplicador_ingredientes
+                unidadesPorPack: packMapping.unidades || packMapping.multiplicador_ingredientes,
+                esSugerencia: false,
+                lineaNegocio: 2
             });
-            console.log(`[CARROS-UI] HIJO seleccionado: ${codigoHijo} (${cantidadCalculada}) del padre ${codigoPadre}`);
+            console.log(`[CARROS-UI] HIJO (Línea 2) seleccionado: ${codigoHijo} (${cantidadCalculada}) del padre ${codigoPadre}`);
         } else {
             estadoCarros.articulosSeleccionados.delete(codigoHijo);
             console.log(`[CARROS-UI] HIJO deseleccionado: ${codigoHijo}`);
@@ -536,17 +583,89 @@
         }
     }
 
+    async function actualizarEstimacionConfiguracionCarro() {
+        const container = document.getElementById('carros-estimacion-tiempo-panel');
+        if (!container) return;
+
+        if (estadoCarros.articulosSeleccionados.size === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        const items = [];
+        estadoCarros.articulosSeleccionados.forEach((it, cod) => {
+            if (it.cantidad > 0) {
+                items.push({
+                    articulo_numero: cod,
+                    cantidad: it.cantidad,
+                    descripcion: it.descripcion || ''
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/tiempos/estimacion-articulos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulos: items })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                container.style.display = 'flex';
+                const valEl = document.getElementById('carros-estimacion-val');
+                const badgeEl = document.getElementById('carros-estimacion-badge');
+                if (valEl) valEl.textContent = data.tiempo_formateado || '~ 0 min';
+
+                if (badgeEl) {
+                    badgeEl.className = 'badge-origen-tiempo';
+                    if (data.origen_general === 'planta') {
+                        badgeEl.style.cssText = 'background: #ecfdf5; color: #065f46; border: 1px solid #10b981; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;';
+                        badgeEl.textContent = '🟢 Planta';
+                    } else if (data.origen_general === 'mixto' || data.origen_general === 'planta_parcial') {
+                        badgeEl.style.cssText = 'background: #eff6ff; color: #1e40af; border: 1px solid #60a5fa; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;';
+                        badgeEl.textContent = '🔵 Planta + Teórico';
+                    } else if (data.origen_general === 'arbitraria') {
+                        badgeEl.style.cssText = 'background: #fffbeb; color: #92400e; border: 1px solid #f59e0b; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;';
+                        badgeEl.textContent = '🟡 Teórico';
+                    } else {
+                        badgeEl.style.cssText = 'background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;';
+                        badgeEl.textContent = '⚪ Sin datos';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[CARROS-UI] Error obteniendo estimación de tiempo:', e);
+        }
+    }
+
     function actualizarEstadoBotones() {
         const btnArmarUno = document.getElementById('carros-armar-uno-btn');
 
         const tieneUsuario = estadoCarros.usuarioSeleccionado !== null;
         const tieneArticulos = estadoCarros.articulosSeleccionados.size > 0;
+        const lineaSeleccionada = obtenerLineaNegocioSeleccionada();
 
         if (btnArmarUno) {
             btnArmarUno.disabled = !(tieneUsuario && tieneArticulos);
+            if (lineaSeleccionada === 3) {
+                btnArmarUno.innerHTML = '🥣 Armar Carro Línea 3 (Art. Puente / Mix x Kilo)';
+            } else if (lineaSeleccionada === 2) {
+                btnArmarUno.innerHTML = '📦 Armar Carro Línea 2 (Fracciones Comerciales)';
+            } else {
+                btnArmarUno.innerHTML = 'Armar un carro';
+            }
         }
 
-        console.log(`[CARROS-UI] Botones actualizados - Usuario: ${tieneUsuario}, Artículos: ${tieneArticulos}`);
+        // ⏱️ Actualizar estimación de tiempo del carro en armado
+        actualizarEstimacionConfiguracionCarro();
+
+        console.log(`[CARROS-UI] Botones actualizados - Usuario: ${tieneUsuario}, Artículos: ${tieneArticulos}, Línea: ${lineaSeleccionada}`);
     }
 
     async function armarUnCarro() {
@@ -575,14 +694,20 @@
             return;
         }
 
-        mostrarMensaje('Creando carro...', 'info');
+        const lineaNegocioCarro = obtenerLineaNegocioSeleccionada() || 2;
+        const etiquetaLinea = lineaNegocioCarro === 3
+            ? 'Línea 3 (Artículo Puente / Mix x Kilo)'
+            : 'Línea 2 (Fracciones Comerciales)';
+
+        mostrarMensaje(`Creando carro de ${etiquetaLinea}...`, 'info');
 
         try {
-            console.log('[CARROS-UI] PASO 1: Creando carro...');
+            console.log(`[CARROS-UI] PASO 1: Creando carro de ${etiquetaLinea}...`);
             const payloadCrearCarro = {
                 usuarioId: estadoCarros.usuarioSeleccionado,
                 enAuditoria: false,
-                tipoCarro: 'interna'
+                tipoCarro: 'interna',
+                lineaNegocio: lineaNegocioCarro
             };
 
             console.log('[CARROS-UI] Payload crear carro:', payloadCrearCarro);
@@ -656,7 +781,7 @@
                 console.warn('[CARROS-UI] Errores al agregar artículos:', erroresAgregar);
                 mostrarMensaje(`Carro creado con ${articulosAgregados} artículos. ${erroresAgregar.length} errores.`, 'info');
             } else {
-                mostrarMensaje(`✅ Carro creado exitosamente con ${articulosAgregados} artículos`, 'exito');
+                mostrarMensaje(`✅ Carro de ${etiquetaLinea} creado con ${articulosAgregados} artículo(s)`, 'exito');
             }
 
             limpiarSeleccion();
@@ -719,6 +844,7 @@
             };
 
             localStorage.setItem('colaboradorActivo', JSON.stringify(colaboradorData));
+            localStorage.setItem('carroActivoSolicitado', String(carroId));
             sessionStorage.setItem('carroActivo', String(carroId));
 
             console.log('[PROD-FLUJO] Abriendo ventana con datos:', {
@@ -727,8 +853,8 @@
                 nombreUsuario: usuario.nombre_completo
             });
 
-            // Abrir ventana del carro (mismo flujo que selección de usuario en portada)
-            window.open('/pages/produccion_personal.html', `ventanaProduccion_${usuarioId}`);
+            // Abrir ventana del carro pasando ?carroId= para garantizar que seleccione el carro recién creado incluso si la pestaña ya estaba abierta
+            window.open(`/pages/produccion_personal.html?carroId=${encodeURIComponent(carroId)}`, `ventanaProduccion_${usuarioId}`);
 
             console.log('[CARROS-UI] ✅ Ventana del carro abierta');
 
@@ -1518,13 +1644,19 @@
             // Renderizar sección de sugerencias
             containerSugerencias.style.display = 'block';
             containerSugerencias.innerHTML = `
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 12px 16px; border-radius: 8px 8px 0 0; margin-bottom: 0;">
-                    <h3 style="margin: 0; color: white; font-size: 1.1em; display: flex; align-items: center; gap: 8px;">
-                        💡 Sugerencias de Producción
-                        <span style="background: rgba(255,255,255,0.3); padding: 2px 8px; border-radius: 12px; font-size: 0.85em;">${sugerencias.length}</span>
+                <div style="background: linear-gradient(135deg, #15803d 0%, #166534 100%); padding: 12px 16px; border-radius: 8px 8px 0 0; margin-bottom: 0;">
+                    <h3 style="margin: 0; color: white; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            🥣 1° Etapa — Sugerencias de Artículos Puente / Mixes x Kilo (Línea 3)
+                            <span style="background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 12px; font-size: 0.85em;">${sugerencias.length}</span>
+                        </span>
+                        <span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px;">Línea de Negocio 3</span>
                     </h3>
+                    <div style="color: #dcfce7; font-size: 12px; margin-top: 4px; font-weight: 400;">
+                        Elaboración previa de la mezcla a granel combinando ingredientes de los sectores A/B. Se almacena como <strong>Artículo Puente por kilo</strong> (que luego abastece al ingrediente simple para armar las fracciones en la 2° Etapa).
+                    </div>
                 </div>
-                <div id="sugerencias-lista" style="background: #f8f9fa; padding: 12px; border-radius: 0 0 8px 8px; border: 2px solid #667eea; border-top: none;"></div>
+                <div id="sugerencias-lista" style="background: #f0fdf4; padding: 12px; border-radius: 0 0 8px 8px; border: 2px solid #16a34a; border-top: none;"></div>
             `;
 
             const listaSugerencias = document.getElementById('sugerencias-lista');
@@ -1553,10 +1685,11 @@
         const cantidadTotal = parseFloat(sugerencia.cantidad_total || 0);
         const stockDisponible = parseFloat(sugerencia.stock_disponible || 0);
         const faltante = Math.max(0, cantidadTotal - stockDisponible);
+        const cantidadSugerida = faltante > 0 ? faltante : cantidadTotal;
 
         let estado = 'faltante';
         let estadoTexto = 'FALTANTE';
-        if (stockDisponible > 0 && faltante < cantidadTotal) {
+        if (stockDisponible > 0 && faltante < cantidadTotal && faltante > 0) {
             estado = 'parcial';
             estadoTexto = 'PARCIAL';
         } else if (faltante === 0) {
@@ -1567,14 +1700,14 @@
         const itemDiv = document.createElement('div');
         itemDiv.className = `carros-item carros-item-sugerencia ${estado}`;
         itemDiv.setAttribute('data-articulo', sugerencia.articulo_numero);
-        itemDiv.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; background: white; border-left: 4px solid #667eea;';
+        itemDiv.style.cssText = 'padding: 8px 12px; margin-bottom: 8px; background: white; border-left: 4px solid #16a34a;';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'carros-item-checkbox';
         checkbox.setAttribute('data-articulo', sugerencia.articulo_numero);
         checkbox.addEventListener('change', (e) => {
-            manejarSeleccionSugerencia(sugerencia, e.target.checked, faltante);
+            manejarSeleccionSugerencia(sugerencia, e.target.checked, cantidadSugerida, e.target);
         });
 
         const infoDiv = document.createElement('div');
@@ -1583,8 +1716,8 @@
 
         const descripcionSpan = document.createElement('span');
         descripcionSpan.className = 'carros-item-descripcion';
-        descripcionSpan.innerHTML = `💡 ${sugerencia.descripcion || sugerencia.articulo_numero}`;
-        descripcionSpan.style.color = '#667eea';
+        descripcionSpan.innerHTML = `🥣 ${sugerencia.descripcion || sugerencia.articulo_numero} <span style="background: #dcfce7; color: #166534; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #86efac; margin-left: 6px; white-space: nowrap;">L3 Art. Puente x Kilo (1° Etapa)</span>`;
+        descripcionSpan.style.color = '#166534';
         descripcionSpan.style.fontWeight = '600';
 
         const codigoSpan = document.createElement('span');
@@ -1594,13 +1727,13 @@
 
         const origenSpan = document.createElement('span');
         origenSpan.style.fontSize = '11px';
-        origenSpan.style.color = '#6c757d';
+        origenSpan.style.color = '#15803d';
         origenSpan.style.fontStyle = 'italic';
-        origenSpan.textContent = `Sugerido por: ${sugerencia.articulos_origen.join(', ')}`;
+        origenSpan.textContent = `Abastece a la fracción: ${sugerencia.articulos_origen.join(', ')}`;
 
         const estadoSpan = document.createElement('span');
         estadoSpan.className = `carros-item-estado ${estado}`;
-        estadoSpan.textContent = `${estadoTexto} (${faltante.toFixed(2)}) · Stock: ${stockDisponible.toFixed(2)}`;
+        estadoSpan.textContent = `${estadoTexto} (Sugerido: ${cantidadSugerida.toFixed(2)} kg) · Stock AP: ${stockDisponible.toFixed(2)} kg`;
 
         infoDiv.appendChild(descripcionSpan);
         infoDiv.appendChild(codigoSpan);
@@ -1621,13 +1754,13 @@
         cantidadDiv.className = 'carros-item-cantidad';
 
         const labelCantidad = document.createElement('label');
-        labelCantidad.textContent = 'Cant:';
+        labelCantidad.textContent = 'Kilos:';
 
         const inputCantidad = document.createElement('input');
         inputCantidad.type = 'number';
         inputCantidad.min = '0';
         inputCantidad.step = '0.01';
-        inputCantidad.value = faltante.toFixed(2);
+        inputCantidad.value = cantidadSugerida.toFixed(2);
         inputCantidad.setAttribute('data-articulo', sugerencia.articulo_numero);
         inputCantidad.addEventListener('change', (e) => {
             actualizarCantidadArticulo(sugerencia.articulo_numero, parseFloat(e.target.value) || 0);
@@ -1723,28 +1856,33 @@
     }
 
     /**
-     * Maneja la selección de una sugerencia
+     * Maneja la selección de una sugerencia (1° Etapa — Línea de Negocio 3: Artículo Puente / Mix x Kilo)
      * @param {Object} sugerencia - Datos de la sugerencia
      * @param {boolean} seleccionado - Si está seleccionado o no
      * @param {number} cantidadFaltante - Cantidad faltante calculada
+     * @param {HTMLElement} checkboxEl - Checkbox accionado
      */
-    function manejarSeleccionSugerencia(sugerencia, seleccionado, cantidadFaltante) {
+    function manejarSeleccionSugerencia(sugerencia, seleccionado, cantidadFaltante, checkboxEl) {
         const articuloNumero = sugerencia.articulo_numero;
 
         if (seleccionado) {
+            if (!validarCompatibilidadLineaSeleccion(3, checkboxEl)) return;
+            const inputCant = document.querySelector(`.carros-item-sugerencia input[type="number"][data-articulo="${articuloNumero}"]`);
+            const cantActual = inputCant ? (parseFloat(inputCant.value) || cantidadFaltante) : cantidadFaltante;
             estadoCarros.articulosSeleccionados.set(articuloNumero, {
                 articulo: {
                     articulo_numero: sugerencia.articulo_numero,
                     codigo_barras: sugerencia.codigo_barras,
                     descripcion: sugerencia.descripcion,
-                    faltante: cantidadFaltante
+                    faltante: cantActual
                 },
-                cantidad: cantidadFaltante,
+                cantidad: cantActual,
                 esHijo: false,
                 codigoPadre: null,
-                esSugerencia: true
+                esSugerencia: true,
+                lineaNegocio: 3
             });
-            console.log(`[CARROS-UI] SUGERENCIA seleccionada: ${articuloNumero} (${cantidadFaltante})`);
+            console.log(`[CARROS-UI] SUGERENCIA (Línea 3) seleccionada: ${articuloNumero} (${cantActual})`);
         } else {
             estadoCarros.articulosSeleccionados.delete(articuloNumero);
             console.log(`[CARROS-UI] SUGERENCIA deseleccionada: ${articuloNumero}`);

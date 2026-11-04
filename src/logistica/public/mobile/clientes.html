@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Clientes - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/comercial.css?v=6">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+</head>
+<body class="mobile-body">
+
+    <!-- CABECERA PRINCIPAL -->
+    <header class="mobile-header" style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border-bottom: 1px solid rgba(124, 58, 237, 0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" onclick="window.abrirSidebar(event)" title="Abrir Menú Principal" style="width: 34px; height: 34px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.08); padding: 3px; border: 1px solid rgba(255,255,255,0.15); cursor: pointer; box-shadow: 0 2px 8px rgba(124,58,237,0.3);">
+                <a href="home.html" class="btn-back-header" title="Volver al Inicio" style="text-decoration: none; font-size: 1.4rem; color: #94a3b8; padding: 0 0.1rem;">‹</a>
+                <div>
+                    <h1 style="margin: 0; font-size: 1.15rem; font-weight: 900; color: #f8fafc; display: flex; align-items: center; gap: 0.35rem;">
+                        👥 Clientes
+                    </h1>
+                    <span style="font-size: 0.72rem; color: #c084fc; font-weight: 700;" id="contador-clientes-mobile">Cargando...</span>
+                </div>
+            </div>
+            <a href="crear-cliente-movil.html" class="btn-primary-action" style="background: #7c3aed; padding: 0.45rem 0.85rem; font-size: 0.82rem; font-weight: 800; border-radius: 0.7rem; text-decoration: none; color: white; display: inline-flex; align-items: center; gap: 0.3rem;">
+                ➕ Alta
+            </a>
+        </div>
+    </header>
+
+    <!-- BARRA DE BÚSQUEDA Y FILTROS -->
+    <div style="padding: 0.85rem 1rem 0.5rem; background: #0f172a; position: sticky; top: 0; z-index: 100;">
+        <div style="position: relative; display: flex; align-items: center;">
+            <input type="text" id="buscar-cliente-mobile-input" class="wizard-input-mobile" placeholder="🔍 Buscar por nombre, CUIT, código..." style="padding-right: 2.2rem; font-size: 0.95rem; border-radius: 0.85rem;">
+            <button id="btn-clear-search" style="position: absolute; right: 10px; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; display: none;">✕</button>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem; overflow-x: auto; padding-bottom: 0.2rem; align-items: center;">
+            <button id="btn-toggle-filtro-deuda" class="filter-pill-btn" style="background: #1e293b; border: 1px solid #334155; color: #cbd5e1; border-radius: 999px; padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                💳 Solo con Deuda
+            </button>
+            <a href="cotizar-precios-movil.html?clienteId=prospecto" class="filter-pill-btn" style="background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); border: 1px solid #a855f7; color: #ffffff; border-radius: 999px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25);">
+                🏷️ Cotización Libre (Prospecto)
+            </a>
+        </div>
+    </div>
+
+    <!-- CONTENEDOR DE LISTA DE CLIENTES -->
+    <main style="padding: 0.6rem 1rem 5rem;">
+        <div id="lista-clientes-mobile">
+            <!-- Renderizado dinámico por ClientesMobileController -->
+        </div>
+    </main>
+
+    <!-- BOTÓN FLOTANTE NUEVO CLIENTE -->
+    <a href="crear-cliente-movil.html" class="floating-fab" style="position: fixed; bottom: 1.5rem; right: 1.25rem; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed 0%, #581c87 100%); color: white; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4); text-decoration: none; z-index: 500; border: 1px solid rgba(255, 255, 255, 0.2);">
+        ➕
+    </a>
+
+    <!-- SCRIPTS -->
+    <script src="js/mobile.js?v=15"></script>
+    <script src="js/controllers/ClientesMobileController.js?v=25"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            ClientesMobileController.initDirectorio();
+        });
+    </script>
+</body>
+</html>

@@ -18,10 +18,12 @@ const {
     obtenerPrecioArticuloCliente,
     obtenerDatosCliente,
     obtenerHistorialEntregasCliente,
+    obtenerArticulosHabitualesCliente,
     obtenerCatalogoGeneral,
     obtenerArticulosExcluidos,
     excluirArticulo,
-    reincluirArticulo
+    reincluirArticulo,
+    obtenerAuditoriaRentabilidadBunker
 } = require('../controllers/presupuestos');
 
 
@@ -66,7 +68,8 @@ const {
 
 // Importar Controlador de Faltantes (Demanda No Satisfecha)
 const {
-    getDashboardFaltantesController
+    getDashboardFaltantesController,
+    cambiarEstadoFaltanteController
 } = require('../controllers/presupuestosDashboardFaltantes');
 
 // Importar controlador de escritura
@@ -201,6 +204,44 @@ router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync')
 });
 
 /**
+ * @route POST /api/presupuestos/sync/b2b-force
+ * @desc Forzar sincronización en caliente del portal B2B (Ingesta + Estados)
+ * @access Privado
+ */
+router.post('/sync/b2b-force', validatePermissions('presupuestos.sync'), async (req, res) => {
+    console.log('🔄 [PRESUPUESTOS-SYNC] Forzando sincronización en caliente de pedidos y estados B2B...');
+    const { exec } = require('child_process');
+    const path = require('path');
+
+    const scriptPedidos = path.join(__dirname, '../../actualizaPrecios/syncB2BPedidos.js');
+    const scriptEstados = path.join(__dirname, '../../actualizaPrecios/syncB2BEstados.js');
+
+    // Ejecutar primero la ingesta de pedidos y luego la actualización de estados
+    exec(`node "${scriptPedidos}"`, (errPedidos, stdoutPedidos, stderrPedidos) => {
+        if (errPedidos) {
+            console.error('❌ Error ejecutando syncB2BPedidos:', errPedidos);
+        }
+        console.log('stdoutPedidos:', stdoutPedidos);
+
+        exec(`node "${scriptEstados}"`, (errEstados, stdoutEstados, stderrEstados) => {
+            if (errEstados) {
+                console.error('❌ Error ejecutando syncB2BEstados:', errEstados);
+            }
+            console.log('stdoutEstados:', stdoutEstados);
+
+            res.json({
+                success: true,
+                message: 'Sincronización en caliente B2B completada con éxito',
+                details: {
+                    pedidos: stdoutPedidos,
+                    estados: stdoutEstados
+                }
+            });
+        });
+    });
+});
+
+/**
  * @route GET /api/presupuestos/faltantes/dashboard
  * @desc Obtener dashboard analítico de demanda no satisfecha
  * @access Privado
@@ -208,6 +249,28 @@ router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync')
 router.get('/faltantes/dashboard', validatePermissions('presupuestos.read'), async (req, res) => {
     try {
         await getDashboardFaltantesController(req, res);
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Error del enrutador', message: error.message });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/faltantes/:id/estado
+ * @route PATCH /api/presupuestos/faltantes/:id/estado
+ * @desc Actualizar estado de una demanda no satisfecha (Cubierto, Desestimado, Pendiente)
+ * @access Privado
+ */
+router.post('/faltantes/:id/estado', validatePermissions('presupuestos.update'), async (req, res) => {
+    try {
+        await cambiarEstadoFaltanteController(req, res);
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Error del enrutador', message: error.message });
+    }
+});
+
+router.patch('/faltantes/:id/estado', validatePermissions('presupuestos.update'), async (req, res) => {
+    try {
+        await cambiarEstadoFaltanteController(req, res);
     } catch (error) {
         res.status(500).json({ success: false, error: 'Error del enrutador', message: error.message });
     }
@@ -290,6 +353,26 @@ router.get('/clientes/:id_cliente/historial-entregas', validatePermissions('pres
         res.status(500).json({
             success: false,
             error: 'Error interno al obtener historial de entregas',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/clientes/:id_cliente/articulos-habituales
+ * @desc Obtener artículos habituales del cliente (Búnker con frecuencia y última fecha)
+ * @access Privado
+ */
+router.get('/clientes/:id_cliente/articulos-habituales', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log(`🔍 [PRESUPUESTOS] Ruta GET /clientes/${req.params.id_cliente}/articulos-habituales - Obteniendo artículos habituales`);
+
+    try {
+        await obtenerArticulosHabitualesCliente(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta GET /clientes/:id_cliente/articulos-habituales:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener artículos habituales',
             message: error.message
         });
     }
@@ -444,6 +527,25 @@ router.get('/precios', validatePermissions('presupuestos.read'), async (req, res
 });
 
 /**
+ * @route POST /api/presupuestos/auditoria-rentabilidad
+ * @desc Obtener desglose y trazabilidad completa de costos y rentabilidad estimada Búnker
+ * @access Privado
+ */
+router.post('/auditoria-rentabilidad', validatePermissions('presupuestos.read'), async (req, res) => {
+    console.log('🔍 [PRESUPUESTOS] Ruta POST /auditoria-rentabilidad - Generando informe de trazabilidad');
+    try {
+        await obtenerAuditoriaRentabilidadBunker(req, res);
+    } catch (error) {
+        console.error('❌ [PRESUPUESTOS] Error en ruta POST /auditoria-rentabilidad:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al auditar rentabilidad Búnker',
+            message: error.message
+        });
+    }
+});
+
+/**
  * @route GET /api/presupuestos/historial-articulo
  * @desc Obtener historial de compras de un artículo específico por cliente
  * @query cliente_id, articulo_codigo, descripcion
@@ -562,6 +664,343 @@ router.get('/health', (req, res) => {
     });
 });
 
+// ==========================================
+// 🏷️ MOTOR UNIVERSAL DE POLÍTICAS COMERCIALES
+// ==========================================
+const PoliticasDescuentoService = require('../services/politicasDescuentoService');
+
+/**
+ * @route GET /api/presupuestos/listas-precios
+ * @desc Obtener listas de precios disponibles para asociar a políticas comerciales
+ */
+router.get('/listas-precios', async (req, res) => {
+    try {
+        const query = 'SELECT id, nombre, descripcion FROM public.bunker_listas_precios ORDER BY id ASC';
+        const result = await req.db.query(query);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ [LISTAS] Error al obtener listas de precios:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/politicas
+ * @desc Obtener todas las políticas comerciales configuradas con tramos y excepciones
+ */
+router.get('/politicas', async (req, res) => {
+    try {
+        const politicas = await PoliticasDescuentoService.obtenerPoliticas(req.db);
+        res.json({ success: true, data: politicas });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al obtener políticas:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/politicas/cliente/:clienteId
+ * @desc Obtener la política comercial asignada a la lista de un cliente para listas personalizadas
+ */
+router.get('/politicas/cliente/:clienteId', async (req, res) => {
+    try {
+        const info = await PoliticasDescuentoService.obtenerPoliticaPorCliente(req.params.clienteId, req.db);
+        res.json({ success: true, data: info });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al consultar política por cliente:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/portal/info-comercial/:clienteId
+ * @route GET /api/presupuestos/contexto-comercial/:clienteId
+ * @desc Obtener información comercial integral para el Portal B2B: ofertas dinámicas, política de volumen con saldo, formas de pago y asistencia financiera (4 ventanas)
+ * @access Público / Portal B2B
+ */
+const resolverInfoComercialCliente = async (req, res) => {
+    const { clienteId } = req.params;
+    console.log(`🔍 [PORTAL-COMERCIAL] Obteniendo contexto comercial para cliente: ${clienteId}`);
+
+    try {
+        const OfertasDinamicasService = require('../services/ofertasDinamicasService');
+        const salvavidasService = require('../../logistica/services/salvavidasService');
+
+        // 1. Resolver cliente
+        const qCli = `
+            SELECT bc.id as bunker_cliente_id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social,
+                   COALESCE(clp.bunker_lista_precio_id::text, c.lista_precios) as lista_precio_id,
+                   bc.salvavidas_modo, bc.salvavidas_tasa_tem, bc.salvavidas_dias_estandar, bc.salvavidas_dias_cortesia
+            FROM public.bunker_clientes bc
+            LEFT JOIN public.clientes c ON (
+                bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') OR bc.lomas_soft_id = c.cliente_id::text OR bc.id = c.cliente_id
+            )
+            LEFT JOIN public.bunker_cliente_listas_precios clp ON clp.bunker_cliente_id = bc.id
+            WHERE bc.codigo_bunker_cliente = $1 
+               OR bc.lomas_soft_id = $1 
+               OR bc.lomas_soft_id = LPAD($1, 4, '0')
+               OR (CASE WHEN $1 ~ '^[0-9]+$' THEN bc.id = CAST($1 AS integer) ELSE false END)
+            LIMIT 1
+        `;
+        const resCli = await req.db.query(qCli, [clienteId]);
+        const cliente = resCli.rows[0];
+
+        const numClienteId = cliente ? cliente.bunker_cliente_id : null;
+        const numListaId = cliente && cliente.lista_precio_id ? parseInt(cliente.lista_precio_id, 10) : null;
+
+        // 2. Ofertas Dinámicas Activas para este cliente / lista
+        let ofertasAplicables = [];
+        try {
+            const todasOfertas = await OfertasDinamicasService.obtenerOfertas(req.db, true);
+            ofertasAplicables = todasOfertas.filter(ofr => {
+                if (numClienteId && ofr.excepciones && ofr.excepciones.length > 0) {
+                    const exc = ofr.excepciones.find(e => e.cliente_id === numClienteId);
+                    if (exc && exc.tipo_excepcion === 'EXCLUIDO') return false;
+                }
+                if (numListaId && ofr.listas && ofr.listas.length > 0) {
+                    const matchLista = ofr.listas.some(l => l.bunker_lista_precio_id === numListaId);
+                    if (!matchLista) return false;
+                }
+                return true;
+            }).map(o => ({
+                id: o.id,
+                titulo: o.titulo,
+                descripcion: o.descripcion,
+                tipo_beneficio: o.tipo_beneficio,
+                descuento_porcentaje: o.descuento_porcentaje,
+                precio_fijo_oferta: o.precio_fijo_oferta,
+                cuota_disponible: o.cuota_disponible,
+                cuota_total: o.cuota_total,
+                unidad_cuota: o.unidad_cuota,
+                condicion_cierre: o.condicion_cierre,
+                fecha_fin: o.fecha_fin,
+                no_acumulable_con_politica: o.no_acumulable_con_politica,
+                articulos: (o.articulos || []).map(a => ({
+                    articulo_numero: a.articulo_numero,
+                    descripcion: a.descripcion_generada || a.articulo_descripcion || a.descripcion,
+                    kilos_unidad: a.kilos_unidad,
+                    precio_fijo_oferta: a.precio_fijo_oferta
+                }))
+            }));
+        } catch (errOfertas) {
+            console.warn('⚠️ [PORTAL-COMERCIAL] Error al obtener ofertas:', errOfertas.message);
+        }
+
+        // 3. Política Comercial de Bonificación por Volumen (con saldo en tiempo real)
+        let politicaComercial = null;
+        try {
+            if (numClienteId) {
+                const infoPol = await PoliticasDescuentoService.obtenerPoliticaPorCliente(numClienteId, req.db);
+                if (infoPol && infoPol.tiene_politica && infoPol.politica && infoPol.politica.tramos && infoPol.politica.tramos.length > 0) {
+                    politicaComercial = {
+                        id: infoPol.politica.id,
+                        nombre: infoPol.politica.nombre,
+                        descripcion: infoPol.politica.descripcion,
+                        lista_id: infoPol.lista_id,
+                        lista_nombre: infoPol.lista_nombre || 'General',
+                        tipo_calculo: infoPol.politica.tipo_calculo,
+                        aplica_sobre: infoPol.politica.aplica_sobre,
+                        exige_saldo_cero: infoPol.politica.exige_saldo_cero !== false,
+                        tolerancia_saldo: parseFloat(infoPol.politica.tolerancia_saldo) || 150.00,
+                        no_acumulable: infoPol.politica.no_acumulable !== false,
+                        saldo_cuenta_corriente: infoPol.saldo_cuenta_corriente || 0,
+                        tramos: infoPol.politica.tramos || [],
+                        excepcion: infoPol.excepcion
+                    };
+                }
+            } else if (numListaId) {
+                const polDirecta = await PoliticasDescuentoService.obtenerPoliticaPorLista(numListaId, req.db);
+                if (polDirecta && polDirecta.tramos && polDirecta.tramos.length > 0) {
+                    politicaComercial = {
+                        id: polDirecta.id,
+                        nombre: polDirecta.nombre,
+                        descripcion: polDirecta.descripcion,
+                        lista_id: numListaId,
+                        lista_nombre: polDirecta.lista_nombre || 'General',
+                        tipo_calculo: polDirecta.tipo_calculo,
+                        aplica_sobre: polDirecta.aplica_sobre,
+                        exige_saldo_cero: polDirecta.exige_saldo_cero !== false,
+                        tolerancia_saldo: parseFloat(polDirecta.tolerancia_saldo) || 150.00,
+                        no_acumulable: polDirecta.no_acumulable !== false,
+                        saldo_cuenta_corriente: 0,
+                        tramos: polDirecta.tramos || [],
+                        excepcion: null
+                    };
+                }
+            }
+        } catch (errPol) {
+            console.warn('⚠️ [PORTAL-COMERCIAL] Error al obtener política comercial:', errPol.message);
+        }
+
+        // 4. Formas de Pago Oficiales
+        const formasPago = {
+            banco: {
+                nombre: 'Banco Galicia',
+                alias: 'LAMDA.SER.MARTIN'
+            },
+            ensobrado: {
+                titulo: 'Ensobrado (Servicio LAMDA)',
+                canales: [
+                    'Portal de Clientes LAMDA (función Pagos en Efectivo / Ensobrado)',
+                    'Enlace Móvil por WhatsApp (asistente interactivo sin claves para celular)'
+                ],
+                instruccion: 'Anota el monto, el sistema asiste el conteo y arqueo de billetes, se rotula el sobre con el N° asignado (ej: SOB-XXXX), cliente e importe, se cargan 2 fotos (frente y dorso) y al finalizar envía confirmación automática por WhatsApp. Queda listo para entregar al chofer o en depósito.'
+            },
+            cajero: {
+                titulo: 'Cajeros y Terminales Autoservicio Galicia',
+                cuenta: 'Caja de Ahorro 4007844-1 373-4',
+                titular: 'Martin Ignacio Serrano',
+                disponibilidad: 'Lobbies 24 hs habilitados todos los días',
+                sucursales_la_plata: [
+                    'La Plata Centro: Calle 7 N° 875 (e/ 49 y 50) • Calle 13 N° 665 (Plaza Paso) • Av. 7 N° 59 (Plaza Olazábal)',
+                    'Los Hornos / Acceso Sur: Av. 44 N° 1724 (esq. 29)',
+                    'City Bell / Gonnet: Plaza Gral. Belgrano N° 57/63 (City Bell)'
+                ]
+            }
+        };
+
+        // 5. Asistencia Financiera / Intereses (4 Ventanas de Contención Comercial)
+        let politicaIntereses = null;
+        try {
+            const codigoCli = cliente?.codigo_bunker_cliente || clienteId;
+            const reglas = await salvavidasService.resolverReglasFinanciacion(codigoCli, req.db);
+            politicaIntereses = {
+                habilitado: reglas.habilitado !== false,
+                salvavidas_modo: reglas.salvavidas_modo,
+                dias_ventana_estandar: reglas.dias_ventana_estandar || 7,
+                dias_gracia_natural: reglas.dias_gracia_natural || 3,
+                dias_tope_sin_comodin: (reglas.dias_ventana_estandar || 7) + (reglas.dias_gracia_natural || 3),
+                dias_ventana_cortesia: reglas?.dias_ventana_cortesia ?? 7,
+                dias_total_cortesia: (reglas?.dias_ventana_estandar || 7) + (reglas?.dias_ventana_cortesia ?? 7),
+                cupo_cortesias_anual: reglas?.cupo_cortesias_anual ?? 3,
+                cortesias_usadas_anio: reglas?.cortesias_usadas_anio ?? 0,
+                cortesias_disponibles_anio: reglas?.cortesias_disponibles_anio ?? reglas?.cortesias_restantes_anio ?? 3,
+                cortesias_restantes_anio: reglas?.cortesias_disponibles_anio ?? reglas?.cortesias_restantes_anio ?? 3,
+                tasa_servicio_financiero: reglas.tasa_servicio_financiero || 3.0,
+                tasa_tem: reglas.tasa_tem || 3.0,
+                tasa_diaria: reglas.tasa_diaria || 0.001,
+                iva_porcentaje: 21,
+                modo_sistema: reglas.modo_sistema || 'SOMBRA',
+                motivo_excepcion: reglas.motivo_excepcion || null
+            };
+        } catch (eSalv) {
+            politicaIntereses = {
+                habilitado: true,
+                dias_ventana_estandar: 7,
+                dias_ventana_cortesia: reglas?.dias_ventana_cortesia ?? 7,
+                dias_total_cortesia: (reglas?.dias_ventana_estandar || 7) + (reglas?.dias_ventana_cortesia ?? 7),
+                cupo_cortesias_anual: reglas?.cupo_cortesias_anual ?? 3,
+                cortesias_usadas_anio: reglas?.cortesias_usadas_anio ?? 0,
+                cortesias_restantes_anio: reglas?.cortesias_restantes_anio ?? 3,
+                tasa_servicio_financiero: 3.0,
+                tasa_tem: 3.0,
+                tasa_diaria: 0.001,
+                modo_sistema: 'SOMBRA'
+            };
+        }
+
+        res.json({
+            success: true,
+            data: {
+                cliente: cliente ? {
+                    id: cliente.bunker_cliente_id,
+                    codigo_bunker_cliente: cliente.codigo_bunker_cliente,
+                    cliente_nombre: cliente.cliente_nombre,
+                    razon_social: cliente.razon_social,
+                    lista_id: cliente.lista_precio_id
+                } : null,
+                promos: ofertasAplicables,
+                politica_comercial: politicaComercial,
+                formas_pago: formasPago,
+                politica_intereses: politicaIntereses
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ [PORTAL-COMERCIAL] Error al obtener info comercial para ${clienteId}:`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener información comercial',
+            message: error.message
+        });
+    }
+};
+
+router.get('/portal/info-comercial/:clienteId', resolverInfoComercialCliente);
+router.get('/contexto-comercial/:clienteId', resolverInfoComercialCliente);
+
+/**
+ * @route GET /api/presupuestos/politicas/lista/:listaId
+ * @desc Obtener la política comercial activa para una lista de precios
+ */
+router.get('/politicas/lista/:listaId', async (req, res) => {
+    try {
+        const politica = await PoliticasDescuentoService.obtenerPoliticaPorLista(req.params.listaId, req.db);
+        res.json({ success: true, data: politica });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al consultar política por lista:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/politicas/:id
+ * @desc Obtener detalle de una política por ID
+ */
+router.get('/politicas/:id', async (req, res) => {
+    try {
+        const politica = await PoliticasDescuentoService.obtenerPoliticaPorId(req.params.id, req.db);
+        if (!politica) return res.status(404).json({ success: false, error: 'Política no encontrada' });
+        res.json({ success: true, data: politica });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al obtener política por ID:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/politicas
+ * @desc Crear o actualizar una política comercial de forma transaccional
+ */
+router.post('/politicas', async (req, res) => {
+    try {
+        const guardada = await PoliticasDescuentoService.guardarPolitica(req.body, req.db);
+        res.json({ success: true, message: 'Política comercial guardada con éxito', data: guardada });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al guardar política:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route DELETE /api/presupuestos/politicas/:id
+ * @desc Eliminar una política comercial
+ */
+router.delete('/politicas/:id', async (req, res) => {
+    try {
+        const ok = await PoliticasDescuentoService.eliminarPolitica(req.params.id, req.db);
+        if (!ok) return res.status(404).json({ success: false, error: 'Política no encontrada' });
+        res.json({ success: true, message: 'Política eliminada con éxito' });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al eliminar política:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * @route POST /api/presupuestos/politicas/evaluar
+ * @desc Evaluar en tiempo real qué porcentaje y tramo corresponde según cliente, lista y montos
+ */
+router.post('/politicas/evaluar', async (req, res) => {
+    try {
+        const evaluacion = await PoliticasDescuentoService.evaluarDescuento(req.body, req.db);
+        res.json({ success: true, data: evaluacion });
+    } catch (error) {
+        console.error('❌ [POLITICAS] Error al evaluar política:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 /**
  * @route GET /api/presupuestos/:id/detalles
  * @desc Obtener detalles de artículos de un presupuesto
@@ -578,6 +1017,213 @@ router.get('/:id/detalles', validatePermissions('presupuestos.read'), validarIdP
         res.status(500).json({
             success: false,
             error: 'Error interno al obtener detalles del presupuesto',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route GET /api/presupuestos/:id/impresion-extras
+ * @desc Obtener datos complementarios para preimpresión: ofertas activas del cliente, formas de pago y política de intereses
+ * @access Privado
+ */
+router.get('/:id/impresion-extras', validatePermissions('presupuestos.read'), validarIdPresupuesto, async (req, res) => {
+    const { id } = req.params;
+    console.log(`🔍 [PRESUPUESTOS] Ruta GET /:id/impresion-extras - Obteniendo complementos para presupuesto ID: ${id}`);
+
+    try {
+        const OfertasDinamicasService = require('../services/ofertasDinamicasService');
+        const salvavidasService = require('../../logistica/services/salvavidasService');
+
+        // 1. Obtener presupuesto y vinculación de cliente
+        const qPresu = `
+            SELECT p.id, p.id_cliente, bc.id as bunker_cliente_id, bc.codigo_bunker_cliente,
+                   COALESCE(bc.cliente_nombre, c.nombre || ' ' || COALESCE(c.apellido, '')) as cliente_nombre,
+                   COALESCE(clp.bunker_lista_precio_id::text, c.lista_precios) as lista_precio_id
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON (
+                CASE WHEN p.id_cliente ~ '^[0-9]+$' THEN c.cliente_id = CAST(p.id_cliente AS integer) ELSE false END
+            )
+            LEFT JOIN public.bunker_clientes bc ON (
+                (c.cliente_id IS NOT NULL AND (bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') OR bc.lomas_soft_id = c.cliente_id::text OR bc.id = c.cliente_id))
+                OR (p.id_cliente ~ '^[0-9]+$' AND (bc.lomas_soft_id = LPAD(p.id_cliente, 4, '0') OR bc.lomas_soft_id = p.id_cliente))
+                OR bc.codigo_bunker_cliente = p.id_cliente
+            )
+            LEFT JOIN public.bunker_cliente_listas_precios clp ON clp.bunker_cliente_id = bc.id
+            WHERE p.id = $1
+        `;
+        const resPresu = await req.db.query(qPresu, [parseInt(id)]);
+        if (resPresu.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Presupuesto no encontrado' });
+        }
+        const presupuesto = resPresu.rows[0];
+
+        // 2. Ofertas Dinámicas Activas aplicables a este cliente
+        let ofertasAplicables = [];
+        try {
+            const todasOfertas = await OfertasDinamicasService.obtenerOfertas(req.db, true);
+            const numClienteId = presupuesto.bunker_cliente_id || (presupuesto.id_cliente ? parseInt(presupuesto.id_cliente, 10) : null);
+            const numListaId = presupuesto.lista_precio_id ? parseInt(presupuesto.lista_precio_id, 10) : null;
+
+            ofertasAplicables = todasOfertas.filter(ofr => {
+                if (numClienteId && ofr.excepciones && ofr.excepciones.length > 0) {
+                    const exc = ofr.excepciones.find(e => e.cliente_id === numClienteId);
+                    if (exc && exc.tipo_excepcion === 'EXCLUIDO') return false;
+                }
+                if (numListaId && ofr.listas && ofr.listas.length > 0) {
+                    const matchLista = ofr.listas.some(l => l.bunker_lista_precio_id === numListaId);
+                    if (!matchLista) return false;
+                }
+                return true;
+            }).map(o => ({
+                id: o.id,
+                titulo: o.titulo,
+                descripcion: o.descripcion,
+                tipo_beneficio: o.tipo_beneficio,
+                descuento_porcentaje: o.descuento_porcentaje,
+                cuota_disponible: o.cuota_disponible,
+                cuota_total: o.cuota_total,
+                unidad_cuota: o.unidad_cuota,
+                condicion_cierre: o.condicion_cierre,
+                fecha_fin: o.fecha_fin,
+                no_acumulable_con_politica: o.no_acumulable_con_politica,
+                articulos: (o.articulos || []).map(a => ({
+                    articulo_numero: a.articulo_numero,
+                    descripcion: a.descripcion_generada || a.articulo_descripcion || a.descripcion,
+                    kilos_unidad: a.kilos_unidad,
+                    precio_fijo_oferta: a.precio_fijo_oferta
+                }))
+            }));
+        } catch (errOfertas) {
+            console.warn('⚠️ [PRESUPUESTOS] Error al obtener ofertas activas:', errOfertas.message);
+        }
+
+        // 2b. Política Comercial de Bonificación por Volumen (Escala Comercial)
+        let politicaComercial = null;
+        try {
+            const numClienteId = presupuesto.bunker_cliente_id || (presupuesto.id_cliente ? parseInt(presupuesto.id_cliente, 10) : null);
+            const numListaId = presupuesto.lista_precio_id ? parseInt(presupuesto.lista_precio_id, 10) : null;
+            
+            let infoPol = null;
+            if (numClienteId) {
+                infoPol = await PoliticasDescuentoService.obtenerPoliticaPorCliente(numClienteId, req.db);
+            } else if (numListaId) {
+                const polDirecta = await PoliticasDescuentoService.obtenerPoliticaPorLista(numListaId, req.db);
+                if (polDirecta) {
+                    infoPol = {
+                        tiene_politica: true,
+                        lista_id: numListaId,
+                        lista_nombre: polDirecta.lista_nombre,
+                        politica: polDirecta,
+                        excepcion: null
+                    };
+                }
+            }
+
+            if (infoPol && infoPol.tiene_politica && infoPol.politica && infoPol.politica.tramos && infoPol.politica.tramos.length > 0) {
+                politicaComercial = {
+                    id: infoPol.politica.id,
+                    nombre: infoPol.politica.nombre,
+                    descripcion: infoPol.politica.descripcion,
+                    lista_id: infoPol.lista_id,
+                    lista_nombre: infoPol.lista_nombre || 'General',
+                    tipo_calculo: infoPol.politica.tipo_calculo,
+                    aplica_sobre: infoPol.politica.aplica_sobre,
+                    exige_saldo_cero: infoPol.politica.exige_saldo_cero !== false,
+                    tolerancia_saldo: parseFloat(infoPol.politica.tolerancia_saldo) || 150.00,
+                    no_acumulable: infoPol.politica.no_acumulable !== false,
+                    saldo_cuenta_corriente: infoPol.saldo_cuenta_corriente || 0,
+                    tramos: infoPol.politica.tramos || [],
+                    excepcion: infoPol.excepcion
+                };
+            }
+        } catch (errPol) {
+            console.warn('⚠️ [PRESUPUESTOS] Error al obtener política comercial:', errPol.message);
+        }
+
+        // 3. Reglas de Asistencia Financiera (Modo Sombra)
+        let politicaIntereses = null;
+        try {
+            const codigoCli = presupuesto.codigo_bunker_cliente || '';
+            const reglas = await salvavidasService.resolverReglasFinanciacion(codigoCli, req.db);
+            politicaIntereses = {
+                habilitado: reglas.habilitado !== false,
+                salvavidas_modo: reglas.salvavidas_modo,
+                dias_ventana_estandar: reglas.dias_ventana_estandar || 7,
+                dias_gracia_natural: reglas.dias_gracia_natural || 3,
+                dias_tope_sin_comodin: (reglas.dias_ventana_estandar || 7) + (reglas.dias_gracia_natural || 3),
+                dias_ventana_cortesia: reglas?.dias_ventana_cortesia ?? 7,
+                dias_total_cortesia: (reglas?.dias_ventana_estandar || 7) + (reglas?.dias_ventana_cortesia ?? 7),
+                cupo_cortesias_anual: reglas?.cupo_cortesias_anual ?? 3,
+                cortesias_usadas_anio: reglas?.cortesias_usadas_anio ?? 0,
+                cortesias_disponibles_anio: reglas?.cortesias_disponibles_anio ?? reglas?.cortesias_restantes_anio ?? 3,
+                cortesias_restantes_anio: reglas?.cortesias_disponibles_anio ?? reglas?.cortesias_restantes_anio ?? 3,
+                tasa_servicio_financiero: reglas.tasa_servicio_financiero || 3.0,
+                tasa_tem: reglas.tasa_tem || 3.0,
+                tasa_diaria: reglas.tasa_diaria || 0.001,
+                iva_porcentaje: 21,
+                modo_sistema: reglas.modo_sistema || 'SOMBRA',
+                motivo_excepcion: reglas.motivo_excepcion || null
+            };
+        } catch (errSalvavidas) {
+            console.warn('⚠️ [PRESUPUESTOS] Error al resolver reglas financieras:', errSalvavidas.message);
+            politicaIntereses = {
+                habilitado: true,
+                dias_ventana_estandar: 7,
+                dias_ventana_cortesia: reglas?.dias_ventana_cortesia ?? 7,
+                dias_total_cortesia: (reglas?.dias_ventana_estandar || 7) + (reglas?.dias_ventana_cortesia ?? 7),
+                cupo_cortesias_anual: reglas?.cupo_cortesias_anual ?? 3,
+                cortesias_usadas_anio: reglas?.cortesias_usadas_anio ?? 0,
+                cortesias_restantes_anio: reglas?.cortesias_restantes_anio ?? 3,
+                tasa_servicio_financiero: 3.0,
+                tasa_tem: 3.0,
+                tasa_diaria: 0.001,
+                modo_sistema: 'SOMBRA'
+            };
+        }
+
+        // 4. Formas de Pago Oficiales
+        const formasPago = {
+            banco: {
+                nombre: 'Banco Galicia',
+                alias: 'LAMDA.SER.MARTIN'
+            },
+            ensobrado: {
+                titulo: 'Ensobrado',
+                canales: [
+                    'Portal de Clientes LAMDA (función Pagos en Efectivo / Ensobrado)',
+                    'Enlace Móvil por WhatsApp (asistente interactivo sin claves para celular)'
+                ],
+                instruccion: 'Anota el monto, el sistema acompaña el conteo exacto de billetes, se rotula el sobre con el N° asignado (ej: SOB-XXXX), se cargan 2 fotos (frente y dorso) y al finalizar envía confirmación automática por WhatsApp.'
+            },
+            cajero: {
+                titulo: 'Cajero Automático / Terminal Autoservicio Galicia',
+                cuenta: 'Caja de Ahorro Galicia 4007844-1 373-4',
+                titular: 'Martin Ignacio Serrano',
+                disponibilidad: 'Lobbies 24 hs habilitados todos los días',
+                sucursales_la_plata: [
+                    'La Plata Centro: Calle 7 N° 875 (e/ 49 y 50) | Calle 13 N° 665 (Plaza Paso) | Av. 7 N° 59 (Plaza Olazábal)',
+                    'Los Hornos / Acceso Sur: Av. 44 N° 1724 (esq. 29)',
+                    'City Bell / Gonnet / Zona Norte: Plaza Gral. Belgrano N° 57/63 (City Bell)'
+                ]
+            }
+        };
+
+        res.json({
+            success: true,
+            data: {
+                promos: ofertasAplicables,
+                politica_comercial: politicaComercial,
+                formas_pago: formasPago,
+                politica_intereses: politicaIntereses
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ [PRESUPUESTOS] Error en ruta GET /:id/impresion-extras (${id}):`, error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno al obtener complementos de impresión',
             message: error.message
         });
     }
@@ -798,6 +1444,36 @@ router.delete('/:id',
             res.status(500).json({
                 success: false,
                 error: 'Error interno al eliminar presupuesto',
+                message: error.message
+            });
+        }
+    }
+);
+
+/**
+ * @route POST /api/presupuestos/:id/archivar
+ * @desc Archivar presupuesto (ocultar de la vista activa)
+ * @access Privado
+ */
+router.post('/:id/archivar',
+    validatePermissions('presupuestos.delete'),
+    validarIdPresupuesto,
+    async (req, res) => {
+        const { id } = req.params;
+        console.log(`🗂️ [PRESUPUESTOS-WRITE] Ruta POST /:id/archivar - Archivando presupuesto ID: ${id}`);
+
+        try {
+            const query = 'UPDATE public.presupuestos SET archivado = true WHERE id = $1';
+            await req.db.query(query, [id]);
+            res.json({
+                success: true,
+                message: 'Presupuesto archivado correctamente'
+            });
+        } catch (error) {
+            console.error(`❌ [PRESUPUESTOS-WRITE] Error en ruta POST /:id/archivar (${id}):`, error);
+            res.status(500).json({
+                success: false,
+                error: 'Error interno al archivar presupuesto',
                 message: error.message
             });
         }
@@ -1340,6 +2016,237 @@ router.put('/clientes/:clienteId/preferencia-facturacion', validatePermissions('
             error: 'Error interno al actualizar preferencia de facturación',
             message: error.message
         });
+    }
+});
+
+// ==========================================
+// ⚖️ RUTAS PARA SALDO DE INGREDIENTE EN PRESUPUESTOS
+// ==========================================
+
+/**
+ * GET /api/presupuestos/saldo-ingrediente/cable?codigo=...&descripcion=...
+ * Resuelve el "Cable" Artículo <-> Ingrediente y los kilos de la unidad comercial.
+ */
+router.get('/saldo-ingrediente/cable', async (req, res) => {
+    try {
+        const codigo = String(req.query.codigo || '').trim();
+        const descripcion = String(req.query.descripcion || '').trim();
+
+        if (!codigo && !descripcion) {
+            return res.status(400).json({ success: false, error: 'Se requiere codigo o descripcion del artículo' });
+        }
+
+        const artRes = await req.db.query(`
+            SELECT
+                COALESCE(src.articulo_numero, a.numero, ba.articulo_id) AS numero,
+                COALESCE(src.codigo_barras, a.codigo_barras, ba.articulo_id) AS codigo_barras,
+                COALESCE(src.descripcion, a.nombre, ba.descripcion) AS nombre,
+                COALESCE(NULLIF(src.kilos_unidad::numeric, 0), NULLIF(ba.kilos_unidad::numeric, 0)) AS kilos_unidad
+            FROM (SELECT $1::text AS cod, $2::text AS desc_txt) q
+            LEFT JOIN public.stock_real_consolidado src
+                ON src.articulo_numero = q.cod OR src.codigo_barras = q.cod OR LOWER(TRIM(src.descripcion)) = LOWER(q.desc_txt)
+            LEFT JOIN public.articulos a
+                ON a.numero = q.cod OR a.codigo_barras = q.cod OR LOWER(TRIM(a.nombre)) = LOWER(q.desc_txt)
+            LEFT JOIN public.bunker_articulos ba
+                ON ba.articulo_id = q.cod OR LOWER(TRIM(ba.descripcion)) = LOWER(q.desc_txt)
+            LIMIT 1
+        `, [codigo, descripcion]);
+
+        const art = artRes.rows[0] || null;
+        let kilosUnidad = art && Number(art.kilos_unidad) > 0 ? Number(art.kilos_unidad) : null;
+
+        const textoRef = (art?.nombre || descripcion || '');
+        if (!kilosUnidad && textoRef) {
+            const mKg = textoRef.match(/(?:x|\bpor\b|\bde\b|\b)\s*(\d+(?:[.,]\d+)?)\s*(?:kg|kilo|kilos)\b/i);
+            if (mKg) {
+                kilosUnidad = parseFloat(mKg[1].replace(',', '.'));
+            } else {
+                const mGr = textoRef.match(/(?:x|\bpor\b|\bde\b|\b)\s*(\d+(?:[.,]\d+)?)\s*(?:gr|grs|g|gramos)\b/i);
+                if (mGr) {
+                    kilosUnidad = parseFloat(mGr[1].replace(',', '.')) / 1000;
+                }
+            }
+        }
+        if (!kilosUnidad || kilosUnidad <= 0) kilosUnidad = 1;
+
+        const codigosBusqueda = Array.from(new Set([codigo, art?.numero, art?.codigo_barras].filter(Boolean)));
+
+        const ingRes = await req.db.query(`
+            WITH candidatos AS (
+                SELECT ian.ingrediente_id, 'Nutriente directo (Artículo → Ingrediente)' AS origen_cable, 1 AS prioridad
+                FROM public.ingrediente_articulos_nutrientes ian
+                WHERE ian.articulo_numero = ANY($1::text[]) AND COALESCE(ian.activo, true) = true
+                UNION ALL
+                SELECT iba.ingrediente_id, 'Vínculo Búnker (Artículo ↔ Ingrediente)' AS origen_cable, 2 AS prioridad
+                FROM public.ingrediente_bunker_articulos iba
+                WHERE iba.bunker_articulo_id::text = ANY($1::text[])
+                UNION ALL
+                SELECT i.id AS ingrediente_id, 'Artículo vinculado directo' AS origen_cable, 3 AS prioridad
+                FROM public.ingredientes i
+                WHERE i.articulo_vinculado_numero = ANY($1::text[])
+                UNION ALL
+                SELECT ri.ingrediente_id, 'Receta del artículo' AS origen_cable, 4 AS prioridad
+                FROM public.recetas r
+                JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                WHERE r.articulo_numero = ANY($1::text[])
+            ),
+            unicos AS (
+                SELECT DISTINCT ON (ingrediente_id) ingrediente_id, origen_cable, prioridad
+                FROM candidatos
+                ORDER BY ingrediente_id, prioridad ASC
+            )
+            SELECT
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.unidad_medida,
+                COALESCE(i.stock_actual, 0)::numeric(10,3) AS stock_actual,
+                COALESCE(s.nombre, s.descripcion) AS sector_letra,
+                c.nombre AS categoria,
+                u.origen_cable,
+                u.prioridad
+            FROM unicos u
+            JOIN public.ingredientes i ON i.id = u.ingrediente_id
+            LEFT JOIN public.sectores_ingredientes s ON s.id = i.sector_id
+            LEFT JOIN public.categorias_ingredientes c ON c.id = i.categoria_id
+            ORDER BY u.prioridad ASC, i.stock_actual DESC
+        `, [codigosBusqueda]);
+
+        res.json({
+            success: true,
+            articulo: {
+                numero: art?.numero || codigo,
+                codigo_barras: art?.codigo_barras || codigo,
+                nombre: art?.nombre || descripcion,
+                kilos_unidad: kilosUnidad
+            },
+            ingredientes_vinculados: ingRes.rows
+        });
+    } catch (error) {
+        console.error('❌ [SALDO-INGREDIENTE] Error en /saldo-ingrediente/cable:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/presupuestos/saldo-ingrediente/ingredientes
+ * Lista todos los ingredientes activos con su stock actual y sector para el buscador manual / escáner.
+ */
+router.get('/saldo-ingrediente/ingredientes', async (req, res) => {
+    try {
+        const result = await req.db.query(`
+            SELECT
+                i.id,
+                i.codigo,
+                i.nombre,
+                i.unidad_medida,
+                COALESCE(i.stock_actual, 0)::numeric(10,3) AS stock_actual,
+                COALESCE(s.nombre, s.descripcion) AS sector_letra,
+                c.nombre AS categoria,
+                c.nombre AS nombre_categoria
+            FROM public.ingredientes i
+            LEFT JOIN public.sectores_ingredientes s ON s.id = i.sector_id
+            LEFT JOIN public.categorias_ingredientes c ON c.id = i.categoria_id
+            ORDER BY i.nombre ASC
+        `);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ [SALDO-INGREDIENTE] Error en /saldo-ingrediente/ingredientes:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/presupuestos/saldo-ingrediente/etiqueta
+ * Imprime en Zebra la etiqueta del artículo comercial con la aclaración del saldo en KG
+ * utilizando el motor oficial del taller (src/scripts/imprimirEtiqueta.js -> \\localhost\Zebra).
+ */
+router.post('/saldo-ingrediente/etiqueta', async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const { exec } = require('child_process');
+    try {
+        const {
+            articulo_numero,
+            articulo_nombre,
+            nombre,
+            codigo_barras,
+            kilos_saldo,
+            cantidad_equivalente,
+            ingrediente_nombre,
+            cantidad_etiquetas
+        } = req.body || {};
+
+        const nombreArt = String(articulo_nombre || nombre || '').trim();
+        const barArt = String(codigo_barras || articulo_numero || '').trim();
+
+        if (!nombreArt || !barArt) {
+            return res.status(400).json({ success: false, error: 'Faltan datos del artículo para imprimir etiqueta' });
+        }
+
+        const kgNum = Number(kilos_saldo) || 0;
+        const cantNum = Number(cantidad_equivalente) || 0;
+        const kilosPunto = kgNum.toFixed(3).replace(/\.?0+$/, '');
+        const kilosComa = kilosPunto.replace('.', ',');
+        const cantEqComa = cantNum.toFixed(3).replace(/\.?0+$/, '').replace('.', ',');
+
+        // Reemplazar la presentación comercial (ej: "x 5kg") en el nombre de la etiqueta por el peso real ingresado a mano (ej: "x 1,8kg")
+        const regexPresentacion = /(\b(?:x|por)\s*\d+(?:[.,]\d+)?\s*(?:kg|kilo|kilos|gr|grs|g)\.?)/i;
+        let presentacionOriginal = '';
+        let nombreConSaldo = nombreArt;
+        const matchPres = nombreArt.match(regexPresentacion);
+        if (matchPres) {
+            presentacionOriginal = matchPres[1].trim();
+            nombreConSaldo = nombreArt.replace(regexPresentacion, `x ${kilosComa}kg`);
+        } else {
+            nombreConSaldo = `${nombreArt} (${kilosComa}kg)`;
+        }
+
+        const subtLinea = presentacionOriginal
+            ? `SALDO ${kilosComa}kg (de ${presentacionOriginal} = ${cantEqComa}u)`
+            : `SALDO: ${kilosComa} KG (${cantEqComa} u)`;
+
+        const cantCopias = Math.max(1, parseInt(cantidad_etiquetas, 10) || 2);
+        const datosEtiqueta = {
+            articulo: {
+                numero: subtLinea,
+                nombre: nombreConSaldo.substring(0, 65),
+                codigo_barras: barArt
+            },
+            cantidad: cantCopias
+        };
+
+        const scriptPath = path.resolve(__dirname, '../../scripts/imprimirEtiqueta.js');
+        const tempDir = path.resolve(__dirname, '../../app-etiquetas/temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const customTempPath = path.join(tempDir, `temp-data-${uniqueId}.json`);
+        const defaultTempPath = path.join(tempDir, 'temp-data.json');
+        const jsonPayload = JSON.stringify(datosEtiqueta, null, 2);
+
+        fs.writeFileSync(customTempPath, jsonPayload, 'utf8');
+        try { fs.writeFileSync(defaultTempPath, jsonPayload, 'utf8'); } catch (_) {}
+
+        const srcDir = path.resolve(__dirname, '../..');
+        const command = `cd "${srcDir}" && node "${scriptPath}" ${cantCopias} "${customTempPath}"`;
+
+        await new Promise((resolve, reject) => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('❌ [SALDO-INGREDIENTE] Error ejecutando imprimirEtiqueta.js:', error, stderr);
+                    return reject(new Error(stderr || error.message || 'Error al enviar impresión a Zebra'));
+                }
+                resolve(stdout);
+            });
+        });
+
+        res.json({ success: true, message: 'Etiqueta de saldo enviada a Zebra correctamente', datos: datosEtiqueta });
+    } catch (error) {
+        console.error('❌ [SALDO-INGREDIENTE] Error imprimiendo etiqueta:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

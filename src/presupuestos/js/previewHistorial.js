@@ -39,6 +39,7 @@ let datosCliente = null;
 let datosHistorial = null;
 let articulosExcluidos = [];
 let clienteIdActual = null;
+let politicaClienteActual = null;
 
 // ============================================
 // UTILIDADES BÁSICAS
@@ -338,6 +339,29 @@ async function cargarDatos(clienteId, preservarFiltros = false) {
     try {
         clienteIdActual = clienteId;
         const config = leerConfiguracion();
+
+        // ✅ Cargar política comercial del cliente si aplica
+        if (clienteId && String(clienteId) !== '0') {
+            try {
+                const polRes = await fetch(`/api/presupuestos/politicas/cliente/${clienteId}`);
+                if (polRes.ok) {
+                    const polData = await polRes.json();
+                    if (polData.success && polData.data) {
+                        politicaClienteActual = polData.data;
+                        console.log('🏷️ [PREVIEW-HISTORIAL] Política comercial cargada:', politicaClienteActual);
+                    } else {
+                        politicaClienteActual = null;
+                    }
+                } else {
+                    politicaClienteActual = null;
+                }
+            } catch (ePol) {
+                console.warn('⚠️ [PREVIEW-HISTORIAL] No se pudo cargar política comercial del cliente:', ePol);
+                politicaClienteActual = null;
+            }
+        } else {
+            politicaClienteActual = null;
+        }
         
         // ✅ PASO 1: Cargar artículos excluidos SOLO si es modo catálogo
         if (config.tipoInforme === 'catalogo') {
@@ -1504,6 +1528,41 @@ function generarHeaderInforme() {
     
     console.log('📋 [HEADER] Nombre a mostrar:', nombreMostrar);
     
+    let bannerPoliticaHtml = '';
+    if (politicaClienteActual && politicaClienteActual.tiene_politica && !politicaClienteActual.excepcion) {
+        const tramos = politicaClienteActual.politica?.tramos || [];
+        let textoTramos = '';
+        if (tramos.length === 1) {
+            const t = tramos[0];
+            const montoMinFmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(parseFloat(t.monto_minimo));
+            textoTramos = `Superando <strong>${montoMinFmt}</strong> accedés a una <strong>bonificación automática del ${parseFloat(t.descuento_porcentaje).toFixed(1)}%</strong> en tu pedido.`;
+        } else if (tramos.length > 1) {
+            const items = tramos.map(t => {
+                const montoMinFmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(parseFloat(t.monto_minimo));
+                return `A partir de <strong>${montoMinFmt}</strong>: <strong>${parseFloat(t.descuento_porcentaje).toFixed(1)}% OFF</strong>`;
+            }).join(' &nbsp;|&nbsp; ');
+            textoTramos = `Escala por volumen: ${items}`;
+        }
+        
+        if (textoTramos) {
+            bannerPoliticaHtml = `
+                <div style="background: #f0f4ff; border: 1px solid #c7d2fe; border-left: 4px solid #4f46e5; border-radius: 6px; padding: 8px 12px; margin: 10px 0 14px 0;">
+                    <p style="margin: 0; font-size: 0.82em; color: #3730a3; font-weight: 600; line-height: 1.4;">
+                        🎉 <strong>Condición Comercial:</strong> ${textoTramos}
+                    </p>
+                </div>
+            `;
+        }
+    } else {
+        bannerPoliticaHtml = `
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; border-radius: 6px; padding: 8px 12px; margin: 10px 0 14px 0;">
+                <p style="margin: 0; font-size: 0.80em; color: #166534; font-weight: 500; line-height: 1.4;">
+                    💡 <strong>Consulta Comercial:</strong> Consulte por bonificaciones y escalas de descuento comercial por volumen.
+                </p>
+            </div>
+        `;
+    }
+
     return `
         <div class="informe-header">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
@@ -1523,7 +1582,7 @@ function generarHeaderInforme() {
                 Lista personalizada
             </h1>
             
-            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 15px 0;">
+            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; margin: 15px 0 10px 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <p style="font-size: 1.1em; font-weight: 700; color: #2c3e50; margin: 0 0 4px 0;">
@@ -1535,6 +1594,8 @@ function generarHeaderInforme() {
                     </div>
                 </div>
             </div>
+
+            ${bannerPoliticaHtml}
             
             <p style="font-size: 0.8em; color: #95a5a6; text-align: center; margin: 0 0 15px 0; font-style: italic;">
                 Basado en historial de compras

@@ -1,27 +1,18 @@
-const { Client } = require('pg');
-
-const client = new Client({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'etiquetas',
-  password: 'ta3Mionga',
-  port: 5432,
-});
+const { pool } = require('../src/logistica/config/database');
 
 async function main() {
-  await client.connect();
   try {
-    const res = await client.query(`
+    const res = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public';
+      WHERE table_schema = 'public' AND table_name LIKE '%cliente%';
     `);
-    console.log('ALL TABLES:');
-    console.table(res.rows);
+    console.log('📋 Tablas relacionadas con clientes:', res.rows.map(r => r.table_name));
+
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error:', err.message);
   } finally {
-    await client.end();
+    process.exit(0);
   }
 }
 

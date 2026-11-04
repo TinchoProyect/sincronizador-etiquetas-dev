@@ -14,10 +14,14 @@ console.log('══════════════════════�
 const PATHS = {
   pedidos: path.join(__dirname, 'syncB2BPedidos.js'),
   retiros: path.join(__dirname, 'syncB2BRetiros.js'),
+  pagosEfectivo: path.join(__dirname, 'syncB2BPagosEfectivo.js'),
   precios: path.join(__dirname, 'syncB2BPrecios.js'),
   cuentas: path.join(__dirname, 'syncB2BCuentas.js'),
   listas: path.join(__dirname, 'syncB2BClientesListas.js'),
+  habituales: path.join(__dirname, 'syncB2BHabituales.js'),
   estados: path.join(__dirname, 'syncB2BEstados.js'),
+  politicas: path.join(__dirname, 'syncB2BPoliticas.js'),
+  ofertas: path.join(__dirname, 'syncB2BOfertas.js'),
 };
 
 // Helper para correr un script como fork child process (No bloqueante, tolerante a fallos)
@@ -61,6 +65,7 @@ async function executePedidosJob() {
   runningJobs.pedidos = true;
   await runScript('syncB2BPedidos', PATHS.pedidos);
   await runScript('syncB2BRetiros', PATHS.retiros);
+  await runScript('syncB2BPagosEfectivo', PATHS.pagosEfectivo);
   await runScript('syncB2BEstados', PATHS.estados);
   runningJobs.pedidos = false;
 }
@@ -71,10 +76,13 @@ async function executeCatalogJob() {
     return;
   }
   runningJobs.catalog = true;
-  // Corremos secuencialmente los tres actualizadores del catálogo y perfiles
+  // Corremos secuencialmente los actualizadores del catálogo, perfiles y favoritos
   await runScript('syncB2BPrecios', PATHS.precios);
   await runScript('syncB2BCuentas', PATHS.cuentas);
   await runScript('syncB2BClientesListas', PATHS.listas);
+  await runScript('syncB2BHabituales', PATHS.habituales);
+  await runScript('syncB2BPoliticas', PATHS.politicas);
+  await runScript('syncB2BOfertas', PATHS.ofertas);
   runningJobs.catalog = false;
 }
 

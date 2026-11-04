@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuentas Bancarias - Sistema LAMDA</title>
+    <!-- FontAwesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 para alertas premium -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --background: #0f172a;
+            --surface: #1e293b;
+            --surface-hover: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --border: #475569;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        /* Header Premium */
+        .header {
+            background: linear-gradient(135deg, #1e1b4b 0%, #311042 50%, #1e1b4b 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 25px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-title-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-icon {
+            font-size: 32px;
+            color: var(--primary);
+            filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5));
+        }
+
+        .header h1 {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #f8fafc, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-back {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 100%;
+            width: 100%;
+            margin: 30px auto;
+            padding: 0 40px;
+            display: flex;
+            gap: 30px;
+            transition: gap 0.3s ease;
+        }
+
+        .container.sidebar-collapsed {
+            gap: 0;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+            }
+            .container.sidebar-collapsed .sidebar {
+                display: none !important;
+            }
+        }
+
+        /* Left Side: Movements & Filters */
+        .main-content {
+            flex: 1 1 0%;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Right Side: Account Card & Drag&Drop */
+        .sidebar {
+            width: 350px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+            overflow: hidden;
+        }
+
+        .container.sidebar-collapsed .sidebar {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(50px);
+            width: 0;
+            height: 0;
+            padding: 0;
+            margin: 0;
+            flex-shrink: 0;
+        }
+
+        /* Glassmorphism Card para Banco Galicia */
+        .account-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(8px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .account-card::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .bank-badge {
+            background: #ff6a00;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .account-status {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .account-details h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .account-holder {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 15px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 13px;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: var(--text-muted);
+        }
+
+        .detail-value {
+            font-family: monospace;
+            font-weight: 600;
+        }
+
+        /* Visualizador de Saldo */
+        .balance-card {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(30, 41, 59, 0.8) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.05);
+        }
+
+        .balance-card h4 {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .balance-card .amount {
+            font-size: 36px;
+            font-weight: 800;
+            color: #ffffff;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+        }
+
+        .balance-card .updated-at {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        /* Drag & Drop Area */
+        .drag-drop-zone {
+            background: rgba(30, 41, 59, 0.5);
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 30px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .drag-drop-zone:hover, .drag-drop-zone.dragover {
+            background: rgba(139, 92, 246, 0.05);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+        }
+
+        .drag-drop-icon {
+            font-size: 42px;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+
+        .drag-drop-zone:hover .drag-drop-icon {
+            color: var(--primary);
+            transform: translateY(-4px);
+        }
+
+        .drag-drop-text {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .drag-drop-subtext {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Filtros */
+        .filters-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 25px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-grow: 1;
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .filter-group input, .filter-group select {
+            background: var(--background);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .filter-group input:focus, .filter-group select:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-filter-reset {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            align-self: flex-end;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-filter-reset:hover {
+            background: var(--error);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        /* Tabla de Movimientos */
+        .movements-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .movements-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .movements-header h3 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .movements-count {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--primary);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: auto;
+            min-width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            table-layout: fixed;
+        }
+
+        th {
+            background: var(--surface); /* Color sólido para que no trasluzca al hacer scroll */
+            padding: 14px 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            user-select: none;
+        }
+
+        .resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 6px;
+            cursor: col-resize;
+            user-select: none;
+            z-index: 1;
+            transition: background-color 0.2s;
+        }
+
+        .resizer:hover, .resizing {
+            background-color: var(--primary);
+        }
+
+        td {
+            padding: 14px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 14px;
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        tbody tr:hover {
+            background: var(--surface-hover);
+        }
+
+        /* Badges de Operación */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-comision {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+
+        .badge-impuestos {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+        }
+
+        .badge-transferencia {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--info);
+        }
+
+        .badge-deposito {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+
+        .badge-otros {
+            background: rgba(148, 163, 184, 0.15);
+            color: var(--text-muted);
+        }
+
+        /* Valores Financieros */
+        .credit-value {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .debit-value {
+            color: var(--error);
+            font-weight: 600;
+        }
+
+        .balance-value {
+            font-weight: 600;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 60px 40px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            color: var(--text-muted);
+            opacity: 0.5;
+        }
+
+        .empty-state h4 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Loader */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(139, 92, 246, 0.2);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s infinite linear;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Estilos de Pre-Conciliación Humana */
+        .btn-link-action {
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+
+        .btn-link-action:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-1px);
+        }
+
+        .btn-link-action.linked {
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.3);
+            cursor: default;
+        }
+
+        .btn-link-action.linked:hover {
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.3);
+            transform: none;
+        }
+
+        .sug-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .sug-cuit {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .sug-aprendido {
+            background: rgba(14, 165, 233, 0.2);
+            color: #38bdf8;
+            border: 1px solid rgba(14, 165, 233, 0.4);
+        }
+
+        .sug-nombre {
+            background: rgba(139, 92, 246, 0.2);
+            color: #c084fc;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .ia-status-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-left: 8px;
+            display: inline-block;
+        }
+
+        .ia-complete {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .ia-dudoso {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .ia-auto {
+            background: rgba(148, 163, 184, 0.1);
+            color: var(--text-muted);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        /* Estilos de Segmented Control */
+        .segmented-control {
+            display: flex;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 4px;
+        }
+
+        .btn-segment {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+        }
+
+        .btn-segment:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+        }
+
+        .btn-segment.active {
+            background: var(--primary) !important;
+            color: white !important;
+        }
+
+        /* Estilos de Headers de Tabla Interactivos */
+        th.th-interactive {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        th.th-interactive:hover {
+            background-color: var(--surface-hover) !important;
+            color: var(--text) !important;
+        }
+        th.th-interactive.active-debito {
+            background-color: rgba(239, 68, 68, 0.15) !important;
+            color: #ef4444 !important;
+            border-bottom: 2px solid #ef4444 !important;
+        }
+        th.th-interactive.active-credito {
+            background-color: rgba(16, 185, 129, 0.15) !important;
+            color: #10b981 !important;
+            border-bottom: 2px solid #10b981 !important;
+        }
+
+        /* Estilos para Solapas/Tabs */
+        .tabs-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .btn-tab {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-tab:hover {
+            background: rgba(139, 92, 246, 0.1) !important;
+            color: var(--text) !important;
+            border-color: var(--primary) !important;
+            transform: translateY(-2px);
+        }
+
+        .btn-tab.active {
+            background: var(--primary) !important;
+            color: white !important;
+            border-color: var(--primary) !important;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Estilos para Sub-Solapas/Sub-Tabs de Cheques */
+        .sub-tabs-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .btn-sub-tab {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-sub-tab:hover {
+            background: rgba(139, 92, 246, 0.08) !important;
+            color: var(--text) !important;
+            border-color: rgba(139, 92, 246, 0.3) !important;
+        }
+
+        .btn-sub-tab.active {
+            background: rgba(139, 92, 246, 0.15) !important;
+            color: #c084fc !important;
+            border-color: rgba(139, 92, 246, 0.4) !important;
+            box-shadow: 0 2px 10px rgba(139, 92, 246, 0.1);
+        }
+
+        /* Badges de Estado de Cheques */
+        .badge-estado-cartera {
+            background: rgba(16, 185, 129, 0.15) !important;
+            color: var(--success) !important;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-estado-endosado {
+            background: rgba(139, 92, 246, 0.15) !important;
+            color: #c084fc !important;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .badge-estado-acreditado {
+            background: rgba(59, 130, 246, 0.15) !important;
+            color: var(--info) !important;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .badge-estado-devuelto {
+            background: rgba(239, 68, 68, 0.15) !important;
+            color: var(--error) !important;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge-proveedor {
+            background: rgba(245, 158, 11, 0.15) !important;
+            color: #fbbf24 !important;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            text-transform: none !important;
+        }
+
+        /* Pill de Salud IA */
+        .ia-health-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+        }
+
+        .ia-health-pill.online {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.35);
+            color: #34d399;
+        }
+
+        .ia-health-pill.offline {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.35);
+            color: #fbbf24;
+        }
+
+        .ia-pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #94a3b8;
+            display: inline-block;
+        }
+
+        .ia-health-pill.online .ia-pulse-dot {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .ia-health-pill.offline .ia-pulse-dot {
+            background: #f59e0b;
+        }
+    </style>
+</head>
+<body>
+    <!-- Overlay de Carga -->
+    <div id="loader-overlay" class="loader-overlay">
+        <div class="spinner"></div>
+        <h3 id="loader-text">Procesando extracto...</h3>
+    </div>
+
+    <!-- Encabezado -->
+    <header class="header">
+        <div class="header-title-container">
+            <i class="fa-solid fa-building-columns header-icon"></i>
+            <div>
+                <h1>Gestión de Cuentas Bancarias</h1>
+                <p>Monitoreo y conciliación de movimientos de Home Banking</p>
+            </div>
+        </div>
+        <div class="header-actions">
+            <div id="ia-status-indicator" class="ia-health-pill" title="Estado del motor de IA (Gemini)">
+                <span class="ia-pulse-dot"></span>
+                <span id="ia-status-text">Verificando IA...</span>
+            </div>
+            <button class="btn-back" id="btn-toggle-sidebar"><i class="fa-solid fa-columns"></i> <span id="toggle-sidebar-text">Ocultar Panel Lateral</span></button>
+            <button class="btn-back" onclick="window.location.href='http://localhost:3000'"><i class="fa-solid fa-house"></i> Dashboard Principal</button>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="container sidebar-collapsed">
+        <!-- Izquierda: Filtros y Tabla -->
+        <section class="main-content">
+            <!-- Solapas de Selección (Tabs System) -->
+            <div class="tabs-container">
+                <button class="btn-tab active" id="tab-movimientos">
+                    <i class="fa-solid fa-building-columns"></i> Movimientos Bancarios
+                </button>
+                <button class="btn-tab" id="tab-cheques">
+                    <i class="fa-solid fa-money-check"></i> Cheques en Cartera
+                </button>
+            </div>
+
+            <!-- Contenedor Vista Bancaria -->
+            <div id="bancario-view-container" style="display: flex; flex-direction: column; gap: 25px;">
+                <!-- Barra de Filtros -->
+                <div class="filters-container">
+                    <div class="filter-group">
+                        <label for="filtro-busqueda">Buscar Concepto / Ref</label>
+                        <input type="text" id="filtro-busqueda" placeholder="Buscar concepto o comprobante...">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filtro-tipo">Tipo Operación</label>
+                        <select id="filtro-tipo">
+                            <option value="TODOS">Todos los tipos</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Depósito">Depósito</option>
+                            <option value="Impuestos">Impuestos</option>
+                            <option value="Gasto Comisión">Comisión / Gasto</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filtro-cliente">Cliente</label>
+                        <input type="text" id="filtro-cliente" placeholder="Buscar por cliente o CUIT...">
+                    </div>
+                    <div class="filter-group" style="max-width: 150px;">
+                        <label for="filtro-monto">Monto Específico</label>
+                        <input type="number" id="filtro-monto" step="any" placeholder="Ej: 1500.50">
+                    </div>
+                    <div class="filter-group" style="flex-grow: 0; min-width: auto;">
+                        <label>Sentido Financiero</label>
+                        <div class="segmented-control" id="control-sentido">
+                            <button type="button" class="btn-segment active" data-value="TODOS">Todos</button>
+                            <button type="button" class="btn-segment" data-value="DEBITO"><i class="fa-solid fa-minus" style="color: var(--error); margin-right: 6px;"></i>Débitos</button>
+                            <button type="button" class="btn-segment" data-value="CREDITO"><i class="fa-solid fa-plus" style="color: var(--success); margin-right: 6px;"></i>Créditos</button>
+                        </div>
+                    </div>
+                    <button class="btn-filter-reset" id="btn-limpiar-filtros"><i class="fa-solid fa-rotate-left"></i> Limpiar</button>
+                </div>
+
+                <!-- Listado de Movimientos -->
+                <div class="movements-container">
+                    <div class="movements-header">
+                        <h3>🔍 Historial Cronológico de Movimientos</h3>
+                        <span class="movements-count" id="movements-count">0 movimientos</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="movements-table">
+                            <thead>
+                                <tr>
+                                    <th id="th-fecha" class="th-interactive" title="Ordenar por Fecha">Fecha <span class="sort-indicator" style="margin-left: 6px; opacity: 0.3;"><i class="fa-solid fa-sort"></i></span><div class="resizer"></div></th>
+                                    <th>Concepto / Descripción<div class="resizer"></div></th>
+                                    <th>Tipo<div class="resizer"></div></th>
+                                    <th id="th-debito" class="th-interactive" title="Ordenar por Débito">Débito (-) <span class="sort-indicator" style="margin-left: 6px; opacity: 0.3;"><i class="fa-solid fa-sort"></i></span><div class="resizer"></div></th>
+                                    <th id="th-credito" class="th-interactive" title="Ordenar por Crédito">Crédito (+) <span class="sort-indicator" style="margin-left: 6px; opacity: 0.3;"><i class="fa-solid fa-sort"></i></span><div class="resizer"></div></th>
+                                    <th>Referencia<div class="resizer"></div></th>
+                                    <th>Cliente / Conciliación<div class="resizer"></div></th>
+                                    <th>Saldo Resultante<div class="resizer"></div></th>
+                                </tr>
+                            </thead>
+                            <tbody id="movements-tbody">
+                                <!-- Inyectado dinámicamente -->
+                            </tbody>
+                        </table>
+                        <!-- Empty State -->
+                        <div id="empty-state" class="empty-state" style="display: none;">
+                            <i class="fa-solid fa-folder-open empty-state-icon"></i>
+                            <h4>Sin movimientos</h4>
+                            <p>No se encontraron movimientos registrados para esta cuenta que coincidan con los filtros.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contenedor Vista Cheques -->
+            <div id="cheques-view-container" style="display: none; flex-direction: column; gap: 25px;">
+                <!-- Sub-Solapas de Estado de Cheque -->
+                <div class="sub-tabs-container">
+                    <button class="btn-sub-tab active" id="sub-tab-cartera" data-estado="EN_CARTERA">
+                        <i class="fa-solid fa-briefcase"></i> En Cartera
+                    </button>
+                    <button class="btn-sub-tab" id="sub-tab-endosados" data-estado="ENDOSADO">
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i> Endosados
+                    </button>
+                    <button class="btn-sub-tab" id="sub-tab-historico" data-estado="TODOS">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Histórico Completo
+                    </button>
+                </div>
+
+                <!-- Barra de Filtros Cheques -->
+                <div class="filters-container">
+                    <div class="filter-group">
+                        <label for="filtro-cheque-busqueda">Buscar Cheque / Emisor / Banco</label>
+                        <input type="text" id="filtro-cheque-busqueda" placeholder="Buscar por número, librador, banco...">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filtro-cheque-estado">Estado de Vinculación</label>
+                        <select id="filtro-cheque-estado">
+                            <option value="TODOS">Todos</option>
+                            <option value="DISPONIBLES">Disponibles para Vincular</option>
+                            <option value="VINCULADOS">Vinculados</option>
+                        </select>
+                    </div>
+                    <button class="btn-filter-reset" id="btn-limpiar-filtros-cheques"><i class="fa-solid fa-rotate-left"></i> Limpiar</button>
+                </div>
+
+                <!-- Listado de Cheques -->
+                <div class="movements-container">
+                    <div class="movements-header">
+                        <h3>📂 Cheques en Cartera (Online Supabase)</h3>
+                        <span class="movements-count" id="cheques-count">0 cheques</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="cheques-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 110px;">Fecha Pago<div class="resizer"></div></th>
+                                    <th style="width: 110px;">Nro. Cheque<div class="resizer"></div></th>
+                                    <th style="width: 120px;">Estado<div class="resizer"></div></th>
+                                    <th style="width: 180px;">Banco Emisor<div class="resizer"></div></th>
+                                    <th style="width: 120px; text-align: right;">Importe<div class="resizer"></div></th>
+                                    <th style="width: 220px;">Librador / Razón Social<div class="resizer"></div></th>
+                                    <th style="width: 180px;">Endosado a<div class="resizer"></div></th>
+                                    <th>Cliente / Vinculación<div class="resizer"></div></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cheques-tbody">
+                                <!-- Inyectado dinámicamente -->
+                            </tbody>
+                        </table>
+                        <!-- Empty State para Cheques -->
+                        <div id="empty-state-cheques" class="empty-state" style="display: none;">
+                            <i class="fa-solid fa-money-check empty-state-icon"></i>
+                            <h4>Sin cheques en cartera</h4>
+                            <p>No se encontraron cheques registrados en cartera que coincidan con los filtros.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Derecha: Sidebar (Detalles Cuenta, Saldo, Ingesta / Cheques Info) -->
+        <aside class="sidebar">
+            <!-- Secciones del Sidebar Bancario -->
+            <div id="sidebar-seccion-bancaria" style="display: flex; flex-direction: column; gap: 25px; width: 100%;">
+                <!-- Tarjeta de Saldo Consolidado -->
+                <div class="balance-card">
+                    <h4>Saldo Consolidado</h4>
+                    <div class="amount" id="balance-amount">$ 0,00</div>
+                    <div class="updated-at" id="balance-updated-at">Actualizado: --/--/---- --:--</div>
+                </div>
+
+                <!-- Ficha Detallada de Cuenta -->
+                <div class="account-card" id="account-card-container">
+                    <div class="card-header">
+                        <span class="bank-badge">Galicia</span>
+                        <span class="account-status"><i class="fa-solid fa-circle-check"></i> Activa</span>
+                    </div>
+                    <div class="account-details">
+                        <h2 id="card-banco-nombre">Cargando cuenta...</h2>
+                        <p class="account-holder" id="card-titular-nombre">Titular: --</p>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Tipo Cuenta</span>
+                        <span class="detail-value" id="card-tipo-cuenta">--</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Número Cuenta</span>
+                        <span class="detail-value" id="card-nro-cuenta">--</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">CBU</span>
+                        <span class="detail-value" id="card-cbu">--</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Alias CBU</span>
+                        <span class="detail-value" id="card-alias">--</span>
+                    </div>
+                </div>
+
+                <!-- Área de Ingesta Drag & Drop -->
+                <div class="drag-drop-zone" id="drag-drop-zone">
+                    <i class="fa-solid fa-file-excel drag-drop-icon"></i>
+                    <div class="drag-drop-text">Arrastra tu extracto Excel aquí</div>
+                    <div class="drag-drop-subtext">o haz clic para explorar en tu equipo</div>
+                    <input type="file" id="file-input" accept=".xlsx, .xls" style="display: none;">
+                </div>
+            </div>
+
+            <!-- Secciones del Sidebar Cheques -->
+            <div id="sidebar-seccion-cheques" style="display: none; flex-direction: column; gap: 25px; width: 100%;">
+                <!-- Tarjeta de Importe Consolidado en Cartera -->
+                <div class="balance-card" style="border-color: rgba(16, 185, 129, 0.3); background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(30, 41, 59, 0.8) 100%);">
+                    <h4>Total en Cartera</h4>
+                    <div class="amount" id="cheques-total-amount" style="text-shadow: 0 0 15px rgba(16, 185, 129, 0.1);">$ 0,00</div>
+                    <div class="updated-at" id="cheques-total-count">0 cheques activos</div>
+                </div>
+                
+                <div class="account-card" style="border-color: rgba(59, 130, 246, 0.3); background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);">
+                    <div class="card-header">
+                        <span class="bank-badge" style="background: var(--primary);">Cartera</span>
+                        <span class="account-status" style="color: var(--info);"><i class="fa-solid fa-server"></i> Supabase</span>
+                    </div>
+                    <div class="account-details">
+                        <h2>Cheques Disponibles</h2>
+                        <p class="account-holder">Conexión en Tiempo Real</p>
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 10px;">
+                        Los cheques listados provienen directamente de la cartera centralizada en Supabase.
+                    </p>
+                    <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 8px;">
+                        Al vincular un cheque a un cliente, se generará de forma automática un crédito a favor en su cuenta corriente comercial.
+                    </p>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Script de lógica de negocio -->
+    <script src="cuentas-bancarias.js?v=2.2"></script>
+</body>
+</html>

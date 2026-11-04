@@ -7,8 +7,9 @@ const app = express();
 // Habilitar CORS con las opciones configuradas
 app.use(cors(corsOptions));
 
-// Middleware para procesar JSON
-app.use(express.json());
+// Middleware para procesar JSON (límite ampliado para catálogos y PDFs)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Rutas
 app.use('/api/etiquetas', require('./routes/etiquetas'));

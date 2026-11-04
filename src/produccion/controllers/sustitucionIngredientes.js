@@ -37,13 +37,27 @@ async function obtenerIngredientesConStock(carroId) {
 }
 
 /**
+ * Normaliza la unidad de medida para comparaciones robustas
+ * @param {string} u - Unidad de medida
+ * @returns {string} Unidad normalizada
+ */
+function normalizarUnidad(u) {
+    const val = (u || '').toString().trim().toLowerCase();
+    if (val === 'kg' || val === 'kilos' || val === 'kilo') return 'kilo';
+    if (val === 'g' || val === 'gr' || val === 'gramo' || val === 'gramos') return 'gramos';
+    if (val === 'u' || val === 'un' || val === 'unidad' || val === 'unidades') return 'unidad';
+    return val;
+}
+
+/**
  * Valida que la sustitución sea posible
  * @param {number} ingredienteOrigenId - ID del ingrediente origen
  * @param {number} ingredienteDestinoId - ID del ingrediente destino
  * @param {number} cantidad - Cantidad a sustituir
+ * @param {Object} [db] - Conexión o pool de BD opcional
  * @returns {Promise<Object>} Resultado de la validación
  */
-async function validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, cantidad) {
+async function validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, cantidad, db = pool) {
     try {
         // Obtener información de ambos ingredientes
         const query = `
@@ -56,7 +70,7 @@ async function validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, can
             WHERE id IN ($1, $2)
         `;
 
-        const result = await pool.query(query, [ingredienteOrigenId, ingredienteDestinoId]);
+        const result = await db.query(query, [ingredienteOrigenId, ingredienteDestinoId]);
 
         if (result.rows.length !== 2) {
             throw new Error('Uno o ambos ingredientes no existen');
@@ -65,25 +79,28 @@ async function validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, can
         const ingredienteOrigen = result.rows.find(i => i.id === ingredienteOrigenId);
         const ingredienteDestino = result.rows.find(i => i.id === ingredienteDestinoId);
 
-        // Validación 1: Misma unidad de medida
-        if (ingredienteOrigen.unidad_medida !== ingredienteDestino.unidad_medida) {
+        // Validación 1: Misma unidad de medida normalizada
+        if (normalizarUnidad(ingredienteOrigen.unidad_medida) !== normalizarUnidad(ingredienteDestino.unidad_medida)) {
             throw new Error(
                 `Los ingredientes deben tener la misma unidad de medida. ` +
                 `Origen: ${ingredienteOrigen.unidad_medida}, Destino: ${ingredienteDestino.unidad_medida}`
             );
         }
 
+        const stockOrigen = parseFloat(ingredienteOrigen.stock_actual) || 0;
+        const cantidadNumerica = parseFloat(cantidad) || 0;
+
         // Validación 2: Stock suficiente en origen
-        if (ingredienteOrigen.stock_actual < cantidad) {
+        if (stockOrigen < cantidadNumerica) {
             throw new Error(
                 `Stock insuficiente en "${ingredienteOrigen.nombre}". ` +
-                `Disponible: ${ingredienteOrigen.stock_actual.toFixed(2)} ${ingredienteOrigen.unidad_medida}, ` +
-                `Solicitado: ${cantidad.toFixed(2)} ${ingredienteOrigen.unidad_medida}`
+                `Disponible: ${stockOrigen.toFixed(2)} ${ingredienteOrigen.unidad_medida}, ` +
+                `Solicitado: ${cantidadNumerica.toFixed(2)} ${ingredienteOrigen.unidad_medida}`
             );
         }
 
         // Validación 3: Cantidad válida
-        if (cantidad <= 0) {
+        if (cantidadNumerica <= 0) {
             throw new Error('La cantidad debe ser mayor a 0');
         }
 
@@ -136,7 +153,7 @@ async function sustituirIngrediente(datos) {
         await client.query('BEGIN');
 
         // Validar que la sustitución sea posible
-        const validacion = await validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, cantidad);
+        const validacion = await validarSustitucion(ingredienteOrigenId, ingredienteDestinoId, cantidad, client);
         
         if (!validacion.valido) {
             throw new Error('La sustitución no es válida');
@@ -209,5 +226,6 @@ async function sustituirIngrediente(datos) {
 module.exports = {
     obtenerIngredientesConStock,
     sustituirIngrediente,
-    validarSustitucion
+    validarSustitucion,
+    normalizarUnidad
 };

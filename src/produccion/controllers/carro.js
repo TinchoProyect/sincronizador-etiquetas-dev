@@ -1,26 +1,91 @@
 const pool = require('../config/database');
 
 /**
+ * Determina si un artículo interno pertenece a la Línea de Negocio 3 (Artículo Puente / Mix a Granel)
+ * o a la Línea de Negocio 2 (Fraccionado Comercial).
+ */
+async function determinarLineaNegocioArticuloInterno(articuloNumero, dbConnection = null) {
+    try {
+        const db = dbConnection || pool;
+        const query = `
+            SELECT 
+                a.numero,
+                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, '') as descripcion,
+                ba.familia_id,
+                EXISTS (
+                    SELECT 1 FROM public.recetas r2
+                    JOIN public.receta_ingredientes ri2 ON ri2.receta_id = r2.id
+                    JOIN public.ingrediente_composicion ic ON ic.mix_id = ri2.ingrediente_id
+                    WHERE r2.articulo_numero = a.numero
+                ) as tiene_ingrediente_compuesto,
+                EXISTS (
+                    SELECT 1 FROM public.recetas r3
+                    WHERE r3.articulo_sugerido_numero = a.numero
+                ) as es_articulo_sugerido
+            FROM public.articulos a
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
+            WHERE a.numero = $1
+            LIMIT 1
+        `;
+        const res = await db.query(query, [articuloNumero]);
+        if (res.rows.length === 0) return 2;
+        const row = res.rows[0];
+        const descUp = (row.descripcion || '').toUpperCase();
+        if (
+            row.es_articulo_sugerido === true ||
+            row.tiene_ingrediente_compuesto === true ||
+            descUp.includes('PROD AP INTERNO') ||
+            descUp.startsWith('MEZCLA ') ||
+            (Number(row.familia_id) === 42 && !descUp.includes('PROD AP EXT'))
+        ) {
+            return 3;
+        }
+        return 2;
+    } catch (e) {
+        console.warn('No se pudo determinar línea de negocio del artículo interno:', e.message);
+        return 2;
+    }
+}
+
+function obtenerNombreLineaNegocio(lineaNum) {
+    if (lineaNum === 2) return 'Producción de Fracciones';
+    if (lineaNum === 3) return 'Producción de Artículos Puente (Mixes)';
+    if (lineaNum === 4) return 'Producción de Tostadero';
+    if (lineaNum === 5) return 'Producción de Barritas';
+    if (lineaNum === 6) return 'Producción de Granolas';
+    return null;
+}
+
+/**
  * Crea un nuevo carro de producción para el usuario especificado
  * @param {number} usuarioId - ID del usuario que crea el carro
  * @param {boolean} enAuditoria - Indica si el carro está en auditoría
  * @returns {Promise<number>} ID del carro creado
  */
-async function crearCarro(usuarioId, enAuditoria = true, tipoCarro = 'interna') {
+async function crearCarro(usuarioId, enAuditoria = true, tipoCarro = 'interna', lineaNegocio = null) {
     try {
+        let lineaNum = null;
+        let lineaNom = null;
+        if (lineaNegocio) {
+            lineaNum = parseInt(lineaNegocio, 10);
+            lineaNom = obtenerNombreLineaNegocio(lineaNum);
+        }
+
         const query = `
             INSERT INTO carros_produccion (
                 usuario_id, 
                 fecha_inicio, 
                 en_auditoria,
                 fecha_preparado,
-                tipo_carro
+                tipo_carro,
+                linea_negocio,
+                nombre_linea_negocio
             )
-            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL, $3)
+            VALUES ($1, CURRENT_TIMESTAMP, $2, NULL, $3, $4, $5)
             RETURNING id
         `;
         
-        const result = await pool.query(query, [usuarioId, enAuditoria, tipoCarro]);
+        const result = await pool.query(query, [usuarioId, enAuditoria, tipoCarro, lineaNum, lineaNom]);
         return result.rows[0].id;
     } catch (error) {
         console.error('Error al crear carro de producción:', error);
@@ -78,6 +143,25 @@ async function agregarArticulo(carroId, articuloNumero, descripcion, cantidad) {
         `;
         
         await pool.query(query, [carroId, articuloNumero, descripcion, cantidad]);
+
+        // Si el carro es interno y aún no tiene linea_negocio asignada, inferirla automáticamente del primer artículo
+        const carroRes = await pool.query(`
+            SELECT tipo_carro, linea_negocio
+            FROM carros_produccion
+            WHERE id = $1
+        `, [carroId]);
+        if (carroRes.rows.length > 0) {
+            const cRow = carroRes.rows[0];
+            if ((cRow.tipo_carro || 'interna') === 'interna' && !cRow.linea_negocio) {
+                const lineaInferida = await determinarLineaNegocioArticuloInterno(articuloNumero, pool);
+                const nombreInferido = obtenerNombreLineaNegocio(lineaInferida);
+                await pool.query(`
+                    UPDATE carros_produccion
+                    SET linea_negocio = $1, nombre_linea_negocio = $2
+                    WHERE id = $3
+                `, [lineaInferida, nombreInferido, carroId]);
+            }
+        }
     } catch (error) {
         console.error('Error al agregar artículo al carro:', error);
         throw error;
@@ -134,6 +218,8 @@ async function obtenerCarrosDeUsuario(usuarioId) {
                 cp.fecha_inicio,
                 cp.en_auditoria,
                 cp.tipo_carro,
+                cp.linea_negocio,
+                cp.nombre_linea_negocio,
                 cp.fecha_preparado,
                 cp.fecha_confirmacion,
                 (SELECT COUNT(*) FROM carros_articulos ca WHERE ca.carro_id = cp.id) as total_articulos

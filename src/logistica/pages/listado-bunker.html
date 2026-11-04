@@ -108,7 +108,7 @@
             display: block !important;
             overflow-y: auto !important;
             height: calc(100vh - 80px) !important;
-            padding: 20px 40px !important;
+            padding: 20px 40px 450px 40px !important;
             max-width: 100% !important;
         }
         .tabla-financiera {
@@ -303,6 +303,7 @@
         #tabla-bunker.hide-col-10 th:nth-child(12), #tabla-bunker.hide-col-10 tbody tr:not(.expandable-row) > td:nth-child(12) { display: none !important; }
         #tabla-bunker.hide-col-11 th:nth-child(13), #tabla-bunker.hide-col-11 tbody tr:not(.expandable-row) > td:nth-child(13) { display: none !important; }
         #tabla-bunker.hide-col-12 th:nth-child(14), #tabla-bunker.hide-col-12 tbody tr:not(.expandable-row) > td:nth-child(14) { display: none !important; }
+        #tabla-bunker.hide-col-13 th:nth-child(15), #tabla-bunker.hide-col-13 tbody tr:not(.expandable-row) > td:nth-child(15) { display: none !important; }
 
         /* Excel-like Resizable Columns */
         #tabla-bunker th {
@@ -418,72 +419,659 @@
             background-color: #faf5ff !important;
             filter: brightness(1.02);
         }
+
+        /* Header Navigation Button Pill Styles (v5.92) */
+        .header-btn-primary {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid #10b981;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #ffffff !important;
+            font-size: 0.84em;
+            font-weight: 700;
+            cursor: pointer !important;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.25);
+            text-decoration: none;
+        }
+        .header-btn-primary:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            border-color: #047857;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.35);
+            cursor: pointer !important;
+        }
+        .header-btn-secondary {
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid #475569;
+            background: #334155;
+            color: #f8fafc !important;
+            font-size: 0.84em;
+            font-weight: 600;
+            cursor: pointer !important;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease-in-out;
+            text-decoration: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .header-btn-secondary:hover {
+            background: #475569;
+            border-color: #64748b;
+            color: #ffffff !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+            cursor: pointer !important;
+        }
+        .header-btn-ghost {
+            padding: 8px 14px;
+            border-radius: 20px;
+            border: 1px solid #334155;
+            background: transparent;
+            color: #94a3b8 !important;
+            font-size: 0.84em;
+            font-weight: 600;
+            cursor: pointer !important;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease-in-out;
+            text-decoration: none;
+        }
+        .header-btn-ghost:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #f1f5f9 !important;
+            border-color: #475569;
+            transform: translateY(-1px);
+            cursor: pointer !important;
+        }
+        .header-group-divider {
+            height: 24px;
+            width: 1px;
+            background-color: #334155;
+            margin: 0 6px;
+        }
+        /* =========================================================
+           BOTÓN Y POPOVER MODERNO DE CATÁLOGOS COMERCIALES (LISTAS)
+           ========================================================= */
+        .btn-catalogo-listas {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 5px 10px;
+            border-radius: 18px;
+            font-size: 0.8em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            user-select: none;
+            white-space: nowrap;
+            outline: none;
+            line-height: 1.2;
+        }
+        .btn-catalogo-listas.estado-activo {
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #86efac;
+            box-shadow: 0 1px 2px rgba(22, 163, 74, 0.08);
+        }
+        .btn-catalogo-listas.estado-activo:hover {
+            background: #dcfce7;
+            border-color: #4ade80;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(22, 163, 74, 0.16);
+        }
+        .btn-catalogo-listas.estado-parcial {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fcd34d;
+            box-shadow: 0 1px 2px rgba(217, 119, 6, 0.1);
+        }
+        .btn-catalogo-listas.estado-parcial:hover {
+            background: #fef3c7;
+            border-color: #f59e0b;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(217, 119, 6, 0.18);
+        }
+        .btn-catalogo-listas.estado-inactivo {
+            background: #f8fafc;
+            color: #64748b;
+            border: 1px dashed #cbd5e1;
+        }
+        .btn-catalogo-listas.estado-inactivo:hover {
+            background: #f1f5f9;
+            color: #334155;
+            border-style: solid;
+            border-color: #94a3b8;
+            transform: translateY(-1px);
+        }
+        .btn-catalogo-listas.popover-abierto {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
+            border-color: #3b82f6 !important;
+            border-style: solid !important;
+        }
+        .btn-catalogo-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .btn-catalogo-listas.estado-activo .btn-catalogo-dot {
+            background: #16a34a;
+            box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+        }
+        .btn-catalogo-listas.estado-parcial .btn-catalogo-dot {
+            background: #f59e0b;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+        }
+        .btn-catalogo-listas.estado-inactivo .btn-catalogo-dot {
+            background: #94a3b8;
+        }
+        .btn-catalogo-count {
+            font-size: 0.85em;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 800;
+            letter-spacing: -0.2px;
+        }
+        .btn-catalogo-listas.estado-activo .btn-catalogo-count {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .btn-catalogo-listas.estado-parcial .btn-catalogo-count {
+            background: #fde68a;
+            color: #92400e;
+        }
+        .btn-catalogo-listas.estado-inactivo .btn-catalogo-count {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        /* Radar Auditoría LDN 1 (Bulto Cerrado Directo: Stock vs Ofertas) */
+        .bunker-ldn1-radar-bar {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .btn-radar-ldn1 {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 13px;
+            border-radius: 20px;
+            font-size: 0.82em;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.18s ease;
+            border: 1.5px solid #cbd5e1;
+            background: #f8fafc;
+            color: #334155;
+            outline: none;
+        }
+        .btn-radar-ldn1:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+        }
+        .btn-radar-ldn1 .radar-badge {
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-size: 0.9em;
+            font-weight: 800;
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+        .btn-radar-ldn1.radar-todos.active {
+            background: #1e293b;
+            color: #ffffff;
+            border-color: #0f172a;
+            box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22);
+        }
+        .btn-radar-ldn1.radar-todos.active .radar-badge {
+            background: #334155;
+            color: #f8fafc;
+        }
+        .btn-radar-ldn1.radar-alerta {
+            background: #fff1f2;
+            color: #be123c;
+            border-color: #fda4af;
+        }
+        .btn-radar-ldn1.radar-alerta .radar-badge {
+            background: #ffe4e6;
+            color: #9f1239;
+        }
+        .btn-radar-ldn1.radar-alerta.active {
+            background: #e11d48;
+            color: #ffffff;
+            border-color: #be123c;
+            box-shadow: 0 3px 10px rgba(225, 29, 72, 0.28);
+        }
+        .btn-radar-ldn1.radar-alerta.active .radar-badge {
+            background: #9f1239;
+            color: #ffffff;
+        }
+        .btn-radar-ldn1.radar-oportunidad {
+            background: #fffbeb;
+            color: #b45309;
+            border-color: #fcd34d;
+        }
+        .btn-radar-ldn1.radar-oportunidad .radar-badge {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .btn-radar-ldn1.radar-oportunidad.active {
+            background: #d97706;
+            color: #ffffff;
+            border-color: #b45309;
+            box-shadow: 0 3px 10px rgba(217, 119, 6, 0.28);
+        }
+        .btn-radar-ldn1.radar-oportunidad.active .radar-badge {
+            background: #92400e;
+            color: #ffffff;
+        }
+        .btn-radar-ldn1.radar-legacy {
+            background: #f5f3ff;
+            color: #6d28d9;
+            border-color: #c4b5fd;
+        }
+        .btn-radar-ldn1.radar-legacy .radar-badge {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+        .btn-radar-ldn1.radar-legacy.active {
+            background: #7c3aed;
+            color: #ffffff;
+            border-color: #6d28d9;
+            box-shadow: 0 3px 10px rgba(124, 58, 237, 0.28);
+        }
+        .btn-radar-ldn1.radar-legacy.active .radar-badge {
+            background: #5b21b6;
+            color: #ffffff;
+        }
+        .btn-subfiltro-legacy {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 0.78em;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid #ddd6fe;
+            background: #ffffff;
+            color: #5b21b6;
+            transition: all 0.15s ease;
+        }
+        .btn-subfiltro-legacy:hover {
+            background: #f5f3ff;
+        }
+        .btn-subfiltro-legacy.active {
+            background: #5b21b6;
+            color: #ffffff;
+            border-color: #4c1d95;
+        }
+
+        @keyframes bunkerPopoverFadeIn {
+            from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        #bunker-listas-popover {
+            position: fixed;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            box-shadow: 0 14px 32px -4px rgba(15, 23, 42, 0.22), 0 4px 12px -2px rgba(15, 23, 42, 0.1);
+            z-index: 2500;
+            width: 315px;
+            font-family: inherit;
+            overflow: hidden;
+            animation: bunkerPopoverFadeIn 0.14s ease-out;
+        }
+        .bunker-popover-header {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+            user-select: none;
+        }
+        .bunker-popover-actions {
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 7px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+        }
+        .bunker-popover-quick-btn {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 5px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .bunker-popover-quick-btn.activar:hover {
+            background: #f0fdf4;
+            color: #15803d;
+            border-color: #86efac;
+        }
+        .bunker-popover-quick-btn.desactivar:hover {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-color: #fca5a5;
+        }
+        .bunker-popover-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 8px 10px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .bunker-popover-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 10px;
+            border-radius: 8px;
+            border: 1px solid #f1f5f9;
+            background: #ffffff;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+        }
+        .bunker-popover-row:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+        .bunker-popover-row.is-focused-list {
+            background: #f0f9ff;
+            border-color: #bae6fd;
+        }
+        .bunker-popover-row.is-focused-list:hover {
+            background: #e0f2fe;
+            border-color: #7dd3fc;
+        }
+        .bunker-popover-row.is-off .bunker-popover-lista-nombre {
+            color: #94a3b8;
+            text-decoration: line-through;
+        }
+        .bunker-switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        .bunker-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+        .bunker-switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 20px;
+        }
+        .bunker-switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .bunker-switch input:checked + .bunker-switch-slider {
+            background-color: #10b981;
+        }
+        .bunker-switch input:checked + .bunker-switch-slider:before {
+            transform: translateX(16px);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
-        <header class="header" style="background-color: #2c3e50; color: white;">
-            <div class="header-left">
-                <h1>🛡️ Gestión de Artículos</h1>
-                <span class="subtitle" style="color: #cbd5e1;">DataGrid Base</span>
+        <header class="header" style="background: #1e293b; color: white; padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div class="header-left" style="display: flex; align-items: center; gap: 12px;">
+                <h1 style="margin: 0; font-size: 1.35em; font-weight: 800; color: #f8fafc; letter-spacing: -0.5px;">🛡️ Gestión de Artículos</h1>
+                <span class="subtitle" style="color: #94a3b8; font-size: 0.82em; background: #0f172a; padding: 3px 10px; border-radius: 12px; font-weight: 600;">DataGrid Base</span>
             </div>
-            <div class="header-right">
-                <button class="btn-secondary" onclick="window.abrirPrevisualizadorPDFGlobal()" style="margin-right: 15px; background: #8e4785; color: white; border: 1px solid #703368; font-weight: bold; box-shadow: 0 4px 6px rgba(142,71,133,0.25);" title="Exportar Lista Comercial Completa en PDF">
-                    🖨️ Exportar Lista Comercial PDF
-                </button>
-                <button class="btn-secondary" onclick="crearNuevaListaDesdeUI(false)" style="margin-right: 15px; background: #10b981; color: white; border: 1px solid #047857;">
-                    ➕ Nueva Lista
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='diccionario-bunker.html'" title="Nomenclaturas y Abreviaturas" style="margin-right: 15px; background: #3b82f6; color: #fff; border: 1px solid #1e40af;">
-                    📚 Gestor de Diccionario
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='bunker.html'" style="margin-right: 15px; background: #eab308; color: #000;">
-                    + Nuevo Artículo Búnker
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='listado-clientes.html'" title="Gestión de Clientes" style="margin-right: 15px; background: #6b21a8; color: #fff; border: 1px solid #581c87;">
-                    👥 Gestión de Clientes
-                </button>
-                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'">
-                    ← Volver al Menú Principal
+            
+            <div class="header-right" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <!-- Grupo 1: Alta y Listas (Creación) -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" class="header-btn-primary" onclick="window.location.href='bunker.html'" title="Crear nuevo artículo en el Búnker">
+                        ➕ Nuevo Artículo
+                    </button>
+                    <button type="button" class="header-btn-secondary" onclick="crearNuevaListaDesdeUI(false)" title="Crear nueva lista de precios">
+                        📋 Nueva Lista
+                    </button>
+                </div>
+
+                <div class="header-group-divider"></div>
+
+                <!-- Grupo 2: Módulos & Herramientas -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" class="header-btn-secondary" onclick="window.abrirPrevisualizadorPDFGlobal()" title="Exportar Lista Comercial Completa en PDF">
+                        🖨️ Exportar PDF
+                    </button>
+                    <button type="button" class="header-btn-secondary" onclick="window.location.href='diccionario-bunker.html'" title="Nomenclaturas y Diccionario Búnker">
+                        📚 Diccionario
+                    </button>
+                    <button type="button" class="header-btn-secondary" onclick="window.location.href='listado-clientes.html'" title="Gestión e Historial de Clientes">
+                        👥 Clientes
+                    </button>
+                    <button type="button" class="header-btn-secondary" onclick="abrirModalTelemetriaCloudflare()" style="background:#8b5cf6; color:white; border:none;" title="Telemetría y Estado de Red Cloudflare">
+                        ⚡ Telemetría
+                    </button>
+                </div>
+
+                <div class="header-group-divider"></div>
+
+                <!-- Grupo 3: Navegación Salida -->
+                <button type="button" class="header-btn-ghost" onclick="window.location.href='http://localhost:3000'" title="Volver al Menú Principal del Sistema">
+                    ← Menú Principal
                 </button>
             </div>
         </header>
 
         <!-- Main Content -->
         <div class="main-content">
-            <div class="bunker-panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch;">
-                <!-- Panel de Filtro Convencional -->
-                <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-                    <h3 style="margin: 0; font-size: 1.1em; color: #1e293b; font-weight: bold;">📊 Buscador Convencional</h3>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="filtro-busqueda" placeholder="🔎 Buscar por nombre, descripción o ID..." style="padding: 10px; width: 100%; border-radius: 4px; border: 1px solid #cbd5e1;" onkeyup="if(event.key === 'Enter') cargarDataGrid()">
-                        <button class="btn-edit" style="background-color: #0f172a;" onclick="cargarDataGrid()">Filtrar</button>
-                        
+            <div class="bunker-panel" style="padding: 16px 20px; margin-bottom: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <!-- Fila 1: Buscadores Omnicanal (Convencional 55% + Escáner Express 45%) -->
+                <div style="display: grid; grid-template-columns: 55% 45%; gap: 24px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;">
+                    <!-- Buscador Convencional -->
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label style="font-size: 0.85em; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 6px;">
+                            <span>📊 Buscador Convencional</span>
+                        </label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <div style="position: relative; flex: 1;">
+                                <input type="text" id="filtro-busqueda" placeholder="🔎 Buscar por nombre, atributo o ID (ej: alme 1#)..." style="padding: 9px 36px 9px 12px; width: 100%; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9em; outline: none; transition: border-color 0.2s;" oninput="window.filtrarBunkerEnVivo()">
+                                <button type="button" onclick="window.limpiarBuscador()" title="Limpiar búsqueda" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #94a3b8; font-weight: bold; cursor: pointer; font-size: 1.1em; padding: 2px 4px;">✕</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Buscador Express por Escáner -->
+                    <div style="display: flex; flex-direction: column; gap: 6px; border-left: 2px solid #f1f5f9; padding-left: 20px;">
+                        <label style="font-size: 0.85em; font-weight: 700; color: #059669; display: flex; align-items: center; justify-content: space-between;">
+                            <span>📟 Buscador Express por Escáner</span>
+                            <span style="font-size: 0.75em; background-color: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Láser Listo</span>
+                        </label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="buscador-escaner" placeholder="[ Apunte el lector de barras aquí ]" style="padding: 9px 12px; flex: 1; border-radius: 6px; border: 1.5px solid #10b981; font-weight: bold; background-color: #f0fdf4; color: #0f5132; font-size: 0.9em; outline: none;" autofocus autocomplete="off">
+                            <button class="btn-edit" style="background-color: #10b981; color: white; padding: 9px 16px; border-radius: 6px; font-weight: bold; font-size: 0.88em; border: none; cursor: pointer;" onclick="procesarEscaneoBuscador()">Escanear</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fila 2: Franja de Controles de Vista & Operaciones Masivas -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 12px; flex-wrap: wrap;">
+                    <!-- Controles de Vista (Toggles) -->
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.8em; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Vista:</span>
+                        <!-- Toggle Ocultar Inactivos -->
+                        <label for="toggle-filtro-inactivos" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 20px; cursor: pointer; user-select: none; transition: all 0.2s ease;">
+                            <input type="checkbox" id="toggle-filtro-inactivos" onchange="window.toggleOcultarNoAsignados()" style="width: 15px; height: 15px; cursor: pointer; accent-color: #3b82f6;">
+                            <span style="font-size: 0.83em; color: #334155; font-weight: 600;">👁️ Ocultar Inactivos</span>
+                        </label>
+
+                        <!-- Toggle Agrupar por Familia -->
+                        <label for="toggle-agrupar-familia" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 20px; cursor: pointer; user-select: none; transition: all 0.2s ease;">
+                            <input type="checkbox" id="toggle-agrupar-familia" onchange="window.toggleAgruparPorFamilia()" style="width: 15px; height: 15px; cursor: pointer; accent-color: #7e22ce;">
+                            <span style="font-size: 0.83em; color: #6b21a8; font-weight: 700;">📂 Agrupar por Familia</span>
+                        </label>
+
+                        <!-- Toggle Subagrupar por Categoría Principal -->
+                        <label id="container-agrupar-categoria-principal" for="toggle-agrupar-categoria-principal" style="display: none; align-items: center; gap: 6px; padding: 6px 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 20px; cursor: pointer; user-select: none; transition: all 0.2s ease;">
+                            <input type="checkbox" id="toggle-agrupar-categoria-principal" onchange="window.toggleAgruparPorCategoriaPrincipal()" style="width: 15px; height: 15px; cursor: pointer; accent-color: #0284c7;">
+                            <span style="font-size: 0.83em; color: #0369a1; font-weight: 700;">🏷️ Subagrupar por Categoría Principal</span>
+                        </label>
+
+                        <!-- Configurar Columnas Visibles -->
                         <div class="settings-dropdown" id="col-toggler-dropdown">
-                            <button class="btn-icon" onclick="document.getElementById('col-toggler-dropdown').classList.toggle('open')" title="Configurar Columnas">
-                                ⚙️
+                            <button type="button" class="btn-icon" onclick="document.getElementById('col-toggler-dropdown').classList.toggle('open')" title="Configurar Columnas Visibles de la Grilla" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 20px; cursor: pointer; user-select: none; font-size: 0.83em; color: #334155; font-weight: 700; transition: all 0.2s ease;">
+                                <span>⚙️ Columnas</span>
                             </button>
-                            <div class="settings-dropdown-content" id="col-toggler-list">
+                            <div class="settings-dropdown-content" id="col-toggler-list" style="min-width: 250px; left: 0; right: auto;">
                                 <!-- JS Injected Content -->
                             </div>
                         </div>
 
-                        <button id="btn-actualizar-margenes-masa" class="btn-edit" style="background-color: #eab308; color: #1e293b; font-weight: bold; opacity: 0.5; cursor: not-allowed; transition: all 0.2s ease-in-out;" onclick="window.abrirMinimodalMargenesMasa()" disabled>
-                            Actualizar márgenes en masa ⚙️
+                        <!-- Filtro Rápido de Presentación por Kilos (Opción C) -->
+                        <div id="container-filtro-kilos" style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 20px; transition: all 0.2s ease;">
+                            <span style="font-size: 0.82em; color: #c2410c; font-weight: 700; white-space: nowrap;">⚖️ Presentación:</span>
+                            <button type="button" id="btn-filtro-kilos-operador" onclick="window.toggleOperadorFiltroKilos()" style="background: #ea580c; color: white; border: none; border-radius: 12px; font-size: 0.82em; font-weight: 900; padding: 2px 8px; cursor: pointer; line-height: 1.2;" title="Haga clic para alternar entre ≥ (Mayor o igual) y ≤ (Menor o igual)">≥</button>
+                            <input type="number" id="input-filtro-kilos-valor" placeholder="kg..." min="0" step="0.5" style="width: 55px; border: 1px solid #fdba74; border-radius: 6px; padding: 2px 6px; font-size: 0.83em; font-weight: 700; color: #9a3412; outline: none; background: white;" oninput="window.aplicarFiltrosYOrdenamiento()">
+                            <button type="button" id="btn-limpiar-filtro-kilos" onclick="window.limpiarFiltroKilos()" style="border: none; background: transparent; color: #c2410c; cursor: pointer; font-size: 0.85em; font-weight: bold; padding: 0 2px;" title="Limpiar filtro de presentación">✕</button>
+                        </div>
+
+                        <!-- Auto-Selección por Compras de Cliente B2B (Buscador Predictivo Combobox) -->
+                        <div id="container-combobox-cliente" style="position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 20px; transition: all 0.2s ease;">
+                            <span style="font-size: 0.83em; color: #0369a1; font-weight: 700; white-space: nowrap;">👤 Cliente:</span>
+                            <input type="text" id="input-buscar-cliente-autoseleccion" placeholder="Buscar cliente, ID o contacto..." style="border: none; background: transparent; font-size: 0.83em; color: #0369a1; font-weight: 700; outline: none; width: 220px; text-overflow: ellipsis;" autocomplete="off" title="Escriba para filtrar por nombre, razón social, ID Lomas Soft, código Búnker, CUIT o contacto">
+                            <button type="button" id="btn-toggle-historial-cliente" onclick="window.toggleHistorialClienteSeleccion()" style="display: none; border: 1px solid #93c5fd; background: #ffffff; color: #0284c7; cursor: pointer; font-size: 0.76em; font-weight: 700; padding: 2px 8px; border-radius: 12px; white-space: nowrap; transition: all 0.2s;" title="Desmarcar o restaurar artículos sugeridos"></button>
+                            <button type="button" id="btn-limpiar-cliente-autoseleccion" onclick="window.limpiarClienteCombobox()" style="display: none; border: none; background: transparent; color: #0284c7; cursor: pointer; font-size: 0.9em; font-weight: bold; padding: 0 2px;" title="Deseleccionar cliente y limpiar marcas">✕</button>
+                            <input type="hidden" id="select-cliente-autoseleccion" value="">
+                            
+                            <!-- Dropdown flotante de resultados -->
+                            <div id="dropdown-clientes-autoseleccion" style="display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 440px; max-width: 540px; max-height: 320px; overflow-y: auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1); z-index: 1050; padding: 4px 0; text-align: left;">
+                                <!-- Se llena dinámicamente con JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Acciones en Lote (Batch Operations) -->
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 0.8em; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Acciones en Lote:</span>
+                        <button id="btn-actualizar-margenes-masa" class="btn-edit" style="background-color: #fef08a; color: #854d0e; border: 1px solid #fef08a; font-weight: 700; font-size: 0.83em; padding: 7px 14px; border-radius: 6px; opacity: 0.5; cursor: not-allowed; transition: all 0.2s ease;" onclick="window.abrirMinimodalMargenesMasa()" disabled title="Seleccione 1 o más artículos para actualizar márgenes">
+                            ⚙️ Márgenes en masa
+                        </button>
+
+                        <button id="btn-gestionar-catalogo-masa" class="btn-edit" style="background-color: #dbeafe; color: #1e40af; border: 1px solid #dbeafe; font-weight: 700; font-size: 0.83em; padding: 7px 14px; border-radius: 6px; opacity: 0.5; cursor: not-allowed; transition: all 0.2s ease;" onclick="window.abrirMinimodalCatalogoMasa()" disabled title="Seleccione 1 o más artículos para habilitar/deshabilitar">
+                            🌐 Catálogo en masa
+                        </button>
+
+                        <button id="btn-enviar-precios-cotizacion" class="btn-edit" style="background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; font-weight: 700; font-size: 0.83em; padding: 7px 14px; border-radius: 6px; opacity: 0.5; cursor: not-allowed; transition: all 0.2s ease;" onclick="window.abrirModalEnviarPrecios()" disabled title="Seleccione 1 o más artículos para cotizar y enviar precios a un cliente">
+                            ✉️ Enviar Seleccionados
+                        </button>
+
+                        <button id="btn-enviar-lista-completa" class="btn-edit" style="background-color: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; font-weight: 700; font-size: 0.83em; padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;" onclick="window.abrirModalEnviarListaCompleta()" title="Cotizar y enviar la lista de precios completa activa a un cliente sin necesidad de selección manual">
+                            📋 Enviar Lista Completa
                         </button>
                     </div>
                 </div>
-                
-                <!-- Panel de Escaneo Express Omnicanal -->
-                <div style="border-left: 2px solid #cbd5e1; padding-left: 20px; display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-                    <h3 style="margin: 0; font-size: 1.1em; color: #10b981; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-                        <span>📟 Buscador Express por Escáner</span>
-                        <span style="font-size: 0.7em; background-color: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-weight: bold;">Láser Listo</span>
-                    </h3>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="buscador-escaner" placeholder="[ Apunte el lector de barras aquí ]" style="padding: 10px; width: 100%; border-radius: 4px; border: 2px solid #10b981; font-weight: bold; background-color: #f0fdf4; color: #0f5132;" autofocus autocomplete="off">
-                        <button class="btn-edit" style="background-color: #10b981;" onclick="procesarEscaneoBuscador()">Escanear</button>
+
+                <!-- Fila 3: Radar Auditoría LDN 1 (Bulto Cerrado Directo: Stock vs. Ofertas en Listas) -->
+                <div class="bunker-ldn1-radar-bar" id="bunker-ldn1-radar-bar">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 0.8em; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 5px;" title="Auditoría automática de Línea de Negocio 1 (Bulto Cerrado Directo sin receta): detecta desfasajes entre Stock Disponible y Ofertas Activas en cualquiera de las listas">
+                            📦 Radar LDN 1 (Bulto Cerrado):
+                        </span>
+
+                        <button type="button" id="btn-radar-ldn1-todos" class="btn-radar-ldn1 radar-todos" onclick="window.toggleFiltroRadarLdn1('TODOS')" title="Filtrar todos los artículos comerciales de Línea de Negocio 1 (Bulto Cerrado Directo)">
+                            <span>📦 Todos LDN 1</span>
+                            <span class="radar-badge" id="badge-radar-ldn1-todos">0</span>
+                        </button>
+
+                        <button type="button" id="btn-radar-ldn1-sin-stock" class="btn-radar-ldn1 radar-alerta" onclick="window.toggleFiltroRadarLdn1('SIN_STOCK_ACTIVOS')" title="Detectar artículos de LDN 1 que están en Stock 0 pero siguen con oferta activa en cualquiera de las listas de precios">
+                            <span>🚨 Stock 0 c/Oferta Activa</span>
+                            <span class="radar-badge" id="badge-radar-ldn1-sin-stock">0</span>
+                        </button>
+
+                        <button type="button" id="btn-radar-ldn1-con-stock" class="btn-radar-ldn1 radar-oportunidad" onclick="window.toggleFiltroRadarLdn1('CON_STOCK_INACTIVOS')" title="Detectar artículos de LDN 1 que tienen Stock Disponible (> 0) pero están apagados en todas las listas o excluidos de la lista actual">
+                            <span>💡 Con Stock s/Oferta</span>
+                            <span class="radar-badge" id="badge-radar-ldn1-con-stock">0</span>
+                        </button>
+
+                        <button type="button" id="btn-radar-legacy-stock" class="btn-radar-ldn1 radar-legacy" onclick="window.toggleFiltroRadarLdn1('LEGACY_CON_STOCK')" title="Auditar artículos del sistema viejo (Legacy) que tienen Stock > 0 pero aún NO están dados de alta en el Búnker">
+                            <span>🏛️ Legacy c/Stock sin Búnker</span>
+                            <span class="radar-badge" id="badge-radar-legacy-stock">0</span>
+                        </button>
+
+                        <button type="button" id="btn-radar-ldn1-clear" onclick="window.toggleFiltroRadarLdn1(null)" style="display: none; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 16px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; font-size: 0.78em; font-weight: 700; cursor: pointer;" title="Salir del modo filtro LDN 1 y volver a ver todos los artículos">
+                            ✕ Ver todo el Búnker
+                        </button>
+                    </div>
+
+                    <!-- Sub-filtros de Transición Legacy c/Stock sin Búnker -->
+                    <div id="radar-legacy-subfiltros" style="display: none; align-items: center; gap: 6px; flex-wrap: wrap; background: #f5f3ff; border: 1px solid #ddd6fe; padding: 5px 10px; border-radius: 14px;">
+                        <span style="font-size: 0.76em; font-weight: 800; color: #5b21b6; text-transform: uppercase;">Filtrar Legacy:</span>
+                        <button type="button" id="btn-subfiltro-legacy-todos" class="btn-subfiltro-legacy active" onclick="window.setSubfiltroLegacyStock('TODOS')">
+                            📦 Todos (<span id="count-legacy-sub-todos">0</span>)
+                        </button>
+                        <button type="button" id="btn-subfiltro-legacy-bultos" class="btn-subfiltro-legacy" onclick="window.setSubfiltroLegacyStock('BULTOS_5KG')" title="Bultos grandes de proveedor o bolsas madre (≥ 4 kg)">
+                            🚛 Bultos Grandes ≥ 4 kg (<span id="count-legacy-sub-bultos">0</span>)
+                        </button>
+                        <button type="button" id="btn-subfiltro-legacy-menores" class="btn-subfiltro-legacy" onclick="window.setSubfiltroLegacyStock('MENORES_5KG')" title="Fraccionados o presentaciones menores (< 4 kg)">
+                            🛍️ Fraccionados / Menores (<span id="count-legacy-sub-menores">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Acciones Rápidas Contextuales del Radar LDN 1 -->
+                    <div id="radar-ldn1-acciones-contextuales" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span id="radar-ldn1-status-label" style="font-size: 0.78em; font-weight: 700; color: #475569; background: #f1f5f9; padding: 4px 10px; border-radius: 12px;"></span>
+                        <button type="button" id="btn-radar-ldn1-apagar-rapido" onclick="window.ejecutarAccionRapidaRadarLdn1(false)" style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; border: 1px solid #fca5a5; background: #fef2f2; color: #b91c1c; font-size: 0.8em; font-weight: 800; cursor: pointer; transition: all 0.15s;" title="Apagar en TODAS las listas los artículos seleccionados (o todos los visibles del filtro)">
+                            🔕 Apagar en todas las listas
+                        </button>
+                        <button type="button" id="btn-radar-ldn1-prender-rapido" onclick="window.ejecutarAccionRapidaRadarLdn1(true)" style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; border: 1px solid #86efac; background: #f0fdf4; color: #15803d; font-size: 0.8em; font-weight: 800; cursor: pointer; transition: all 0.15s;" title="Activar en TODAS las listas los artículos seleccionados (o todos los visibles del filtro)">
+                            🟢 Activar en todas las listas
+                        </button>
                     </div>
                 </div>
             </div>
@@ -492,8 +1080,11 @@
                 <table class="tabla-financiera" id="tabla-bunker">
                     <thead>
                         <tr>
-                            <th style="width: 40px; text-align: center;">
-                                <input type="checkbox" id="chk-seleccionar-todo-visible" onchange="window.toggleSeleccionarTodoVisible(this.checked)" style="width: 18px; height: 18px; cursor: pointer;" title="Seleccionar todo lo visible">
+                            <th style="width: 70px; text-align: center; vertical-align: middle;">
+                                <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+                                    <input type="checkbox" id="chk-seleccionar-todo-visible" onchange="window.toggleSeleccionarTodoVisible(this.checked)" style="width: 16px; height: 16px; cursor: pointer;" title="Seleccionar activos en la lista">
+                                    <input type="checkbox" id="chk-seleccionar-absolutamente-todo" onchange="window.toggleSeleccionarAbsolutamenteTodo(this.checked)" style="width: 16px; height: 16px; cursor: pointer; accent-color: #6b21a8;" title="Seleccionar TODOS (activos + inactivos)">
+                                </div>
                             </th>
                             <th style="width: 150px;">ID Pivote</th>
                             <th>Art. Principal / Rubro</th>
@@ -543,17 +1134,18 @@
                                     <option value="1">Cargando...</option>
                                 </select>
                             </th>
+                            <th style="text-align: right; min-width: 105px;" id="th-precio-kilo">Precio x Kg</th>
                             <th style="text-align: right;">Margen Base</th>
                             <th style="text-align: center; width: 80px;">Total Entrante (Un)</th>
                             <th style="text-align: center; width: 80px;">Total Entrante (Kg)</th>
-                            <th style="text-align: center; width: 85px;">Stock Lomas Soft</th>
+                            <th style="text-align: center; width: 95px;" title="Stock Disponible (Físico descontando pedidos activos en preparación)">Stock Disp.</th>
                             <th style="text-align: center; width: 80px;">Catálogo</th>
                             <th style="text-align: center; width: 100px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-bunker">
                         <!-- Renderizado Vía JS -->
-                        <tr><td colspan="15" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
+                        <tr><td colspan="17" style="text-align: center; padding: 20px;">Cargando Artículos...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -613,26 +1205,60 @@
                             </div>
                         </div>
 
+                        <!-- Ecuación de Costo Transparente (Fase 20: Origen Base + Receta + Mano Obra = Costo Operativo Neto) -->
+                        <div id="gp-desglose-costos-servicios" style="display: flex; justify-content: space-between; align-items: center; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 12px; font-size: 0.82em; color: #1e40af;">
+                            <span style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="background: #dbeafe; padding: 2px 6px; border-radius: 4px; font-weight: 600; color: #1e3a8a;" id="gp-calc-origen-base-tag">
+                                    [Origen Base: <span id="gp-calc-origen-label">Costo Lista</span> <strong id="gp-calc-origen-val" style="font-family: monospace;">$ 0,00</strong>]
+                                </span>
+                                <span id="gp-container-calc-receta-adicional" style="display: none; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; border: 1px solid #bae6fd;">
+                                    + Receta Adicional <strong id="gp-calc-receta-adicional-val" style="font-family: monospace; color: #0284c7; font-weight: bold;">$ 0,00</strong>
+                                </span>
+                                <span id="gp-container-calc-insumos" style="display: none; background: #fef3c7; padding: 2px 6px; border-radius: 4px; border: 1px solid #fde68a; color: #92400e;">
+                                    + Empaque <strong id="gp-calc-insumos-val" style="font-family: monospace; color: #b45309; font-weight: bold;">$ 0,00</strong>
+                                </span>
+                                <span>+ Mano Obra <strong id="gp-calc-servicio-val" style="font-family: monospace; color: #2563eb; font-weight: bold;">$ 0,00</strong></span>
+                            </span>
+                            <span>
+                                <span style="font-weight: 600; color: #1e3a8a;">= Costo Operativo Neto:</span>
+                                <strong id="gp-calc-costo-neto-total" style="font-size: 1.05em; font-family: monospace; color: #1e3a8a; font-weight: 800;">$ 0,00</strong>
+                            </span>
+                        </div>
+
                         <!-- Bidirectional inputs -->
                         <div style="display: flex; gap: 15px;">
                             <div style="flex: 1;">
-                                <label style="font-size: 0.85em; color: #475569; font-weight: bold; display: flex; flex-direction: column; gap: 2px;">
-                                    <span>Margen de Ganancia (%):</span>
-                                    <span id="gp-margen-advertencia" style="display: none; font-size: 0.76em; color: #8e4785; font-weight: 700; line-height: 1.25em;"></span>
-                                </label>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                    <label style="font-size: 0.85em; color: #475569; font-weight: bold; display: flex; flex-direction: column; gap: 2px;">
+                                        <span>Margen de Ganancia (%):</span>
+                                        <span id="gp-margen-advertencia" style="display: none; font-size: 0.76em; color: #8e4785; font-weight: 700; line-height: 1.25em;"></span>
+                                    </label>
+                                    <button type="button" id="btn-lock-margen" onclick="window.toggleAnclajeCalculo('MARGEN')" style="background: none; border: none; cursor: pointer; font-size: 1.1em; padding: 0 4px; transition: transform 0.1s;" title="Fijar Margen (Cálculo Automático de Precio)">🔒</button>
+                                </div>
                                 <input type="number" id="gp-margen" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.15em; font-weight: bold; text-align: right; color: #1e293b; font-family: monospace;" oninput="actualizarPorMargen(this.value)" onblur="recalcularPreciosGestor()">
+                                <div id="gp-sim-margen-badge" style="display: none; margin-top: 4px; font-size: 0.8em; font-weight: bold; color: #ea580c; background: #fff7ed; border: 1px solid #ffedd5; padding: 2px 6px; border-radius: 4px; text-align: right;"></div>
                             </div>
                             <div style="flex: 1;">
-                                <label style="font-size: 0.85em; color: #475569; font-weight: bold;">Precio Final c/IVA ($):</label>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                    <label style="font-size: 0.85em; color: #475569; font-weight: bold;">Precio Final c/IVA ($):</label>
+                                    <button type="button" id="btn-lock-precio" onclick="window.toggleAnclajeCalculo('PRECIO')" style="background: none; border: none; cursor: pointer; font-size: 1.1em; padding: 0 4px; transition: transform 0.1s; opacity: 0.5;" title="Fijar Precio Final (Cálculo Inverso de Margen)">🔓</button>
+                                </div>
                                 <input type="number" id="gp-precio-final" step="0.01" style="width: 100%; padding: 8px; border: 2px solid #10b981; border-radius: 4px; font-size: 1.15em; font-weight: bold; text-align: right; color: #065f46; background-color: #f0fdf4; font-family: monospace;" oninput="actualizarPorPrecio(this.value)" onblur="recalcularPreciosGestor()">
+                                <div id="gp-sim-precio-badge" style="display: none; margin-top: 4px; font-size: 0.85em; font-weight: bold; color: #ea580c; background: #fff7ed; border: 1px solid #ffedd5; padding: 4px 8px; border-radius: 4px; text-align: right; font-family: monospace; box-shadow: 0 1px 2px rgba(234, 88, 12, 0.05);"></div>
                             </div>
                         </div>
 
                         <!-- Tratamiento del IVA Avanzado (Efecto Nicolás) -->
                         <div style="display: flex; gap: 15px; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px;">
-                            <div style="flex: 1; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em; border-right: 1px solid #cbd5e1; padding-right: 15px;">
-                                <span style="color: #64748b; font-weight: 600;">IVA Nativo Lote:</span>
-                                <strong id="gp-iva-lote-val-calc" style="color: #334155; font-family: monospace; font-size: 1.1em;">21,00%</strong>
+                            <div style="flex: 1.3; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em; border-right: 1px solid #cbd5e1; padding-right: 15px; gap: 8px;">
+                                <span id="gp-iva-label-text" style="color: #64748b; font-weight: 600;">IVA Nativo Lote:</span>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" id="gp-iva-lote-val-calc" step="0.5" min="0" max="100" style="width: 65px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-size: 0.95em; color: #1e293b; text-align: right; font-family: monospace;" oninput="window.confirmarIvaNativoManual(this.value)">
+                                    <span style="font-weight: bold; color: #475569; font-size: 0.9em;">%</span>
+                                    <button type="button" id="btn-propagar-iva-global" onclick="window.propagarIvaGlobalBoton()" title="Propagar esta alícuota de IVA a todas las listas de precios de este artículo" style="background: #8e4785; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; margin-left: 4px; transition: background 0.2s;">
+                                        🌐 Propagar
+                                    </button>
+                                </div>
                             </div>
                             <div style="flex: 1.2; display: flex; justify-content: space-between; align-items: center; font-size: 0.88em;">
                                 <span style="color: #475569; font-weight: bold;">Tratamiento IVA:</span>
@@ -678,7 +1304,7 @@
                         <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.88em; padding-top: 5px;">
                             <!-- Indicador de Precio Simulado Descontado -->
                             <div style="display: flex; justify-content: space-between; color: #ea580c; font-weight: bold; margin-bottom: 2px; border-bottom: 1px dashed rgba(234, 88, 12, 0.15); padding-bottom: 4px;">
-                                <span>Cobrado (Simulado):</span>
+                                <span>Precio c/Desc (IVA inc):</span>
                                 <strong id="gp-precio-facturado-simulado" style="color: #ea580c; font-family: monospace; font-size: 1.05em;">$ 0,00</strong>
                             </div>
                             <div style="display: flex; justify-content: space-between; color: #64748b;">
@@ -743,7 +1369,7 @@
                 </div>
 
                 <!-- SECCIÓN MEDIA: INSUMOS SECUNDARIOS Y MANO DE OBRA (Ancho Completo, Grilla de 2 Columnas) -->
-                <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 15px;">
+                <div style="display: grid; grid-template-columns: 2fr 1.2fr; gap: 15px; margin-top: 15px;">
                     <!-- 2. Costo Insumos Secundarios -->
                     <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
                         <h4 style="margin-top: 0; margin-bottom: 8px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
@@ -773,9 +1399,44 @@
                         </div>
                     </div>
 
-                    <!-- 3. Costo Operativo / Tiempo -->
+                    <!-- 3. Costo Operativo / Tiempo (Mano de Obra Único) -->
                     <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px;">
-                        <h4 style="margin-top: 0; margin-bottom: 4px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; font-weight: 600;">3. Mano de Obra / Costo de Proceso</h4>
+                        <h4 style="margin-top: 0; margin-bottom: 4px; color: #334155; font-size: 0.9em; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="gp-mano-obra-activa" onchange="window.toggleManoObraActiva(this.checked)" style="width: 15px; height: 15px; cursor: pointer;">
+                            <span>3. Mano de Obra por Tiempo (Minutos / Proceso)</span>
+                        </h4>
+
+                        <!-- Banner Alerta Evidencia Métricas de Campo -->
+                        <div id="gp-banner-metricas-campo" style="display: none; background: #ecfdf5; border: 1.5px solid #10b981; border-radius: 8px; padding: 10px 12px; margin-bottom: 4px; box-shadow: 0 1px 3px rgba(16,185,129,0.15);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                    <span style="font-size: 1.4em; line-height: 1.1;">⏱️</span>
+                                    <div>
+                                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                            <span id="gp-metricas-titulo-resumen" style="font-size: 0.88em; font-weight: 800; color: #065f46;">
+                                                Evidencia Real de Planta: 0.00 min/u
+                                            </span>
+                                            <span id="gp-metricas-badge-cant" style="background: #d1fae5; color: #047857; font-size: 0.70em; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid #a7f3d0;">
+                                                1 medición
+                                            </span>
+                                        </div>
+                                        <div id="gp-metricas-detalle-resumen" style="font-size: 0.75em; color: #047857; margin-top: 3px; font-weight: 500;">
+                                            🟡 Prep: 0m | 🔵 Prod: 0m | 🟣 Etq: 0m
+                                        </div>
+                                        <div id="gp-metricas-extra-resumen" style="font-size: 0.70em; color: #059669; margin-top: 2px; font-style: italic;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 6px; align-items: center;">
+                                    <button type="button" id="gp-btn-usar-metrica-campo" onclick="window.aplicarMetricaCampoAsistente()" style="background: #10b981; color: white; border: none; border-radius: 5px; padding: 6px 12px; font-size: 0.78em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(16,185,129,0.3); transition: all 0.2s;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'" title="Cargar estos minutos al asistente de mano de obra">
+                                        📥 Cargar Minutos al Asistente
+                                    </button>
+                                    <button type="button" onclick="window.abrirModalMetricasCampo()" style="background: #ffffff; color: #047857; border: 1px solid #6ee7b7; border-radius: 5px; padding: 6px 10px; font-size: 0.78em; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#ffffff'" title="Ver desglose y detalle de mediciones históricas">
+                                        📋 Ver Detalle
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         
                         <!-- Asistente de Cálculo -->
                         <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
@@ -790,10 +1451,16 @@
                                     </select>
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                                    <span style="font-size: 0.72em; color: #64748b; font-weight: 600;">Tiempo (Minutos):</span>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: 0.72em; color: #64748b; font-weight: 600;">Tiempo (Minutos):</span>
+                                        <span id="gp-link-metricas-campo" style="display: none; font-size: 0.70em; color: #16a34a; font-weight: bold; cursor: pointer;" onclick="window.abrirModalMetricasCampo()" title="Ver datos de campo">📊 Campo</span>
+                                    </div>
                                     <input type="number" id="gp-asistente-minutos" min="0" placeholder="Minutos" style="width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8em; font-family: monospace;" oninput="calcularCostoAsistente()">
                                 </div>
                             </div>
+                            <button type="button" id="gp-btn-aplicar-asistente" onclick="window.confirmarManoObraAsistente()" style="width: 100%; margin-top: 4px; padding: 6px; font-size: 0.8em; background: #3b82f6; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: background 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                                ✅ Aplicar Mano de Obra
+                            </button>
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -801,8 +1468,15 @@
                             <input type="number" id="gp-costo-tiempo" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoTiempo(this.value)" onblur="recalcularPreciosGestor()">
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-                            <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo MP Sobrescrito ($/kg):</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.78em; color: #64748b; font-weight: 500;">Costo MP Sobrescrito ($/kg):</span>
+                                <div style="display: flex; gap: 8px;">
+                                    <span id="gp-link-aplicar-esta" style="font-size: 0.75em; color: #0284c7; cursor: pointer; font-weight: bold; text-decoration: underline;" onclick="window.aplicarCostoManualEstaLista()" title="Aplicar este costo a la lista activa">🎯 Aplicar a esta lista</span>
+                                    <span id="gp-link-propagar" style="font-size: 0.75em; color: #7e22ce; cursor: pointer; font-weight: bold; text-decoration: underline;" onclick="window.propagarCostoManualActual()" title="Propagar este costo a todas las listas de precios">🌐 Propagar a todas</span>
+                                </div>
+                            </div>
                             <input type="number" id="gp-costo-manual" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 1.05em;" oninput="actualizarPorCostoManual(this.value)" onblur="recalcularPreciosGestor()">
+                            <div id="gp-costo-composicion-detalle" style="font-size: 0.76em; margin-top: 4px; font-weight: 500; display: none; line-height: 1.35; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 4px 8px; border-radius: 4px; color: #15803d; text-align: left; word-break: break-all;"></div>
                         </div>
                         <label style="display: flex; align-items: center; font-size: 0.82em; color: #475569; cursor: pointer; font-weight: 500; margin-top: 6px;">
                             <input type="checkbox" id="gp-heredar-costo" style="margin-right: 6px;" onchange="toggleHeredarCosto(this.checked)"> 
@@ -836,8 +1510,8 @@
                         </div>
                     </div>
 
-                    <!-- B. Nivel Inferior: Sub-Grilla de Referencias Básicas (3 Columnas) -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                    <!-- B. Nivel Inferior: Sub-Grilla de Referencias Básicas (3 o 4 Columnas) -->
+                    <div id="gp-subgrilla-referencias" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 15px;">
                         <!-- TARJETA 1: HISTÓRICO LEGACY (LOMASOFT) -->
                         <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
                             <div style="font-size: 0.88em; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 2px;">
@@ -923,6 +1597,84 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- TARJETA 4: COSTO TOSTADERO (CARRO EXTERNO) -->
+                        <div id="gp-card-tostadero" style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+                            <div style="font-size: 0.88em; font-weight: 700; color: #b45309; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #fde68a; padding-bottom: 6px; margin-bottom: 2px; justify-content: space-between;">
+                                <span>🥣 COSTO TOSTADERO (CARRO EXTERNO)</span>
+                                <span id="gp-tostadero-badge" style="background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; font-size: 0.85em; padding: 2px 8px; border-radius: 4px; font-weight: 800;">Simular</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: space-between;">
+                                <div style="display: flex; flex-direction: column; gap: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: 0.85em; color: #b45309; display: flex; align-items: center; gap: 4px;">
+                                            Kilo Tostado: <span class="gp-pin-btn" id="gp-pin-tostadero" onclick="window.establecerFuenteDefault(event, 'TOSTADERO')" title="Fijar como fuente predeterminada">📌</span>
+                                        </span>
+                                        <strong id="gp-costo-tostadero-val" class="clickable-cost-val tostadero" style="color: #d97706; font-size: 1.15em; font-family: monospace; cursor: pointer;" onclick="if (typeof window.gp_costoTostaderoKilo !== 'undefined' && window.gp_costoTostaderoKilo > 0) { window.confirmarTostaderoTotalCost(window.gp_costoTostaderoKilo); }" title="Haga clic para inyectar este costo en la calculadora">$ 0,00</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: 0.85em; color: #b45309;">Relación Crudo:</span>
+                                        <strong id="gp-tostadero-crudo-val" style="color: #b45309; font-size: 0.9em; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Sin vincular</strong>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: 0.85em; color: #b45309;">Rendimiento/Merma:</span>
+                                        <strong id="gp-tostadero-merma-val" style="color: #b45309; font-size: 1em; font-family: monospace;">- %</strong>
+                                    </div>
+                                    <!-- 🔑 CHECKBOX Y INPUT DE PIEZAS CONFIGURABLE Y PERSISTENTE (v5.74) -->
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; background: #fff7ed; padding: 6px 8px; border-radius: 6px; border: 1px solid #fde68a; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <input type="checkbox" id="gp-tostadero-modo-unidad-check" style="width: 15px; height: 15px; cursor: pointer;">
+                                            <label for="gp-tostadero-modo-unidad-check" style="font-size: 0.81em; font-weight: 700; color: #92400e; cursor: pointer; user-select: none;">
+                                                Modo Piezas / Maquila
+                                            </label>
+                                        </div>
+                                        <div id="gp-tostadero-piezas-container" style="display: none; align-items: center; gap: 4px;">
+                                            <label style="font-size: 0.78em; font-weight: 700; color: #92400e;">🧩 Piezas:</label>
+                                            <input type="number" id="gp-tostadero-piezas-input" min="1" step="1" value="20" style="width: 55px; padding: 2px 4px; font-weight: bold; border: 1px solid #d97706; border-radius: 4px; font-size: 0.85em; text-align: center; color: #78350f; background: #fff;" title="Cantidad de piezas configurable por pack/kilo (Persistente)">
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="window.abrirCalculadoraTostadero()" style="background: #fcd34d; color: #78350f; border: 1px solid #f59e0b; border-radius: 4px; padding: 6px 10px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; width: 100%; margin-top: 5px;" onmouseover="this.style.background='#f59e0b'" onmouseout="this.style.background='#fcd34d'">
+                                    ⚙️ Simular Tostadero
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- TARJETA 5: COSTO POR ARTÍCULO HIJO (ESTRUCTURA DE PACK) -->
+                        <div id="gp-card-pack-hijo" style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 8px; padding: 14px; display: none; flex-direction: column; gap: 8px;">
+                            <div style="font-size: 0.88em; font-weight: 700; color: #c2410c; display: flex; align-items: center; justify-content: space-between; gap: 4px; border-bottom: 1px solid #ffedd5; padding-bottom: 6px; margin-bottom: 2px;">
+                                <span>📦 ESTRUCTURA DE PACK (HIJO)</span>
+                                <span class="gp-pin-btn" id="gp-pin-hijo" onclick="window.establecerFuenteDefault(event, 'HIJO')" title="Fijar como fuente predeterminada">📌</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.85em; color: #c2410c;">Costo Unitario Hijo:</span>
+                                    <strong id="gp-costo-hijo-unitario" style="color: #ea580c; font-size: 1.15em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.85em; color: #c2410c;">Cantidad Pack (u):</span>
+                                    <input type="number" id="gp-pack-cantidad" min="1" step="1" style="width: 70px; padding: 4px 6px; border: 1px solid #ffedd5; border-radius: 4px; color: #ea580c; font-size: 1.1em; font-family: monospace; font-weight: bold; text-align: right; background: #fff;" oninput="window.actualizarPackCantidadManual(this.value)">
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(234, 88, 12, 0.2); padding-top: 4px;">
+                                    <span style="font-size: 0.85em; color: #c2410c; display: flex; align-items: center; gap: 4px;">
+                                        Kilo Equivalente:
+                                    </span>
+                                    <strong id="gp-costo-hijo-kilo" class="clickable-cost-val pack-hijo" style="color: #ea580c; font-size: 1.15em; font-family: monospace;" title="Haga clic para inyectar este costo en la calculadora">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.85em; color: #c2410c;">Bulto Equivalente:</span>
+                                    <strong id="gp-costo-hijo-bulto" style="color: #ea580c; font-size: 1.15em; font-family: monospace;">$ 0,00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(234, 88, 12, 0.2); padding-top: 4px;">
+                                    <span style="font-size: 0.82em; color: #c2410c;">Base + Mano Obra:</span>
+                                    <span id="gp-packhijo-desglose" style="font-size: 0.82em; color: #ea580c; font-family: monospace;">$0,00 + $0,00</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.82em; color: #c2410c;">IVA Nativo Hijo:</span>
+                                    <strong id="gp-packhijo-iva-val" style="font-size: 0.85em; color: #ea580c; font-family: monospace;">21,00%</strong>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -936,7 +1688,10 @@
                 <div id="gp-receta-ingredientes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px;">
                     <!-- Rendered by JS -->
                 </div>
-                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" id="gp-btn-eliminar-receta" class="btn-danger" onclick="window.eliminarRecetaBunkerDirecta()" style="padding: 6px 12px; font-size: 0.85em; border-radius: 4px; background: #dc2626; color: white; border: none; font-weight: bold; cursor: pointer; display: none; align-items: center; gap: 4px;">
+                        🗑️ Eliminar Receta
+                    </button>
                     <button type="button" id="gp-btn-editar-receta" class="btn-primary" onclick="abrirModalRecetaBunker()" style="padding: 6px 12px; font-size: 0.85em; border-radius: 4px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                         ✏️ Editar Receta
                     </button>
@@ -1135,7 +1890,7 @@
                     <button type="button" onclick="window.toggleDropdownCampos(event)" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">
                         ⚙️ Campos
                     </button>
-                    <div id="vr-dropdown-campos" style="display: none; position: absolute; right: 0; top: 35px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; padding: 12px; flex-direction: column; gap: 8px;">
+                    <div id="vr-dropdown-campos" style="display: none; position: absolute; right: 0; top: 35px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; width: 220px; max-height: 380px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; padding: 12px; flex-direction: column; gap: 8px;">
                         <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
                             <input type="checkbox" id="chk-col-sku" checked onchange="window.toggleColumnaVinculador('sku_proveedor', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Código Proveedor
                         </label>
@@ -1162,6 +1917,39 @@
                         </label>
                         <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
                             <input type="checkbox" id="chk-col-ultact" checked onchange="window.toggleColumnaVinculador('dias_actualizacion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Última Actualización
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-procedencia" onchange="window.toggleColumnaVinculador('procedencia', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Procedencia
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-marca" onchange="window.toggleColumnaVinculador('marca', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Marca
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-tipo-envase" onchange="window.toggleColumnaVinculador('tipo_envase', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Tipo Envase
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-unidad-medida" onchange="window.toggleColumnaVinculador('unidad_medida', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Unidad Medida
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-presentacion" onchange="window.toggleColumnaVinculador('presentacion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Presentación
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-iva" onchange="window.toggleColumnaVinculador('iva', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> IVA
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-promo" onchange="window.toggleColumnaVinculador('promo', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Promo
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-descuento" onchange="window.toggleColumnaVinculador('descuento', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Descuento
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-ean-unidad" onchange="window.toggleColumnaVinculador('ean_unidad', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> EAN Unidad
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-dun-bulto" onchange="window.toggleColumnaVinculador('dun_bulto', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> DUN Bulto
+                        </label>
+                        <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                            <input type="checkbox" id="chk-col-certificado" onchange="window.toggleColumnaVinculador('certificado', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Certificado
                         </label>
                         <div style="border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 4px; display: flex; justify-content: flex-end;">
                             <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #1e293b; border: none; font-size: 0.8em; color: #a855f7; font-weight: bold; cursor: pointer;">Restablecer</button>
@@ -1243,13 +2031,16 @@
             </div>
 
             <!-- Footer Buttons -->
-            <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
-                <button type="button" class="btn-secondary" onclick="cerrarModalRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
-                <button type="button" class="btn-submit" onclick="guardarRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; background: #10b981; color: white; border: none; font-weight: bold; cursor: pointer;">💾 Confirmar Receta</button>
+            <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+                <button type="button" id="gp-receta-modal-btn-eliminar" class="btn-danger" onclick="window.eliminarRecetaBunkerDirecta()" style="padding: 8px 16px; border-radius: 4px; background: #dc2626; color: white; border: none; font-weight: bold; cursor: pointer; display: none; align-items: center; gap: 6px;">🗑️ Eliminar Receta</button>
+                <div style="display: flex; gap: 10px; margin-left: auto;">
+                    <button type="button" class="btn-secondary" onclick="cerrarModalRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: pointer; font-weight: 500;">Cancelar</button>
+                    <button type="button" class="btn-submit" onclick="guardarRecetaBunker()" style="padding: 8px 16px; border-radius: 4px; background: #10b981; color: white; border: none; font-weight: bold; cursor: pointer;">💾 Confirmar Receta</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="../js/listado-bunker.js?v=1.5.3"></script>
+    <script src="../js/listado-bunker.js?v=551_radar_legacy_con_stock"></script>
 </body>
 </html>

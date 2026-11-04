@@ -1416,40 +1416,71 @@ async function editarIngrediente(id) {
 // Función para imprimir etiqueta
 async function imprimirEtiqueta(ingrediente) {
     try {
-        // Llamar a App Etiquetas en puerto 3000
-        const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+        const payload = {
+            nombre: ingrediente.nombre,
+            codigo: ingrediente.codigo,
+            sector: ingrediente.sector || '', // Enviar la letra del sector procesada
+            cantidad: 1
+        };
+
+        // Intentar primero por el endpoint local de producción (puerto 3002) y fallback a puerto 3000
+        let response = await fetch('/api/produccion/ingredientes/imprimir-etiqueta', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                nombre: ingrediente.nombre,
-                codigo: ingrediente.codigo,
-                sector: ingrediente.sector // Enviar la letra del sector procesada
-            })
-        });
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(() => null);
+
+        if (!response || !response.ok) {
+            response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
 
         if (!response.ok) {
-            throw new Error('Error al imprimir etiqueta');
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || errData.details || 'Error al imprimir etiqueta');
         }
 
         mostrarMensaje('Etiqueta enviada a imprimir', 'exito');
     } catch (error) {
         console.error('Error:', error);
-        mostrarMensaje(error.message || 'No se pudo imprimir la etiqueta');
+        mostrarMensaje(error.message || 'No se pudo imprimir la etiqueta', 'error');
     }
 }
 
-// ✅ IMPLEMENTACIÓN DE ACCESO DIRECTO PARA IMPRESIÓN (UI PRINCIPAL)
+// ✅ IMPLEMENTACIÓN DE ACCESO DIRECTO PARA IMPRESIÓN (UI PRINCIPAL Y MÓDULOS PERSONALES)
 window.abrirModalImpresionGeneral = async function(ingredienteId) {
     try {
         const idBuscado = Number(ingredienteId);
-        const ingrediente = ingredientesOriginales.find(ing => Number(ing.id) === idBuscado || Number(ing.id_ingrediente) === idBuscado);
-        
-        if (!ingrediente) throw new Error('No se encontraron los datos del ingrediente localmente.');
+        let ingrediente = (Array.isArray(ingredientesOriginales) ? ingredientesOriginales : []).find(
+            ing => Number(ing.id) === idBuscado || Number(ing.id_ingrediente) === idBuscado || Number(ing.ingrediente_id) === idBuscado
+        );
 
-        const codigo = ingrediente.codigo || 'S/C';
-        const nombre = ingrediente.nombre_ingrediente || ingrediente.nombre;
+        if (!ingrediente && Array.isArray(window.ingredientesUsuarioActual)) {
+            ingrediente = window.ingredientesUsuarioActual.find(
+                ing => Number(ing.ingrediente_id) === idBuscado || Number(ing.id) === idBuscado || Number(ing.id_ingrediente) === idBuscado
+            );
+        }
+
+        // Fallback a la API si no se encontró en memoria o le faltan datos de sector/código
+        if (!ingrediente || !ingrediente.codigo || ingrediente.sector_letra === undefined) {
+            try {
+                const resp = await fetch(`${API_URL}/ingredientes/${idBuscado}`);
+                if (resp.ok) {
+                    const dataApi = await resp.json();
+                    ingrediente = { ...(ingrediente || {}), ...dataApi };
+                }
+            } catch (e) {
+                console.warn('No se pudo consultar ingrediente por API en abrirModalImpresionGeneral:', e);
+            }
+        }
+
+        if (!ingrediente) throw new Error('No se encontraron los datos del ingrediente.');
+
+        const codigo = ingrediente.codigo || String(idBuscado);
+        const nombre = ingrediente.nombre_ingrediente || ingrediente.nombre || 'Ingrediente';
         // El dato puro ya viene procesado estructuralmente desde el backend a través de la relación de tablas.
         // Solo conservamos el carácter aislado antes del guión para no romper el layout de Zebra
         const sectorLetraCompleta = ingrediente.sector_letra || '';
@@ -2555,11 +2586,22 @@ function renderDesgloseOfertasReposicion(ofertas, factor, esMapeado = false) {
         const dias = of.dias_antiguedad;
         const badgeText = dias === 0 ? 'Hoy' : `Hace ${dias} día${dias > 1 ? 's' : ''}`;
         
+        // Formato de presentación comercial (ej: 1 x 10, 1 x 25, 1 x 18)
+        let presentacionBadge = '';
+        const bultoVal = of.cant_bult !== undefined && of.cant_bult !== null && of.cant_bult !== '' ? of.cant_bult : 1;
+        const valorVal = of.cant_valor !== undefined && of.cant_valor !== null && of.cant_valor !== '' ? of.cant_valor : '';
+        if (valorVal) {
+            presentacionBadge = `<span style="font-size: 0.76em; background: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; padding: 1px 6px; border-radius: 4px; font-weight: 700; white-space: nowrap;" title="Presentación: ${bultoVal} x ${valorVal}">${bultoVal} x ${valorVal}</span>`;
+        }
+        
         html += `
             <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px; background: white; border: 1px solid #e9d5ff; border-radius: 6px; font-size: 0.82em; box-shadow: 0 1px 2px rgba(107, 33, 168, 0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
-                    <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; flex: 1;">
+                        <span style="font-weight: 700; color: #6b21a8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;" title="${of.nombre_proveedor}">${of.nombre_proveedor}</span>
+                        ${presentacionBadge}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
                         ${esMapeado ? `
                             <button onclick="window.desvincularOfertaDirecta(event, '${of.proveedor_id}', '${String(of.sku_proveedor || '').replace(/'/g, "\\'")}')" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#dc2626';" onmouseout="this.style.background='#ef4444';">
                                 🔌 Desvincular
@@ -2769,6 +2811,47 @@ window.abrirModalDesglose = async function(ingredienteId) {
                         console.log("ℹ️ [DESGLOSE-FORMULA] No compuesto o sin fórmula:", err.message);
                     });
                 
+                // Referencia E: Artículo de Venta Vinculado
+                const cardArtVinculado = document.getElementById('card-costo-articulo-vinculado');
+                const labelArtVinculado = document.getElementById('costo-ref-articulo-vinculado');
+                const btnFijarArtVinculado = document.getElementById('btn-fijar-articulo-vinculado');
+                const labelVinculoArt = document.getElementById('desglose-vinculo-articulo-label');
+                const btnDesvincularArt = document.getElementById('btn-desglose-desvincular-art');
+                const btnVincularArt = document.getElementById('btn-desglose-vincular-art');
+                
+                window.ultimoCostoArticuloVinculadoResolved = null;
+                
+                if (ingrediente.articulo_vinculado_numero) {
+                    const costoBaseArt = parseFloat(ingrediente.costo_articulo_vinculado_base || 0);
+                    window.ultimoCostoArticuloVinculadoResolved = costoBaseArt;
+                    
+                    if (cardArtVinculado) cardArtVinculado.style.display = 'flex';
+                    if (labelArtVinculado) {
+                        labelArtVinculado.textContent = `$ ${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                        labelArtVinculado.setAttribute('data-valor', costoBaseArt);
+                    }
+                    if (btnFijarArtVinculado) btnFijarArtVinculado.removeAttribute('disabled');
+                    
+                    if (labelVinculoArt) {
+                        labelVinculoArt.innerHTML = `<b style="color: #c2410c;">[${ingrediente.articulo_vinculado_numero}]</b> ${ingrediente.articulo_vinculado_descripcion || ''} <span style="font-weight:bold; color: #16a34a; font-family: monospace;">($${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>`;
+                    }
+                    if (btnDesvincularArt) btnDesvincularArt.style.display = 'inline-block';
+                    if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Cambiar';
+                } else {
+                    if (cardArtVinculado) cardArtVinculado.style.display = 'none';
+                    if (labelArtVinculado) {
+                        labelArtVinculado.textContent = 'N/A';
+                        labelArtVinculado.removeAttribute('data-valor');
+                    }
+                    if (btnFijarArtVinculado) btnFijarArtVinculado.setAttribute('disabled', 'true');
+                    
+                    if (labelVinculoArt) {
+                        labelVinculoArt.textContent = 'Ningún artículo vinculado';
+                    }
+                    if (btnDesvincularArt) btnDesvincularArt.style.display = 'none';
+                    if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Vincular';
+                }
+
                 // Costo Patrón y Valorización actual
                 document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(ingrediente.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
@@ -3147,6 +3230,105 @@ const columnDefs = [
             const text = dias === 0 ? 'Hoy' : (dias === 1 ? 'Ayer' : `${dias} días`);
             return `<span style="${badgeStyle}">${dotHtml} • ${text}</span>`;
         }
+    },
+    {
+        headerName: 'Procedencia',
+        field: 'procedencia',
+        colId: 'procedencia',
+        width: 130,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Marca',
+        field: 'marca',
+        colId: 'marca',
+        width: 130,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Tipo Envase',
+        field: 'tipo_envase',
+        colId: 'tipo_envase',
+        width: 120,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Unidad Medida',
+        field: 'unidad_medida',
+        colId: 'unidad_medida',
+        width: 115,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Presentación',
+        field: 'presentacion',
+        colId: 'presentacion',
+        width: 120,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'IVA',
+        field: 'iva',
+        colId: 'iva',
+        width: 90,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Promo',
+        field: 'promo',
+        colId: 'promo',
+        width: 110,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Descuento',
+        field: 'descuento',
+        colId: 'descuento',
+        width: 110,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'EAN Unidad',
+        field: 'ean_unidad',
+        colId: 'ean_unidad',
+        width: 125,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'DUN Bulto',
+        field: 'dun_bulto',
+        colId: 'dun_bulto',
+        width: 125,
+        sortable: true,
+        resizable: true,
+        hide: true
+    },
+    {
+        headerName: 'Certificado',
+        field: 'certificado',
+        colId: 'certificado',
+        width: 120,
+        sortable: true,
+        resizable: true,
+        hide: true
     }
 ];
 
@@ -3361,6 +3543,8 @@ window.abrirVinculadorReposicionIngrediente = async function() {
         if (!todasRes.ok) throw new Error('Error al cargar catálogo de ofertas remotas');
         vr_todasOfertas = await todasRes.json();
 
+        console.log("🔍 [VINCULADOR-REPOSICION-V4.1] Ofertas cargadas desde Supabase. Total:", vr_todasOfertas.length, "Muestra primer oferta:", vr_todasOfertas[0]);
+
         vr_todasOfertas.forEach(o => {
             o.cant_value = o.cant_valor;
         });
@@ -3485,6 +3669,7 @@ window.guardarGridState = function() {
     if (!window.v4GridApi) return;
     const state = window.v4GridApi.getColumnState();
     localStorage.setItem('lamda_v4_grid_state', JSON.stringify(state));
+    console.log("💾 [VINCULADOR-REPOSICION-V4.1] Guardando estado de columnas en localStorage:", state);
 };
 
 window.cargarGridState = function() {
@@ -3494,6 +3679,7 @@ window.cargarGridState = function() {
         try {
             const state = JSON.parse(stored);
             window.v4GridApi.applyColumnState({ state: state, applyOrder: true });
+            console.log("📂 [VINCULADOR-REPOSICION-V4.1] Estado de columnas restaurado desde localStorage:", state);
         } catch (e) {
             console.error('Error al restaurar firma geométrica de AG Grid:', e);
         }
@@ -3502,6 +3688,7 @@ window.cargarGridState = function() {
 
 // CONFIGURADOR EN VIVO DE VISIBILIDAD DE CAMPOS
 window.toggleColumnaVinculador = function(colId, isVisible) {
+    console.log("⚙️ [VINCULADOR-REPOSICION-V4.1] Toggle visibilidad columna:", colId, "Visible:", isVisible);
     if (window.v4GridApi) {
         window.v4GridApi.setColumnsVisible([colId], isVisible);
         window.guardarGridState();
@@ -3510,8 +3697,11 @@ window.toggleColumnaVinculador = function(colId, isVisible) {
 
 window.resetearVisibilidadColumnas = function() {
     if (window.v4GridApi) {
-        const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad', 'dias_actualizacion'];
-        window.v4GridApi.setColumnsVisible(columns, true);
+        const defaultColumns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad', 'dias_actualizacion'];
+        const secondaryColumns = ['procedencia', 'marca', 'tipo_envase', 'unidad_medida', 'presentacion', 'iva', 'promo', 'descuento', 'ean_unidad', 'dun_bulto', 'certificado'];
+        
+        window.v4GridApi.setColumnsVisible(defaultColumns, true);
+        window.v4GridApi.setColumnsVisible(secondaryColumns, false);
         window.guardarGridState();
         sincronizarDropdownCampos();
     }
@@ -3519,23 +3709,36 @@ window.resetearVisibilidadColumnas = function() {
 
 function sincronizarDropdownCampos() {
     if (!window.v4GridApi) return;
-    const columns = ['sku_proveedor', 'nombre_proveedor', 'descripcion', 'rubro', 'cant_bult', 'cant_valor', 'precio_unitario', 'dias_antiguedad', 'dias_actualizacion'];
+    console.log("🔄 [VINCULADOR-REPOSICION-V4.1] Sincronizando estado de checkboxes de campos...");
+    
+    const columnToChkMap = {
+        'sku_proveedor': 'chk-col-sku',
+        'nombre_proveedor': 'chk-col-prov',
+        'descripcion': 'chk-col-desc',
+        'rubro': 'chk-col-rubro',
+        'cant_bult': 'chk-col-cant-bult',
+        'cant_valor': 'chk-col-cant-valor',
+        'precio_unitario': 'chk-col-costo',
+        'dias_antiguedad': 'chk-col-ant',
+        'dias_actualizacion': 'chk-col-ultact',
+        'procedencia': 'chk-col-procedencia',
+        'marca': 'chk-col-marca',
+        'tipo_envase': 'chk-col-tipo-envase',
+        'unidad_medida': 'chk-col-unidad-medida',
+        'presentacion': 'chk-col-presentacion',
+        'iva': 'chk-col-iva',
+        'promo': 'chk-col-promo',
+        'descuento': 'chk-col-descuento',
+        'ean_unidad': 'chk-col-ean-unidad',
+        'dun_bulto': 'chk-col-dun-bulto',
+        'certificado': 'chk-col-certificado'
+    };
+    
     const state = window.v4GridApi.getColumnState();
     
-    columns.forEach(colId => {
+    Object.entries(columnToChkMap).forEach(([colId, chkId]) => {
         const colState = state.find(s => s.colId === colId);
         const isVisible = colState ? !colState.hide : true;
-        
-        let chkId = '';
-        if (colId === 'sku_proveedor') chkId = 'chk-col-sku';
-        else if (colId === 'nombre_proveedor') chkId = 'chk-col-prov';
-        else if (colId === 'descripcion') chkId = 'chk-col-desc';
-        else if (colId === 'rubro') chkId = 'chk-col-rubro';
-        else if (colId === 'cant_bult') chkId = 'chk-col-cant-bult';
-        else if (colId === 'cant_valor') chkId = 'chk-col-cant-valor';
-        else if (colId === 'precio_unitario') chkId = 'chk-col-costo';
-        else if (colId === 'dias_antiguedad') chkId = 'chk-col-ant';
-        else if (colId === 'dias_actualizacion') chkId = 'chk-col-ultact';
         
         const chk = document.getElementById(chkId);
         if (chk) {
@@ -3682,6 +3885,13 @@ window.fijarCostoPatronRef = async function(tipo) {
             nuevoCosto = window.ultimoCostoFormulaResolved;
         } else {
             alert('No hay costo de fórmula disponible para este ingrediente.');
+            return;
+        }
+    } else if (tipo === 'articulo_vinculado') {
+        if (typeof window.ultimoCostoArticuloVinculadoResolved === 'number' && window.ultimoCostoArticuloVinculadoResolved !== null) {
+            nuevoCosto = window.ultimoCostoArticuloVinculadoResolved;
+        } else {
+            alert('No hay costo de artículo vinculado disponible.');
             return;
         }
     } else if (tipo === 'manual') {
@@ -4033,6 +4243,236 @@ document.addEventListener('DOMContentLoaded', () => {
         initAutocomplete();
     };
 });
+
+/**
+ * 🔗 BUSCADOR E INTERACTIVIDAD DE VINCULACIÓN COMERCIAL (INGREDIENTE -> ARTÍCULO VENTA)
+ */
+window.abrirBuscadorArticuloDesglose = async function() {
+    const ingredienteId = window.activeIngredienteId;
+    if (!ingredienteId) return;
+
+    try {
+        Swal.fire({
+            title: 'Cargando Artículos...',
+            text: 'Obteniendo catálogo del Búnker...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Obtener catálogo de artículos comerciales desde el búnker
+        const resSim = await fetch('/api/produccion/simulacion/inicializar');
+        const dataSim = await resSim.json();
+        
+        // El array correcto de artículos según la inicialización de la simulación
+        const articulos = dataSim.articulosBunker || dataSim.articulos_bunker || [];
+        
+        if (articulos.length === 0) {
+            Swal.fire('Catálogo Vacío', 'No se encontraron artículos comerciales en el Búnker.', 'warning');
+            return;
+        }
+
+        // Crear la UI de búsqueda
+        let selectedSku = null;
+        let selectedDesc = "";
+        
+        const showSearchModal = () => {
+            Swal.fire({
+                title: '🔗 Vincular Artículo Comercial',
+                html: `
+                    <div style="text-align: left; font-size: 0.9em; color: #475569; margin-bottom: 12px; line-height: 1.4;">
+                        Seleccione el artículo de venta local del cual este ingrediente simple heredará su costo base de reposición.
+                    </div>
+                    <input id="swal-buscador-art" type="text" placeholder="🔍 Escriba nombre, variedad o SKU del artículo..." class="swal2-input" style="width: 90%; margin: 8px auto; display: block; font-size: 0.95em; padding: 10px; border-radius: 6px;">
+                    <div id="swal-art-resultados" style="max-height: 250px; overflow-y: auto; margin-top: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; text-align: left;">
+                        <div style="padding: 10px; text-align: center; color: #64748b; font-style: italic; font-size: 0.85em;">Cargando artículos disponibles...</div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Vincular Artículo 🔗',
+                cancelButtonText: 'Cancelar ❌',
+                confirmButtonColor: '#ff9800',
+                cancelButtonColor: '#64748b',
+                preConfirm: () => {
+                    if (!selectedSku) {
+                        Swal.showValidationMessage('Debe seleccionar un artículo de la lista clickeándolo.');
+                        return false;
+                    }
+                    return { sku: selectedSku, desc: selectedDesc };
+                },
+                didOpen: () => {
+                    const inputSearch = document.getElementById('swal-buscador-art');
+                    const resultsDiv = document.getElementById('swal-art-resultados');
+                    
+                    const renderFiltered = (query) => {
+                        const q = query.toLowerCase().trim();
+                        
+                        // Dividir por espacios para permitir búsqueda multi-palabra (filtro sobre filtro)
+                        const searchTokens = q.split(/\s+/).filter(t => t.length > 0);
+                        
+                        let filtered = [];
+                        if (searchTokens.length === 0) {
+                            filtered = articulos.slice(0, 25);
+                        } else {
+                            filtered = articulos.filter(a => {
+                                return searchTokens.every(token => {
+                                    return (a.articulo_id && a.articulo_id.toLowerCase().includes(token)) || 
+                                           (a.descripcion && a.descripcion.toLowerCase().includes(token)) ||
+                                           (a.descripcion_generada && a.descripcion_generada.toLowerCase().includes(token)) ||
+                                           (a.nombre_lomasoft && a.nombre_lomasoft.toLowerCase().includes(token));
+                                });
+                            }).slice(0, 50);
+                        }
+                        
+                        if (filtered.length === 0) {
+                            resultsDiv.innerHTML = '<div style="padding: 10px; text-align: center; color: #ef4444; font-style: italic; font-size: 0.85em;">No se encontraron artículos coincidentes.</div>';
+                            return;
+                        }
+                        
+                        resultsDiv.innerHTML = filtered.map(a => {
+                            const isSel = selectedSku === a.articulo_id;
+                            const activeBg = isSel ? 'background: #ffedd5; border-left: 4px solid #f97316; font-weight: bold;' : '';
+                            const titulo = a.descripcion_generada || a.descripcion || a.nombre_lomasoft;
+                            const subtitulo = a.descripcion || a.nombre_lomasoft || "";
+                            
+                            return `
+                                <div class="swal-art-item" data-sku="${a.articulo_id}" data-desc="${titulo}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: background 0.2s; display: flex; justify-content: space-between; align-items: center; ${activeBg}" 
+                                     onmouseover="this.style.background='#f1f5f9'" 
+                                     onmouseout="this.style.background='${isSel ? '#ffedd5' : 'transparent'}'">
+                                    <div style="display: flex; flex-direction: column; gap: 2px; text-align: left;">
+                                        <span style="color: #1e293b; font-weight: 600; font-size: 0.92em;">${titulo}</span>
+                                        <span style="color: #64748b; font-size: 0.78em; font-weight: 500;">
+                                            Código: <b style="color: #c2410c; font-family: monospace;">${a.articulo_id}</b> 
+                                            ${subtitulo ? ` | <span style="font-style: italic; color: #475569;">${subtitulo}</span>` : ''}
+                                        </span>
+                                    </div>
+                                    <span style="color: #15803d; font-weight: bold; font-family: monospace; font-size: 1.02em; background: #dcfce7; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">$ ${parseFloat(a.costo_base || 0).toFixed(2)}</span>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        // Agregar eventos click a los items
+                        resultsDiv.querySelectorAll('.swal-art-item').forEach(item => {
+                            item.addEventListener('click', () => {
+                                selectedSku = item.getAttribute('data-sku');
+                                selectedDesc = item.getAttribute('data-desc');
+                                
+                                // Volver a renderizar para marcar el seleccionado
+                                renderFiltered(inputSearch.value);
+                            });
+                        });
+                    };
+                    
+                    // Renderizar inicial (primeros 25)
+                    renderFiltered("");
+                    
+                    // Buscar al escribir
+                    inputSearch.addEventListener('input', (e) => {
+                        renderFiltered(e.target.value);
+                    });
+                    
+                    inputSearch.focus();
+                }
+            }).then(async (result) => {
+                if (result.isConfirmed && result.value) {
+                    const { sku } = result.value;
+                    
+                    Swal.fire({
+                        title: 'Vinculando...',
+                        text: `Guardando relación con artículo comercial ${sku}...`,
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading()
+                    });
+                    
+                    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ articulo_vinculado_numero: sku })
+                    });
+                    
+                    if (response.ok) {
+                        // Sincronizar grilla local
+                        if (typeof window.recargarDatosMantenendoFiltros === 'function') {
+                            await window.recargarDatosMantenendoFiltros();
+                        }
+                        
+                        Swal.fire({
+                            title: '¡Vínculo Guardado!',
+                            text: 'El ingrediente se ha enlazado con el artículo comercial correctamente.',
+                            icon: 'success',
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                        
+                        // Refrescar modal desglose
+                        window.abrirModalDesglose(ingredienteId);
+                    } else {
+                        const err = await response.json();
+                        Swal.fire('Error', err.error || 'No se pudo guardar la vinculación.', 'error');
+                    }
+                }
+            });
+        };
+        
+        showSearchModal();
+    } catch (err) {
+        console.error("Error al abrir vinculador de artículos:", err);
+        Swal.fire('Error de Conexión', 'No se pudo obtener la lista de artículos del Búnker.', 'error');
+    }
+};
+
+window.desvincularArticuloDesglose = async function() {
+    const ingredienteId = window.activeIngredienteId;
+    if (!ingredienteId) return;
+    
+    const confirm = await Swal.fire({
+        title: '¿Desvincular Artículo Comercial?',
+        text: 'El ingrediente dejará de heredar el costo de venta de este artículo.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, desvincular ❌',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b'
+    });
+    
+    if (confirm.isConfirmed) {
+        Swal.fire({
+            title: 'Desvinculando...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+        
+        try {
+            const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulo_vinculado_numero: null })
+            });
+            
+            if (response.ok) {
+                // Sincronizar grilla local
+                if (typeof window.recargarDatosMantenendoFiltros === 'function') {
+                    await window.recargarDatosMantenendoFiltros();
+                }
+                
+                Swal.fire({
+                    title: '¡Vínculo Eliminado!',
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+                
+                // Refrescar modal desglose
+                window.abrirModalDesglose(ingredienteId);
+            } else {
+                Swal.fire('Error', 'No se pudo remover el vínculo.', 'error');
+            }
+        } catch (err) {
+            console.error("Error desvinculando:", err);
+            Swal.fire('Error', 'No se pudo establecer comunicación con el servidor.', 'error');
+        }
+    }
+};
 
 
 

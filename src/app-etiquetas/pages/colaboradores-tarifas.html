@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precios de Hora de Colaborador</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- SweetAlert2 para alertas premium y confirmaciones -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- FontAwesome para iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 30px;
+      gap: 20px;
+    }
+
+    .admin-header .header-left {
+      display: flex;
+      align-items: center;
+      gap: 25px;
+    }
+
+    .admin-header .header-title {
+      margin: 0;
+      font-size: 1.8em;
+      color: var(--primary-color);
+    }
+
+    .admin-header .btn-volver {
+      text-decoration: none;
+      font-size: 0.9em;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .admin-header .btn-volver:hover {
+      background-color: var(--primary-color);
+      color: white;
+    }
+
+    .tarifas-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 30px;
+      margin-top: 30px;
+    }
+
+    @media (max-width: 992px) {
+      .tarifas-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card-section {
+      background-color: white;
+      padding: 25px 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border-color);
+      margin-bottom: 25px;
+    }
+
+    .card-section h2 {
+      color: var(--primary-color);
+      margin-bottom: 15px;
+      font-size: 1.4em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 2px solid var(--primary-light);
+      padding-bottom: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    table thead {
+      background-color: var(--dark-slate);
+      color: white;
+    }
+
+    table th, table td {
+      padding: 12px 15px;
+      border: 1px solid var(--border-color);
+      font-size: 0.95em;
+    }
+
+    tbody tr {
+      transition: background-color 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background-color: var(--primary-light);
+    }
+
+    tbody tr.selected {
+      background-color: #f3e8f2 !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    .selected-colaborador-header {
+      background-color: var(--primary-light);
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid rgba(142, 71, 133, 0.2);
+      margin-bottom: 20px;
+    }
+
+    .selected-colaborador-header h3 {
+      margin: 0;
+      color: var(--primary-color);
+      font-size: 1.2em;
+    }
+
+    .selected-colaborador-header p {
+      margin: 5px 0 0 0;
+      color: var(--medium-slate);
+      font-size: 0.9em;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      font-size: 0.9em;
+      color: var(--dark-slate);
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 1em;
+      outline: none;
+      transition: border-color 0.3s;
+      background-color: white;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--primary-color);
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-submit:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-submit:disabled {
+      background-color: #cbd5e1;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: var(--medium-slate);
+      font-style: italic;
+    }
+
+    .tarifa-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .tarifa-badge.vigente {
+      background-color: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .tarifa-badge.historico {
+      background-color: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+
+    .currency-symbol {
+      font-weight: bold;
+      color: var(--medium-slate);
+      margin-right: 2px;
+    }
+
+    /* Tabs Styles */
+    .tabs-container {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 2px solid var(--border-color);
+    }
+    
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      font-weight: 600;
+      font-size: 0.95em;
+      cursor: pointer;
+      color: var(--medium-slate);
+      transition: all 0.2s ease;
+      border-bottom: 3px solid transparent;
+      outline: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .tab-btn:hover {
+      color: var(--primary-color);
+      background-color: var(--primary-light);
+    }
+    
+    .tab-btn.active {
+      color: var(--primary-color);
+      border-bottom: 3px solid var(--primary-color);
+    }
+
+    .btn-desactivar {
+      background-color: #ef4444;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+
+    .btn-desactivar:hover {
+      background-color: #dc2626;
+    }
+
+    .btn-nueva-tarifa {
+      background-color: #8e4785;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+      margin-right: 6px;
+    }
+
+    .btn-nueva-tarifa:hover {
+      background-color: #723468;
+    }
+
+    /* Searchable Dropdown Styles */
+    .searchable-dropdown-container {
+      position: relative;
+      width: 100%;
+    }
+
+    .dropdown-resultados-list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      background-color: white;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 1000;
+      margin-top: 5px;
+      transition: all 0.2s ease;
+    }
+
+    .dropdown-item {
+      padding: 10px 15px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      border-bottom: 1px solid var(--primary-light);
+      transition: background-color 0.2s;
+    }
+
+    .dropdown-item:hover, .dropdown-item.active {
+      background-color: var(--primary-light);
+    }
+
+    .dropdown-item strong {
+      color: var(--primary-color);
+      font-size: 0.95em;
+    }
+
+    .dropdown-item span {
+      color: var(--medium-slate);
+      font-size: 0.85em;
+      margin-top: 2px;
+    }
+
+    .dropdown-no-results {
+      padding: 15px;
+      text-align: center;
+      color: var(--medium-slate);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="admin-header">
+      <div class="header-left">
+        <div class="volver-container">
+          <a href="usuarios.html" class="btn-volver"><i class="fa-solid fa-arrow-left"></i> Volver a Usuarios</a>
+        </div>
+        <h1 class="header-title">Tarifario de Colaboradores</h1>
+      </div>
+      <div class="header-right">
+        <a href="colaboradores-jornadas.html" class="btn-volver" style="border-color: var(--primary-color);"><i class="fa-solid fa-stopwatch"></i> Horarios y Jornadas</a>
+      </div>
+    </header>
+
+    <main class="tarifas-layout">
+      <!-- Columna Izquierda: Listado de Colaboradores -->
+      <section class="card-section">
+        <h2><i class="fa-solid fa-people-group"></i> Listado de Colaboradores</h2>
+        <div style="overflow-x: auto;">
+          <table id="tabla-colaboradores">
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Usuario</th>
+                <th>Tarifa Vigente / Hora</th>
+                <th>Vigencia Desde</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-colaboradores">
+              <!-- Cargado dinámicamente -->
+              <tr>
+                <td colspan="4" class="empty-state">
+                  <i class="fa-solid fa-spinner fa-spin"></i> Cargando colaboradores...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Columna Derecha: Asignación e Historial -->
+      <section style="display: flex; flex-direction: column;">
+        <!-- Formulario de Tarifa -->
+        <div class="card-section">
+          <h2><i class="fa-solid fa-hand-holding-dollar"></i> Asignar Tarifa</h2>
+          
+          <div id="no-seleccionado-msg" class="empty-state" style="padding: 10px 0;">
+            Seleccione un colaborador de la lista para gestionar sus tarifas.
+          </div>
+
+          <div id="gestion-tarifa-container" style="display: none;">
+            <div class="selected-colaborador-header">
+              <h3 id="colaborador-nombre">--</h3>
+              <p id="colaborador-usuario">Usuario: --</p>
+            </div>
+
+            <!-- Selector de Pestañas (Tabs) -->
+            <div class="tabs-container">
+              <button type="button" class="tab-btn active" id="tab-btn-horas">
+                <i class="fa-solid fa-clock"></i> Mano de Obra
+              </button>
+              <button type="button" class="tab-btn" id="tab-btn-rendimiento">
+                <i class="fa-solid fa-gauge-high"></i> Rendimiento
+              </button>
+            </div>
+
+            <!-- Contenido Pestaña 1: Horas -->
+            <div id="container-tab-horas">
+              <form id="form-actualizar-tarifa">
+                <input type="hidden" id="colaborador-id">
+                <div class="form-group">
+                  <label for="tarifa-valor">Tarifa por Hora (ARS):</label>
+                  <div style="position: relative; display: flex; align-items: center;">
+                    <span style="position: absolute; left: 12px; font-weight: bold; color: var(--medium-slate);">$</span>
+                    <input type="number" id="tarifa-valor" step="0.01" min="0" required placeholder="0.00" style="padding-left: 28px;">
+                  </div>
+                </div>
+                <button type="submit" class="btn-submit" id="btn-guardar-tarifa">
+                  <i class="fa-solid fa-floppy-disk"></i> Guardar Tarifa Hora
+                </button>
+              </form>
+            </div>
+
+            <!-- Contenido Pestaña 2: Rendimiento -->
+            <div id="container-tab-rendimiento" style="display: none;">
+              <form id="form-actualizar-tarifa-rendimiento">
+                <div class="form-group" style="position: relative;">
+                  <label for="articulo-buscador">Artículo / SKU:</label>
+                  <div class="searchable-dropdown-container">
+                    <div class="search-input-wrapper" style="position: relative;">
+                      <i class="fa-solid fa-magnifying-glass search-icon" style="position: absolute; left: 12px; top: 12px; color: var(--medium-slate);"></i>
+                      <input type="text" id="articulo-buscador" placeholder="Escriba SKU o Descripción..." style="padding-left: 32px;" autocomplete="off" required>
+                      <input type="hidden" id="tarifa-rendimiento-articulo" required>
+                      <button type="button" id="btn-clear-articulo" style="position: absolute; right: 12px; top: 8px; background: none; border: none; font-size: 1.1em; color: var(--medium-slate); cursor: pointer; display: none;">
+                        <i class="fa-solid fa-xmark"></i>
+                      </button>
+                    </div>
+                    <div id="dropdown-resultados" class="dropdown-resultados-list" style="display: none;">
+                      <!-- Elementos de búsqueda en tiempo real -->
+                    </div>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="tarifa-rendimiento-valor">Valor por Unidad (ARS):</label>
+                  <div style="position: relative; display: flex; align-items: center;">
+                    <span style="position: absolute; left: 12px; font-weight: bold; color: var(--medium-slate);">$</span>
+                    <input type="number" id="tarifa-rendimiento-valor" step="0.01" min="0" required placeholder="0.00" style="padding-left: 28px;">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="tarifa-rendimiento-unidad">Unidad de Medida:</label>
+                  <select id="tarifa-rendimiento-unidad" required>
+                    <option value="kg" selected>Kilo (kg)</option>
+                    <option value="un">Unidad (un) - Barritas</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn-submit" id="btn-guardar-tarifa-rendimiento">
+                  <i class="fa-solid fa-floppy-disk"></i> Guardar Tarifa Rendimiento
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historial de Tarifas -->
+        <div class="card-section" style="flex-grow: 1;">
+          <h2 id="historial-seccion-titulo"><i class="fa-solid fa-clock-rotate-left"></i> Historial Cronológico</h2>
+          <div id="historial-container" style="overflow-x: auto; max-height: 280px;">
+            <div class="empty-state" id="historial-empty-msg">
+              Seleccione un colaborador para visualizar su historial de tarifas.
+            </div>
+            
+            <!-- Historial de Horas -->
+            <table id="tabla-historial" style="display: none;">
+              <thead>
+                <tr>
+                  <th>Tarifa / Hora</th>
+                  <th>Desde</th>
+                  <th>Hasta</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-historial">
+                <!-- Inyectado dinámicamente -->
+              </tbody>
+            </table>
+
+            <!-- Historial de Rendimiento -->
+            <table id="tabla-historial-rendimiento" style="display: none;">
+              <thead>
+                <tr>
+                  <th>Artículo</th>
+                  <th>Valor</th>
+                  <th>Unidad</th>
+                  <th>Desde</th>
+                  <th>Hasta</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-historial-rendimiento">
+                <!-- Inyectado dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../js/colaboradores-tarifas.js"></script>
+</body>
+</html>

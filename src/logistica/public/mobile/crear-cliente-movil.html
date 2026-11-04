@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Alta de Cliente - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/comercial.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+    <style>
+        .form-section-card {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1.25rem;
+            padding: 1.15rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .form-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.85rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .form-section-title {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #c084fc;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .form-group-mobile {
+            margin-bottom: 0.85rem;
+        }
+        .form-label-mobile {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #cbd5e1;
+            margin-bottom: 0.3rem;
+        }
+        .form-label-mobile .req {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+    </style>
+</head>
+<body class="mobile-body">
+
+    <!-- CABECERA -->
+    <header class="mobile-header" style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border-bottom: 1px solid rgba(124, 58, 237, 0.3); position: sticky; top: 0; z-index: 100;">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <a href="clientes.html" class="btn-back-header" title="Volver al Listado">‹</a>
+                <div>
+                    <h1 style="margin: 0; font-size: 1.1rem; font-weight: 900; color: #f8fafc;" id="form-cliente-title">
+                        ➕ Alta de Cliente
+                    </h1>
+                    <span style="font-size: 0.7rem; color: #94a3b8;">Ficha de filiación comercial y fiscal</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- FORMULARIO PRINCIPAL -->
+    <main style="padding: 1rem 1rem 6rem;">
+        <form id="form-cliente-movil" onsubmit="return false;">
+            <input type="hidden" id="txt-codigo" value="">
+
+            <!-- TARJETA RESUMEN CUENTA CORRIENTE (Solo en modo edición) -->
+            <div id="banner-saldo-edicion" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 0.85rem; padding: 0.75rem 1rem; margin-bottom: 1rem; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;">
+                        💳 Cuenta Corriente
+                    </div>
+                    <div id="lbl-edicion-saldo-estado" style="font-size: 0.82rem; font-weight: 700; color: #cbd5e1;">
+                        Estado de cuenta
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div id="lbl-edicion-saldo-valor" style="font-size: 1.15rem; font-weight: 900; color: #34d399;">
+                        $ 0,00
+                    </div>
+                    <div id="lbl-edicion-saldo-sub" style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">
+                        Al día
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 1: DATOS FISCALES & ARCA -->
+            <section class="form-section-card">
+                <div class="form-section-header">
+                    <h2 class="form-section-title">🏛️ 1. Identificación Fiscal & ARCA</h2>
+                </div>
+
+                <!-- CUIT / CUIL + Botón ARCA -->
+                <div class="form-group-mobile">
+                    <label class="form-label-mobile" for="txt-cuit">CUIT / CUIL (11 Dígitos)</label>
+                    <div style="display: flex; gap: 0.4rem;">
+                        <input type="tel" id="txt-cuit" class="wizard-input-mobile" placeholder="Ej: 30712345678" maxlength="14" autocomplete="off" style="flex: 1;">
+                        <button type="button" id="btn-consultar-arca" class="btn-arca-mobile" disabled>
+                            ⚡ Consultar ARCA
+                        </button>
+                    </div>
+                    <span id="helper-cuit" class="form-helper">Identificación tributaria de 11 dígitos.</span>
+                </div>
+
+                <!-- Razón Social -->
+                <div class="form-group-mobile">
+                    <label class="form-label-mobile" for="txt-razon">Razón Social <span class="req">*</span></label>
+                    <input type="text" id="txt-razon" class="wizard-input-mobile" placeholder="Denominación fiscal oficial" required>
+                </div>
+
+                <!-- Nombre Comercial / Fantasía -->
+                <div class="form-group-mobile">
+                    <label class="form-label-mobile" for="txt-nombre">Nombre Comercial / Fantasía <span class="req">*</span></label>
+                    <input type="text" id="txt-nombre" class="wizard-input-mobile" placeholder="Nombre comercial para mostrador/calle" required>
+                </div>
+
+                <!-- Condición de IVA -->
+                <div class="form-group-mobile">
+                    <label class="form-label-mobile" for="sel-condicion-iva">Condición de IVA</label>
+                    <select id="sel-condicion-iva" class="wizard-input-mobile">
+                        <option value="">-- Seleccionar Condición --</option>
+                        <option value="Responsable Inscripto">Responsable Inscripto</option>
+                        <option value="Monotributo">Monotributo</option>
+                        <option value="Exento">Exento</option>
+                        <option value="Consumidor Final">Consumidor Final</option>
+                    </select>
+                </div>
+
+                <!-- Domicilio Fiscal y Provincia -->
+                <div style="display: flex; gap: 0.4rem;">
+                    <div class="form-group-mobile" style="flex: 2;">
+                        <label class="form-label-mobile" for="txt-domicilio-fiscal">Domicilio Fiscal</label>
+                        <input type="text" id="txt-domicilio-fiscal" class="wizard-input-mobile" placeholder="Dirección legal">
+                    </div>
+                    <div class="form-group-mobile" style="flex: 1;">
+                        <label class="form-label-mobile" for="txt-provincia">Provincia</label>
+                        <input type="text" id="txt-provincia" class="wizard-input-mobile" placeholder="Provincia">
+                    </div>
+                </div>
+
+                <!-- Datos Opcionales ARCA (Solo lectura) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.2rem;">
+                    <div>
+                        <label class="form-label-mobile" style="font-size:0.72rem;">Estado Clave</label>
+                        <input type="text" id="txt-estado-clave" class="wizard-input-mobile" style="opacity:0.7; font-size:0.78rem;" readonly placeholder="N/A">
+                    </div>
+                    <div>
+                        <label class="form-label-mobile" style="font-size:0.72rem;">Cat. Monotributo</label>
+                        <input type="text" id="txt-categoria-monotributo" class="wizard-input-mobile" style="opacity:0.7; font-size:0.78rem;" readonly placeholder="N/A">
+                    </div>
+                </div>
+                <div style="margin-top: 0.4rem;">
+                    <label class="form-label-mobile" style="font-size:0.72rem;">Actividad Principal</label>
+                    <input type="text" id="txt-actividad-principal" class="wizard-input-mobile" style="opacity:0.7; font-size:0.78rem;" readonly placeholder="N/A">
+                </div>
+            </section>
+
+            <!-- SECCIÓN 2: CONTACTOS OMNICANAL (WHATSAPP & EMAIL) -->
+            <section class="form-section-card">
+                <div class="form-section-header">
+                    <h2 class="form-section-title">📱 2. Contactos de Facturación</h2>
+                </div>
+
+                <!-- WhatsApp Inputs -->
+                <div class="form-group-mobile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label class="form-label-mobile" style="margin:0;">Destinatarios WhatsApp</label>
+                        <button type="button" id="btn-add-whatsapp-mobile" style="background:#059669; color:white; border:none; border-radius:0.4rem; padding:0.2rem 0.5rem; font-size:0.75rem; font-weight:800; cursor:pointer;">
+                            ➕ Agregar
+                        </button>
+                    </div>
+                    <div id="whatsapp-cards-container">
+                        <!-- Carga dinámica -->
+                    </div>
+                </div>
+
+                <!-- Email Inputs -->
+                <div class="form-group-mobile" style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label class="form-label-mobile" style="margin:0;">Destinatarios de Correo</label>
+                        <button type="button" id="btn-add-email-mobile" style="background:#2563eb; color:white; border:none; border-radius:0.4rem; padding:0.2rem 0.5rem; font-size:0.75rem; font-weight:800; cursor:pointer;">
+                            ➕ Agregar
+                        </button>
+                    </div>
+                    <datalist id="email-domains-list">
+                        <option value="@gmail.com">
+                        <option value="@hotmail.com">
+                        <option value="@outlook.com">
+                        <option value="@yahoo.com.ar">
+                    </datalist>
+                    <div id="email-cards-container">
+                        <!-- Carga dinámica -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN 3: DOMICILIOS DE ENTREGA (MULTIDOMICILIO & GPS) -->
+            <section class="form-section-card">
+                <div class="form-section-header">
+                    <h2 class="form-section-title">📍 3. Domicilios de Entrega</h2>
+                    <button type="button" id="btn-add-domicilio-mobile" style="background:#7c3aed; color:white; border:none; border-radius:0.4rem; padding:0.2rem 0.6rem; font-size:0.75rem; font-weight:800; cursor:pointer;">
+                        ➕ Domicilio
+                    </button>
+                </div>
+                <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 0.6rem;">Direcciones para la hoja de ruta y repartos en calle.</p>
+                <div id="domicilios-cards-container">
+                    <!-- Carga dinámica -->
+                </div>
+            </section>
+
+            <!-- SECCIÓN 4: FILIACIÓN LEGACY & PORTAL B2B -->
+            <section class="form-section-card">
+                <div class="form-section-header">
+                    <h2 class="form-section-title">🌐 4. Sistema Legacy & Portal B2B</h2>
+                </div>
+
+                <!-- ID Externo Lomas Soft con Typeahead -->
+                <div class="form-group-mobile" style="position: relative;">
+                    <label class="form-label-mobile" for="txt-lomas-id">ID Externo (Lomas Soft)</label>
+                    <div style="position: relative; display: flex; align-items: center;">
+                        <input type="text" id="txt-lomas-id" class="wizard-input-mobile" placeholder="Ej: 0745 o busque por nombre..." autocomplete="off">
+                        <button type="button" id="btn-clear-lomas" style="position: absolute; right: 10px; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; display: none;">✕</button>
+                    </div>
+                    <div id="lomas-sugerencias-container" class="lomas-sugerencias-dropdown"></div>
+                    <span class="form-helper">💡 Opcional. Si se deja vacío se sugerirá el próximo disponible.</span>
+                </div>
+
+                <!-- Acceso al Portal B2B -->
+                <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; margin-top: 0.75rem;">
+                    <label class="form-label-mobile" for="txt-email-portal">Email de Acceso Portal B2B</label>
+                    <input type="email" id="txt-email-portal" class="wizard-input-mobile" placeholder="usuario@portalb2b.com">
+                </div>
+                <div style="display: flex; gap: 0.4rem; margin-top: 0.5rem;">
+                    <div style="flex: 1;">
+                        <label class="form-label-mobile" for="txt-email-portal-nombre">Contacto Portal</label>
+                        <input type="text" id="txt-email-portal-nombre" class="wizard-input-mobile" placeholder="Ej: Juan">
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="form-label-mobile" for="txt-email-portal-cargo">Cargo</label>
+                        <input type="text" id="txt-email-portal-cargo" class="wizard-input-mobile" placeholder="Ej: Compras">
+                    </div>
+                </div>
+            </section>
+        </form>
+    </main>
+
+    <!-- BARRA INFERIOR FIJA CON BOTÓN GUARDAR -->
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; background: #0f172a; border-top: 1px solid rgba(255,255,255,0.1); padding: 0.85rem 1rem; z-index: 100; box-shadow: 0 -5px 20px rgba(0,0,0,0.4);">
+        <button type="button" id="btn-guardar-cliente-mobile" class="btn-primary-action" style="width: 100%; background: linear-gradient(135deg, #7c3aed 0%, #581c87 100%); color: white; padding: 0.85rem; border: none; border-radius: 0.9rem; font-size: 1rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);">
+            💾 Guardar Cliente
+        </button>
+    </div>
+
+    <!-- MODAL BOTTOM SHEET: ALTA / EDICIÓN DE DOMICILIO -->
+    <div id="modal-domicilio-mobile" class="modal-bottom-sheet-mobile">
+        <div class="modal-bottom-sheet-content" style="max-height: 88vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+                <h3 id="modal-dom-titulo" style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">
+                    📍 Domicilio de Entrega
+                </h3>
+                <button type="button" id="btn-cerrar-dom-modal" style="background: none; border: none; color: #94a3b8; font-size: 1.3rem; cursor: pointer;">✕</button>
+            </div>
+
+            <div class="form-group-mobile">
+                <label class="form-label-mobile" for="modal-dom-alias">Alias / Sucursal <span class="req">*</span></label>
+                <input type="text" id="modal-dom-alias" class="wizard-input-mobile" placeholder="Ej: Sucursal Centro, Depósito 1">
+            </div>
+
+            <!-- Campos Guiados -->
+            <div style="display: flex; gap: 0.4rem;">
+                <div class="form-group-mobile" style="flex: 2;">
+                    <label class="form-label-mobile" for="modal-dom-calle">Calle / Av.</label>
+                    <input type="text" id="modal-dom-calle" class="wizard-input-mobile" placeholder="Ej: Calle 12">
+                </div>
+                <div class="form-group-mobile" style="flex: 1;">
+                    <label class="form-label-mobile" for="modal-dom-num">N°</label>
+                    <input type="text" id="modal-dom-num" class="wizard-input-mobile" placeholder="Ej: 774">
+                </div>
+            </div>
+
+            <div class="form-group-mobile">
+                <label class="form-label-mobile" for="modal-dom-entre">Entre Calles / Esquina</label>
+                <input type="text" id="modal-dom-entre" class="wizard-input-mobile" placeholder="Ej: 47 y 48">
+            </div>
+
+            <div class="form-group-mobile">
+                <label class="form-label-mobile" for="modal-dom-direccion">Dirección Completa Formateada <span class="req">*</span></label>
+                <div style="display: flex; gap: 0.4rem;">
+                    <input type="text" id="modal-dom-direccion" class="wizard-input-mobile" placeholder="Ej: Calle 12 774 (e/ 47 y 48)" style="flex: 1;">
+                    <button type="button" id="btn-buscar-mapa-dom" class="btn-primary-action" style="background: #2563eb; color: white; padding: 0.4rem 0.75rem; border: none; border-radius: 0.6rem; font-size: 0.75rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Buscar dirección en el mapa">
+                        🔍 Ubicar
+                    </button>
+                </div>
+            </div>
+
+            <!-- MAPA INTERACTIVO TÁCTIL (Google Maps con Geocoding y Pin Móvil) -->
+            <div style="margin-top: 0.75rem; background: #0f172a; border: 1px solid #334155; border-radius: 0.85rem; padding: 0.6rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                    <span style="font-size: 0.76rem; font-weight: 800; color: #38bdf8; text-transform: uppercase;">
+                        🗺️ Mapa de Entrega (Tocar o mover el pin)
+                    </span>
+                    <span id="badge-gps-coords" style="font-size: 0.68rem; color: #34d399; font-weight: 700;">
+                        Sin coordenadas
+                    </span>
+                </div>
+                
+                <div id="mapa-domicilio-interactive" style="width: 100%; height: 210px; border-radius: 0.65rem; background: #1e293b; border: 1px solid #475569; position: relative; overflow: hidden;">
+                    <div style="display: flex; height: 100%; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.8rem;">
+                        ⏳ Cargando mapa interactivo...
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.4rem; margin-top: 0.5rem;">
+                    <button type="button" id="btn-capturar-gps" class="btn-capturar-gps" style="flex: 1; padding: 0.45rem; font-size: 0.75rem;">
+                        🛰️ Usar mi Ubicación Actual (GPS)
+                    </button>
+                </div>
+                <span id="status-gps-msg" class="form-helper" style="text-align: center; margin-top: 0.3rem;"></span>
+                <input type="hidden" id="modal-dom-lat" value="">
+                <input type="hidden" id="modal-dom-lng" value="">
+            </div>
+
+            <!-- Switch Predeterminado -->
+            <label class="checkbox-label-mobile" style="margin-top: 0.85rem;">
+                <input type="checkbox" id="modal-dom-default" checked>
+                <span style="font-weight: 700; color: #34d399;">⭐ Marcar como Domicilio Predeterminado</span>
+            </label>
+
+            <!-- Botón Guardar Domicilio -->
+            <div style="display: flex; gap: 0.5rem; margin-top: 1.25rem;">
+                <button type="button" id="btn-guardar-dom-modal" class="btn-primary-action" style="flex: 1; background: #7c3aed; padding: 0.75rem; border: none; border-radius: 0.8rem; font-weight: 800; color: white;">
+                    Aceptar Domicilio
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="js/mobile.js?v=14"></script>
+    <script src="js/controllers/ClientesMobileController.js?v=23"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            ClientesMobileController.initFormulario();
+        });
+    </script>
+</body>
+</html>

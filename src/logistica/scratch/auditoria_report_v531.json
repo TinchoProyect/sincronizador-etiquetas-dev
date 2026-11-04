@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T14:16:40-03:00",
+  "version": "v5.31",
+  "architecture_paradigm": "Hidratación Síncrona Real Backend-Frontend (costo_real_vigente inyectado en BunkerService.obtenerArticulo) + Inmutabilidad Absoluta del Input Estructural #gp-precio-final + Renderizado Paralelo Desacoplado en #gp-precio-facturado-simulado + Event Listener oninput Reactivo + Preservación del Estado AUTOMATIC y Candado de Margen",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController, bunkerService, bunker.js & listado-bunker.js: 0 SyntaxError)",
+    "QA-1_Real_Backend_Frontend_Hydration": "100% PASS (BunkerService.obtenerArticulo injects costo_real_vigente = $52629.04; bunker.html hydrates from active Finance cost)",
+    "QA-2_Inmutability_of_Base_Price_Input": "100% PASS (#gp-precio-final input retains $1815.00 base price inmutably upon discount entry)",
+    "QA-3_Parallel_Simulated_Offer_Rendering": "100% PASS (#gp-precio-facturado-simulado renders $1724.25 offer price in real-time via oninput listener)",
+    "QA-4_Margin_Lock_and_Automatic_State_Preservation": "100% PASS (Saving preserves modo_calculo = AUTOMATIC and 12% margin lock, preventing margin corruption in DB)",
+    "QA-5_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

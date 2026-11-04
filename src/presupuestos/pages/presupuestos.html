@@ -4,8 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presupuestos - Gestiones Lamda</title>
-    <link rel="stylesheet" href="/css/presupuestos.css">
+    <link rel="stylesheet" href="/css/presupuestos.css?v=031_politicas_max">
     <link rel="stylesheet" href="../css/action-buttons.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
 </head>
@@ -34,6 +33,10 @@
                     <button id="btn-nueva-orden-retiro" class="btn-secondary"
                         onclick="window.location.href='crear-presupuesto.html?modo=retiro'" style="margin-right: 10px;">
                         📦 Nueva Orden de Retiro
+                    </button>
+                    <button id="btn-politicas-comerciales" class="btn-primary"
+                        onclick="window.abrirModalPoliticasComerciales()" style="background: #0284c7; border-color: #0284c7; color: white; display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; padding: 8px 14px; border-radius: 6px; font-weight: 500; cursor: pointer;">
+                        🏷️ Políticas Comerciales
                     </button>
                     <button id="btn-sincronizar" class="btn-warning btn-sync" disabled>
                         🔄 SINCRONIZAR CON SHEET
@@ -64,22 +67,54 @@
                 </button>
             </div>
 
-            <!-- Filtros compactos -->
+            <!-- Filtros Modernos Dinámicos LAMDA -->
             <div class="filters-section-compact">
-                <div class="filter-item">
-                    <label for="filtro-categoria">Filtrar por tipo de comprobante:</label>
-                    <select id="filtro-categoria">
-                        <option value="">Todos los tipos</option>
-                    </select>
+                <div class="filters-primary-row">
+                    <div class="filter-item filter-item-search">
+                        <label for="buscar-cliente">🔍 Buscar Cliente / Pedido:</label>
+                        <input type="text" id="buscar-cliente" placeholder="ID (ej: 621), pedido (ej: 8234798) o nombre..." autocomplete="off">
+                    </div>
+                    <div class="filter-item filter-item-search">
+                        <label for="buscar-articulo">📦 Buscar por Artículo (Universal):</label>
+                        <input type="text" id="buscar-articulo" placeholder="Nombre, SKU o término (ej: nuez cuarto)..." autocomplete="off">
+                    </div>
+                    <div class="filter-item">
+                        <label for="filtro-categoria">📄 Tipo Comprobante:</label>
+                        <select id="filtro-categoria">
+                            <option value="">Todos los comprobantes</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label for="filtro-canal-origen">🌐 Canal / Origen:</label>
+                        <select id="filtro-canal-origen">
+                            <option value="">Todos los orígenes</option>
+                            <option value="portal">🌐 Involucra Portal B2B</option>
+                            <option value="local">🏢 Local / Taller (Manual)</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label for="filtro-canal-facturacion">🧾 Facturación:</label>
+                        <select id="filtro-canal-facturacion">
+                            <option value="">Todas las facturaciones</option>
+                            <option value="arca">🟢 Facturado ARCA (AFIP)</option>
+                            <option value="local">🔵 Facturado Local (Interno)</option>
+                            <option value="pendiente">⏳ Pendiente de Facturar</option>
+                            <option value="lomasoft">🏛️ Lomasoft (Histórico)</option>
+                        </select>
+                    </div>
+                    <div class="filter-item filter-item-actions">
+                        <button type="button" id="btn-limpiar-filtros" class="btn-clear-filters" title="Limpiar y restablecer todos los filtros">
+                            🔄 Limpiar
+                        </button>
+                    </div>
                 </div>
-                <div class="filter-item">
-                    <label for="buscar-cliente">Buscar cliente:</label>
-                    <input type="text" id="buscar-cliente" placeholder="Número (ej: 123) o nombre del cliente...">
-                </div>
-                <div class="filter-item filter-item-estados">
-                    <label>Filtrar por estado:</label>
-                    <div id="botones-estado" class="botones-estado">
-                        <span class="estado-loading">Cargando estados...</span>
+
+                <div class="filters-secondary-row">
+                    <div class="filter-item-estados-wrapper">
+                        <label class="label-estados">Filtrar por estado:</label>
+                        <div id="botones-estado" class="botones-estado">
+                            <span class="estado-loading">Cargando estados...</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -289,6 +324,227 @@
             </div>
         </div>
 
+        <!-- MODAL: GESTIÓN DE POLÍTICAS COMERCIALES Y DESCUENTOS ESCALONADOS -->
+        <div id="modal-politicas-comerciales" class="modal-overlay modal-politicas-overlay" style="display: none;">
+            <div class="modal-content modal-politicas-content">
+                <!-- Header -->
+                <div class="modal-politicas-header" ondblclick="window.toggleMaximizarModalPoliticas()" title="Doble clic para maximizar / restaurar">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.3em;">🏷️</span>
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.15em; font-weight: 600;">Motor de Políticas Comerciales y Descuentos</h3>
+                            <p style="margin: 2px 0 0 0; font-size: 0.8em; color: #94a3b8;">Configuración de bonificaciones automáticas por volumen y escalas por lista de precios</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" id="btn-maximizar-modal-politicas" class="btn-modal-header-action" onclick="window.toggleMaximizarModalPoliticas()" title="Maximizar pantalla completa">
+                            ⛶
+                        </button>
+                        <button type="button" class="btn-modal-header-action" onclick="window.cerrarModalPoliticasComerciales()" title="Cerrar ventana" style="font-size: 1.4em; padding: 2px 8px;">
+                            &times;
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Body (Layout 2 Columnas) -->
+                <div style="display: flex; flex: 1; overflow: hidden;">
+                    <!-- Columna Izquierda: Listado de Políticas -->
+                    <div id="columna-politicas-sidebar" style="width: 290px; min-width: 260px; border-right: 1px solid #e2e8f0; background: #f8fafc; display: flex; flex-direction: column;">
+                        <div style="padding: 12px 14px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.85em; font-weight: 700; color: #475569; text-transform: uppercase;">Políticas Activas</span>
+                            <button type="button" onclick="window.nuevaPolitica()" style="background: #0284c7; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; cursor: pointer;">
+                                ➕ Nueva
+                            </button>
+                        </div>
+                        <div id="politicas-lista-items" style="flex: 1; overflow-y: auto;">
+                            <!-- Se puebla dinámicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Columna Derecha: Formulario de la Política Seleccionada -->
+                    <div style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 20px; background: white;">
+                        <form id="form-politica" onsubmit="event.preventDefault(); window.guardarPoliticaModal();">
+                            <input type="hidden" id="pol-id" value="">
+
+                            <!-- Fila Principal: Nombre de la Política -->
+                            <div style="margin-bottom: 14px;">
+                                <label style="display: block; font-size: 0.85em; font-weight: bold; color: #334155; margin-bottom: 4px;">Nombre de la Política *</label>
+                                <input type="text" id="pol-nombre" required placeholder="Ej: Bonificación Mayorista Berisso" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95em;">
+                            </div>
+
+                            <!-- Bloque de Listas de Precios Búnker Asignadas (Multi-Lista o Universal) -->
+                            <div style="margin-bottom: 16px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                                    <label style="font-size: 0.85em; font-weight: bold; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 6px;">
+                                        <span>📋</span> Listas de Precios Habilitadas
+                                    </label>
+                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82em; font-weight: 700; color: #0369a1; cursor: pointer; background: #e0f2fe; padding: 4px 10px; border-radius: 6px; border: 1px solid #bae6fd;">
+                                            <input type="checkbox" id="pol-aplica-todas" onchange="window.toggleAplicaTodasPolitica(this.checked)" style="accent-color: #0284c7; cursor: pointer;">
+                                            🌐 Todas las listas (Universal)
+                                        </label>
+                                        <div id="pol-quick-actions" style="display: flex; gap: 6px;">
+                                            <button type="button" onclick="window.seleccionarTodasLasListas(true)" style="background: white; border: 1px solid #cbd5e1; font-size: 0.75em; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; color: #475569;">Marcar todas</button>
+                                            <button type="button" onclick="window.seleccionarTodasLasListas(false)" style="background: white; border: 1px solid #cbd5e1; font-size: 0.75em; font-weight: 600; padding: 3px 8px; border-radius: 4px; cursor: pointer; color: #475569;">Desmarcar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div id="pol-listas-checkboxes-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-top: 6px;">
+                                    <!-- Se puebla dinámicamente -->
+                                </div>
+                                <div id="pol-listas-hint" style="font-size: 0.76em; color: #64748b; margin-top: 8px;">
+                                    💡 Marque una sola lista para exclusividad, varias para compartir la regla, o active "Todas las listas" para aplicación universal.
+                                </div>
+                            </div>
+
+                            <!-- Opciones: Tipo de Cálculo, Base (Neto/Bruto) y Activo -->
+                            <div style="display: grid; grid-template-columns: 1.5fr 1.2fr 1fr; gap: 14px; margin-bottom: 16px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                <div>
+                                    <label style="display: block; font-size: 0.8em; font-weight: bold; color: #475569; margin-bottom: 4px;">Tipo de Escala</label>
+                                    <select id="pol-tipo-calculo" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9em;">
+                                        <option value="ESCALA_DIRECTA" selected>Escala Directa (Alcanzar tramo aplica % total)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.8em; font-weight: bold; color: #475569; margin-bottom: 4px;">Base de Evaluación</label>
+                                    <select id="pol-aplica-sobre" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9em;">
+                                        <option value="NETO" selected>Subtotal Neto Gravado (Recomendado)</option>
+                                        <option value="BRUTO">Subtotal Bruto (Con IVA)</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 10px;">
+                                    <label style="font-size: 0.8em; font-weight: bold; color: #475569; margin-bottom: 4px;">Estado</label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9em; font-weight: 600; color: #15803d;">
+                                        <input type="checkbox" id="pol-activo" checked style="width: 16px; height: 16px; accent-color: #16a34a;">
+                                        <span>Política Activa</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Condiciones Comerciales: Exige Cuenta al Día (Saldo Cero), Tolerancia, y No Acumulable -->
+                            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1.2fr; gap: 14px; margin-bottom: 16px; background: #fffdf5; padding: 12px; border-radius: 8px; border: 1px solid #fde68a;">
+                                <div>
+                                    <label style="display: block; font-size: 0.8em; font-weight: bold; color: #92400e; margin-bottom: 4px;">Condición de Cuenta</label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88em; font-weight: 600; color: #b45309;">
+                                        <input type="checkbox" id="pol-exige-saldo-cero" checked style="width: 16px; height: 16px; accent-color: #d97706;">
+                                        <span>Exigir Cuenta al Día (Saldo $0)</span>
+                                    </label>
+                                    <span style="font-size: 0.73em; color: #78350f; display: block; margin-top: 2px;">Bloquea bonificación si el cliente tiene saldo activo</span>
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.8em; font-weight: bold; color: #92400e; margin-bottom: 4px;">Tolerancia de Saldo ($)</label>
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="font-weight: bold; color: #b45309;">$</span>
+                                        <input type="number" id="pol-tolerancia-saldo" value="150" step="10" min="0" style="width: 100%; padding: 5px 8px; border: 1px solid #fde68a; border-radius: 6px; font-size: 0.9em; font-weight: 600;">
+                                    </div>
+                                    <span style="font-size: 0.73em; color: #78350f; display: block; margin-top: 2px;">Hasta este monto se considera cero</span>
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.8em; font-weight: bold; color: #92400e; margin-bottom: 4px;">Blindaje Comercial</label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88em; font-weight: 600; color: #b45309;">
+                                        <input type="checkbox" id="pol-no-acumulable" checked style="width: 16px; height: 16px; accent-color: #d97706;">
+                                        <span>No acumulable con ofertas</span>
+                                    </label>
+                                    <span style="font-size: 0.73em; color: #78350f; display: block; margin-top: 2px;">Excluye artículos en promo del descuento</span>
+                                </div>
+                            </div>
+
+                            <!-- Descripción breve -->
+                            <div style="margin-bottom: 18px;">
+                                <label style="display: block; font-size: 0.85em; font-weight: bold; color: #334155; margin-bottom: 4px;">Descripción / Observaciones</label>
+                                <input type="text" id="pol-descripcion" placeholder="Ej: Bonificación del 5% al superar $300.000 netos para clientes Berisso" style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9em;">
+                            </div>
+
+                            <!-- SECCIÓN: TRAMOS POR MONTO -->
+                            <div style="margin-bottom: 20px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <h4 style="margin: 0; font-size: 0.95em; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                        📊 Escalas y Tramos de Bonificación
+                                    </h4>
+                                    <button type="button" onclick="window.agregarTramo()" style="background: #10b981; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; cursor: pointer;">
+                                        ➕ Agregar Tramo
+                                    </button>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; font-size: 0.9em;">
+                                    <thead style="background: #f1f5f9; color: #475569; font-size: 0.85em; text-align: left;">
+                                        <tr>
+                                            <th style="padding: 8px 10px; width: 140px;">Monto Mínimo</th>
+                                            <th style="padding: 8px 10px; width: 140px;">Monto Máximo</th>
+                                            <th style="padding: 8px 10px; width: 100px;">Descuento %</th>
+                                            <th style="padding: 8px 10px;">Etiqueta / Descripción</th>
+                                            <th style="padding: 8px 10px; width: 50px; text-align: center;">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tramos-tbody">
+                                        <!-- Se puebla dinámicamente -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- SECCIÓN: EXCEPCIONES DE CLIENTES -->
+                            <div style="margin-bottom: 20px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <h4 style="margin: 0; font-size: 0.95em; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                        👥 Excepciones de Clientes (Exclusiones o Fijos)
+                                    </h4>
+                                    <button type="button" onclick="window.agregarExcepcionModal()" style="background: #6366f1; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; cursor: pointer;">
+                                        ➕ Agregar Excepción
+                                    </button>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; font-size: 0.9em;">
+                                    <thead style="background: #f1f5f9; color: #475569; font-size: 0.85em; text-align: left;">
+                                        <tr>
+                                            <th style="padding: 8px 10px; width: 220px;">Cliente</th>
+                                            <th style="padding: 8px 10px; width: 180px;">Tipo de Excepción</th>
+                                            <th style="padding: 8px 10px; width: 100px;">% Fijo</th>
+                                            <th style="padding: 8px 10px;">Motivo / Acuerdo</th>
+                                            <th style="padding: 8px 10px; width: 50px; text-align: center;">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="excepciones-tbody">
+                                        <!-- Se puebla dinámicamente -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- SECCIÓN: SIMULADOR DE ESCALAS EN VIVO -->
+                            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px;">
+                                <div style="font-size: 0.85em; font-weight: 700; color: #475569; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                                    🧪 Simulador de Evaluación en Tiempo Real
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="font-weight: bold; color: #64748b;">$</span>
+                                        <input type="number" id="sim-monto" value="320000" step="5000" style="width: 130px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95em; font-weight: bold;" oninput="window.onPoliticaChanged()">
+                                    </div>
+                                    <div id="sim-resultado" style="flex: 1;">
+                                        <!-- Se actualiza dinámicamente -->
+                                    </div>
+                                </div>
+                            </div>
+
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Footer Acciones -->
+                <div style="background: #f1f5f9; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e2e8f0;">
+                    <button type="button" id="btn-eliminar-politica" onclick="window.eliminarPoliticaModal()" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; display: none;">
+                        🗑️ Eliminar Política
+                    </button>
+                    <div style="display: flex; gap: 10px; margin-left: auto;">
+                        <button type="button" onclick="window.cerrarModalPoliticasComerciales()" style="background: white; color: #475569; border: 1px solid #cbd5e1; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            Cancelar
+                        </button>
+                        <button type="button" id="btn-guardar-politica" onclick="window.guardarPoliticaModal()" style="background: #0284c7; color: white; border: none; padding: 8px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            💾 Guardar Política
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>&copy; 2024 Gestiones Lamda - Módulo de Presupuestos v1.0</p>
         </footer>
@@ -296,8 +552,9 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="/js/presupuestos.js"></script>
-    <script src="/js/sync_config_modal.js"></script>
+    <script src="/js/presupuestos.js?v=032_smart_cuit_fallback"></script>
+    <script src="/js/sync_config_modal.js?v=030_desc_esp_fix"></script>
+    <script src="/js/politicasComercialesModal.js?v=031_politicas_max"></script>
     <!-- Panel nuevo de Google Sheets deshabilitado por defecto -->
     <!-- <script src="/js/gsheets-sync-panel.js"></script> -->
 </body>

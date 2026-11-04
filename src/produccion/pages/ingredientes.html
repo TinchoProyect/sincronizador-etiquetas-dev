@@ -16,6 +16,10 @@
 
     <style>
         /* Estilos específicos que no están en el CSS externo */
+        .swal2-container {
+            z-index: 100000 !important;
+        }
+
         .btn-inventario {
             background-color: #6f42c1;
             color: white;
@@ -886,6 +890,12 @@
                                 <span id="costo-ref-formula" style="font-size: 1rem; font-weight: bold; color: #166534; margin: 4px 0; border-bottom: 1px dashed #cbd5e1; cursor: pointer;" title="Clic para Autofill">Cargando...</span>
                                 <button type="button" id="btn-fijar-formula" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #10b981; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('formula')">Fijar</button>
                             </div>
+                            <!-- Referencia E: Artículo de Venta Vinculado (Producción Local) -->
+                            <div id="card-costo-articulo-vinculado" style="display: none; background: white; border: 1px solid #fed7aa; border-radius: 6px; padding: 10px; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
+                                <span style="font-size: 0.72rem; color: #c2410c; font-weight: 600; text-transform: uppercase;">Costo Artículo</span>
+                                <span id="costo-ref-articulo-vinculado" style="font-size: 1rem; font-weight: bold; color: #c2410c; margin: 4px 0; border-bottom: 1px dashed #cbd5e1; cursor: pointer;" title="Clic para Autofill">N/A</span>
+                                <button type="button" id="btn-fijar-articulo-vinculado" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #f97316; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('articulo_vinculado')">Fijar</button>
+                            </div>
                             <!-- Referencia C: Ingreso Arbitrario Manual -->
                             <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;">
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Costo Manual</span>
@@ -894,6 +904,23 @@
                                     <input type="number" id="input-costo-manual" step="0.01" min="0" placeholder="0.00" style="width: 65px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8rem; font-weight: bold; text-align: right;">
                                 </div>
                                 <button type="button" id="btn-guardar-manual" class="btn-inventario" style="padding: 4px 10px; font-size: 0.72rem; background-color: #3b82f6; margin: 0; width: 100%; justify-content: center; height: auto;" onclick="window.fijarCostoPatronRef('manual')">💾 Guardar</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Panel de Vinculación de Artículo Comercial -->
+                        <div style="margin-top: 10px; margin-bottom: 12px; padding: 8px 12px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85em;">
+                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                <span style="font-size: 1.1em;">🔄</span>
+                                <span style="font-weight: 700; color: #c2410c;">Vínculo a Artículo Venta:</span>
+                                <span id="desglose-vinculo-articulo-label" style="font-style: italic; color: #9a3412; font-weight: 500;">Ningún artículo vinculado</span>
+                            </div>
+                            <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                <button type="button" id="btn-desglose-vincular-art" class="btn-agregar-inline" style="background: #ff9800; color: white; border: none; padding: 4px 8px; font-size: 0.8em; border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 2px;" onclick="window.abrirBuscadorArticuloDesglose()">
+                                    🔗 Vincular
+                                </button>
+                                <button type="button" id="btn-desglose-desvincular-art" class="btn-agregar-inline" style="background: #ef4444; color: white; border: none; padding: 4px 8px; font-size: 0.8em; border-radius: 4px; font-weight: bold; cursor: pointer; display: none;" onclick="window.desvincularArticuloDesglose()">
+                                    ❌
+                                </button>
                             </div>
                         </div>
                         
@@ -1018,7 +1045,7 @@
                         <button type="button" onclick="window.toggleDropdownCampos(event)" style="background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">
                             ⚙️ Campos
                         </button>
-                        <div id="vr-dropdown-campos" style="display: none; position: absolute; right: 0; top: 35px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; padding: 12px; flex-direction: column; gap: 8px;">
+                        <div id="vr-dropdown-campos" style="display: none; position: absolute; right: 0; top: 35px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; width: 220px; max-height: 380px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; padding: 12px; flex-direction: column; gap: 8px;">
                             <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
                                 <input type="checkbox" id="chk-col-sku" checked onchange="window.toggleColumnaVinculador('sku_proveedor', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Código Proveedor
                             </label>
@@ -1045,6 +1072,39 @@
                             </label>
                             <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
                                 <input type="checkbox" id="chk-col-ultact" checked onchange="window.toggleColumnaVinculador('dias_actualizacion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Última Actualización
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-procedencia" onchange="window.toggleColumnaVinculador('procedencia', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Procedencia
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-marca" onchange="window.toggleColumnaVinculador('marca', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Marca
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-tipo-envase" onchange="window.toggleColumnaVinculador('tipo_envase', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Tipo Envase
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-unidad-medida" onchange="window.toggleColumnaVinculador('unidad_medida', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Unidad Medida
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-presentacion" onchange="window.toggleColumnaVinculador('presentacion', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Presentación
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-iva" onchange="window.toggleColumnaVinculador('iva', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> IVA
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-promo" onchange="window.toggleColumnaVinculador('promo', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Promo
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-descuento" onchange="window.toggleColumnaVinculador('descuento', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Descuento
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-ean-unidad" onchange="window.toggleColumnaVinculador('ean_unidad', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> EAN Unidad
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-dun-bulto" onchange="window.toggleColumnaVinculador('dun_bulto', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> DUN Bulto
+                            </label>
+                            <label style="font-size: 0.82em; color: #cbd5e1; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                                <input type="checkbox" id="chk-col-certificado" onchange="window.toggleColumnaVinculador('certificado', this.checked)" style="accent-color: #a855f7; cursor: pointer;"> Certificado
                             </label>
                             <div style="border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 4px; display: flex; justify-content: flex-end;">
                                 <button type="button" onclick="window.resetearVisibilidadColumnas()" style="background: #1e293b; border: none; font-size: 0.8em; color: #a855f7; font-weight: bold; cursor: pointer;">Restablecer</button>
@@ -1113,7 +1173,7 @@
     </div>
 
     <script src="/js/services/supabaseService.js"></script>
-    <script type="module" src="/js/ingredientes.js"></script>
+    <script type="module" src="/js/ingredientes.js?v=4_etiquetas_zebra"></script>
     <script type="module" src="/js/mix.js"></script>
     <script type="module" src="/js/ajusteRapido.js"></script>
     <script>

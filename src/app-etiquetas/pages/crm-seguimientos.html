@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor de Seguimientos WhatsApp (CRM) — LAMDA</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background-color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #1e293b;
+    }
+
+    .monitor-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0 20px 0;
+      border-bottom: 1.5px solid #e2e8f0;
+      margin-bottom: 24px;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-title {
+      margin: 0;
+      font-size: 1.6rem;
+      color: #15803d;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+
+    .btn-nav-top {
+      text-decoration: none;
+      font-size: 0.88rem;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: white;
+      font-weight: 600;
+    }
+
+    .btn-nav-top:hover {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      border-color: #94a3b8;
+    }
+
+    .btn-primary-action {
+      background: #25D366;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 2px 6px rgba(37, 211, 102, 0.25);
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary-action:hover {
+      background: #1da851;
+      transform: translateY(-1px);
+    }
+
+    /* KPIs */
+    .kpis-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 20px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: #94a3b8;
+    }
+
+    .kpi-card.kpi-hoy::before { background: #22c55e; }
+    .kpi-card.kpi-proximos::before { background: #3b82f6; }
+    .kpi-card.kpi-enviados::before { background: #10b981; }
+    .kpi-card.kpi-total::before { background: #eab308; }
+
+    .kpi-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .kpi-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.1;
+    }
+
+    .kpi-subtext {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    /* Toolbar de Búsqueda y Filtros */
+    .toolbar-box {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 20px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .toolbar-row-search {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .search-input-monitor {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1.5px solid #cbd5e1;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    .search-input-monitor:focus {
+      outline: none;
+      border-color: #25D366;
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.2);
+    }
+
+    .filter-tabs-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 12px;
+    }
+
+    .tab-pill {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #475569;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .tab-pill:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    .tab-pill.active {
+      background: #1e293b;
+      color: white;
+      border-color: #1e293b;
+    }
+
+    .tab-pill .badge-count {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+    }
+
+    .tab-pill:not(.active) .badge-count {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    /* Lista de Tarjetas del Monitor */
+    .cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .monitor-seg-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      border-left: 5px solid #cbd5e1;
+      padding: 16px 20px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      transition: all 0.2s ease;
+    }
+
+    .monitor-seg-card.card-hoy {
+      border-left-color: #22c55e;
+      background: #fcfdfc;
+    }
+
+    .monitor-seg-card.card-proximo {
+      border-left-color: #3b82f6;
+    }
+
+    .monitor-seg-card.card-enviado {
+      border-left-color: #10b981;
+      opacity: 0.88;
+    }
+
+    .monitor-seg-card.card-cancelado {
+      border-left-color: #94a3b8;
+      opacity: 0.65;
+    }
+
+    .card-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .card-client-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-contact-meta {
+      font-size: 0.9rem;
+      color: #475569;
+      font-weight: 500;
+    }
+
+    .card-badges-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-badge-monitor {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 16px;
+      letter-spacing: 0.3px;
+    }
+
+    .status-badge-monitor.badge-hoy {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #86efac;
+      animation: pulse-border 2s infinite;
+    }
+
+    .status-badge-monitor.badge-proximo {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+
+    .status-badge-monitor.badge-enviado {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-badge-monitor.badge-cancelado {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+
+    @keyframes pulse-border {
+      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+      70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    .card-schedule-info {
+      font-size: 0.88rem;
+      color: #334155;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .schedule-pill {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+
+    .card-nota-box {
+      font-size: 0.85rem;
+      color: #0369a1;
+      background: #f0f9ff;
+      border-left: 3.5px solid #0284c7;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .card-bubbles-container {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .card-bubble {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      color: #1e293b;
+      line-height: 1.4;
+    }
+
+    .card-bubble .bubble-index {
+      font-weight: 700;
+      color: #15803d;
+      font-size: 0.78rem;
+      margin-right: 6px;
+    }
+
+    .card-actions-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-top: 1px dashed #e2e8f0;
+      padding-top: 12px;
+    }
+
+    .btn-card-send {
+      background: #25D366;
+      color: white;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-card-send:hover {
+      background: #1da851;
+      transform: translateY(-1px);
+    }
+
+    .btn-card-action {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-card-action:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .btn-card-dismiss {
+      margin-left: auto;
+      color: #dc2626;
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+
+    .btn-card-dismiss:hover {
+      background: #fee2e2;
+    }
+
+    .empty-state-box {
+      text-align: center;
+      padding: 60px 20px;
+      background: white;
+      border-radius: 12px;
+      border: 1px dashed #cbd5e1;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="monitor-container">
+    
+    <!-- Top Header -->
+    <header class="admin-header">
+      <div class="header-left">
+        <a href="/" class="btn-nav-top">
+          <i class="fa-solid fa-arrow-left"></i> Volver a Pizarra
+        </a>
+        <h1 class="header-title">
+          <span>📱</span> Monitor de Seguimientos WhatsApp (CRM)
+        </h1>
+      </div>
+      <div>
+        <button type="button" class="btn-primary-action" onclick="abrirModalProgramarWhatsApp()">
+          <i class="fa-solid fa-plus"></i> Programar Nuevo Seguimiento
+        </button>
+      </div>
+    </header>
+
+    <!-- KPIs de Estado -->
+    <div class="kpis-grid">
+      <div class="kpi-card kpi-total">
+        <div class="kpi-title">📋 Total Pendientes</div>
+        <div class="kpi-value" id="kpi-total-pendientes">0</div>
+        <div class="kpi-subtext">Recordatorios programados activos</div>
+      </div>
+      <div class="kpi-card kpi-hoy">
+        <div class="kpi-title">🔔 Para Enviar Hoy</div>
+        <div class="kpi-value" id="kpi-hoy" style="color: #15803d;">0</div>
+        <div class="kpi-subtext">Aparecen en la Pizarra para ejecución rápida</div>
+      </div>
+      <div class="kpi-card kpi-proximos">
+        <div class="kpi-title">⏳ Próximos Días</div>
+        <div class="kpi-value" id="kpi-proximos" style="color: #2563eb;">0</div>
+        <div class="kpi-subtext">Programados a futuro (sin saturar la pizarra)</div>
+      </div>
+      <div class="kpi-card kpi-enviados">
+        <div class="kpi-title">🟢 Histórico Enviados</div>
+        <div class="kpi-value" id="kpi-enviados" style="color: #10b981;">0</div>
+        <div class="kpi-subtext">Mensajes entregados por WhatsApp</div>
+      </div>
+    </div>
+
+    <!-- Toolbar de Búsqueda y Pestañas -->
+    <div class="toolbar-box">
+      <div class="toolbar-row-search">
+        <input type="text" id="monitor-search-input" class="search-input-monitor" placeholder="🔍 Filtrar por cliente, contacto, número, nota estratégica o texto de mensaje..." oninput="filtrarMonitorPage()" autocomplete="off">
+        <button type="button" onclick="recargarMonitorPage()" class="btn-nav-top" title="Refrescar lista">
+          <i class="fa-solid fa-rotate"></i> Actualizar
+        </button>
+      </div>
+      <div class="filter-tabs-row">
+        <button type="button" class="tab-pill active" data-tab="TODOS" onclick="cambiarFiltroTab(this, 'TODOS')">
+          Todos <span class="badge-count" id="count-tab-todos">0</span>
+        </button>
+        <button type="button" class="tab-pill" data-tab="HOY" onclick="cambiarFiltroTab(this, 'HOY')">
+          🔔 Para Hoy <span class="badge-count" id="count-tab-hoy">0</span>
+        </button>
+        <button type="button" class="tab-pill" data-tab="PROXIMOS" onclick="cambiarFiltroTab(this, 'PROXIMOS')">
+          ⏳ Próximos <span class="badge-count" id="count-tab-proximos">0</span>
+        </button>
+        <button type="button" class="tab-pill" data-tab="ENVIADO" onclick="cambiarFiltroTab(this, 'ENVIADO')">
+          🟢 Enviados <span class="badge-count" id="count-tab-enviados">0</span>
+        </button>
+        <button type="button" class="tab-pill" data-tab="CANCELADO" onclick="cambiarFiltroTab(this, 'CANCELADO')">
+          ⚪ Cancelados <span class="badge-count" id="count-tab-cancelados">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Contenedor de Tarjetas -->
+    <div id="monitor-cards-container" class="cards-grid">
+      <div style="text-align: center; padding: 40px; color: #64748b;">
+        <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+        <p style="margin-top: 10px;">Cargando seguimientos comerciales...</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal Programar Seguimiento WhatsApp (Reutilizado) -->
+  <div id="modal-programar-whatsapp" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 620px; width: 94%;">
+      <div class="modal-header" style="border-bottom: 2px solid #25D366; padding-bottom: 10px;">
+        <h2 id="crm-modal-titulo" style="display: flex; align-items: center; gap: 8px; color: #15803d; margin: 0; font-size: 1.25rem;">
+          📅 CRM Seguimiento WhatsApp
+        </h2>
+        <button type="button" class="modal-close" onclick="cerrarModalProgramarWhatsApp()">&times;</button>
+      </div>
+
+      <div id="crm-vista-nuevo" style="display: block;">
+        <form id="form-programar-whatsapp" onsubmit="event.preventDefault(); guardarProgramacionWhatsApp();" style="margin-top: 12px;">
+          <!-- 1. Cliente Búnker con Filtro en Vivo -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="crm-cliente-search" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">
+              Buscar Cliente Búnker:
+            </label>
+            <input type="text" id="crm-cliente-search" class="crm-search-input" placeholder="🔍 Escribí el nombre, código o razón social (ej: sopresatta, rica, 034)..." oninput="filtrarClientesCrm(this.value)" autocomplete="off">
+            
+            <label for="crm-cliente-select" style="font-size: 0.8rem; color: #64748b; margin-bottom: 2px; display: block;">
+              Cliente seleccionado:
+            </label>
+            <select id="crm-cliente-select" onchange="onCrmClienteSeleccionado()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem;" required>
+              <option value="">Cargando clientes...</option>
+            </select>
+          </div>
+
+          <!-- 2. Contacto / Teléfono -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div class="form-group" style="margin: 0;">
+              <label for="crm-contacto-select" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Contacto Registrado:</label>
+              <select id="crm-contacto-select" onchange="onCrmContactoSeleccionado()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85rem;" disabled>
+                <option value="">Primero elija un cliente...</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label for="crm-contacto-nombre-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Nombre Contacto:</label>
+              <input type="text" id="crm-contacto-nombre-input" placeholder="Ej: Francisco" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="crm-telefono-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Número WhatsApp (con código de país, sin + ni guiones):</label>
+            <input type="text" id="crm-telefono-input" placeholder="Ej: 5492215960405" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.95rem; font-family: monospace; box-sizing: border-box;" required>
+          </div>
+
+          <!-- 3. Fecha y Hora con Shortcuts Dinámicos -->
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+            <label style="font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; display: block;">¿Cuándo debe aparecer en la Pizarra?</label>
+            <div id="crm-shortcuts-container" class="crm-shortcuts-container"></div>
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; align-items: center; margin-top: 8px;">
+              <div>
+                <label for="crm-fecha-input" style="font-size: 0.78rem; color: #64748b; display: block;">Fecha exacta:</label>
+                <input type="date" id="crm-fecha-input" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+              </div>
+              <div>
+                <label for="crm-hora-input" style="font-size: 0.78rem; color: #64748b; display: block;">Hora estimada:</label>
+                <input type="time" id="crm-hora-input" value="09:00" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Nota interna / Estrategia -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="crm-nota-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Nota interna / Estrategia comercial (opcional):</label>
+            <input type="text" id="crm-nota-input" placeholder="Ej: Ofrecer bolsa 20kg MCVX20 con 5% off, pago 7/15 días" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.88rem; box-sizing: border-box;">
+          </div>
+
+          <!-- 5. Burbujas de Mensaje -->
+          <div class="form-group" style="margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; flex-wrap: wrap;">
+              <label style="font-weight: 600; font-size: 0.88rem; margin: 0;">Mensajes a enviar (Burbujas / Partes secuenciales):</label>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" onclick="dividirBurbujasEnModal()" style="background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" title="Divide un mensaje largo en varios mensajitos cortos (Saludo, Cuerpo y Cierre)">
+                  ✂️ Dividir en mensajitos
+                </button>
+                <button type="button" class="btn-bubble-add" onclick="agregarBurbujaMensaje()" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;">
+                  ➕ Agregar otra burbuja
+                </button>
+              </div>
+            </div>
+            <div id="crm-bubbles-container"></div>
+            <span style="font-size: 0.78rem; color: #64748b; display: block; margin-top: 4px;">
+              💡 Cada burbuja se despacha como un mensaje corto de WhatsApp separado (con 1,2 seg de pausa entre cada uno).
+            </span>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; flex-wrap: wrap;">
+            <button type="button" onclick="enviarPruebaDesdeModalProgramador()" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; font-weight: 700; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;">
+              🧪 Enviar Prueba (221 661 5746)
+            </button>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-cancelar" onclick="cerrarModalProgramarWhatsApp()">Cancelar</button>
+              <button type="submit" class="btn-acceder" style="background: #25D366; color: white; border: none; font-weight: 700; padding: 8px 18px; border-radius: 6px; cursor: pointer;">💾 Guardar Programación</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../js/crm-seguimientos-wa.js?v=3.0"></script>
+  <script>
+    let todosLosSeguimientos = [];
+    let filtroTabActual = 'TODOS';
+
+    async function ejecutarPruebaMonitor(id) {
+      if (typeof window.enviarPruebaSeguimientoWhatsApp === 'function') {
+        await window.enviarPruebaSeguimientoWhatsApp(id);
+      }
+    }
+
+    async function recargarMonitorPage() {
+      try {
+        const res = await fetch('/api/crm/seguimientos/resumen');
+        const data = await res.json();
+        if (data.success) {
+          todosLosSeguimientos = data.todos || [];
+          actualizarKPIs(data);
+          filtrarMonitorPage();
+        }
+      } catch (err) {
+        console.error('Error cargando monitor:', err);
+      }
+    }
+
+    function actualizarKPIs(resumen) {
+      const hoyCount = (resumen.hoy || []).length;
+      const proximosCount = (resumen.proximos || []).length;
+      const todos = resumen.todos || [];
+      const enviadosCount = todos.filter(s => s.estado === 'ENVIADO').length;
+      const canceladosCount = todos.filter(s => s.estado === 'CANCELADO').length;
+      const pendientesCount = todos.filter(s => s.estado === 'PENDIENTE').length;
+
+      document.getElementById('kpi-total-pendientes').textContent = pendientesCount;
+      document.getElementById('kpi-hoy').textContent = hoyCount;
+      document.getElementById('kpi-proximos').textContent = proximosCount;
+      document.getElementById('kpi-enviados').textContent = enviadosCount;
+
+      document.getElementById('count-tab-todos').textContent = todos.length;
+      document.getElementById('count-tab-hoy').textContent = hoyCount;
+      document.getElementById('count-tab-proximos').textContent = proximosCount;
+      document.getElementById('count-tab-enviados').textContent = enviadosCount;
+      document.getElementById('count-tab-cancelados').textContent = canceladosCount;
+    }
+
+    function cambiarFiltroTab(btn, tab) {
+      filtroTabActual = tab;
+      document.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      filtrarMonitorPage();
+    }
+
+    function filtrarMonitorPage() {
+      const query = (document.getElementById('monitor-search-input').value || '').trim().toLowerCase();
+      const tokens = query.split(/\s+/).filter(t => t.length > 0);
+      const hoyStr = new Date().toLocaleDateString('en-CA');
+
+      const filtrados = todosLosSeguimientos.filter(item => {
+        // Filtro por Tab
+        if (filtroTabActual === 'HOY') {
+          if (item.estado !== 'PENDIENTE' || item.fecha_programada > hoyStr) return false;
+        } else if (filtroTabActual === 'PROXIMOS') {
+          if (item.estado !== 'PENDIENTE' || item.fecha_programada <= hoyStr) return false;
+        } else if (filtroTabActual === 'ENVIADO') {
+          if (item.estado !== 'ENVIADO') return false;
+        } else if (filtroTabActual === 'CANCELADO') {
+          if (item.estado !== 'CANCELADO') return false;
+        }
+
+        // Filtro por Texto (LAMDA Universal Search)
+        if (tokens.length > 0) {
+          let msgsText = '';
+          try {
+            const m = Array.isArray(item.mensajes) ? item.mensajes : JSON.parse(item.mensajes);
+            msgsText = Array.isArray(m) ? m.join(' ') : String(m);
+          } catch(e) { msgsText = String(item.mensajes || ''); }
+
+          const bolsa = `${item.cliente_nombre || ''} ${item.contacto_nombre || ''} ${item.telefono_destino || ''} ${item.nota_interna || ''} ${msgsText}`.toLowerCase();
+          return tokens.every(token => bolsa.includes(token));
+        }
+
+        return true;
+      });
+
+      renderizarTarjetasMonitor(filtrados);
+    }
+
+    function renderizarTarjetasMonitor(lista) {
+      const container = document.getElementById('monitor-cards-container');
+      if (!container) return;
+
+      if (lista.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state-box">
+            <p style="font-size: 2.2rem; margin: 0 0 10px 0;">📭</p>
+            <h3 style="margin: 0 0 6px 0; color: #1e293b;">No hay seguimientos que coincidan con la búsqueda</h3>
+            <p style="margin: 0; font-size: 0.9rem;">Podés cambiar de pestaña o programar uno nuevo con el botón superior.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const hoyStr = new Date().toLocaleDateString('en-CA');
+      let html = '';
+
+      lista.forEach(seg => {
+        let msgs = seg.mensajes;
+        if (typeof msgs === 'string') {
+          try { msgs = JSON.parse(msgs); } catch(e) { msgs = [msgs]; }
+        }
+        if (!Array.isArray(msgs)) msgs = [msgs];
+
+        const esPendiente = seg.estado === 'PENDIENTE';
+        const esHoy = esPendiente && (seg.fecha_programada <= hoyStr);
+        const esProximo = esPendiente && (seg.fecha_programada > hoyStr);
+        const esEnviado = seg.estado === 'ENVIADO';
+
+        let cardClass = 'monitor-seg-card';
+        let badgeHtml = '';
+
+        if (esHoy) {
+          cardClass += ' card-hoy';
+          badgeHtml = '<span class="status-badge-monitor badge-hoy">🔔 PARA ENVIAR HOY</span>';
+        } else if (esProximo) {
+          cardClass += ' card-proximo';
+          badgeHtml = '<span class="status-badge-monitor badge-proximo">⏳ PRÓXIMO</span>';
+        } else if (esEnviado) {
+          cardClass += ' card-enviado';
+          badgeHtml = '<span class="status-badge-monitor badge-enviado">🟢 ENVIADO</span>';
+        } else {
+          cardClass += ' card-cancelado';
+          badgeHtml = '<span class="status-badge-monitor badge-cancelado">⚪ CANCELADO</span>';
+        }
+
+        // Relative days calc
+        let relativeInfo = '';
+        if (seg.fecha_programada) {
+          const [y, m, d] = seg.fecha_programada.split('-').map(Number);
+          const fProg = new Date(y, m - 1, d);
+          const fHoy = new Date();
+          fHoy.setHours(0, 0, 0, 0);
+          const diffDays = Math.round((fProg - fHoy) / (1000 * 60 * 60 * 24));
+
+          if (diffDays === 0) relativeInfo = '🔔 <strong>Hoy</strong>';
+          else if (diffDays === 1) relativeInfo = '🗓️ <strong>Mañana</strong>';
+          else if (diffDays > 1) relativeInfo = `🗓️ En ${diffDays} días`;
+          else if (diffDays < 0) relativeInfo = `⚠️ Vencido hace ${Math.abs(diffDays)} días`;
+        }
+
+        html += `
+          <div class="${cardClass}" id="monitor-card-${seg.id}">
+            <div class="card-top-row">
+              <div>
+                <div class="card-client-title">
+                  <span>🏢</span> ${seg.cliente_nombre}
+                  <span class="card-contact-meta">— 👤 ${seg.contacto_nombre} (<code>${seg.telefono_destino}</code>)</span>
+                </div>
+              </div>
+              <div class="card-badges-row">
+                ${badgeHtml}
+              </div>
+            </div>
+
+            <div class="card-schedule-info">
+              <span>📅 <strong>Fecha:</strong> ${seg.fecha_programada} a las ${seg.hora_programada || '09:00'} hs</span>
+              ${relativeInfo ? `<span class="schedule-pill">${relativeInfo}</span>` : ''}
+              ${seg.enviado_at ? `<span style="color: #15803d; font-size: 0.84rem;">(Enviado: ${new Date(seg.enviado_at).toLocaleTimeString()})</span>` : ''}
+            </div>
+
+            ${seg.nota_interna ? `
+              <div class="card-nota-box">
+                📝 <strong>Estrategia comercial:</strong> ${seg.nota_interna}
+              </div>
+            ` : ''}
+
+            <div class="card-bubbles-container">
+              ${msgs.map((m, idx) => `
+                <div class="card-bubble" style="white-space: pre-wrap;">
+                  <span class="bubble-index">💬 Parte #${idx + 1} de ${msgs.length}:</span> ${m}
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="card-actions-bar">
+              ${esPendiente ? `
+                <button type="button" class="btn-card-send" onclick="ejecutarEnvioMonitor(${seg.id})">
+                  <i class="fa-brands fa-whatsapp"></i> Enviar WhatsApp Ahora
+                </button>
+                <button type="button" class="btn-card-action" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;" onclick="ejecutarPruebaMonitor(${seg.id})" title="Enviar prueba a mi propio WhatsApp (221 661 5746) para ver cómo lo recibirá el cliente">
+                  🧪 Enviar Prueba (221 661 5746)
+                </button>
+                <button type="button" class="btn-card-action" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700;" onclick="window.compartirSeguimientoConOtroCliente(${seg.id})" title="Reutilizar esta oferta para otro cliente similar (adapta nombre y precios de lista)">
+                  <i class="fa-solid fa-users"></i> Compartir con otro cliente
+                </button>
+                <button type="button" class="btn-card-action" onclick="abrirModalProgramarWhatsApp(${seg.id})">
+                  <i class="fa-solid fa-pen-to-square"></i> Editar / Dividir
+                </button>
+                <button type="button" class="btn-card-action" onclick="posponerMonitor(${seg.id}, 1)">
+                  <i class="fa-solid fa-clock"></i> +24h
+                </button>
+                <button type="button" class="btn-card-action" onclick="posponerMonitor(${seg.id}, 7)">
+                  <i class="fa-solid fa-calendar-plus"></i> +7 días
+                </button>
+                <button type="button" class="btn-card-action btn-card-dismiss" onclick="desestimarMonitor(${seg.id})">
+                  <i class="fa-solid fa-trash"></i> Desestimar
+                </button>
+              ` : `
+                <span style="font-size: 0.85rem; color: #64748b; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-check-double"></i> Seguimiento completado
+                </span>
+                <button type="button" class="btn-card-action" style="background:#f0fdf4; color:#15803d; border-color:#86efac; font-weight:700; margin-left: auto;" onclick="window.compartirSeguimientoConOtroCliente(${seg.id})">
+                  <i class="fa-solid fa-users"></i> Compartir con otro cliente
+                </button>
+                <button type="button" class="btn-card-action" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; font-weight:700;" onclick="ejecutarPruebaMonitor(${seg.id})">
+                  🧪 Enviar Prueba (221 661 5746)
+                </button>
+                <button type="button" class="btn-card-action" onclick="abrirModalProgramarWhatsApp(${seg.id})">
+                  <i class="fa-solid fa-copy"></i> Re-programar
+                </button>
+              `}
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    async function ejecutarEnvioMonitor(id) {
+      if (typeof window.enviarSeguimientoWhatsApp === 'function') {
+        await window.enviarSeguimientoWhatsApp(id);
+        recargarMonitorPage();
+      }
+    }
+
+    async function posponerMonitor(id, dias) {
+      if (typeof window.posponerSeguimientoWhatsApp === 'function') {
+        await window.posponerSeguimientoWhatsApp(id, dias);
+        recargarMonitorPage();
+      }
+    }
+
+    async function desestimarMonitor(id) {
+      if (typeof window.desestimarSeguimientoWhatsApp === 'function') {
+        await window.desestimarSeguimientoWhatsApp(id);
+        recargarMonitorPage();
+      }
+    }
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      recargarMonitorPage();
+    });
+  </script>
+</body>
+</html>

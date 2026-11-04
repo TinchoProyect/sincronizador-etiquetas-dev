@@ -3,6 +3,7 @@
  */
 
 const { validarFacturaCompleta } = require('../utils/validaciones');
+const { pool } = require('../config/database');
 
 console.log('🔍 [FACTURACION-VALIDATION] Cargando middleware de validación...');
 
@@ -39,7 +40,7 @@ const validarCrearFactura = async (req, res, next) => {
                     FROM factura_facturas 
                     WHERE id = $1
                 `;
-                const resOrig = await req.db.query(queryOriginal, [parseInt(body.factura_asociada_id)]);
+                const resOrig = await pool.query(queryOriginal, [parseInt(body.factura_asociada_id)]);
                 if (resOrig.rows.length > 0) {
                     const fOrig = resOrig.rows[0];
                     

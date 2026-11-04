@@ -1,0 +1,284 @@
+{
+  "saldoInicialUsd": 9.99,
+  "fechaRecarga": "04/11/2026",
+  "recargaAutomatica": true,
+  "billingAccountId": "01B986-C7D7EB-F97B7A",
+  "tokensDesdeRecarga": 18407,
+  "consumidoDesdeRecargaUsd": 0.007886,
+  "llamadasDesdeRecarga": 30,
+  "hoyFecha": "2026-11-04",
+  "tokensHoy": 18407,
+  "consumidoHoyUsd": 0.007886,
+  "llamadasHoy": 30,
+  "estadoCuenta": "OK",
+  "ultimoError": "",
+  "ultimaVerificacionEn": "2026-11-04T20:25:34.592Z",
+  "porModulo": {
+    "CUENTAS_BANCARIAS": {
+      "nombre": "Cuentas Bancarias y Conciliación",
+      "tokens": 2059,
+      "costoUsd": 0.00123,
+      "llamadas": 26
+    },
+    "PRODUCCION_LOTES": {
+      "nombre": "Producción / Recepción de Lotes",
+      "tokens": 0,
+      "costoUsd": 0,
+      "llamadas": 0
+    },
+    "COMERCIAL_CRM": {
+      "nombre": "Asistente Comercial / CRM",
+      "tokens": 16348,
+      "costoUsd": 0.006656,
+      "llamadas": 4
+    },
+    "AUDIOS": {
+      "nombre": "Transcripción de Audios",
+      "tokens": 0,
+      "costoUsd": 0,
+      "llamadas": 0
+    }
+  },
+  "historialReciente": [
+    {
+      "ts": "2026-11-04T20:25:34.592Z",
+      "hora": "05:25:34 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 85,
+      "costoUsd": 0.000051
+    },
+    {
+      "ts": "2026-11-04T20:00:35.037Z",
+      "hora": "05:00:35 p. m.",
+      "modulo": "Asistente Comercial / CRM",
+      "detalle": "Asistencia Comercial / Audio",
+      "tokens": 4377,
+      "costoUsd": 0.001984
+    },
+    {
+      "ts": "2026-11-04T19:58:50.858Z",
+      "hora": "04:58:50 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 75,
+      "costoUsd": 0.000045
+    },
+    {
+      "ts": "2026-11-04T19:45:10.168Z",
+      "hora": "04:45:10 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 124,
+      "costoUsd": 0.000074
+    },
+    {
+      "ts": "2026-11-04T19:36:49.775Z",
+      "hora": "04:36:49 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 64,
+      "costoUsd": 0.000038
+    },
+    {
+      "ts": "2026-11-04T19:27:26.328Z",
+      "hora": "04:27:26 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 87,
+      "costoUsd": 0.000052
+    },
+    {
+      "ts": "2026-11-04T19:21:58.827Z",
+      "hora": "04:21:58 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 120,
+      "costoUsd": 0.000072
+    },
+    {
+      "ts": "2026-11-04T19:17:31.154Z",
+      "hora": "04:17:31 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 41,
+      "costoUsd": 0.000024
+    },
+    {
+      "ts": "2026-11-04T19:05:27.191Z",
+      "hora": "04:05:27 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 88,
+      "costoUsd": 0.000052
+    },
+    {
+      "ts": "2026-11-04T19:03:53.832Z",
+      "hora": "04:03:53 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 165,
+      "costoUsd": 0.000099
+    },
+    {
+      "ts": "2026-11-04T19:01:54.588Z",
+      "hora": "04:01:54 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 2,
+      "costoUsd": 0.000001
+    },
+    {
+      "ts": "2026-11-04T19:01:39.737Z",
+      "hora": "04:01:39 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 84,
+      "costoUsd": 0.00005
+    },
+    {
+      "ts": "2026-11-04T18:45:07.963Z",
+      "hora": "03:45:07 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 93,
+      "costoUsd": 0.000055
+    },
+    {
+      "ts": "2026-11-04T18:45:01.413Z",
+      "hora": "03:45:01 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 104,
+      "costoUsd": 0.000062
+    },
+    {
+      "ts": "2026-11-04T16:55:29.329Z",
+      "hora": "01:55:29 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 10,
+      "costoUsd": 0.000006
+    },
+    {
+      "ts": "2026-11-04T16:42:45.033Z",
+      "hora": "01:42:45 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 152,
+      "costoUsd": 0.000091
+    },
+    {
+      "ts": "2026-11-04T16:27:06.283Z",
+      "hora": "01:27:06 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 10,
+      "costoUsd": 0.000006
+    },
+    {
+      "ts": "2026-11-04T16:20:13.652Z",
+      "hora": "01:20:13 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 85,
+      "costoUsd": 0.000051
+    },
+    {
+      "ts": "2026-11-04T16:08:19.706Z",
+      "hora": "01:08:19 p. m.",
+      "modulo": "Asistente Comercial / CRM",
+      "detalle": "Asistencia Comercial / Audio",
+      "tokens": 9814,
+      "costoUsd": 0.003499
+    },
+    {
+      "ts": "2026-11-04T16:07:54.162Z",
+      "hora": "01:07:54 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 2,
+      "costoUsd": 0.000001
+    },
+    {
+      "ts": "2026-11-04T16:06:57.534Z",
+      "hora": "01:06:57 p. m.",
+      "modulo": "Asistente Comercial / CRM",
+      "detalle": "Asistencia Comercial / Audio",
+      "tokens": 451,
+      "costoUsd": 0.000188
+    },
+    {
+      "ts": "2026-11-04T15:50:42.777Z",
+      "hora": "12:50:42 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 79,
+      "costoUsd": 0.000047
+    },
+    {
+      "ts": "2026-11-04T15:40:27.481Z",
+      "hora": "12:40:27 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 110,
+      "costoUsd": 0.000066
+    },
+    {
+      "ts": "2026-11-04T15:36:04.006Z",
+      "hora": "12:36:04 p. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 39,
+      "costoUsd": 0.000023
+    },
+    {
+      "ts": "2026-11-04T14:55:29.071Z",
+      "hora": "11:55:29 a. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 160,
+      "costoUsd": 0.000096
+    },
+    {
+      "ts": "2026-11-04T14:48:32.599Z",
+      "hora": "11:48:32 a. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 105,
+      "costoUsd": 0.000063
+    },
+    {
+      "ts": "2026-11-04T14:47:44.027Z",
+      "hora": "11:47:44 a. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 130,
+      "costoUsd": 0.000078
+    },
+    {
+      "ts": "2026-11-04T14:47:11.308Z",
+      "hora": "11:47:11 a. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 10,
+      "costoUsd": 0.000006
+    },
+    {
+      "ts": "2026-11-04T14:29:17.925Z",
+      "hora": "11:29:17 a. m.",
+      "modulo": "Cuentas Bancarias y Conciliación",
+      "detalle": "Verificación de estado en caliente (Ping)",
+      "tokens": 35,
+      "costoUsd": 0.000021
+    },
+    {
+      "ts": "2026-11-04T12:15:11.217Z",
+      "hora": "09:15:11 a. m.",
+      "modulo": "Asistente Comercial / CRM",
+      "detalle": "Asistencia Comercial / Audio",
+      "tokens": 1706,
+      "costoUsd": 0.000985
+    }
+  ]
+}

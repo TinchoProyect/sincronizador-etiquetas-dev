@@ -32,94 +32,161 @@ body {
     line-height: 1.4;
 }
 
-/* ===== BOTONES DE ACCIÓN (Solo pantalla) ===== */
+/* ===== BOTONES DE ACCIÓN Y CONFIGURACIÓN (Solo pantalla) ===== */
 
 .print-actions {
+    max-width: 210mm;
+    margin: 0 auto 16px auto;
+    padding: 10px 14px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 20px;
-    padding: 12px 15px;
-    background: white;
-    border-radius: 6px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    flex-direction: column;
+    gap: 8px;
 }
 
-/* Selector de formato de impresión */
-.formato-selector {
+.actions-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.actions-group-nav {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.actions-group-format {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
 }
 
-.formato-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #555;
+.formato-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.control-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 .formato-toggle {
-    display: flex;
-    gap: 5px;
-    background: #f0f0f0;
-    padding: 3px;
+    display: inline-flex;
+    background: #f1f5f9;
+    padding: 2px;
     border-radius: 6px;
+    border: 1px solid #e2e8f0;
 }
 
 .btn-formato {
-    padding: 6px 12px;
+    padding: 4px 9px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 600;
     background: transparent;
-    color: #666;
-    transition: all 0.2s ease;
+    color: #64748b;
+    transition: all 0.15s ease;
 }
 
 .btn-formato:hover {
-    background: #e0e0e0;
-    color: #333;
+    background: #e2e8f0;
+    color: #1e293b;
 }
 
 .btn-formato.active {
-    background: var(--accent-color);
-    color: white;
-    box-shadow: 0 2px 4px rgba(13, 138, 156, 0.3);
+    background: #334155;
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.divider-vertical {
+    width: 1px;
+    height: 18px;
+    background: #cbd5e1;
+}
+
+.formato-switches {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.compact-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    user-select: none;
+}
+
+.compact-check input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: #334155;
+    margin: 0;
+}
+
+.actions-group-output {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .btn {
-    padding: 8px 16px;
+    padding: 6px 12px;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
+.btn-compact {
+    height: 31px;
+}
+
 .btn-primary {
-    background-color: var(--primary-color);
+    background-color: #1e293b;
     color: white;
 }
 
 .btn-primary:hover {
-    background-color: var(--primary-hover);
+    background-color: #0f172a;
     transform: translateY(-1px);
 }
 
 .btn-secondary {
-    background-color: #95a5a6;
-    color: white;
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
 }
 
 .btn-secondary:hover {
-    background-color: #7f8c8d;
+    background-color: #e2e8f0;
+    color: #0f172a;
     transform: translateY(-1px);
 }
 
@@ -133,6 +200,104 @@ body {
     background-color: var(--whatsapp-hover) !important;
     transform: translateY(-1px);
     box-shadow: 0 2px 5px rgba(37, 211, 102, 0.4);
+}
+
+/* ===== FILA 2: COMPLEMENTOS OPCIONALES (TAC TAC A UN CLIC) ===== */
+.actions-row-extras {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+}
+
+.extras-caption {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.extras-toggles-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-extra-toggle {
+    height: 27px;
+    padding: 0 10px;
+    border-radius: 14px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.btn-extra-toggle:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+.btn-extra-toggle .extra-badge {
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: #e2e8f0;
+    color: #64748b;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: all 0.15s ease;
+}
+
+/* Estado activo para Promos */
+.btn-extra-toggle.active-promos {
+    background: #fff7ed !important;
+    border-color: #fb923c !important;
+    color: #9a3412 !important;
+    box-shadow: 0 1px 3px rgba(251, 146, 60, 0.2) !important;
+}
+.btn-extra-toggle.active-promos .extra-badge {
+    background: #ea580c !important;
+    color: #ffffff !important;
+}
+
+/* Estado activo para Pagos */
+.btn-extra-toggle.active-pagos {
+    background: #eff6ff !important;
+    border-color: #60a5fa !important;
+    color: #1e40af !important;
+    box-shadow: 0 1px 3px rgba(96, 165, 250, 0.2) !important;
+}
+.btn-extra-toggle.active-pagos .extra-badge {
+    background: #2563eb !important;
+    color: #ffffff !important;
+}
+
+/* Estado activo para Intereses */
+.btn-extra-toggle.active-intereses {
+    background: #faf5ff !important;
+    border-color: #a78bfa !important;
+    color: #6b21a8 !important;
+    box-shadow: 0 1px 3px rgba(167, 139, 250, 0.2) !important;
+}
+.btn-extra-toggle.active-intereses .extra-badge {
+    background: #7c3aed !important;
+    color: #ffffff !important;
 }
 
 /* ===== CONTENEDOR PRINCIPAL ===== */
@@ -598,6 +763,10 @@ body {
     .info-compacta,
     .totales-barcode-container,
     .totales-section,
+    .condicion-comercial-section,
+    .promos-section,
+    .formas-pago-section,
+    .politica-intereses-section,
     .observaciones-section {
         page-break-inside: avoid;
     }

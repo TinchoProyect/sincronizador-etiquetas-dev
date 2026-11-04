@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Fotos Depósito (B2B) - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css?v=50">
+    <link rel="stylesheet" href="css/comercial.css?v=50">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+
+    <style>
+        .fotos-deposito-page {
+            background-color: #0f172a;
+            min-height: 100vh;
+            color: #f8fafc;
+            padding-bottom: 5rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .header-fotos {
+            background: linear-gradient(135deg, #0f172a 0%, #134e4a 100%);
+            border-bottom: 1px solid rgba(20, 184, 166, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            padding: 0.75rem 1rem;
+        }
+
+        .stats-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            padding: 0.75rem 1rem 0.25rem;
+            max-width: 680px;
+            margin: 0 auto;
+        }
+
+        .stat-pill {
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(71, 85, 105, 0.45);
+            border-radius: 0.75rem;
+            padding: 0.5rem 0.65rem;
+            text-align: center;
+        }
+
+        .stat-pill-val {
+            font-size: 1.15rem;
+            font-weight: 900;
+            line-height: 1.1;
+        }
+
+        .stat-pill-lbl {
+            font-size: 0.68rem;
+            color: #94a3b8;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-top: 2px;
+        }
+
+        .search-sticky-box {
+            position: sticky;
+            top: 58px;
+            z-index: 35;
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(10px);
+            padding: 0.65rem 1rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .search-container-inner {
+            max-width: 680px;
+            margin: 0 auto;
+        }
+
+        .search-input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input-fotos {
+            width: 100%;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.75rem 2.5rem 0.75rem 2.45rem;
+            color: #f8fafc;
+            font-size: 0.92rem;
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .search-input-fotos:focus {
+            border-color: #14b8a6;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
+        }
+
+        .filter-chips-row {
+            display: flex;
+            gap: 0.45rem;
+            overflow-x: auto;
+            padding-top: 0.6rem;
+            padding-bottom: 0.15rem;
+            scrollbar-width: none;
+        }
+        .filter-chips-row::-webkit-scrollbar {
+            display: none;
+        }
+
+        .filter-chip {
+            flex-shrink: 0;
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 999px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .filter-chip.active {
+            background: rgba(13, 148, 136, 0.22);
+            color: #5eead4;
+            border-color: #14b8a6;
+            box-shadow: 0 2px 10px rgba(20, 184, 166, 0.2);
+        }
+
+        .articles-list-container {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0.75rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .art-foto-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 0.9rem 1rem;
+            transition: border-color 0.2s, transform 0.15s;
+            position: relative;
+        }
+
+        .art-foto-card.has-photos {
+            border-color: rgba(20, 184, 166, 0.55);
+            background: linear-gradient(180deg, rgba(19, 78, 74, 0.22) 0%, #1e293b 100%);
+        }
+
+        .art-badges-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-bottom: 0.5rem;
+            align-items: center;
+        }
+
+        .badge-tag {
+            font-size: 0.66rem;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 6px;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .badge-sku {
+            background: #0f172a;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            font-family: monospace;
+            font-size: 0.72rem;
+        }
+
+        .badge-linea1 {
+            background: rgba(14, 165, 233, 0.15);
+            color: #7dd3fc;
+            border: 1px solid rgba(14, 165, 233, 0.35);
+        }
+
+        .badge-derivado {
+            background: rgba(148, 163, 184, 0.12);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+
+        .badge-stock-ok {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+
+        .badge-stock-zero {
+            background: rgba(239, 68, 68, 0.12);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge-oferta {
+            background: rgba(245, 158, 11, 0.18);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .badge-lote {
+            background: rgba(139, 92, 246, 0.15);
+            color: #c4b5fd;
+            border: 1px solid rgba(139, 92, 246, 0.35);
+        }
+
+        .art-title {
+            font-size: 0.98rem;
+            font-weight: 800;
+            color: #f8fafc;
+            line-height: 1.3;
+            margin-bottom: 0.35rem;
+        }
+
+        .art-meta-sub {
+            font-size: 0.76rem;
+            color: #94a3b8;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .thumbs-preview-strip {
+            display: flex;
+            gap: 0.45rem;
+            overflow-x: auto;
+            padding: 0.4rem 0;
+            margin-bottom: 0.6rem;
+        }
+
+        .thumb-mini {
+            width: 54px;
+            height: 54px;
+            border-radius: 0.5rem;
+            object-fit: cover;
+            border: 1px solid rgba(20, 184, 166, 0.5);
+            background: #0f172a;
+            flex-shrink: 0;
+        }
+
+        .btn-capturar-card {
+            width: 100%;
+            padding: 0.68rem 1rem;
+            border-radius: 0.75rem;
+            font-size: 0.84rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            border: none;
+            transition: all 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-capturar-card.primary {
+            background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+        }
+
+        .btn-capturar-card.edit {
+            background: rgba(20, 184, 166, 0.16);
+            color: #5eead4;
+            border: 1px solid rgba(20, 184, 166, 0.45);
+        }
+
+        /* Modal / Drawer de Captura */
+        .capture-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.82);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .capture-modal-backdrop.open {
+            display: flex;
+        }
+
+        .capture-sheet {
+            background: #0f172a;
+            border-top: 1px solid #334155;
+            border-radius: 1.35rem 1.35rem 0 0;
+            width: 100%;
+            max-width: 640px;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+            animation: slideUpSheet 0.22s ease-out;
+        }
+
+        @keyframes slideUpSheet {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .capture-sheet-header {
+            padding: 1rem 1.15rem;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .capture-sheet-body {
+            padding: 1rem 1.15rem;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .capture-sheet-footer {
+            padding: 0.85rem 1.15rem 1.25rem;
+            border-top: 1px solid #1e293b;
+            background: #090f1d;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+
+        .camera-actions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.65rem;
+        }
+
+        .btn-camera-trigger {
+            background: #1e293b;
+            border: 1.5px dashed #14b8a6;
+            border-radius: 0.9rem;
+            padding: 0.9rem 0.65rem;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 0.82rem;
+            text-align: center;
+            transition: background 0.15s;
+        }
+
+        .btn-camera-trigger:active {
+            background: rgba(20, 184, 166, 0.2);
+        }
+
+        .photo-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.65rem;
+        }
+
+        .photo-slot-item {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            border: 1px solid #334155;
+            background: #1e293b;
+        }
+
+        .photo-slot-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .photo-slot-badge {
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            font-size: 0.6rem;
+            font-weight: 800;
+            padding: 2px 5px;
+            border-radius: 4px;
+            background: rgba(15, 23, 42, 0.85);
+            color: #5eead4;
+        }
+
+        .photo-slot-del {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 26px;
+            height: 26px;
+            border-radius: 999px;
+            background: rgba(220, 38, 38, 0.9);
+            color: white;
+            border: none;
+            font-size: 0.78rem;
+            font-weight: 900;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+        }
+
+        .option-box-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.85rem;
+        }
+
+        .checkbox-row-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.65rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checkbox-row-label input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+            accent-color: #0d9488;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body class="fotos-deposito-page">
+
+    <!-- CABECERA -->
+    <header class="header-fotos">
+        <div style="display: flex; align-items: center; justify-content: space-between; max-width: 680px; margin: 0 auto;">
+            <div style="display: flex; align-items: center; gap: 0.55rem;">
+                <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" onclick="window.abrirSidebar(event)" title="Abrir Menú" style="width: 34px; height: 34px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.08); padding: 3px; border: 1px solid rgba(255,255,255,0.15); cursor: pointer;">
+                <a href="home.html" title="Volver al Inicio" style="text-decoration: none; font-size: 1.5rem; color: #94a3b8; padding: 0 0.2rem; line-height: 1;">‹</a>
+                <div>
+                    <h1 style="margin: 0; font-size: 1.05rem; font-weight: 900; color: #f8fafc; display: flex; align-items: center; gap: 0.35rem;">
+                        📸 Fotos Depósito (B2B)
+                    </h1>
+                    <div style="font-size: 0.7rem; color: #5eead4; font-weight: 600;">
+                        Inspección visual de partidas y cajas madre
+                    </div>
+                </div>
+            </div>
+            <button onclick="FotosDepositoController.cargarArticulos(true)" title="Actualizar listado" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; border-radius: 0.65rem; padding: 0.45rem 0.65rem; font-size: 0.85rem; cursor: pointer;">
+                🔄
+            </button>
+        </div>
+    </header>
+
+    <!-- RESUMEN RÁPIDO -->
+    <section class="stats-strip">
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="stat-linea1-stock" style="color: #38bdf8;">-</div>
+            <div class="stat-pill-lbl">Línea 1 c/Stock</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="stat-con-fotos" style="color: #2dd4bf;">-</div>
+            <div class="stat-pill-lbl">Con Fotos B2B</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="stat-en-oferta" style="color: #fbbf24;">-</div>
+            <div class="stat-pill-lbl">En Oferta</div>
+        </div>
+    </section>
+
+    <!-- BUSCADOR ACUMULATIVO, ESCÁNER DE CÓDIGO DE BARRAS Y FILTROS -->
+    <section class="search-sticky-box">
+        <div class="search-container-inner">
+            <div style="display: flex; gap: 0.5rem; align-items: stretch;">
+                <div class="search-input-wrap" style="flex: 1;">
+                    <span style="position: absolute; left: 0.85rem; font-size: 0.95rem; color: #64748b; pointer-events: none;">🔍</span>
+                    <input
+                        type="text"
+                        id="input-busqueda-fotos"
+                        class="search-input-fotos"
+                        placeholder="Buscar o leer código, artículo, lote..."
+                        autocomplete="off"
+                        oninput="FotosDepositoController.onSearchInput(this.value)"
+                        onkeydown="if(event.key === 'Enter'){ event.preventDefault(); FotosDepositoController.procesarEnterBusqueda(this.value); }"
+                    >
+                    <button
+                        id="btn-clear-search"
+                        onclick="FotosDepositoController.limpiarBusqueda()"
+                        style="display: none; position: absolute; right: 0.65rem; background: #334155; color: #cbd5e1; border: none; border-radius: 999px; width: 22px; height: 22px; font-size: 0.72rem; cursor: pointer;"
+                    >✕</button>
+                </div>
+                <button
+                    type="button"
+                    onclick="FotosDepositoController.abrirEscanerCodigo('articulo_y_lote')"
+                    title="Leer código de barras de Artículo y Lote con la cámara"
+                    style="background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: #ffffff; border: 1px solid rgba(94, 234, 212, 0.4); border-radius: 0.85rem; padding: 0 0.85rem; font-size: 0.8rem; font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3); flex-shrink: 0;"
+                >
+                    <span style="font-size: 1.05rem;">📟</span>
+                    <span>Escanear</span>
+                </button>
+            </div>
+
+            <div class="filter-chips-row">
+                <button class="filter-chip active" data-filtro="linea1_stock" onclick="FotosDepositoController.cambiarFiltro('linea1_stock')">
+                    📦 Línea 1 c/Stock
+                </button>
+                <button class="filter-chip" data-filtro="con_fotos" onclick="FotosDepositoController.cambiarFiltro('con_fotos')">
+                    📷 Con Fotos
+                </button>
+                <button class="filter-chip" data-filtro="en_oferta" onclick="FotosDepositoController.cambiarFiltro('en_oferta')">
+                    🔥 En Oferta
+                </button>
+                <button class="filter-chip" data-filtro="linea1_todos" onclick="FotosDepositoController.cambiarFiltro('linea1_todos')">
+                    📦 Toda Línea 1
+                </button>
+                <button class="filter-chip" data-filtro="todos" onclick="FotosDepositoController.cambiarFiltro('todos')">
+                    🌐 Todos los Artículos
+                </button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; padding-top: 0.45rem; border-top: 1px solid rgba(51, 65, 85, 0.55); font-size: 0.73rem; color: #94a3b8;">
+                <span id="lbl-jerarquia-resumen" style="font-weight: 700; color: #cbd5e1;">
+                    🌳 Jerarquía Portal B2B (5 Niveles)
+                </span>
+                <button
+                    type="button"
+                    id="btn-toggle-expandir-todo"
+                    onclick="FotosDepositoController.toggleExpandirTodo()"
+                    style="background: rgba(30, 41, 59, 0.9); color: #5eead4; border: 1px solid rgba(20, 184, 166, 0.35); border-radius: 0.5rem; padding: 0.22rem 0.6rem; font-size: 0.7rem; font-weight: 800; cursor: pointer;"
+                >
+                    📂 Expandir todo
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- LISTADO JERÁRQUICO DE ARTÍCULOS (5 NIVELES B2B) -->
+    <main class="articles-list-container" id="contenedor-articulos-fotos">
+        <div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">⏳</div>
+            <div style="font-weight: 700;">Cargando artículos de depósito...</div>
+        </div>
+    </main>
+
+    <!-- MODAL / SHEET DE CAPTURA DE FOTOS DE PARTIDA -->
+    <div class="capture-modal-backdrop" id="modal-captura-fotos" onclick="if(event.target === this) FotosDepositoController.cerrarModal()">
+        <div class="capture-sheet">
+            <div class="capture-sheet-header">
+                <div style="min-width: 0; flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+                        <span class="badge-tag badge-sku" id="modal-art-sku">-</span>
+                        <span class="badge-tag badge-linea1" id="modal-art-flujo">-</span>
+                        <span class="badge-tag badge-lote" id="modal-art-lote">-</span>
+                        <button
+                            type="button"
+                            onclick="FotosDepositoController.abrirEscanerCodigo('solo_lote')"
+                            title="Escanear código de barras del Lote"
+                            style="background: rgba(139, 92, 246, 0.22); color: #ddd6fe; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: 6px; padding: 2px 7px; font-size: 0.66rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;"
+                        >
+                            📟 Leer Lote
+                        </button>
+                    </div>
+                    <h2 id="modal-art-nombre" style="margin: 0; font-size: 1rem; font-weight: 900; color: #f8fafc; line-height: 1.25;">-</h2>
+                </div>
+                <button onclick="FotosDepositoController.cerrarModal()" style="background: #1e293b; border: 1px solid #334155; color: #cbd5e1; width: 32px; height: 32px; border-radius: 999px; font-size: 0.9rem; cursor: pointer; flex-shrink: 0;">✕</button>
+            </div>
+
+            <div class="capture-sheet-body">
+                <!-- Inputs ocultos para Cámara directa y Galería múltiple -->
+                <input type="file" id="input-camera-direct" accept="image/*" capture="environment" style="display: none;" onchange="FotosDepositoController.procesarArchivosSeleccionados(this.files)">
+                <input type="file" id="input-gallery-multi" accept="image/*" multiple style="display: none;" onchange="FotosDepositoController.procesarArchivosSeleccionados(this.files)">
+
+                <div class="camera-actions-grid">
+                    <button type="button" class="btn-camera-trigger" onclick="document.getElementById('input-camera-direct').click()">
+                        <span style="font-size: 1.65rem;">📸</span>
+                        <span>Sacar Foto Ahora</span>
+                        <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 600;">Cámara trasera</span>
+                    </button>
+                    <button type="button" class="btn-camera-trigger" onclick="document.getElementById('input-gallery-multi').click()">
+                        <span style="font-size: 1.65rem;">🖼️</span>
+                        <span>Elegir de Galería</span>
+                        <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 600;">Hasta 6 imágenes</span>
+                    </button>
+                </div>
+
+                <!-- Estado de compresión -->
+                <div id="estado-compresion-box" style="display: none; background: rgba(14, 165, 233, 0.12); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.8rem; color: #7dd3fc; font-weight: 700; text-align: center;">
+                    ⏳ Comprimiendo y optimizando imagen...
+                </div>
+
+                <!-- Grilla de fotos actuales + nuevas -->
+                <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.45rem;">
+                        <span style="font-size: 0.78rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.04em;">
+                            Imágenes de la Partida (<span id="lbl-contador-fotos">0</span>/6)
+                        </span>
+                        <button type="button" id="btn-limpiar-para-nuevo-lote" onclick="FotosDepositoController.prepararReemplazoLote()" style="display: none; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fcd34d; border-radius: 6px; padding: 3px 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer;">
+                            🔄 Reemplazar por lote nuevo
+                        </button>
+                    </div>
+                    <div id="grid-fotos-preview" class="photo-slots-grid"></div>
+                </div>
+
+                <!-- Observación técnica opcional -->
+                <div class="option-box-card">
+                    <label for="input-observacion-tecnica" style="display: block; font-size: 0.76rem; font-weight: 800; color: #cbd5e1; margin-bottom: 0.35rem;">
+                        📝 Nota Técnica de la Partida (Opcional)
+                    </label>
+                    <input
+                        type="text"
+                        id="input-observacion-tecnica"
+                        placeholder="Ej: Caja original 10kg • Cosecha nueva • Calibre grande"
+                        style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 0.6rem; padding: 0.6rem 0.75rem; color: #f8fafc; font-size: 0.84rem; outline: none;"
+                    >
+                    <div style="font-size: 0.68rem; color: #64748b; margin-top: 0.3rem;">
+                        Se exhibe de forma sobria e informativa al comerciante en el visor del Portal B2B.
+                    </div>
+                </div>
+
+                <!-- Opcional: Extender a derivados de Línea 2 o presentaciones de Artículo Puente (Selección manual; destildado por defecto) -->
+                <div class="option-box-card" id="box-extender-derivados" style="display: none;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;">
+                        <label class="checkbox-row-label" style="flex: 1; margin: 0;">
+                            <input type="checkbox" id="chk-extender-derivados" onchange="FotosDepositoController.toggleTodosDerivados(this.checked)">
+                            <div>
+                                <div style="font-size: 0.83rem; font-weight: 800; color: #f8fafc;">
+                                    <span id="lbl-titulo-derivados-modal">Mostrar en fracciones derivadas de Línea 2</span> (<span id="lbl-cant-derivados">0/0 seleccionadas</span>)
+                                </div>
+                                <div id="lbl-subtitulo-derivados-modal" style="font-size: 0.71rem; color: #94a3b8; margin-top: 2px; line-height: 1.35;">
+                                    Tocá cada fracción para elegir en cuál <strong>sí</strong> y en cuál <strong>no</strong> mostrar esta partida (aclarando que corresponde a la caja madre).
+                                </div>
+                            </div>
+                        </label>
+                        <div style="display: flex; gap: 0.3rem; flex-shrink: 0;">
+                            <button
+                                type="button"
+                                onclick="FotosDepositoController.toggleTodosDerivados(true)"
+                                style="background: rgba(20, 184, 166, 0.16); color: #5eead4; border: 1px solid rgba(20, 184, 166, 0.4); border-radius: 0.45rem; padding: 0.25rem 0.5rem; font-size: 0.67rem; font-weight: 800; cursor: pointer;"
+                            >Todas</button>
+                            <button
+                                type="button"
+                                onclick="FotosDepositoController.toggleTodosDerivados(false)"
+                                style="background: rgba(51, 65, 85, 0.45); color: #cbd5e1; border: 1px solid #475569; border-radius: 0.45rem; padding: 0.25rem 0.5rem; font-size: 0.67rem; font-weight: 800; cursor: pointer;"
+                            >Ninguna</button>
+                        </div>
+                    </div>
+                    <div id="lista-derivados-preview" style="margin-top: 0.6rem; padding-top: 0.55rem; border-top: 1px dashed #334155; display: flex; flex-direction: column; gap: 0.45rem;"></div>
+                </div>
+
+                <!-- Ciclo de vida del lote -->
+                <div class="option-box-card">
+                    <label class="checkbox-row-label">
+                        <input type="checkbox" id="chk-es-permanente">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 800; color: #cbd5e1;">
+                                Mantener foto fija (No caducar al agotar stock o cambiar lote)
+                            </div>
+                            <div style="font-size: 0.7rem; color: #64748b; margin-top: 2px; line-height: 1.3;">
+                                Dejá esta opción <strong>sin marcar</strong> para que el sistema dé de baja las fotos automáticamente cuando se agote el stock físico o ingrese una partida nueva.
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="capture-sheet-footer">
+                <button
+                    type="button"
+                    id="btn-publicar-fotos"
+                    onclick="FotosDepositoController.guardarCambios()"
+                    style="width: 100%; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: white; border: none; border-radius: 0.85rem; padding: 0.85rem; font-size: 0.92rem; font-weight: 900; cursor: pointer; box-shadow: 0 6px 20px rgba(13, 148, 136, 0.35);"
+                >
+                    💾 Publicar en Portal B2B
+                </button>
+                <button
+                    type="button"
+                    id="btn-eliminar-partida"
+                    onclick="FotosDepositoController.eliminarPartidaActual()"
+                    style="display: none; width: 100%; background: rgba(239, 68, 68, 0.12); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.75rem; padding: 0.65rem; font-size: 0.8rem; font-weight: 800; cursor: pointer;"
+                >
+                    🗑️ Dar de baja todas las fotos de este artículo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE ESCÁNER DE CÓDIGO DE BARRAS EN VIVO (ARTÍCULO + LOTE OPCIONAL) -->
+    <div class="capture-modal-backdrop" id="modal-escaner-codigo" style="z-index: 1200;" onclick="if(event.target === this) FotosDepositoController.cerrarEscanerCodigo()">
+        <div class="capture-sheet" style="max-height: 94vh;">
+            <div class="capture-sheet-header">
+                <div>
+                    <div id="scanner-step-badge" style="display: inline-block; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(20, 184, 166, 0.2); color: #5eead4; border: 1px solid rgba(20, 184, 166, 0.45); padding: 2px 8px; border-radius: 999px; margin-bottom: 0.25rem;">
+                        Paso 1 • Escanear Artículo o Lote
+                    </div>
+                    <h2 id="scanner-modal-title" style="margin: 0; font-size: 0.98rem; font-weight: 900; color: #f8fafc;">
+                        Apuntá al código de barras de la etiqueta
+                    </h2>
+                </div>
+                <button onclick="FotosDepositoController.cerrarEscanerCodigo()" style="background: #1e293b; border: 1px solid #334155; color: #cbd5e1; width: 32px; height: 32px; border-radius: 999px; font-size: 0.9rem; cursor: pointer; flex-shrink: 0;">✕</button>
+            </div>
+
+            <div class="capture-sheet-body" style="gap: 0.85rem;">
+                <!-- Input oculto para lectura por foto nativa (autofoco láser del celular) -->
+                <input type="file" id="input-scanner-foto-nativa" accept="image/*" capture="environment" style="display: none;" onchange="FotosDepositoController.procesarFotoCodigoBarras(this.files)">
+
+                <!-- Visor de cámara en vivo -->
+                <div style="position: relative; width: 100%; border-radius: 0.9rem; overflow: hidden; background: #020617; border: 2px solid #14b8a6; min-height: 220px; display: flex; align-items: center; justify-content: center;">
+                    <div id="scanner-reader-box" style="width: 100%;"></div>
+                    <video id="scanner-native-video" playsinline muted style="display: none; width: 100%; max-height: 260px; object-fit: cover;"></video>
+                    <!-- Guía láser visual -->
+                    <div style="position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <div style="width: 78%; height: 110px; border: 2px dashed rgba(94, 234, 212, 0.65); border-radius: 0.75rem; position: relative; box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.38);">
+                            <div style="position: absolute; top: 50%; left: 6%; right: 6%; height: 2px; background: #ef4444; box-shadow: 0 0 8px #ef4444;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="scanner-status-msg" style="font-size: 0.78rem; color: #94a3b8; text-align: center; font-weight: 600;">
+                    Podés leer el código del artículo (izquierda) o directamente el código del lote (derecha).
+                </div>
+
+                <!-- Botón de lectura por Cámara Nativa (ideal cuando la etiqueta es chica o requiere autofoco macro) -->
+                <button
+                    type="button"
+                    onclick="document.getElementById('input-scanner-foto-nativa').click()"
+                    style="width: 100%; background: rgba(14, 165, 233, 0.16); color: #7dd3fc; border: 1px dashed rgba(56, 189, 248, 0.55); border-radius: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.45rem;"
+                >
+                    <span>📸</span>
+                    <span>¿No enfoca en vivo? Leer Código con Foto Rápida</span>
+                </button>
+
+                <!-- Tarjeta de Artículo Detectado (Se activa en Paso 2 para permitir lectura opcional de Lote o ir directo a Fotos) -->
+                <div id="scanner-art-confirmado-box" style="display: none; background: linear-gradient(180deg, rgba(19, 78, 74, 0.35) 0%, #1e293b 100%); border: 1.5px solid #14b8a6; border-radius: 0.9rem; padding: 0.85rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem;">
+                        <span style="font-size: 0.68rem; font-weight: 900; color: #5eead4; text-transform: uppercase;">✓ Artículo Identificado</span>
+                        <span class="badge-tag badge-sku" id="scanner-det-sku">-</span>
+                    </div>
+                    <div id="scanner-det-nombre" style="font-size: 0.96rem; font-weight: 900; color: #f8fafc; margin-bottom: 0.45rem;">-</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem; background: rgba(15, 23, 42, 0.75); padding: 0.45rem 0.65rem; border-radius: 0.6rem; border: 1px solid #334155;">
+                        <div style="font-size: 0.76rem; color: #cbd5e1;">
+                            🏷️ Lote asignado: <strong id="scanner-det-lote" style="color: #c4b5fd;">-</strong>
+                        </div>
+                        <span style="font-size: 0.68rem; color: #94a3b8;">Apuntá al código de Lote para cambiarlo</span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem;">
+                        <button
+                            type="button"
+                            onclick="FotosDepositoController.confirmarEscaneoYTomarFotos()"
+                            style="width: 100%; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 0.8rem; padding: 0.8rem; font-size: 0.9rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; gap: 0.4rem;"
+                        >
+                            📸 Continuar y Sacar Fotos Ahora
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Ingreso manual rápido por si la etiqueta está dañada -->
+                <div style="display: flex; gap: 0.45rem;">
+                    <input
+                        type="text"
+                        id="input-codigo-manual-scanner"
+                        placeholder="O escribí el código de barras / lote acá..."
+                        style="flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 0.65rem; padding: 0.55rem 0.75rem; color: #f8fafc; font-size: 0.82rem; outline: none;"
+                        onkeydown="if(event.key === 'Enter'){ event.preventDefault(); FotosDepositoController.procesarCodigoDesdeInputManual(); }"
+                    >
+                    <button
+                        type="button"
+                        onclick="FotosDepositoController.procesarCodigoDesdeInputManual()"
+                        style="background: #334155; color: #f8fafc; border: 1px solid #475569; border-radius: 0.65rem; padding: 0 0.85rem; font-size: 0.78rem; font-weight: 800; cursor: pointer;"
+                    >
+                        Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="js/mobile.js?v=15"></script>
+    <script src="js/controllers/FotosDepositoController.js?v=20261102_pack1"></script>
+    <script>
+        // Parche anti-caché en vivo: garantiza que aún si Cloudflare o el navegador móvil cachearon FotosDepositoController.js,
+        // el escáner de código de barras, la baja inmediata de fotos y la selección manual de derivados y Artículos Puente (AP) estén 100% activos.
+        if (typeof FotosDepositoController !== 'undefined') {
+            Object.assign(FotosDepositoController, {
+                escanerActivo: false,
+                html5QrScanner: null,
+                nativeVideoStream: null,
+                nativeScanLoopId: null,
+                modoEscaner: 'articulo_y_lote',
+                pasoEscaner: 1,
+                articuloEscaneadoTemp: null,
+                loteEscaneadoTemp: null,
+                loteCodigoEscaneado: null,
+                ultimoCodigoLeido: '',
+                ultimoTiempoLectura: 0,
+                derivadosSeleccionadosSet: new Set(),
+
+                enriquecerVinculosArticulosPuente(lista) {
+                    if (!Array.isArray(lista) || lista.length === 0) return lista;
+                    const byId = new Map(lista.map(a => [String(a.articulo_id).trim(), a]));
+                    const esInternoAp = (a) => {
+                        const fam = String(a?.familia || a?.familia_nombre || '').toLowerCase();
+                        const nom = String(a?.nomenclatura || a?.descripcion || '').trim();
+                        return fam.includes('puente') || /^PROD\s+(AP|UP)\b/i.test(nom);
+                    };
+
+                    for (const a of lista) {
+                        if (esInternoAp(a)) {
+                            a.es_linea_1 = false;
+                        }
+                    }
+
+                    for (const origen of lista) {
+                        const derivs = Array.isArray(origen.derivados_linea_2) ? origen.derivados_linea_2 : [];
+                        if (derivs.length === 0) continue;
+
+                        const origenEsAp = esInternoAp(origen);
+                        const miembrosIds = new Set();
+                        if (!origenEsAp) {
+                            miembrosIds.add(String(origen.articulo_id).trim());
+                        }
+
+                        for (const d of derivs) {
+                            const dId = String(d.articulo_id || '').trim();
+                            const dObj = byId.get(dId);
+                            if (dObj && !esInternoAp(dObj)) {
+                                miembrosIds.add(dId);
+                                const subDerivs = Array.isArray(dObj.derivados_linea_2) ? dObj.derivados_linea_2 : [];
+                                for (const sd of subDerivs) {
+                                    const sdId = String(sd.articulo_id || '').trim();
+                                    const sdObj = byId.get(sdId);
+                                    if (sdObj && !esInternoAp(sdObj)) {
+                                        miembrosIds.add(sdId);
+                                    }
+                                }
+                            }
+                        }
+
+                        const todosMiembros = Array.from(miembrosIds).map(id => byId.get(id)).filter(Boolean);
+                        if (todosMiembros.length <= 1) continue;
+
+                        for (const m of todosMiembros) {
+                            if (origenEsAp) {
+                                m.articulo_puente = {
+                                    articulo_id: origen.articulo_id,
+                                    descripcion: origen.nomenclatura || origen.descripcion,
+                                    es_articulo_puente: true
+                                };
+                                m.es_linea_1 = true;
+                            } else if (!m.articulo_puente) {
+                                m.articulo_puente = {
+                                    articulo_id: origen.articulo_id,
+                                    descripcion: origen.nomenclatura || origen.descripcion,
+                                    es_articulo_puente: false
+                                };
+                            }
+
+                            const mapExist = new Map(
+                                (Array.isArray(m.derivados_linea_2) ? m.derivados_linea_2 : [])
+                                    .filter(x => {
+                                        const xObj = byId.get(String(x.articulo_id || '').trim());
+                                        return xObj ? !esInternoAp(xObj) : true;
+                                    })
+                                    .map(x => [String(x.articulo_id).trim(), x])
+                            );
+
+                            for (const h of todosMiembros) {
+                                if (h.articulo_id === m.articulo_id) continue;
+                                if (!mapExist.has(h.articulo_id)) {
+                                    mapExist.set(h.articulo_id, {
+                                        articulo_id: h.articulo_id,
+                                        descripcion: h.descripcion || h.nomenclatura,
+                                        nomenclatura: h.nomenclatura || h.descripcion,
+                                        kilos_unidad: Number(h.kilos_unidad || 0),
+                                        es_pack: Boolean(h.es_pack),
+                                        tipo_derivado: origenEsAp ? 'HERMANO_ARTICULO_PUENTE' : 'FRACCION_DIRECTA_L2'
+                                    });
+                                }
+                            }
+
+                            m.derivados_linea_2 = Array.from(mapExist.values()).sort((a, b) => {
+                                const kDiff = Number(b.kilos_unidad || 0) - Number(a.kilos_unidad || 0);
+                                if (kDiff !== 0) return kDiff;
+                                return String(a.nomenclatura || '').localeCompare(String(b.nomenclatura || ''), 'es', { sensitivity: 'base' });
+                            });
+                        }
+                    }
+
+                    // Calcular stock de Packs Comerciales (Artículos Padre) a partir de su Artículo Hijo cuando su stock directo es 0
+                    for (const a of lista) {
+                        const esPack = (a.es_pack === true) || (Number(a.pack_unidades || 1) > 1);
+                        if (!esPack) continue;
+                        const packUnids = Math.max(1, parseInt(a.pack_unidades || 1, 10));
+                        if (packUnids <= 1) continue;
+
+                        let hijoCode = a.pack_hijo_codigo ? String(a.pack_hijo_codigo).trim() : null;
+                        if (!hijoCode && Array.isArray(a.derivados_linea_2)) {
+                            const derivHijo = a.derivados_linea_2.find(d => d.tipo_derivado === 'FRACCION_HIJA_PACK');
+                            if (derivHijo && derivHijo.articulo_id) {
+                                hijoCode = String(derivHijo.articulo_id).trim();
+                            }
+                        }
+                        if (hijoCode) {
+                            const hijoObj = byId.get(hijoCode);
+                            if (hijoObj && Number(a.stock_bultos || 0) <= 0) {
+                                const packsArmables = Math.floor(Number(hijoObj.stock_bultos || 0) / packUnids);
+                                if (packsArmables > 0) {
+                                    a.stock_bultos = packsArmables;
+                                    a.tiene_stock = true;
+                                }
+                            }
+                        }
+                    }
+
+                    return lista;
+                },
+
+                async cargarArticulos(mostrarToast = false) {
+                    const contenedor = document.getElementById('contenedor-articulos-fotos');
+                    if (contenedor && this.articulos.length === 0) {
+                        contenedor.innerHTML = `
+                            <div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
+                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">⏳</div>
+                                <div style="font-weight: 700;">Sincronizando catálogo y jerarquía B2B...</div>
+                            </div>
+                        `;
+                    }
+
+                    try {
+                        const resp = await fetch('/api/logistica/b2b-fotos-lotes/articulos');
+                        const json = await resp.json();
+                        if (!json.success) {
+                            throw new Error(json.error || 'No se pudo obtener el listado de artículos');
+                        }
+
+                        const rawLista = (Array.isArray(json.data) ? json.data : []).map(a => {
+                            const img0 = a.fotos_lote?.imagenes?.[0];
+                            if (img0 && (img0.es_heredado_madre === true || String(img0.id || '').startsWith('HEREDADO_MADRE:'))) {
+                                return { ...a, tiene_fotos: false, fotos_lote: null };
+                            }
+                            return a;
+                        });
+
+                        this.articulos = this.enriquecerVinculosArticulosPuente(rawLista);
+
+                        const elL1 = document.getElementById('stat-linea1-stock');
+                        const elFotos = document.getElementById('stat-con-fotos');
+                        const elOferta = document.getElementById('stat-en-oferta');
+
+                        const cantL1Stock = this.articulos.filter(a => a.es_linea_1 && a.tiene_stock).length;
+                        const cantConFotos = this.articulos.filter(a => a.tiene_fotos).length;
+                        const cantEnOferta = this.articulos.filter(a => a.en_oferta_activa).length;
+
+                        if (elL1) elL1.textContent = cantL1Stock;
+                        if (elFotos) elFotos.textContent = cantConFotos;
+                        if (elOferta) elOferta.textContent = cantEnOferta;
+
+                        this.aplicarFiltrosYRenderizar();
+
+                        if (mostrarToast && typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                icon: 'success',
+                                title: 'Listado y jerarquía actualizados',
+                                showConfirmButton: false,
+                                timer: 1500,
+                                background: '#1e293b',
+                                color: '#f8fafc'
+                            });
+                        }
+                    } catch (err) {
+                        console.error('❌ [FOTOS-DEPÓSITO] Error cargando artículos:', err);
+                        if (contenedor) {
+                            contenedor.innerHTML = `
+                                <div style="text-align: center; padding: 2.5rem 1rem; color: #fca5a5; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 1rem;">
+                                    <div style="font-size: 1.8rem; margin-bottom: 0.4rem;">⚠️</div>
+                                    <div style="font-weight: 800; margin-bottom: 0.3rem;">Error al cargar artículos</div>
+                                    <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 0.9rem;">${err.message}</div>
+                                    <button onclick="FotosDepositoController.cargarArticulos(true)" style="background: #0d9488; color: white; border: none; border-radius: 0.65rem; padding: 0.55rem 1.1rem; font-weight: 800; cursor: pointer;">Reintentar</button>
+                                </div>
+                            `;
+                        }
+                    }
+                },
+
+                renderCardArticulo(art) {
+                    const fotos = art.fotos_lote?.imagenes || [];
+                    const cantFotos = fotos.length;
+                    const tieneFotos = cantFotos > 0;
+                    const loteCodigo = art.fotos_lote?.lote_codigo_corto
+                        || art.fotos_lote?.lote_id_supabase
+                        || art.ultimo_lote?.lote_codigo_corto
+                        || art.ultimo_lote?.lote_id_supabase
+                        || null;
+                    const derivadosCount = Array.isArray(art.derivados_linea_2) ? art.derivados_linea_2.length : 0;
+                    const esPuenteAp = art.articulo_puente?.es_articulo_puente === true;
+
+                    const stockBadge = art.tiene_stock
+                        ? `<span class="badge-tag badge-stock-ok">📦 Stock: ${Number(art.stock_bultos || 0).toLocaleString('es-AR', { maximumFractionDigits: 1 })}</span>`
+                        : `<span class="badge-tag badge-stock-zero">Sin stock físico</span>`;
+
+                    const esPackPadre = (art.es_pack === true) || (Number(art.pack_unidades || 1) > 1);
+                    const flujoBadge = esPackPadre
+                        ? `<span class="badge-tag badge-linea1" style="background: rgba(168,85,247,0.18); color: #d8b4fe; border-color: rgba(168,85,247,0.45);">📦 Artículo Padre • Pack (${Number(art.pack_unidades || 1)} u.)</span>`
+                        : (esPuenteAp
+                            ? `<span class="badge-tag badge-linea1" style="background: rgba(13,148,136,0.22); color: #5eead4; border-color: rgba(20,184,166,0.45);">🔗 Puente AP • ${this.escapeHtml(art.articulo_puente.articulo_id)}</span>`
+                            : (art.es_linea_1
+                                ? `<span class="badge-tag badge-linea1">Línea 1 • Bulto Madre</span>`
+                                : `<span class="badge-tag badge-derivado">Fracción / Derivado</span>`));
+
+                    const ofertaBadge = art.en_oferta_activa
+                        ? `<span class="badge-tag badge-oferta">🔥 En Oferta</span>`
+                        : '';
+
+                    const loteBadge = loteCodigo
+                        ? `<span class="badge-tag badge-lote">🏷️ ${this.escapeHtml(loteCodigo)}</span>`
+                        : '';
+
+                    let thumbsHtml = '';
+                    if (tieneFotos) {
+                        const imgs = fotos.map(f => `<img src="${this.escapeHtml(f.url)}" class="thumb-mini" alt="Foto lote" loading="lazy">`).join('');
+                        thumbsHtml = `
+                            <div class="thumbs-preview-strip">
+                                ${imgs}
+                            </div>
+                        `;
+                    }
+
+                    const seleccionadosDeriv = this.obtenerDerivadosSeleccionadosDeArticulo(art);
+                    const cantDerivActivos = seleccionadosDeriv.length;
+                    let textoEstadoDeriv = esPuenteAp ? '(Solo esta presentación)' : '(Solo Línea 1)';
+                    if (cantDerivActivos > 0) {
+                        textoEstadoDeriv = cantDerivActivos === derivadosCount
+                            ? `(Compartiendo en todas: ${derivadosCount}/${derivadosCount} ✓)`
+                            : `(Compartiendo en ${cantDerivActivos}/${derivadosCount} ✓)`;
+                    }
+
+                    const etiquetaRelacion = esPuenteAp
+                        ? `${derivadosCount} presentación(es) vía ${this.escapeHtml(art.articulo_puente.articulo_id)}`
+                        : `${derivadosCount} derivado(s) Línea 2`;
+
+                    const derivadosInfo = derivadosCount > 0
+                        ? `<span style="color: ${cantDerivActivos > 0 ? '#5eead4' : '#94a3b8'}; font-weight: 700;">
+                             🔗 ${etiquetaRelacion} ${textoEstadoDeriv}
+                           </span>`
+                        : '';
+
+                    const skuSafe = this.escapeHtml(art.articulo_id).replace(/'/g, "\\'");
+
+                    return `
+                        <article class="art-foto-card ${tieneFotos ? 'has-photos' : ''}">
+                            <div class="art-badges-row">
+                                <span class="badge-tag badge-sku">${this.escapeHtml(art.articulo_id)}</span>
+                                ${flujoBadge}
+                                ${stockBadge}
+                                ${ofertaBadge}
+                                ${loteBadge}
+                            </div>
+
+                            <div class="art-title">${this.escapeHtml(art.nomenclatura)}</div>
+
+                            <div class="art-meta-sub">
+                                ${art.marca ? `<span>🏷️ Marca: <strong>${this.escapeHtml(art.marca)}</strong></span>` : ''}
+                                ${art.kilos_unidad ? `<span>⚖️ ${Number(art.kilos_unidad)} kg</span>` : ''}
+                                ${derivadosInfo}
+                            </div>
+
+                            ${art.fotos_lote?.observacion_tecnica ? `
+                                <div style="font-size: 0.75rem; color: #cbd5e1; background: rgba(15,23,42,0.6); border-left: 3px solid #14b8a6; padding: 0.35rem 0.6rem; border-radius: 0.35rem; margin-bottom: 0.55rem;">
+                                    📝 ${this.escapeHtml(art.fotos_lote.observacion_tecnica)}
+                                </div>
+                            ` : ''}
+
+                            ${thumbsHtml}
+
+                            <button
+                                type="button"
+                                class="btn-capturar-card ${tieneFotos ? 'edit' : 'primary'}"
+                                onclick="FotosDepositoController.abrirModalArticulo('${skuSafe}')"
+                            >
+                                ${tieneFotos
+                                    ? `📷 Gestionar / Agregar Fotos (${cantFotos}/6)`
+                                    : `📸 Capturar Fotos de Partida`}
+                            </button>
+                        </article>
+                    `;
+                },
+
+                emitirBeepExito() {
+                    try {
+                        if (navigator.vibrate) navigator.vibrate(75);
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (AudioCtx) {
+                            const ctx = new AudioCtx();
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
+                            gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.start();
+                            osc.stop(ctx.currentTime + 0.09);
+                        }
+                    } catch (_) {}
+                },
+
+                buscarArticuloPorCodigoExacto(rawCode) {
+                    const clean = String(rawCode || '').trim().replace(/^L:\s*/i, '');
+                    if (!clean) return null;
+                    const lower = clean.toLowerCase();
+
+                    for (const art of this.articulos) {
+                        if (art.codigo_barras && String(art.codigo_barras).trim().toLowerCase() === lower) {
+                            return { articulo: art, loteDetectado: null, fuePorLote: false };
+                        }
+                        if (String(art.articulo_id || '').trim().toLowerCase() === lower) {
+                            return { articulo: art, loteDetectado: null, fuePorLote: false };
+                        }
+                        if (Array.isArray(art.codigos_ingrediente)) {
+                            if (art.codigos_ingrediente.some(c => String(c).trim().toLowerCase() === lower)) {
+                                return { articulo: art, loteDetectado: null, fuePorLote: false };
+                            }
+                        }
+                    }
+
+                    for (const art of this.articulos) {
+                        if (Array.isArray(art.lotes_vinculados)) {
+                            const loteMatch = art.lotes_vinculados.find(l =>
+                                (l.lote_codigo_corto && String(l.lote_codigo_corto).trim().toLowerCase() === lower) ||
+                                (l.lote_id_supabase && String(l.lote_id_supabase).trim().toLowerCase() === lower)
+                            );
+                            if (loteMatch) {
+                                return {
+                                    articulo: art,
+                                    loteDetectado: loteMatch.lote_codigo_corto || loteMatch.lote_id_supabase,
+                                    fuePorLote: true
+                                };
+                            }
+                        }
+                        if (art.ultimo_lote) {
+                            const ul = art.ultimo_lote;
+                            if (
+                                (ul.lote_codigo_corto && String(ul.lote_codigo_corto).trim().toLowerCase() === lower) ||
+                                (ul.lote_id_supabase && String(ul.lote_id_supabase).trim().toLowerCase() === lower)
+                            ) {
+                                return {
+                                    articulo: art,
+                                    loteDetectado: ul.lote_codigo_corto || ul.lote_id_supabase,
+                                    fuePorLote: true
+                                };
+                            }
+                        }
+                    }
+                    return null;
+                },
+
+                async abrirEscanerCodigo(modo = 'articulo_y_lote') {
+                    this.modoEscaner = modo;
+                    this.pasoEscaner = modo === 'solo_lote' ? 2 : 1;
+                    this.ultimoCodigoLeido = '';
+                    this.ultimoTiempoLectura = 0;
+
+                    const inputManual = document.getElementById('input-codigo-manual-scanner');
+                    if (inputManual) inputManual.value = '';
+
+                    const stepBadge = document.getElementById('scanner-step-badge');
+                    const titleEl = document.getElementById('scanner-modal-title');
+                    const statusEl = document.getElementById('scanner-status-msg');
+                    const boxConfirmado = document.getElementById('scanner-art-confirmado-box');
+
+                    if (modo === 'solo_lote' && this.articuloSeleccionado) {
+                        this.articuloEscaneadoTemp = this.articuloSeleccionado;
+                        this.loteEscaneadoTemp = this.loteCodigoEscaneado
+                            || this.articuloSeleccionado.fotos_lote?.lote_codigo_corto
+                            || this.articuloSeleccionado.ultimo_lote?.lote_codigo_corto
+                            || 'Lote en Stock';
+                        if (stepBadge) stepBadge.textContent = 'Lectura de Lote';
+                        if (titleEl) titleEl.textContent = 'Apuntá al código de barras del Lote';
+                        if (statusEl) statusEl.textContent = 'Escaneá la etiqueta derecha (L: ...) de la caja o partida.';
+                        this.actualizarTarjetaScannerPaso2();
+                    } else {
+                        this.articuloEscaneadoTemp = null;
+                        this.loteEscaneadoTemp = null;
+                        if (stepBadge) {
+                            stepBadge.textContent = 'Paso 1 • Escanear Artículo o Lote';
+                            stepBadge.style.background = 'rgba(20, 184, 166, 0.2)';
+                            stepBadge.style.color = '#5eead4';
+                        }
+                        if (titleEl) titleEl.textContent = 'Apuntá al código de barras de la etiqueta';
+                        if (statusEl) statusEl.textContent = 'Podés leer el código del artículo (izquierda) o directamente el código del lote (derecha).';
+                        if (boxConfirmado) boxConfirmado.style.display = 'none';
+                    }
+
+                    const modal = document.getElementById('modal-escaner-codigo');
+                    if (modal) modal.classList.add('open');
+
+                    await this.iniciarCamaraEscaner();
+                },
+
+                actualizarTarjetaScannerPaso2() {
+                    const boxConfirmado = document.getElementById('scanner-art-confirmado-box');
+                    const skuEl = document.getElementById('scanner-det-sku');
+                    const nomEl = document.getElementById('scanner-det-nombre');
+                    const loteEl = document.getElementById('scanner-det-lote');
+
+                    if (!this.articuloEscaneadoTemp || !boxConfirmado) return;
+                    boxConfirmado.style.display = 'block';
+                    if (skuEl) skuEl.textContent = this.articuloEscaneadoTemp.articulo_id;
+                    if (nomEl) nomEl.textContent = this.articuloEscaneadoTemp.nomenclatura;
+                    if (loteEl) loteEl.textContent = this.loteEscaneadoTemp || 'Lote en Stock';
+                },
+
+                async cerrarEscanerCodigo() {
+                    await this.detenerCamaraEscaner();
+                    const modal = document.getElementById('modal-escaner-codigo');
+                    if (modal) modal.classList.remove('open');
+                },
+
+                async iniciarCamaraEscaner() {
+                    await this.detenerCamaraEscaner();
+                    this.escanerActivo = true;
+
+                    const videoEl = document.getElementById('scanner-native-video');
+                    const readerBox = document.getElementById('scanner-reader-box');
+                    const statusEl = document.getElementById('scanner-status-msg');
+
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color:#5eead4;">⏳ Iniciando cámara trasera... Apuntá al código de barras.</span>`;
+                    }
+
+                    if (typeof Html5Qrcode !== 'undefined' && readerBox) {
+                        try {
+                            if (videoEl) videoEl.style.display = 'none';
+                            readerBox.style.display = 'block';
+                            this.html5QrScanner = new Html5Qrcode('scanner-reader-box');
+
+                            const configScanner = {
+                                fps: 15,
+                                qrbox: (viewfinderWidth, viewfinderHeight) => {
+                                    const w = Math.min(Math.floor(viewfinderWidth * 0.85), 320);
+                                    const h = Math.min(Math.floor(viewfinderHeight * 0.55), 140);
+                                    return { width: Math.max(w, 180), height: Math.max(h, 90) };
+                                },
+                                aspectRatio: 1.333,
+                                experimentalFeatures: {
+                                    useBarCodeDetectorIfSupported: true
+                                }
+                            };
+
+                            await this.html5QrScanner.start(
+                                { facingMode: 'environment' },
+                                configScanner,
+                                (decodedText) => {
+                                    if (decodedText && this.escanerActivo) {
+                                        this.procesarLecturaEscaner(decodedText);
+                                    }
+                                },
+                                () => {}
+                            );
+
+                            if (statusEl && this.pasoEscaner === 1) {
+                                statusEl.innerHTML = `Apuntá al código de barras del <strong>Artículo</strong> (izq.) o del <strong>Lote</strong> (der.).`;
+                            }
+
+                            if ('BarcodeDetector' in window) {
+                                try {
+                                    const detector = new window.BarcodeDetector({
+                                        formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'qr_code', 'itf', 'upc_a', 'upc_e']
+                                    });
+                                    const scanLoop = async () => {
+                                        if (!this.escanerActivo) return;
+                                        try {
+                                            const internalVideo = readerBox.querySelector('video');
+                                            if (internalVideo && internalVideo.readyState >= 2) {
+                                                const barcodes = await detector.detect(internalVideo);
+                                                if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                                                    this.procesarLecturaEscaner(barcodes[0].rawValue);
+                                                }
+                                            }
+                                        } catch (_) {}
+                                        if (this.escanerActivo) {
+                                            this.nativeScanLoopId = setTimeout(scanLoop, 160);
+                                        }
+                                    };
+                                    scanLoop();
+                                } catch (_) {}
+                            }
+                            return;
+                        } catch (err) {
+                            console.warn('⚠️ [SCANNER] Html5Qrcode no pudo iniciar, probando stream nativo:', err);
+                        }
+                    }
+
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                        try {
+                            const stream = await navigator.mediaDevices.getUserMedia({
+                                video: {
+                                    facingMode: { ideal: 'environment' },
+                                    width: { ideal: 1280 },
+                                    height: { ideal: 720 }
+                                },
+                                audio: false
+                            });
+                            this.nativeVideoStream = stream;
+                            if (readerBox) readerBox.style.display = 'none';
+                            if (videoEl) {
+                                videoEl.style.display = 'block';
+                                videoEl.srcObject = stream;
+                                await videoEl.play();
+                            }
+
+                            if ('BarcodeDetector' in window) {
+                                const detector = new window.BarcodeDetector({
+                                    formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'qr_code', 'itf', 'upc_a', 'upc_e']
+                                });
+                                const scanLoop = async () => {
+                                    if (!this.escanerActivo || !videoEl) return;
+                                    try {
+                                        if (videoEl.readyState >= 2) {
+                                            const barcodes = await detector.detect(videoEl);
+                                            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                                                this.procesarLecturaEscaner(barcodes[0].rawValue);
+                                            }
+                                        }
+                                    } catch (_) {}
+                                    if (this.escanerActivo) {
+                                        this.nativeScanLoopId = setTimeout(scanLoop, 150);
+                                    }
+                                };
+                                scanLoop();
+                            }
+                            return;
+                        } catch (err2) {
+                            console.error('❌ [SCANNER] Error abriendo cámara:', err2);
+                        }
+                    }
+
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color:#fbbf24;">Usá el botón <strong>"📸 ¿No enfoca en vivo? Leer Código con Foto Rápida"</strong> o escribí el código abajo.</span>`;
+                    }
+                },
+
+                async procesarFotoCodigoBarras(fileList) {
+                    if (!fileList || fileList.length === 0) return;
+                    const file = fileList[0];
+                    const statusEl = document.getElementById('scanner-status-msg');
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Analizando código de barras en la imagen...</span>`;
+                    }
+
+                    try {
+                        if ('BarcodeDetector' in window && typeof createImageBitmap === 'function') {
+                            try {
+                                const detector = new window.BarcodeDetector({
+                                    formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'qr_code', 'itf', 'upc_a', 'upc_e']
+                                });
+                                const bitmap = await createImageBitmap(file);
+                                const barcodes = await detector.detect(bitmap);
+                                if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                                    await this.procesarLecturaEscaner(barcodes[0].rawValue, true);
+                                    return;
+                                }
+                            } catch (_) {}
+                        }
+
+                        if (typeof Html5Qrcode !== 'undefined') {
+                            await this.detenerCamaraEscaner();
+                            const fileScanner = new Html5Qrcode('scanner-reader-box');
+                            const decodedText = await fileScanner.scanFile(file, false);
+                            fileScanner.clear();
+                            if (decodedText) {
+                                await this.procesarLecturaEscaner(decodedText, true);
+                                return;
+                            }
+                        }
+
+                        if (statusEl) {
+                            statusEl.innerHTML = `<span style="color:#fca5a5;">⚠️ No se detectó un código nítido en la foto. Acercate un poco más a las barras o ingresalo abajo.</span>`;
+                        }
+                    } catch (err) {
+                        if (statusEl) {
+                            statusEl.innerHTML = `<span style="color:#fca5a5;">⚠️ No se pudo leer el código en la foto. Intentá con mejor luz o escribí el código abajo.</span>`;
+                        }
+                    } finally {
+                        const inp = document.getElementById('input-scanner-foto-nativa');
+                        if (inp) inp.value = '';
+                    }
+                },
+
+                async detenerCamaraEscaner() {
+                    this.escanerActivo = false;
+                    if (this.nativeScanLoopId) {
+                        clearTimeout(this.nativeScanLoopId);
+                        this.nativeScanLoopId = null;
+                    }
+                    if (this.nativeVideoStream) {
+                        try {
+                            this.nativeVideoStream.getTracks().forEach(t => t.stop());
+                        } catch (_) {}
+                        this.nativeVideoStream = null;
+                    }
+                    const videoEl = document.getElementById('scanner-native-video');
+                    if (videoEl) {
+                        videoEl.srcObject = null;
+                        videoEl.style.display = 'none';
+                    }
+                    if (this.html5QrScanner) {
+                        try {
+                            if (this.html5QrScanner.isScanning) {
+                                await this.html5QrScanner.stop();
+                            }
+                            this.html5QrScanner.clear();
+                        } catch (_) {}
+                        this.html5QrScanner = null;
+                    }
+                },
+
+                procesarCodigoDesdeInputManual() {
+                    const input = document.getElementById('input-codigo-manual-scanner');
+                    const val = input ? input.value.trim() : '';
+                    if (!val) return;
+                    if (input) input.value = '';
+                    this.procesarLecturaEscaner(val, true);
+                },
+
+                async procesarLecturaEscaner(rawText, forzar = false) {
+                    const cleanCode = String(rawText || '').trim().replace(/^L:\s*/i, '');
+                    if (!cleanCode) return;
+
+                    const ahora = Date.now();
+                    if (!forzar && cleanCode === this.ultimoCodigoLeido && (ahora - this.ultimoTiempoLectura) < 1800) {
+                        return;
+                    }
+                    this.ultimoCodigoLeido = cleanCode;
+                    this.ultimoTiempoLectura = ahora;
+
+                    const stepBadge = document.getElementById('scanner-step-badge');
+                    const titleEl = document.getElementById('scanner-modal-title');
+                    const statusEl = document.getElementById('scanner-status-msg');
+
+                    if (this.modoEscaner === 'solo_lote' && this.articuloSeleccionado) {
+                        this.emitirBeepExito();
+                        this.loteCodigoEscaneado = cleanCode;
+                        const loteEl = document.getElementById('modal-art-lote');
+                        if (loteEl) loteEl.textContent = `🏷️ ${cleanCode}`;
+                        await this.cerrarEscanerCodigo();
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                icon: 'success',
+                                title: `Lote leído: ${cleanCode}`,
+                                showConfirmButton: false,
+                                timer: 1600,
+                                background: '#1e293b',
+                                color: '#f8fafc'
+                            });
+                        }
+                        return;
+                    }
+
+                    if (this.pasoEscaner === 1) {
+                        const resultado = this.buscarArticuloPorCodigoExacto(cleanCode);
+                        if (!resultado || !resultado.articulo) {
+                            if (statusEl) {
+                                statusEl.innerHTML = `<span style="color:#fbbf24;">⚠️ Código "${this.escapeHtml(cleanCode)}" no vinculado como artículo. Probá con la etiqueta comercial o buscá por nombre.</span>`;
+                            }
+                            return;
+                        }
+
+                        this.emitirBeepExito();
+                        this.articuloEscaneadoTemp = resultado.articulo;
+                        const lotePorDefecto = resultado.loteDetectado
+                            || resultado.articulo.fotos_lote?.lote_codigo_corto
+                            || resultado.articulo.ultimo_lote?.lote_codigo_corto
+                            || resultado.articulo.ultimo_lote?.lote_id_supabase
+                            || null;
+                        this.loteEscaneadoTemp = lotePorDefecto;
+                        this.pasoEscaner = 2;
+
+                        if (stepBadge) {
+                            stepBadge.textContent = 'Paso 2 (Opcional) • Código de Lote o Sacar Fotos';
+                            stepBadge.style.background = 'rgba(16, 185, 129, 0.22)';
+                            stepBadge.style.color = '#6ee7b7';
+                        }
+                        if (titleEl) {
+                            titleEl.textContent = resultado.fuePorLote
+                                ? '¡Artículo y Lote identificados!'
+                                : '¡Artículo listo! ¿Querés leer el código de Lote?';
+                        }
+                        if (statusEl) {
+                            statusEl.innerHTML = resultado.fuePorLote
+                                ? `<span style="color:#6ee7b7;">Se detectó el artículo y el lote <strong>${this.escapeHtml(lotePorDefecto)}</strong> en un solo paso.</span>`
+                                : `<span style="color:#5eead4;">Apuntá al código de Lote (derecha) o tocá <strong>"Continuar y Sacar Fotos Ahora"</strong>.</span>`;
+                        }
+
+                        this.actualizarTarjetaScannerPaso2();
+                        return;
+                    }
+
+                    if (this.pasoEscaner === 2 && this.articuloEscaneadoTemp) {
+                        const cbArt = String(this.articuloEscaneadoTemp.codigo_barras || '').trim().toLowerCase();
+                        const skuArt = String(this.articuloEscaneadoTemp.articulo_id || '').trim().toLowerCase();
+                        const codsIng = Array.isArray(this.articuloEscaneadoTemp.codigos_ingrediente)
+                            ? this.articuloEscaneadoTemp.codigos_ingrediente.map(c => String(c).trim().toLowerCase())
+                            : [];
+
+                        if (cleanCode.toLowerCase() === cbArt || cleanCode.toLowerCase() === skuArt || codsIng.includes(cleanCode.toLowerCase())) {
+                            return;
+                        }
+
+                        this.emitirBeepExito();
+                        this.loteEscaneadoTemp = cleanCode;
+                        this.actualizarTarjetaScannerPaso2();
+                        if (statusEl) {
+                            statusEl.innerHTML = `<span style="color:#6ee7b7;">✓ Lote <strong>${this.escapeHtml(cleanCode)}</strong> capturado. Abriendo cámara de fotos...</span>`;
+                        }
+
+                        setTimeout(() => {
+                            this.confirmarEscaneoYTomarFotos();
+                        }, 350);
+                    }
+                },
+
+                async confirmarEscaneoYTomarFotos() {
+                    if (!this.articuloEscaneadoTemp) return;
+                    const sku = this.articuloEscaneadoTemp.articulo_id;
+                    const lote = this.loteEscaneadoTemp || null;
+                    await this.cerrarEscanerCodigo();
+                    this.abrirModalArticulo(sku, lote);
+                },
+
+                async eliminarFotoExistente(index) {
+                    if (!this.articuloSeleccionado || this.guardando) return;
+                    if (index < 0 || index >= this.imagenesExistentes.length) return;
+
+                    this.imagenesExistentes.splice(index, 1);
+                    this.renderizarGrillaFotosModal();
+
+                    const sku = this.articuloSeleccionado.articulo_id;
+                    const quedanPublicadas = this.imagenesExistentes.length;
+
+                    try {
+                        this.guardando = true;
+                        if (quedanPublicadas === 0 && this.imagenesNuevas.length === 0) {
+                            const resp = await fetch(`/api/logistica/b2b-fotos-lotes/${encodeURIComponent(sku)}`, {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ motivo: 'BAJA_MANUAL_OPERADOR' })
+                            });
+                            const json = await resp.json();
+                            if (!resp.ok || !json.success) {
+                                throw new Error(json.error || 'No se pudo quitar la foto publicada');
+                            }
+
+                            this.articuloSeleccionado.tiene_fotos = false;
+                            this.articuloSeleccionado.fotos_lote = null;
+
+                            const btnEliminar = document.getElementById('btn-eliminar-partida');
+                            if (btnEliminar) btnEliminar.style.display = 'none';
+                            const btnReemplazar = document.getElementById('btn-limpiar-para-nuevo-lote');
+                            if (btnReemplazar) btnReemplazar.style.display = 'none';
+                        } else {
+                            const sesion = (typeof obtenerSesion === 'function') ? obtenerSesion() : null;
+                            const usuarioNombre = sesion?.nombre || sesion?.usuario || 'operador_deposito';
+                            const obs = document.getElementById('input-observacion-tecnica')?.value?.trim() || '';
+                            const derivadosDisp = Array.isArray(this.articuloSeleccionado?.derivados_linea_2)
+                                ? this.articuloSeleccionado.derivados_linea_2
+                                : [];
+                            const seleccionados = (this.derivadosSeleccionadosSet instanceof Set)
+                                ? Array.from(this.derivadosSeleccionadosSet)
+                                : [];
+                            const todasMarcadas = derivadosDisp.length > 0 && seleccionados.length === derivadosDisp.length;
+                            const esPermanente = document.getElementById('chk-es-permanente')?.checked === true;
+
+                            const resp = await fetch('/api/logistica/b2b-fotos-lotes/guardar', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    articulo_id: sku,
+                                    imagenes_existentes: this.imagenesExistentes,
+                                    imagenes_nuevas: [],
+                                    reemplazar: false,
+                                    lote_codigo_escaneado: this.loteCodigoEscaneado || null,
+                                    extender_a_derivados: todasMarcadas,
+                                    derivados_seleccionados: seleccionados,
+                                    es_permanente: esPermanente,
+                                    observacion_tecnica: obs,
+                                    usuario: `${usuarioNombre}||DERIV:${JSON.stringify(seleccionados)}`
+                                })
+                            });
+                            const json = await resp.json();
+                            if (!resp.ok || !json.success) {
+                                throw new Error(json.error || 'No se pudo actualizar la galería de fotos');
+                            }
+                        }
+
+                        await this.cargarArticulos(false);
+                        const actualizado = this.articulos.find(a => String(a.articulo_id) === String(sku));
+                        if (actualizado) {
+                            this.articuloSeleccionado = actualizado;
+                        }
+
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                icon: 'success',
+                                title: quedanPublicadas === 0
+                                    ? '🗑️ Foto eliminada del Portal B2B'
+                                    : `🗑️ Foto quitada (${quedanPublicadas} publicada/s)`,
+                                showConfirmButton: false,
+                                timer: 1800,
+                                background: '#1e293b',
+                                color: '#f8fafc'
+                            });
+                        }
+                    } catch (err) {
+                        console.error('❌ [FOTOS-DEPÓSITO] Error al eliminar foto publicada:', err);
+                        await this.cargarArticulos(false);
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error al quitar foto',
+                                text: err.message,
+                                background: '#1e293b',
+                                color: '#f8fafc'
+                            });
+                        }
+                    } finally {
+                        this.guardando = false;
+                    }
+                },
+
+                procesarEnterBusqueda(value) {
+                    const clean = String(value || '').trim().replace(/^L:\s*/i, '');
+                    if (!clean) return;
+                    const match = this.buscarArticuloPorCodigoExacto(clean);
+                    if (match && match.articulo) {
+                        this.emitirBeepExito();
+                        const lote = match.loteDetectado
+                            || match.articulo.fotos_lote?.lote_codigo_corto
+                            || match.articulo.ultimo_lote?.lote_codigo_corto
+                            || null;
+                        this.abrirModalArticulo(match.articulo.articulo_id, lote);
+                    }
+                },
+
+                obtenerDerivadosSeleccionadosDeArticulo(art) {
+                    const derivados = Array.isArray(art?.derivados_linea_2) ? art.derivados_linea_2 : [];
+                    if (!art?.tiene_fotos || derivados.length === 0) return [];
+                    const validSkus = new Set(derivados.map(d => String(d.articulo_id).trim()));
+                    const explicitList = Array.isArray(art.fotos_lote?.derivados_seleccionados)
+                        ? art.fotos_lote.derivados_seleccionados
+                        : (Array.isArray(art.fotos_lote?.imagenes?.[0]?.derivados_seleccionados)
+                            ? art.fotos_lote.imagenes[0].derivados_seleccionados
+                            : null);
+                    if (Array.isArray(explicitList)) {
+                        if (art.fotos_lote?.extender_a_derivados === true && explicitList.length === 0) {
+                            return Array.from(validSkus);
+                        }
+                        return explicitList.map(s => String(s).trim()).filter(s => validSkus.has(s));
+                    }
+                    if (art.fotos_lote?.extender_a_derivados === true) {
+                        return Array.from(validSkus);
+                    }
+                    return [];
+                },
+
+                abrirModalArticulo(articuloId, loteEscaneadoOpcional = null) {
+                    const art = this.articulos.find(a => String(a.articulo_id) === String(articuloId));
+                    if (!art) return;
+
+                    this.articuloSeleccionado = art;
+                    this.loteCodigoEscaneado = loteEscaneadoOpcional
+                        ? String(loteEscaneadoOpcional).trim()
+                        : (art.fotos_lote?.lote_codigo_corto || art.fotos_lote?.lote_id_supabase || null);
+                    this.imagenesExistentes = Array.isArray(art.fotos_lote?.imagenes)
+                        ? JSON.parse(JSON.stringify(art.fotos_lote.imagenes))
+                        : [];
+                    this.imagenesNuevas = [];
+                    this.reemplazarLote = false;
+
+                    const skuEl = document.getElementById('modal-art-sku');
+                    const flujoEl = document.getElementById('modal-art-flujo');
+                    const loteEl = document.getElementById('modal-art-lote');
+                    const nomEl = document.getElementById('modal-art-nombre');
+                    const obsInput = document.getElementById('input-observacion-tecnica');
+
+                    const esPuenteAp = art.articulo_puente?.es_articulo_puente === true;
+                    const esPackPadre = (art.es_pack === true) || (Number(art.pack_unidades || 1) > 1);
+                    if (skuEl) skuEl.textContent = art.articulo_id;
+                    if (flujoEl) {
+                        flujoEl.textContent = esPackPadre
+                            ? `Artículo Padre • Pack (${Number(art.pack_unidades || 1)} u.)`
+                            : (esPuenteAp
+                                ? `Puente AP • ${art.articulo_puente.articulo_id}`
+                                : (art.es_linea_1 ? 'Línea 1 • Bulto Madre' : 'Derivado / Fracción'));
+                    }
+
+                    const loteCode = this.loteCodigoEscaneado
+                        || art.fotos_lote?.lote_codigo_corto
+                        || art.ultimo_lote?.lote_codigo_corto
+                        || art.ultimo_lote?.lote_id_supabase
+                        || 'Lote en Stock';
+                    if (loteEl) loteEl.textContent = `🏷️ ${loteCode}`;
+                    if (nomEl) nomEl.textContent = art.nomenclatura;
+                    if (obsInput) obsInput.value = art.fotos_lote?.observacion_tecnica || '';
+
+                    const seleccionadosIniciales = this.obtenerDerivadosSeleccionadosDeArticulo(art);
+                    this.derivadosSeleccionadosSet = new Set(seleccionadosIniciales);
+                    this.renderizarSelectorDerivadosModal();
+
+                    const chkPermanente = document.getElementById('chk-es-permanente');
+                    if (chkPermanente) {
+                        chkPermanente.checked = art.fotos_lote ? (art.fotos_lote.es_permanente === true) : false;
+                    }
+
+                    const btnEliminar = document.getElementById('btn-eliminar-partida');
+                    if (btnEliminar) {
+                        btnEliminar.style.display = art.tiene_fotos ? 'block' : 'none';
+                    }
+
+                    const btnReemplazar = document.getElementById('btn-limpiar-para-nuevo-lote');
+                    if (btnReemplazar) {
+                        btnReemplazar.style.display = art.tiene_fotos ? 'inline-block' : 'none';
+                    }
+
+                    this.renderizarGrillaFotosModal();
+
+                    const modal = document.getElementById('modal-captura-fotos');
+                    if (modal) modal.classList.add('open');
+                },
+
+                renderizarSelectorDerivadosModal() {
+                    const art = this.articuloSeleccionado;
+                    const boxDerivados = document.getElementById('box-extender-derivados');
+                    const chkDerivados = document.getElementById('chk-extender-derivados');
+                    const lblCantDerivados = document.getElementById('lbl-cant-derivados');
+                    const lblTituloDerivados = document.getElementById('lbl-titulo-derivados-modal');
+                    const lblSubtituloDerivados = document.getElementById('lbl-subtitulo-derivados-modal');
+                    const listaPreview = document.getElementById('lista-derivados-preview');
+
+                    const derivados = Array.isArray(art?.derivados_linea_2) ? art.derivados_linea_2 : [];
+                    if (!boxDerivados || !chkDerivados || derivados.length === 0) {
+                        if (boxDerivados) boxDerivados.style.display = 'none';
+                        if (chkDerivados) {
+                            chkDerivados.checked = false;
+                            chkDerivados.indeterminate = false;
+                        }
+                        return;
+                    }
+
+                    if (!(this.derivadosSeleccionadosSet instanceof Set)) {
+                        this.derivadosSeleccionadosSet = new Set();
+                    }
+
+                    boxDerivados.style.display = 'block';
+                    const total = derivados.length;
+                    const cantSel = derivados.filter(d => this.derivadosSeleccionadosSet.has(String(d.articulo_id).trim())).length;
+
+                    chkDerivados.checked = cantSel > 0;
+                    chkDerivados.indeterminate = cantSel > 0 && cantSel < total;
+
+                    const esPuenteAp = art?.articulo_puente?.es_articulo_puente === true;
+                    const esPackPadre = (art?.es_pack === true) || (Number(art?.pack_unidades || 1) > 1);
+                    if (lblTituloDerivados) {
+                        lblTituloDerivados.textContent = esPackPadre
+                            ? 'Compartir también en otras presentaciones vinculadas'
+                            : (esPuenteAp
+                                ? `Compartir en presentaciones de ${art.articulo_puente.articulo_id}`
+                                : 'Mostrar en fracciones derivadas de Línea 2');
+                    }
+                    if (lblSubtituloDerivados) {
+                        lblSubtituloDerivados.innerHTML = esPackPadre
+                            ? `Las fotos ya se publican en <strong>${this.escapeHtml(art.nomenclatura)}</strong>. Además, podés elegir si querés replicarlas en su artículo hijo u otras presentaciones:`
+                            : (esPuenteAp
+                                ? `🔗 Vinculadas por Artículo Puente (<strong>${this.escapeHtml(art.articulo_puente.descripcion || art.articulo_puente.articulo_id)}</strong>). Elegí en qué presentaciones mostrar estas fotos:`
+                                : `Tocá cada fracción para elegir en cuál <strong>sí</strong> y en cuál <strong>no</strong> mostrar esta partida (aclarando que corresponde a la caja madre).`);
+                    }
+
+                    if (lblCantDerivados) {
+                        lblCantDerivados.textContent = `${cantSel}/${total} adicionales`;
+                        lblCantDerivados.style.color = cantSel > 0 ? '#5eead4' : '#94a3b8';
+                    }
+
+                    if (listaPreview) {
+                        const filaActualHtml = `
+                            <div
+                                style="display: flex; align-items: center; justify-content: space-between; gap: 0.55rem; width: 100%; padding: 0.52rem 0.68rem; border-radius: 0.65rem; user-select: none; background: rgba(16, 185, 129, 0.14); border: 1.5px solid rgba(16, 185, 129, 0.55);"
+                            >
+                                <div style="display: flex; align-items: center; gap: 0.55rem; min-width: 0; flex: 1;">
+                                    <input
+                                        type="checkbox"
+                                        checked
+                                        disabled
+                                        style="width: 18px; height: 18px; accent-color: #10b981; flex-shrink: 0; margin: 0; opacity: 0.95;"
+                                    >
+                                    <div style="min-width: 0; flex: 1; font-size: 0.77rem; color: #f8fafc; line-height: 1.25;">
+                                        <strong style="color: #6ee7b7; font-family: monospace;">${this.escapeHtml(art.articulo_id)}</strong>
+                                        <span> • ${this.escapeHtml(art.nomenclatura)}</span>
+                                    </div>
+                                </div>
+                                <span style="font-size: 0.65rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; flex-shrink: 0; background: rgba(16, 185, 129, 0.25); color: #6ee7b7;">
+                                    ✓ Artículo actual
+                                </span>
+                            </div>
+                        `;
+
+                        listaPreview.innerHTML = filaActualHtml + derivados.map(d => {
+                            const skuD = String(d.articulo_id).trim();
+                            const skuSafe = this.escapeHtml(skuD).replace(/'/g, "\\'");
+                            const checked = this.derivadosSeleccionadosSet.has(skuD);
+                            return `
+                                <div
+                                    onclick="FotosDepositoController.toggleDerivadoIndividual('${skuSafe}')"
+                                    style="display: flex; align-items: center; justify-content: space-between; gap: 0.55rem; width: 100%; padding: 0.52rem 0.68rem; border-radius: 0.65rem; cursor: pointer; user-select: none; transition: all 0.15s; background: ${checked ? 'rgba(20, 184, 166, 0.16)' : '#0f172a'}; border: 1.5px solid ${checked ? '#14b8a6' : '#334155'};"
+                                >
+                                    <div style="display: flex; align-items: center; gap: 0.55rem; min-width: 0; flex: 1;">
+                                        <input
+                                            type="checkbox"
+                                            ${checked ? 'checked' : ''}
+                                            onclick="event.stopPropagation(); FotosDepositoController.toggleDerivadoIndividual('${skuSafe}')"
+                                            style="width: 18px; height: 18px; accent-color: #0d9488; flex-shrink: 0; cursor: pointer; margin: 0;"
+                                        >
+                                        <div style="min-width: 0; flex: 1; font-size: 0.77rem; color: ${checked ? '#f8fafc' : '#94a3b8'}; line-height: 1.25;">
+                                            <strong style="color: ${checked ? '#5eead4' : '#cbd5e1'}; font-family: monospace;">${this.escapeHtml(skuD)}</strong>
+                                            <span> • ${this.escapeHtml(d.nomenclatura)}</span>
+                                        </div>
+                                    </div>
+                                    <span style="font-size: 0.66rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; flex-shrink: 0; background: ${checked ? 'rgba(16, 185, 129, 0.22)' : 'rgba(51, 65, 85, 0.5)'}; color: ${checked ? '#6ee7b7' : '#64748b'};">
+                                        ${checked ? '✓ Sí' : 'No'}
+                                    </span>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                },
+
+                toggleDerivadoIndividual(skuDeriv) {
+                    const key = String(skuDeriv || '').trim();
+                    if (!key) return;
+                    if (!(this.derivadosSeleccionadosSet instanceof Set)) {
+                        this.derivadosSeleccionadosSet = new Set();
+                    }
+                    if (this.derivadosSeleccionadosSet.has(key)) {
+                        this.derivadosSeleccionadosSet.delete(key);
+                    } else {
+                        this.derivadosSeleccionadosSet.add(key);
+                    }
+                    this.renderizarSelectorDerivadosModal();
+                },
+
+                toggleTodosDerivados(forzarEstado = null) {
+                    const derivados = Array.isArray(this.articuloSeleccionado?.derivados_linea_2)
+                        ? this.articuloSeleccionado.derivados_linea_2
+                        : [];
+                    if (derivados.length === 0) return;
+
+                    if (!(this.derivadosSeleccionadosSet instanceof Set)) {
+                        this.derivadosSeleccionadosSet = new Set();
+                    }
+
+                    const todosMarcadosActualmente = derivados.every(d => this.derivadosSeleccionadosSet.has(String(d.articulo_id).trim()));
+                    const nuevoEstado = typeof forzarEstado === 'boolean' ? forzarEstado : !todosMarcadosActualmente;
+
+                    if (nuevoEstado) {
+                        derivados.forEach(d => this.derivadosSeleccionadosSet.add(String(d.articulo_id).trim()));
+                    } else {
+                        this.derivadosSeleccionadosSet.clear();
+                    }
+                    this.renderizarSelectorDerivadosModal();
+                },
+
+                async guardarCambios() {
+                    if (this.guardando || !this.articuloSeleccionado) return;
+
+                    const totalFotos = this.imagenesExistentes.length + this.imagenesNuevas.length;
+                    if (totalFotos === 0) {
+                        if (this.articuloSeleccionado.tiene_fotos) {
+                            try {
+                                this.guardando = true;
+                                const resp = await fetch(`/api/logistica/b2b-fotos-lotes/${encodeURIComponent(this.articuloSeleccionado.articulo_id)}`, {
+                                    method: 'DELETE',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ motivo: 'BAJA_MANUAL_OPERADOR' })
+                                });
+                                const json = await resp.json();
+                                if (!resp.ok || !json.success) {
+                                    throw new Error(json.error || 'No se pudieron dar de baja las imágenes');
+                                }
+                                this.cerrarModal();
+                                await this.cargarArticulos(false);
+                                Swal.fire({
+                                    toast: true,
+                                    position: 'top-end',
+                                    icon: 'info',
+                                    title: 'Publicación de fotos dada de baja',
+                                    showConfirmButton: false,
+                                    timer: 2000,
+                                    background: '#1e293b',
+                                    color: '#f8fafc'
+                                });
+                            } catch (err) {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error al quitar fotos',
+                                    text: err.message,
+                                    background: '#1e293b',
+                                    color: '#f8fafc'
+                                });
+                            } finally {
+                                this.guardando = false;
+                            }
+                            return;
+                        }
+
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Sin imágenes',
+                            text: 'Capturá al menos una fotografía para publicar la partida.',
+                            background: '#1e293b',
+                            color: '#f8fafc',
+                            confirmButtonColor: '#0d9488'
+                        });
+                        return;
+                    }
+
+                    const btnPublicar = document.getElementById('btn-publicar-fotos');
+                    const textoOriginal = btnPublicar ? btnPublicar.innerHTML : '💾 Publicar en Portal B2B';
+
+                    try {
+                        this.guardando = true;
+                        if (btnPublicar) {
+                            btnPublicar.disabled = true;
+                            btnPublicar.innerHTML = '⏳ Subiendo y sincronizando con Portal B2B...';
+                        }
+
+                        const sesion = (typeof obtenerSesion === 'function') ? obtenerSesion() : null;
+                        const usuarioNombre = sesion?.nombre || sesion?.usuario || 'operador_deposito';
+                        const obs = document.getElementById('input-observacion-tecnica')?.value?.trim() || '';
+                        const derivadosDisp = Array.isArray(this.articuloSeleccionado?.derivados_linea_2)
+                            ? this.articuloSeleccionado.derivados_linea_2
+                            : [];
+                        const seleccionados = (this.derivadosSeleccionadosSet instanceof Set)
+                            ? Array.from(this.derivadosSeleccionadosSet)
+                            : [];
+                        const todasMarcadas = derivadosDisp.length > 0 && seleccionados.length === derivadosDisp.length;
+                        const esPermanente = document.getElementById('chk-es-permanente')?.checked === true;
+
+                        const payload = {
+                            articulo_id: this.articuloSeleccionado.articulo_id,
+                            imagenes_existentes: this.imagenesExistentes,
+                            imagenes_nuevas: this.imagenesNuevas.map(img => ({
+                                base64: img.base64,
+                                mimeType: img.mimeType
+                            })),
+                            reemplazar: this.reemplazarLote,
+                            lote_codigo_escaneado: this.loteCodigoEscaneado || null,
+                            extender_a_derivados: todasMarcadas,
+                            derivados_seleccionados: seleccionados,
+                            es_permanente: esPermanente,
+                            observacion_tecnica: obs,
+                            usuario: `${usuarioNombre}||DERIV:${JSON.stringify(seleccionados)}`
+                        };
+
+                        const resp = await fetch('/api/logistica/b2b-fotos-lotes/guardar', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const json = await resp.json();
+
+                        if (!resp.ok || !json.success) {
+                            throw new Error(json.error || 'No se pudieron guardar las imágenes');
+                        }
+
+                        this.cerrarModal();
+                        await this.cargarArticulos(false);
+
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            icon: 'success',
+                            title: 'Partida publicada en Portal B2B',
+                            showConfirmButton: false,
+                            timer: 2200,
+                            background: '#1e293b',
+                            color: '#f8fafc'
+                        });
+                    } catch (err) {
+                        console.error('❌ [FOTOS-DEPÓSITO] Error guardando:', err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error al publicar',
+                            text: err.message,
+                            background: '#1e293b',
+                            color: '#f8fafc',
+                            confirmButtonColor: '#0d9488'
+                        });
+                    } finally {
+                        this.guardando = false;
+                        if (btnPublicar) {
+                            btnPublicar.disabled = false;
+                            btnPublicar.innerHTML = textoOriginal;
+                        }
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof verificarSesion === 'function') {
+                verificarSesion();
+            }
+            FotosDepositoController.init();
+        });
+    </script>
+</body>
+</html>

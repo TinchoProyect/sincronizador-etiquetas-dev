@@ -88,16 +88,28 @@ function renderizarEntregas() {
     }
 
     container.innerHTML = routeHeaderHTML + paradas.map((parada, index) => {
-        const esCompletadaTotal = parada.entregas.every(e => e.estado_logistico === 'ENTREGADO' || e.estado_logistico === 'RETIRADO');
-        const primerEntrega = parada.entregas[0];
-        const esOrdenTratamiento = primerEntrega.estado === 'Orden de Tratamiento';
-        const esOrdenRetiro = primerEntrega.estado === 'Orden de Retiro';
+        const esCompletadaTotal = parada.entregas.every(e => ['ENTREGADO', 'RETIRADO', 'RECHAZADO', 'REPROGRAMADO'].includes(e.estado_logistico));
+        // Preferir una entrega con dirección válida como cabecera de la parada
+        const primerEntrega = parada.entregas.find(e => !(e.es_sobre_efectivo || String(e.id_presupuesto).startsWith('SOB-')) && e.domicilio?.direccion)
+            || parada.entregas.find(e => e.domicilio?.direccion)
+            || parada.entregas[0];
+
+        const sobresParada = parada.entregas.filter(e => e.es_sobre_efectivo || String(e.id_presupuesto).startsWith('SOB-'));
+        const itemsNoSobre = parada.entregas.filter(e => !(e.es_sobre_efectivo || String(e.id_presupuesto).startsWith('SOB-')));
+        const tieneSobre = sobresParada.length > 0;
+        const esSoloSobre = tieneSobre && itemsNoSobre.length === 0;
+        const esVisitaPreventaParada = parada.entregas.some(e => e.es_visita_preventa === true || String(e.id_presupuesto).startsWith('PR-') || e.estado === 'Visita Comercial');
+
+        const esOrdenTratamiento = !esSoloSobre && !esVisitaPreventaParada && primerEntrega.estado === 'Orden de Tratamiento';
+        const esOrdenRetiro = !esSoloSobre && !esVisitaPreventaParada && primerEntrega.estado === 'Orden de Retiro';
         const esEntregaTratamientoParada = esOrdenTratamiento && primerEntrega.estado_tratamiento === 'COMPLETADO';
-        const esRetiro = (esOrdenTratamiento && !esEntregaTratamientoParada) || esOrdenRetiro;
+        const esRetiro = !esSoloSobre && !esVisitaPreventaParada && ((esOrdenTratamiento && !esEntregaTratamientoParada) || esOrdenRetiro);
 
         const claseCard = esCompletadaTotal ? 'entrega-card completada' : 'entrega-card';
-        const pendientes = parada.entregas.filter(e => e.estado_logistico !== 'ENTREGADO' && e.estado_logistico !== 'RETIRADO').length;
-        const estiloBorde = esRetiro && !esCompletadaTotal ? 'border-left: 5px solid #d35400;' : '';
+        const pendientes = parada.entregas.filter(e => !['ENTREGADO', 'RETIRADO', 'RECHAZADO', 'REPROGRAMADO'].includes(e.estado_logistico)).length;
+        const estiloBorde = !esCompletadaTotal
+            ? (esVisitaPreventaParada ? 'border-left: 5px solid #ea580c; background: #fff7ed;' : (esSoloSobre ? 'border-left: 5px solid #7c3aed; background: #faf5ff;' : (esRetiro ? 'border-left: 5px solid #d35400;' : (tieneSobre ? 'border-left: 5px solid #7c3aed;' : ''))))
+            : '';
 
         let headerBadgeHTML = esCompletadaTotal 
             ? '<div class="entrega-badge badge-completada">Completada</div>'
@@ -119,11 +131,126 @@ function renderizarEntregas() {
         }
 
         const pedidosListHTML = parada.entregas.map(entrega => {
+            const esSobreItem = entrega.es_sobre_efectivo === true || String(entrega.id_presupuesto).startsWith('SOB-') || entrega.estado === 'Sobre de Efectivo';
+            const esVisitaItem = entrega.es_visita_preventa === true || String(entrega.id_presupuesto).startsWith('PR-') || entrega.estado === 'Visita Comercial';
+            const completado = ['ENTREGADO', 'RETIRADO', 'RECHAZADO', 'REPROGRAMADO'].includes(entrega.estado_logistico);
+
+            if (esVisitaItem) {
+                const codProsp = entrega.codigo_prospecto || entrega.cliente?.id || String(entrega.id_presupuesto);
+                const idProspReal = entrega.id_prospecto_real || String(entrega.id_presupuesto).replace('PR-', '');
+                const esClienteActivoVisita = entrega.origen_contacto === 'CLIENTE_ACTIVO' || String(entrega.rubro || '').includes('Cliente Activo');
+                const enPausa = Boolean(state.ruta && state.ruta.en_pausa);
+                const esNoEncontrada = entrega.estado_logistico === 'RECHAZADO'
+                    || ['NO_ENCONTRADO', 'NO_CONCRETADA'].includes(entrega.estado_ruta)
+                    || entrega.estado_prospecto === 'DESCARTADO'
+                    || String(entrega.notas || '').includes('No concretada:');
+                const disableVisitaBtn = completado || enPausa;
+                const txtVisitaBtn = completado
+                    ? (esNoEncontrada ? '🚫 No Encontrado' : '✅ Visitado')
+                    : (enPausa ? 'Pausado' : (esClienteActivoVisita ? '✅ Registrar Paso' : '🤝 Registrar Visita'));
+                const bgVisitaBtn = completado ? (esNoEncontrada ? '#fee2e2' : '#dcfce7') : (enPausa ? '#cbd5e1' : '#0d9488');
+                const colVisitaBtn = completado ? (esNoEncontrada ? '#991b1b' : '#166534') : (enPausa ? '#94a3b8' : 'white');
+
+                return `
+                    <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0.65rem; margin-top: 0.35rem; border-radius: 8px; background: #f0fdfa; border: 1px solid #99f6e4; flex-wrap: wrap; gap: 8px;">
+                        <div style="flex: 1; min-width: 160px;">
+                            <div style="font-weight: 800; color: #0f766e; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                <span>${esClienteActivoVisita ? `⭐ Visita a Cliente Activo (${codProsp})` : `🎯 Visita Contacto (${codProsp})`}</span>
+                                <span style="font-size: 0.7rem; color: ${completado ? (esNoEncontrada ? '#991b1b' : '#166534') : '#115e59'}; background: ${completado ? (esNoEncontrada ? '#fee2e2' : '#dcfce7') : '#ccfbf1'}; border: 1px solid ${completado ? (esNoEncontrada ? '#fca5a5' : '#bbf7d0') : '#5eead4'}; padding: 2px 6px; border-radius: 4px; font-weight: bold;">
+                                    ${completado ? (esNoEncontrada ? '🚫 LOCAL NO ENCONTRADO' : '✅ VISITADO') : (esClienteActivoVisita ? '⭐ Servicio / Sin Pedido' : `🏷️ ${entrega.rubro || 'Comercio'}`)}
+                                </span>
+                            </div>
+                            ${entrega.contacto_nombre || entrega.telefono_whatsapp ? `
+                                <div style="font-size: 0.8rem; color: #7c2d12; margin-top: 4px; font-weight: 600;">
+                                    ${entrega.contacto_nombre ? `👤 ${entrega.contacto_nombre} (${entrega.contacto_rol || 'Contacto'}) ` : ''}
+                                    ${entrega.telefono_whatsapp ? `📱 ${entrega.telefono_whatsapp}` : ''}
+                                </div>
+                            ` : ''}
+                            ${entrega.notas ? `
+                                <div style="font-size: 0.76rem; color: #9a3412; margin-top: 4px; background: rgba(255,255,255,0.65); padding: 4px 7px; border-radius: 5px; line-height: 1.3;">
+                                    💡 <i>${entrega.notas}</i>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                            ${!completado ? `
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.quitarPedido('${entrega.id_presupuesto}')" 
+                                    style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">
+                                ❌ Quitar
+                            </button>
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.registrarVisitaNoConcretadaEnRuta('${idProspReal}')" 
+                                    ${enPausa ? 'disabled' : ''}
+                                    style="padding: 0.5rem 0.75rem; font-weight: bold; border-radius: 0.5rem; background: #fff1f2; color: #be123c; border: 1px solid #fda4af; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                🚫 No Encontrado
+                            </button>
+                            ` : ''}
+                            <button class="btn-confirmar-sm" 
+                                     onclick="window.abrirModalVisitaPreventaEnRuta('${idProspReal}')" 
+                                    ${disableVisitaBtn ? 'disabled' : ''}
+                                    style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${bgVisitaBtn}; color: ${colVisitaBtn}; border: none; min-width: 135px; box-shadow: 0 2px 4px rgba(234,88,12,0.2);">
+                                ${txtVisitaBtn}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (esSobreItem) {
+                const codSobre = entrega.codigo_sobre || String(entrega.id_presupuesto).replace('SOB-', '');
+                const idSobreReal = entrega.id_sobre_real || String(entrega.id_presupuesto).replace('SOB-', '');
+                const montoSobre = parseFloat(entrega.monto_declarado || 0);
+                const tieneFotos = Boolean(entrega.foto_frente_url || entrega.foto_dorso_url);
+                const enPausa = Boolean(state.ruta && state.ruta.en_pausa);
+                const disableSobreBtn = completado || enPausa;
+                const txtSobreBtn = completado ? '✓ Sobre Retirado' : (enPausa ? 'Pausado' : '💵 Retirar Sobre');
+                const bgSobreBtn = completado ? '#dcfce7' : (enPausa ? '#cbd5e1' : '#7c3aed');
+                const colSobreBtn = completado ? '#166534' : (enPausa ? '#94a3b8' : 'white');
+
+                return `
+                    <div class="pedido-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0.6rem; margin-top: 0.35rem; border-radius: 8px; background: #f5f3ff; border: 1px solid #ddd6fe; flex-wrap: wrap; gap: 8px;">
+                        <div style="flex: 1; min-width: 150px;">
+                            <div style="font-weight: 800; color: #5b21b6; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                <span>💵 Sobre #${codSobre}</span>
+                                <span style="font-size: 0.7rem; color: ${completado ? '#166534' : '#6d28d9'}; background: ${completado ? '#dcfce7' : '#ede9fe'}; border: 1px solid ${completado ? '#bbf7d0' : '#c4b5fd'}; padding: 2px 6px; border-radius: 4px; font-weight: bold;">
+                                    ${completado ? '✅ RETIRADO' : '⏳ LISTO P/ RETIRAR'}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.9rem; font-weight: 800; color: #6d28d9; margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                                <span>💰 $${montoSobre.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ${tieneFotos ? `<button type="button" onclick="window.verFotosSobreMovil('${codSobre}', '${entrega.foto_frente_url || ''}', '${entrega.foto_dorso_url || ''}')" style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; font-weight: bold; cursor: pointer;">📷 Fotos</button>` : ''}
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                            ${!completado ? `
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.quitarPedido('${entrega.id_presupuesto}')" 
+                                    style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                ❌ Quitar
+                            </button>
+                            ` : `
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.enviarAvisoSobreRetirado('${idSobreReal}', '${codSobre}')" 
+                                    style="padding: 0.5rem 0.75rem; font-weight: bold; border-radius: 0.5rem; background: #25d366; color: white; border: none; box-shadow: 0 2px 4px rgba(37,211,102,0.25);">
+                                📲 Avisar WhatsApp
+                            </button>
+                            `}
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.confirmarRetiroSobreEnRuta('${idSobreReal}', '${codSobre}')" 
+                                    ${disableSobreBtn ? 'disabled' : ''}
+                                    style="padding: 0.5rem 1rem; font-weight: bold; border-radius: 0.5rem; background: ${bgSobreBtn}; color: ${colSobreBtn}; border: none; min-width: 120px; box-shadow: 0 2px 4px rgba(124,58,237,0.2);">
+                                ${txtSobreBtn}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
             const esOrdenTratamiento = entrega.estado === 'Orden de Tratamiento';
             const esOrdenRetiro = entrega.estado === 'Orden de Retiro';
             const esEntregaTratamiento = esOrdenTratamiento && entrega.estado_tratamiento === 'COMPLETADO';
             const esItemRetiro = (esOrdenTratamiento && !esEntregaTratamiento) || esOrdenRetiro;
-            const completado = entrega.estado_logistico === 'ENTREGADO' || entrega.estado_logistico === 'RETIRADO';
             
             const lomasoft = entrega.comprobante_lomasoft || entrega.id_factura_lomasoft;
             let badgeBillingHTML = '';
@@ -164,7 +291,6 @@ function renderizarEntregas() {
                             ${esEntregaTratamiento ? '📦 Entrega de Tratamiento' : '✅ Check-in Completado'}: <span style="font-weight: normal;">${d.bultos} bulto(s) (${d.kilos}kg) de ${d.descripcion_externa}</span>
                         </div>
                     `;
-                    // Si ya está completado el retiro, o es un ciclo de entrega, ocultamos el botón de Modificar Carga para evitar inconsistencias mutables post-retiro.
                     if (!completado && !esEntregaTratamiento) {
                         btnCompletarCargaHTML = `
                             <button class="btn-confirmar-sm" 
@@ -187,7 +313,6 @@ function renderizarEntregas() {
                             📝 Completar Carga
                         </button>
                     `;
-                    // Bloquear botón de Retirar (Regla de Negocio)
                     disableMainBtn = true;
                     backgroundBoton = '#cbd5e1';
                     colorTextoBoton = '#94a3b8';
@@ -206,11 +331,28 @@ function renderizarEntregas() {
                     </div>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
                         ${btnCompletarCargaHTML}
+                        ${!completado ? `
                         <button class="btn-confirmar-sm" 
                                 onclick="window.quitarPedido('${entrega.id_presupuesto}')" 
                                 style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                             ❌ Quitar
                         </button>
+                        ${!esOrdenTratamiento && !esOrdenRetiro ? `
+                        <button class="btn-confirmar-sm" 
+                                onclick="window.registrarIncidencia('${entrega.id_presupuesto}')" 
+                                style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #ffedd5; color: #ea580c; border: 1px solid #fed7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            ⚠️ No Entregado
+                        </button>
+                        ` : ''}
+                        ` : `
+                        ${!esOrdenTratamiento && !esOrdenRetiro ? `
+                        <button class="btn-confirmar-sm" 
+                                onclick="confirmarEntrega('${entrega.id_presupuesto}', 'entrega')" 
+                                style="padding: 0.5rem 0.75rem; font-weight: bold; border-radius: 0.5rem; background: #25d366; color: white; border: none; box-shadow: 0 2px 4px rgba(37,211,102,0.25);">
+                            📲 Avisar WhatsApp
+                        </button>
+                        ` : ''}
+                        `}
                         <button class="btn-confirmar-sm" 
                                 onclick="confirmarEntrega('${entrega.id_presupuesto}', '${esOrdenTratamiento && !esItemRetiro ? 'entrega_tratamiento' : (esItemRetiro ? 'retiro' : 'entrega')}')" 
                                 ${disableMainBtn ? 'disabled' : ''}
@@ -225,7 +367,7 @@ function renderizarEntregas() {
         return `
             <div class="${claseCard}" data-parada-key="${parada.key}" style="${estiloBorde} box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; transition: all 0.2s ease;">
                 <div class="entrega-header" style="margin-top: 8px;">
-                    <div class="entrega-numero" style="background: ${esRetiro ? '#d35400' : (esEntregaTratamientoParada ? '#2563eb' : '#1e3a8a')}; opacity: 0.9;">
+                    <div class="entrega-numero" style="background: ${esVisitaPreventaParada ? '#ea580c' : (esSoloSobre ? '#7c3aed' : (esRetiro ? '#d35400' : (esEntregaTratamientoParada ? '#2563eb' : '#1e3a8a')))}; opacity: 0.9;">
                         ${index + 1}
                     </div>
                     <div style="flex: 1;">${headerBadgeHTML}</div>
@@ -236,9 +378,12 @@ function renderizarEntregas() {
                 </div>
                 
                 <div class="entrega-cliente" style="margin-top: 0.75rem;">
-                    <div style="font-size: 1.1rem; font-weight: 800; color: #1e40af; margin-bottom: 0.25rem;">
-                        [#${primerEntrega.cliente.id || 'S/N'}] ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
+                    <div style="font-size: 1.1rem; font-weight: 800; color: ${esVisitaPreventaParada ? '#c2410c' : '#1e40af'}; margin-bottom: 0.25rem;">
+                        [${primerEntrega.cliente.id || 'S/N'}] ${primerEntrega.cliente.nombre || 'Cliente sin nombre'}
                     </div>
+                    ${esVisitaPreventaParada ? '<div style="background: #ea580c; color: white; padding: 2px 7px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block; font-weight: bold;">🎯 VISITA DE PREVENTA / PRESENTACIÓN EMPRESA</div>' : ''}
+                    ${esSoloSobre ? '<div style="background: #7c3aed; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block; font-weight: bold;">💵 PASO A RETIRAR SOBRE</div>' : ''}
+                    ${(!esSoloSobre && tieneSobre) ? '<div style="background: #7c3aed; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; margin-right: 4px; display: inline-block; font-weight: bold;">💵 + RETIRAR SOBRE</div>' : ''}
                     ${esRetiro ? '<div style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">RETIRAR</div>' : ''}
                     ${esEntregaTratamientoParada ? '<div style="background: #2563eb; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">ENTREGA MANTENIMIENTO</div>' : ''}
                 </div>
@@ -269,12 +414,28 @@ function renderizarEntregas() {
 function agruparEntregasEnParadas(entregas) {
     if (!entregas || entregas.length === 0) return [];
 
+    const normCid = (e) => String(e.cliente?.id || '').trim().replace(/^0+/, '');
+
+    // Mapa auxiliar: vincular sobres con la parada principal del mismo cliente en la ruta
+    const domPrincipalPorCliente = new Map();
+    entregas.forEach(e => {
+        const cid = normCid(e);
+        const esSobre = e.es_sobre_efectivo === true || String(e.id_presupuesto).startsWith('SOB-');
+        if (cid && e.domicilio?.id && (!domPrincipalPorCliente.has(cid) || !esSobre)) {
+            domPrincipalPorCliente.set(cid, e.domicilio.id);
+        }
+    });
+
     const paradas = [];
     const mapaParadas = new Map();
 
     entregas.forEach(entrega => {
-        // Clave única: cliente + domicilio
-        const key = `${entrega.cliente.id}_${entrega.domicilio.id || 'sin_dom'}`;
+        const cid = normCid(entrega);
+        const esSobre = entrega.es_sobre_efectivo === true || String(entrega.id_presupuesto).startsWith('SOB-');
+        const domId = (esSobre && domPrincipalPorCliente.has(cid))
+            ? domPrincipalPorCliente.get(cid)
+            : (entrega.domicilio?.id || domPrincipalPorCliente.get(cid) || 'sin_dom');
+        const key = `${cid}_${domId}`;
 
         if (!mapaParadas.has(key)) {
             const nuevaParada = {
@@ -290,6 +451,486 @@ function agruparEntregasEnParadas(entregas) {
 
     return paradas;
 }
+
+async function despacharWhatsAppSobreRetiradoMovil(idSobreReal, codigoSobre) {
+    // 1. Intentar endpoint directo de móvil
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/sobres-efectivo/${idSobreReal}/notificar-retiro`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (response.status !== 404) {
+            const data = await response.json();
+            return {
+                enviado: Boolean(data.success && data.whatsapp_enviado),
+                destinatarios: data.destinatarios || [],
+                error: data.error || null
+            };
+        }
+    } catch (e) {
+        console.warn('[SOBRE-WA] Fallback a resolución directa:', e.message);
+    }
+
+    // 2. Fallback directo vía /api/logistica/pagos-efectivo/:id + /api/facturacion/whatsapp/enviar-mensaje
+    const resSobre = await fetch(`${API_BASE_URL}/api/logistica/pagos-efectivo/${encodeURIComponent(codigoSobre || idSobreReal)}`);
+    const dataSobre = await resSobre.json();
+    if (!dataSobre.success || !dataSobre.sobre) {
+        return { enviado: false, destinatarios: [], error: 'No se pudo obtener la información del sobre.' };
+    }
+
+    const sobre = dataSobre.sobre;
+    const codFinal = sobre.codigo_sobre || codigoSobre;
+    const nombreCliente = sobre.cliente_nombre_fantasia || sobre.cliente_razon_social || sobre.colaborador_nombre || 'Cliente';
+
+    let telefonos = [];
+    if (sobre.cliente_telefono) {
+        try {
+            const parsed = typeof sobre.cliente_telefono === 'string' && sobre.cliente_telefono.trim().startsWith('[')
+                ? JSON.parse(sobre.cliente_telefono)
+                : null;
+            if (Array.isArray(parsed)) {
+                parsed.forEach(c => {
+                    if (c && c.numero && c.enviar_alerta !== false) {
+                        telefonos.push(String(c.numero).trim());
+                    }
+                });
+                if (telefonos.length === 0) {
+                    parsed.forEach(c => {
+                        if (c && c.numero) telefonos.push(String(c.numero).trim());
+                    });
+                }
+            } else {
+                const digits = String(sobre.cliente_telefono).replace(/\D/g, '');
+                if (digits.length >= 8) telefonos.push(digits);
+            }
+        } catch (errP) {
+            const digits = String(sobre.cliente_telefono).replace(/\D/g, '');
+            if (digits.length >= 8) telefonos.push(digits);
+        }
+    }
+    if (telefonos.length === 0 && sobre.colaborador_telefono) {
+        const digits = String(sobre.colaborador_telefono).replace(/\D/g, '');
+        if (digits.length >= 8) telefonos.push(digits);
+    }
+
+    if (telefonos.length === 0) {
+        return { enviado: false, destinatarios: [], error: 'El cliente no tiene número de WhatsApp configurado.' };
+    }
+
+    const mensajeTexto = `💵 *Sobre Retirado*\n\nHola *${nombreCliente}*, te avisamos que ya fue retirado el sobre *#${codFinal}*.\n\n¡Muchas gracias!\n*LAMDA*`;
+    let enviados = 0;
+    const errores = [];
+
+    for (const destino of telefonos) {
+        try {
+            const resWa = await fetch(`${API_BASE_URL}/api/facturacion/whatsapp/enviar-mensaje`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    destinatarios: destino,
+                    mensajeTexto
+                })
+            });
+            const dataWa = await resWa.json().catch(() => ({}));
+            if (resWa.ok && dataWa.success) {
+                enviados++;
+            } else {
+                errores.push(dataWa.error || dataWa.message || `Error HTTP ${resWa.status}`);
+            }
+        } catch (errWa) {
+            errores.push(errWa.message);
+        }
+    }
+
+    return {
+        enviado: enviados > 0,
+        destinatarios: telefonos,
+        error: errores.join(' | ') || null
+    };
+}
+
+window.confirmarRetiroSobreEnRuta = async (idSobreReal, codigoSobre) => {
+    const resConfirm = await Swal.fire({
+        title: `💵 Retirar Sobre #${codigoSobre}`,
+        html: `
+            <div style="text-align: left; font-size: 0.9rem; color: #334155;">
+                <p style="margin: 0 0 10px 0;">¿Confirma que recibió el sobre físico de efectivo en el domicilio del cliente?</p>
+                <div style="background: #f5f3ff; border: 1px dashed #c4b5fd; border-radius: 6px; padding: 8px 10px; font-size: 0.8rem; color: #5b21b6;">
+                    📲 <strong>Aviso corto por WhatsApp:</strong><br>
+                    <em>"💵 Sobre Retirado — Hola, te avisamos que ya fue retirado el sobre #${codigoSobre}. ¡Muchas gracias! LAMDA"</em>
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '📢 Retirar y Avisar WhatsApp',
+        denyButtonText: '💾 Solo Retirar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#7c3aed',
+        denyButtonColor: '#059669',
+        cancelButtonColor: '#64748b'
+    });
+    if (!resConfirm.isConfirmed && !resConfirm.isDenied) return;
+
+    const notificarWa = resConfirm.isConfirmed;
+
+    Swal.fire({
+        title: notificarWa ? 'Retirando sobre y avisando...' : 'Registrando retiro...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/sobres-efectivo/${idSobreReal}/retirar`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ notificar: notificarWa })
+        });
+        const data = await response.json();
+        if (data.success) {
+            let waOk = Boolean(data.whatsapp_enviado);
+            let waErr = (data.whatsapp_errores || []).join(', ');
+            if (notificarWa && data.whatsapp_enviado === undefined) {
+                const fallbackWa = await despacharWhatsAppSobreRetiradoMovil(idSobreReal, codigoSobre);
+                waOk = fallbackWa.enviado;
+                waErr = fallbackWa.error || '';
+            }
+            await Swal.fire({
+                icon: 'success',
+                title: '💵 ¡Sobre Retirado!',
+                text: notificarWa
+                    ? (waOk
+                        ? `El sobre #${codigoSobre} quedó retirado y se envió el aviso por WhatsApp al cliente.`
+                        : `El sobre #${codigoSobre} quedó retirado (no se pudo enviar WhatsApp: ${waErr || 'sin número'}).`)
+                    : `El sobre #${codigoSobre} quedó registrado como retirado en ruta.`,
+                timer: 2300,
+                showConfirmButton: false
+            });
+            await cargarRutaActiva();
+        } else {
+            Swal.fire('Error', data.error || 'No se pudo registrar el retiro del sobre.', 'error');
+        }
+    } catch (err) {
+        console.error('[SOBRE] Error al retirar sobre:', err);
+        Swal.fire('Error de Red', 'No se pudo conectar con el servidor.', 'error');
+    }
+};
+
+window.enviarAvisoSobreRetirado = async (idSobreReal, codigoSobre) => {
+    const resConfirm = await Swal.fire({
+        title: `📲 Avisar Sobre Retirado`,
+        html: `
+            <div style="text-align: left; font-size: 0.9rem; color: #334155;">
+                <p style="margin: 0 0 10px 0;">Se enviará el aviso corto por WhatsApp al cliente confirmando el retiro del sobre <strong>#${codigoSobre}</strong> (sin mencionar montos):</p>
+                <div style="background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 6px; padding: 10px; font-size: 0.85rem; color: #065f46;">
+                    💵 <strong>Sobre Retirado</strong><br>
+                    Hola, te avisamos que ya fue retirado el sobre <strong>#${codigoSobre}</strong>.<br>
+                    ¡Muchas gracias! <strong>LAMDA</strong>
+                </div>
+            </div>
+        `,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: '📲 Enviar WhatsApp Ahora',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#25d366',
+        cancelButtonColor: '#64748b'
+    });
+    if (!resConfirm.isConfirmed) return;
+
+    Swal.fire({
+        title: 'Enviando WhatsApp...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const resultadoWa = await despacharWhatsAppSobreRetiradoMovil(idSobreReal, codigoSobre);
+        if (resultadoWa.enviado) {
+            await Swal.fire({
+                icon: 'success',
+                title: '📲 ¡WhatsApp Enviado!',
+                text: `Se envió el aviso de Sobre Retirado (#${codigoSobre}) a ${(resultadoWa.destinatarios || []).join(', ')}.`,
+                timer: 2200,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire('No se pudo enviar', resultadoWa.error || 'Verifique que el cliente tenga WhatsApp cargado y el servicio activo.', 'warning');
+        }
+    } catch (err) {
+        console.error('[SOBRE-WA] Error al enviar aviso:', err);
+        Swal.fire('Error de Red', 'No se pudo conectar con el servidor.', 'error');
+    }
+};
+
+window.registrarVisitaNoConcretadaEnRuta = async (idProspectoReal) => {
+    const item = state.entregas.find(e => String(e.id_prospecto_real) === String(idProspectoReal) || String(e.id_presupuesto) === `PR-${idProspectoReal}`);
+    const nombreComercio = item?.cliente?.nombre || 'Comercio';
+    const notasPrevias = (item?.notas || '').trim();
+
+    const { value: formNoConcretada } = await Swal.fire({
+        title: `🚫 Visita No Concretada`,
+        html: `
+            <div style="text-align: left; display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.88rem;">
+                <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 0.5rem; padding: 0.6rem 0.75rem; color: #9f1239;">
+                    🏪 <b>${nombreComercio}</b><br>
+                    📍 <span style="font-size: 0.8rem;">${item?.domicilio?.direccion || 'Sin dirección'}</span>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #334155; font-size: 0.8rem; display: block; margin-bottom: 4px;">Motivo por el que no se concretó la visita:</label>
+                    <select id="swal-no-visita-motivo" style="width: 100%; padding: 0.65rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.9rem; font-weight: 700; color: #1e293b; background: white;">
+                        <option value="No encontré físicamente el local" selected>📍 No encontré físicamente el local</option>
+                        <option value="Local cerrado / Sin atención en este horario">🔒 Local cerrado / Sin atención en este horario</option>
+                        <option value="El comercio ya no existe / Cerró definitivamente">🏚️ El comercio ya no existe / Cerró</option>
+                        <option value="Rubro distinto / No trabaja nuestra línea">🏷️ Rubro distinto / No corresponde</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #334155; font-size: 0.8rem; display: block; margin-bottom: 4px;">📝 Observación adicional (opcional):</label>
+                    <input id="swal-no-visita-notas" type="text" placeholder="Ej: En esa numeración hay una casa particular..." style="width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.85rem; box-sizing: border-box;">
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '🚫 Asentar como No Encontrado',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        preConfirm: () => {
+            const motivoSel = document.getElementById('swal-no-visita-motivo').value;
+            const obsExtra = document.getElementById('swal-no-visita-notas').value.trim();
+            const fechaHoyStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const prefijo = `[Visita en Ruta ${fechaHoyStr} - No concretada: ${motivoSel}]`;
+            const notasCompuestas = [prefijo, obsExtra, notasPrevias].filter(Boolean).join(' | ');
+            return {
+                no_concretada: true,
+                motivo_no_concretada: motivoSel,
+                estado: 'DESCARTADO',
+                notas: notasCompuestas,
+                enviar_catalogo_whatsapp: false
+            };
+        }
+    });
+
+    if (!formNoConcretada) return;
+
+    Swal.fire({
+        title: 'Asentando parada...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/logistica/prospectos/${idProspectoReal}/visita-ruta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formNoConcretada)
+        });
+        const data = await res.json();
+        if (data.success) {
+            await Swal.fire({
+                icon: 'success',
+                title: '🚫 Parada Asentada',
+                text: `Se registró "${formNoConcretada.motivo_no_concretada}" para ${nombreComercio}. La parada quedó asentada en la Hoja de Ruta.`,
+                timer: 2200,
+                showConfirmButton: false
+            });
+            await cargarRutaActiva();
+        } else {
+            Swal.fire('Error', data.error || 'No se pudo asentar la parada.', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error de Red', err.message, 'error');
+    }
+};
+
+window.abrirModalVisitaPreventaEnRuta = async (idProspectoReal) => {
+    const item = state.entregas.find(e => String(e.id_prospecto_real) === String(idProspectoReal) || String(e.id_presupuesto) === `PR-${idProspectoReal}`);
+    const nombreComercio = item?.cliente?.nombre || 'Comercio';
+    const esClienteActivoVisita = item?.origen_contacto === 'CLIENTE_ACTIVO' || String(item?.rubro || '').includes('Cliente Activo');
+    const contactoActual = item?.contacto_nombre || '';
+    const rolActual = item?.contacto_rol || 'ENCARGADO';
+    const telActual = item?.telefono_whatsapp || '';
+    const emailActual = item?.email || '';
+    const notasActuales = item?.notas || '';
+
+    if (esClienteActivoVisita) {
+        const { value: formCliValues } = await Swal.fire({
+            title: `⭐ Visita a Cliente: ${nombreComercio}`,
+            html: `
+                <div style="text-align: left; display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.86rem;">
+                    <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 0.5rem; padding: 0.6rem 0.75rem; color: #0f766e; font-size: 0.8rem;">
+                        📍 <b>${item?.domicilio?.direccion || 'Domicilio del Cliente'}</b><br>
+                        <span style="color: #115e59;">🤝 Visita de atención comercial / servicio (Sin pedido activo, sin factura ni retiro)</span>
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #334155; font-size: 0.78rem;">📝 Nota u observación de la visita (opcional)</label>
+                        <textarea id="swal-visita-notas" rows="3" placeholder="Ej: Pasé por el local a saludar y ver si necesitaban mercadería..." style="width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.84rem; margin-top: 4px; box-sizing: border-box;">${notasActuales}</textarea>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✅ Registrar que pasé por el Cliente',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0d9488',
+            cancelButtonColor: '#64748b',
+            preConfirm: () => {
+                return {
+                    contacto_nombre: contactoActual || 'Cliente Activo',
+                    contacto_rol: 'CLIENTE',
+                    telefono_whatsapp: telActual,
+                    email: emailActual,
+                    notas: document.getElementById('swal-visita-notas').value.trim() || 'Visita de servicio / contacto realizada en ruta.',
+                    fecha_revisita: null,
+                    enviar_catalogo_whatsapp: false
+                };
+            }
+        });
+        if (!formCliValues) return;
+
+        Swal.fire({
+            title: 'Registrando paso por cliente...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/logistica/prospectos/${idProspectoReal}/visita-ruta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formCliValues)
+            });
+            const data = await res.json();
+            if (data.success) {
+                await Swal.fire({
+                    icon: 'success',
+                    title: '⭐ ¡Paso por Cliente Registrado!',
+                    text: `Se dejó constancia en la Hoja de Ruta que pasaste por "${nombreComercio}".`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                await cargarRutaActiva();
+            } else {
+                Swal.fire('Error', data.error || 'No se pudo registrar la visita.', 'error');
+            }
+        } catch (err) {
+            Swal.fire('Error de Red', err.message, 'error');
+        }
+        return;
+    }
+
+    const { value: formValues } = await Swal.fire({
+        title: `🎯 Visita: ${nombreComercio}`,
+        html: `
+            <div style="text-align: left; display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.85rem;">
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 0.5rem; padding: 0.5rem 0.65rem; color: #9a3412; font-size: 0.78rem; display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span>📍 <b>${item?.domicilio?.direccion || 'Sin dirección'}</b> • 🏷️ ${item?.rubro || 'Comercio'}</span>
+                    <button type="button" onclick="Swal.close(); window.registrarVisitaNoConcretadaEnRuta('${idProspectoReal}');" style="background: #fee2e2; color: #be123c; border: 1px solid #fda4af; border-radius: 5px; padding: 4px 8px; font-size: 0.74rem; font-weight: 800; cursor: pointer;">
+                        🚫 No encontré el local
+                    </button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 0.45rem;">
+                    <div>
+                        <label style="font-weight: 700; color: #334155; font-size: 0.75rem;">👤 ¿Quién te atendió?</label>
+                        <input id="swal-visita-contacto" type="text" value="${contactoActual.replace(/"/g, '&quot;')}" placeholder="Ej: Lucía / Fiambrería" style="width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.85rem; margin-top: 2px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: 700; color: #334155; font-size: 0.75rem;">Rol / Sector</label>
+                        <select id="swal-visita-rol" style="width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.82rem; margin-top: 2px;">
+                            <option value="ENCARGADO" ${rolActual === 'ENCARGADO' ? 'selected' : ''}>Encargado/a</option>
+                            <option value="DUEÑO" ${rolActual === 'DUEÑO' ? 'selected' : ''}>Dueño/a</option>
+                            <option value="FIAMBRERIA_MOSTRADOR" ${rolActual === 'FIAMBRERIA_MOSTRADOR' ? 'selected' : ''}>Fiambrería / Mostrador</option>
+                            <option value="COMPRADOR" ${rolActual === 'COMPRADOR' ? 'selected' : ''}>Compras</option>
+                            <option value="EMPLEADO" ${rolActual === 'EMPLEADO' ? 'selected' : ''}>Empleado/a</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #334155; font-size: 0.75rem;">📱 WhatsApp / Teléfono (para enviar Lista PDF)</label>
+                    <input id="swal-visita-tel" type="tel" value="${telActual.replace(/"/g, '&quot;')}" placeholder="Ej: 221 555-1234" style="width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.9rem; font-weight: 700; margin-top: 2px;">
+                </div>
+
+                <label style="display: flex; align-items: center; gap: 0.5rem; background: #ecfdf5; border: 1px solid #6ee7b7; padding: 0.55rem 0.65rem; border-radius: 0.5rem; cursor: pointer; color: #065f46; font-weight: 700; font-size: 0.8rem;">
+                    <input type="checkbox" id="swal-visita-enviar-wa" checked style="width: 18px; height: 18px; accent-color: #059669;">
+                    <span>📄 Enviar Lista Mayorista PDF por WhatsApp al guardar (si tiene N°)</span>
+                </label>
+
+                <div>
+                    <label style="font-weight: 700; color: #334155; font-size: 0.75rem;">📝 Notas de la visita / Qué productos buscan</label>
+                    <textarea id="swal-visita-notas" rows="3" placeholder="Ej: Pasé hoy, me atendió la chica de fiambrería. Dejé lista, volver martes a la mañana..." style="width: 100%; padding: 0.55rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.82rem; margin-top: 2px;">${notasActuales}</textarea>
+                </div>
+
+                <div>
+                    <label style="font-weight: 700; color: #334155; font-size: 0.75rem;">📅 Agendar próxima visita (opcional)</label>
+                    <input id="swal-visita-fecha" type="datetime-local" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.45rem; font-size: 0.82rem; margin-top: 2px;">
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '✅ Confirmar Visita Realizada',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#ea580c',
+        cancelButtonColor: '#64748b',
+        preConfirm: () => {
+            return {
+                contacto_nombre: document.getElementById('swal-visita-contacto').value.trim(),
+                contacto_rol: document.getElementById('swal-visita-rol').value,
+                telefono_whatsapp: document.getElementById('swal-visita-tel').value.trim(),
+                email: emailActual,
+                notas: document.getElementById('swal-visita-notas').value.trim(),
+                fecha_revisita: document.getElementById('swal-visita-fecha').value || null,
+                enviar_catalogo_whatsapp: document.getElementById('swal-visita-enviar-wa').checked
+            };
+        }
+    });
+
+    if (!formValues) return;
+
+    Swal.fire({
+        title: 'Guardando visita...',
+        html: formValues.enviar_catalogo_whatsapp && formValues.telefono_whatsapp
+            ? 'Registrando visita y enviando Catálogo PDF por WhatsApp...'
+            : 'Actualizando Hoja de Ruta...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/logistica/prospectos/${idProspectoReal}/visita-ruta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formValues)
+        });
+        const data = await res.json();
+        if (data.success) {
+            await Swal.fire({
+                icon: 'success',
+                title: '🤝 ¡Visita Registrada!',
+                text: data.whatsapp_enviado
+                    ? 'Se marcó la parada como visitada y se envió el catálogo PDF por WhatsApp.'
+                    : 'La visita comercial quedó asentada en la Hoja de Ruta y en Preventa.',
+                timer: 2200,
+                showConfirmButton: false
+            });
+            await cargarRutaActiva();
+        } else {
+            Swal.fire('Error', data.error || 'No se pudo registrar la visita.', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error de Red', err.message, 'error');
+    }
+};
 
 window.cambiarDomicilio = (clienteId, nuevoDomicilioId) => {
     state.entregas.forEach(e => {
@@ -329,7 +970,10 @@ window.moverParada = async (paradaKey, direccion) => {
     renderizarEntregas();
     
     // Guardar vía backend silencioso
-    const nuevoOrdenIds = state.entregas.map(e => parseInt(e.id_presupuesto));
+    const nuevoOrdenIds = state.entregas.map(e => {
+        const val = String(e.id_presupuesto);
+        return (val.startsWith('RT-') || val.startsWith('SOB-') || val.startsWith('PR-')) ? val : parseInt(val);
+    });
     try {
         await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/reordenar`, {
             method: 'PUT',
@@ -373,6 +1017,12 @@ function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
         }
     }
 
+    // Para entregas de pedidos estándar, unificar con el flujo completo de Registro de Conformidad + Aviso WhatsApp (igual al escaneo QR)
+    if (tipoPedido === 'entrega' && !String(presupuestoId).startsWith('RT-')) {
+        onScanSuccess(String(presupuestoId));
+        return;
+    }
+
     import('../modules/confirmacion.js').then(module => {
         module.mostrarModalOpciones(presupuestoId, tipoPedido);
     }).catch(error => {
@@ -396,20 +1046,276 @@ function finalizarRutaDelDia() {
 
 window.toggleEstadoRuta = async (nuevoEstado) => {
     if (!state.ruta) return;
-    if (!confirm(`¿Confirmar cambio de estado a ${nuevoEstado === 'EN_CAMINO' ? 'INICIAR RUTA' : 'DETENER RUTA'}?`)) return;
+
+    if (nuevoEstado !== 'EN_CAMINO') {
+        // Detener ruta / Volver a modo armado
+        const resConfirm = await Swal.fire({
+            title: '⏹ Detener Ruta',
+            text: '¿Desea detener la ruta y regresar a MODO ARMADO para editar pedidos?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Detener Ruta',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#64748b'
+        });
+        if (!resConfirm.isConfirmed) return;
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: nuevoEstado })
+            });
+            const data = await res.json();
+            if (data.success) {
+                state.ruta.estado = nuevoEstado;
+                renderizarEntregas(); 
+            } else Swal.fire('Error', data.error || 'No se pudo cambiar el estado', 'error');
+        } catch(err) {
+            console.error('[TOGGLE ESTADO] Error de red:', err);
+            Swal.fire('Error de Red', 'No se pudo conectar con el servidor. Verifique su conexión.', 'error');
+        }
+        return;
+    }
+
+    // Caso INICIAR RUTA (nuevoEstado === 'EN_CAMINO'):
+    // 1. Consultar clientes y destinatarios para el modal de inicio
+    Swal.fire({
+        title: 'Preparando ruta...',
+        html: '<div style="font-size:0.9rem; color:#64748b;">Obteniendo clientes y datos de contacto...</div>',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    let clientesRuta = [];
+    try {
+        const resp = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/destinatarios-inicio`, {
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const d = await resp.json();
+        if (d.success && Array.isArray(d.clientes)) {
+            clientesRuta = d.clientes;
+        }
+    } catch (e) {
+        console.warn('[INICIAR-RUTA] Error consultando destinatarios de inicio:', e.message);
+    }
+
+    // Si no hay clientes cargados en la ruta
+    if (clientesRuta.length === 0) {
+        const resSimple = await Swal.fire({
+            title: '🚀 Iniciar Ruta',
+            text: '¿Desea iniciar la ruta de reparto ahora?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Iniciar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#059669',
+            cancelButtonColor: '#64748b'
+        });
+        if (!resSimple.isConfirmed) return;
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: 'EN_CAMINO', notificar_clientes: false })
+            });
+            const data = await res.json();
+            if (data.success) {
+                state.ruta.estado = 'EN_CAMINO';
+                renderizarEntregas();
+            } else Swal.fire('Error', data.error || 'No se pudo iniciar la ruta', 'error');
+        } catch(err) {
+            Swal.fire('Error de Red', err.message, 'error');
+        }
+        return;
+    }
+
+    // 2. Construir modal interactivo con selección de clientes
+    const conWhatsApp = clientesRuta.filter(c => c.tiene_whatsapp);
+    let cantSeleccionados = conWhatsApp.length;
+
+    const listaHtml = clientesRuta.map((c, idx) => {
+        const partesBadge = [];
+        if (Array.isArray(c.pedidos) && c.pedidos.length > 0) partesBadge.push(`📦 Pedido #${c.pedidos.join(', #')}`);
+        if (Array.isArray(c.retiros) && c.retiros.length > 0) partesBadge.push(`🔄 Retiro #${c.retiros.join(', #')}`);
+        if (Array.isArray(c.sobres) && c.sobres.length > 0) partesBadge.push(`💵 Sobre #${c.sobres.join(', #')}`);
+        if (c.tipo_parada === 'VISITA_COMERCIAL') partesBadge.push(`🎯 Presentación Empresa`);
+
+        let badgeStyle = 'background: #dcfce7; color: #166534;';
+        if (c.tipo_parada === 'VISITA_COMERCIAL') badgeStyle = 'background: #ffedd5; color: #c2410c; border: 1px solid #fdba74;';
+        else if (c.tipo_parada === 'SOLO_SOBRE') badgeStyle = 'background: #ede9fe; color: #5b21b6;';
+        else if (c.tipo_parada === 'SOLO_RETIRO') badgeStyle = 'background: #ffedd5; color: #c2410c;';
+        else if (partesBadge.length > 1) badgeStyle = 'background: #e0e7ff; color: #3730a3;';
+
+        const badgeTipo = `<span style="${badgeStyle} padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold;">${partesBadge.join(' + ')}</span>`;
+
+        const asuntoMail = encodeURIComponent(`Presentación LAMDA - Distribuidora Mayorista (${c.nombre})`);
+        const cuerpoMail = encodeURIComponent(`Hola equipo de ${c.nombre},\n\nLes escribimos de LAMDA (Elaboradores y Distribuidores Mayoristas de Frutos Secos, Granolas, Barritas y Cereales en Gran La Plata).\n\nHoy vamos a andar recorriendo la zona de ${c.zona || 'su barrio'} y teníamos pensado pasar unos minutos por el local para saludarlos, presentarles brevemente la empresa y acercarles nuestra lista mayorista.\n\n¡Quedamos atentos, muchas gracias!\nEquipo LAMDA`);
+
+        const infoContacto = c.tiene_whatsapp
+            ? `<div style="font-size: 0.75rem; color: #059669; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                 <span>📱</span> <span>${c.destinatarios.map(d => `${d.nombre}: ${d.numero}`).join(' • ')}</span>
+                 ${c.tiene_email ? `<a href="mailto:${c.email}?subject=${asuntoMail}&body=${cuerpoMail}" style="color:#2563eb; text-decoration:underline; margin-left:4px;">✉️ ${c.email}</a>` : ''}
+               </div>`
+            : (c.tiene_email
+                ? `<div style="font-size: 0.74rem; color: #2563eb; font-weight: bold; margin-top: 2px;">
+                     ✉️ Sin WhatsApp • <a href="mailto:${c.email}?subject=${asuntoMail}&body=${cuerpoMail}" style="color:#2563eb; text-decoration:underline;">Enviar correo a ${c.email}</a>
+                   </div>`
+                : `<div style="font-size: 0.72rem; color: #dc2626; font-weight: bold; margin-top: 2px;">
+                     ⚠️ ${c.tipo_parada === 'VISITA_COMERCIAL' ? 'Visita presencial en frío (sin teléfono aún)' : 'Sin WhatsApp configurado'}
+                   </div>`);
+
+        return `
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid #f1f5f9; background: ${c.tiene_whatsapp ? '#ffffff' : '#f8fafc'}; text-align: left;">
+                <input type="checkbox" 
+                       class="chk-cliente-inicio" 
+                       data-id="${c.cliente_id}" 
+                       ${c.tiene_whatsapp ? 'checked' : 'disabled'}
+                       style="margin-top: 3px; width: 18px; height: 18px; cursor: pointer; accent-color: #059669; flex-shrink: 0;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-weight: 700; font-size: 0.88rem; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${idx + 1}. ${c.nombre}
+                        </span>
+                        ${badgeTipo}
+                    </div>
+                    <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        📍 ${c.direccion}
+                    </div>
+                    ${infoContacto}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const modalHtml = `
+        <div style="font-family: inherit; width: 100%; box-sizing: border-box;">
+            <p style="font-size: 0.88rem; color: #475569; margin: 0 0 12px 0; text-align: center;">
+                Seleccione a qué clientes desea notificar por WhatsApp que la logística está en camino:
+            </p>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px;">
+                <span id="txt-contador-modal" style="font-size: 0.8rem; font-weight: bold; color: #334155;">
+                    Notificar: ${cantSeleccionados} de ${clientesRuta.length} clientes
+                </span>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" id="btn-modal-sel-todos" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; color: #334155; cursor: pointer;">
+                        Todos
+                    </button>
+                    <button type="button" id="btn-modal-des-todos" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; color: #334155; cursor: pointer;">
+                        Ninguno
+                    </button>
+                </div>
+            </div>
+
+            <div style="max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+                ${listaHtml}
+            </div>
+
+            <div style="margin-top: 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px; font-size: 0.75rem; color: #64748b; text-align: left;">
+                💬 <strong>Mensaje corto a enviar:</strong><br>
+                <em>"Hola {Cliente}, le avisamos que nuestro chofer ya inició el recorrido de entregas de hoy y su orden se encuentra en camino. ¡Pronto estaremos allí!"</em>
+            </div>
+        </div>
+    `;
+
+    const result = await Swal.fire({
+        title: '🚀 Iniciar Hoja de Ruta',
+        html: modalHtml,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: `🚀 Iniciar y Notificar (${cantSeleccionados})`,
+        denyButtonText: '⏩ Iniciar sin Notificar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        denyButtonColor: '#64748b',
+        cancelButtonColor: '#94a3b8',
+        customClass: {
+            confirmButton: 'swal2-confirm swal2-styled',
+            denyButton: 'swal2-deny swal2-styled',
+            cancelButton: 'swal2-cancel swal2-styled'
+        },
+        didOpen: () => {
+            const getCheckboxes = () => document.querySelectorAll('.chk-cliente-inicio:not(:disabled)');
+            const updateCount = () => {
+                const checked = document.querySelectorAll('.chk-cliente-inicio:checked');
+                cantSeleccionados = checked.length;
+                const txtCont = document.getElementById('txt-contador-modal');
+                if (txtCont) txtCont.innerText = `Notificar: ${cantSeleccionados} de ${clientesRuta.length} clientes`;
+                
+                const btnConfirm = Swal.getConfirmButton();
+                if (btnConfirm) {
+                    btnConfirm.innerText = `🚀 Iniciar y Notificar (${cantSeleccionados})`;
+                }
+            };
+
+            document.querySelectorAll('.chk-cliente-inicio').forEach(chk => {
+                chk.addEventListener('change', updateCount);
+            });
+
+            document.getElementById('btn-modal-sel-todos')?.addEventListener('click', () => {
+                getCheckboxes().forEach(c => c.checked = true);
+                updateCount();
+            });
+
+            document.getElementById('btn-modal-des-todos')?.addEventListener('click', () => {
+                getCheckboxes().forEach(c => c.checked = false);
+                updateCount();
+            });
+        }
+    });
+
+    if (!result.isConfirmed && !result.isDenied) {
+        // Cancelado
+        return;
+    }
+
+    const notificar = result.isConfirmed;
+    const selectedIds = notificar 
+        ? Array.from(document.querySelectorAll('.chk-cliente-inicio:checked')).map(el => el.getAttribute('data-id'))
+        : [];
+
+    Swal.fire({
+        title: 'Iniciando ruta...',
+        html: notificar && selectedIds.length > 0
+            ? 'Actualizando estado y despachando avisos de WhatsApp en segundo plano...'
+            : 'Actualizando estado de la ruta...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
     try {
         const res = await fetch(`${API_BASE_URL}/api/logistica/movil/rutas/${state.ruta.id}/estado`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${state.sesion.token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: nuevoEstado })
+            body: JSON.stringify({ 
+                estado: 'EN_CAMINO',
+                notificar_clientes: notificar,
+                clientes_ids: selectedIds
+            })
         });
         const data = await res.json();
+        
         if (data.success) {
-            state.ruta.estado = nuevoEstado;
-            renderizarEntregas(); 
-        } else Swal.fire('Error', data.error || 'No se pudo cambiar el estado', 'error');
+            state.ruta.estado = 'EN_CAMINO';
+            renderizarEntregas();
+
+            Swal.fire({
+                icon: 'success',
+                title: '🚀 ¡Ruta Iniciada!',
+                text: notificar && selectedIds.length > 0 
+                    ? `Ruta en camino. Notificando por WhatsApp a ${selectedIds.length} clientes en segundo plano.` 
+                    : 'Ruta iniciada correctamente sin emitir notificaciones.',
+                timer: 2500,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.fire('Error', data.error || 'No se pudo iniciar la ruta', 'error');
+        }
     } catch(err) {
-        console.error('[TOGGLE ESTADO] Error de red:', err);
+        console.error('[INICIAR RUTA] Error de red:', err);
         Swal.fire('Error de Red', 'No se pudo conectar con el servidor. Verifique su conexión.', 'error');
     }
 };
@@ -428,6 +1334,97 @@ window.quitarPedido = async (idPresupuesto) => {
             renderizarEntregas();
         } else alert("Error: " + data.error);
     } catch(err) { alert("Error de red."); }
+};
+
+window.registrarIncidencia = async (idPresupuesto) => {
+    const { value: motivo } = await Swal.fire({
+        title: '❌ Registrar Incidencia',
+        input: 'select',
+        inputOptions: {
+            'Local Cerrado/Ausente': 'Local Cerrado/Ausente',
+            'Rechazo Total': 'Rechazo Total',
+            'Siniestro/Problema Técnico': 'Siniestro/Problema Técnico',
+            'Reprogramado': 'Reprogramado'
+        },
+        inputPlaceholder: 'Seleccione un motivo...',
+        showCancelButton: true,
+        confirmButtonText: 'Registrar Incidencia',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#ea580c',
+        cancelButtonColor: '#64748b',
+        inputValidator: (value) => {
+            return new Promise((resolve) => {
+                if (value) {
+                    resolve();
+                } else {
+                    resolve('Debe seleccionar un motivo obligatoriamente');
+                }
+            });
+        }
+    });
+
+    if (!motivo) return;
+
+    let latitud = null;
+    let longitud = null;
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                latitud = pos.coords.latitude;
+                longitud = pos.coords.longitude;
+            },
+            err => console.warn('[GPS] Error en gps de incidencia:', err.message),
+            { timeout: 2000, enableHighAccuracy: true }
+        );
+    }
+
+    Swal.fire({
+        title: 'Registrando incidencia...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/entregas/incidencia`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id_presupuesto: idPresupuesto,
+                motivo: motivo,
+                latitud: latitud,
+                longitud: longitud
+            })
+        });
+
+        const resData = await response.json();
+        Swal.close();
+
+        if (resData.success) {
+            await Swal.fire({
+                icon: 'success',
+                title: '¡Incidencia Registrada!',
+                text: 'El pedido fue devuelto a la base con su motivo registrado.',
+                confirmButtonColor: '#ea580c'
+            });
+            if (typeof window.cargarRutaActiva === 'function') {
+                await window.cargarRutaActiva();
+            } else if (typeof cargarRutaActiva === 'function') {
+                await cargarRutaActiva();
+            } else {
+                state.entregas = state.entregas.filter(e => e.id_presupuesto != idPresupuesto);
+                renderizarEntregas();
+            }
+        } else {
+            Swal.fire('Error', resData.error || 'No se pudo registrar la incidencia', 'error');
+        }
+    } catch (err) {
+        Swal.close();
+        console.error('[INCIDENCIA] Error de red:', err);
+        Swal.fire('Error de Red', 'No se pudo conectar con el servidor.', 'error');
+    }
 };
 
 window.eliminarRutaActiva = async () => {
@@ -507,14 +1504,22 @@ window.abrirModalAgregarPedidos = async () => {
             }
 
             listaContainer.innerHTML = disponibles.map(p => {
-                const esIngreso = p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro';
-                const iconColor = esIngreso ? '#dc2626' : '#2563eb';
+                const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+                const esVisita = String(p.id).startsWith('PR-') || p.es_visita_preventa === true || p.estado === 'Visita Comercial';
+                const esIngreso = !esSobre && !esVisita && (p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro');
+                const iconColor = esVisita ? '#ea580c' : (esSobre ? '#7c3aed' : (esIngreso ? '#dc2626' : '#2563eb'));
+                const bgRow = esVisita ? 'background: #fff7ed;' : (esSobre ? 'background: #faf5ff;' : '');
+                const labelTitulo = esVisita
+                    ? `🎯 VISITA COMERCIAL (${p.codigo_prospecto || p.id}) • ${p.rubro || 'Comercio'}`
+                    : (esSobre
+                        ? `💵 SOBRE #${p.codigo_sobre || String(p.id).replace('SOB-', '')} ($${parseFloat(p.monto_declarado || p.total || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })})`
+                        : `${esIngreso ? (p.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${p.id}`);
                 return `
-                <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #f1f5f9; ${bgRow}">
                     <input type="checkbox" class="chk-agregar-pedido" value="${p.id}" onchange="window.actualizarBtnAgregar()" style="width: 22px; height: 22px; accent-color: #8b5cf6; flex-shrink: 0;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${esIngreso ? (p.estado === 'Orden de Retiro' ? '↩️ ORDEN DE RETIRO #' : '↩️ Orden de Tratamiento #') : '📦 Pedido #'}${p.id}</div>
-                        <div style="font-size: 0.9rem; color: #334155; margin-top: 2px;">👤 <strong>[#${p.cliente_id || 'S/N'}]</strong> ${p.cliente_nombre}</div>
+                        <div style="font-weight: 700; color: ${iconColor}; font-size: 0.95rem;">${labelTitulo}</div>
+                        <div style="font-size: 0.9rem; color: #334155; margin-top: 2px;">👤 <strong>[${p.cliente_id || p.id_cliente || 'S/N'}]</strong> ${p.cliente_nombre}</div>
                         <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">📍 ${p.domicilio_direccion || 'Sin domicilio'}</div>
                     </div>
                 </div>`;
@@ -557,7 +1562,10 @@ window.actualizarBtnAgregar = () => {
  * Llama al endpoint PUT /rutas/:id/asignar y recarga la vista.
  */
 window.ejecutarAgregarPedidos = async () => {
-    const seleccionados = Array.from(document.querySelectorAll('.chk-agregar-pedido:checked')).map(cb => String(cb.value).startsWith('RT-') ? cb.value : parseInt(cb.value));
+    const seleccionados = Array.from(document.querySelectorAll('.chk-agregar-pedido:checked')).map(cb => {
+        const val = String(cb.value);
+        return (val.startsWith('RT-') || val.startsWith('SOB-') || val.startsWith('PR-')) ? val : parseInt(val);
+    });
     if (seleccionados.length === 0) return;
 
     const btn = document.getElementById('btn-confirmar-agregar');
@@ -1019,3 +2027,523 @@ window.guardarCheckinContingencia = async (event) => {
         btnSubmit.textContent = 'Confirmar Check-in';
     }
 };
+
+// ==========================================
+// FEATURE: ESCÁNER DE CÓDIGO QR PARA ENTREGAS
+// ==========================================
+let html5QrcodeScanner = null;
+
+window.abrirScanner = () => {
+    document.getElementById('modal-scanner-qr').style.display = 'flex';
+    
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("scanner-reader");
+    }
+    
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanFailure
+    ).catch(err => {
+        console.error("No se pudo iniciar la cámara:", err);
+        Swal.fire("Error de Cámara", "No se pudo acceder a la cámara trasera. Asegúrese de otorgar los permisos necesarios.", "error");
+        window.cerrarScanner();
+    });
+};
+
+window.cerrarScanner = () => {
+    document.getElementById('modal-scanner-qr').style.display = 'none';
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().catch(err => console.error("Error al detener la cámara:", err));
+    }
+};
+
+async function onScanSuccess(decodedText, decodedResult) {
+    console.log(`[SCANNER] Código detectado: ${decodedText}`);
+    
+    // Cerrar escáner para evitar lecturas múltiples consecutivas
+    window.cerrarScanner();
+    
+    // Buscar patrón UUID o extraer identificador desde URL/Query/Hash escaneado
+    const uuidMatch = decodedText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    let token = uuidMatch ? uuidMatch[0] : decodedText.trim();
+    if (!uuidMatch && (token.includes('http://') || token.includes('https://') || token.includes('/') || token.includes('?') || token.includes('='))) {
+        try {
+            const urlObj = new URL(token);
+            const paramCandidate = urlObj.searchParams.get('id') || urlObj.searchParams.get('token') || urlObj.searchParams.get('hash') || urlObj.searchParams.get('pedido') || urlObj.searchParams.get('qr');
+            if (paramCandidate) {
+                token = paramCandidate.trim();
+            } else if (urlObj.hash && urlObj.hash.length > 1) {
+                token = urlObj.hash.substring(1).replace(/^\/+/, '').trim();
+            } else {
+                const pathParts = urlObj.pathname.split('/').filter(Boolean);
+                if (pathParts.length > 0) token = pathParts[pathParts.length - 1].trim();
+            }
+        } catch (e) {
+            const rawParts = token.split(/[/?&#=]/).filter(Boolean);
+            if (rawParts.length > 0) token = rawParts[rawParts.length - 1].trim();
+        }
+    }
+    
+    // Normalizar token en cliente (quitar sufijo de bulto si existe)
+    let baseToken = token;
+    const packageMatch = token.match(/^([0-9]+)-[0-9]+$/);
+    if (packageMatch) {
+        baseToken = packageMatch[1];
+    }
+
+    // Resolver ID local del presupuesto (soportando id_presupuesto, id_presupuesto_ext y supabase_pedido_id de remito QR)
+    let localBudgetId = null;
+    const baseTokenLower = String(baseToken || '').toLowerCase();
+    const foundEntrega = state.entregas.find(e => 
+        String(e.id_presupuesto) === String(baseToken) || 
+        (e.hash && String(e.hash).toLowerCase() === baseTokenLower) || 
+        (e.id_presupuesto_ext && String(e.id_presupuesto_ext).toLowerCase() === baseTokenLower) ||
+        (e.supabase_pedido_id && String(e.supabase_pedido_id).toLowerCase() === baseTokenLower)
+    );
+    if (foundEntrega) {
+        localBudgetId = foundEntrega.id_presupuesto;
+        if (foundEntrega.estado_logistico === 'ENTREGADO' || foundEntrega.estado_logistico === 'RECHAZADO' || foundEntrega.estado_logistico === 'PENDIENTE_CLIENTE') {
+            const isConfirm = await Swal.fire({
+                title: '⚠️ Pedido ya Procesado',
+                html: `Este pedido ya fue registrado como <strong>${foundEntrega.estado_logistico}</strong>.<br>¿Desea volver a capturar las evidencias y editar el registro de entrega?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, Editar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#64748b'
+            });
+            if (!isConfirm.isConfirmed) {
+                return;
+            }
+        }
+    } else if (/^\d+$/.test(baseToken)) {
+        localBudgetId = parseInt(baseToken);
+    }
+
+    let items = [];
+    const lookupToken = localBudgetId || baseToken;
+    if (lookupToken) {
+        try {
+            const detailsResp = await fetch(`${API_BASE_URL}/api/logistica/movil/pedidos/${encodeURIComponent(lookupToken)}/detalles`, {
+                headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+            });
+            const detailsData = await detailsResp.json();
+            if (detailsData.success) {
+                items = detailsData.data;
+            }
+        } catch (err) {
+            console.error('[SCANNER] Error recuperando detalles del pedido:', err);
+        }
+    }
+
+    // Obtener ubicación GPS de forma rápida
+    let latitud = null;
+    let longitud = null;
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                latitud = pos.coords.latitude;
+                longitud = pos.coords.longitude;
+                console.log('[GPS] Ubicación capturada:', latitud, longitud);
+            },
+            err => console.warn('[GPS] Error al obtener ubicación:', err.message),
+            { timeout: 3000, enableHighAccuracy: true }
+        );
+    }
+    
+    let base64Remito = null;
+    let base64Bulto = null;
+
+    // Construir bloque HTML dinámico para la edición de cantidades
+    let itemsHtml = '';
+    if (items && items.length > 0) {
+        itemsHtml = `
+            <div style="width: 100%; border-top: 1.5px dashed #cbd5e1; padding-top: 15px; margin-top: 10px; text-align: left;">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #1e3a8a; display: flex; align-items: center; gap: 6px;">
+                    📋 Ajustar Cantidades (Entrega Parcial)
+                </h4>
+                <div style="max-height: 140px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; background: #f8fafc; margin-bottom: 10px;">
+                    ${items.map(item => `
+                        <div style="display: flex; flex-direction: column; margin-bottom: 8px; font-size: 0.85rem; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="flex: 1; font-weight: 500; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px;" title="${item.descripcion}">${item.descripcion}</span>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" 
+                                           class="input-cant-articulo" 
+                                           data-codigo="${item.codigo_barras}" 
+                                           data-max="${item.cantidad}" 
+                                           value="${item.cantidad}" 
+                                           min="0" 
+                                           max="${item.cantidad}" 
+                                           style="width: 65px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; text-align: center; font-weight: bold; color: #1e293b;">
+                                    <span style="color: #64748b; font-size: 0.75rem;">/ ${parseFloat(item.cantidad)}</span>
+                                </div>
+                            </div>
+                            <span id="badge-dev-${item.codigo_barras}" style="display: none; font-size: 0.7rem; color: #dc2626; background: #fee2e2; border: 1px solid #fca5a5; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-top: 4px; align-self: flex-start;">
+                                ❌ Devuelve al camión: 0 u.
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div style="margin-top: 8px;">
+                    <label style="font-size: 0.8rem; font-weight: bold; color: #475569; display: block; margin-bottom: 4px;">📝 Observaciones Chofer / Motivo de cambio:</label>
+                    <textarea id="input-observaciones-chofer" 
+                              placeholder="Ej: Cliente rechazó 2 cajas..." 
+                              style="width: 100%; height: 50px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.8rem; box-sizing: border-box; resize: none;"></textarea>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Mostrar modal interactivo "Registro de Conformidad"
+    const headerPedidoHtml = foundEntrega
+        ? `<div style="width: 100%; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; font-size: 0.85rem; color: #1e40af; font-weight: 700; text-align: center;">
+               📦 Pedido #${foundEntrega.id_presupuesto} — ${foundEntrega.cliente?.nombre || 'Cliente'}
+           </div>`
+        : '';
+
+    const result = await Swal.fire({
+        title: '📋 Registro de Conformidad',
+        html: `
+            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; width: 100%; box-sizing: border-box; padding: 5px;">
+                ${headerPedidoHtml}
+                <input type="file" id="input-foto-remito" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="input-foto-bulto" accept="image/*" capture="environment" style="display:none;">
+                <p style="margin: 0; font-size: 0.95rem; color: #475569; text-align: center;">
+                    Seleccione evidencias fotográficas opcionales para la entrega del pedido.
+                </p>
+                
+                <div style="display: flex; gap: 30px; justify-content: center; width: 100%; margin: 10px 0;">
+                    <div id="status-remito" style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                        <div id="icon-remito" style="font-size: 2rem; opacity: 0.4; transition: all 0.3s ease;">📄</div>
+                        <span id="label-remito" style="font-size: 0.75rem; font-weight: bold; color: #64748b;">Sin Remito</span>
+                    </div>
+                    <div id="status-bulto" style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                        <div id="icon-bulto" style="font-size: 2rem; opacity: 0.4; transition: all 0.3s ease;">📦</div>
+                        <span id="label-bulto" style="font-size: 0.75rem; font-weight: bold; color: #64748b;">Sin Foto Bulto</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                    <button id="btn-capture-remito" type="button" class="swal2-confirm swal2-styled" style="background-color: #3b82f6; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        📷 Tomar Foto Remito Firmado
+                    </button>
+                    <button id="btn-capture-bulto" type="button" class="swal2-confirm swal2-styled" style="background-color: #059669; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        📦 Tomar Foto Bulto/Entorno
+                    </button>
+                </div>
+                
+                ${itemsHtml}
+            </div>
+        `,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '📢 Guardar y Notificar',
+        denyButtonText: '💾 Solo Guardar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#2563eb', // Azul primario
+        denyButtonColor: '#10b981',    // Verde secundario
+        cancelButtonColor: '#64748b',  // Gris cancelar
+        customClass: {
+            confirmButton: 'swal2-confirm swal2-styled',
+            denyButton: 'swal2-deny swal2-styled',
+            cancelButton: 'swal2-cancel swal2-styled'
+        },
+        didOpen: () => {
+            const btnRemito = document.getElementById('btn-capture-remito');
+            const btnBulto = document.getElementById('btn-capture-bulto');
+            const inputRemito = document.getElementById('input-foto-remito');
+            const inputBulto = document.getElementById('input-foto-bulto');
+
+            btnRemito.addEventListener('click', () => inputRemito.click());
+            btnBulto.addEventListener('click', () => inputBulto.click());
+
+            // Listener para procesar foto de remito
+            inputRemito.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    btnRemito.disabled = true;
+                    btnRemito.innerText = '⏳ Procesando Remito...';
+                    try {
+                        base64Remito = await procesarImagen(file, 1000, 'grayscale');
+                        document.getElementById('icon-remito').style.opacity = '1.0';
+                        document.getElementById('icon-remito').innerText = '✅📄';
+                        document.getElementById('label-remito').innerText = 'Capturado';
+                        document.getElementById('label-remito').style.color = '#10b981';
+                        btnRemito.innerText = '🔄 Recapturar Remito';
+                        btnRemito.style.backgroundColor = '#2563eb';
+                    } catch (err) {
+                        console.error('Error procesando imagen remito:', err);
+                        Swal.showValidationMessage(`Error al procesar la foto del remito: ${err.message}`);
+                        btnRemito.innerText = '📷 Tomar Foto Remito Firmado';
+                    } finally {
+                        btnRemito.disabled = false;
+                    }
+                }
+            };
+
+            // Listener para procesar foto de bulto
+            inputBulto.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    btnBulto.disabled = true;
+                    btnBulto.innerText = '⏳ Procesando Bulto...';
+                    try {
+                        base64Bulto = await procesarImagen(file, 1000, 'color');
+                        document.getElementById('icon-bulto').style.opacity = '1.0';
+                        document.getElementById('icon-bulto').innerText = '✅📦';
+                        document.getElementById('label-bulto').innerText = 'Capturado';
+                        document.getElementById('label-bulto').style.color = '#10b981';
+                        btnBulto.innerText = '🔄 Recapturar Bulto';
+                        btnBulto.style.backgroundColor = '#047857';
+                    } catch (err) {
+                        console.error('Error procesando imagen bulto:', err);
+                        Swal.showValidationMessage(`Error al procesar la foto del bulto: ${err.message}`);
+                        btnBulto.innerText = '📦 Tomar Foto Bulto/Entorno';
+                    } finally {
+                        btnBulto.disabled = false;
+                    }
+                }
+            };
+
+            // Listener dinámico para actualización visual de devoluciones al camión
+            document.querySelectorAll('.input-cant-articulo').forEach(input => {
+                input.addEventListener('input', () => {
+                    const codigo = input.getAttribute('data-codigo');
+                    const maxVal = parseFloat(input.getAttribute('data-max') || 0);
+                    const newVal = parseFloat(input.value || 0);
+                    const badge = document.getElementById(`badge-dev-${codigo}`);
+                    if (badge) {
+                        const dev = Math.max(0, maxVal - newVal);
+                        if (dev > 0) {
+                            badge.style.display = 'inline-block';
+                            badge.textContent = `❌ Devuelve al camión: ${dev} u.`;
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                });
+            });
+        }
+    });
+
+    if (!result.isConfirmed && !result.isDenied) {
+        console.log('[SCANNER] Confirmación cancelada por el chofer.');
+        return;
+    }
+
+    const notificar = result.isConfirmed; // true para Guardar y Notificar, false para Solo Guardar (isDenied)
+
+    // Leer modificaciones de cantidades
+    const itemsModificados = [];
+    let hasQuantityError = false;
+    document.querySelectorAll('.input-cant-articulo').forEach(input => {
+        const codigo = input.getAttribute('data-codigo');
+        const maxVal = parseFloat(input.getAttribute('data-max'));
+        const newVal = parseFloat(input.value || 0);
+        if (newVal < 0 || newVal > maxVal) {
+            hasQuantityError = true;
+        } else if (newVal < maxVal) {
+            itemsModificados.push({ codigo_barras: codigo, cantidad: newVal });
+        }
+    });
+
+    if (hasQuantityError) {
+        Swal.fire('Error de validación', 'Las cantidades ingresadas deben ser mayores o iguales a 0 y menores o iguales a las originales.', 'error');
+        return;
+    }
+
+    const obsChoferText = document.getElementById('input-observaciones-chofer')?.value || '';
+
+    // Mostrar loading mientras el servidor procesa e impacta la base
+    Swal.fire({
+        title: 'Confirmando entrega...',
+        html: 'Enviando confirmación de entrega y procesando evidencias...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/logistica/movil/entregas/escanear-qr`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.sesion.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                uuid: foundEntrega?.supabase_pedido_id || token,
+                foto_remito: base64Remito,
+                foto_bulto: base64Bulto,
+                latitud: latitud,
+                longitud: longitud,
+                notificar: notificar,
+                itemsModificados: itemsModificados,
+                observaciones_chofer: obsChoferText
+            })
+        });
+        
+        const resData = await response.json();
+        Swal.close();
+
+        // Limpiar inputs de archivo locales para evitar comportamientos extraños en siguientes fotos
+        const ir = document.getElementById('input-foto-remito');
+        const ib = document.getElementById('input-foto-bulto');
+        if (ir) ir.value = '';
+        if (ib) ib.value = '';
+        
+        if (resData.success) {
+            // Confirmación exitosa de entrega
+            await Swal.fire({
+                title: '✅ Entrega Registrada',
+                text: `El pedido #${resData.id_presupuesto} se ha marcado como ENTREGADO exitosamente.`,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            
+            // Recargar ruta activa
+            if (typeof cargarRutaActiva === 'function') {
+                await cargarRutaActiva();
+            }
+            
+            // Si el cliente tiene retiros de mantenimiento pendientes
+            if (resData.retirosPendientes && resData.retirosPendientes.length > 0) {
+                const ret = resData.retirosPendientes[0];
+                const count = resData.retirosPendientes.length;
+                
+                const confirmRetiro = await Swal.fire({
+                    title: '⚠️ Retiro Pendiente Detectado',
+                    html: `
+                        <div style="text-align: left; font-size: 0.95rem;">
+                            <p>El cliente <strong>${ret.cliente_nombre}</strong> posee <strong>${count}</strong> retiro(s) pendiente(s) de ejecución.</p>
+                            <div style="background: #fffbeb; border-left: 4px solid #d97706; padding: 10px; border-radius: 6px; margin-top: 10px;">
+                                <strong>Detalles del retiro:</strong><br>
+                                • Orden: ${ret.orden_entrega}<br>
+                                • Estado: ${ret.estado_logistico}<br>
+                                • Fecha: ${new Date(ret.fecha_creacion).toLocaleDateString()}<br>
+                                <ul style="margin: 5px 0 0 15px; padding: 0;">
+                                    ${ret.detalles.map(d => `<li>${parseFloat(d.kilos)} kg / ${parseInt(d.bultos)} bultos - Art. ${d.articulo_numero}</li>`).join('')}
+                                </ul>
+                            </div>
+                            <p style="margin-top: 10px;">¿Desea registrar la conformidad y retirar las bobinas en este momento?</p>
+                        </div>
+                    `,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#059669',
+                    cancelButtonColor: '#64748b',
+                    confirmButtonText: 'Sí, gestionar ahora',
+                    cancelButtonText: 'Más tarde'
+                });
+                
+                if (confirmRetiro.isConfirmed) {
+                    const idOrden = ret.id_orden;
+                    // Buscar si ya lo tenemos adaptado en state.entregas
+                    const localRetiro = state.entregas.find(e => e.id_presupuesto === `RT-${idOrden}`);
+                    
+                    if (localRetiro) {
+                        if (localRetiro.estado_logistico === 'PENDIENTE_CLIENTE') {
+                            window.abrirContingenciaRetiro(idOrden, localRetiro);
+                        } else {
+                            window.abrirValidarRetiro(idOrden, localRetiro);
+                        }
+                    } else {
+                        // Crear mock para alimentar los modales de contingencia/validación si no está en la ruta
+                        const mockRetiro = {
+                            id_presupuesto: `RT-${idOrden}`,
+                            hash: ret.codigo_qr_hash,
+                            cliente: { id: ret.cliente_id, nombre: ret.cliente_nombre },
+                            detalles: ret.detalles || [],
+                            estado_logistico: ret.estado_logistico
+                        };
+                        if (ret.estado_logistico === 'PENDIENTE_CLIENTE') {
+                            window.abrirContingenciaRetiro(idOrden, mockRetiro);
+                        } else {
+                            window.abrirValidarRetiro(idOrden, mockRetiro);
+                        }
+                    }
+                }
+            }
+        } else {
+            Swal.fire("Error al Confirmar", resData.error || "No se pudo procesar el código QR.", "error");
+        }
+    } catch (err) {
+        Swal.close();
+        console.error("Error al procesar escaneo QR:", err);
+        Swal.fire("Error del Servidor", "Ocurrió un error al comunicarse con la API móvil.", "error");
+    }
+}
+
+/**
+ * Procesa y comprime una foto usando HTML5 Canvas
+ */
+function procesarImagen(file, maxDimension, colorMode) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            const img = new Image();
+            img.onload = function () {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Redimensionar proporcionalmente
+                if (width > height) {
+                    if (width > maxDimension) {
+                        height = Math.round((height * maxDimension) / width);
+                        width = maxDimension;
+                    }
+                } else {
+                    if (height > maxDimension) {
+                        width = Math.round((width * maxDimension) / height);
+                        height = maxDimension;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Escala de grises + alto contraste para remitos
+                if (colorMode === 'grayscale') {
+                    const imgData = ctx.getImageData(0, 0, width, height);
+                    const data = imgData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        // Luminancia
+                        let v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        
+                        // Contraste agresivo
+                        v = v > 128 ? Math.min(v * 1.2, 255) : v * 0.8;
+                        
+                        data[i] = v;     // R
+                        data[i + 1] = v; // G
+                        data[i + 2] = v; // B
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                }
+
+                // Compresión ligera JPEG a calidad 0.6
+                const base64 = canvas.toDataURL('image/jpeg', 0.6);
+                resolve(base64);
+            };
+            img.onerror = () => reject(new Error("Error al decodificar la imagen de la cámara."));
+            img.src = event.target.result;
+        };
+        reader.onerror = () => reject(new Error("Error al leer el archivo de la cámara."));
+        reader.readAsDataURL(file);
+    });
+}
+
+function onScanFailure(error) {
+    // Silenciar errores continuos de búsqueda de foco de QR
+}
+

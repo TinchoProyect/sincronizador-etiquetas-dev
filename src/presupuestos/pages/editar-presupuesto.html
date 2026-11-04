@@ -142,6 +142,25 @@
             border-radius: 3px;
         }
 
+        .child-row {
+            background-color: #f8fafc;
+        }
+
+        .child-row td {
+            border-top: 1px dashed #cbd5e1 !important;
+            border-bottom: 1px dashed #cbd5e1 !important;
+        }
+
+        .child-row td:first-child {
+            padding-left: 2rem !important;
+        }
+
+        .child-row td:first-child::before {
+            content: "↳ ";
+            color: #64748b;
+            font-weight: bold;
+        }
+
         .btn-add-detalle {
             background-color: #27ae60;
             color: white;
@@ -549,7 +568,8 @@
         }
 
         .accordion-content.active {
-            max-height: 1000px;
+            max-height: none;
+            overflow: visible;
             padding: 20px;
         }
 
@@ -916,6 +936,7 @@
                             <span class="slider round"></span>
                         </label>
                         <span id="bunker-switch-label" style="font-size: 0.85em; color: #475569; font-weight: 600;">Inactivo</span>
+                        <span id="bunker-lista-badge" class="bunker-lista-badge" style="display: none; font-size: 0.82em; font-weight: 600; padding: 3px 8px; border-radius: 6px;"></span>
                     </div>
                 </div>
 
@@ -1052,6 +1073,7 @@
                                 <div class="form-group">
                                     <label for="estado">Estado *</label>
                                     <select id="estado" name="estado" required>
+                                        <option value="Sin Confirmar">⏳ Sin Confirmar (Standby)</option>
                                         <option value="Muestra de Fraccionados">Muestra de Fraccionados</option>
                                         <option value="Presupuesto/Orden" selected>Presupuesto/Orden</option>
                                         <option value="Confirmado">Confirmado</option>
@@ -1123,11 +1145,12 @@
                             <thead>
                                 <tr>
                                     <th width="200">Artículo *</th>
-                                    <th width="100">Cantidad *</th>
-                                    <th width="120">Valor Unitario *</th>
-                                    <th width="100">IVA %</th>
-                                    <th width="120">Precio c/IVA</th>
-                                    <th width="140">Subtotal</th>
+                                    <th width="90">Cantidad *</th>
+                                    <th width="110">Valor Unitario *</th>
+                                    <th width="85" title="Descuento adicional a sumar al descuento general">Desc. Esp. %</th>
+                                    <th width="90">IVA %</th>
+                                    <th width="110">Precio c/IVA</th>
+                                    <th width="120">Subtotal</th>
                                     <th width="80">Acciones</th>
                                 </tr>
                             </thead>
@@ -1150,6 +1173,10 @@
                                 <span>Descuento:</span>
                                 <span id="total-descuento" class="totales-value">-$ 0,00</span>
                             </div>
+                            <div class="totales-row totales-descuentos-especiales" id="row-descuentos-especiales" style="display: none;">
+                                <span>Desc. Especiales:</span>
+                                <span id="total-descuentos-especiales" class="totales-value" style="color: #e74c3c;">-$ 0,00</span>
+                            </div>
                             <div class="totales-row totales-final">
                                 <span>Total Final:</span>
                                 <span id="total-final" class="totales-value-large">$ 0,00</span>
@@ -1165,7 +1192,11 @@
                         <button type="submit" id="btn-guardar" class="btn btn-primary">
                             <span class="loading-spinner"></span>
                             💾 Guardar Presupuesto
-                        </button> <button type="button" id="btn-facturar" class="btn btn-primary"
+                        </button>
+                        <button type="button" id="btn-guardar-standby" class="btn btn-warning" style="background-color: #ff9800; border-color: #f57c00; color: #fff; margin-left: 10px;">
+                            ⏳ Guardar en Standby
+                        </button>
+                        <button type="button" id="btn-facturar" class="btn btn-primary"
                             style="margin-left:10px;"> Facturar</button>
                     </div>
                 </form>
@@ -1177,9 +1208,10 @@
         </footer>
     </div>
 
-    <!-- Cargar módulo común primero -->
-    <script src="/js/detalles-common.js?v=026_hotfix_v2"></script>
-    <script src="/js/presupuestosEdit.js?v=026_hotfix_v2"></script>
+    <script src="/js/evaluadorPoliticasFrontend.js?v=039_desbloqueo_operador"></script>
+    <script src="/js/saldoIngredienteModal.js?v=036_saldo_ingrediente"></script>
+    <script src="/js/detalles-common.js?v=038_auditoria_rentabilidad_bunker"></script>
+    <script src="/js/presupuestosEdit.js?v=039_desbloqueo_operador"></script>
 </body>
 
 </html>

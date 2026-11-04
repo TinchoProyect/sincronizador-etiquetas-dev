@@ -1,4 +1,4 @@
-// Modal para derivar artículos a compras
+// Modal para derivar artículos a compras (Dejar en Espera)
 
 let datosArticuloActual = null;
 
@@ -8,7 +8,8 @@ function abrirModalDerivarCompras(articulo) {
     const modal = document.getElementById('modal-derivar-compras');
     if (!modal) return;
     
-    document.getElementById('derivar-articulo-numero').value = articulo.articulo_numero || '';
+    const descArticulo = articulo.descripcion ? `${articulo.articulo_numero} - ${articulo.descripcion}` : (articulo.articulo_numero || '');
+    document.getElementById('derivar-articulo-numero').value = descArticulo;
     document.getElementById('derivar-codigo-barras').value = articulo.codigo_barras || '';
     document.getElementById('derivar-id-presupuesto-local').value = articulo.id_presupuesto_local || '';
     document.getElementById('derivar-id-presupuesto-ext').value = articulo.id_presupuesto_ext || '';
@@ -19,6 +20,12 @@ function abrirModalDerivarCompras(articulo) {
     if (mensajeEl) {
         mensajeEl.style.display = 'none';
         mensajeEl.textContent = '';
+    }
+    
+    const btnConfirmar = document.getElementById('btn-confirmar-derivar');
+    if (btnConfirmar) {
+        btnConfirmar.disabled = false;
+        btnConfirmar.textContent = '⏳ Confirmar En Espera';
     }
     
     modal.style.display = 'flex';
@@ -46,11 +53,11 @@ async function confirmarDerivarCompras() {
     }
     
     btnConfirmar.disabled = true;
-    btnConfirmar.textContent = 'Derivando...';
+    btnConfirmar.textContent = 'Guardando en espera...';
     
     try {
         const payload = {
-            articulo_numero: document.getElementById('derivar-articulo-numero').value,
+            articulo_numero: (datosArticuloActual && datosArticuloActual.articulo_numero) ? datosArticuloActual.articulo_numero : document.getElementById('derivar-articulo-numero').value,
             codigo_barras: document.getElementById('derivar-codigo-barras').value || null,
             id_presupuesto_local: parseInt(document.getElementById('derivar-id-presupuesto-local').value),
             id_presupuesto_ext: document.getElementById('derivar-id-presupuesto-ext').value || null,
@@ -72,7 +79,7 @@ async function confirmarDerivarCompras() {
         
         if (mensajeEl) {
             mensajeEl.className = 'mensaje-exito';
-            mensajeEl.textContent = '✅ Artículo derivado a compras correctamente';
+            mensajeEl.textContent = '✅ Pedido derivado a Pendientes (En Espera) correctamente';
             mensajeEl.style.display = 'block';
         }
         
@@ -81,7 +88,13 @@ async function confirmarDerivarCompras() {
             if (typeof window.actualizarResumenFaltantes === 'function') {
                 window.actualizarResumenFaltantes();
             }
-        }, 1500);
+            if (typeof window.actualizarContadorPendientes === 'function') {
+                window.actualizarContadorPendientes();
+            }
+            if (typeof window.cargarPedidosPorCliente === 'function') {
+                window.cargarPedidosPorCliente();
+            }
+        }, 1200);
         
     } catch (error) {
         console.error('Error al derivar a compras:', error);
@@ -91,7 +104,7 @@ async function confirmarDerivarCompras() {
             mensajeEl.style.display = 'block';
         }
         btnConfirmar.disabled = false;
-        btnConfirmar.textContent = 'Confirmar Derivación';
+        btnConfirmar.textContent = '⏳ Confirmar En Espera';
     }
 }
 

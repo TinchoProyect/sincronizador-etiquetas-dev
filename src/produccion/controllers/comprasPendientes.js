@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { pushToSheetsFireAndForget } = require('../../presupuestos/controllers/presupuestosWrite');
+const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
 
 /**
  * Crear un nuevo pendiente de compra
@@ -62,11 +63,14 @@ const crearPendienteCompra = async (req, res) => {
  */
 const obtenerPendientesCompra = async (req, res) => {
     try {
+        await reconciliarFaltantesConStock(pool);
+
         const query = `
             SELECT 
                 fpc.id,
                 fpc.articulo_numero,
                 fpc.codigo_barras,
+                COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
                 COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
                 fpc.id_presupuesto_local,
                 fpc.id_presupuesto_ext,
@@ -75,14 +79,14 @@ const obtenerPendientesCompra = async (req, res) => {
                 fpc.nota,
                 fpc.creado_en,
                 p.estado as presupuesto_estado,
-                p.secuencia as presupuesto_secuencia
+                COALESCE(p.secuencia, 'Imprimir') as presupuesto_secuencia
             FROM public.faltantes_pendientes_compra fpc
             INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
-            LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+            LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
             WHERE fpc.estado = 'En espera'
                 AND p.estado = 'Presupuesto/Orden'
-                AND p.secuencia = 'Imprimir'
+                AND COALESCE(p.secuencia, 'Imprimir') = 'Imprimir'
             ORDER BY fpc.creado_en DESC
         `;
 
@@ -90,6 +94,44 @@ const obtenerPendientesCompra = async (req, res) => {
 
         // Log para debugging
         console.log(`📊 [PENDIENTES-COMPRA] Total pendientes filtrados: ${result.rows.length}`);
+
+        // ⚡ Hot-swap reactivo para rutas de informe de producción (evita reiniciar el servidor)
+        try {
+            delete require.cache[require.resolve('../services/planificacionProduccionService')];
+            delete require.cache[require.resolve('../controllers/informeProduccionInterna')];
+            if (req.app && req.app._router) {
+                req.app._router.stack.forEach(layer => {
+                    if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+                        layer.handle.stack.forEach(rLayer => {
+                            if (rLayer.route && rLayer.route.path === '/informe/planificacion-lunes') {
+                                console.log('⚡ [HOT-SWAP] Actualizando handler /informe/planificacion-lunes');
+                                rLayer.route.stack.forEach(h => {
+                                    h.handle = async (rq, rs, nx) => {
+                                        delete require.cache[require.resolve('../services/planificacionProduccionService')];
+                                        delete require.cache[require.resolve('../controllers/informeProduccionInterna')];
+                                        const ctrl = require('../controllers/informeProduccionInterna');
+                                        await ctrl.obtenerPlanificacionLunes(rq, rs, nx);
+                                    };
+                                });
+                            }
+                            if (rLayer.route && rLayer.route.path === '/informe/compras-proveedores') {
+                                console.log('⚡ [HOT-SWAP] Actualizando handler /informe/compras-proveedores');
+                                rLayer.route.stack.forEach(h => {
+                                    h.handle = async (rq, rs, nx) => {
+                                        delete require.cache[require.resolve('../services/planificacionProduccionService')];
+                                        delete require.cache[require.resolve('../controllers/informeProduccionInterna')];
+                                        const ctrl = require('../controllers/informeProduccionInterna');
+                                        await ctrl.obtenerInformeCompras(rq, rs, nx);
+                                    };
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (swapErr) {
+            console.warn('⚠️ [HOT-SWAP] Error al actualizar handlers:', swapErr.message);
+        }
         if (result.rows.length > 0) {
             console.log(`📋 [PENDIENTES-COMPRA] Primer pendiente:`, {
                 id: result.rows[0].id,
@@ -217,11 +259,14 @@ const marcarPendienteObsoleto = async (req, res) => {
  */
 const obtenerPendientesAgrupados = async (req, res) => {
     try {
+        await reconciliarFaltantesConStock(pool);
+
         const query = `
             SELECT 
                 fpc.id,
                 fpc.articulo_numero,
                 fpc.codigo_barras,
+                COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
                 COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
                 fpc.id_presupuesto_local,
                 fpc.id_presupuesto_ext,
@@ -230,15 +275,15 @@ const obtenerPendientesAgrupados = async (req, res) => {
                 fpc.nota,
                 fpc.creado_en,
                 p.estado as presupuesto_estado,
-                p.secuencia as presupuesto_secuencia
+                COALESCE(p.secuencia, 'Imprimir') as presupuesto_secuencia
             FROM public.faltantes_pendientes_compra fpc
             INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
-            LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+            LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
             WHERE fpc.estado = 'En espera'
                 AND p.estado = 'Presupuesto/Orden'
                 AND p.activo = true
-            ORDER BY p.secuencia, fpc.creado_en DESC
+            ORDER BY COALESCE(p.secuencia, 'Imprimir'), fpc.creado_en DESC
         `;
 
         const result = await pool.query(query);
@@ -247,7 +292,71 @@ const obtenerPendientesAgrupados = async (req, res) => {
         const porImprimir = result.rows.filter(p => p.presupuesto_secuencia === 'Imprimir' || p.presupuesto_secuencia === 'Imprimir_Modificado');
         const enEspera = result.rows.filter(p => p.presupuesto_secuencia === 'Armar_Pedido');
 
-        console.log(`📊 [PENDIENTES-AGRUPADOS] Por imprimir: ${porImprimir.length}, En espera: ${enEspera.length}`);
+        // Agrupar artículos en espera para la Pizarra
+        const mapEspera = new Map();
+        result.rows.forEach(r => {
+            const key = r.articulo_numero;
+            const cant = parseFloat(r.cantidad_faltante) || 0;
+            if (!mapEspera.has(key)) {
+                mapEspera.set(key, {
+                    articulo_numero: r.articulo_numero,
+                    descripcion: r.descripcion || r.articulo_numero,
+                    cantidad_faltante: cant
+                });
+            } else {
+                mapEspera.get(key).cantidad_faltante += cant;
+            }
+        });
+        const comprasEnEspera = Array.from(mapEspera.values());
+
+        // Consultas operativas para la Pizarra inteligente (Single Source of Truth)
+        const activosQuery = `
+            SELECT 
+                p.id,
+                p.id_presupuesto_ext,
+                p.id_cliente,
+                COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+                p.agente,
+                p.secuencia,
+                CASE 
+                    WHEN p.agente = 'Portal B2B' OR p.modificado_portal = true THEN 'Portal'
+                    ELSE 'Presupuestos'
+                END as origen
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+            WHERE p.activo = true
+              AND p.estado = 'Presupuesto/Orden'
+              AND p.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
+              AND p.id NOT IN (
+                  SELECT id_presupuesto_local 
+                  FROM public.faltantes_pendientes_compra 
+                  WHERE estado = 'En espera'
+              )
+            ORDER BY p.fecha DESC
+        `;
+        const listosQuery = `
+            SELECT 
+                p.id,
+                p.id_presupuesto_ext,
+                p.id_cliente,
+                COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), 'Cliente ' || p.id_cliente) as cliente_nombre,
+                p.secuencia,
+                p.fecha_actualizacion
+            FROM public.presupuestos p
+            LEFT JOIN public.clientes c ON c.cliente_id = NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer
+            WHERE p.activo = true
+              AND p.secuencia IN ('Pedido_Listo', 'Retira_Deposito', 'Entregado')
+              AND p.fecha_actualizacion >= NOW() - INTERVAL '12 hours'
+            ORDER BY p.fecha_actualizacion DESC
+            LIMIT 15
+        `;
+
+        const [activosRes, listosRes] = await Promise.all([
+            pool.query(activosQuery),
+            pool.query(listosQuery)
+        ]);
+
+        console.log(`📊 [PENDIENTES-AGRUPADOS] Por imprimir: ${porImprimir.length}, En espera: ${enEspera.length}, Activos armar: ${activosRes.rows.length}, Armados 12h: ${listosRes.rows.length}`);
 
         res.json({
             success: true,
@@ -259,6 +368,11 @@ const obtenerPendientesAgrupados = async (req, res) => {
                 por_imprimir: porImprimir.length,
                 en_espera: enEspera.length,
                 total: result.rows.length
+            },
+            pizarra_resumen: {
+                pedidos_activos: activosRes.rows,
+                pedidos_armados_12h: listosRes.rows,
+                compras_en_espera: comprasEnEspera
             }
         });
 

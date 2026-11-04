@@ -2,105 +2,161 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Login - Logística LAMDA</title>
-    <link rel="icon" type="image/x-icon" href="../../favicon.ico?v=2">
+    <title>Acceso - LAMDA Móvil</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/mobile.css">
-    <!-- Configuración dinámica de entorno -->
     <script src="/env-config.js"></script>
+    <script>
+        // Redirección inmediata previa al renderizado para eliminar el flash
+        try {
+            const sesionStr = localStorage.getItem('sesion_chofer') || sessionStorage.getItem('sesion_chofer');
+            if (sesionStr) {
+                const s = JSON.parse(sesionStr);
+                if (s && s.token) {
+                    window.location.replace('home.html');
+                }
+            }
+        } catch (e) {}
+    </script>
     <style>
-        .remember-me {
+        .login-page-dark {
+            background: linear-gradient(165deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            box-sizing: border-box;
+            color: #f8fafc;
+        }
+        .login-card-modern {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+            padding: 2rem 1.5rem;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        .login-brand-logo {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            margin: 0 auto 1rem;
+            box-shadow: 0 8px 20px rgba(124, 58, 237, 0.25);
+        }
+        .login-title {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #f8fafc;
+            margin: 0 0 0.25rem;
+        }
+        .login-subtitle {
+            font-size: 0.85rem;
+            color: #c084fc;
+            font-weight: 700;
+            margin: 0 0 1.5rem;
+        }
+        .form-input-dark {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.85rem 1rem;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-input-dark:focus {
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+        }
+        .remember-me-dark {
             display: flex;
             align-items: center;
             gap: 0.5rem;
             margin-bottom: 1.5rem;
-            font-size: 0.875rem;
-            color: #475569;
+            font-size: 0.82rem;
+            color: #94a3b8;
+            cursor: pointer;
+            text-align: left;
+        }
+        .remember-me-dark input {
+            width: 17px;
+            height: 17px;
+            accent-color: #7c3aed;
             cursor: pointer;
         }
-        .remember-me input {
-            width: 1.1rem;
-            height: 1.1rem;
-            accent-color: #2563eb;
+        .btn-login-dark {
+            width: 100%;
+            background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            border-radius: 0.85rem;
+            padding: 0.95rem;
+            font-size: 1rem;
+            font-weight: 800;
             cursor: pointer;
+            box-shadow: 0 10px 25px rgba(124, 58, 237, 0.4);
+            transition: all 0.2s;
+        }
+        .btn-login-dark:active {
+            transform: scale(0.98);
+            opacity: 0.9;
         }
     </style>
 </head>
-<body class="login-page">
-    <div class="login-container">
-        <!-- Logo y Header -->
-        <div class="login-header">
-            <div class="logo">🚚</div>
-            <h1>Logística Lamda</h1>
-            <p class="subtitle">App para Choferes</p>
-        </div>
+<body class="login-page-dark">
+    <div class="login-card-modern">
+        <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" class="login-brand-logo">
+        <h1 class="login-title">LAMDA Móvil</h1>
+        <p class="login-subtitle">Sistema Integral de Operaciones</p>
 
-        <!-- Formulario de Login -->
-        <form id="form-login" class="login-form">
-            <div class="form-group">
-                <label for="usuario">
-                    <span class="icon">👤</span>
-                    Usuario
-                </label>
-                <input 
-                    type="text" 
-                    id="usuario" 
-                    name="usuario"
-                    placeholder="Ingrese su usuario"
-                    autocomplete="username"
-                    required
-                    autofocus>
+        <form id="form-login">
+            <div style="text-align: left; margin-bottom: 0.35rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1;">Usuario</label>
             </div>
+            <input type="text" id="usuario" name="usuario" class="form-input-dark" placeholder="Tu nombre de usuario" autocomplete="username" required autofocus>
 
-            <div class="form-group">
-                <label for="password">
-                    <span class="icon">🔒</span>
-                    Contraseña
-                </label>
-                <input 
-                    type="password" 
-                    id="password" 
-                    name="password"
-                    placeholder="Ingrese su contraseña"
-                    autocomplete="current-password"
-                    required>
+            <div style="text-align: left; margin-bottom: 0.35rem;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1;">Contraseña</label>
             </div>
+            <input type="password" id="password" name="password" class="form-input-dark" placeholder="Tu contraseña" autocomplete="current-password" required>
 
-            <label class="remember-me">
+            <label class="remember-me-dark">
                 <input type="checkbox" id="recordarme" checked>
                 Mantener sesión iniciada
             </label>
 
-            <button type="submit" class="btn-login" id="btn-login">
-                Iniciar Sesión
+            <button type="submit" class="btn-login-dark" id="btn-login">
+                Iniciar Sesión ➔
             </button>
 
-            <div id="error-message" class="error-message" style="display: none;"></div>
+            <div id="error-message" class="error-message" style="display: none; margin-top: 1rem; color: #f87171; font-size: 0.85rem;"></div>
         </form>
-
-        <!-- Footer -->
-        <div class="login-footer">
-            <p>Sistema LAMDA v1.0</p>
-            <p class="version">Módulo de Logística</p>
-        </div>
     </div>
 
     <script src="js/mobile.js"></script>
     <script>
-        // Verificar si ya hay sesión activa
-        document.addEventListener('DOMContentLoaded', () => {
-            const sesion = obtenerSesion();
-            if (sesion && sesion.token) {
-                // Ya hay sesión, redirigir a ruta
-                window.location.href = 'home.html';
-            }
-        });
-
-        // Manejar submit del formulario
         document.getElementById('form-login').addEventListener('submit', async (e) => {
             e.preventDefault();
             await iniciarSesion();

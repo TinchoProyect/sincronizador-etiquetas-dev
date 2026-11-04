@@ -44,6 +44,9 @@ const corsOptions = {
         'http://localhost:3003',  // Servidor de presupuestos
         'http://localhost:3004',  // Este mismo servidor
         'http://localhost:3005',  // Servidor de logística
+        // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
+        'https://logistica.lamdaser.com',
+        'http://logistica.lamdaser.com',
         // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
         'http://lamda-logistica.tplinkdns.com:3005',
         'https://lamda-logistica.tplinkdns.com:3005',
@@ -78,6 +81,10 @@ app.get('/', (req, res) => {
     res.redirect('/pages/facturas.html');
 });
 
+// Disparador reactivo automático en 2do plano hacia Portal B2B ante emisión de comprobantes
+const { createB2BAutoSyncMiddleware } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+app.use(createB2BAutoSyncMiddleware('facturacion'));
+
 // Montar rutas del módulo
 app.use('/facturacion', facturasRoutes);
 app.use('/facturacion/whatsapp', whatsappRoutes);
@@ -101,6 +108,56 @@ app.patch('/api/logistica/bunker/clientes/:id/whatsapp-contacts', async (req, re
         } else {
             res.status(500).json({ success: false, error: 'Servidor de logística no disponible' });
         }
+    }
+});
+
+// Proxy para despacho de comprobante por WhatsApp desde Facturación / Cuentas Bancarias
+app.post('/api/logistica/bunker/cuentas-corrientes/movimientos/:id/whatsapp', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(`📱 [FACTURACION-PROXY] Despachando WhatsApp de comprobante movimiento CC ID ${id} vía Logística...`);
+        const targetUrl = `http://localhost:3005/api/logistica/bunker/cuentas-corrientes/movimientos/${id}/whatsapp`;
+        const response = await axios.post(targetUrl, req.body, { timeout: 45000 });
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ [FACTURACION-PROXY] Error al despachar WhatsApp vía Logística:', error.message);
+        if (error.response) {
+            res.status(error.response.status).json(error.response.data);
+        } else {
+            res.status(500).json({ success: false, error: error.message || 'Servidor de logística no disponible' });
+        }
+    }
+});
+
+// Proxy para despacho de comprobante por Email desde Facturación / Cuentas Bancarias
+app.post('/api/logistica/bunker/cuentas-corrientes/movimientos/:id/email', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(`✉️ [FACTURACION-PROXY] Despachando Email de comprobante movimiento CC ID ${id} vía Logística...`);
+        const targetUrl = `http://localhost:3005/api/logistica/bunker/cuentas-corrientes/movimientos/${id}/email`;
+        const response = await axios.post(targetUrl, req.body, { timeout: 45000 });
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ [FACTURACION-PROXY] Error al despachar Email vía Logística:', error.message);
+        if (error.response) {
+            res.status(error.response.status).json(error.response.data);
+        } else {
+            res.status(500).json({ success: false, error: error.message || 'Servidor de logística no disponible' });
+        }
+    }
+});
+
+// Proxy para previsualización / descarga de comprobante PDF individual
+app.get('/api/logistica/bunker/cuentas-corrientes/movimientos/:id/pdf', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const targetUrl = `http://localhost:3005/api/logistica/bunker/cuentas-corrientes/movimientos/${id}/pdf`;
+        const response = await axios.get(targetUrl, { responseType: 'stream' });
+        res.set(response.headers);
+        response.data.pipe(res);
+    } catch (error) {
+        console.error('❌ [FACTURACION-PROXY] Error al obtener PDF vía Logística:', error.message);
+        res.status(500).json({ success: false, error: 'No se pudo generar el comprobante PDF' });
     }
 });
 

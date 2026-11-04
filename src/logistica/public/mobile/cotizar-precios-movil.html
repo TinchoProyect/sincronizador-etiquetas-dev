@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Cotizador de Precios - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/comercial.css?v=16">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+    <style>
+        .cotizador-page {
+            background-color: #0f172a;
+            min-height: 100vh;
+            color: #f8fafc;
+            padding-bottom: 5.5rem;
+        }
+
+        .client-info-bar {
+            background: linear-gradient(180deg, #1e1b4b 0%, #0f172a 100%);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+        }
+
+        .family-chips-scroll {
+            display: flex;
+            gap: 0.4rem;
+            overflow-x: auto;
+            padding: 0.4rem 0.2rem;
+            scrollbar-width: none;
+        }
+        .family-chips-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .family-chip-btn {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+
+        .family-chip-btn.active {
+            background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+            border-color: #a855f7;
+            color: white;
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+        }
+
+        .item-cotiz-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.65rem 0.85rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .item-cotiz-card.selected {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: #10b981;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+        }
+
+        .item-cotiz-checkbox {
+            width: 20px;
+            height: 20px;
+            accent-color: #10b981;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .sticky-footer-cotiz {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 1000;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body class="cotizador-page">
+
+    <!-- CABECERA -->
+    <header class="mobile-header" style="background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border-bottom: 1px solid rgba(124, 58, 237, 0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" onclick="window.abrirSidebar(event)" title="Abrir Menú" style="width: 34px; height: 34px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.08); padding: 3px; border: 1px solid rgba(255,255,255,0.15); cursor: pointer;">
+                <a href="clientes.html" class="btn-back-header" title="Volver a Clientes" style="text-decoration: none; font-size: 1.4rem; color: #94a3b8; padding: 0 0.1rem;">‹</a>
+                <div>
+                    <h1 style="margin: 0; font-size: 1.1rem; font-weight: 900; color: #f8fafc;">
+                        🏷️ Cotizar Precios
+                    </h1>
+                    <span style="font-size: 0.72rem; color: #34d399; font-weight: 700;" id="txt-cotiz-articulos-count">Cargando catálogo...</span>
+                </div>
+            </div>
+            <button class="btn-primary-action" id="btn-cambiar-lista-cotiz" onclick="CotizadorPreciosMovil.abrirSelectorListas()" style="background: #334155; padding: 0.4rem 0.75rem; font-size: 0.76rem; font-weight: 700; border-radius: 0.6rem; border: 1px solid #475569; color: #c084fc; cursor: pointer;">
+                📋 Lista: <span id="lbl-lista-activa">...</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- FICHA CLIENTE RESUMEN -->
+    <div class="client-info-bar">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+            <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                    <span class="badge-code-purple" id="lbl-cliente-codigo">S/C</span>
+                    <h3 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #f8fafc;" class="text-truncate" id="lbl-cliente-nombre">Cliente</h3>
+                </div>
+                <div style="display: flex; gap: 0.4rem; margin-top: 0.25rem; font-size: 0.72rem; color: #94a3b8; flex-wrap: wrap;">
+                    <span id="lbl-cliente-cuit">CUIT: -</span>
+                    <span>•</span>
+                    <span id="lbl-cliente-condicion" style="color: #34d399; font-weight: 700;">CF</span>
+                </div>
+            </div>
+            <!-- Saldo de Cuenta Corriente -->
+            <div id="box-cliente-saldo" style="text-align: right; flex-shrink: 0; background: rgba(15, 23, 42, 0.7); padding: 0.35rem 0.65rem; border-radius: 0.65rem; border: 1px solid rgba(255, 255, 255, 0.1);">
+                <div style="font-size: 0.62rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;">
+                    Saldo C/C
+                </div>
+                <div id="lbl-cliente-saldo" style="font-size: 0.95rem; font-weight: 900; color: #34d399; white-space: nowrap;">
+                    $ 0,00
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BUSCADOR UNIVERSAL LAMDA & FAMILIAS -->
+    <div style="padding: 0.75rem 1rem 0.25rem; background: #0f172a; position: sticky; top: 0; z-index: 100;">
+        <!-- Input con motor de búsqueda LAMDA y botón habituales -->
+        <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem;">
+            <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                <input type="text" id="input-buscar-articulos-cotiz" class="wizard-input-mobile" placeholder="🔍 Buscar por nombre, gramaje, cereal..." style="padding-right: 2.2rem; font-size: 0.9rem; border-radius: 0.75rem; width: 100%;" oninput="CotizadorPreciosMovil.filtrarArticulos(this.value)">
+                <button id="btn-clear-search-cotiz" onclick="CotizadorPreciosMovil.limpiarBusqueda()" style="position: absolute; right: 10px; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; display: none;">✕</button>
+            </div>
+            <button type="button" id="btn-toggle-habituales-cotiz" class="btn-toggle-habituales" onclick="CotizadorPreciosMovil.toggleFiltroHabituales()" title="Filtrar por artículos habituales del cliente" style="display: none; white-space: nowrap; padding: 0.55rem 0.75rem; font-size: 0.82rem; height: 42px; border-radius: 0.75rem;">
+                <span class="habituales-star">⭐</span>
+                <span>Habituales</span>
+                <span id="habituales-cotiz-count" class="habituales-count" style="display: none;">0</span>
+            </button>
+        </div>
+
+        <!-- Chips de Familias Deslizables -->
+        <div class="family-chips-scroll" id="container-chips-familias">
+            <button class="family-chip-btn active" onclick="CotizadorPreciosMovil.seleccionarFamilia('')">🌾 Todas</button>
+        </div>
+
+        <!-- Barra de Acciones Rápidas -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; padding: 0.2rem 0; border-top: 1px dashed rgba(255,255,255,0.08); flex-wrap: wrap; gap: 0.3rem;">
+            <div style="font-size: 0.75rem; color: #94a3b8;">
+                Mostrando <strong id="lbl-cant-visibles" style="color:#f8fafc;">0</strong> artículos
+            </div>
+            <div style="display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap;">
+                <button type="button" id="btn-tildar-habituales-action" style="background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.4); border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 800; color: #facc15; cursor: pointer; display: none;" onclick="CotizadorPreciosMovil.tildarHabituales()">
+                    ⭐ Tildar Habituales
+                </button>
+                <button type="button" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: #10b981; cursor: pointer;" onclick="CotizadorPreciosMovil.tildarVisibles()">
+                    ☑️ Visibles
+                </button>
+                <span style="color: #475569;">|</span>
+                <button type="button" style="background: none; border: none; font-size: 0.75rem; font-weight: 700; color: #ef4444; cursor: pointer;" onclick="CotizadorPreciosMovil.desmarcarTodos()">
+                    ⬜ Desmarcar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LISTADO DE ARTÍCULOS COTIZABLES -->
+    <main style="padding: 0.5rem 1rem 1rem;">
+        <div id="catalogo-articulos-cotizar">
+            <div class="placeholder-card" style="padding: 2rem 1rem; text-align: center;">
+                <div class="loader-spinner" style="margin: 0 auto 0.75rem; width: 28px; height: 28px;"></div>
+                <p style="font-size: 0.85rem; color: #94a3b8;">Cargando catálogo y precios vigentes...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- BARRA FLOTANTE INFERIOR -->
+    <footer class="sticky-footer-cotiz">
+        <div>
+            <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Selección</div>
+            <div style="font-size: 0.95rem; font-weight: 900; color: #34d399;" id="lbl-resumen-seleccion">
+                0 artículos
+            </div>
+        </div>
+        <button type="button" class="btn-confirm" id="btn-abrir-despacho" onclick="CotizadorPreciosMovil.abrirModalConfiguracionYDespacho()" style="padding: 0.7rem 1.25rem; font-size: 0.88rem; font-weight: 800; border-radius: 0.75rem; background: linear-gradient(135deg, #7c3aed 0%, #581c87 100%); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);">
+            <span>Configurar y Enviar</span> <span>📤</span>
+        </button>
+    </footer>
+
+    <!-- SCRIPTS -->
+    <script src="js/mobile.js?v=15"></script>
+    <script src="js/controllers/CotizadorPreciosMovil.js?v=27"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!verificarSesion()) {
+                window.location.href = 'index.html';
+                return;
+            }
+            CotizadorPreciosMovil.init();
+        });
+    </script>
+</body>
+</html>

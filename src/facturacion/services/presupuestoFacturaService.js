@@ -7,6 +7,7 @@ const { pool } = require('../config/database');
 const { fechaActual } = require('../config/timezone');
 const { porcentajeToCodigoAfip, calcularIva } = require('../utils/iva-helper');
 const { PTO_VTA } = require('../config/afip');
+const { calcularCostoIntegradoArticulo } = require('./costoIntegradoService');
 
 console.log('🔍 [PRESUPUESTO-FACTURA] Cargando servicio de conversión...');
 console.log(`🔍 [PRESUPUESTO-FACTURA] Punto de Venta configurado: ${PTO_VTA}`);
@@ -115,13 +116,23 @@ async function obtenerDatosPresupuesto(presupuestoId) {
         const cliente = clienteResult.rows[0];
         console.log(`✅ [PRESUPUESTO-FACTURA] Cliente encontrado: ${cliente.apellido || cliente.nombre || 'Sin nombre'}`);
 
-        // Obtener detalles con nombre del artículo
+        // Obtener detalles con nombre del artículo (incluyendo ingredientes de kit y costo base)
         const detallesQuery = `
             SELECT 
                 pd.*,
-                COALESCE(a.nombre, pd.articulo) as descripcion_articulo
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    NULLIF(TRIM(ing.nombre), ''),
+                    pd.articulo
+                ) as descripcion_articulo,
+                CASE WHEN ing.id IS NOT NULL THEN true ELSE false END as es_ingrediente,
+                COALESCE(ba.costo_base, ing.costo_patron, 0) as costo_unitario_base
             FROM presupuestos_detalles pd
-            LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
+            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
             WHERE pd.id_presupuesto = $1
             ORDER BY pd.id
         `;
@@ -243,7 +254,17 @@ function mapearCabecera(presupuesto, cliente, requiereAfip = true) {
     console.log(`📋 [PRESUPUESTO-FACTURA] Mapeando cabecera...`);
 
     const condicionIva = cliente.condicion_iva || 'Consumidor Final';
-    const tipoCbte = determinarTipoComprobante(condicionIva);
+    let tipoCbte = determinarTipoComprobante(condicionIva);
+
+    // Si el presupuesto es una Orden de Retiro, mapeamos a Nota de Crédito
+    const esRetiro = presupuesto && (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC');
+    if (esRetiro) {
+        if (tipoCbte === 1) tipoCbte = 3;      // Factura A -> NC A
+        else if (tipoCbte === 6) tipoCbte = 8; // Factura B -> NC B
+        else if (tipoCbte === 11) tipoCbte = 13; // Factura C -> NC C
+        console.log(`📋 [PRESUPUESTO-FACTURA] Presupuesto es Orden de Retiro. Convertido a Nota de Crédito tipo: ${tipoCbte}`);
+    }
+
     const condicionIvaId = determinarCondicionIvaAfip(condicionIva);
     let { docTipo, docNro } = determinarDocumento(cliente);
 
@@ -338,15 +359,19 @@ function mapearCabecera(presupuesto, cliente, requiereAfip = true) {
 }
 
 /**
- * Mapear items de factura con descuento aplicado
+ * Mapear items de factura con descuento aplicado y cálculo de costo integrado Búnker
+ * @param {object} db - Cliente o Pool de PostgreSQL
  * @param {Array} detalles - Detalles del presupuesto
  * @param {number} descuentoFraccional - Descuento como fracción (ej. 0.05 = 5%)
+ * @param {number} clienteListaId - Lista de precios del cliente (default 1)
  */
-function mapearItems(detalles, descuentoFraccional = 0) {
-    console.log(`📋 [PRESUPUESTO-FACTURA] Mapeando ${detalles.length} items...`);
+async function mapearItems(db, detalles, descuentoFraccional = 0, clienteListaId = 1) {
+    console.log(`📋 [PRESUPUESTO-FACTURA] Mapeando ${detalles.length} items (Lista Precios: ${clienteListaId})...`);
     console.log(`   Descuento a aplicar: ${(descuentoFraccional * 100).toFixed(2)}%`);
 
-    const items = detalles.map((detalle, index) => {
+    const items = [];
+    for (let index = 0; index < detalles.length; index++) {
+        const detalle = detalles[index];
         const qty = parseFloat(detalle.cantidad) || 0;
         const pUnit = parseFloat(detalle.valor1) || 0; // valor1 = precio sin IVA
         const ivaFactor = parseFloat(detalle.camp2) || 0; // camp2 = factor IVA (0.210, 0.105, 0.000)
@@ -358,48 +383,130 @@ function mapearItems(detalles, descuentoFraccional = 0) {
         // Calcular base sin descuento
         const baseImponibleSinDescuento = qty * pUnit;
 
-        // Aplicar descuento sobre la base imponible (ANTES del IVA)
-        const impNeto = Math.round(baseImponibleSinDescuento * (1 - descuentoFraccional) * 100) / 100;
+        // Descuento adicional por línea (aditivo al descuento general)
+        const descExtra = parseFloat(detalle.descuento_adicional) || 0;
+        const descTotalFraccional = Math.min(1, ((descuentoFraccional * 100) + descExtra) / 100);
+
+        // Aplicar descuento total aditivo sobre la base imponible (ANTES del IVA)
+        const impNeto = Math.round(baseImponibleSinDescuento * (1 - descTotalFraccional) * 100) / 100;
 
         // Calcular IVA sobre el neto ya con descuento
         const impIva = calcularIva(impNeto, alicIvaId);
 
-        console.log(`   Item ${index + 1}: Base=${baseImponibleSinDescuento.toFixed(2)}, Desc=${(descuentoFraccional * 100).toFixed(1)}%, Neto=${impNeto.toFixed(2)}, IVA=${impIva.toFixed(2)}`);
+        let descLimpia = detalle.descripcion_articulo || detalle.articulo || 'Sin descripción';
+        if (detalle.es_ingrediente) {
+            descLimpia = `↳ (Stock Cliente) ${descLimpia}`;
+        }
+        if (descExtra > 0) {
+            descLimpia = `${descLimpia} (Desc. esp. ${descExtra}%)`;
+        }
 
-        return {
-            descripcion: detalle.descripcion_articulo || detalle.articulo || 'Sin descripción',
+        // Calcular costo integrado unitario real del Búnker
+        // Calcular costo integrado unitario real del Búnker con desglose completo
+        let costoUnit = 0;
+        let cMercaderiaUnit = 0;
+        let cManoObraUnit = 0;
+        let cInsumosUnit = 0;
+        let artIdResuelto = detalle.articulo ? String(detalle.articulo).trim() : null;
+
+        try {
+            const resCosto = await calcularCostoIntegradoArticulo(db, detalle.articulo, clienteListaId);
+            costoUnit = resCosto.costo_unitario;
+            cMercaderiaUnit = resCosto.c_presentacion;
+            cManoObraUnit = resCosto.c_tiempo;
+            cInsumosUnit = resCosto.c_insumos;
+            if (resCosto.articulo_id) {
+                artIdResuelto = String(resCosto.articulo_id).trim();
+            }
+        } catch (errCosto) {
+            console.error(`⚠️ [PRESUPUESTO-FACTURA] Error calculando costo integrado para item ${detalle.articulo}:`, errCosto.message);
+            costoUnit = parseFloat(detalle.costo_unitario_base) || 0;
+            cMercaderiaUnit = costoUnit;
+        }
+
+        const costoTot = Math.round(qty * costoUnit * 100) / 100;
+        const cMercaderiaTot = Math.round(qty * cMercaderiaUnit * 100) / 100;
+        const cManoObraTot = Math.round(qty * cManoObraUnit * 100) / 100;
+        const cInsumosTot = Math.round(qty * cInsumosUnit * 100) / 100;
+
+        console.log(`   Item ${index + 1}: Base=${baseImponibleSinDescuento.toFixed(2)}, Neto=${impNeto.toFixed(2)}, CostoUnit=$${costoUnit.toFixed(2)} (Merc=$${cMercaderiaUnit.toFixed(2)}, MO=$${cManoObraUnit.toFixed(2)}, Ins=$${cInsumosUnit.toFixed(2)})`);
+
+        items.push({
+            descripcion: descLimpia,
+            articulo_id: artIdResuelto,
             qty: qty,
             p_unit: pUnit, // Guardamos el precio unitario SIN descuento (el descuento se aplica al total)
             alic_iva_id: alicIvaId,
             imp_neto: impNeto,
             imp_iva: impIva,
+            costo_unitario: costoUnit,
+            costo_total: costoTot,
+            costo_mercaderia_unitario: cMercaderiaUnit,
+            costo_mano_obra_unitario: cManoObraUnit,
+            costo_insumos_unitario: cInsumosUnit,
+            costo_mercaderia_total: cMercaderiaTot,
+            costo_mano_obra_total: cManoObraTot,
+            costo_insumos_total: cInsumosTot,
+            es_saldo_ingrediente: detalle.es_saldo_ingrediente === true,
+            ingrediente_id_saldo: detalle.ingrediente_id_saldo || null,
+            kilos_saldo: detalle.kilos_saldo || null,
             orden: index + 1
-        };
-    });
+        });
+    }
 
-    console.log(`✅ [PRESUPUESTO-FACTURA] ${items.length} items mapeados con descuento aplicado`);
+    console.log(`✅ [PRESUPUESTO-FACTURA] ${items.length} items mapeados con foto de costo integrado y descuento aplicado`);
 
     return items;
 }
 
 /**
- * Calcular totales de la factura
+ * Calcular totales de la factura congelando la foto contable (unificada con Presupuestos y Artículos Búnker)
  */
-function calcularTotales(items) {
-    console.log(`🧮 [PRESUPUESTO-FACTURA] Calculando totales...`);
+function calcularTotales(items, alicuotaIibb = 4.00) {
+    console.log(`🧮 [PRESUPUESTO-FACTURA] Calculando totales y foto contable...`);
 
     const impNeto = items.reduce((sum, item) => sum + item.imp_neto, 0);
     const impIva = items.reduce((sum, item) => sum + item.imp_iva, 0);
-    const impTrib = 0; // Por ahora sin tributos
+    const costoEstimadoTotal = items.reduce((sum, item) => sum + (item.costo_total || 0), 0);
+    const costoMercaderiaTotal = items.reduce((sum, item) => sum + (item.costo_mercaderia_total || 0), 0);
+    const costoManoObraTotal = items.reduce((sum, item) => sum + (item.costo_mano_obra_total || 0), 0);
+    const costoInsumosTotal = items.reduce((sum, item) => sum + (item.costo_insumos_total || 0), 0);
+    const impTrib = 0; // Por ahora sin otros tributos
     const impTotal = impNeto + impIva + impTrib;
 
-    console.log(`✅ [PRESUPUESTO-FACTURA] Totales: Neto=${impNeto.toFixed(2)}, IVA=${impIva.toFixed(2)}, Total=${impTotal.toFixed(2)}`);
+    const alicIibb = parseFloat(alicuotaIibb) || 4.00;
+    const impIibb = Math.round(impTotal * (alicIibb / 100) * 100) / 100;
+
+    // Diferencia de IVA línea por línea: Máx(0, IVA Venta - IVA Compra al 21% sobre Costo Bulto s/Mano de Obra)
+    const impDifIvaRaw = items.reduce((sum, item) => {
+        const ivaVentaItem = parseFloat(item.imp_iva) || 0;
+        const costoBultoItem = (parseFloat(item.costo_mercaderia_total) || 0) + (parseFloat(item.costo_insumos_total) || 0);
+        const ivaCompraItem = costoBultoItem * 0.21;
+        return sum + Math.max(0, ivaVentaItem - ivaCompraItem);
+    }, 0);
+    const impDifIva = Math.round(impDifIvaRaw * 100) / 100;
+
+    // Ganancia s/IIBB (Neto - Costo Operativo - IIBB)
+    const gananciaSinIibbTotal = Math.round((impNeto - costoEstimadoTotal - impIibb) * 100) / 100;
+    // Ganancia Real unificada con Presupuestos, Pizarra y Artículos Búnker (descontando Diferencia de IVA)
+    const gananciaRealTotal = Math.round((gananciaSinIibbTotal - impDifIva) * 100) / 100;
+
+    console.log(`✅ [PRESUPUESTO-FACTURA] Foto Contable: Neto=${impNeto.toFixed(2)}, IVA=${impIva.toFixed(2)}, Total=${impTotal.toFixed(2)} | Merc=${costoMercaderiaTotal.toFixed(2)}, MO=${costoManoObraTotal.toFixed(2)}, Ins=${costoInsumosTotal.toFixed(2)}, IIBB(${alicIibb}%)=${impIibb.toFixed(2)}, DifIVA=${impDifIva.toFixed(2)}, Ganancia s/IIBB=${gananciaSinIibbTotal.toFixed(2)}, Ganancia Real=${gananciaRealTotal.toFixed(2)}`);
 
     return {
         imp_neto: impNeto,
         imp_iva: impIva,
         imp_trib: impTrib,
-        imp_total: impTotal
+        imp_total: impTotal,
+        costo_estimado_total: costoEstimadoTotal,
+        costo_mercaderia_total: costoMercaderiaTotal,
+        costo_mano_obra_total: costoManoObraTotal,
+        costo_insumos_total: costoInsumosTotal,
+        alicuota_iibb: alicIibb,
+        imp_iibb: impIibb,
+        imp_dif_iva: impDifIva,
+        ganancia_sin_iibb_total: gananciaSinIibbTotal,
+        ganancia_real_total: gananciaRealTotal
     };
 }
 
@@ -422,13 +529,23 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
         const existeQuery = `
             SELECT id FROM factura_facturas
             WHERE presupuesto_id = $1
-              AND estado != 'ANULADA'
+              AND estado NOT IN ('ANULADA', 'RECHAZADA')
               AND tipo_cbte NOT IN (3, 8, 13)
+              AND id NOT IN (
+                  SELECT nc.factura_asociada_id 
+                  FROM factura_facturas nc
+                  JOIN factura_facturas f_orig ON nc.factura_asociada_id = f_orig.id
+                  WHERE nc.factura_asociada_id IS NOT NULL 
+                    AND nc.estado = 'APROBADA' 
+                    AND nc.tipo_cbte IN (3, 8, 13)
+                  GROUP BY nc.factura_asociada_id, f_orig.imp_total
+                  HAVING SUM(nc.imp_total) >= (f_orig.imp_total - 0.05)
+              )
         `;
         const existeResult = await client.query(existeQuery, [presupuestoId]);
 
         if (existeResult.rows.length > 0) {
-            throw new Error(`Ya existe una factura para el presupuesto ${presupuestoId} (ID: ${existeResult.rows[0].id})`);
+            throw new Error(`Ya existe una factura activa para el presupuesto ${presupuestoId} (ID: ${existeResult.rows[0].id})`);
         }
 
         // 3. Mapear cabecera (valida datos obligatorios si requiereAfip es true)
@@ -442,11 +559,13 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
         }
 
         // 4. Obtener descuento del presupuesto (fracción decimal, ej. 0.05 = 5%)
-        const descuentoFraccional = parseFloat(presupuesto.descuento) || 0;
+        const rawDesc = parseFloat(presupuesto.descuento) || 0;
+        const descuentoFraccional = rawDesc > 1 ? rawDesc / 100 : rawDesc;
         console.log(`💰 [PRESUPUESTO-FACTURA] Descuento del presupuesto: ${(descuentoFraccional * 100).toFixed(2)}%`);
 
-        // 5. Mapear items aplicando el descuento
-        const items = mapearItems(detalles, descuentoFraccional);
+        // 5. Mapear items aplicando el descuento y calculando costo integrado Búnker
+        const clienteListaId = cliente.lista_precios ? parseInt(cliente.lista_precios) : 1;
+        const items = await mapearItems(client, detalles, descuentoFraccional, clienteListaId);
 
         // 6. Calcular totales
         const totales = calcularTotales(items);
@@ -462,7 +581,39 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
 
         console.log(`💰 [PRESUPUESTO-FACTURA] Totales validados - Total: $${totales.imp_total.toFixed(2)}`);
 
-        // 8. Insertar factura lista para CAE (SIN número todavía)
+        // 8. Trazabilidad: Buscar Factura Asociada si es una Orden de Retiro
+        let facturaAsociadaId = null;
+        const esRetiro = presupuesto && (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC');
+        if (esRetiro && presupuesto.origen_numero_factura) {
+            const origVal = presupuesto.origen_numero_factura.trim();
+            if (/^\d+$/.test(origVal)) {
+                const origBudgetId = parseInt(origVal);
+                const origFactRes = await client.query(
+                    `SELECT id FROM factura_facturas WHERE (presupuesto_id = $1 OR cbte_nro = $2) AND estado = 'APROBADA' LIMIT 1`,
+                    [origBudgetId, origBudgetId]
+                );
+                if (origFactRes.rows.length > 0) {
+                    facturaAsociadaId = origFactRes.rows[0].id;
+                    console.log(`📋 [PRESUPUESTO-FACTURA] Factura asociada encontrada por ID/Nro: ${facturaAsociadaId}`);
+                }
+            } else if (origVal.includes('-')) {
+                const parts = origVal.split('-');
+                const ptoVta = parseInt(parts[0]);
+                const cbteNro = parseInt(parts[1]);
+                if (!isNaN(ptoVta) && !isNaN(cbteNro)) {
+                    const origFactRes = await client.query(
+                        `SELECT id FROM factura_facturas WHERE pto_vta = $1 AND cbte_nro = $2 AND estado = 'APROBADA' LIMIT 1`,
+                        [ptoVta, cbteNro]
+                    );
+                    if (origFactRes.rows.length > 0) {
+                        facturaAsociadaId = origFactRes.rows[0].id;
+                        console.log(`📋 [PRESUPUESTO-FACTURA] Factura asociada encontrada por PuntoVta-Numero: ${facturaAsociadaId}`);
+                    }
+                }
+            }
+        }
+
+        // 8.5. Insertar factura lista para CAE (SIN número todavía)
         console.log(`📝 [PRESUPUESTO-FACTURA] Creando factura BORRADOR...`);
 
         const insertFacturaQuery = `
@@ -472,13 +623,19 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
                 moneda, mon_cotiz, imp_neto, imp_iva, imp_trib, imp_total,
                 requiere_afip, presupuesto_id, estado,
                 fch_serv_desde, fch_serv_hasta, fch_vto_pago,
-                descuento, created_at, updated_at
+                descuento, factura_asociada_id, costo_estimado_total,
+                alicuota_iibb, imp_iibb, imp_dif_iva, costo_mercaderia_total, costo_mano_obra_total,
+                costo_insumos_total, ganancia_sin_iibb_total, ganancia_real_total, foto_capturada,
+                created_at, updated_at
             ) VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
                 $10, $11, $12, $13, $14, $15,
                 $16, $17, $18,
                 $19, $20, $21,
+                $22, $23,
+                $24, $25, $26, $27, $28,
+                $29, $30, $31, $32,
                 NOW(), NOW()
             ) RETURNING id
         `;
@@ -504,7 +661,18 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
             cabecera.fch_serv_desde,   // $18
             cabecera.fch_serv_hasta,   // $19
             cabecera.fch_vto_pago,     // $20
-            descuentoFraccional        // $21
+            descuentoFraccional,       // $21
+            facturaAsociadaId,         // $22
+            totales.costo_estimado_total, // $23
+            totales.alicuota_iibb,     // $24
+            totales.imp_iibb,          // $25
+            totales.imp_dif_iva,       // $26
+            totales.costo_mercaderia_total, // $27
+            totales.costo_mano_obra_total,  // $28
+            totales.costo_insumos_total,    // $29
+            totales.ganancia_sin_iibb_total,// $30
+            totales.ganancia_real_total,    // $31
+            true                       // $32 (foto_capturada)
         ]);
 
         const facturaId = facturaResult.rows[0].id;
@@ -518,9 +686,16 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
                 INSERT INTO factura_factura_items (
                     factura_id, descripcion, qty, p_unit,
                     alic_iva_id, imp_neto, imp_iva, orden,
+                    costo_unitario, costo_total,
+                    articulo_id, costo_mercaderia_unitario, costo_mano_obra_unitario, costo_insumos_unitario,
+                    costo_mercaderia_total, costo_mano_obra_total, costo_insumos_total,
+                    es_saldo_ingrediente, ingrediente_id_saldo, kilos_saldo,
                     created_at
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14, $15, $16, $17,
+                    $18, $19, $20,
+                    NOW()
                 )
             `;
 
@@ -532,7 +707,19 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
                 item.alic_iva_id,
                 item.imp_neto,
                 item.imp_iva,
-                item.orden
+                item.orden,
+                item.costo_unitario || 0,
+                item.costo_total || 0,
+                item.articulo_id || null,
+                item.costo_mercaderia_unitario || 0,
+                item.costo_mano_obra_unitario || 0,
+                item.costo_insumos_unitario || 0,
+                item.costo_mercaderia_total || 0,
+                item.costo_mano_obra_total || 0,
+                item.costo_insumos_total || 0,
+                Boolean(item.es_saldo_ingrediente),
+                item.ingrediente_id_saldo || null,
+                item.kilos_saldo || null
             ]);
         }
 
@@ -619,11 +806,13 @@ async function sincronizarBorrador(presupuestoId) {
         const cabecera = mapearCabecera(presupuesto, cliente);
 
         // 4. Obtener descuento del presupuesto
-        const descuentoFraccional = parseFloat(presupuesto.descuento) || 0;
+        const rawDesc = parseFloat(presupuesto.descuento) || 0;
+        const descuentoFraccional = rawDesc > 1 ? rawDesc / 100 : rawDesc;
         console.log(`💰 [PRESUPUESTO-FACTURA] Descuento a aplicar en sincronización: ${(descuentoFraccional * 100).toFixed(2)}%`);
 
-        // 5. Mapear nuevos items aplicando el descuento
-        const items = mapearItems(detalles, descuentoFraccional);
+        // 5. Mapear nuevos items aplicando el descuento y calculando costo integrado Búnker
+        const clienteListaId = cliente.lista_precios ? parseInt(cliente.lista_precios) : 1;
+        const items = await mapearItems(client, detalles, descuentoFraccional, clienteListaId);
 
         // 6. Calcular nuevos totales
         const totales = calcularTotales(items);
@@ -649,8 +838,12 @@ async function sincronizarBorrador(presupuestoId) {
                 imp_neto = $9, imp_iva = $10, imp_trib = $11, imp_total = $12,
                 requiere_afip = $13,
                 fch_serv_desde = $14, fch_serv_hasta = $15, fch_vto_pago = $16,
-                descuento = $17, updated_at = NOW()
-            WHERE id = $18
+                descuento = $17, costo_estimado_total = $18,
+                alicuota_iibb = $19, imp_iibb = $20, imp_dif_iva = $21, costo_mercaderia_total = $22,
+                costo_mano_obra_total = $23, costo_insumos_total = $24,
+                ganancia_sin_iibb_total = $25, ganancia_real_total = $26, foto_capturada = $27,
+                updated_at = NOW()
+            WHERE id = $28
         `;
 
         await client.query(updateFacturaQuery, [
@@ -671,7 +864,17 @@ async function sincronizarBorrador(presupuestoId) {
             cabecera.fch_serv_hasta,   // $15
             cabecera.fch_vto_pago,     // $16
             descuentoFraccional,       // $17
-            facturaId                  // $18
+            totales.costo_estimado_total, // $18
+            totales.alicuota_iibb,     // $19
+            totales.imp_iibb,          // $20
+            totales.imp_dif_iva,       // $21
+            totales.costo_mercaderia_total, // $22
+            totales.costo_mano_obra_total,  // $23
+            totales.costo_insumos_total,    // $24
+            totales.ganancia_sin_iibb_total,// $25
+            totales.ganancia_real_total,    // $26
+            true,                      // $27
+            facturaId                  // $28
         ]);
 
         console.log(`✅ [PRESUPUESTO-FACTURA] Cabecera de borrador actualizada.`);
@@ -686,9 +889,16 @@ async function sincronizarBorrador(presupuestoId) {
                 INSERT INTO factura_factura_items (
                     factura_id, descripcion, qty, p_unit,
                     alic_iva_id, imp_neto, imp_iva, orden,
+                    costo_unitario, costo_total,
+                    articulo_id, costo_mercaderia_unitario, costo_mano_obra_unitario, costo_insumos_unitario,
+                    costo_mercaderia_total, costo_mano_obra_total, costo_insumos_total,
+                    es_saldo_ingrediente, ingrediente_id_saldo, kilos_saldo,
                     created_at
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14, $15, $16, $17,
+                    $18, $19, $20,
+                    NOW()
                 )
             `;
 
@@ -700,7 +910,19 @@ async function sincronizarBorrador(presupuestoId) {
                 item.alic_iva_id,
                 item.imp_neto,
                 item.imp_iva,
-                item.orden
+                item.orden,
+                item.costo_unitario || 0,
+                item.costo_total || 0,
+                item.articulo_id || null,
+                item.costo_mercaderia_unitario || 0,
+                item.costo_mano_obra_unitario || 0,
+                item.costo_insumos_unitario || 0,
+                item.costo_mercaderia_total || 0,
+                item.costo_mano_obra_total || 0,
+                item.costo_insumos_total || 0,
+                Boolean(item.es_saldo_ingrediente),
+                item.ingrediente_id_saldo || null,
+                item.kilos_saldo || null
             ]);
         }
 

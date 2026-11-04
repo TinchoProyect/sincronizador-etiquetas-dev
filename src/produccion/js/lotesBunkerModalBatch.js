@@ -12,15 +12,24 @@ const BunkerModalBatch = {
             const item = lote.pedidos_b2b_items || {};
             const bult = parseFloat(item.cant_bult) || 1;
             const val = parseFloat(item.cant_valor) || 1;
-            const vu = parseFloat(item.valor_unitario_ref) || 0;
             const cantRecibida = parseFloat(lote.cantidad_recibida) || 1;
-            
             const kilosPorBultoFisico = bult * val;
-            const costOriginal = vu * kilosPorBultoFisico * cantRecibida;
             const totalKilos = cantRecibida * kilosPorBultoFisico;
             
             const uniqueLoteTempId = 'lote_' + Math.random().toString(36).substr(2, 9);
             const defaultDestIdTemp = 'dest_' + Math.random().toString(36).substr(2, 9);
+
+            const estadoData = window.LotesTrazabilidadCache ? window.LotesTrazabilidadCache[lote.id] : null;
+            let bultosPendientes = cantRecibida;
+            let kilosPendientes = totalKilos;
+            if (estadoData && estadoData.estado === 'ASIGNADO_PARCIAL') {
+                const kilosYaAsignados = parseFloat(estadoData.suma_asignada || 0);
+                kilosPendientes = Math.max(0, totalKilos - kilosYaAsignados);
+                bultosPendientes = kilosPendientes / (kilosPorBultoFisico || 1);
+            }
+
+            const vu = parseFloat(item.valor_unitario_ref) || 0;
+            const costRemanente = vu * kilosPorBultoFisico * bultosPendientes;
 
             return {
                 idTemp: uniqueLoteTempId,
@@ -28,10 +37,10 @@ const BunkerModalBatch = {
                 lote_id_supabase: lote.id,
                 sku: item.producto_codigo || '',
                 producto_descripcion: item.producto_descripcion || 'Sin descripción',
-                cantidad_recibida: cantRecibida,
+                cantidad_recibida: bultosPendientes,
                 kilosPorBulto: kilosPorBultoFisico || 1,
-                costo_bruto_ingresado: costOriginal,
-                cantidad_total_lote: totalKilos,
+                costo_bruto_ingresado: costRemanente,
+                cantidad_total_lote: kilosPendientes,
                 iva: item.iva_porcentaje || 21,
                 destinos: [
                     {
@@ -39,8 +48,8 @@ const BunkerModalBatch = {
                         tipo_destino: 'INGREDIENTE_PRODUCCION', // Por defecto "Ingredientes"
                         id: '',
                         descripcion: '',
-                        cantidad_asignada: cantRecibida, // Por defecto asigna todo el lote
-                        kilos_asignados: totalKilos
+                        cantidad_asignada: bultosPendientes,
+                        kilos_asignados: kilosPendientes
                     }
                 ]
             };
@@ -239,13 +248,48 @@ const BunkerModalBatch = {
         if (lote) {
             const dest = lote.destinos.find(d => d.idTemp === destIdTemp);
             if (dest) {
+                dest._lastEdited = 'cajas';
                 const inputCj = document.getElementById(`cajas-${destIdTemp}`);
+                const inputFactor = document.getElementById(`factor-${destIdTemp}`);
                 const cajas = parseFloat(inputCj.value) || 0;
-                const kilos = cajas * lote.kilosPorBulto;
+                const factor = (inputFactor ? parseFloat(inputFactor.value) : dest.factor_pack) || lote.kilosPorBulto || 1;
+                const kilos = cajas * factor;
                 
                 document.getElementById(`kilos-${destIdTemp}`).value = kilos % 1 === 0 ? kilos.toFixed(0) : kilos.toFixed(2);
+                dest.factor_pack = factor;
                 dest.cantidad_asignada = cajas;
                 dest.kilos_asignados = kilos;
+            }
+        }
+        this.recalcularCantidadesBatch(loteIdTemp);
+    },
+
+    actualizarPorFactorBatch(loteIdTemp, destIdTemp) {
+        const lote = this.lotesDraft.find(l => l.idTemp === loteIdTemp);
+        if (lote) {
+            const dest = lote.destinos.find(d => d.idTemp === destIdTemp);
+            if (dest) {
+                const inputFactor = document.getElementById(`factor-${destIdTemp}`);
+                const inputCj = document.getElementById(`cajas-${destIdTemp}`);
+                const inputKg = document.getElementById(`kilos-${destIdTemp}`);
+                const factor = parseFloat(inputFactor.value) || 0;
+                dest.factor_pack = factor;
+
+                if (factor > 0) {
+                    if (dest._lastEdited === 'cajas') {
+                        const cajas = parseFloat(inputCj.value) || 0;
+                        const kilos = cajas * factor;
+                        inputKg.value = kilos % 1 === 0 ? kilos.toFixed(0) : kilos.toFixed(2);
+                        dest.cantidad_asignada = cajas;
+                        dest.kilos_asignados = kilos;
+                    } else {
+                        const kilos = parseFloat(inputKg.value) || 0;
+                        const cajas = kilos / factor;
+                        inputCj.value = cajas % 1 === 0 ? cajas.toFixed(0) : cajas.toFixed(2);
+                        dest.cantidad_asignada = cajas;
+                        dest.kilos_asignados = kilos;
+                    }
+                }
             }
         }
         this.recalcularCantidadesBatch(loteIdTemp);
@@ -257,12 +301,29 @@ const BunkerModalBatch = {
             const dest = lote.destinos.find(d => d.idTemp === destIdTemp);
             if (dest) {
                 const inputKg = document.getElementById(`kilos-${destIdTemp}`);
+                const inputCj = document.getElementById(`cajas-${destIdTemp}`);
+                const inputFactor = document.getElementById(`factor-${destIdTemp}`);
                 const kilos = parseFloat(inputKg.value) || 0;
-                const cajas = kilos / lote.kilosPorBulto;
-                
-                document.getElementById(`cajas-${destIdTemp}`).value = cajas % 1 === 0 ? cajas.toFixed(0) : cajas.toFixed(2);
-                dest.cantidad_asignada = cajas;
-                dest.kilos_asignados = kilos;
+
+                if (dest._lastEdited === 'cajas' && (parseFloat(inputCj.value) || 0) > 0) {
+                    const cajas = parseFloat(inputCj.value);
+                    const nuevoFactor = kilos > 0 ? (kilos / cajas) : 1;
+                    if (inputFactor) {
+                        inputFactor.value = nuevoFactor % 1 === 0 ? nuevoFactor.toFixed(0) : nuevoFactor.toFixed(2);
+                    }
+                    dest.factor_pack = nuevoFactor;
+                    dest.cantidad_asignada = cajas;
+                    dest.kilos_asignados = kilos;
+                } else {
+                    dest._lastEdited = 'kilos';
+                    const factor = (inputFactor ? parseFloat(inputFactor.value) : dest.factor_pack) || lote.kilosPorBulto || 1;
+                    const cajas = factor > 0 ? (kilos / factor) : 0;
+                    
+                    inputCj.value = cajas % 1 === 0 ? cajas.toFixed(0) : cajas.toFixed(2);
+                    dest.factor_pack = factor;
+                    dest.cantidad_asignada = cajas;
+                    dest.kilos_asignados = kilos;
+                }
             }
         }
         this.recalcularCantidadesBatch(loteIdTemp);
@@ -367,6 +428,8 @@ const BunkerModalBatch = {
                 </div>
             `;
 
+            const factorMostrar = d.factor_pack !== undefined ? d.factor_pack : (lote.kilosPorBulto || 1);
+
             div.innerHTML = `
                 ${toggleGroup}
                 
@@ -382,13 +445,18 @@ const BunkerModalBatch = {
                 
                 <div style="display: flex; gap: 4px; align-items: center; background: #f8fafc; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0;">
                     <div style="display: flex; flex-direction: column; align-items: center;">
-                        <span style="font-size: 8px; color: #64748b; font-weight: bold;">Cajas</span>
-                        <input type="number" id="cajas-${d.idTemp}" style="width: 50px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; text-align: center; font-weight: bold;" value="${d.cantidad_asignada}" oninput="BunkerModalBatch.actualizarPorCajasBatch('${loteIdTemp}', '${d.idTemp}')">
+                        <span style="font-size: 8px; color: #64748b; font-weight: bold;">Bultos</span>
+                        <input type="number" step="any" id="cajas-${d.idTemp}" style="width: 48px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; text-align: center; font-weight: bold;" value="${d.cantidad_asignada}" onfocus="this.select()" oninput="BunkerModalBatch.actualizarPorCajasBatch('${loteIdTemp}', '${d.idTemp}')">
                     </div>
-                    <span style="font-size: 9px; color: #94a3b8; font-weight: bold; margin-top: 10px;">⇄</span>
+                    <span style="font-size: 9px; color: #94a3b8; font-weight: bold; margin-top: 10px;">×</span>
                     <div style="display: flex; flex-direction: column; align-items: center;">
-                        <span style="font-size: 8px; color: #64748b; font-weight: bold;">Kilos</span>
-                        <input type="number" id="kilos-${d.idTemp}" style="width: 60px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; text-align: center; font-weight: bold;" value="${d.kilos_asignados}" oninput="BunkerModalBatch.actualizarPorKilosBatch('${loteIdTemp}', '${d.idTemp}')">
+                        <span style="font-size: 8px; color: #0284c7; font-weight: bold;">x Pack</span>
+                        <input type="number" step="any" id="factor-${d.idTemp}" style="width: 48px; padding: 2px; border: 1px solid #7dd3fc; background: #f0f9ff; border-radius: 4px; font-size: 11px; text-align: center; font-weight: bold; color: #0369a1;" value="${factorMostrar}" onfocus="this.select()" oninput="BunkerModalBatch.actualizarPorFactorBatch('${loteIdTemp}', '${d.idTemp}')">
+                    </div>
+                    <span style="font-size: 9px; color: #94a3b8; font-weight: bold; margin-top: 10px;">=</span>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <span style="font-size: 8px; color: #64748b; font-weight: bold;">Total</span>
+                        <input type="number" step="any" id="kilos-${d.idTemp}" style="width: 58px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; text-align: center; font-weight: bold;" value="${d.kilos_asignados}" onfocus="this.select()" oninput="BunkerModalBatch.actualizarPorKilosBatch('${loteIdTemp}', '${d.idTemp}')">
                     </div>
                 </div>
                 
@@ -468,6 +536,18 @@ const BunkerModalBatch = {
             didOpen: () => Swal.showLoading() 
         });
 
+        // Sincronizar explícitamente desde los inputs del DOM por consistencia transaccional
+        this.lotesDraft.forEach(lote => {
+            lote.destinos.forEach(d => {
+                const cjInput = document.getElementById(`cajas-${d.idTemp}`);
+                const kgInput = document.getElementById(`kilos-${d.idTemp}`);
+                if (cjInput && kgInput) {
+                    d.cantidad_asignada = parseFloat(cjInput.value) || 0;
+                    d.kilos_asignados = parseFloat(kgInput.value) || 0;
+                }
+            });
+        });
+
         // Construir la estructura del payload compuesto batch
         const payload = {
             lotes: this.lotesDraft.map(lote => {
@@ -482,6 +562,10 @@ const BunkerModalBatch = {
                     iva: ivaVal,
                     iibb: 0,
                     costo_kilo_calculado: costoBruto / totalCant,
+                    proveedor_nombre: lote.loteRaw?.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedores?.nombre || '',
+                    articulo_descripcion: lote.producto_descripcion || '',
+                    producto_codigo: lote.sku || '',
+                    numero_remito: lote.loteRaw?.recepciones_fisicas_cabecera?.numero_remito || '',
                     destinos: lote.destinos.map(d => ({
                         tipo_destino: d.tipo_destino,
                         id: d.id,

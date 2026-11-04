@@ -71,10 +71,109 @@ async function sincronizarRetiros() {
     localClient = await localPool.connect();
 
     // =================================================================
-    // PARTE A: Sincronización Directa (Local ➔ Supabase)
-    // Subir órdenes locales creadas/modificadas en los últimos 30 días
+    // PASO 1: Sincronización Inversa (Supabase ➔ Local)
+    // PRIORIDAD MÁXIMA: Bajar primero los check-ins y cancelaciones de clientes
     // =================================================================
-    console.log('🔄 Iniciando Sincronización Directa (Local ➔ Supabase)...');
+    console.log('🔄 Paso 1: Iniciando Sincronización Inversa (Supabase ➔ Local)...');
+    
+    const urlQuery = `${SUPABASE_URL}/rest/v1/clientes_b2b_retiros?sincronizado_local=eq.false`;
+    const optionsQuery = {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    };
+    
+    const resSupa = await fetchWithRetry(urlQuery, optionsQuery);
+    const retirosSupa = await resSupa.json();
+    console.log(`📊 Check-ins / Actualizaciones pendientes en Supabase: ${retirosSupa.length}`);
+    
+    let bajadosCount = 0;
+    
+    for (const ret of retirosSupa) {
+      console.log(`📥 Procesando Retiro #${ret.id} [${ret.estado_logistico}] para cliente ID: ${ret.cliente_id}...`);
+      
+      try {
+        await localClient.query('BEGIN');
+        
+        if (ret.estado_logistico === 'CANCELADO') {
+          // Marcar como cancelado localmente
+          await localClient.query('UPDATE public.ordenes_tratamiento SET estado_logistico = $1 WHERE id = $2', ['CANCELADO', ret.id]);
+          await localClient.query('COMMIT');
+        } else if (ret.estado_logistico === 'PENDIENTE_VALIDACION') {
+          // 1. Actualizar cabecera en ordenes_tratamiento
+          const sqlUpdateCabecera = `
+            UPDATE public.ordenes_tratamiento
+            SET 
+              estado_logistico = 'PENDIENTE_VALIDACION',
+              responsable_nombre = $1,
+              responsable_apellido = $2,
+              responsable_celular = $3
+            WHERE id = $4
+          `;
+          await localClient.query(sqlUpdateCabecera, [
+            ret.responsable_nombre,
+            ret.responsable_apellido,
+            ret.responsable_celular,
+            ret.id
+          ]);
+          
+          // 2. Actualizar detalles en ordenes_tratamiento_detalles
+          await localClient.query('DELETE FROM public.ordenes_tratamiento_detalles WHERE id_orden_tratamiento = $1', [ret.id]);
+          
+          const sqlInsertDetalle = `
+            INSERT INTO public.ordenes_tratamiento_detalles (
+              id_orden_tratamiento, articulo_numero, descripcion_externa, kilos, bultos, motivo
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+          `;
+          await localClient.query(sqlInsertDetalle, [
+            ret.id,
+            ret.articulo_numero || null,
+            ret.descripcion_externa || null,
+            ret.kilos ? parseFloat(ret.kilos) : null,
+            ret.bultos ? parseInt(ret.bultos) : null,
+            ret.motivo || null
+          ]);
+          
+          await localClient.query('COMMIT');
+        } else {
+          await localClient.query('ROLLBACK');
+        }
+        
+        // 3. Confirmar a Supabase que ya se bajó localmente
+        const urlPatch = `${SUPABASE_URL}/rest/v1/clientes_b2b_retiros?id=eq.${ret.id}`;
+        const optionsPatch = {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sincronizado_local: true,
+            fecha_sincronizacion_local: new Date().toISOString()
+          })
+        };
+        await fetchWithRetry(urlPatch, optionsPatch);
+        
+        console.log(`✅ Retiro #${ret.id} sincronizado localmente con éxito.`);
+        bajadosCount++;
+        
+      } catch (txErr) {
+        await localClient.query('ROLLBACK');
+        console.error(`❌ Error transaccional en base local para retiro #${ret.id}:`, txErr.message);
+      }
+    }
+    
+    console.log(`✅ Sincronización Inversa completada. Se bajaron ${bajadosCount} check-ins.`);
+
+    // =================================================================
+    // PASO 2: Sincronización Directa (Local ➔ Supabase)
+    // Subir órdenes locales creadas/modificadas en los últimos 30 días
+    // Protegiendo los datos que el cliente ya haya cargado en Supabase
+    // =================================================================
+    console.log('\n🔄 Paso 2: Iniciando Sincronización Directa (Local ➔ Supabase)...');
     
     const sqlLocal = `
       SELECT 
@@ -155,104 +254,17 @@ async function sincronizarRetiros() {
     
     console.log(`✅ Sincronización Directa completada. Se subieron/actualizaron ${subidosCount} órdenes.`);
 
-    // =================================================================
-    // PARTE B: Sincronización Inversa (Supabase ➔ Local)
-    // Bajar check-ins listos de clientes
-    // =================================================================
-    console.log('\n🔄 Iniciando Sincronización Inversa (Supabase ➔ Local)...');
-    
-    const urlQuery = `${SUPABASE_URL}/rest/v1/clientes_b2b_retiros?estado_logistico=eq.PENDIENTE_VALIDACION&sincronizado_local=eq.false`;
-    const optionsQuery = {
-      method: 'GET',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`
-      }
-    };
-    
-    const resSupa = await fetchWithRetry(urlQuery, optionsQuery);
-    const retirosSupa = await resSupa.json();
-    console.log(`📊 Check-ins pendientes en Supabase: ${retirosSupa.length}`);
-    
-    let bajadosCount = 0;
-    
-    for (const ret of retirosSupa) {
-      console.log(`📥 Bajando Check-in de Retiro #${ret.id} para cliente ID: ${ret.cliente_id}...`);
-      
-      try {
-        await localClient.query('BEGIN');
-        
-        // 1. Actualizar cabecera en ordenes_tratamiento
-        const sqlUpdateCabecera = `
-          UPDATE public.ordenes_tratamiento
-          SET 
-            estado_logistico = 'PENDIENTE_VALIDACION',
-            responsable_nombre = $1,
-            responsable_apellido = $2,
-            responsable_celular = $3
-          WHERE id = $4
-        `;
-        await localClient.query(sqlUpdateCabecera, [
-          ret.responsable_nombre,
-          ret.responsable_apellido,
-          ret.responsable_celular,
-          ret.id
-        ]);
-        
-        // 2. Actualizar detalles en ordenes_tratamiento_detalles
-        // Primero limpiar anterior si existiera
-        await localClient.query('DELETE FROM public.ordenes_tratamiento_detalles WHERE id_orden_tratamiento = $1', [ret.id]);
-        
-        const sqlInsertDetalle = `
-          INSERT INTO public.ordenes_tratamiento_detalles (
-            id_orden_tratamiento, articulo_numero, descripcion_externa, kilos, bultos, motivo
-          ) VALUES ($1, $2, $3, $4, $5, $6)
-        `;
-        await localClient.query(sqlInsertDetalle, [
-          ret.id,
-          ret.articulo_numero || null,
-          ret.descripcion_externa || null,
-          ret.kilos ? parseFloat(ret.kilos) : null,
-          ret.bultos ? parseInt(ret.bultos) : null,
-          ret.motivo || null
-        ]);
-        
-        await localClient.query('COMMIT');
-        
-        // 3. Confirmar a Supabase que ya se bajó localmente
-        const urlPatch = `${SUPABASE_URL}/rest/v1/clientes_b2b_retiros?id=eq.${ret.id}`;
-        const optionsPatch = {
-          method: 'PATCH',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            sincronizado_local: true,
-            fecha_sincronizacion_local: new Date().toISOString()
-          })
-        };
-        await fetchWithRetry(urlPatch, optionsPatch);
-        
-        console.log(`✅ Retiro #${ret.id} sincronizado localmente con éxito.`);
-        bajadosCount++;
-        
-      } catch (txErr) {
-        await localClient.query('ROLLBACK');
-        console.error(`❌ Error transaccional en base local para retiro #${ret.id}:`, txErr.message);
-      }
-    }
-    
-    console.log(`✅ Sincronización Inversa completada. Se bajaron ${bajadosCount} check-ins.`);
-
   } catch (err) {
     console.error('💥 Excepción general en el Sincronizador de Retiros B2B:', err.message);
   } finally {
     if (localClient) localClient.release();
-    // Cerrar el pool para que el fork child process termine y retorne código 0
     await localPool.end();
   }
 }
 
-sincronizarRetiros();
+// Ejecutar si se llama directamente por CLI o fork child process
+if (require.main === module) {
+  sincronizarRetiros();
+}
+
+module.exports = { sincronizarRetiros };

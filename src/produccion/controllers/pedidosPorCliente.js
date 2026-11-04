@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
 
 /**
  * Helper para detectar el modo de JOIN entre presupuestos y presupuestos_detalles
@@ -34,6 +35,7 @@ async function detectarModoJoin(pool) {
  */
 const obtenerPedidosPorCliente = async (req, res) => {
     try {
+        await reconciliarFaltantesConStock(pool);
         console.log('🔍 [PROD_PED] Iniciando consulta de pedidos por cliente...');
         
         const { 
@@ -106,7 +108,21 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     p.fecha,
                     COALESCE(p.secuencia, 'Imprimir') as secuencia,
                     p.estado,
-                    CAST(p.id_cliente AS integer) as cliente_id_int
+                    CAST(p.id_cliente AS integer) as cliente_id_int,
+                    EXISTS (
+                        SELECT 1 FROM public.factura_facturas f 
+                        WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    ) as esta_facturado,
+                    COALESCE((
+                        SELECT CASE 
+                            WHEN f.estado = 'APROBADA' THEN 'ARCA'
+                            WHEN f.estado = 'APROBADA_LOCAL' THEN 'LOCAL'
+                            ELSE 'LOCAL'
+                        END
+                        FROM public.factura_facturas f 
+                        WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                        LIMIT 1
+                    ), 'LOCAL') as origen_factura_canal
                 FROM public.presupuestos p
                 LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
                 WHERE p.activo = true 
@@ -121,8 +137,55 @@ const obtenerPedidosPorCliente = async (req, res) => {
                   AND ($4::text IS NULL OR p.id IN (SELECT unnest(string_to_array($4, ','))::integer))
                   AND (CASE WHEN $4::text IS NULL THEN pcd.id_presupuesto_local IS NULL ELSE true END)
                   AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-                  AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
+                  AND COALESCE(p.archivado, false) = false
+                  AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Asignado_Ruta', 'Entregado', 'Finalizado', 'Cancelado')
+                  AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO', 'OMITIDO')
                   AND (COALESCE(p.secuencia, 'Imprimir') != 'Retira_Deposito' OR COALESCE(p.estado_logistico, '') = 'PENDIENTE')
+            ),
+            todos_presupuestos_activos AS (
+                SELECT 
+                    p.id,
+                    p.id_presupuesto_ext,
+                    COALESCE(p.secuencia, 'Imprimir') as secuencia
+                FROM public.presupuestos p
+                LEFT JOIN presupuestos_con_derivados pcd ON pcd.id_presupuesto_local = p.id
+                WHERE p.activo = true 
+                  AND (
+                      REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
+                      OR (REPLACE(LOWER(TRIM($1)), ' ', '') = 'presupuesto/orden' AND p.estado IN ('Facturado', 'Administrativa NC', 'Enviado a Facturación'))
+                      OR p.estado = 'Retira por Deposito'
+                      OR (p.secuencia = 'Retira_Deposito' AND COALESCE(p.estado_logistico, '') = 'PENDIENTE')
+                  )
+                  AND p.fecha::date <= $2::date
+                  AND pcd.id_presupuesto_local IS NULL
+                  AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
+                  AND COALESCE(p.archivado, false) = false
+                  AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Asignado_Ruta', 'Entregado', 'Finalizado', 'Cancelado')
+                  AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO', 'OMITIDO')
+                  AND (COALESCE(p.secuencia, 'Imprimir') != 'Retira_Deposito' OR COALESCE(p.estado_logistico, '') = 'PENDIENTE')
+            ),
+            pedidos_listos_reservados AS (
+                SELECT 
+                    pd.articulo as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0)) as cantidad_reservada
+                FROM todos_presupuestos_activos tpa
+                ${joinClause.replace(/\bpc\b/g, 'tpa')}
+                WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
+                  AND COALESCE(pd.es_saldo_ingrediente, false) = false
+                  AND tpa.secuencia IN ('Pedido_Listo', 'Standby', 'Retira_Deposito')
+                GROUP BY pd.articulo
+            ),
+            demanda_global_activa AS (
+                SELECT 
+                    pd.articulo as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0)) as demanda_total_activa,
+                    COUNT(DISTINCT tpa.id) as total_pedidos_demandantes
+                FROM todos_presupuestos_activos tpa
+                ${joinClause.replace(/\bpc\b/g, 'tpa')}
+                WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
+                  AND COALESCE(pd.es_saldo_ingrediente, false) = false
+                  AND tpa.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
+                GROUP BY pd.articulo
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -132,12 +195,16 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.fecha as presupuesto_fecha,
                     pc.secuencia,
                     pc.estado as presupuesto_estado,
+                    pc.esta_facturado,
+                    pc.origen_factura_canal,
                     pd.articulo as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as cantidad
+                    SUM(COALESCE(pd.cantidad, 0)) as cantidad,
+                    BOOL_OR(COALESCE(pd.es_saldo_ingrediente, false)) as es_saldo_ingrediente,
+                    SUM(COALESCE(pd.kilos_saldo, 0)) as kilos_saldo
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pc.estado, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pc.estado, pc.esta_facturado, pc.origen_factura_canal, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -156,27 +223,69 @@ const obtenerPedidosPorCliente = async (req, res) => {
                         'presupuesto_fecha', app.presupuesto_fecha,
                         'secuencia', app.secuencia,
                         'presupuesto_estado', app.presupuesto_estado,
+                        'esta_facturado', app.esta_facturado,
+                        'origen_factura_canal', app.origen_factura_canal,
                         'articulo_numero', app.articulo_numero,
                         'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
                         'descripcion', COALESCE(
                             NULLIF(TRIM(ba.descripcion_generada), ''),
                             NULLIF(TRIM(ba.descripcion), ''),
                             NULLIF(TRIM(a.nombre), ''),
+                            NULLIF(TRIM(ing.nombre), ''),
                             app.articulo_numero
                         ),
-                        'pedido_total', ROUND(app.cantidad::numeric, 2),
+                        'pedido_total', ROUND(app.cantidad::numeric, 3),
+                        'es_saldo_ingrediente', app.es_saldo_ingrediente,
+                        'kilos_saldo', ROUND(COALESCE(app.kilos_saldo, 0)::numeric, 3),
                         'stock_disponible', ROUND(GREATEST(0, (CASE 
                             WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                            THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
-                            ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                            THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                            ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
                         END))::numeric, 2),
-                        'faltante', ROUND(GREATEST(0, app.cantidad - 
-                            GREATEST(0, (CASE 
-                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                                THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
-                                ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
-                            END))
-                        )::numeric, 2),
+                        'faltante', CASE 
+                            WHEN ing.id IS NOT NULL OR app.es_saldo_ingrediente = true THEN 0
+                            ELSE ROUND(GREATEST(0, app.cantidad - 
+                                GREATEST(0, (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                                    ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
+                                END))
+                            )::numeric, 2)
+                        END,
+                        'demanda_global', ROUND(COALESCE(dga.demanda_total_activa, app.cantidad)::numeric, 2),
+                        'pedidos_demandantes', COALESCE(dga.total_pedidos_demandantes, 1),
+                        'en_disputa', CASE 
+                            WHEN ing.id IS NOT NULL OR app.es_saldo_ingrediente = true THEN false
+                            WHEN app.cantidad <= GREATEST(0, (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                                    ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
+                                END))
+                                AND COALESCE(dga.demanda_total_activa, app.cantidad) > GREATEST(0, (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                                    ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
+                                END))
+                            THEN true
+                            ELSE false
+                        END,
+                        'estado_stock', CASE 
+                            WHEN ing.id IS NOT NULL THEN 'KIT'
+                            WHEN app.es_saldo_ingrediente = true THEN 'COMPLETO'
+                            WHEN (app.cantidad - GREATEST(0, (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                                    ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
+                                END))) > 0 THEN 'FALTANTE'
+                            WHEN COALESCE(dga.demanda_total_activa, app.cantidad) > GREATEST(0, (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(GREATEST(0, COALESCE(hijo.stock_consolidado, 0) - COALESCE(plr_hijo.cantidad_reservada, 0)), 4) / src.pack_unidades)
+                                    ELSE ROUND(GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(plr.cantidad_reservada, 0)), 4)
+                                END))
+                            THEN 'EN_DISPUTA'
+                            ELSE 'COMPLETO'
+                        END,
+                        'es_ingrediente', CASE WHEN ing.id IS NOT NULL THEN true ELSE false END,
                         'es_pack', src.es_pack,
                         'pack_hijo_codigo', src.pack_hijo_codigo,
                         'pack_unidades', src.pack_unidades,
@@ -188,10 +297,14 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 ) as articulos
             FROM articulos_por_presupuesto app
             LEFT JOIN public.clientes c ON c.cliente_id = app.cliente_id_int
+            LEFT JOIN demanda_global_activa dga ON dga.articulo_numero = app.articulo_numero
+            LEFT JOIN pedidos_listos_reservados plr ON plr.articulo_numero = app.articulo_numero
             LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = app.articulo_numero OR src.articulo_numero = app.articulo_numero)
-            LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+            LEFT JOIN pedidos_listos_reservados plr_hijo ON plr_hijo.articulo_numero = src.pack_hijo_codigo
+            LEFT JOIN public.stock_real_consolidado hijo ON (hijo.codigo_barras = src.pack_hijo_codigo OR hijo.articulo_numero = src.pack_hijo_codigo)
             LEFT JOIN public.articulos a ON (a.codigo_barras = app.articulo_numero OR a.numero = app.articulo_numero)
             LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = app.articulo_numero OR ba.articulo_id = a.numero)
+            LEFT JOIN public.ingredientes ing ON (ing.id::text = app.articulo_numero OR ing.codigo::text = app.articulo_numero)
             LEFT JOIN public.presupuestos_snapshots ps ON ps.id_presupuesto = app.presupuesto_id_local AND ps.activo = true
             GROUP BY app.cliente_id_int, c.nombre, c.apellido
             ORDER BY cliente_nombre;
@@ -539,16 +652,23 @@ const obtenerPedidosArticulos = async (req, res) => {
                   AND (
                       REPLACE(LOWER(TRIM(p.estado)), ' ', '') = REPLACE(LOWER($1), ' ', '')
                       OR (REPLACE(LOWER(TRIM($1)), ' ', '') = 'presupuesto/orden' AND p.estado IN ('Facturado', 'Administrativa NC', 'Enviado a Facturación'))
+                      OR p.estado = 'Retira por Deposito'
+                      OR (p.secuencia = 'Retira_Deposito' AND COALESCE(p.estado_logistico, '') = 'PENDIENTE')
                   )
                   AND p.fecha::date <= $2::date
+                  AND COALESCE(p.archivado, false) = false
                   AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-                  AND COALESCE(p.secuencia, 'Imprimir') != 'Asignado_Ruta'
+                  AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Asignado_Ruta', 'Entregado', 'Finalizado', 'Cancelado')
+                  AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO', 'OMITIDO')
+                  AND (COALESCE(p.secuencia, 'Imprimir') != 'Retira_Deposito' OR COALESCE(p.estado_logistico, '') = 'PENDIENTE')
             ),
             articulos_consolidados AS (
                 SELECT 
-                    pc.id as presupuesto_id_local,
                     pd.articulo as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as pedido_total
+                    SUM(COALESCE(pd.cantidad, 0)) as pedido_total,
+                    COUNT(DISTINCT pc.id) as total_pedidos,
+                    (ARRAY_AGG(pc.id))[1] as presupuesto_id_local,
+                    (ARRAY_AGG(pc.id_presupuesto_ext))[1] as id_presupuesto_ext
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 LEFT JOIN articulos_derivados_compra adc 
@@ -556,9 +676,10 @@ const obtenerPedidosArticulos = async (req, res) => {
                     AND adc.id_presupuesto_local = pc.id
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
+                  AND COALESCE(pd.es_saldo_ingrediente, false) = false
                   AND pc.secuencia NOT IN ('Pedido_Listo', 'Retira_Deposito')
                   AND adc.id_presupuesto_local IS NULL
-                GROUP BY pc.id, pd.articulo
+                GROUP BY pd.articulo
             ),
             pedidos_listos AS (
                 SELECT 
@@ -568,19 +689,24 @@ const obtenerPedidosArticulos = async (req, res) => {
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL 
                   AND TRIM(pd.articulo) != ''
-                  AND pc.secuencia = 'Pedido_Listo'
+                  AND COALESCE(pd.es_saldo_ingrediente, false) = false
+                  AND pc.secuencia IN ('Pedido_Listo', 'Standby', 'Retira_Deposito')
                 GROUP BY pd.articulo
             ),
             valores_redondeados AS (
                 SELECT 
                     ac.articulo_numero as codigo_barras_original,
                     ac.pedido_total,
+                    ac.total_pedidos,
                     COALESCE(
+                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                        NULLIF(TRIM(ba.descripcion), ''),
                         NULLIF(TRIM(src.descripcion), ''),
                         NULLIF(TRIM(a.nombre), ''),
+                        NULLIF(TRIM(ing.nombre), ''),
                         ac.articulo_numero
                     ) as descripcion,
-                    COALESCE(a.numero, ac.articulo_numero) as articulo_numero_alfanumerico,
+                    COALESCE(a.numero, ba.articulo_id, ac.articulo_numero) as articulo_numero_alfanumerico,
                     ROUND(ac.pedido_total::numeric, 2) as pedido_total_redondeado,
                     ROUND(GREATEST(0, 
                         (CASE 
@@ -589,27 +715,32 @@ const obtenerPedidosArticulos = async (req, res) => {
                             ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
                         END) - COALESCE(pl.cantidad_en_pedidos_listos, 0)
                     )::numeric, 2) as stock_disponible_redondeado,
-                    ROUND(GREATEST(0, ac.pedido_total - 
-                        GREATEST(0,
-                            (CASE 
-                                WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
-                                THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
-                                ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
-                            END) - COALESCE(pl.cantidad_en_pedidos_listos, 0)
-                        )
-                    )::numeric, 2) as faltante_redondeado,
+                    CASE 
+                        WHEN ing.id IS NOT NULL THEN 0
+                        ELSE ROUND(GREATEST(0, ac.pedido_total - 
+                            GREATEST(0,
+                                (CASE 
+                                    WHEN src.es_pack = true AND src.pack_hijo_codigo IS NOT NULL AND src.pack_unidades > 0 
+                                    THEN FLOOR(ROUND(COALESCE(hijo.stock_consolidado, 0), 4) / src.pack_unidades)
+                                    ELSE ROUND(COALESCE(src.stock_consolidado, 0), 4)
+                                END) - COALESCE(pl.cantidad_en_pedidos_listos, 0)
+                            )
+                        )::numeric, 2)
+                    END as faltante_redondeado,
+                    CASE WHEN ing.id IS NOT NULL THEN true ELSE false END as es_ingrediente,
                     src.es_pack,
                     src.pack_hijo_codigo,
                     src.pack_unidades,
                     hijo.stock_consolidado as stock_hijo,
                     ac.presupuesto_id_local as id_presupuesto_local,
-                    pc.id_presupuesto_ext
+                    ac.id_presupuesto_ext
                 FROM articulos_consolidados ac
-                LEFT JOIN presupuestos_confirmados pc ON pc.id = ac.presupuesto_id_local
                 LEFT JOIN pedidos_listos pl ON pl.articulo_numero = ac.articulo_numero
+                LEFT JOIN public.ingredientes ing ON (ing.id::text = ac.articulo_numero OR ing.codigo::text = ac.articulo_numero)
                 LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = ac.articulo_numero OR src.articulo_numero = ac.articulo_numero)
-                LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                LEFT JOIN public.stock_real_consolidado hijo ON (hijo.codigo_barras = src.pack_hijo_codigo OR hijo.articulo_numero = src.pack_hijo_codigo)
                 LEFT JOIN public.articulos a ON (a.codigo_barras = ac.articulo_numero OR a.numero = ac.articulo_numero)
+                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = ac.articulo_numero OR ba.articulo_id = a.numero)
             )
             SELECT 
                 vr.articulo_numero_alfanumerico as articulo_numero,
@@ -623,6 +754,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                     WHEN vr.stock_disponible_redondeado = 0 THEN 'FALTANTE'
                     ELSE 'PARCIAL'
                 END as estado,
+                vr.total_pedidos,
                 vr.es_pack,
                 vr.pack_hijo_codigo,
                 vr.pack_unidades,
@@ -642,15 +774,15 @@ const obtenerPedidosArticulos = async (req, res) => {
                     END, 0
                 ))::numeric, 2) as articulo_sugerido_stock
             FROM valores_redondeados vr
-            LEFT JOIN public.articulos a_hijo ON a_hijo.codigo_barras = vr.pack_hijo_codigo
+            LEFT JOIN public.articulos a_hijo ON (a_hijo.codigo_barras = vr.pack_hijo_codigo OR a_hijo.numero = vr.pack_hijo_codigo)
             LEFT JOIN public.recetas r_hijo ON r_hijo.articulo_numero = a_hijo.numero
             LEFT JOIN public.recetas r_padre ON r_padre.articulo_numero = vr.articulo_numero_alfanumerico
             LEFT JOIN public.articulos asug_hijo ON asug_hijo.numero = r_hijo.articulo_sugerido_numero
             LEFT JOIN public.articulos asug_padre ON asug_padre.numero = r_padre.articulo_sugerido_numero
-            LEFT JOIN public.stock_real_consolidado src_sug_hijo ON src_sug_hijo.codigo_barras = asug_hijo.codigo_barras
-            LEFT JOIN public.stock_real_consolidado src_sug_padre ON src_sug_padre.codigo_barras = asug_padre.codigo_barras
-            LEFT JOIN public.stock_real_consolidado hijo_sug_hijo ON hijo_sug_hijo.codigo_barras = src_sug_hijo.pack_hijo_codigo
-            LEFT JOIN public.stock_real_consolidado hijo_sug_padre ON hijo_sug_padre.codigo_barras = src_sug_padre.pack_hijo_codigo
+            LEFT JOIN public.stock_real_consolidado src_sug_hijo ON (src_sug_hijo.codigo_barras = asug_hijo.codigo_barras OR src_sug_hijo.articulo_numero = asug_hijo.numero)
+            LEFT JOIN public.stock_real_consolidado src_sug_padre ON (src_sug_padre.codigo_barras = asug_padre.codigo_barras OR src_sug_padre.articulo_numero = asug_padre.numero)
+            LEFT JOIN public.stock_real_consolidado hijo_sug_hijo ON (hijo_sug_hijo.codigo_barras = src_sug_hijo.pack_hijo_codigo OR hijo_sug_hijo.articulo_numero = src_sug_hijo.pack_hijo_codigo)
+            LEFT JOIN public.stock_real_consolidado hijo_sug_padre ON (hijo_sug_padre.codigo_barras = src_sug_padre.pack_hijo_codigo OR hijo_sug_padre.articulo_numero = src_sug_padre.pack_hijo_codigo)
             WHERE vr.faltante_redondeado > 0
             ORDER BY vr.articulo_numero_alfanumerico;
         `;
@@ -712,7 +844,7 @@ const obtenerPedidosArticulos = async (req, res) => {
                         src.pack_unidades,
                         hijo.stock_consolidado as stock_hijo
                     FROM public.stock_real_consolidado src
-                    LEFT JOIN public.stock_real_consolidado hijo ON hijo.codigo_barras = src.pack_hijo_codigo
+                    LEFT JOIN public.stock_real_consolidado hijo ON (hijo.codigo_barras = src.pack_hijo_codigo OR hijo.articulo_numero = src.pack_hijo_codigo)
                     LEFT JOIN public.articulos a ON a.codigo_barras = src.codigo_barras
                     WHERE src.codigo_barras = $1 OR src.articulo_numero = $1
                     LIMIT 1
@@ -889,6 +1021,7 @@ const actualizarPackMapping = async (req, res) => {
                     pack_unidades = NULL,
                     codigo_barras = COALESCE(codigo_barras, $1)
                 WHERE codigo_barras = $1 
+                   OR articulo_numero = $1
                    OR articulo_numero = (
                        SELECT numero FROM public.articulos 
                        WHERE codigo_barras = $1 
@@ -897,6 +1030,19 @@ const actualizarPackMapping = async (req, res) => {
             `;
             
             const result = await pool.query(query, [padreArticulo.trim()]);
+            
+            try {
+                await pool.query(`
+                    UPDATE public.bunker_articulos
+                    SET es_pack = FALSE,
+                        pack_hijo_codigo = NULL,
+                        pack_unidades = 1
+                    WHERE articulo_id = $1 
+                       OR articulo_id = (SELECT numero FROM public.articulos WHERE codigo_barras = $1 LIMIT 1)
+                `, [padreArticulo.trim()]);
+            } catch (bunkerSyncErr) {
+                console.warn('⚠️ [PACK-MAP] Advertencia al quitar en bunker_articulos:', bunkerSyncErr.message);
+            }
             
             console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
@@ -941,11 +1087,11 @@ const actualizarPackMapping = async (req, res) => {
                 });
             }
             
-            // Verificar que existe el hijo en stock_real_consolidado
+            // Verificar que existe el hijo en stock_real_consolidado o articulos o bunker_articulos
             const verificarHijoQuery = `
-                SELECT codigo_barras, es_pack, pack_hijo_codigo
+                SELECT codigo_barras, articulo_numero, es_pack, pack_hijo_codigo
                 FROM public.stock_real_consolidado 
-                WHERE codigo_barras = $1
+                WHERE codigo_barras = $1 OR articulo_numero = $1
             `;
             
             const hijoResult = await pool.query(verificarHijoQuery, [hijoCodigoTrim]);
@@ -962,7 +1108,7 @@ const actualizarPackMapping = async (req, res) => {
             console.log(`✅ [PACK-MAP] Hijo verificado: ${hijoCodigoTrim}`, { es_pack: hijoData.es_pack, pack_hijo_codigo: hijoData.pack_hijo_codigo });
             
             // ✅ VALIDACIÓN 2: Verificar ciclo directo (hijo ya tiene al padre como su hijo)
-            if (hijoData.es_pack && hijoData.pack_hijo_codigo === padreCodigoTrim) {
+            if (hijoData.es_pack && (hijoData.pack_hijo_codigo === padreCodigoTrim || hijoData.pack_hijo_codigo === hijoData.articulo_numero)) {
                 console.log(`❌ [PACK-MAP] Ciclo directo detectado: ${padreCodigoTrim} → ${hijoCodigoTrim} → ${padreCodigoTrim}`);
                 return res.status(400).json({
                     success: false,
@@ -978,6 +1124,7 @@ const actualizarPackMapping = async (req, res) => {
                     pack_unidades = $3,
                     codigo_barras = COALESCE(codigo_barras, $1)
                 WHERE codigo_barras = $1 
+                   OR articulo_numero = $1
                    OR articulo_numero = (
                        SELECT numero FROM public.articulos 
                        WHERE codigo_barras = $1 
@@ -986,6 +1133,19 @@ const actualizarPackMapping = async (req, res) => {
             `;
             
             const result = await pool.query(updateQuery, [padreCodigoTrim, hijoCodigoTrim, unidadesInt]);
+            
+            try {
+                await pool.query(`
+                    UPDATE public.bunker_articulos
+                    SET es_pack = TRUE,
+                        pack_hijo_codigo = $2,
+                        pack_unidades = $3
+                    WHERE articulo_id = $1 
+                       OR articulo_id = (SELECT numero FROM public.articulos WHERE codigo_barras = $1 LIMIT 1)
+                `, [padreCodigoTrim, hijoCodigoTrim, unidadesInt]);
+            } catch (bunkerSyncErr) {
+                console.warn('⚠️ [PACK-MAP] Advertencia al sincronizar en bunker_articulos:', bunkerSyncErr.message);
+            }
             
             console.log(`🧩 [PACK-MAP] padre=${padreCodigoTrim} hijo=${hijoCodigoTrim} unidades=${unidadesInt} (rowCount=${result.rowCount})`);
             

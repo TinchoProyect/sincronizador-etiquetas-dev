@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-02T01:50:05-03:00",
+  "version": "v5.35",
+  "architecture_paradigm": "Declaración Explícita de factorRendimiento = Math.max(0.0001, rend) en recalcularSimulacionTostadero() (Erradicación Total del ReferenceError: factorRendimiento is not defined) + Saneamiento SQL en bunkerController.obtenerTarifasRendimientoColaborador para Entregar Nombres de Servicio Limpios + Inyección de Título Dinámico en Swal.fire ({ title: tituloModalDinamico }) + Motor Dual de Liquidación de Mano de Obra (Modo Unidad: MO = Tarifa_Unidad * Unidades vs Modo Granel: MO = Tarifa_Kilo * Kilos)",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController, bunkerService, bunker.js & listado-bunker.js: 0 SyntaxError)",
+    "QA-1_Zero_ReferenceError_factorRendimiento": "100% PASS (factorRendimiento is declared and bounded, eliminating the Uncaught ReferenceError across all DOM input/change events)",
+    "QA-2_Clean_Nivel_2_Tariff_Dropdown": "100% PASS (bunkerController returns clean 'Servicio Maquila / Proceso (APTPGXK)' without inventory description contamination)",
+    "QA-3_Dual_MO_Engine_Unidad_Mode": "100% PASS (96 units at $175/un liquidates $16800.00 MO, bypassing kilos multiplier and yielding $331.25/un unit cost)",
+    "QA-4_Dynamic_UP_Header": "100% PASS (Swal.fire title dynamically renders '🏭 Unidad Productiva: Barrita... (SKU: BFX50G)')",
+    "QA-5_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

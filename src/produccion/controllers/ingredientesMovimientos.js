@@ -61,6 +61,49 @@ async function registrarMovimientoIngrediente(movimiento, db) {
 
     console.log('✅ Movimiento registrado correctamente:', result.rows[0]);
 
+    // 🔗 AUTO-APRENDIZAJE ESTRUCTURAL: Si el ingrediente no tiene artículo vinculado, aprenderlo del movimiento
+    try {
+      let skuCandidato = articuloNumero || movimiento.articulo_numero || null;
+      if (!skuCandidato && observaciones) {
+        const uuidMatch = observaciones.match(/UUID:\s*([a-f0-9\-]+)/i);
+        if (uuidMatch && uuidMatch[1]) {
+          const svmRes = await db.query(
+            `SELECT articulo_numero FROM public.stock_ventas_movimientos 
+             WHERE observaciones ILIKE '%' || $1 || '%' AND articulo_numero IS NOT NULL 
+             LIMIT 1`,
+            [uuidMatch[1]]
+          );
+          if (svmRes.rows.length > 0) {
+            skuCandidato = svmRes.rows[0].articulo_numero;
+          }
+        }
+      }
+
+      if (skuCandidato && ingrediente_id) {
+        const checkIng = await db.query(
+          'SELECT articulo_vinculado_numero FROM public.ingredientes WHERE id = $1',
+          [ingrediente_id]
+        );
+        if (checkIng.rows.length > 0 && !checkIng.rows[0].articulo_vinculado_numero) {
+          const skuNorm = skuCandidato.trim().toUpperCase();
+          const baCheck = await db.query(
+            'SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(articulo_id) = $1',
+            [skuNorm]
+          );
+          if (baCheck.rows.length > 0) {
+            const finalSku = baCheck.rows[0].articulo_id;
+            await db.query(
+              'UPDATE public.ingredientes SET articulo_vinculado_numero = $1 WHERE id = $2 AND articulo_vinculado_numero IS NULL',
+              [finalSku, ingrediente_id]
+            );
+            console.log(`🔗 [AUTO-APRENDIZAJE TALLER] Ingrediente ${ingrediente_id} vinculado automáticamente a ${finalSku}`);
+          }
+        }
+      }
+    } catch (errAutoLink) {
+      console.warn('⚠️ [AUTO-APRENDIZAJE] Error no bloqueante al intentar auto-vincular ingrediente:', errAutoLink.message);
+    }
+
     return result.rows[0];
 
   } catch (error) {

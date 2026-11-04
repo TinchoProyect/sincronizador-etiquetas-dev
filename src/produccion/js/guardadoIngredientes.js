@@ -350,20 +350,31 @@ async function imprimirEtiqueta(ingredienteId, nombre) {
     console.log(`- Código: ${codigoBarras}`);
     console.log(`- Sector: ${sectorLetter} (Original Nombre: ${ingredienteData?.sector_nombre}, Desc: ${ingredienteData?.sector_descripcion})`);
 
-    // Llamar al endpoint de impresión con todos los datos requeridos
-    const response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+    const payload = {
+      nombre: nombreFinal,
+      codigo: codigoBarras,
+      sector: sectorLetter,   // ✅ Enviar letra del sector (o vacío si no se pudo extraer una válida)
+      cantidad: 1             // ✅ Enviar cantidad = 1 (bulto)
+    };
+
+    // Llamar primero al endpoint del servidor de producción (mismo origen, puerto 3002) con fallback a puerto 3000
+    let response = await fetch('/api/produccion/ingredientes/imprimir-etiqueta', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nombre: nombreFinal,
-        codigo: codigoBarras,
-        sector: sectorLetter,   // ✅ Enviar letra del sector (o vacío si no se pudo extraer una válida)
-        cantidad: 1             // ✅ Enviar cantidad = 1 (bulto)
-      })
-    });
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      response = await fetch('http://localhost:3000/api/etiquetas/ingrediente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
 
     if (!response.ok) {
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || errData.details || `Error ${response.status}: ${response.statusText}`);
     }
 
     console.log(`✅ [GUARDADO] Etiqueta enviada a imprimir: ${nombreFinal} con código ${codigoBarras}`);

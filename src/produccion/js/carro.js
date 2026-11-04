@@ -1,22 +1,434 @@
 
+// ⏱️ Renderizador de Tarjeta de Métricas de Campo para Carro Finalizado/Archivado
+function renderizarCardMetricasCarro(dataMed, articulos) {
+    const durE1 = Number(dataMed.etapa1_duracion_ms || 0);
+    const durE2 = Number(dataMed.etapa2_duracion_ms || 0);
+    const durE3 = Number(dataMed.etapa3_duracion_ms || 0);
+    const durPausa = Number(dataMed.tiempo_pausa_ms || 0);
+    const durBruto = durE1 + durE2 + durE3;
+    const durNetoTotal = Math.max(0, durBruto - durPausa);
+
+    if (durNetoTotal <= 0 && (!dataMed.metricas || dataMed.metricas.length === 0)) {
+        return '';
+    }
+
+    // Calcular unidades totales
+    let totalUnidades = 0;
+    if (dataMed.metricas && dataMed.metricas.length > 0) {
+        totalUnidades = dataMed.metricas.reduce((acc, m) => acc + (parseFloat(m.unidades_producidas) || 1), 0);
+    } else if (articulos && articulos.length > 0) {
+        totalUnidades = articulos.reduce((acc, a) => acc + (parseFloat(a.cantidad) || 1), 0);
+    }
+    if (totalUnidades <= 0) totalUnidades = 1;
+
+    const totalMinutosNetos = durNetoTotal / 60000;
+    const minUnitTotal = totalMinutosNetos / totalUnidades;
+
+    const factorNeto = durBruto > 0 ? (durNetoTotal / durBruto) : 1;
+    const minE1Neto = (durE1 * factorNeto) / 60000;
+    const minE2Neto = (durE2 * factorNeto) / 60000;
+    const minE3Neto = (durE3 * factorNeto) / 60000;
+
+    const minE1Unit = minE1Neto / totalUnidades;
+    const minE2Unit = minE2Neto / totalUnidades;
+    const minE3Unit = minE3Neto / totalUnidades;
+
+    const fmtMs = (ms) => {
+        if (!ms || ms <= 0) return '0s';
+        const totalSeg = Math.round(ms / 1000);
+        const m = Math.floor(totalSeg / 60);
+        const s = totalSeg % 60;
+        if (m === 0) return `${s}s`;
+        if (s === 0) return `${m}m`;
+        return `${m}m ${s}s`;
+    };
+
+    let filasArticulosHtml = '';
+    const items = (dataMed.metricas && dataMed.metricas.length > 0) 
+        ? dataMed.metricas 
+        : (articulos || []).map(a => ({
+            articulo_numero: a.numero,
+            descripcion: a.descripcion,
+            unidades_producidas: a.cantidad,
+            minutos_unitarios_total: minUnitTotal,
+            minutos_etapa1_unitario: minE1Unit,
+            minutos_etapa2_unitario: minE2Unit,
+            minutos_etapa3_unitario: minE3Unit
+        }));
+
+    items.forEach(item => {
+        const cant = parseFloat(item.unidades_producidas || 1);
+        const uTotal = parseFloat(item.minutos_unitarios_total || minUnitTotal).toFixed(2);
+        const e1 = parseFloat(item.minutos_etapa1_unitario || minE1Unit).toFixed(2);
+        const e2 = parseFloat(item.minutos_etapa2_unitario || minE2Unit).toFixed(2);
+        const e3 = parseFloat(item.minutos_etapa3_unitario || minE3Unit).toFixed(2);
+
+        filasArticulosHtml += `
+            <tr>
+                <td style="font-weight: 600; color: #1e293b;">
+                    <span style="font-family: monospace; color: #0284c7; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; margin-right: 6px;">${item.articulo_numero}</span>
+                    ${item.descripcion}
+                </td>
+                <td style="text-align: center; font-weight: bold; color: #334155;">${cant} u</td>
+                <td style="text-align: center; color: #15803d; font-weight: 800; font-size: 13.5px; background: #f0fdf4;">${uTotal} min/u</td>
+                <td style="text-align: center; color: #64748b; font-size: 11.5px;">${e1} m</td>
+                <td style="text-align: center; color: #64748b; font-size: 11.5px;">${e2} m</td>
+                <td style="text-align: center; color: #64748b; font-size: 11.5px;">${e3} m</td>
+            </tr>
+        `;
+    });
+
+    return `
+        <div class="card-resumen-metricas-finalizado">
+            <div class="resumen-metricas-header">
+                <span class="resumen-metricas-titulo">
+                    ⏱️ Métricas de Tiempo de Producción (Modo Medición)
+                </span>
+                <span class="metricas-badge-guardado">✅ Prorrateo Registrado</span>
+            </div>
+
+            <div class="resumen-metricas-grid">
+                <div class="stat-box-metrica total">
+                    <span class="stat-label-metrica">Tiempo Neto Total</span>
+                    <span class="stat-value-metrica text-success">${fmtMs(durNetoTotal)}</span>
+                    <span class="stat-sub-metrica">${totalMinutosNetos.toFixed(1)} min netos</span>
+                </div>
+                <div class="stat-box-metrica">
+                    <span class="stat-label-metrica">🟡 1. Preparación</span>
+                    <span class="stat-value-metrica">${fmtMs(durE1)}</span>
+                    <span class="stat-sub-metrica">${(durE1 / 60000).toFixed(1)} min</span>
+                </div>
+                <div class="stat-box-metrica">
+                    <span class="stat-label-metrica">🔵 2. Producción</span>
+                    <span class="stat-value-metrica">${fmtMs(durE2)}</span>
+                    <span class="stat-sub-metrica">${(durE2 / 60000).toFixed(1)} min</span>
+                </div>
+                <div class="stat-box-metrica">
+                    <span class="stat-label-metrica">🟣 3. Etiquetado</span>
+                    <span class="stat-value-metrica">${fmtMs(durE3)}</span>
+                    <span class="stat-sub-metrica">${(durE3 / 60000).toFixed(1)} min</span>
+                </div>
+                <div class="stat-box-metrica">
+                    <span class="stat-label-metrica">⏸️ Pausas</span>
+                    <span class="stat-value-metrica">${fmtMs(durPausa)}</span>
+                    <span class="stat-sub-metrica">descontadas</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 12px; margin-bottom: 4px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.3px;">
+                📊 Desglose de Prorrateo Justo por Unidad Producida:
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="tabla-articulos-metricas">
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th style="text-align: center;">Cantidad</th>
+                            <th style="text-align: center; color: #15803d;">Costo Tiempo / Unidad</th>
+                            <th style="text-align: center;">Prep / u</th>
+                            <th style="text-align: center;">Prod / u</th>
+                            <th style="text-align: center;">Etq / u</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filasArticulosHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="resumen-metricas-footer">
+                <span>🟢 <strong>Integración Búnker:</strong> Estos valores empíricos están sincronizados con el <strong>Gestor de Precios</strong> en Logística para calibrar el asistente de mano de obra en tiempo real.</span>
+            </div>
+        </div>
+    `;
+}
+
+
 
 import { mostrarError, estilosTablaCarros, agruparCarrosPorSemanas, agruparCarrosPorSemanasYMeses } from './utils.js';
 import { abrirEdicionMix } from './mix.js';
 import { limpiarIngresosManualesDelCarro, limpiarInformeIngresosManuales } from './ingresoManual.js';
+
+
+// =========================================================================
+// ESTIMACIÓN PREDICTIVA DE TIEMPOS DE PRODUCCIÓN (UI & CÁLCULO EN VIVO)
+// =========================================================================
+
+export function actualizarTopbarEstimacion(estimacion) {
+    const container = document.getElementById('topbar-estimacion-tiempo');
+    const valEl = document.getElementById('topbar-tiempo-val');
+    const badgeEl = document.getElementById('topbar-tiempo-badge');
+
+    if (!container || !valEl || !badgeEl) return;
+
+    if (!estimacion || !estimacion.articulos || estimacion.articulos.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+    valEl.textContent = estimacion.tiempo_formateado || '~ 0 min';
+
+    // Clases del badge según origen
+    badgeEl.className = 'badge-origen-tiempo';
+    const origen = estimacion.origen_general || 'sin_datos';
+
+    if (origen === 'planta') {
+        badgeEl.classList.add('origen-planta');
+        badgeEl.innerHTML = '🟢 Planta';
+        badgeEl.title = 'Basado 100% en evidencia empírica real de mediciones en planta';
+    } else if (origen === 'mixto' || origen === 'planta_parcial') {
+        badgeEl.classList.add('origen-mixto');
+        badgeEl.innerHTML = '🔵 Planta + Teórico';
+        badgeEl.title = `Combinación de mediciones reales (${estimacion.articulos_con_planta || 0}) y teóricas (${estimacion.articulos_con_arbitraria || 0})`;
+    } else if (origen === 'arbitraria') {
+        badgeEl.classList.add('origen-arbitraria');
+        badgeEl.innerHTML = '🟡 Teórico';
+        badgeEl.title = 'Basado en tiempos teóricos configurados en el asistente de Búnker';
+    } else {
+        badgeEl.classList.add('origen-sin-datos');
+        badgeEl.innerHTML = '⚪ Sin datos';
+        badgeEl.title = 'No hay registros de tiempo en planta ni estimaciones en Búnker para estos artículos';
+    }
+}
+window.actualizarTopbarEstimacion = actualizarTopbarEstimacion;
+
+export function recalcularEstimacionesEnCaliente() {
+    const containers = document.querySelectorAll('.articulo-container');
+    let tiempoTotalMinutos = 0;
+    let conPlanta = 0;
+    let conArbitraria = 0;
+    let totalArticulos = 0;
+
+    containers.forEach(cont => {
+        const cod = cont.dataset.numero;
+        if (!cod) return;
+        totalArticulos++;
+
+        const inputCant = cont.querySelector('.input-cantidad-articulo');
+        const badgeCant = cont.querySelector('.cantidad-badge-readonly');
+        let cant = 1;
+        if (inputCant) {
+            cant = parseFloat(inputCant.value) || 0;
+        } else if (badgeCant) {
+            cant = parseFloat(badgeCant.textContent) || 1;
+        }
+
+        const est = window._estimacionArticulosMap ? window._estimacionArticulosMap[cod] : null;
+        if (!est || !est.minutos_unitarios || cant <= 0) {
+            return;
+        }
+
+        const subtotal = Number((est.minutos_unitarios * cant).toFixed(2));
+        tiempoTotalMinutos += subtotal;
+
+        if (est.origen === 'planta') conPlanta++;
+        else if (est.origen === 'arbitraria') conArbitraria++;
+
+        // Actualizar rengloncito del artículo
+        const renglon = cont.querySelector(`#renglon-tiempo-${cod}`);
+        if (renglon) {
+            const calcCant = renglon.querySelector('.calc-cant');
+            if (calcCant) calcCant.textContent = cant;
+
+            const calcSubtotal = renglon.querySelector('.calc-subtotal');
+            if (calcSubtotal) {
+                const subStr = subtotal < 1 ? `${Math.round(subtotal * 60)} seg` : `${subtotal.toFixed(1)} min`;
+                calcSubtotal.textContent = `~ ${subStr}`;
+            }
+        }
+    });
+
+    // Formatear tiempo humano
+    let tiempoFormateado = '0 min';
+    if (tiempoTotalMinutos > 0) {
+        if (tiempoTotalMinutos < 1) {
+            tiempoFormateado = `~ ${Math.round(tiempoTotalMinutos * 60)} seg`;
+        } else {
+            const h = Math.floor(tiempoTotalMinutos / 60);
+            const m = Math.floor(tiempoTotalMinutos % 60);
+            const s = Math.round((tiempoTotalMinutos - Math.floor(tiempoTotalMinutos)) * 60);
+            if (h > 0) {
+                tiempoFormateado = m > 0 ? `~ ${h}h ${m}m` : `~ ${h}h`;
+            } else if (s > 0 && m < 5) {
+                tiempoFormateado = `~ ${m}m ${s}s`;
+            } else {
+                tiempoFormateado = `~ ${Math.round(tiempoTotalMinutos)} min`;
+            }
+        }
+    }
+
+    let origenGeneral = 'sin_datos';
+    const conTiempo = conPlanta + conArbitraria;
+    if (conTiempo > 0) {
+        if (conPlanta === totalArticulos) origenGeneral = 'planta';
+        else if (conPlanta > 0 && conArbitraria > 0) origenGeneral = 'mixto';
+        else if (conPlanta > 0) origenGeneral = 'planta_parcial';
+        else origenGeneral = 'arbitraria';
+    }
+
+    actualizarTopbarEstimacion({
+        articulos: new Array(totalArticulos),
+        tiempo_total_minutos: tiempoTotalMinutos,
+        tiempo_formateado: tiempoFormateado,
+        origen_general: origenGeneral,
+        articulos_con_planta: conPlanta,
+        articulos_con_arbitraria: conArbitraria
+    });
+}
+window.recalcularEstimacionesEnCaliente = recalcularEstimacionesEnCaliente;
+
+// Listener en caliente para cambios de cantidad al tipear o usar stepper
+document.addEventListener('input', (e) => {
+    if (e.target.classList.contains('input-cantidad-articulo')) {
+        recalcularEstimacionesEnCaliente();
+    }
+});
+
+// Modal de desglose al hacer click en el widget del topbar
+window.mostrarDetalleEstimacionCarro = function() {
+    const containers = document.querySelectorAll('.articulo-container');
+    if (!containers || containers.length === 0) {
+        Swal.fire({
+            title: 'Carro Vacío',
+            text: 'No hay artículos en el carro para estimar el tiempo de producción.',
+            icon: 'info',
+            confirmButtonColor: '#007bff'
+        });
+        return;
+    }
+
+    let filasHtml = '';
+    let totalMinutos = 0;
+    let cantPlanta = 0;
+    let cantTeorico = 0;
+    let cantSinDatos = 0;
+
+    containers.forEach(cont => {
+        const cod = cont.dataset.numero;
+        const desc = cont.querySelector('.articulo-descripcion')?.textContent || cod;
+        const inputCant = cont.querySelector('.input-cantidad-articulo');
+        const badgeCant = cont.querySelector('.cantidad-badge-readonly');
+        let cant = 1;
+        if (inputCant) cant = parseFloat(inputCant.value) || 0;
+        else if (badgeCant) cant = parseFloat(badgeCant.textContent) || 1;
+
+        const est = window._estimacionArticulosMap ? window._estimacionArticulosMap[cod] : null;
+        let badgeHtml = '<span style="background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">⚪ Sin datos</span>';
+        let unitStr = '-';
+        let subtotalStr = '-';
+
+        if (est && est.origen === 'planta') {
+            cantPlanta++;
+            const sub = Number((est.minutos_unitarios * cant).toFixed(2));
+            totalMinutos += sub;
+            unitStr = `${est.minutos_unitarios.toFixed(2)} m/u`;
+            subtotalStr = sub < 1 ? `${Math.round(sub * 60)} seg` : `${sub.toFixed(1)} min`;
+            badgeHtml = `<span style="background: #ecfdf5; color: #065f46; border: 1px solid #10b981; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;">🟢 Planta (${est.detalle || 'Medición real'})` + '</span>';
+        } else if (est && est.origen === 'arbitraria') {
+            cantTeorico++;
+            const sub = Number((est.minutos_unitarios * cant).toFixed(2));
+            totalMinutos += sub;
+            unitStr = `${est.minutos_unitarios.toFixed(2)} m/u`;
+            subtotalStr = sub < 1 ? `${Math.round(sub * 60)} seg` : `${sub.toFixed(1)} min`;
+            badgeHtml = '<span style="background: #fffbeb; color: #92400e; border: 1px solid #f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700;">🟡 Teórico Búnker</span>';
+        } else {
+            cantSinDatos++;
+        }
+
+        filasHtml += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 8px 10px; text-align: left;">
+                    <div style="font-weight: 700; color: #1e293b;">${cod}</div>
+                    <div style="font-size: 11.5px; color: #64748b;">${desc}</div>
+                </td>
+                <td style="padding: 8px 10px; text-align: center; font-weight: 700;">${cant} u</td>
+                <td style="padding: 8px 10px; text-align: center; color: #475569;">${unitStr}</td>
+                <td style="padding: 8px 10px; text-align: center; font-weight: 800; color: #0f172a;">${subtotalStr}</td>
+                <td style="padding: 8px 10px; text-align: center;">${badgeHtml}</td>
+            </tr>
+        `;
+    });
+
+    const horas = Math.floor(totalMinutos / 60);
+    const mins = Math.floor(totalMinutos % 60);
+    const tiempoTotalTexto = horas > 0 ? (mins > 0 ? `~ ${horas}h ${mins}m` : `~ ${horas}h`) : `~ ${Math.round(totalMinutos)} min`;
+
+    Swal.fire({
+        title: '<div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 20px;">⏳ Estimación de Tiempos del Carro</div>',
+        html: `
+            <div style="text-align: left; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 15px;">
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700;">Demora Total Estimada</div>
+                        <div style="font-size: 20px; font-weight: 800; color: #0f172a;">${tiempoTotalTexto}</div>
+                    </div>
+                    <div style="text-align: right; font-size: 12px; color: #475569;">
+                        <div>🟢 ${cantPlanta} de planta</div>
+                        <div>🟡 ${cantTeorico} teóricos</div>
+                        <div>⚪ ${cantSinDatos} sin datos</div>
+                    </div>
+                </div>
+
+                <div style="max-height: 350px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead style="background: #f1f5f9; position: sticky; top: 0;">
+                            <tr>
+                                <th style="padding: 8px 10px; text-align: left;">Artículo</th>
+                                <th style="padding: 8px 10px; text-align: center;">Cant.</th>
+                                <th style="padding: 8px 10px; text-align: center;">Unitario</th>
+                                <th style="padding: 8px 10px; text-align: center;">Subtotal</th>
+                                <th style="padding: 8px 10px; text-align: center;">Fuente</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filasHtml}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; text-align: center;">
+                    💡 La estimación prioriza métricas reales tomadas con el cronómetro de planta. Si no hay registros, toma la mano de obra teórica de Búnker.
+                </div>
+            </div>
+        `,
+        width: '650px',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#007bff'
+    });
+};
+
+
 
 // Hacer la función disponible globalmente
 window.editarIngredienteCompuesto = async (mixId) => {
     try {
         console.log('🔧 editarIngredienteCompuesto llamado con:', mixId, typeof mixId);
 
-        // Si mixId es un string (nombre), necesitamos obtener el ID
+        if (!mixId) {
+            console.error('❌ editarIngredienteCompuesto: mixId no proporcionado');
+            mostrarError('No se pudo identificar el mix a editar');
+            return;
+        }
+
+        // Si mixId es un objeto
         let actualMixId = mixId;
-        if (typeof mixId === 'string') {
-            console.log('🔍 Buscando ID para ingrediente:', mixId);
+        if (typeof mixId === 'object' && mixId !== null && mixId.id) {
+            actualMixId = mixId.id;
+        }
+
+        // Si mixId es un string con número ("124")
+        if (typeof actualMixId === 'string' && !isNaN(Number(actualMixId))) {
+            actualMixId = parseInt(actualMixId, 10);
+        }
+
+        // Si mixId es un string (nombre), necesitamos obtener el ID
+        if (typeof actualMixId === 'string') {
+            console.log('🔍 Buscando ID para ingrediente:', actualMixId);
             try {
-                const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/buscar?nombre=${encodeURIComponent(mixId)}`);
+                const response = await fetch(`/api/produccion/ingredientes/buscar?nombre=${encodeURIComponent(actualMixId)}`);
                 if (!response.ok) {
-                    throw new Error(`No se encontró el ingrediente: ${mixId}`);
+                    throw new Error(`No se encontró el ingrediente: ${actualMixId}`);
                 }
                 const data = await response.json();
                 actualMixId = data.id;
@@ -27,13 +439,7 @@ window.editarIngredienteCompuesto = async (mixId) => {
             }
         }
 
-        console.log('🚀 Abriendo modal para mix ID:', actualMixId);
-        console.log('🔗 Llamando a abrirEdicionMix desde carro.js...');
-        // Mostrar el modal de edición de composición del mix
-        await abrirEdicionMix(actualMixId);
-        console.log('✅ abrirEdicionMix completado');
-
-        // Hacer disponible la función de actualización para el modal
+        // Configurar la función de actualización para cuando se guarde el modal
         window.actualizarResumenIngredientes = async () => {
             const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             const colaboradorData = localStorage.getItem('colaboradorActivo');
@@ -48,8 +454,19 @@ window.editarIngredienteCompuesto = async (mixId) => {
                 // Actualizar resumen de mixes
                 const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
                 mostrarResumenMixes(mixes);
+
+                // Actualizar lista desplegable de artículos del carro
+                if (typeof mostrarArticulosDelCarro === 'function') {
+                    await mostrarArticulosDelCarro();
+                }
             }
         };
+
+        console.log('🚀 Abriendo modal para mix ID:', actualMixId);
+        console.log('🔗 Llamando a abrirEdicionMix desde carro.js...');
+        // Mostrar el modal de edición de composición del mix
+        await abrirEdicionMix(actualMixId);
+        console.log('✅ abrirEdicionMix completado');
 
     } catch (error) {
         console.error('Error al editar ingrediente compuesto:', error);
@@ -100,13 +517,20 @@ export async function actualizarEstadoCarro() {
             document.body.classList.add('contexto-externo');
             if (workspaceContainer) workspaceContainer.classList.add('theme-externo');
             if (topbarTitulo) {
-                topbarTitulo.innerHTML = '🚚 Producción <span class="badge-externo">MODO EXTERNO</span>';
+                const tituloLinea = carroActivoObj.nombre_linea_negocio ? ('MODO EXTERNO — ' + carroActivoObj.nombre_linea_negocio) : 'MODO EXTERNO';
+                topbarTitulo.innerHTML = '🚚 Producción <span class="badge-externo">' + tituloLinea + '</span>';
             }
         } else {
             document.body.classList.remove('contexto-externo');
             if (workspaceContainer) workspaceContainer.classList.remove('theme-externo');
             if (topbarTitulo) {
-                topbarTitulo.innerHTML = '🏭 Producción';
+                if (carroActivoObj && Number(carroActivoObj.linea_negocio) === 3) {
+                    topbarTitulo.innerHTML = '🏭 Producción <span style="background: #dcfce7; color: #166534; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 12px; border: 1px solid #86efac; margin-left: 8px;">🥣 LÍNEA 3 — ARTÍCULOS PUENTE / MIX X KILO (1° ETAPA)</span>';
+                } else if (carroActivoObj && Number(carroActivoObj.linea_negocio) === 2) {
+                    topbarTitulo.innerHTML = '🏭 Producción <span style="background: #e0f2fe; color: #075985; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 12px; border: 1px solid #7dd3fc; margin-left: 8px;">📦 LÍNEA 2 — FRACCIONES COMERCIALES (2° ETAPA)</span>';
+                } else {
+                    topbarTitulo.innerHTML = '🏭 Producción';
+                }
             }
         }
 
@@ -188,6 +612,7 @@ export async function actualizarEstadoCarro() {
                                 <th>Fecha de inicio</th>
                                 <th>Artículos</th>
                                 <th>Tipo</th>
+                                <th>Estado</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -199,6 +624,7 @@ export async function actualizarEstadoCarro() {
                 const estaActivo = carro.id.toString() === carroId;
                 const esExterno = carro.tipo_carro === 'externa';
                 const esFinalizado = carro.fecha_confirmacion !== null;
+                const esPreparado = carro.fecha_preparado !== null;
                 const esHoy = carro.esHoy;
 
                 // Aplicar clases CSS para diferenciación visual
@@ -216,26 +642,44 @@ export async function actualizarEstadoCarro() {
                     clasesFila += 'carro-hoy ';
                 }
 
+                let tipoBadge = '';
+                if (esExterno) {
+                    let tagLinea = 'Externa';
+                    if (carro.linea_negocio === 4) tagLinea = 'L4 Tostadero';
+                    else if (carro.linea_negocio === 5) tagLinea = 'L5 Barritas';
+                    else if (carro.linea_negocio === 6) tagLinea = 'L6 Granolas';
+                    tipoBadge = `<span class="badge-tipo-carro externa" title="${carro.nombre_linea_negocio || 'Producción Externa'}">🚚 ${tagLinea}</span>`;
+                } else {
+                    if (Number(carro.linea_negocio) === 3) {
+                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #dcfce7; color: #166534; border: 1px solid #86efac;" title="1° Etapa: Producción de Artículos Puente / Mixes a Granel x Kilo">🥣 L3 Art. Puente / Mix</span>`;
+                    } else if (Number(carro.linea_negocio) === 2) {
+                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc;" title="2° Etapa: Producción de Fracciones Comerciales">📦 L2 Fracciones</span>`;
+                    } else {
+                        tipoBadge = `<span class="badge-tipo-carro interna">🏭 Interna</span>`;
+                    }
+                }
+
+                const estadoBadge = esFinalizado
+                    ? `<span class="badge-estado-carro finalizado" style="font-size: 10.5px; padding: 2px 8px;">✅ Finalizado</span>`
+                    : (esPreparado ? `<span class="badge-estado-carro preparado" style="font-size: 10.5px; padding: 2px 8px;">📦 Listo</span>` : `<span class="badge-estado-carro en-edicion" style="font-size: 10.5px; padding: 2px 8px;">✏️ En curso</span>`);
 
                 html += `
                     <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
                         <td>
-                            <div class=" ${esHoy ? 'celda-hoy' : ''}">${carro.id}</div>
+                            <div class="${esHoy ? 'celda-hoy' : ''}" style="font-weight: 700; color: #1e293b;">#${carro.id}</div>
                         </td>
 
                         <td>${fecha}</td>
-                        <td>${carro.total_articulos} artículos</td>
-                        <td>
-                            ${carro.tipo_carro === 'interna' ? '🏭' : '🚚'} 
-                            ${carro.tipo_carro === 'interna' ? 'Producción Interna' : 'Producción Externa'}
-                        </td>
+                        <td><strong>${carro.total_articulos}</strong> art.</td>
+                        <td>${tipoBadge}</td>
+                        <td>${estadoBadge}</td>
                         <td>
                             <div class="btn-group">
                                 ${estaActivo ?
-                        '<button class="btn-deseleccionar" onclick="event.stopPropagation(); deseleccionarCarro()">Deseleccionar</button>' :
-                        ''
-                    }
-                                <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})">Eliminar</button>
+                                    `<span class="chip-activo-toggle" onclick="event.stopPropagation(); deseleccionarCarro()" title="Carro actualmente en vista. Clic para desmarcar">● Activo <span class="icon-close">✕</span></span>` :
+                                    ''
+                                }
+                                <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})" title="Eliminar este carro">🗑️</button>
                             </div>
                         </td>
                     </tr>
@@ -306,6 +750,7 @@ const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, i
         await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
         // Actualizar resumen de artículos externos también
         await actualizarResumenArticulos();
+        recalcularEstimacionesEnCaliente();
     } catch (error) {
         console.error('Error:', error);
         mostrarError(error.message);
@@ -477,6 +922,7 @@ function eliminarArticuloDelDOM(numeroArticulo) {
             try {
                 if (articulo && articulo.parentNode) {
                     articulo.parentNode.removeChild(articulo);
+                    recalcularEstimacionesEnCaliente();
                 }
                 if (ingredientesContainer && ingredientesContainer.parentNode && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
                     ingredientesContainer.parentNode.removeChild(ingredientesContainer);
@@ -605,7 +1051,7 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
                             ${ing.es_mix ?
                         `<span class="mix-nombre" 
                                        style="cursor: pointer; color: #0275d8; text-decoration: underline;"
-                                       onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` :
+                                       onclick="editarIngredienteCompuesto(${ing.id || ing.ingrediente_id || '\'' + (ing.nombre || '').replace(/'/g, "\\'") + '\''})">${ing.nombre}</span>` :
                         ing.nombre}
                         </td>
                 <td data-valor="${cantidadTotal}">${cantidadTotal.toFixed(2)}</td>
@@ -637,6 +1083,22 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
 
 // Función para validar el carro activo
 export async function validarCarroActivo(usuarioId) {
+    // Priorizar carroId solicitado desde Configurar Carros (URL param o localStorage cross-tab)
+    const urlParams = new URLSearchParams(window.location.search);
+    const carroDesdeUrl = urlParams.get('carroId');
+    const carroDesdeLocal = localStorage.getItem('carroActivoSolicitado');
+    const carroSolicitado = carroDesdeUrl || carroDesdeLocal;
+
+    if (carroSolicitado) {
+        sessionStorage.setItem('carroActivo', String(carroSolicitado));
+        const wsContainer = document.getElementById('workspace-container');
+        if (wsContainer) wsContainer.dataset.carroId = String(carroSolicitado);
+        localStorage.removeItem('carroActivoSolicitado');
+        if (carroDesdeUrl && window.history && window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     if (!carroId) return;
 
@@ -662,7 +1124,7 @@ export async function validarCarroActivo(usuarioId) {
 }
 
 // Función para crear un nuevo carro de producción
-export async function crearNuevoCarro(tipoCarro = 'interna') {
+export async function crearNuevoCarro(tipoCarro = 'interna', lineaNegocio = null) {
     try {
         console.log(`Iniciando creación de carro tipo: ${tipoCarro}`);
 
@@ -688,7 +1150,8 @@ export async function crearNuevoCarro(tipoCarro = 'interna') {
             body: JSON.stringify({
                 usuarioId: colaborador.id,
                 enAuditoria: true,
-                tipoCarro: tipoCarro
+                tipoCarro: tipoCarro,
+                lineaNegocio: lineaNegocio
             })
         });
 
@@ -1066,15 +1529,42 @@ export async function seleccionarCarro(carroId) {
 
         // Obtener tipo de carro PRIMERO para gestionar visibilidad
         let tipoCarro = 'interna';
+        let lineaNegocioSel = null;
+        let nombreLineaSel = null;
         try {
             const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
             if (estadoResp.ok) {
                 const estadoData = await estadoResp.json();
                 tipoCarro = estadoData.tipo_carro || 'interna';
-                console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro}`);
+                lineaNegocioSel = estadoData.linea_negocio;
+                nombreLineaSel = estadoData.nombre_linea_negocio;
+                console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro} (Línea: ${lineaNegocioSel})`);
             }
         } catch (error) {
             console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
+        }
+
+        // Atmósfera visual de marca
+        const topbarTitulo = document.querySelector('.topbar-titulo');
+        if (tipoCarro === 'externa') {
+            document.body.classList.add('contexto-externo');
+            if (wsContainer) wsContainer.classList.add('theme-externo');
+            if (topbarTitulo) {
+                const tituloLinea = nombreLineaSel ? ('MODO EXTERNO — ' + nombreLineaSel) : 'MODO EXTERNO';
+                topbarTitulo.innerHTML = `🚚 Producción <span class="badge-externo">${tituloLinea}</span>`;
+            }
+        } else {
+            document.body.classList.remove('contexto-externo');
+            if (wsContainer) wsContainer.classList.remove('theme-externo');
+            if (topbarTitulo) {
+                if (Number(lineaNegocioSel) === 3) {
+                    topbarTitulo.innerHTML = `🏭 Producción <span style="background: #dcfce7; color: #166534; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 12px; border: 1px solid #86efac; margin-left: 8px;">🥣 LÍNEA 3 — ARTÍCULOS PUENTE / MIX X KILO (1° ETAPA)</span>`;
+                } else if (Number(lineaNegocioSel) === 2) {
+                    topbarTitulo.innerHTML = `🏭 Producción <span style="background: #e0f2fe; color: #075985; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 12px; border: 1px solid #7dd3fc; margin-left: 8px;">📦 LÍNEA 2 — FRACCIONES COMERCIALES (2° ETAPA)</span>`;
+                } else {
+                    topbarTitulo.innerHTML = `🏭 Producción`;
+                }
+            }
         }
 
         // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
@@ -1140,28 +1630,54 @@ export async function seleccionarCarro(carroId) {
 export async function deseleccionarCarro() {
     console.log('Deseleccionando carro activo...');
 
+    if (window.hudMedicion && typeof window.hudMedicion.alDeseleccionarCarro === 'function') {
+        await window.hudMedicion.alDeseleccionarCarro();
+    }
+
     sessionStorage.removeItem('carroActivo');
-    
+    const wsContainer = document.getElementById('workspace-container');
+    if (wsContainer) {
+        delete wsContainer.dataset.carroId;
+        wsContainer.classList.remove('theme-externo');
+    }
+    document.body.classList.remove('contexto-externo');
+
+    const topbarTitulo = document.querySelector('.topbar-titulo');
+    if (topbarTitulo) {
+        topbarTitulo.innerHTML = '🏭 Producción';
+    }
+
+    // Purgar botones de impresión de packs anteriores
+    document.querySelectorAll('.btn-imprimir-padre').forEach(btn => btn.remove());
 
     await actualizarEstadoCarro();
-    document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+
+    const listaArticulosEl = document.getElementById('lista-articulos');
+    if (listaArticulosEl) {
+        listaArticulosEl.innerHTML = `
+            <div class="aviso-sin-carro">
+                <p>No hay carro de producción seleccionado</p>
+                <small>Seleccione un carro del historial inferior para visualizarlo o cree uno nuevo.</small>
+            </div>
+        `;
+    }
 
     // Limpiar resumen de ingredientes
     const contenedor = document.getElementById('tabla-resumen-ingredientes');
     if (contenedor) {
-        contenedor.innerHTML = '<p>No hay carro activo</p>';
+        contenedor.innerHTML = '<p style="color: #94a3b8; font-style: italic; padding: 15px; text-align: center;">No hay carro activo</p>';
     }
 
     // Limpiar resumen de mixes
     const contenedorMixes = document.getElementById('tabla-resumen-mixes');
     if (contenedorMixes) {
-        contenedorMixes.innerHTML = '<p>No hay carro activo</p>';
+        contenedorMixes.innerHTML = '<p style="color: #94a3b8; font-style: italic; padding: 15px; text-align: center;">No hay carro activo</p>';
     }
 
     // Limpiar resumen de artículos externos
     const contenedorArticulos = document.getElementById('tabla-resumen-articulos');
     if (contenedorArticulos) {
-        contenedorArticulos.innerHTML = '<p>No hay carro activo</p>';
+        contenedorArticulos.innerHTML = '<p style="color: #94a3b8; font-style: italic; padding: 15px; text-align: center;">No hay carro activo</p>';
     }
 
     // Ocultar sección de artículos externos
@@ -1171,39 +1687,21 @@ export async function deseleccionarCarro() {
     }
 
     // 🧹 LIMPIAR PANELES DE CARRO PREPARADO (vinculación y preparación)
-    console.log('🧹 Limpiando paneles de carro preparado...');
-
-    // Panel de artículos secundarios/vinculados editables
     const seccionSecundarios = document.getElementById('seccion-articulos-secundarios');
-    if (seccionSecundarios) {
-        seccionSecundarios.remove();
-        console.log('✅ Panel de artículos vinculados editables eliminado');
-    }
+    if (seccionSecundarios) seccionSecundarios.remove();
 
-    // Panel de ingredientes/artículos vinculados
     const seccionInformesVinculados = document.getElementById('resumen-ingredientes-vinculados');
-    if (seccionInformesVinculados) {
-        seccionInformesVinculados.remove();
-        console.log('✅ Panel de ingredientes vinculados eliminado');
-    }
+    if (seccionInformesVinculados) seccionInformesVinculados.remove();
 
-    // Panel de kilos producidos (solo carros externos)
     const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
-    if (kilosProducidosContainer) {
-        kilosProducidosContainer.remove();
-        console.log('✅ Panel de kilos producidos eliminado');
-    }
+    if (kilosProducidosContainer) kilosProducidosContainer.remove();
 
     // Limpiar informe de ingresos manuales
-    console.log('🧹 Limpiando informe de ingresos manuales al deseleccionar carro...');
     limpiarInformeIngresosManuales();
 
     // Actualizar la visibilidad de los botones (deben ocultarse al no haber carro)
     if (typeof window.actualizarVisibilidadBotones === 'function') {
-        console.log('Actualizando visibilidad de botones después de deseleccionar carro...');
         await window.actualizarVisibilidadBotones();
-    } else {
-        console.warn('⚠️ actualizarVisibilidadBotones no está disponible al deseleccionar carro');
     }
 }
 
@@ -1715,6 +2213,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
     const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     let estadoCarro = 'en_preparacion';
     let tipoCarro = 'interna';
+    let lineaNegocio = null;
 
     if (carroId) {
         try {
@@ -1723,7 +2222,8 @@ export async function mostrarResumenIngredientes(ingredientes) {
                 const data = await response.json();
                 estadoCarro = data.estado;
                 tipoCarro = data.tipo_carro || 'interna';
-                console.log(`📊 [PERMISOS] Estado: ${estadoCarro}, Tipo: ${tipoCarro}`);
+                lineaNegocio = data.linea_negocio;
+                console.log(`📊 [PERMISOS] Estado: ${estadoCarro}, Tipo: ${tipoCarro}, Línea: ${lineaNegocio}`);
             }
         } catch (error) {
             console.warn('⚠️ No se pudo obtener estado del carro');
@@ -1735,10 +2235,18 @@ export async function mostrarResumenIngredientes(ingredientes) {
 
     console.log(`📊 [TABLA-INGREDIENTES] Renderizando - Estado: ${estadoCarro}, Tipo: ${tipoCarro} (Vista: ${carroFinalizado ? 'SOLO LECTURA' : 'ACTIVA'})`);
 
-    // 🎯 TICKET #10: Modificar Título del Panel para Externa
+    // 🎯 TICKET #10: Modificar Título del Panel para Externa y Etapas Internas
     const tituloSpan = document.querySelector('#resumen-ingredientes h3 span');
     if (tituloSpan) {
-        tituloSpan.innerHTML = tipoCarro === 'externa' ? '🏠 Control de Stock Personal / Domicilio' : 'Resumen de Ingredientes Necesarios';
+        if (tipoCarro === 'externa') {
+            tituloSpan.innerHTML = '🏠 Control de Stock Personal / Domicilio';
+        } else if (Number(lineaNegocio) === 3) {
+            tituloSpan.innerHTML = '🥣 Ingredientes de los Sectores para armar el Mix (1° Etapa — Línea 3)';
+        } else if (Number(lineaNegocio) === 2) {
+            tituloSpan.innerHTML = '📦 Ingredientes y Envases para Fraccionar (2° Etapa — Línea 2)';
+        } else {
+            tituloSpan.innerHTML = 'Resumen de Ingredientes Necesarios';
+        }
     }
 
     let manualesPorIngrediente = {};
@@ -1806,10 +2314,28 @@ export async function mostrarResumenIngredientes(ingredientes) {
     const insumos = ingredientesFiltrados.filter(ing => !!ing.es_insumo);
 
     let html = '';
+    if (Number(lineaNegocio) === 3) {
+        html += `
+            <div style="background: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px; color: #14532d; text-align: left;">
+                <strong>🥣 1° Etapa — Elaboración de Artículo Puente / Mix a Granel:</strong>
+                Estos son los ingredientes individuales (sectores A y B) que debés pesar y mezclar. Al confirmar este carro, los kilos producidos ingresarán como <strong>Artículo Puente por kilo</strong> (listo para nutrir el ingrediente simple en la 2° etapa de fracciones).
+            </div>
+        `;
+    } else if (Number(lineaNegocio) === 2) {
+        html += `
+            <div style="background: #f0f9ff; border-left: 4px solid #0284c7; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px; color: #0c4a6e; text-align: left;">
+                <strong>📦 2° Etapa — Envasado de Fracciones Comerciales:</strong>
+                Estos ingredientes simples se nutren del <strong>Artículo Puente por kilo</strong> (elaborado en la 1° etapa) o de bulto cerrado. Si figura faltante en el ingrediente del mix, usá <strong>"Ingreso manual"</strong> para volcar los kilos del Artículo Puente al ingrediente.
+            </div>
+        `;
+    }
     html += generarTablaResumen(alimentos, 'Ingredientes Alimenticios', false, carroFinalizado, estadoCarro, tipoCarro, manualesPorIngrediente);
     html += generarTablaResumen(insumos, 'Insumos Necesarios (Packaging)', true, carroFinalizado, estadoCarro, tipoCarro, manualesPorIngrediente);
 
     contenedor.innerHTML = html;
+            if (typeof actualizarTopbarEstimacion === 'function' && window._estimacionCarroActual) {
+        actualizarTopbarEstimacion(window._estimacionCarroActual);
+    }
     // NOTA DE DESARROLLO (Corrección de Anomalía Crítica): 
     // Se corrigió una llave de cierre duplicada ('}') huérfana en este bloque 
     // que causaba un fallo de parseo (SyntaxError) en el navegador y congelaba el script.
@@ -1836,9 +2362,16 @@ export function mostrarResumenMixes(mixes) {
         console.log('⚠️ No hay mixes para mostrar en el informe');
     }
 
+    const seccionMixes = document.getElementById('resumen-mixes');
     if (!mixes || mixes.length === 0) {
         contenedor.innerHTML = '<p>No hay ingredientes compuestos para mostrar</p>';
+        if (seccionMixes) {
+            seccionMixes.style.display = 'none';
+        }
         return;
+    }
+    if (seccionMixes) {
+        seccionMixes.style.display = 'block';
     }
 
     let html = `
@@ -1873,7 +2406,7 @@ export function mostrarResumenMixes(mixes) {
                 <td>
                     <span class="mix-nombre" 
                           style="cursor: pointer; color: #0275d8; text-decoration: underline;"
-                          onclick="editarIngredienteCompuesto(${mix.id})">${mix.nombre}</span>
+                          onclick="editarIngredienteCompuesto(${mix.id || mix.ingrediente_id || '\'' + (mix.nombre || '').replace(/'/g, "\\'") + '\''})">${mix.nombre}</span>
                 </td>
                 <td>${mix.cantidad.toFixed(2)}</td>
                 <td>${mix.unidad_medida}</td>
@@ -1931,19 +2464,31 @@ export function mostrarResumenArticulos(articulos) {
         console.log('⚠️ No hay artículos para mostrar en el informe');
     }
 
+    const seccionArticulos = document.getElementById('resumen-articulos');
     if (!articulos || articulos.length === 0) {
         contenedor.innerHTML = '<p>No hay artículos de producción externa para mostrar</p>';
+        if (seccionArticulos) seccionArticulos.style.display = 'none';
         return;
     }
+    if (seccionArticulos) seccionArticulos.style.display = 'block';
+
+    const carroInfo = window._carroActivoInfo || window.carroActivoMetadata || {};
+    const yaDescontado = carroInfo.preparado === true || carroInfo.confirmado === true || carroInfo.estado === 'preparado' || carroInfo.estado === 'confirmado';
 
     let html = `
+        <div style="background: #f5f3ff; border-left: 4px solid #8b5cf6; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; font-size: 0.86em; color: #4c1d95;">
+            ${yaDescontado
+                ? '✅ <strong>Insumo / Mezcla ya descontado automáticamente</strong> del stock de depósito al preparar el carro (Receta UP).'
+                : '📦 <strong>Insumo / Mezcla de Receta UP:</strong> Se descontará automáticamente del stock de depósito al marcar "Carro listo para producir".'}
+        </div>
         <table class="tabla-resumen">
             <thead>
                 <tr>
                     <th>Código</th>
-                    <th>Artículo</th>
-                    <th>Cantidad Total</th>
-                    <th>Stock Actual</th>
+                    <th>Mezcla / Insumo (Receta UP)</th>
+                    <th>Cant. UP</th>
+                    <th>Peso Total</th>
+                    <th>Stock Depósito</th>
                     <th>Estado</th>
                 </tr>
             </thead>
@@ -1951,67 +2496,44 @@ export function mostrarResumenArticulos(articulos) {
     `;
 
     articulos.forEach((art, index) => {
-        // 🔍 LOG DE DEPURACIÓN: Inspeccionar artículo antes del procesamiento
-        console.log(`🔍 PROCESANDO ARTÍCULO ${index + 1}: ${art.articulo_numero}`, {
-            cantidadTotalRaw: art.cantidad_total,
-            tipoCantidadTotal: typeof art.cantidad_total,
-            stockActualRaw: art.stock_actual,
-            tipoStockActual: typeof art.stock_actual,
-            objetoCompleto: art
-        });
-
         // Validación robusta para evitar errores con .toFixed()
         const stockActualRaw = art.stock_actual;
         const cantidadTotalRaw = art.cantidad_total;
+        const kilosTotalesRaw = art.kilos_totales;
+        const kilosUnidadRaw = art.kilos_unidad;
 
-        // Convertir a números de forma segura
-        let stockActual = 0;
-        let cantidadNecesaria = 0;
+        let stockActual = parseFloat(stockActualRaw);
+        if (isNaN(stockActual)) stockActual = 0;
 
-        if (stockActualRaw !== null && stockActualRaw !== undefined && stockActualRaw !== '') {
-            const stockParsed = parseFloat(stockActualRaw);
-            stockActual = isNaN(stockParsed) ? 0 : stockParsed;
-        }
+        let cantidadNecesaria = parseFloat(cantidadTotalRaw);
+        if (isNaN(cantidadNecesaria)) cantidadNecesaria = 0;
 
-        if (cantidadTotalRaw !== null && cantidadTotalRaw !== undefined && cantidadTotalRaw !== '') {
-            const cantidadParsed = parseFloat(cantidadTotalRaw);
-            cantidadNecesaria = isNaN(cantidadParsed) ? 0 : cantidadParsed;
-        }
-
-        // 🔍 LOG DE DEPURACIÓN: Después de la conversión
-        console.log(`🔍 CONVERSIÓN COMPLETADA para artículo ${art.articulo_numero}:`, {
-            stockActualFinal: stockActual,
-            cantidadNecesariaFinal: cantidadNecesaria,
-            conversionExitosa: !isNaN(stockActual) && !isNaN(cantidadNecesaria)
-        });
-
-        // Log para diagnóstico
-        if (cantidadNecesaria === 0 && cantidadTotalRaw !== 0) {
-            console.warn(`⚠️ Cantidad total inválida para artículo ${art.articulo_numero}:`, {
-                raw: cantidadTotalRaw,
-                type: typeof cantidadTotalRaw,
-                parsed: cantidadNecesaria
-            });
+        const kilosUnidad = parseFloat(kilosUnidadRaw) || 1;
+        let kilosTotales = parseFloat(kilosTotalesRaw);
+        if (isNaN(kilosTotales) || kilosTotales <= 0) {
+            kilosTotales = cantidadNecesaria * kilosUnidad;
         }
 
         const diferencia = stockActual - cantidadNecesaria;
-        const tieneStock = diferencia >= -0.01; // Tolerancia de 0.01 para diferencias decimales
+        const tieneStock = yaDescontado || diferencia >= -0.01;
         const faltante = tieneStock ? 0 : Math.abs(diferencia);
 
-        // Generar indicador visual
         let indicadorEstado = '';
-        if (tieneStock) {
+        if (yaDescontado) {
+            indicadorEstado = `<span class="stock-suficiente" style="background:#dcfce7; color:#15803d; padding:3px 8px; border-radius:9999px; font-weight:700; font-size:0.85em;">✅ Cargado en Carro (Receta UP)</span>`;
+        } else if (tieneStock) {
             indicadorEstado = `<span class="stock-suficiente">✅ Suficiente</span>`;
         } else {
-            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)}</span>`;
+            indicadorEstado = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} u</span>`;
         }
 
         html += `
             <tr class="${tieneStock ? 'stock-ok' : 'stock-faltante'}">
-                <td>${art.articulo_numero}</td>
+                <td><strong>${art.articulo_numero}</strong></td>
                 <td>${art.nombre || 'Sin descripción'}</td>
-                <td>${cantidadNecesaria.toFixed(2)}</td>
-                <td>${stockActual.toFixed(2)}</td>
+                <td><strong>${cantidadNecesaria.toFixed(2)} u</strong></td>
+                <td style="color: #5b21b6; font-weight: 700;">${kilosTotales.toFixed(2)} kg</td>
+                <td>${stockActual.toFixed(2)} u</td>
                 <td>${indicadorEstado}</td>
             </tr>
         `;
@@ -2095,6 +2617,7 @@ export async function mostrarArticulosDelCarro() {
         const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
             document.getElementById('lista-articulos').innerHTML = '<p>No hay carro activo</p>';
+            actualizarTopbarEstimacion(null);
             return;
         }
 
@@ -2114,12 +2637,31 @@ export async function mostrarArticulosDelCarro() {
 
         const colaborador = JSON.parse(colaboradorData);
 
-        // Obtener tipo de carro para condicionar mostrar artículos de receta
+        // Obtener tipo y estado de carro
         const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
         let tipoCarro = 'interna';
+        let estadoCarro = 'en_preparacion';
+        let esConfirmado = false;
+        let esPreparado = false;
+        let fechaConfirmacion = null;
+
+        let lineaNegocio = null;
+        let nombreLineaNegocio = null;
+        let iconoLineaNegocio = '🥜';
+        let subtituloLineaNegocio = '';
+
         if (responseTipoCarro.ok) {
             const dataTipoCarro = await responseTipoCarro.json();
+            window._carroActivoInfo = dataTipoCarro;
             tipoCarro = dataTipoCarro.tipo_carro || 'interna';
+            estadoCarro = dataTipoCarro.estado || 'en_preparacion';
+            esConfirmado = dataTipoCarro.confirmado === true || estadoCarro === 'confirmado';
+            esPreparado = dataTipoCarro.preparado === true || estadoCarro === 'preparado';
+            fechaConfirmacion = dataTipoCarro.fecha_confirmacion;
+            lineaNegocio = dataTipoCarro.linea_negocio;
+            nombreLineaNegocio = dataTipoCarro.nombre_linea_negocio;
+            iconoLineaNegocio = dataTipoCarro.icono_linea_negocio || '🥜';
+            subtituloLineaNegocio = dataTipoCarro.subtitulo_linea_negocio || '';
         }
 
         const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
@@ -2130,8 +2672,31 @@ export async function mostrarArticulosDelCarro() {
 
         const articulos = await response.json();
 
+        // ⏱️ Consulta de Estimación Predictiva de Tiempos para el Carro
+        let estimacionCarro = null;
+        try {
+            const resEst = await fetch(`/api/tiempos/carro/${carroId}/estimacion`);
+            if (resEst.ok) {
+                estimacionCarro = await resEst.json();
+                window._estimacionCarroActual = estimacionCarro;
+            }
+        } catch (errEst) {
+            console.warn('No se pudo obtener la estimación predictiva de tiempo:', errEst);
+        }
+
+        const mapEstimacionArticulos = {};
+        if (estimacionCarro && estimacionCarro.articulos) {
+            estimacionCarro.articulos.forEach(a => {
+                mapEstimacionArticulos[a.articulo_numero] = a;
+            });
+        }
+        window._estimacionArticulosMap = mapEstimacionArticulos;
+        if (typeof actualizarTopbarEstimacion === 'function') {
+            actualizarTopbarEstimacion(estimacionCarro);
+        }
+
+
         // 🔍 BULK CHECK PARA RECETAS (Ticket #014)
-        // Consultamos de antemano el estado de todos los artículos presentes en el carro
         let estadoRecetas = {};
         try {
             const articulosNumeros = articulos.map(art => art.numero);
@@ -2165,13 +2730,149 @@ export async function mostrarArticulosDelCarro() {
             }
         }
 
+        // Badge de estado dinámico
+        let badgeEstadoHtml = '';
+        if (esConfirmado) {
+            const fStr = fechaConfirmacion ? new Date(fechaConfirmacion).toLocaleString() : '';
+            badgeEstadoHtml = `<span class="badge-estado-carro finalizado" title="Confirmado el ${fStr}">✅ Carro Finalizado</span>`;
+        } else if (esPreparado) {
+            badgeEstadoHtml = `<span class="badge-estado-carro preparado">📦 Listo para Producir</span>`;
+        } else {
+            badgeEstadoHtml = `<span class="badge-estado-carro en-edicion">✏️ En Edición</span>`;
+        }
+
+        // Síntesis de Producción Externa Finalizada
+        let resumenExternoCardHtml = '';
+        if (tipoCarro === 'externa' && esConfirmado) {
+            try {
+                const resExt = await fetch(`/api/produccion/carro/${carroId}/resumen-externo-finalizado`);
+                if (resExt.ok) {
+                    const dataExt = await resExt.json();
+                    const fechaRegStr = dataExt.fecha_registro ? new Date(dataExt.fecha_registro).toLocaleString() : '';
+                    resumenExternoCardHtml = `
+                        <div class="card-resumen-externo-finalizado">
+                            <div class="resumen-externo-header">
+                                <span class="resumen-externo-titulo">📊 Síntesis de Producción Externa</span>
+                                <small style="color: #64748b; font-size: 11.5px;">${fechaRegStr}</small>
+                            </div>
+                            <div class="resumen-externo-grid">
+                                <div class="stat-box">
+                                    <span class="stat-label">Materia Prima</span>
+                                    <span class="stat-value">${parseFloat(dataExt.kilos_entrada || 0).toFixed(2)} kg</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="stat-label">Producción Real</span>
+                                    <span class="stat-value text-success">${parseFloat(dataExt.kilos_producidos || dataExt.kilos_salida || 0).toFixed(2)} kg</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="stat-label">Merma</span>
+                                    <span class="stat-value text-warning">${parseFloat(dataExt.porcentaje_merma || 0).toFixed(2)}%</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="stat-label">Insumos Sumados</span>
+                                    <span class="stat-value">${parseFloat(dataExt.ingredientes_sumados || 0).toFixed(2)} kg</span>
+                                </div>
+                            </div>
+                            <div class="resumen-externo-footer" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                                <span>🏷️ <strong>Salida Fraccionada:</strong> [${dataExt.articulo_fraccionado_id}] ${dataExt.articulo_fraccionado_nombre || ''}</span>
+                                <button type="button"
+                                        class="btn-imprimir-etiqueta-puente"
+                                        onclick="window.imprimirEtiquetaArticuloPuente && window.imprimirEtiquetaArticuloPuente('${(dataExt.articulo_fraccionado_id || '').replace(/'/g, "\\'")}', '${(dataExt.articulo_fraccionado_nombre || '').replace(/'/g, "\\'")}', '${(dataExt.articulo_fraccionado_codigo_barras || '').replace(/'/g, "\\'")}', '${carroId}')"
+                                        style="background: #16a34a; color: white; border: none; padding: 5px 12px; border-radius: 5px; font-size: 0.85em; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.12);">
+                                    🏷️ Imprimir Etiqueta
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.warn('No se pudo cargar síntesis de carro externo:', e);
+            }
+        }
+
+        let bannerLineaProductivaHtml = '';
+        let textoBotonAgregarArticulo = 'Agregar artículo al carro';
+
+        if (tipoCarro === 'externa') {
+            const badgeLinea = lineaNegocio ? ('Línea de Negocio ' + lineaNegocio) : 'Producción Externa';
+            const nomLinea = nombreLineaNegocio || 'Producción de Tostadero';
+            bannerLineaProductivaHtml = `
+                <div class="banner-linea-productiva-workspace" style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 2px solid #93c5fd; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 2px 6px rgba(37,99,235,0.08);">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <span style="font-size: 32px;">${iconoLineaNegocio}</span>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: #1e40af;">Línea Productiva Asignada</div>
+                            <div style="font-size: 17px; font-weight: 700; color: #1e3a8a;">
+                                ${nomLinea} 
+                                <span style="font-size: 12px; font-weight: 700; color: #1d4ed8; background: #ffffff; padding: 2px 8px; border-radius: 10px; border: 1px solid #bfdbfe; margin-left: 6px;">${badgeLinea}</span>
+                            </div>
+                            ${subtituloLineaNegocio ? `<div style="font-size: 12.5px; color: #3b82f6; margin-top: 2px;">${subtituloLineaNegocio}</div>` : ''}
+                        </div>
+                    </div>
+                    <span style="background: #ffffff; color: #1d4ed8; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 14px; border: 1.5px solid #bfdbfe; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">🚚 Carro Externo</span>
+                </div>
+            `;
+        } else if (Number(lineaNegocio) === 3) {
+            textoBotonAgregarArticulo = '🥣 Agregar Artículo Puente / Mix (x Kilo) al carro';
+            bannerLineaProductivaHtml = `
+                <div class="banner-linea-productiva-workspace" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 2px 6px rgba(22,163,74,0.08);">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <span style="font-size: 32px;">🥣</span>
+                        <div style="text-align: left;">
+                            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: #15803d;">1° Etapa de Producción Interna — Mezcla a Granel</div>
+                            <div style="font-size: 16.5px; font-weight: 700; color: #166534;">
+                                Producción de Artículos Puente (Mixes x Kilo)
+                                <span style="font-size: 12px; font-weight: 700; color: #15803d; background: #ffffff; padding: 2px 8px; border-radius: 10px; border: 1px solid #86efac; margin-left: 6px;">Línea de Negocio 3</span>
+                            </div>
+                            <div style="font-size: 12.5px; color: #14532d; margin-top: 3px;">
+                                Combinás ingredientes de los sectores A/B para elaborar el mix a granel. Se almacena como <strong>Artículo Puente por kilo</strong> (que luego abastece al ingrediente simple para fraccionar en Línea 2).
+                            </div>
+                        </div>
+                    </div>
+                    <span style="background: #ffffff; color: #166534; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 14px; border: 1.5px solid #86efac; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">🥣 1° Etapa: Mix x Kilo</span>
+                </div>
+            `;
+        } else if (Number(lineaNegocio) === 2) {
+            textoBotonAgregarArticulo = '📦 Agregar Fracción Comercial al carro';
+            bannerLineaProductivaHtml = `
+                <div class="banner-linea-productiva-workspace" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #7dd3fc; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 2px 6px rgba(2,132,199,0.08);">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <span style="font-size: 32px;">📦</span>
+                        <div style="text-align: left;">
+                            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: #0369a1;">2° Etapa de Producción Interna — Envasado Final</div>
+                            <div style="font-size: 16.5px; font-weight: 700; color: #075985;">
+                                Producción de Fracciones (Envasado Comercial)
+                                <span style="font-size: 12px; font-weight: 700; color: #0369a1; background: #ffffff; padding: 2px 8px; border-radius: 10px; border: 1px solid #7dd3fc; margin-left: 6px;">Línea de Negocio 2</span>
+                            </div>
+                            <div style="font-size: 12.5px; color: #0c4a6e; margin-top: 3px;">
+                                Envasás las presentaciones pedidas (ej: x 2kg, x 5kg, x 300g). Se nutre del <strong>ingrediente simple</strong> (que recibe al Artículo Puente del mix o al bulto cerrado) + bolsa.
+                            </div>
+                        </div>
+                    </div>
+                    <span style="background: #ffffff; color: #075985; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 14px; border: 1.5px solid #7dd3fc; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">📦 2° Etapa: Fracciones</span>
+                </div>
+            `;
+        }
+
         let html = `
-            <div class="agregar-articulo-container">
-                <button id="agregar-articulo" class="btn btn-secondary">
-                    Agregar artículo al carro
-                </button>
+            ${bannerLineaProductivaHtml}
+            ${!esConfirmado ? `
+                <div class="agregar-articulo-container">
+                    <button id="agregar-articulo" class="btn btn-secondary">
+                        ${textoBotonAgregarArticulo}
+                    </button>
+                </div>
+            ` : ''}
+
+            <div class="header-articulos-carro" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <h3 class="titulo-articulos" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                    Artículos en el carro
+                    ${badgeEstadoHtml}
+                </h3>
+
             </div>
-            <h3>Artículos en el carro</h3>
+
+            ${resumenExternoCardHtml}
 
             <div class="seccion-articulos">
         `;
@@ -2185,49 +2886,188 @@ export async function mostrarArticulosDelCarro() {
             const btnClass = tieneReceta ? 'toggle-ingredientes' : 'toggle-ingredientes sin-receta';
             const btnStyle = tieneReceta ? '' : 'background-color: #dc3545; color: white; border-color: #dc3545;';
 
-            html += `
-                <div class="articulo-container" data-numero="${art.numero}">
-                    <div class="articulo-info">
-                        <span class="articulo-codigo">${art.numero}</span>
-                        <span class="articulo-descripcion">${art.descripcion}</span>
+                        const estArt = mapEstimacionArticulos[art.numero];
+            let renglonTiempoHtml = '';
+            if (estArt && estArt.origen === 'planta') {
+                const totalCalculado = estArt.minutos_totales ? (estArt.minutos_totales < 1 ? `${Math.round(estArt.minutos_totales * 60)} seg` : `${estArt.minutos_totales.toFixed(1)} min`) : '-';
+                renglonTiempoHtml = `
+                    <div class="articulo-renglon-tiempo origen-planta" id="renglon-tiempo-${art.numero}">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>⏱️</span>
+                            <span>Tiempo estimado: <strong>${estArt.minutos_unitarios.toFixed(2)} min/u</strong> × <span class="calc-cant">${art.cantidad}</span> u = <strong class="calc-subtotal" style="color: #15803d;">~ ${totalCalculado}</strong></span>
+                        </div>
+                        <span class="articulo-tiempo-badge planta" title="${estArt.detalle || 'Evidencia real'}">🟢 ${estArt.detalle || 'Planta'}</span>
                     </div>
-                    <div class="articulo-actions">
-                        <input type="number"
-                               class="input-cantidad-articulo"
-                               value="${art.cantidad}"
-                               min="1"
-                               data-numero="${art.numero}">
-                        <button class="btn-eliminar-articulo"
-                                data-numero="${art.numero}">
-                            🗑️
-                        </button>
+                `;
+            } else if (estArt && estArt.origen === 'arbitraria') {
+                const totalCalculado = estArt.minutos_totales ? (estArt.minutos_totales < 1 ? `${Math.round(estArt.minutos_totales * 60)} seg` : `${estArt.minutos_totales.toFixed(1)} min`) : '-';
+                renglonTiempoHtml = `
+                    <div class="articulo-renglon-tiempo origen-arbitraria" id="renglon-tiempo-${art.numero}">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>⏱️</span>
+                            <span>Tiempo estimado: <strong>${estArt.minutos_unitarios.toFixed(2)} min/u</strong> × <span class="calc-cant">${art.cantidad}</span> u = <strong class="calc-subtotal" style="color: #b45309;">~ ${totalCalculado}</strong></span>
+                        </div>
+                        <span class="articulo-tiempo-badge arbitraria" title="Estimación teórica configurada en Búnker">🟡 Teórico Búnker</span>
                     </div>
-                    <div class="articulo-controls">
-                        <button class="${btnClass}" style="${btnStyle}">Ver</button>
+                `;
+            } else {
+                renglonTiempoHtml = `
+                    <div class="articulo-renglon-tiempo origen-sin-datos" id="renglon-tiempo-${art.numero}">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>⚪</span>
+                            <span style="font-style: italic;">Sin datos de tiempo registrados</span>
+                        </div>
+                        <span class="articulo-tiempo-badge sin-datos" title="Sin métricas de planta ni tiempo teórico configurado">⚪ Sin datos</span>
                     </div>
+                `;
+            }
 
+            html += `
+                <div class="articulo-container" data-numero="${art.numero}" style="flex-direction: column; align-items: stretch; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div class="articulo-info">
+                            <span class="articulo-codigo">${art.numero}</span>
+                            <span class="articulo-descripcion">${art.descripcion}</span>
+                        </div>
+                        <div class="articulo-actions">
+                            ${esConfirmado ? `
+                                <span class="cantidad-badge-readonly" title="Cantidad producida">${art.cantidad} u</span>
+                            ` : `
+                                <input type="number"
+                                       class="input-cantidad-articulo"
+                                       value="${art.cantidad}"
+                                       min="1"
+                                       data-numero="${art.numero}">
+                                <button class="btn-eliminar-articulo"
+                                        data-numero="${art.numero}"
+                                        title="Eliminar artículo">
+                                    🗑️
+                                </button>
+                            `}
+                        </div>
+                        <div class="articulo-controls">
+                            <button class="${btnClass}" style="${btnStyle}">Ver</button>
+                        </div>
+                    </div>
+                    ${renglonTiempoHtml}
                 </div>
             `;
+
+            // 🔗 PARA CARROS EXTERNOS: Mostrar Insumos/Mezclas de Receta UP y estado del Artículo Puente (AP)
+            let articulosRecetaUp = [];
+            if (tipoCarro === 'externa') {
+                try {
+                    articulosRecetaUp = await obtenerResumenArticulosCarro(carroId, colaborador.id) || [];
+                } catch (errUpArt) {
+                    console.warn('No se pudieron obtener artículos de receta UP:', errUpArt);
+                }
+
+                if (articulosRecetaUp.length > 0) {
+                    const detalleUpStr = articulosRecetaUp.map(ins => {
+                        const cantU = parseFloat(ins.cantidad_total || 1);
+                        const kTot = parseFloat(ins.kilos_totales || (cantU * (parseFloat(ins.kilos_unidad) || 1)));
+                        return `<strong>${ins.articulo_numero}</strong> - ${ins.nombre || ''} (${cantU} u = ${kTot.toFixed(2)} kg)`;
+                    }).join(' | ');
+                    const badgeUpStatus = (esPreparado || esConfirmado)
+                        ? `<span style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; font-size: 0.82em; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">✅ Cargado y descontado (Receta UP)</span>`
+                        : `<span style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; font-size: 0.82em; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">⏳ Se descuenta al preparar carro</span>`;
+
+                    html += `
+                        <div class="articulo-insumo-up-banner" style="display: flex; align-items: center; justify-content: space-between; background: #f5f3ff; border: 1px solid #c4b5fd; border-radius: 6px; padding: 6px 12px; margin-top: 2px; margin-bottom: 6px; font-size: 0.88em; gap: 8px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1em;">📦</span>
+                                <span style="font-weight: bold; color: #5b21b6;">Insumo / Mezcla (Receta UP):</span>
+                                <span style="color: #4c1d95;">${detalleUpStr}</span>
+                            </div>
+                            ${badgeUpStatus}
+                        </div>
+                    `;
+                }
+
+                if (tieneRelacion) {
+                    const codPuenteSafe = (relacion.articulo_kilo_codigo || '').replace(/'/g, "\\'");
+                    const nomPuenteSafe = (relacion.articulo_kilo_nombre || '').replace(/'/g, "\\'");
+                    const barPuenteSafe = (relacion.articulo_kilo_codigo_barras || '').replace(/'/g, "\\'");
+                    html += `
+                        <div class="articulo-vinculado-banner" style="display: flex; align-items: center; justify-content: space-between; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 12px; margin-top: 2px; margin-bottom: 8px; font-size: 0.88em; gap: 8px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1em;">🔗</span>
+                                <span style="font-weight: bold; color: #1e40af;">Artículo Puente:</span>
+                                <span style="color: #1e3a8a;"><strong>${relacion.articulo_kilo_codigo}</strong> - ${relacion.articulo_kilo_nombre || ''}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <button type="button"
+                                        class="btn-imprimir-etiqueta-puente"
+                                        onclick="window.imprimirEtiquetaArticuloPuente && window.imprimirEtiquetaArticuloPuente('${codPuenteSafe}', '${nomPuenteSafe}', '${barPuenteSafe}', '${carroId}')"
+                                        style="background: #16a34a; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;"
+                                        title="Imprimir etiqueta de ${relacion.articulo_kilo_codigo}">
+                                    🏷️ Imprimir Etiqueta
+                                </button>
+                                ${!esConfirmado ? `
+                                    <button class="btn-editar-relacion-simple" 
+                                            data-articulo="${art.numero}" 
+                                            data-relacion-id="${relacion.id}"
+                                            style="background: #2563eb; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: pointer;">
+                                        ✏️ Cambiar
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else if (!esConfirmado) {
+                    html += `
+                        <div class="articulo-vinculado-banner" style="display: flex; align-items: center; justify-content: space-between; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 12px; margin-top: 2px; margin-bottom: 8px; font-size: 0.88em;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1em;">⚠️</span>
+                                <span style="font-weight: bold; color: #92400e;">Falta vincular Artículo Puente (AP)</span>
+                            </div>
+                            <button class="btn-vincular-articulo" 
+                                    data-articulo="${art.numero}"
+                                    style="background: #d97706; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: pointer;">
+                                ➕ Vincular Artículo Puente
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
 
             // Obtener y mostrar ingredientes expandidos para este artículo
             const ingredientes = await obtenerIngredientesExpandidos(art.numero);
 
-            if (ingredientes && ingredientes.length > 0) {
+            if ((ingredientes && ingredientes.length > 0) || (articulosRecetaUp && articulosRecetaUp.length > 0)) {
                 html += `
                     <div class="ingredientes-expandidos hidden">
                         <div>
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Ingrediente</th>
+                                        <th>Ingrediente / Insumo Receta</th>
                                         <th>Cantidad</th>
-                                        <th>Unidad</th>
+                                        <th>Unidad / Peso</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                 `;
 
-                ingredientes.forEach(ing => {
+                if (articulosRecetaUp && articulosRecetaUp.length > 0) {
+                    articulosRecetaUp.forEach(ins => {
+                        const cantU = parseFloat(ins.cantidad_total || 1);
+                        const kTot = parseFloat(ins.kilos_totales || (cantU * (parseFloat(ins.kilos_unidad) || 1)));
+                        html += `
+                            <tr style="background: #faf5ff;">
+                                <td>
+                                    📦 <strong>[${ins.articulo_numero}]</strong> ${ins.nombre || ''}
+                                    <span style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; font-size: 0.78em; font-weight: 700; padding: 1px 6px; border-radius: 9999px; margin-left: 6px;">Mezcla / Insumo Depósito</span>
+                                </td>
+                                <td style="font-weight: 700; color: #5b21b6;">${parseFloat(cantU.toFixed(2))}</td>
+                                <td style="font-weight: 600; color: #5b21b6;">unidad (${kTot.toFixed(2)} kg)</td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                (ingredientes || []).forEach(ing => {
                     // Multiplicar la cantidad del ingrediente por la cantidad del artículo en el carro
                     const cantidadTotal = ing.cantidad * art.cantidad;
 
@@ -2240,7 +3080,7 @@ export async function mostrarArticulosDelCarro() {
                                 ${ing.es_mix ?
                             `<span class="mix-nombre" 
                                            style="cursor: pointer; color: #0275d8; text-decoration: underline;"
-                                           onclick="editarIngredienteCompuesto(${ing.id})">${ing.nombre}</span>` :
+                                           onclick="editarIngredienteCompuesto(${ing.id || ing.ingrediente_id || '\'' + (ing.nombre || '').replace(/'/g, "\\'") + '\''})">${ing.nombre}</span>` :
                             ing.nombre}
                             </td>
                 <td data-base="${ing.cantidad}" data-valor="${cantidadTotal}">${parseFloat(cantidadTotal.toFixed(2))}</td>
@@ -2283,6 +3123,19 @@ export async function mostrarArticulosDelCarro() {
 
         html += `</div>`; // cerrar seccion-articulos
 
+        // ⏱️ Resumen de Métricas de Tiempo de Producción (para carros medidos o finalizados)
+        try {
+            const resMed = await fetch(`/api/tiempos/carro/${carroId}/estado-medicion?usuarioId=${colaborador.id}`);
+            if (resMed.ok) {
+                const dataMed = await resMed.json();
+                if (dataMed && (dataMed.modo_medicion || dataMed.medicion_etapa_actual === 4 || (dataMed.metricas && dataMed.metricas.length > 0))) {
+                    html += renderizarCardMetricasCarro(dataMed, articulos);
+                }
+            }
+        } catch (e) {
+            console.warn('Aviso al cargar métricas del carro:', e);
+        }
+
 
         const contenedor = document.getElementById('lista-articulos');
         if (contenedor) {
@@ -2293,6 +3146,11 @@ export async function mostrarArticulosDelCarro() {
                 const expandido = contenedor.querySelector(`.articulo-container[data-numero="${numero}"] .ingredientes-expandidos`);
                 if (expandido) expandido.classList.remove('hidden');
             });
+
+            // ⏱️ Sincronizar HUD de medición temporal si está disponible
+            if (window.hudMedicion && carroId) {
+                window.hudMedicion.activarParaCarro(carroId);
+            }
         } else {
             console.error('No se encontró el contenedor lista-articulos');
         }
@@ -2625,9 +3483,9 @@ async function abrirModalEditarVinculoSimplificado(articuloCodigo, relacionId, a
  */
 async function cargarArticulosParaVinculo() {
     try {
-        const response = await fetch('http://localhost:3002/api/produccion/articulos');
+        const response = await fetch('http://localhost:3002/api/produccion/articulos-puente');
         if (!response.ok) {
-            throw new Error('Error al cargar artículos');
+            throw new Error('Error al cargar artículos puente');
         }
 
         const responseData = await response.json();
@@ -2645,36 +3503,29 @@ async function cargarArticulosParaVinculo() {
             return;
         }
 
-        // 🎯 FILTRADO INTELIGENTE: Solo artículos fraccionables (por kilo)
-        const articulosFraccionables = lista.filter(art => {
-            const nombreLower = (art.nombre || '').toLowerCase();
-            // Buscar "x kilo" o "xkilo" o "x  kilo" (insensible a mayúsculas)
-            return /x\s*kilo/i.test(nombreLower);
-        });
-
-        console.log(`🎯 [FILTRO-VINCULO] Artículos totales: ${lista.length}, Fraccionables: ${articulosFraccionables.length}`);
+        console.log(`🎯 [FILTRO-VINCULO DETERMINISTA] Artículos Puente cargados: ${lista.length}`);
 
         const selector = document.getElementById('selector-articulo-vinculo');
 
         if (!selector) return;
 
         // Limpiar opciones existentes
-        selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
+        selector.innerHTML = '<option value="">Seleccione un artículo puente...</option>';
 
         // Ordenar artículos alfabéticamente
-        articulosFraccionables.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        lista.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
 
-        // Agregar opciones
-        articulosFraccionables.forEach(articulo => {
+        // Agregar opciones con icono identificador 🔗
+        lista.forEach(articulo => {
             const option = document.createElement('option');
             option.value = articulo.numero;
-            option.textContent = `${articulo.numero} - ${articulo.nombre}`;
+            option.textContent = `🔗 ${articulo.numero} - ${articulo.nombre}`;
             option.dataset.nombre = articulo.nombre;
             selector.appendChild(option);
         });
 
         // Configurar búsqueda en tiempo real con lista filtrada
-        configurarBusquedaVinculo(articulosFraccionables);
+        configurarBusquedaVinculo(lista);
 
         // 🎯 EVENT LISTENER ÚNICO: Al seleccionar artículo, cargar preview de receta (usamos onchange para evitar multiplicar listeners al reabrir el modal)
         selector.onchange = (e) => {
@@ -2713,10 +3564,10 @@ function configurarBusquedaVinculo(articulos) {
         // Limpiar selector
         selector.innerHTML = '<option value="">Seleccione un artículo...</option>';
 
-        // 🎯 Filtrado Inteligente Multitérmino
+        // 🎯 Filtrado Inteligente Multitérmino (Política Universal de Búsqueda)
         const terminos = termino.split(/\s+/).filter(t => t.length > 0);
         const articulosFiltrados = articulos.filter(articulo => {
-            const indexCorpus = `${articulo.numero} ${articulo.nombre}`.toLowerCase();
+            const indexCorpus = `${articulo.numero} ${articulo.nombre} ${articulo.nombre_legacy || ''} ${articulo.descripcion_generada || ''}`.toLowerCase();
             return terminos.every(t => indexCorpus.includes(t));
         });
 
@@ -2724,7 +3575,9 @@ function configurarBusquedaVinculo(articulos) {
         articulosFiltrados.forEach(articulo => {
             const option = document.createElement('option');
             option.value = articulo.numero;
-            option.textContent = `${articulo.numero} - ${articulo.nombre}`;
+            const esAP = articulo.propiedades_dinamicas && (articulo.propiedades_dinamicas.articulo_principal === 'Articulo Puente' || articulo.propiedades_dinamicas.articulo_principal === 'Artículo Puente');
+            const prefixBadge = esAP ? '🔗 ' : '';
+            option.textContent = `${prefixBadge}${articulo.numero} - ${articulo.nombre}`;
             option.dataset.nombre = articulo.nombre;
             selector.appendChild(option);
         });
@@ -3497,6 +4350,12 @@ document.addEventListener('click', async (e) => {
 // Hacer funciones disponibles globalmente para reactividad
 window.obtenerResumenIngredientesCarro = obtenerResumenIngredientesCarro;
 window.mostrarResumenIngredientes = mostrarResumenIngredientes;
+window.obtenerResumenMixesCarro = obtenerResumenMixesCarro;
+window.mostrarResumenMixes = mostrarResumenMixes;
+window.obtenerResumenArticulosCarro = obtenerResumenArticulosCarro;
+window.mostrarResumenArticulos = mostrarResumenArticulos;
+window.actualizarEstadoCarro = actualizarEstadoCarro;
+window.mostrarArticulosDelCarro = mostrarArticulosDelCarro;
 
 window.guardarRecetaInline = async function() {
     console.log('\n🕵️‍♂️ VIGÍA DEPURADOR: Iniciando handleSaveRecipe (guardarRecetaInline)');

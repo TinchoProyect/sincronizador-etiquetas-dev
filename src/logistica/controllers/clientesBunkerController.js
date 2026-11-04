@@ -6,9 +6,11 @@
  */
 
 const ClientesBunkerModel = require('../models/clientesBunkerModel');
+const DomiciliosModel = require('../models/domiciliosModel');
 const arcaService = require('../services/arcaService');
 const { pool } = require('../config/database');
 const { createClient } = require('@supabase/supabase-js');
+const { sincronizarTodoElDirectorioB2B } = require('../services/b2bDirectorySyncService');
 
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
@@ -21,19 +23,44 @@ const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY)
 
 async function obtenerClienteIdsActivosB2B() {
     if (!supabaseAdmin) return [];
+    const activeSet = new Set();
+    const esEmailFicticio = (em) => {
+        const clean = String(em || '').trim().toLowerCase();
+        return !clean || clean.endsWith('@lamdaclientes.com') || clean.endsWith('@b2b.lamdaser.com') || clean.endsWith('@lamda.com.ar');
+    };
     try {
-        const { data, error } = await supabaseAdmin
+        const { data: profs } = await supabaseAdmin
             .from('clientes_b2b_perfiles')
-            .select('cliente_id');
-        if (error) {
-            console.error('⚠️ [CLIENTES-BUNKER] Error al consultar perfiles en Supabase:', error.message);
-            return [];
-        }
-        return data ? data.map(p => p.cliente_id) : [];
-    } catch (err) {
-        console.error('⚠️ [CLIENTES-BUNKER] Error de red al conectar con Supabase:', err.message);
-        return [];
-    }
+            .select('cliente_id, email');
+        (profs || []).forEach(p => {
+            if (p.cliente_id && !esEmailFicticio(p.email)) {
+                activeSet.add(p.cliente_id);
+            }
+        });
+    } catch (e) {}
+
+    try {
+        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+        (usersData?.users || []).forEach(u => {
+            const cid = u.app_metadata?.cliente_id || u.user_metadata?.cliente_id;
+            if (cid && (u.last_sign_in_at || !esEmailFicticio(u.email))) {
+                activeSet.add(cid);
+            }
+        });
+    } catch (e) {}
+
+    try {
+        const { data: telem } = await supabaseAdmin
+            .from('telemetria_accesos')
+            .select('cliente_nombre');
+        (telem || []).forEach(t => {
+            if (t.cliente_nombre && t.cliente_nombre.startsWith('CB-')) {
+                activeSet.add(t.cliente_nombre);
+            }
+        });
+    } catch (e) {}
+
+    return Array.from(activeSet);
 }
 
 /**
@@ -138,28 +165,20 @@ exports.sugerirLegacy = async (req, res) => {
     try {
         const idsAsignados = await ClientesBunkerModel.obtenerTodosLomasSoftIds();
         
-        const setIds = new Set();
+        let maxNum = 0;
         idsAsignados.forEach(id => {
             const num = parseInt(id, 10);
-            if (!isNaN(num)) {
-                setIds.add(num);
+            if (!isNaN(num) && num > maxNum) {
+                maxNum = num;
             }
         });
         
-        let sugerido = 100;
-        while (setIds.has(sugerido) && sugerido <= 999) {
-            sugerido++;
-        }
+        // Si el máximo encontrado es mayor a 0, sumamos 1. Si no, empezamos en la base 100.
+        let sugerido = maxNum > 0 ? maxNum + 1 : 100;
         
-        if (sugerido > 999) {
-            sugerido = 1000;
-            while (setIds.has(sugerido)) {
-                sugerido++;
-            }
-        }
-        
-        const codigoSugerido = sugerido.toString();
-        console.log(`💡 [CLIENTES-BUNKER] Sugiriendo código legacy disponible: "${codigoSugerido}"`);
+        // Formatear con padding de ceros a la izquierda (mínimo 4 dígitos para consistencia con Lomasoft)
+        const codigoSugerido = sugerido.toString().padStart(4, '0');
+        console.log(`💡 [CLIENTES-BUNKER] Sugiriendo código legacy disponible (MAX + 1): "${codigoSugerido}"`);
         
         res.json({ success: true, codigoSugerido });
     } catch (error) {
@@ -173,8 +192,12 @@ exports.sugerirLegacy = async (req, res) => {
  */
 exports.crear = async (req, res) => {
     try {
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo } = req.body;
+        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion } = req.body;
         let { lomas_soft_id, cuit_cuil } = req.body;
+
+        const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion)
+            ? preferencia_facturacion
+            : 'PREGUNTAR';
 
         // 1. Validaciones de presencia de campos obligatorios humanos
         if (!cliente_nombre || !cliente_nombre.trim()) {
@@ -261,10 +284,40 @@ exports.crear = async (req, res) => {
             canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
             email_portal: email_portal ? email_portal.trim() : null,
             email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
-            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null
+            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null,
+            preferencia_facturacion: prefFacturacion,
+            ver_stock: req.body.ver_stock === true || req.body.ver_stock === 'true'
         });
 
+        // 9. Guardar domicilios precargados (si fueron provistos en el alta)
+        const { domicilios } = req.body;
+        if (Array.isArray(domicilios) && domicilios.length > 0) {
+            console.log(`📍 [CLIENTES-BUNKER] Guardando ${domicilios.length} domicilio(s) precargado(s) para el cliente ID: ${nuevoCliente.id}`);
+            for (let i = 0; i < domicilios.length; i++) {
+                const dom = domicilios[i];
+                if (dom.alias && dom.direccion) {
+                    await DomiciliosModel.crear({
+                        id_cliente: nuevoCliente.id,
+                        alias: dom.alias.trim(),
+                        direccion: dom.direccion.trim(),
+                        localidad: dom.localidad ? dom.localidad.trim() : null,
+                        provincia: dom.provincia ? dom.provincia.trim() : null,
+                        codigo_postal: dom.codigo_postal ? dom.codigo_postal.trim() : null,
+                        latitud: dom.latitud ? parseFloat(dom.latitud) : null,
+                        longitud: dom.longitud ? parseFloat(dom.longitud) : null,
+                        coordenadas_validadas: !!dom.coordenadas_validadas,
+                        es_predeterminado: dom.es_predeterminado !== undefined ? !!dom.es_predeterminado : (i === 0),
+                        telefono_contacto: dom.telefono_contacto ? dom.telefono_contacto.trim() : null,
+                        instrucciones_entrega: dom.instrucciones_entrega ? dom.instrucciones_entrega.trim() : null,
+                        horario_atencion_desde: dom.horario_atencion_desde || null,
+                        horario_atencion_hasta: dom.horario_atencion_hasta || null
+                    });
+                }
+            }
+        }
+
         console.log(`✅ [CLIENTES-BUNKER] Cliente creado exitosamente: "${nuevoCliente.cliente_nombre}" (ID: ${nuevoCliente.id}, Código: ${nuevoCliente.codigo_bunker_cliente})`);
+        sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
         res.status(201).json({ success: true, data: nuevoCliente, message: 'Cliente guardado exitosamente.' });
 
     } catch (error) {
@@ -279,8 +332,12 @@ exports.crear = async (req, res) => {
 exports.actualizar = async (req, res) => {
     try {
         const { id } = req.params;
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo } = req.body;
+        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion } = req.body;
         let { lomas_soft_id, cuit_cuil } = req.body;
+
+        const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion)
+            ? preferencia_facturacion
+            : 'PREGUNTAR';
 
         // 1. Verificar existencia previa
         const clientePrevio = await ClientesBunkerModel.obtenerPorId(id);
@@ -372,11 +429,129 @@ exports.actualizar = async (req, res) => {
             canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
             email_portal: email_portal ? email_portal.trim() : null,
             email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
-            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null
+            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null,
+            preferencia_facturacion: prefFacturacion,
+            ver_stock: req.body.ver_stock === true || req.body.ver_stock === 'true'
         });
 
+        // Sincronizar permiso de ver_stock y perfil en Supabase Cloud de forma INSTANTÁNEA (Perfiles + Auth)
+        let b2bSynced = false;
+        if (supabaseAdmin) {
+            try {
+                const targetClienteId = codigoLimpio;
+                const deseaVerStock = req.body.ver_stock === true || req.body.ver_stock === 'true';
+
+                // Búsqueda robusta de perfil en Supabase por código búnker, legacy o email
+                let prof = null;
+                const { data: profByCodigo } = await supabaseAdmin
+                    .from('clientes_b2b_perfiles')
+                    .select('id, email, permisos')
+                    .eq('cliente_id', targetClienteId)
+                    .maybeSingle();
+                prof = profByCodigo;
+
+                if (!prof && lomas_soft_id) {
+                    const { data: profByLomas } = await supabaseAdmin
+                        .from('clientes_b2b_perfiles')
+                        .select('id, email, permisos')
+                        .eq('cliente_id', lomas_soft_id)
+                        .maybeSingle();
+                    prof = profByLomas;
+                }
+
+                if (!prof && email_portal) {
+                    const { data: profByEmail } = await supabaseAdmin
+                        .from('clientes_b2b_perfiles')
+                        .select('id, email, permisos')
+                        .ilike('email', email_portal.trim())
+                        .maybeSingle();
+                    prof = profByEmail;
+                }
+
+                let permisos = (prof && Array.isArray(prof.permisos)) ? [...prof.permisos] : ['compras', 'pagos'];
+                if (deseaVerStock) {
+                    if (!permisos.includes('ver_stock')) permisos.push('ver_stock');
+                } else {
+                    permisos = permisos.filter(p => p !== 'ver_stock');
+                }
+
+                // 1. Actualizar tabla clientes_b2b_perfiles
+                if (prof) {
+                    const patchData = {
+                        permisos,
+                        updated_at: new Date().toISOString()
+                    };
+                    try {
+                        const { error: errCol } = await supabaseAdmin
+                            .from('clientes_b2b_perfiles')
+                            .update({ ...patchData, ver_stock: deseaVerStock })
+                            .eq('id', prof.id);
+                        if (errCol) throw errCol;
+                    } catch (eFallback) {
+                        await supabaseAdmin
+                            .from('clientes_b2b_perfiles')
+                            .update(patchData)
+                            .eq('id', prof.id);
+                    }
+                    b2bSynced = true;
+                }
+
+                // 2. Actualizar INMEDIATAMENTE en Supabase Auth (auth.users app_metadata)
+                const targetEmail = (prof && prof.email) || (email_portal ? email_portal.trim().toLowerCase() : null);
+                const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+                const targetUser = usersData?.users?.find(u => 
+                    u.app_metadata?.cliente_id === targetClienteId ||
+                    (lomas_soft_id && u.app_metadata?.cliente_id === lomas_soft_id) ||
+                    (targetEmail && u.email && u.email.toLowerCase() === targetEmail.toLowerCase())
+                );
+
+                if (targetUser) {
+                    // Si el perfil no existía en clientes_b2b_perfiles pero el usuario existe en Auth, crearlo proactivamente
+                    if (!prof) {
+                        await supabaseAdmin.from('clientes_b2b_perfiles').upsert({
+                            id: targetUser.id,
+                            cliente_id: targetClienteId,
+                            rol: targetUser.app_metadata?.rol || 'Dueno',
+                            permisos: permisos,
+                            nombre_completo: clienteActualizado.email_portal_nombre || clienteActualizado.cliente_nombre,
+                            nombre_empresa: clienteActualizado.razon_social || clienteActualizado.cliente_nombre,
+                            cuit: clienteActualizado.cuit_cuil,
+                            email: targetUser.email,
+                            updated_at: new Date().toISOString()
+                        });
+                        console.log(`✨ [SYNC-PROFILE-AUTO] Perfil creado por upsert en Supabase para ${targetUser.email} (${targetClienteId})`);
+                    }
+
+                    await supabaseAdmin.auth.admin.updateUserById(targetUser.id, {
+                        app_metadata: {
+                            ...(targetUser.app_metadata || {}),
+                            cliente_id: targetClienteId,
+                            permisos: permisos,
+                            ver_stock: deseaVerStock
+                        }
+                    });
+                    b2bSynced = true;
+                    console.log(`⚡ [SYNC-INSTANT-STOCK] auth.users actualizado para ${targetUser.email}: ver_stock=${deseaVerStock}, permisos=[${permisos.join(',')}]`);
+                }
+
+                if (b2bSynced) {
+                    console.log(`📡 [CLIENTES-BUNKER] Permiso ver_stock (${deseaVerStock}) sincronizado instantáneamente en Supabase para cliente ${targetClienteId}.`);
+                }
+            } catch (errSupabase) {
+                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando ver_stock en Supabase:', errSupabase.message);
+            }
+        }
+
         console.log(`✅ [CLIENTES-BUNKER] Cliente actualizado exitosamente: "${clienteActualizado.cliente_nombre}" (ID: ${id})`);
-        res.json({ success: true, data: clienteActualizado, message: 'Ficha de cliente actualizada con éxito.' });
+        sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
+        res.json({ 
+            success: true, 
+            data: clienteActualizado, 
+            b2b_synced: b2bSynced,
+            message: b2bSynced 
+                ? 'Ficha de cliente actualizada y permisos B2B sincronizados en la nube.' 
+                : 'Ficha de cliente actualizada con éxito.' 
+        });
 
     } catch (error) {
         console.error(`❌ [CLIENTES-BUNKER] Error al actualizar cliente con ID ${req.params.id}:`, error);
@@ -488,10 +663,89 @@ exports.actualizarListas = async (req, res) => {
         // 4. Obtener cliente actualizado para retornar
         const clienteActualizado = await ClientesBunkerModel.obtenerPorId(id);
 
+        // 5. Sincronización instantánea con Supabase Cloud (clientes_b2b_perfiles_listas + auth.users.app_metadata + perfiles)
+        let b2bSynced = false;
+        if (supabaseAdmin && clienteActualizado.codigo_bunker_cliente) {
+            try {
+                const targetClienteId = clienteActualizado.codigo_bunker_cliente;
+                const cleanListaIds = listaIds.map(lid => parseInt(lid, 10)).filter(lid => !isNaN(lid));
+
+                // A. Limpiar asignaciones previas en Supabase para este cliente
+                await supabaseAdmin
+                    .from('clientes_b2b_perfiles_listas')
+                    .delete()
+                    .eq('cliente_id', targetClienteId);
+
+                // B. Insertar las listas asignadas
+                if (cleanListaIds.length > 0) {
+                    const rowsToInsert = cleanListaIds.map((lid, idx) => ({
+                        cliente_id: targetClienteId,
+                        lista_id: lid,
+                        es_principal: idx === 0,
+                        permitir_toggle_iva: false,
+                        created_at: new Date().toISOString()
+                    }));
+                    await supabaseAdmin
+                        .from('clientes_b2b_perfiles_listas')
+                        .insert(rowsToInsert);
+                }
+
+                // C. Actualizar app_metadata y asegurar perfil en clientes_b2b_perfiles
+                const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+                const targetEmail = clienteActualizado.email_portal ? clienteActualizado.email_portal.trim().toLowerCase() : null;
+                const targetUser = usersData?.users?.find(u => 
+                    u.app_metadata?.cliente_id === targetClienteId ||
+                    (clienteActualizado.lomas_soft_id && u.app_metadata?.cliente_id === clienteActualizado.lomas_soft_id) ||
+                    (targetEmail && u.email && u.email.toLowerCase() === targetEmail)
+                );
+
+                if (targetUser) {
+                    const permisos = ['compras', 'pagos'];
+                    if (clienteActualizado.ver_stock) {
+                        permisos.push('ver_stock');
+                    }
+
+                    // Asegurar perfil
+                    await supabaseAdmin.from('clientes_b2b_perfiles').upsert({
+                        id: targetUser.id,
+                        cliente_id: targetClienteId,
+                        rol: targetUser.app_metadata?.rol || 'Dueno',
+                        permisos: permisos,
+                        nombre_completo: clienteActualizado.email_portal_nombre || clienteActualizado.cliente_nombre,
+                        nombre_empresa: clienteActualizado.razon_social || clienteActualizado.cliente_nombre,
+                        cuit: clienteActualizado.cuit_cuil,
+                        email: targetUser.email,
+                        ver_stock: !!clienteActualizado.ver_stock,
+                        updated_at: new Date().toISOString()
+                    });
+
+                    // Actualizar auth app_metadata
+                    await supabaseAdmin.auth.admin.updateUserById(targetUser.id, {
+                        app_metadata: {
+                            ...(targetUser.app_metadata || {}),
+                            cliente_id: targetClienteId,
+                            listas_precios: cleanListaIds,
+                            permisos: permisos,
+                            rol: targetUser.app_metadata?.rol || 'Dueno',
+                            ver_stock: !!clienteActualizado.ver_stock
+                        }
+                    });
+                    console.log(`⚡ [SYNC-INSTANT-LISTAS] Supabase sincronizado para ${targetUser.email}: listas=[${cleanListaIds.join(',')}]`);
+                }
+                b2bSynced = true;
+                console.log(`📡 [CLIENTES-BUNKER] Listas de precios sincronizadas instantáneamente en Supabase para cliente ${targetClienteId}.`);
+            } catch (errSupabase) {
+                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando listas en Supabase:', errSupabase.message);
+            }
+        }
+
         res.json({
             success: true,
             data: clienteActualizado,
-            message: 'Listas de precios actualizadas exitosamente.'
+            b2b_synced: b2bSynced,
+            message: b2bSynced
+                ? 'Listas de precios actualizadas y sincronizadas instantáneamente con el portal B2B.'
+                : 'Listas de precios actualizadas exitosamente.'
         });
 
     } catch (error) {
@@ -549,6 +803,48 @@ exports.actualizarContactosWhatsapp = async (req, res) => {
     } catch (error) {
         console.error(`❌ [CLIENTES-BUNKER] Error al actualizar destinatarios de facturación:`, error);
         res.status(500).json({ success: false, error: 'Error al actualizar destinatarios de facturación.' });
+    }
+};
+
+/**
+ * Obtener artículos comprados/facturados históricamente a un cliente B2B
+ * GET /api/logistica/bunker/clientes/:id/articulos-comprados
+ */
+exports.obtenerArticulosComprados = async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(`🛒 [CLIENTES-BUNKER] Obteniendo historial relacional de artículos comprados para cliente ID: ${id}`);
+
+        const cliente = await ClientesBunkerModel.obtenerPorId(id);
+        if (!cliente) {
+            return res.status(404).json({ success: false, error: 'El cliente especificado no existe.' });
+        }
+
+        const articulosComprados = await ClientesBunkerModel.obtenerArticulosComprados(id);
+
+        res.json({
+            success: true,
+            cliente: {
+                id: cliente.id,
+                codigo_bunker_cliente: cliente.codigo_bunker_cliente,
+                cliente_nombre: cliente.cliente_nombre,
+                razon_social: cliente.razon_social || cliente.cliente_nombre,
+                lomas_soft_id: cliente.lomas_soft_id,
+                cuit_cuil: cliente.cuit_cuil,
+                whatsapp_facturas: cliente.whatsapp_facturas,
+                email_facturas: cliente.email_facturas,
+                email_portal: cliente.email_portal,
+                email_portal_nombre: cliente.email_portal_nombre,
+                email_portal_cargo: cliente.email_portal_cargo,
+                preferencia_facturacion: cliente.preferencia_facturacion,
+                listas_precios: cliente.listas_precios || []
+            },
+            total: articulosComprados.length,
+            data: articulosComprados
+        });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error al obtener artículos comprados del cliente:`, error);
+        res.status(500).json({ success: false, error: 'Error al consultar historial de artículos del cliente.' });
     }
 };
 

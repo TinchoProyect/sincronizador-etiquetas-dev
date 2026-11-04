@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T13:19:00-03:00",
+  "version": "v5.27",
+  "architecture_paradigm": "Transacción Atómica Única (BEGIN/COMMIT/ROLLBACK) Búnker-Finanzas + Erradicación del hardcode solo_taxonomia: true en UI + Script de Saneamiento Histórico (resincronizar_articulos_historicos_v527.js) + Recálculo Financiero Síncrono",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController.js, bunkerService.js & bunker.js: 0 SyntaxError)",
+    "QA-1_Margin_Edition_45_to_80": "100% PASS (Saving article with 80% margin inserts 80.00 in bunker_margenes)",
+    "QA-2_Real_Financial_Parity_E2E": "100% PASS (bunker_lista_articulos reads 80.00% margin and recalculates precio_final = $180,774.00, achieving 100% parity with Finance module)",
+    "QA-3_Historical_Data_Resynchronization": "100% PASS (resincronizar_articulos_historicos_v527.js repaired 10 un-margined historical articles and 41 zero-price records, leaving 0 un-margined articles)",
+    "QA-4_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)",
+    "QA-5_RESTRICT_Child_Dependencies_Check": "100% PASS (SELECT COUNT(*) check retains relational integrity on unlinking)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

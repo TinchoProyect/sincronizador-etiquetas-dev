@@ -24,46 +24,85 @@
 </head>
 <body>
     <!-- Botones de acción (no se imprimen) -->
+    <!-- Botones de acción y configuración (no se imprimen) -->
     <div class="print-actions no-print">
-        <button id="btn-volver" class="btn btn-secondary" onclick="volverALista()">
-            ← Volver a Presupuestos
-        </button>
-        
-        <!-- Selector de formato de impresión -->
-        <div class="formato-selector">
-            <label class="formato-label">Formato:</label>
-            <div class="formato-toggle">
-                <button id="btn-formato-discriminado" class="btn-formato active" onclick="cambiarFormato('IVA_DISCRIMINADO')">
-                    IVA Discriminado
+        <!-- Fila 1: Navegación, Opciones de Formato y Botones de Salida -->
+        <div class="actions-row-top">
+            <div class="actions-group-nav">
+                <button id="btn-volver" class="btn btn-secondary btn-compact" onclick="volverALista()" title="Regresar al listado general de presupuestos">
+                    ← Volver
                 </button>
-                <button id="btn-formato-incluido" class="btn-formato" onclick="cambiarFormato('IVA_INCLUIDO')">
-                    IVA Incluido
+            </div>
+
+            <div class="actions-group-format">
+                <div class="formato-control">
+                    <span class="control-label">IVA:</span>
+                    <div class="formato-toggle">
+                        <button id="btn-formato-discriminado" class="btn-formato active" onclick="cambiarFormato('IVA_DISCRIMINADO')" title="Precios netos con IVA discriminado">
+                            Discriminado
+                        </button>
+                        <button id="btn-formato-incluido" class="btn-formato" onclick="cambiarFormato('IVA_INCLUIDO')" title="Precios finales con IVA incluido">
+                            Incluido
+                        </button>
+                    </div>
+                </div>
+
+                <div class="divider-vertical"></div>
+
+                <div class="formato-switches">
+                    <label class="compact-check" for="chk-solo-lista" title="Ocultar importes y mostrar solo lista de artículos">
+                        <input type="checkbox" id="chk-solo-lista" onchange="toggleSoloLista()">
+                        <span>Ocultar totales</span>
+                    </label>
+                    <label class="compact-check" for="chk-faltantes" title="Mostrar u ocultar artículos solicitados sin stock">
+                        <input type="checkbox" id="chk-faltantes" onchange="toggleFaltantes()" checked>
+                        <span>Faltantes</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="actions-group-output">
+                <button id="btn-enviar" class="btn btn-enviar btn-compact" onclick="enviarPresupuestoOmnicanal()" title="Enviar presupuesto por WhatsApp o Correo Electrónico">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576zm6.787-8.201L1.591 6.602l4.339 2.76z"/>
+                    </svg>
+                    <span>Enviar</span>
+                </button>
+                
+                <button id="btn-imprimir" class="btn btn-primary btn-compact" onclick="imprimirPresupuesto()" title="Imprimir en papel o guardar como archivo PDF">
+                    <span>🖨️ Imprimir</span>
                 </button>
             </div>
         </div>
-        
-        <!-- Toggle Solo Lista -->
-        <div class="formato-selector" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-            <label for="chk-solo-lista" style="font-weight:bold; cursor:pointer; color:#333; font-size: 0.9rem;">Ocultar Totales (Solo Lista):</label>
-            <input type="checkbox" id="chk-solo-lista" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleSoloLista()">
+
+        <!-- Fila 2: Complementos Opcionales (Tac Tac a un Clic) -->
+        <div class="actions-row-extras">
+            <span class="extras-caption">
+                <span class="extras-icon">⚡</span> Incluir en documento:
+            </span>
+            <div class="extras-toggles-container">
+                <button type="button" id="btn-toggle-promos" class="btn-extra-toggle" onclick="togglePromos()" title="Agregar o quitar ofertas y promociones vigentes">
+                    <span class="extra-icon">🏷️</span>
+                    <span class="extra-text">Promos y Ofertas</span>
+                    <span id="badge-promos-status" class="extra-badge">OFF</span>
+                </button>
+                <input type="checkbox" id="chk-promos" style="display:none;" onchange="togglePromos(this.checked)">
+
+                <button type="button" id="btn-toggle-pagos" class="btn-extra-toggle" onclick="togglePagos()" title="Mostrar explícitas las formas de pago habilitadas">
+                    <span class="extra-icon">💳</span>
+                    <span class="extra-text">Formas de Pago</span>
+                    <span id="badge-pagos-status" class="extra-badge">OFF</span>
+                </button>
+                <input type="checkbox" id="chk-pagos" style="display:none;" onchange="togglePagos(this.checked)">
+
+                <button type="button" id="btn-toggle-intereses" class="btn-extra-toggle" onclick="toggleIntereses()" title="Agregar política de asistencia financiera (Modo Sombra)">
+                    <span class="extra-icon">🛡️</span>
+                    <span class="extra-text">Política de Intereses</span>
+                    <span id="badge-intereses-status" class="extra-badge">OFF</span>
+                </button>
+                <input type="checkbox" id="chk-intereses" style="display:none;" onchange="toggleIntereses(this.checked)">
+            </div>
         </div>
-        
-        <!-- Toggle Histórico Sin Stock -->
-        <div class="formato-selector" style="display:flex; align-items:center; gap:8px;">
-            <label for="chk-faltantes" style="font-weight:bold; cursor:pointer; color:#d35400; font-size: 0.9rem;">Imprimir faltantes:</label>
-            <input type="checkbox" id="chk-faltantes" style="cursor:pointer; width:18px; height:18px; margin:0;" onchange="toggleFaltantes()" checked>
-        </div>
-        
-        <button id="btn-enviar" class="btn btn-enviar" onclick="enviarPresupuestoOmnicanal()">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-send" viewBox="0 0 16 16" style="margin-right: 4px;">
-                <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576zm6.787-8.201L1.591 6.602l4.339 2.76z"/>
-            </svg>
-            📤 Enviar
-        </button>
-        
-        <button id="btn-imprimir" class="btn btn-primary" onclick="imprimirPresupuesto()">
-            Imprimir / Guardar PDF
-        </button>
     </div>
 
     <!-- Contenedor principal del presupuesto -->
@@ -157,6 +196,10 @@
                             <span class="total-label">Descuento (<span id="descuento-porcentaje">0</span>%):</span>
                             <span class="total-value" id="total-descuento">$ 0,00</span>
                         </div>
+                        <div class="total-row" id="descuentos-especiales-row" style="display: none;">
+                            <span class="total-label">Desc. Especiales:</span>
+                            <span class="total-value" id="total-descuentos-especiales">$ 0,00</span>
+                        </div>
                         <div class="total-row" id="iva-21-row" style="display: none;">
                             <span class="total-label">IVA 21%:</span>
                             <span class="total-value" id="total-iva-21">$ 0,00</span>
@@ -188,6 +231,175 @@
                         <!-- Se llena dinámicamente -->
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Condiciones Comerciales / Bonificaciones por Volumen -->
+            <div class="condicion-comercial-section" id="condicion-comercial-section" style="display: none; margin-top: 15px; padding: 10px 14px; background: #f8fafc; border-left: 4px solid #7c3aed; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.88em; color: #1e293b;">
+                <span style="font-weight: 800; color: #7c3aed; text-transform: uppercase; font-size: 0.82em; display: block; margin-bottom: 2px;">Condición Comercial:</span>
+                <span id="condicion-comercial-texto" style="font-weight: 600;">-</span>
+            </div>
+
+            <!-- 1. Sección de Promociones y Ofertas Activas -->
+            <div class="promos-section" id="promos-section" style="display: none; margin-top: 18px; padding: 12px 16px; background: #fffbeb; border-left: 4px solid #f59e0b; border-top: 1px solid #fef3c7; border-right: 1px solid #fef3c7; border-bottom: 1px solid #fef3c7; border-radius: 6px; page-break-inside: avoid;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #fde68a; padding-bottom: 6px;">
+                    <span style="font-weight: 800; color: #b45309; text-transform: uppercase; font-size: 0.85em; display: flex; align-items: center; gap: 6px;">
+                        🔥 Ofertas y Promociones Activas
+                    </span>
+                    <span style="font-size: 0.75em; color: #92400e; font-weight: 600;">Oportunidades de Compra Vigentes</span>
+                </div>
+                <div id="promos-container-body" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+
+            <!-- 2. Sección de Formas de Pago Habilitadas -->
+            <div class="formas-pago-section" id="formas-pago-section" style="display: none; margin-top: 14px; padding: 10px 14px; background: #f8fafc; border-left: 4px solid #2563eb; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; border-radius: 6px; page-break-inside: avoid;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">
+                    <span style="font-weight: 800; color: #1e40af; text-transform: uppercase; font-size: 0.82em; display: flex; align-items: center; gap: 6px;">
+                        💳 Formas de Pago Habilitadas
+                    </span>
+                    <span style="font-size: 0.73em; color: #64748b; font-weight: 600;">Instructivo y Canales de Cancelación</span>
+                </div>
+
+                <!-- PARTE 1: Transferencia Bancaria (Canal Bancario Digital a todo el ancho) -->
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div style="font-weight: 800; color: #1e40af; font-size: 0.86em; display: flex; align-items: center; gap: 5px;">
+                        <span>🏦</span> Transferencia Bancaria:
+                    </div>
+                    <div style="font-size: 0.82em; color: #334155; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span><strong>Banco:</strong> Banco Galicia</span>
+                        <span style="color: #cbd5e1;">|</span>
+                        <span><strong>ALIAS:</strong> <span style="font-family: monospace; font-weight: 700; background: #eff6ff; padding: 2px 8px; border-radius: 4px; color: #1d4ed8; font-size: 1.05em; border: 1px solid #dbeafe;">LAMDA.SER.MARTIN</span></span>
+                    </div>
+                </div>
+
+                <!-- PARTE 2: Pagos en Efectivo (2 columnas a todo el ancho) -->
+                <div>
+                    <div style="font-size: 0.74em; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+                        <span>💵</span> Pagos en Efectivo:
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <!-- Opción 1: Ensobrado (Servicio LAMDA) -->
+                        <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                                    <strong style="color: #0f172a; font-size: 0.86em; display: flex; align-items: center; gap: 5px;">
+                                        <span>✉️</span> Ensobrado (Servicio LAMDA)
+                                    </strong>
+                                    <span style="font-size: 0.68em; background: #f1f5f9; color: #475569; padding: 1px 6px; border-radius: 10px; font-weight: 600;">2 Vías</span>
+                                </div>
+                                <div style="font-size: 0.75em; color: #334155; line-height: 1.35;">
+                                    <p style="margin-bottom: 4px;">
+                                        <strong>1. Modalidades de carga:</strong><br>
+                                        • <em>Portal de Clientes LAMDA:</em> Desde la función <em>"Pagos en Efectivo / Ensobrado"</em>.<br>
+                                        • <em>Enlace Móvil (WhatsApp):</em> Solicitá un link directo para operar desde el celular sin claves.
+                                    </p>
+                                    <p style="margin-bottom: 0;">
+                                        <strong>2. Pasos del proceso asistido:</strong><br>
+                                        ① Anotás el monto y el sistema asiste el conteo y arqueo de billetes.<br>
+                                        ② Rotulás el sobre con el <strong>N° asignado (ej. SOB-XXXX)</strong>, cliente e importe.<br>
+                                        ③ Tomás 2 fotos con el celular (frente y dorso del sobre cerrado).<br>
+                                        ④ Confirmación automática y comprobante al WhatsApp. Listo para chofer o depósito.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Opción 2: Cajeros Automáticos y Terminales Autoservicio Galicia -->
+                        <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+                                    <strong style="color: #0f172a; font-size: 0.86em; display: flex; align-items: center; gap: 5px;">
+                                        <span>🏧</span> Cajeros y Terminales Galicia
+                                    </strong>
+                                    <span style="font-size: 0.68em; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 1px 6px; border-radius: 10px; font-weight: 700;">🕒 24 hs</span>
+                                </div>
+                                <div style="font-size: 0.75em; color: #334155; line-height: 1.35;">
+                                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 4px; padding: 5px 8px; margin-bottom: 6px;">
+                                        <div style="color: #1e40af; font-weight: 700; font-size: 0.9em; margin-bottom: 2px;">Datos para depósito / TAS:</div>
+                                        <div>• <strong>Caja de Ahorro:</strong> <strong style="font-family: monospace; font-size: 1.1em; color: #1e3a8a;">4007844-1 373-4</strong></div>
+                                        <div style="color: #475569; font-size: 0.9em;">• <strong>Titular:</strong> Martin Ignacio Serrano</div>
+                                    </div>
+                                    <p style="margin-bottom: 4px;">
+                                        Depósito directo en efectivo (sin sobre) o transferencia por terminal autoservicio (TAS) ingresando el número de Caja de Ahorro.
+                                    </p>
+                                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 7px;">
+                                        <strong>Terminales en La Plata y alrededores:</strong><br>
+                                        • <strong>Centro:</strong> Calle 7 N° 875 (e/ 49 y 50) • Calle 13 N° 665 • Av. 7 N° 59<br>
+                                        • <strong>Los Hornos:</strong> Av. 44 N° 1724 (esq. 29)<br>
+                                        • <strong>City Bell / Gonnet:</strong> Plaza Gral. Belgrano N° 57/63
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Sección de Política de Intereses / Asistencia Financiera (Esquema de 4 Ventanas) -->
+            <div class="politica-intereses-section" id="politica-intereses-section" style="display: none; margin-top: 14px; padding: 10px 14px; background: #faf5ff; border-left: 4px solid #7c3aed; border-top: 1px solid #f3e8ff; border-right: 1px solid #f3e8ff; border-bottom: 1px solid #f3e8ff; border-radius: 6px; page-break-inside: avoid;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; border-bottom: 1px dashed #e9d5ff; padding-bottom: 4px;">
+                    <span style="font-weight: 800; color: #6b21a8; text-transform: uppercase; font-size: 0.82em; display: flex; align-items: center; gap: 6px;">
+                        🛡️ Servicio de Asistencia Financiera LAMDA (Reloj desde Día 1 y Cortesía Anual)
+                    </span>
+                    <span style="font-size: 0.73em; color: #7e22ce; font-weight: 600;">Continuidad Comercial y Pagos Parciales</span>
+                </div>
+                <p style="font-size: 0.76em; color: #4c1d95; margin-bottom: 8px; line-height: 1.35;">
+                    El reloj financiero (<strong>3.0% mensual / 0.1% diario</strong>) comienza a correr desde el <strong>Día 1 de entregado el pedido</strong>, bonificándose al 100% si el comprobante se cancela dentro de los plazos establecidos:
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                    <!-- Ventana 1 -->
+                    <div style="background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #e9d5ff; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; color: #047857; font-size: 0.8em; margin-bottom: 2px;">
+                                🟢 Ventana 1: Días 1 a 7
+                            </div>
+                            <div style="font-weight: 600; color: #065f46; font-size: 0.74em; margin-bottom: 3px;">Plazo Habitual (100% Bonificado)</div>
+                            <div style="color: #4b5563; font-size: 0.73em; line-height: 1.3;">
+                                Condición normal de pago. Cancelando dentro de los 7 días, el interés acumulado desde el Día 1 queda <strong>100% bonificado ($0,00)</strong>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ventana 2 -->
+                    <div style="background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #e9d5ff; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; color: #0284c7; font-size: 0.8em; margin-bottom: 2px;">
+                                🎟️ Ventana 2: Días 8 a 14
+                            </div>
+                            <div style="font-weight: 600; color: #0369a1; font-size: 0.74em; margin-bottom: 3px;">Cortesía Excepcional (3 Comodines/Año)</div>
+                            <div style="color: #4b5563; font-size: 0.73em; line-height: 1.3;" id="intereses-comodines-descripcion">
+                                Excepción no habitual (máx. <strong>3 comodines al año</strong>, ~1 por trimestre). Cancelando hasta el Día 14 con comodín, el interés desde el Día 1 se <strong>bonifica al 100% ($0,00)</strong>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ventana 3 -->
+                    <div style="background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #e9d5ff; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; color: #b45309; font-size: 0.8em; margin-bottom: 2px;">
+                                🟡 Ventana 3: Día 15 en adelante
+                            </div>
+                            <div style="font-weight: 600; color: #92400e; font-size: 0.74em; margin-bottom: 3px;">Financiación Activa desde Día 1</div>
+                            <div style="color: #4b5563; font-size: 0.73em; line-height: 1.3;" id="intereses-tasa-descripcion">
+                                Superado el Día 14 (o sin comodines disponibles), se liquida el interés exacto <strong>desde el Día 1 de entrega (3.0% mensual / 0.1% diario)</strong> sobre el saldo pendiente, con <strong>cuenta habilitada</strong>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ventana 4 -->
+                    <div style="background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #e9d5ff; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; color: #7c3aed; font-size: 0.8em; margin-bottom: 2px;">
+                                🟣 Ventana 4: Pagos Parciales
+                            </div>
+                            <div style="font-weight: 600; color: #6d28d9; font-size: 0.74em; margin-bottom: 3px;">Achique de Capital y Beneficios</div>
+                            <div style="color: #4b5563; font-size: 0.73em; line-height: 1.3;">
+                                Puede realizar <strong>pagos parciales</strong> para reducir capital e interés diario. Al volver el saldo a <strong>$0,00 (Cuenta al Día)</strong> se reactivan el <strong>5% OFF por volumen</strong> y ofertas.
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Observaciones -->

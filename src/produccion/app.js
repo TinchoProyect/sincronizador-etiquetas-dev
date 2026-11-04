@@ -38,18 +38,20 @@ app.use('/api/logistica', createProxyMiddleware({
     logLevel: 'debug'
 }));
 
+app.use(cors());
 app.use(express.json());
 
 //Temporizacion -Mari
 const tiemposRouter = require('./routes/tiemposCarro');
 app.use('/api/tiempos', tiemposRouter);
+app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion', produccionRoutes);
 
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)
 // Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
 app.get('/api/supabase/lotes', async (req, res) => {
     try {
-        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref,cant_bult,cant_valor)&order=created_at.desc&limit=100';
+        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,envio_tipo,costo_logistico_estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref,cant_bult,cant_valor)&order=created_at.desc&limit=100';
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
         const debugLogs = [];
         debugLogs.push(`🔑 [Supabase Proxy] Service Key Length: ${key.length}, Starts with: ${key.substring(0, 10)}...`);
@@ -128,7 +130,14 @@ app.get('/api/supabase/lotes', async (req, res) => {
                         
                         if (!facturasMap[fac.pedido_b2b_id]) facturasMap[fac.pedido_b2b_id] = {};
                         
-                        fac.match_report.forEach(mr => {
+                        const matchItems = Array.isArray(fac.match_report)
+                            ? fac.match_report
+                            : (typeof fac.match_report === 'object' && fac.match_report !== null
+                                ? Object.values(fac.match_report)
+                                : []);
+
+                        matchItems.forEach(mr => {
+                            if (!mr || typeof mr !== 'object') return;
                             const cod = String(mr.pedido?.codigo || '').trim().toLowerCase();
                             if (cod) {
                                 if (ivaBase !== null) {
@@ -324,8 +333,18 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
     try {
         const now = Date.now();
         if (cacheTodasReposicion && (now - cacheTodasReposicionTimestamp < CACHE_TTL_MS)) {
-            console.log("⚡ [Proxy Supabase] Retornando cotizaciones desde caché en memoria (Evitando cuello de botella HTTPS)");
-            return res.json(cacheTodasReposicion);
+            if (cacheTodasReposicion.length === 0 || (
+                cacheTodasReposicion[0].procedencia !== undefined &&
+                cacheTodasReposicion[0].pallet !== undefined &&
+                cacheTodasReposicion[0].precio_neto !== undefined &&
+                cacheTodasReposicion[0].regla !== undefined
+            )) {
+                console.log("⚡ [Proxy Supabase] Retornando cotizaciones desde caché en memoria (Evitando cuello de botella HTTPS)");
+                return res.json(cacheTodasReposicion);
+            } else {
+                console.log("⚡ [Proxy Supabase] Caché en memoria invalidada por actualización de esquema.");
+                cacheTodasReposicion = null;
+            }
         }
 
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
@@ -410,13 +429,27 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
                 sku_proveedor: skuProveedorRaw,
                 descripcion: dm.descripcion,
                 precio_unitario: precioUnitarioVal,
-                unidad_medida: dm.unidad,
+                unidad_medida: dm.unidad || dm.unidad_medida || dm.uom || "",
                 dias_antiguedad: diasAntiguedad,
                 dias_actualizacion: diasActualizacion,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
                 rubro: dm.rubro || "",
                 cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
                 cant_valor: dm.cant_valor !== undefined && dm.cant_valor !== null ? dm.cant_valor : "",
+                procedencia: dm['país_de_origen'] || dm.pais_de_origen || dm.procedencia || dm.pais_origen || dm.origen || "",
+                marca: dm.marca || dm.marca_producto || dm.brand || "",
+                tipo_envase: dm.tipo_envase || dm.envase || dm.empaque || "",
+                presentacion: dm.presentacion || dm.formato || "",
+                iva: dm.iva || dm.IVA || dm.alicuota_iva || "",
+                promo: dm.promo || dm.precio_promo || dm.precio_promocional || "",
+                descuento: dm.descuento || dm.bonificacion || "",
+                ean_unidad: dm['ean-unidad'] || dm.ean_unidad || dm.ean || "",
+                dun_bulto: dm['dun-bulto'] || dm.dun_bulto || dm.dun || "",
+                certificado: dm.certificado || "",
+                pallet: dm.pallet || "",
+                sector: dm.sector || "",
+                precio_neto: dm['precio_s/iva_s/desc'] || "",
+                regla: dm.regla || dm.regla_negocio || "",
                 _estado_delta: dm._estado_delta || "INTACTO",
                 _timestamp: row.timestamp_extraccion || dm.ultima_actualizacion_origen || new Date().toISOString(),
                 _proveedor: row.nombre_proveedor
@@ -426,6 +459,8 @@ app.get('/api/supabase/reposicion/todas', async (req, res) => {
         // Guardar en la caché global en memoria con timestamp actual
         cacheTodasReposicion = cotizacionesNormalizadas;
         cacheTodasReposicionTimestamp = now;
+
+        console.log("⚡ [PROXY-SUPABASE-REPOSICION] Cotizaciones mapeadas con Fuzzy Getters oficiales B4.1. Total:", cotizacionesNormalizadas.length);
 
         res.json(cotizacionesNormalizadas);
     } catch (e) {
@@ -511,18 +546,34 @@ app.get('/api/supabase/reposicion/:sku', async (req, res) => {
                 sku_proveedor: skuProveedorRaw,
                 descripcion: dm.descripcion,
                 precio_unitario: precioUnitarioVal,
-                unidad_medida: dm.unidad,
+                unidad_medida: dm.unidad || dm.unidad_medida || dm.uom || "",
                 dias_antiguedad: diasAntiguedad,
                 dias_actualizacion: diasActualizacion,
                 valido_hasta: dm.ultima_actualizacion_origen || row.timestamp_extraccion,
                 rubro: dm.rubro || "",
                 cant_bult: dm.cant_bult !== undefined && dm.cant_bult !== null ? dm.cant_bult : "",
                 cant_valor: dm.cant_valor !== undefined && dm.cant_valor !== null ? dm.cant_valor : "",
+                procedencia: dm['país_de_origen'] || dm.pais_de_origen || dm.procedencia || dm.pais_origen || dm.origen || "",
+                marca: dm.marca || dm.marca_producto || dm.brand || "",
+                tipo_envase: dm.tipo_envase || dm.envase || dm.empaque || "",
+                presentacion: dm.presentacion || dm.formato || "",
+                iva: dm.iva || dm.IVA || dm.alicuota_iva || "",
+                promo: dm.promo || dm.precio_promo || dm.precio_promocional || "",
+                descuento: dm.descuento || dm.bonificacion || "",
+                ean_unidad: dm['ean-unidad'] || dm.ean_unidad || dm.ean || "",
+                dun_bulto: dm['dun-bulto'] || dm.dun_bulto || dm.dun || "",
+                certificado: dm.certificado || "",
+                pallet: dm.pallet || "",
+                sector: dm.sector || "",
+                precio_neto: dm['precio_s/iva_s/desc'] || "",
+                regla: dm.regla || dm.regla_negocio || "",
                 _estado_delta: dm._estado_delta || "INTACTO",
                 _timestamp: row.timestamp_extraccion || dm.ultima_actualizacion_origen || new Date().toISOString(),
                 _proveedor: row.nombre_proveedor
             };
         });
+
+        console.log("⚡ [PROXY-SUPABASE-REPOSICION] Cotizaciones mapeadas con Fuzzy Getters oficiales B4.1. Total:", cotizacionesNormalizadas.length);
 
         res.json(cotizacionesNormalizadas);
     } catch (e) {
@@ -560,18 +611,25 @@ app.get('/api/config/network-ip', (req, res) => {
     const interfaces = os.networkInterfaces();
     let networkIp = 'localhost';
 
-    // Buscar una dirección IPv4 externa
+    // Buscar una dirección IPv4 de red local válida (excluyendo Tailscale/APIPA 169.254.x.x)
     Object.keys(interfaces).forEach((ifname) => {
+        if (/tailscale|loopback|vethernet|wsl/i.test(ifname)) return;
         interfaces[ifname].forEach((iface) => {
             // Saltar direcciones internas (127.0.0.1) y no-IPv4
             if ('IPv4' !== iface.family || iface.internal) {
+                return;
+            }
+            if (String(iface.address).startsWith('169.254.')) {
                 return;
             }
             networkIp = iface.address;
         });
     });
 
-    res.json({ ip: networkIp });
+    res.json({
+        ip: networkIp,
+        publicUrl: 'https://inventario.lamdaser.com'
+    });
 });
 
 // Ruta para la vista móvil de inventario
@@ -584,6 +642,10 @@ app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
     next();
 });
+
+// Disparador reactivo automático en 2do plano hacia Portal B2B ante ajustes de stock y producción
+const { createB2BAutoSyncMiddleware, triggerB2BSync } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+app.use(createB2BAutoSyncMiddleware('produccion'));
 
 // ✅ Middleware para ajustar solo si es necesario (solo si no se rompe)
 app.use('/api/produccion', produccionRoutes); // ← Registro completo sin manipular req.url
@@ -753,7 +815,9 @@ io.on('connection', (socket) => {
             sessionId,
             usuario: session.usuario, // Enviar objeto completo {id, nombre}
             sectores: session.sectores, // Enviar sectores también
-            ingredientes: session.ingredientes // Enviar Lista Maestra para auditoría
+            ingredientes: session.ingredientes, // Enviar Lista Maestra para auditoría
+            fechaInicio: session.fechaInicio,
+            timestampCreacion: session.timestampCreacion
         };
 
         // Para ingredientes, incluir información de sectores
@@ -815,36 +879,33 @@ io.on('connection', (socket) => {
             timestamp: new Date()
         });
 
-        console.log(`📤 [WS] Enviando ${tipoInventario.slice(0, -1)} a PC...`);
+        console.log(`📤 [WS] Enviando actualización a PC (${item.nombre} | Bultos: ${item.total_bultos_contados || 0})...`);
 
-        // Enviar a la PC usando evento unificado
-        io.to(session.pcSocketId).emit('nuevo_articulo', {
+        const eventoData = {
             sessionId,
             [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item,
             cantidad,
             timestamp: new Date()
-        });
+        };
 
-        // NUEVO: Enviar también al Móvil (Mirroring)
-        if (session.mobileSocketId) {
-            io.to(session.mobileSocketId).emit('nuevo_articulo', {
-                sessionId,
+        // Retransmisión bidireccional en espejo
+        if (session.pcSocketId && socket.id !== session.pcSocketId) {
+            io.to(session.pcSocketId).emit('nuevo_articulo', eventoData);
+        }
+        if (session.mobileSocketId && socket.id !== session.mobileSocketId) {
+            io.to(session.mobileSocketId).emit('nuevo_articulo', eventoData);
+        }
+
+        // Solo confirmar y resetear formulario en el móvil si se finalizó explícitamente el item
+        if (data.finalizar_item) {
+            socket.emit('articulo_confirmado', {
                 [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item,
                 cantidad,
-                timestamp: new Date()
+                nombre: item.nombre
             });
         }
 
-        // Confirmar al emisor (PC o Móvil)
-        socket.emit('articulo_confirmado', {
-            [tipoInventario === 'ingredientes' ? 'ingrediente' : 'articulo']: item.nombre,
-            cantidad
-        });
-
-        console.log(`✅ [WS] ${tipoInventario.slice(0, -1)} procesado exitosamente`);
-        console.log(`📊 [WS] Total items en sesión:`, session.items.size);
-        console.log(`✅ [WS] ${tipoInventario.slice(0, -1)} procesado exitosamente`);
-        console.log(`📊 [WS] Total items en sesión:`, session.items.size);
+        console.log(`✅ [WS] ${tipoInventario.slice(0, -1)} procesado exitosamente (Total en sesión: ${session.items.size})`);
     });
 
     // NUEVO: Hidratar estado del servidor desde la PC
@@ -995,10 +1056,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // PC finaliza inventario (UNIFICADO)
+    // PC o Móvil solicita finalización remota de inventario
     socket.on('finalizar_inventario', (data) => {
         const sessionId = data.sessionId;
-        console.log('🏁 [WS] ===== FINALIZANDO INVENTARIO (Desde Móvil) =====');
+        console.log('🏁 [WS] ===== SOLICITUD FINALIZAR INVENTARIO =====');
         console.log('🆔 [WS] Session ID:', sessionId);
 
         const session = inventarioSesiones.get(sessionId);
@@ -1008,28 +1069,46 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // RELAY CRÍTICO: Ordenar a la PC que ejecute el cierre
-        if (session.pcSocketId) {
+        // Si la PC está conectada y el que llamó fue el móvil, ordenar a la PC que ejecute el cierre
+        if (session.pcSocketId && socket.id !== session.pcSocketId) {
             console.log('💻 [WS] Enviando solicitud_cierre_remoto a PC...');
             io.to(session.pcSocketId).emit('solicitud_cierre_remoto', { sessionId });
         }
+    });
 
-        // Marcar sesión como finalizada
-        session.estado = 'finalizada';
-
-        // Notificar al móvil
-        if (session.mobileSocketId) {
-            io.to(session.mobileSocketId).emit('inventario_finalizado', {
-                mensaje: 'Procesando cierre de inventario...'
-            });
-        }
-
-        // Limpieza diferida
-        setTimeout(() => {
-            if (inventarioSesiones.has(sessionId)) {
-                inventarioSesiones.delete(sessionId);
+    // Notificar fin de inventario con datos de reporte (Bidireccional: PC <-> Móvil)
+    socket.on('notificar_fin_inventario', (data) => {
+        const { sessionId, resultado } = data;
+        console.log('🎉 [WS] Notificando fin de inventario con reporte para session:', sessionId);
+        const session = inventarioSesiones.get(sessionId);
+        if (session) {
+            // Re-emitir a PC si el emisor no fue la PC
+            if (session.pcSocketId && socket.id !== session.pcSocketId) {
+                console.log('💻 [WS] Enviando inventario_finalizado_con_reporte a PC...');
+                io.to(session.pcSocketId).emit('inventario_finalizado_con_reporte', {
+                    sessionId,
+                    resultado
+                });
             }
-        }, 5000);
+            // Re-emitir a móvil si el emisor no fue el móvil
+            if (session.mobileSocketId && socket.id !== session.mobileSocketId) {
+                console.log('📱 [WS] Enviando inventario_finalizado_con_reporte a Móvil...');
+                io.to(session.mobileSocketId).emit('inventario_finalizado_con_reporte', {
+                    sessionId,
+                    resultado
+                });
+            }
+
+            session.estado = 'finalizada';
+
+            // Limpieza diferida de la memoria de sesión
+            setTimeout(() => {
+                if (inventarioSesiones.has(sessionId)) {
+                    inventarioSesiones.delete(sessionId);
+                    console.log(`🧹 [WS] Sesión ${sessionId} eliminada de memoria tras cierre exitoso.`);
+                }
+            }, 10000);
+        }
     });
 
     // NUEVO: Cancelar inventario (Sin guardar nada)
@@ -1110,4 +1189,10 @@ const PORT = process.env.PORT || 3002;
 
 httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor de producción corriendo en puerto ${PORT}`);
+    
+    // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
+    const conciliacionArticulosService = require('./services/conciliacionArticulosService');
+    conciliacionArticulosService.obtenerTablaMaestraSupabase().catch(err => {
+        console.warn('⚠️ [CONCILIACION] Warmup de Tabla Maestra falló en arranque:', err.message);
+    });
 });

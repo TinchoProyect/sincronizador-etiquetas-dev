@@ -41,7 +41,7 @@ function getCompanyConfig() {
         address: process.env.COMPANY_ADDRESS || '',
         
         // CUIT
-        cuitRaw: process.env.COMPANY_CUIT || '',
+        cuitRaw: process.env.COMPANY_CUIT || process.env.AFIP_CUIT || '23248921749',
         cuitFmt: '',
         
         // Datos bancarios

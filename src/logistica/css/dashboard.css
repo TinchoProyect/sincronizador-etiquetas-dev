@@ -59,23 +59,29 @@ body {
 
 .header-right {
     display: flex;
-    gap: 1rem;
+    align-items: center;
+    gap: 0.65rem;
 }
 
 /* Buttons */
 .btn-primary, .btn-secondary, .btn-icon {
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 0.9rem;
     border: none;
     border-radius: 0.5rem;
-    font-size: 0.875rem;
+    font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.18s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
 }
 
 .btn-primary {
     background-color: var(--primary-color);
     color: white;
+    font-weight: 600;
 }
 
 .btn-primary:hover {
@@ -85,13 +91,83 @@ body {
 }
 
 .btn-secondary {
-    background-color: var(--card-bg);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background-color: #f8fafc;
+    color: #334155;
+    border: 1px solid #cbd5e1;
 }
 
 .btn-secondary:hover {
-    background-color: var(--bg-color);
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.btn-facturacion-nav {
+    background-color: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    font-weight: 600;
+}
+
+.btn-facturacion-nav:hover {
+    background-color: #dbeafe;
+    border-color: #93c5fd;
+    color: #1e3a8a;
+    transform: translateY(-1px);
+}
+
+/* Dropdown de herramientas en el header */
+.header-tools-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.header-tools-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    min-width: 230px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+    padding: 0.35rem;
+    z-index: 1200;
+}
+
+.header-tools-dropdown.open .header-tools-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.header-tools-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: 0.375rem;
+    color: #334155;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.header-tools-item:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+
+.header-tools-divider {
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 0.25rem 0;
 }
 
 .btn-icon {

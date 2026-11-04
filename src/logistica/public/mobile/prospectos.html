@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Contacto Calle - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css?v=60">
+    <link rel="stylesheet" href="css/comercial.css?v=60">
+    
+    <!-- Leaflet OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Flatpickr -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js"></script>
+    
+    <style>
+        .prospectos-page {
+            background-color: #0f172a;
+            min-height: 100vh;
+            color: #f8fafc;
+            padding-bottom: 5.5rem;
+        }
+
+        .header-preventa {
+            background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+            border-bottom: 1px solid rgba(234, 88, 12, 0.35);
+            position: sticky;
+            top: 0;
+            z-index: 150;
+        }
+
+        /* ==========================================
+         * HUB PRINCIPAL DE 3 PILARES (CONTACTO CALLE)
+         * ========================================== */
+        .hub-container {
+            padding: 1rem 0.95rem 2.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.95rem;
+            max-width: 540px;
+            margin: 0 auto;
+        }
+
+        .hub-pillar-card {
+            background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 1.15rem;
+            padding: 1.1rem 1.15rem;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+            transition: transform 0.15s ease, border-color 0.15s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hub-pillar-card--detectados {
+            border-left: 5px solid #38bdf8;
+        }
+
+        .hub-pillar-card--nuevo {
+            border-left: 5px solid #ea580c;
+            cursor: pointer;
+        }
+
+        .hub-pillar-card--nuevo:active {
+            transform: scale(0.98);
+        }
+
+        .hub-pillar-card--rutas {
+            border-left: 5px solid #10b981;
+            cursor: pointer;
+        }
+
+        .hub-pillar-card--rutas:active {
+            transform: scale(0.98);
+        }
+
+        .hub-pillar-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.85rem;
+        }
+
+        .hub-pillar-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.65rem;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .hub-pillar-title {
+            margin: 0 0 0.25rem;
+            font-size: 1.08rem;
+            font-weight: 900;
+            color: #f8fafc;
+            letter-spacing: -0.01em;
+        }
+
+        .hub-pillar-desc {
+            margin: 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.38;
+        }
+
+        .hub-subbuttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.9rem;
+        }
+
+        .hub-subbtn {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #f1f5f9;
+            padding: 0.7rem 0.6rem;
+            border-radius: 0.8rem;
+            font-size: 0.82rem;
+            font-weight: 800;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .hub-subbtn:active {
+            transform: scale(0.96);
+        }
+
+        .hub-subbtn--territorio {
+            background: rgba(234, 88, 12, 0.14);
+            border-color: rgba(249, 115, 22, 0.45);
+            color: #fdba74;
+        }
+
+        .hub-subbtn--web {
+            background: rgba(2, 132, 199, 0.16);
+            border-color: rgba(56, 189, 248, 0.45);
+            color: #7dd3fc;
+        }
+
+        .hub-subbtn--mapa {
+            grid-column: span 2;
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            border-color: #38bdf8;
+            color: #ffffff;
+            flex-direction: row;
+            padding: 0.68rem 0.8rem;
+            font-size: 0.86rem;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+        }
+
+        /* ==========================================
+         * PASO 1 Y PASO 2: MARCAR CONTACTO EN CALLE
+         * ========================================== */
+        .step-card-calle {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1.1rem;
+            padding: 1rem;
+            margin-bottom: 0.85rem;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+        }
+
+        .step-badge-header {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.25rem 0.65rem;
+            border-radius: 999px;
+            margin-bottom: 0.6rem;
+        }
+
+        /* ==========================================
+         * CONFIGURACIÓN DE RUTA / DÍAS (CORREDORES)
+         * ========================================== */
+        .config-section-box {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 0.95rem;
+            margin-bottom: 0.9rem;
+        }
+
+        .nodo-card-item {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.8rem;
+            padding: 0.7rem 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .corredor-card-item {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.8rem;
+            margin-bottom: 0.6rem;
+            border-left: 4px solid #ea580c;
+        }
+
+        .dia-cronograma-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.7rem 0.8rem;
+            margin-bottom: 0.55rem;
+        }
+
+        .turno-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.45rem 0;
+            border-top: 1px dashed rgba(255, 255, 255, 0.08);
+        }
+
+        /* Segmented View Switcher */
+        .view-segment-control {
+            display: flex;
+            background: #1e293b;
+            border-radius: 0.75rem;
+            padding: 0.25rem;
+            margin-bottom: 0.55rem;
+            border: 1px solid #334155;
+            gap: 0.25rem;
+        }
+
+        .view-segment-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding: 0.5rem 0.2rem;
+            font-size: 0.78rem;
+            font-weight: 800;
+            border-radius: 0.55rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+
+        .view-segment-btn.active {
+            background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(234, 88, 12, 0.35);
+        }
+
+        /* Card de Prospecto */
+        .prospecto-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: all 0.15s ease;
+        }
+
+        .prospecto-titulo {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #f8fafc;
+            letter-spacing: -0.01em;
+        }
+
+        .badge-prospecto-cod {
+            font-size: 0.68rem;
+            font-weight: 800;
+            background: rgba(234, 88, 12, 0.2);
+            color: #fdba74;
+            border: 1px solid rgba(234, 88, 12, 0.4);
+            padding: 0.15rem 0.45rem;
+            border-radius: 6px;
+        }
+
+        .badge-rubro {
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.08);
+            color: #cbd5e1;
+            padding: 0.15rem 0.45rem;
+            border-radius: 6px;
+        }
+
+        .badge-zona {
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(56, 189, 248, 0.12);
+            color: #7dd3fc;
+            padding: 0.15rem 0.45rem;
+            border-radius: 6px;
+        }
+
+        .badge-status {
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+
+        .status-por-visitar { background: rgba(249, 115, 22, 0.22); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.45); }
+        .status-inicial { background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .status-enviada { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .status-agendada { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); }
+        .status-negociacion { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+        .status-convertido { background: rgba(52, 211, 153, 0.25); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.5); }
+        .status-descartado { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+
+        .prospecto-actions-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.35rem;
+            margin-top: 0.65rem;
+            padding-top: 0.55rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .btn-action-prospecto {
+            background: #334155;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #f1f5f9;
+            padding: 0.42rem 0.25rem;
+            border-radius: 0.55rem;
+            font-size: 0.73rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+
+        .notas-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-filtros-toggle {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #cbd5e1;
+            border-radius: 0.75rem;
+            padding: 0.46rem 0.7rem;
+            font-size: 0.78rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .active-filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            background: rgba(234, 88, 12, 0.18);
+            border: 1px solid rgba(249, 115, 22, 0.45);
+            color: #fdba74;
+            border-radius: 999px;
+            padding: 0.18rem 0.55rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-action-wa {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            border-color: #10b981;
+            color: white;
+            box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
+        }
+
+        .btn-action-ruta {
+            background: rgba(56, 189, 248, 0.12);
+            border-color: rgba(56, 189, 248, 0.35);
+            color: #7dd3fc;
+        }
+
+        .btn-action-ruta.en-ruta {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            border-color: #38bdf8;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+        }
+
+        .prospecto-thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 0.7rem;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            flex-shrink: 0;
+            cursor: pointer;
+            background: #0f172a;
+        }
+
+        .badge-productor-bulto {
+            font-size: 0.65rem;
+            font-weight: 800;
+            background: rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.45);
+            padding: 0.12rem 0.45rem;
+            border-radius: 6px;
+        }
+
+        .pill-select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            padding: 0.38rem 0.7rem;
+            border-radius: 0.55rem;
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .pill-select.active {
+            background: #ea580c;
+            border-color: #f97316;
+            color: white;
+        }
+
+        .rubro-chip-manage {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: #334155;
+            color: #f1f5f9;
+            padding: 0.35rem 0.65rem;
+            border-radius: 0.55rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .rubro-chip-del-btn {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        /* Radar Mapa Móvil */
+        #mapa-prospectos-mobile {
+            width: 100%;
+            height: calc(100dvh - 168px);
+            min-height: 440px;
+            border-radius: 0.85rem;
+            border: 1px solid #334155;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+            z-index: 10;
+        }
+
+        /* Botones Switch de Capas Dinámicas del Mapa */
+        .map-layer-pill {
+            flex: 1;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #64748b;
+            border-radius: 0.55rem;
+            padding: 0.36rem 0.3rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.22rem;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            opacity: 0.65;
+        }
+
+        .map-layer-pill.active-nodos {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #6ee7b7;
+            opacity: 1;
+        }
+
+        .map-layer-pill.active-calle {
+            background: rgba(234, 88, 12, 0.22);
+            border-color: #f97316;
+            color: #fdba74;
+            opacity: 1;
+        }
+
+        .map-layer-pill.active-web {
+            background: rgba(2, 132, 199, 0.22);
+            border-color: #38bdf8;
+            color: #7dd3fc;
+            opacity: 1;
+        }
+
+        .map-layer-pill.active-clientes {
+            background: rgba(168, 85, 247, 0.24);
+            border-color: #c084fc;
+            color: #e9d5ff;
+            opacity: 1;
+        }
+
+        /* Modo Pantalla Completa para el Mapa General */
+        #vista-mapa-mobile.mapa-general-fullscreen {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100dvh !important;
+            z-index: 9500 !important;
+            background: #0f172a !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        #vista-mapa-mobile.mapa-general-fullscreen .mapa-toolbar-top {
+            padding: 0.45rem 0.6rem;
+            background: rgba(15, 23, 42, 0.98);
+            border-bottom: 1px solid #334155;
+            margin-bottom: 0 !important;
+            border-radius: 0 !important;
+            z-index: 20;
+        }
+
+        #vista-mapa-mobile.mapa-general-fullscreen #mapa-prospectos-mobile {
+            flex: 1 !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            border-radius: 0 !important;
+            border: none !important;
+        }
+
+        /* Editor Fullscreen de Ruta Lineal + Superficie Deformable */
+        .fullscreen-ruta-editor {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100dvh;
+            z-index: 9800;
+            background: #0f172a;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .editor-mode-btn {
+            flex: 1;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            padding: 0.48rem 0.4rem;
+            border-radius: 0.6rem;
+            font-size: 0.76rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3rem;
+            transition: all 0.15s ease;
+        }
+
+        .editor-mode-btn.active-camino {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            border-color: #38bdf8;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
+        }
+
+        .editor-mode-btn.active-bordes {
+            background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+            border-color: #fb923c;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(234, 88, 12, 0.4);
+        }
+
+        .ancho-pill-btn {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 0.3rem 0.55rem;
+            font-size: 0.73rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .ancho-pill-btn.active {
+            background: rgba(56, 189, 248, 0.22);
+            border-color: #38bdf8;
+            color: #7dd3fc;
+        }
+
+        .user-gps-pulse {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #0284c7;
+            box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.7);
+            border: 3px solid white;
+            animation: pulse-ring 1.8s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.75); }
+            70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        }
+
+        .leaflet-popup-content-wrapper {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid #475569 !important;
+            border-radius: 0.85rem !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+            padding: 4px !important;
+        }
+
+        .leaflet-popup-tip {
+            background: #1e293b !important;
+        }
+    </style>
+</head>
+<body class="prospectos-page">
+
+    <!-- CABECERA GLOBAL CONTACTO CALLE -->
+    <header class="mobile-header header-preventa">
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" onclick="window.abrirSidebar(event)" title="Abrir Menú" style="width: 34px; height: 34px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.08); padding: 3px; border: 1px solid rgba(255,255,255,0.15); cursor: pointer; box-shadow: 0 2px 8px rgba(234,88,12,0.3);">
+                <a href="home.html" id="link-back-home" class="btn-back-header" title="Volver al Inicio" style="text-decoration: none; font-size: 1.4rem; color: #94a3b8; padding: 0 0.1rem;">‹</a>
+                <div>
+                    <h1 style="margin: 0; font-size: 1.12rem; font-weight: 900; color: #f8fafc; display: flex; align-items: center; gap: 0.35rem;">
+                        🎯 <span id="header-titulo-seccion">Contacto Calle</span>
+                    </h1>
+                    <span style="font-size: 0.7rem; color: #fdba74; font-weight: 700;" id="contador-prospectos-mobile">Menú Principal</span>
+                </div>
+            </div>
+            <button type="button" id="btn-volver-hub-calle" onclick="ProspectosMobileController.volverAlMenuPrincipal()" style="display: none; background: #1e293b; border: 1px solid #f97316; color: #fdba74; padding: 0.42rem 0.75rem; font-size: 0.78rem; font-weight: 800; border-radius: 0.65rem; cursor: pointer; align-items: center; gap: 0.3rem;">
+                ⬅ Menú Calle
+            </button>
+        </div>
+    </header>
+
+    <!-- ========================================================== -->
+    <!-- PANTALLA 0 (INICIAL): MENÚ PRINCIPAL DE 3 PILARES          -->
+    <!-- ========================================================== -->
+    <section id="vista-hub-calle" class="hub-container">
+        
+        <!-- Resumen del Turno Actual (Hoy Mañana / Tarde) -->
+        <div id="hub-banner-turno-hoy" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 0.9rem; padding: 0.7rem 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+            <div style="font-size: 0.78rem; color: #d1fae5;">
+                <span style="font-weight: 900; color: #34d399;" id="lbl-hub-dia-turno-hoy">🗓️ Hoy:</span>
+                <span id="lbl-hub-rutas-hoy" style="color: #cbd5e1; margin-left: 4px;">Cargando cronograma...</span>
+            </div>
+            <button type="button" id="btn-hub-ver-hoy" onclick="ProspectosMobileController.verContactosDelTurnoActual()" style="display: none; background: #059669; color: white; border: none; border-radius: 0.55rem; padding: 0.32rem 0.65rem; font-size: 0.73rem; font-weight: 800; cursor: pointer;">
+                👁️ Ver Ruta de Hoy
+            </button>
+        </div>
+
+        <!-- Banner si hay comercios pre-seleccionados para Hoja de Ruta -->
+        <div id="hub-banner-ruta-seleccionada" style="display: none; background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(15, 23, 42, 0.96) 100%); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 0.85rem; padding: 0.6rem 0.8rem; align-items: center; justify-content: space-between; gap: 0.5rem;">
+            <div style="font-size: 0.8rem; color: #e0f2fe; font-weight: 800;">
+                🚗 <span id="lbl-hub-ruta-count">0 seleccionados</span>
+            </div>
+            <button type="button" onclick="ProspectosMobileController.abrirModalEnviarAHojaDeRuta()" style="background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); color: white; border: none; border-radius: 0.55rem; padding: 0.4rem 0.75rem; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                🛣️ Enviar a Hoja de Ruta
+            </button>
+        </div>
+
+        <!-- PILAR 1: CONTACTOS DETECTADOS (VÍA TERRITORIO / VÍA WEB / MAPA) -->
+        <div class="hub-pillar-card hub-pillar-card--detectados">
+            <div class="hub-pillar-header">
+                <div class="hub-pillar-icon" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35);">📋</div>
+                <div style="flex: 1;">
+                    <h2 class="hub-pillar-title">1. Contactos Detectados</h2>
+                    <p class="hub-pillar-desc">Ver contactos separados según hayan sido detectados en el territorio o vía web, o verlos todos geográficamente en el mapa.</p>
+                </div>
+            </div>
+            <div class="hub-subbuttons-grid">
+                <button type="button" class="hub-subbtn hub-subbtn--territorio" onclick="ProspectosMobileController.abrirSeccionDetectados('CALLE')">
+                    <span style="font-size: 1.2rem;">🚶</span>
+                    <span>Vía Territorio</span>
+                    <span id="hub-count-territorio" style="font-size: 0.72rem; opacity: 0.9;">(0 contactos)</span>
+                </button>
+                <button type="button" class="hub-subbtn hub-subbtn--web" onclick="ProspectosMobileController.abrirSeccionDetectados('RADAR_WEB')">
+                    <span style="font-size: 1.2rem;">🌐</span>
+                    <span>Vía Web</span>
+                    <span id="hub-count-web" style="font-size: 0.72rem; opacity: 0.9;">(0 detectados)</span>
+                </button>
+                <button type="button" class="hub-subbtn hub-subbtn--mapa" onclick="ProspectosMobileController.abrirSeccionDetectados('MAPA')">
+                    <span style="font-size: 1.2rem;">🗺️</span>
+                    <span>Ver Todos Geográficamente en el Mapa</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- PILAR 2: MARCAR CONTACTO NUEVO EN CALLE (CON OPCIÓN A ENTRAR O NO ENTRAR) -->
+        <div class="hub-pillar-card hub-pillar-card--nuevo" onclick="ProspectosMobileController.abrirSeccionMarcarEnCalle()">
+            <div class="hub-pillar-header">
+                <div class="hub-pillar-icon" style="color: #fb923c; border-color: rgba(249, 115, 22, 0.35);">📍</div>
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <h2 class="hub-pillar-title">2. Marcar Contacto en Calle</h2>
+                        <span style="font-size: 1.3rem; color: #fb923c; font-weight: 900;">›</span>
+                    </div>
+                    <p class="hub-pillar-desc">Paso por la calle: tomar nodo geográfico (GPS donde estoy parado), dirección y nombre del negocio, con opción a elegir si <b>Entré</b> o <b>No Entré</b> al local.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PILAR 3: CONFIGURACIÓN DE RUTA / DÍAS (7 DÍAS MAÑANA Y TARDE + CORREDORES LINEALES) -->
+        <div class="hub-pillar-card hub-pillar-card--rutas" onclick="ProspectosMobileController.abrirSeccionConfigRutasDias()">
+            <div class="hub-pillar-header">
+                <div class="hub-pillar-icon" style="color: #34d399; border-color: rgba(16, 185, 129, 0.35);">🗓️</div>
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <h2 class="hub-pillar-title">3. Configuración de Ruta / Días</h2>
+                        <span style="font-size: 1.3rem; color: #34d399; font-weight: 900;">›</span>
+                    </div>
+                    <p class="hub-pillar-desc">Puntos de salida y regreso (<b>Mi Casa ↔ Depósito</b>), armado de Rutas/Zonas lineales con sus calles y cronograma de los <b>7 días (Mañana y Tarde)</b>.</p>
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- SECCIÓN 1: CONTACTOS DETECTADOS (TERRITORIO / WEB / MAPA)  -->
+    <!-- ========================================================== -->
+    <section id="seccion-contactos-detectados" style="display: none;">
+        
+        <!-- Encabezado exclusivo para Listados (se oculta totalmente cuando abrís el Mapa) -->
+        <div id="header-listado-detectados" style="padding: 0.5rem 0.85rem 0.45rem; background: #0f172a; position: sticky; top: 53px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.35); border-bottom: 1px solid rgba(255,255,255,0.06);">
+            
+            <!-- Selector rápido de Ruta/Zona Lineal y Día (Mañana / Tarde) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; margin-bottom: 0.4rem;">
+                <select id="select-filtro-ruta-zona" onchange="ProspectosMobileController.seleccionarFiltroRutaZona(this.value)" class="wizard-input-mobile" style="font-size: 0.76rem; font-weight: 800; padding: 0.38rem 0.45rem; border-radius: 0.6rem; border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; background: #1e293b;">
+                    <option value="">🛣️ Todas las Rutas</option>
+                    <option value="NINGUNA">🚫 Ninguna Ruta</option>
+                </select>
+                <select id="select-filtro-dia-turno" onchange="ProspectosMobileController.seleccionarFiltroDiaTurno(this.value)" class="wizard-input-mobile" style="font-size: 0.76rem; font-weight: 800; padding: 0.38rem 0.45rem; border-radius: 0.6rem; border-color: rgba(250, 204, 21, 0.4); color: #fde047; background: #1e293b;">
+                    <option value="">🗓️ Todos los Días / Turnos</option>
+                    <option value="HOY_ACTUAL">⚡ Turno de Hoy</option>
+                    <option value="1_MANANA">Lun • Mañana</option>
+                    <option value="1_TARDE">Lun • Tarde</option>
+                    <option value="2_MANANA">Mar • Mañana</option>
+                    <option value="2_TARDE">Mar • Tarde</option>
+                    <option value="3_MANANA">Mié • Mañana</option>
+                    <option value="3_TARDE">Mié • Tarde</option>
+                    <option value="4_MANANA">Jue • Mañana</option>
+                    <option value="4_TARDE">Jue • Tarde</option>
+                    <option value="5_MANANA">Vie • Mañana</option>
+                    <option value="5_TARDE">Vie • Tarde</option>
+                    <option value="6_MANANA">Sáb • Mañana</option>
+                    <option value="6_TARDE">Sáb • Tarde</option>
+                    <option value="7_MANANA">Dom • Mañana</option>
+                    <option value="7_TARDE">Dom • Tarde</option>
+                </select>
+            </div>
+
+            <!-- Buscador + Botón Buscar Nuevos en Web + Filtros -->
+            <div style="display: flex; gap: 0.35rem; align-items: center;">
+                <div style="position: relative; display: flex; align-items: center; flex: 1;">
+                    <input type="text" id="buscar-prospecto-input" class="wizard-input-mobile" placeholder="🔍 Comercio, calle, rubro..." style="padding-right: 2rem; font-size: 0.84rem; border-radius: 0.75rem; border-color: rgba(255,255,255,0.12); padding-top: 0.42rem; padding-bottom: 0.42rem;">
+                    <button id="btn-clear-prospecto-search" style="position: absolute; right: 8px; background: none; border: none; font-size: 1rem; color: #94a3b8; cursor: pointer; display: none;">✕</button>
+                </div>
+                <button type="button" class="btn-filtros-toggle" onclick="ProspectosMobileController.abrirModalBuscadorWeb()" title="Buscar nuevos comercios en Internet por rubro y zona" style="background: rgba(2, 132, 199, 0.22); border-color: rgba(56, 189, 248, 0.5); color: #7dd3fc;">
+                    <span>🔎 +Web</span>
+                </button>
+                <button type="button" id="btn-toggle-filtros" class="btn-filtros-toggle" onclick="ProspectosMobileController.togglePanelFiltros()">
+                    <span>🌪️</span>
+                    <span id="badge-count-filtros" style="display: none; background: #ea580c; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 0.68rem;">0</span>
+                </button>
+            </div>
+
+            <div id="chips-filtros-activos" style="display: none; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.4rem; align-items: center;"></div>
+
+            <!-- Panel Desplegable de Filtros Adicionales -->
+            <div id="panel-filtros-avanzados" style="display: none; flex-direction: column; gap: 0.45rem; margin-top: 0.5rem; padding: 0.65rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.8rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                    <div>
+                        <label style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; display: block; margin-bottom: 2px;">🏷️ Rubro / Nicho</label>
+                        <select id="select-filtro-nicho" onchange="ProspectosMobileController.seleccionarNicho(this.value)" class="wizard-input-mobile" style="font-size: 0.78rem; font-weight: 700; padding: 0.42rem 0.4rem; border-radius: 0.6rem;">
+                            <option value="">🏷️ Todos los Rubros</option>
+                            <option value="Dietética">🥜 Dietéticas / Natural</option>
+                            <option value="Productor Helados">🍦 Productor Helados</option>
+                            <option value="Panadería">🥐 Panaderías / Productor</option>
+                            <option value="Autoservicio">🛒 Autoservicio / Fiambrería</option>
+                            <option value="Verdulería">🥦 Verdulerías</option>
+                            <option value="Gastronomía">☕ Gastronomía</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; display: block; margin-bottom: 2px;">📌 Estado</label>
+                        <select id="select-filtro-estado" onchange="ProspectosMobileController.onSelectEstadoMenu(this.value)" class="wizard-input-mobile" style="font-size: 0.78rem; font-weight: 700; padding: 0.42rem 0.4rem; border-radius: 0.6rem;">
+                            <option value="">📌 Todos los Estados</option>
+                            <option value="POR_VISITAR">📌 Por Visitar</option>
+                            <option value="CONTACTO_INICIAL">🔵 Contacto Inicial</option>
+                            <option value="LISTA_ENVIADA">🟢 Lista Enviada</option>
+                            <option value="VISITA_AGENDADA">🟡 Visita Agendada</option>
+                            <option value="VER_TODO">🌍 Ver Territorio + Web Juntos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Barra de Hoja de Ruta de Visitas Activa -->
+            <div id="banner-ruta-activa" style="display: none; margin-top: 0.45rem; background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(15, 23, 42, 0.96) 100%); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 0.75rem; padding: 0.45rem 0.65rem; align-items: center; justify-content: space-between; gap: 0.4rem; flex-wrap: wrap;">
+                <div style="font-size: 0.75rem; color: #e0f2fe; font-weight: 800; display: flex; align-items: center; gap: 0.3rem;">
+                    <span>🚗</span>
+                    <span id="lbl-banner-ruta-count">0 seleccionados</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                    <button type="button" onclick="ProspectosMobileController.abrirModalEnviarAHojaDeRuta()" style="background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); color: white; border: 1px solid #fb923c; border-radius: 0.5rem; padding: 0.34rem 0.65rem; font-size: 0.74rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                        🛣️ Enviar a Hoja de Ruta
+                    </button>
+                    <button type="button" onclick="ProspectosMobileController.limpiarRuta()" title="Vaciar selección" style="background: rgba(239, 68, 68, 0.18); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 0.5rem; padding: 0.34rem 0.5rem; font-size: 0.72rem; font-weight: 700; cursor: pointer;">
+                        ✕
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Listado de Tarjetas -->
+        <main id="vista-lista-mobile" style="padding: 0.75rem 0.85rem 4rem;">
+            <div id="lista-prospectos-mobile"></div>
+        </main>
+
+        <!-- ========================================================== -->
+        <!-- VISTA DE MAPA GEOGRÁFICO DINÁMICO (DESPEJADO Y VISUAL)     -->
+        <!-- ========================================================== -->
+        <div id="vista-mapa-mobile" style="display: none; padding: 0.4rem 0.55rem 0.5rem;">
+            <div class="mapa-toolbar-top" style="background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 0.42rem 0.5rem; margin-bottom: 0.4rem; display: flex; flex-direction: column; gap: 0.35rem;">
+                
+                <!-- FILA 1: 4 Switches Visuales (Casa/Depósito, Contactos Calle, Contactos Web, Clientes) -->
+                <div style="display: flex; gap: 0.28rem; align-items: center;">
+                    <button type="button" id="btn-capa-nodos" class="map-layer-pill active-nodos" onclick="ProspectosMobileController.toggleCapaMapa('nodos')" title="Mostrar u ocultar Casa y Depósito">
+                        <span>🏠🏭</span> <span>Casa/Dep.</span>
+                    </button>
+                    <button type="button" id="btn-capa-calle" class="map-layer-pill active-calle" onclick="ProspectosMobileController.toggleCapaMapa('calle')" title="Mostrar u ocultar Contactos marcados en Calle">
+                        <span>🚶</span> <span id="lbl-capa-calle">Calle</span>
+                    </button>
+                    <button type="button" id="btn-capa-web" class="map-layer-pill active-web" onclick="ProspectosMobileController.toggleCapaMapa('web')" title="Mostrar u ocultar Contactos detectados vía Web">
+                        <span>🌐</span> <span id="lbl-capa-web">Web</span>
+                    </button>
+                    <button type="button" id="btn-capa-clientes" class="map-layer-pill" onclick="ProspectosMobileController.toggleCapaMapa('clientes')" title="Mostrar u ocultar Clientes actuales de LAMDA">
+                        <span>⭐</span> <span id="lbl-capa-clientes">Clientes</span>
+                    </button>
+                </div>
+
+                <!-- FILA 2: Selector de Ruta (Todas / Ninguna / Una sola) + Selector de Turno + Botón Maximizar -->
+                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                    <select id="mapa-select-ruta" onchange="ProspectosMobileController.seleccionarFiltroRutaZona(this.value)" class="wizard-input-mobile" style="flex: 1.25; font-size: 0.74rem; font-weight: 800; padding: 0.34rem 0.4rem; border-radius: 0.5rem; border-color: rgba(16, 185, 129, 0.45); color: #6ee7b7; background: #0f172a;">
+                        <option value="">🛣️ Todas las Rutas</option>
+                        <option value="NINGUNA">🚫 Ninguna Ruta</option>
+                    </select>
+
+                    <select id="mapa-select-turno" onchange="ProspectosMobileController.seleccionarFiltroDiaTurno(this.value)" class="wizard-input-mobile" style="flex: 1; font-size: 0.74rem; font-weight: 800; padding: 0.34rem 0.4rem; border-radius: 0.5rem; border-color: rgba(250, 204, 21, 0.45); color: #fde047; background: #0f172a;">
+                        <option value="">🗓️ Todo Día</option>
+                        <option value="HOY_ACTUAL">⚡ Hoy</option>
+                        <option value="1_MANANA">Lun • Mañana</option>
+                        <option value="1_TARDE">Lun • Tarde</option>
+                        <option value="2_MANANA">Mar • Mañana</option>
+                        <option value="2_TARDE">Mar • Tarde</option>
+                        <option value="3_MANANA">Mié • Mañana</option>
+                        <option value="3_TARDE">Mié • Tarde</option>
+                        <option value="4_MANANA">Jue • Mañana</option>
+                        <option value="4_TARDE">Jue • Tarde</option>
+                        <option value="5_MANANA">Vie • Mañana</option>
+                        <option value="5_TARDE">Vie • Tarde</option>
+                        <option value="6_MANANA">Sáb • Mañana</option>
+                        <option value="6_TARDE">Sáb • Tarde</option>
+                        <option value="7_MANANA">Dom • Mañana</option>
+                        <option value="7_TARDE">Dom • Tarde</option>
+                    </select>
+
+                    <button type="button" id="btn-toggle-fullscreen-mapa" onclick="ProspectosMobileController.toggleFullscreenMapaGeneral()" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); border: 1px solid #10b981; color: #ffffff; border-radius: 0.5rem; padding: 0.34rem 0.55rem; font-size: 0.73rem; font-weight: 900; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+                        ⛶ Maximizar
+                    </button>
+                </div>
+            </div>
+            <div id="mapa-prospectos-mobile"></div>
+        </div>
+
+        <div id="vista-funnel-mobile" style="display: none; padding: 0.75rem 0.85rem 4rem;">
+            <div id="funnel-steps-mobile"></div>
+            <div id="funnel-zonas-mobile" style="margin-top: 1rem;"></div>
+        </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- SECCIÓN 2: MARCAR CONTACTO NUEVO EN CALLE (2 PASOS CLAROS) -->
+    <!-- ========================================================== -->
+    <section id="seccion-marcar-calle" style="display: none; padding: 0.9rem 0.9rem 4rem; max-width: 540px; margin: 0 auto;">
+        
+        <!-- PANTALLA PASO 1: DESDE AFUERA / NODO GEOGRÁFICO Y NEGOCIO -->
+        <div id="calle-paso-1-container" class="step-card-calle">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <span class="step-badge-header" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.4);">
+                    📍 PASO 1 DE 2 • EN LA CALLE / VEREDA
+                </span>
+                <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 700;">Datos visibles de afuera</span>
+            </div>
+
+            <!-- 1. Nodo Geográfico donde estoy parado -->
+            <div style="background: rgba(2, 132, 199, 0.12); border: 1px dashed #38bdf8; border-radius: 0.8rem; padding: 0.65rem 0.75rem; margin-bottom: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                <div style="min-width: 0; flex: 1;">
+                    <div style="font-size: 0.75rem; font-weight: 900; color: #38bdf8;">📡 Nodo Geográfico (Donde estoy parado)</div>
+                    <div id="calle-gps-status" style="font-size: 0.73rem; color: #e2e8f0; margin-top: 2px;">Capturando punto GPS del celular...</div>
+                </div>
+                <button type="button" onclick="ProspectosMobileController.capturarGpsPaso1()" style="background: #0284c7; color: white; border: none; border-radius: 0.55rem; padding: 0.42rem 0.65rem; font-size: 0.74rem; font-weight: 800; cursor: pointer; flex-shrink: 0;">
+                    🔄 Fijar GPS
+                </button>
+            </div>
+            <input type="hidden" id="calle-lat" value="">
+            <input type="hidden" id="calle-lng" value="">
+
+            <!-- 2. Nombre del Negocio -->
+            <div style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 800; color: #f8fafc; display: block; margin-bottom: 0.25rem;">
+                    🏪 Nombre del Negocio / Cartel <span style="color: #ef4444;">*</span>
+                </label>
+                <input type="text" id="calle-nombre-negocio" class="wizard-input-mobile" placeholder="Ej: La Triestina / Autoservicio de la esquina" style="font-size: 0.96rem; font-weight: 800;">
+            </div>
+
+            <!-- 3. Dirección / Calle -->
+            <div style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 800; color: #f8fafc; display: block; margin-bottom: 0.25rem;">
+                    📍 Dirección / Calle y Altura
+                </label>
+                <input type="text" id="calle-direccion" class="wizard-input-mobile" placeholder="Se autocompleta por GPS o escribila acá..." style="font-size: 0.88rem;">
+            </div>
+
+            <!-- 4. Rubros que se ven -->
+            <div style="margin-bottom: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                    <label style="font-size: 0.76rem; font-weight: 800; color: #cbd5e1;">
+                        🏷️ Rubro(s) <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 600;">(podés elegir varios)</span>
+                    </label>
+                    <button type="button" onclick="ProspectosMobileController.abrirModalAdministrarRubros()" style="background: none; border: none; color: #fdba74; font-size: 0.72rem; font-weight: 700; text-decoration: underline; cursor: pointer;">
+                        ⚙️ Editar rubros
+                    </button>
+                </div>
+                <div id="calle-rubros-container" style="display: flex; gap: 0.35rem; flex-wrap: wrap;"></div>
+                <div id="calle-rubro-custom-box" style="display: none; margin-top: 0.35rem;">
+                    <input id="calle-rubro-custom" class="wizard-input-mobile" placeholder="✏️ Otro rubro..." oninput="ProspectosMobileController.sincronizarInputRubros('calle')" style="font-size: 0.82rem;">
+                </div>
+                <input type="hidden" id="calle-rubro-input" value="Dietética">
+            </div>
+
+            <!-- 5. Vincular a Ruta / Zona Lineal -->
+            <div style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.76rem; font-weight: 800; color: #6ee7b7; display: block; margin-bottom: 0.3rem;">
+                    🛣️ Ruta / Zona Lineal por donde estás pasando:
+                </label>
+                <div id="calle-rutas-zona-pills" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                    <!-- Se llena con las Rutas/Zonas configuradas -->
+                </div>
+            </div>
+
+            <!-- 6. Nota rápida de lo que se ve desde la calle -->
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; display: block; margin-bottom: 0.25rem;">
+                    👀 Nota de lo que se ve desde afuera (opcional):
+                </label>
+                <textarea id="calle-nota-afuera" class="wizard-input-mobile" rows="2" placeholder="Ej: Tienen fiambrería y dietética al lado, buen movimiento..." style="font-size: 0.84rem;"></textarea>
+            </div>
+
+            <!-- DECISIÓN CLARA: ¿ENTRÉ O NO ENTRÉ? -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 0.9rem; padding: 0.8rem;">
+                <div style="font-size: 0.78rem; font-weight: 900; color: #f8fafc; text-align: center; margin-bottom: 0.6rem;">
+                    ¿Entraste al negocio o solo lo estás marcando al pasar?
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.55rem;">
+                    <button type="button" onclick="ProspectosMobileController.irAPaso2AdentroDelLocal()" style="width: 100%; background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; border: 1px solid #10b981; border-radius: 0.75rem; padding: 0.85rem; font-size: 0.92rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35); display: flex; align-items: center; justify-content: center; gap: 0.4rem;">
+                        <span>🚪 Sí, Entré al Local</span>
+                        <span style="font-size: 0.78rem; font-weight: 700; opacity: 0.9;">(Cargar quién me atendió) ›</span>
+                    </button>
+
+                    <button type="button" onclick="ProspectosMobileController.guardarContactoCallePaso1SoloAfuera()" style="width: 100%; background: rgba(234, 88, 12, 0.16); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.5); border-radius: 0.75rem; padding: 0.75rem; font-size: 0.85rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem;">
+                        <span>🚶‍♂️ No Entré • Solo Marcar Punto y Seguir</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANTALLA PASO 2: ENTRÉ AL LOCAL (DATOS DE LA PERSONA QUE ME ATIENDE) -->
+        <div id="calle-paso-2-container" class="step-card-calle" style="display: none; border-color: #10b981;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <span class="step-badge-header" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.45); margin-bottom: 0;">
+                    🤝 PASO 2 DE 2 • ADENTRO DEL LOCAL
+                </span>
+                <button type="button" onclick="ProspectosMobileController.volverAPaso1Vereda()" style="background: #0f172a; border: 1px solid #475569; color: #cbd5e1; border-radius: 0.5rem; padding: 0.28rem 0.6rem; font-size: 0.73rem; font-weight: 800; cursor: pointer;">
+                    ‹ Volver al Paso 1
+                </button>
+            </div>
+
+            <div id="calle-paso2-resumen-negocio" style="background: #0f172a; border: 1px solid #334155; border-radius: 0.7rem; padding: 0.55rem 0.75rem; margin-bottom: 0.8rem; font-size: 0.82rem; color: #f8fafc; font-weight: 800;">
+                🏪 Local: —
+            </div>
+
+            <!-- 1. Persona de contacto / Quién me atendió -->
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 0.45rem; margin-bottom: 0.75rem;">
+                <div>
+                    <label style="font-size: 0.76rem; font-weight: 800; color: #f8fafc; display: block; margin-bottom: 0.22rem;">
+                        👤 Nombre (Encargado / Quien atiende)
+                    </label>
+                    <input type="text" id="calle-contacto-nombre" class="wizard-input-mobile" placeholder="Ej: Lucía" style="font-size: 0.9rem; font-weight: 700;">
+                </div>
+                <div>
+                    <label style="font-size: 0.76rem; font-weight: 800; color: #cbd5e1; display: block; margin-bottom: 0.22rem;">
+                        🏷️ Rol / Puesto
+                    </label>
+                    <select id="calle-contacto-rol" class="wizard-input-mobile" style="font-size: 0.82rem; font-weight: 700;">
+                        <option value="ENCARGADO" selected>Encargado/a</option>
+                        <option value="DUEÑO">Dueño/a</option>
+                        <option value="FIAMBRERIA">Fiambrería</option>
+                        <option value="CAJERO">Cajero/a</option>
+                        <option value="REPOSITOR">Repositor/a</option>
+                        <option value="EMPLEADO">Mostrador</option>
+                        <option value="OTRO">Otro</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 2. WhatsApp / Teléfono -->
+            <div style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.78rem; font-weight: 800; color: #34d399; display: block; margin-bottom: 0.22rem;">
+                    📱 WhatsApp / Teléfono que te pasaron
+                </label>
+                <input type="tel" id="calle-telefono" class="wizard-input-mobile" placeholder="Ej: 221 351-1988" style="font-size: 0.95rem; font-weight: 800;">
+            </div>
+
+            <!-- 3. Enviar Lista PDF automáticamente -->
+            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 0.75rem; padding: 0.65rem 0.75rem; margin-bottom: 0.75rem;">
+                <label style="display: flex; align-items: center; gap: 0.55rem; cursor: pointer; font-size: 0.82rem; font-weight: 800; color: #6ee7b7;">
+                    <input type="checkbox" id="calle-enviar-lista-wa" checked style="width: 18px; height: 18px; accent-color: #10b981;">
+                    <span>📲 Enviar Lista Mayorista PDF + Presentación por WhatsApp al guardar</span>
+                </label>
+                <div style="margin-top: 0.45rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <span style="font-size: 0.72rem; color: #94a3b8;">Lista PDF:</span>
+                    <select id="calle-lista-precios-id" class="wizard-input-mobile" style="font-size: 0.78rem; padding: 0.3rem 0.5rem; flex: 1;"></select>
+                </div>
+            </div>
+
+            <!-- 4. Días / Turno (Mañana o Tarde) recomendados para encontrar al encargado -->
+            <div style="margin-bottom: 0.75rem;">
+                <label style="font-size: 0.75rem; font-weight: 800; color: #fde047; display: block; margin-bottom: 0.25rem;">
+                    🗓️ ¿Qué día / turno conviene pasar a ver al encargado? <span style="font-weight: 400; color: #94a3b8;">(Opcional)</span>
+                </label>
+                <div id="calle-dias-turnos-pills" style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
+                    <!-- Chips rápidos Lun Mañana, Lun Tarde, Mar Mañana... -->
+                </div>
+            </div>
+
+            <!-- 5. Notas de la conversación adentro del negocio -->
+            <div style="margin-bottom: 0.9rem;">
+                <label style="font-size: 0.76rem; font-weight: 800; color: #cbd5e1; display: block; margin-bottom: 0.22rem;">
+                    💬 Notas de la charla adentro del local
+                </label>
+                <textarea id="calle-notas-adentro" class="wizard-input-mobile" rows="3" placeholder="Ej: Me atendió chica de fiambrería, me dijo que Lucía está arriba ocupada y que la dietética de al lado es del mismo dueño. Pasar temprano a la mañana." style="font-size: 0.84rem;"></textarea>
+            </div>
+
+            <button type="button" onclick="ProspectosMobileController.guardarContactoCallePaso2Completo()" style="width: 100%; background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; border: 1px solid #34d399; border-radius: 0.8rem; padding: 0.9rem; font-size: 0.95rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 15px rgba(5, 150, 105, 0.4);">
+                💾 Guardar Contacto y Visita en Calle
+            </button>
+        </div>
+
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- SECCIÓN 3: CONFIGURACIÓN DE RUTA / DÍAS (7 DÍAS M / T)     -->
+    <!-- ========================================================== -->
+    <section id="seccion-config-rutas-dias" style="display: none; padding: 0.9rem 0.9rem 4.5rem; max-width: 560px; margin: 0 auto;">
+        
+        <!-- BLOQUE 1: PUNTOS DE CABECERA (SALIDA Y REGRESO: MI CASA ↔ DEPÓSITO) -->
+        <div class="config-section-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <div>
+                    <h3 style="margin: 0; font-size: 0.95rem; font-weight: 900; color: #f8fafc;">
+                        🏠 ↔ 🏭 1. Puntos de Salida y Llegada
+                    </h3>
+                    <p style="margin: 2px 0 0; font-size: 0.73rem; color: #94a3b8;">
+                        Nodos fijos desde donde salís y regresás para trazar tus recorridos lineales.
+                    </p>
+                </div>
+                <button type="button" onclick="ProspectosMobileController.abrirModalEditarNodo(null)" style="background: #334155; color: #f8fafc; border: 1px solid #475569; border-radius: 0.55rem; padding: 0.35rem 0.65rem; font-size: 0.73rem; font-weight: 800; cursor: pointer;">
+                    ➕ Punto
+                </button>
+            </div>
+            <div id="config-lista-nodos">
+                <!-- Renderizado dinámico de Mi Casa y Depósito LAMDA -->
+            </div>
+        </div>
+
+        <!-- BLOQUE 2: DEFINICIÓN DE RUTAS / ZONAS LINEALES (CORREDORES Y CALLES) -->
+        <div class="config-section-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.55rem;">
+                <div>
+                    <h3 style="margin: 0; font-size: 0.95rem; font-weight: 900; color: #f8fafc;">
+                        🛣️ 2. Mis Rutas / Zonas Lineales
+                    </h3>
+                    <p style="margin: 2px 0 0; font-size: 0.73rem; color: #94a3b8;">
+                        Definí cada trayecto entre Casa y Depósito indicando las calles o zonas que recorre.
+                    </p>
+                </div>
+                <button type="button" onclick="ProspectosMobileController.abrirModalEditarRutaZona(null)" style="background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); color: white; border: none; border-radius: 0.6rem; padding: 0.42rem 0.75rem; font-size: 0.76rem; font-weight: 800; cursor: pointer; box-shadow: 0 2px 8px rgba(234,88,12,0.35);">
+                    ➕ Nueva Ruta/Zona
+                </button>
+            </div>
+            <div id="config-lista-rutas-zona">
+                <!-- Renderizado dinámico de Corredores Lineales -->
+            </div>
+        </div>
+
+        <!-- BLOQUE 3: CRONOGRAMA DE 7 DÍAS (LUNES A DOMINGO × MAÑANA Y TARDE) -->
+        <div class="config-section-box">
+            <div style="margin-bottom: 0.6rem;">
+                <h3 style="margin: 0; font-size: 0.95rem; font-weight: 900; color: #f8fafc;">
+                    🗓️ 3. Cronograma Semanal (7 Días • Mañana y Tarde)
+                </h3>
+                <p style="margin: 2px 0 0; font-size: 0.73rem; color: #94a3b8;">
+                    Asigná qué Ruta/Zona lineal hacés cada día a la <b>🌅 Mañana</b> y a la <b>🌇 Tarde</b>. Los contactos vinculados a esa Ruta/Zona quedan habilitados automáticamente para esos días.
+                </p>
+            </div>
+            <div id="config-grilla-7-dias">
+                <!-- Renderizado dinámico de Lunes a Domingo con Mañana y Tarde -->
+            </div>
+        </div>
+
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- EDITOR DE RUTA Y SUPERFICIE DEFORMABLE EN PANTALLA COMPLETA -->
+    <!-- ========================================================== -->
+    <div id="modal-fullscreen-ruta-editor" class="fullscreen-ruta-editor">
+        
+        <!-- Barra Superior Compacta -->
+        <div style="background: #1e293b; border-bottom: 1px solid #334155; padding: 0.45rem 0.65rem; display: flex; align-items: center; gap: 0.4rem; z-index: 30;">
+            <input type="text" id="editor-ruta-nombre" class="wizard-input-mobile" placeholder="🛣️ Nombre de Ruta/Zona (ej: Corredor Av. 31)" style="flex: 1; font-size: 0.85rem; font-weight: 800; padding: 0.36rem 0.55rem; border-radius: 0.55rem;">
+            
+            <button type="button" id="btn-toggle-drawer-ruta" onclick="ProspectosMobileController.toggleDrawerConfigRuta()" style="background: #0f172a; border: 1px solid #facc15; color: #fde047; border-radius: 0.55rem; padding: 0.36rem 0.55rem; font-size: 0.73rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                🗓️ Días/Nodos
+            </button>
+
+            <span id="editor-ruta-badge-adentro" style="background: rgba(16, 185, 129, 0.22); border: 1px solid #10b981; color: #6ee7b7; border-radius: 0.55rem; padding: 0.34rem 0.5rem; font-size: 0.72rem; font-weight: 900; white-space: nowrap;">
+                🎯 0 adentro
+            </span>
+
+            <button type="button" onclick="ProspectosMobileController.cerrarEditorRutaFullscreen()" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.45); color: #fca5a5; border-radius: 0.55rem; padding: 0.34rem 0.6rem; font-size: 0.82rem; font-weight: 900; cursor: pointer;">
+                ✕
+            </button>
+        </div>
+
+        <!-- Gaveta Desplegable: Salida, Llegada, Calles y Días (Mañana / Tarde) -->
+        <div id="drawer-config-datos-ruta" style="display: none; background: #1e293b; border-bottom: 2px solid #ea580c; padding: 0.65rem 0.75rem; max-height: 56dvh; overflow-y: auto; z-index: 28; box-shadow: 0 10px 25px rgba(0,0,0,0.6);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-bottom: 0.5rem;">
+                <div>
+                    <label style="font-size: 0.68rem; font-weight: 800; color: #34d399; display: block; margin-bottom: 2px;">🏠 Punto de Salida</label>
+                    <select id="editor-ruta-salida" onchange="ProspectosMobileController.onCambioNodosCabeceraEditor()" class="wizard-input-mobile" style="font-size: 0.76rem; padding: 0.35rem 0.45rem;"></select>
+                </div>
+                <div>
+                    <label style="font-size: 0.68rem; font-weight: 800; color: #7dd3fc; display: block; margin-bottom: 2px;">🏭 Punto de Llegada</label>
+                    <select id="editor-ruta-llegada" onchange="ProspectosMobileController.onCambioNodosCabeceraEditor()" class="wizard-input-mobile" style="font-size: 0.76rem; padding: 0.35rem 0.45rem;"></select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 82px; gap: 0.45rem; margin-bottom: 0.55rem;">
+                <div>
+                    <label style="font-size: 0.68rem; font-weight: 800; color: #fdba74; display: block; margin-bottom: 2px;">📍 Calles / Zonas de referencia (opcional)</label>
+                    <input type="text" id="editor-ruta-calles" class="wizard-input-mobile" placeholder="Ej: Av. 31, Calle 520, Tolosa..." style="font-size: 0.78rem; padding: 0.35rem 0.5rem;">
+                </div>
+                <div>
+                    <label style="font-size: 0.68rem; font-weight: 800; color: #cbd5e1; display: block; margin-bottom: 2px;">🎨 Color</label>
+                    <select id="editor-ruta-color" onchange="ProspectosMobileController.renderizarCapasEditorRuta()" class="wizard-input-mobile" style="font-size: 0.76rem; padding: 0.35rem 0.3rem;">
+                        <option value="#ea580c">🟠 Naranja</option>
+                        <option value="#10b981">🟢 Esmeralda</option>
+                        <option value="#0284c7">🔵 Celeste</option>
+                        <option value="#a855f7">🟣 Violeta</option>
+                        <option value="#eab308">🟡 Amarillo</option>
+                        <option value="#ec4899">🩷 Rosa</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label style="font-size: 0.72rem; font-weight: 800; color: #fde047; display: block; margin-bottom: 4px;">
+                    🗓️ ¿Qué días (Mañana / Tarde) hacés esta Ruta / Zona?
+                </label>
+                <div id="editor-ruta-grilla-dias" style="background: #0f172a; border: 1px solid #334155; border-radius: 0.6rem; max-height: 175px; overflow-y: auto;"></div>
+            </div>
+
+            <div style="margin-top: 0.55rem; text-align: right;">
+                <button type="button" onclick="ProspectosMobileController.toggleDrawerConfigRuta()" style="background: #059669; color: white; border: none; border-radius: 0.5rem; padding: 0.38rem 0.85rem; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                    ✓ Listo, volver al Mapa
+                </button>
+            </div>
+        </div>
+
+        <!-- Área Principal: MAPA 100% PANTALLA COMPLETA -->
+        <div style="position: relative; flex: 1; width: 100%; height: 100%; overflow: hidden;">
+            <div id="mapa-editor-ruta-fullscreen" style="width: 100%; height: 100%; background: #0f172a;"></div>
+
+            <!-- Instrucción flotante superior sobre el mapa -->
+            <div id="editor-ruta-floating-hint" style="position: absolute; top: 8px; left: 8px; right: 8px; z-index: 500; background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 0.65rem; padding: 0.35rem 0.6rem; font-size: 0.72rem; color: #e2e8f0; pointer-events: none; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.45);">
+                👆 Tocá el mapa para marcar las esquinas por donde doblás. La franja se genera sola.
+            </div>
+        </div>
+
+        <!-- Barra Inferior de Herramientas: Paso 1 (Camino + Ancho) y Paso 2 (Deformar Bordes) -->
+        <div style="background: #1e293b; border-top: 1px solid #334155; padding: 0.5rem 0.65rem 0.65rem; display: flex; flex-direction: column; gap: 0.45rem; z-index: 30;">
+            
+            <!-- Conmutador de Modo: 1. Trazar Camino vs 2. Deformar Bordes -->
+            <div style="display: flex; gap: 0.4rem;">
+                <button type="button" id="btn-modo-editor-camino" class="editor-mode-btn active-camino" onclick="ProspectosMobileController.cambiarModoEditorRuta('CAMINO')">
+                    <span>🛣️ 1. Trazar Camino</span>
+                </button>
+                <button type="button" id="btn-modo-editor-bordes" class="editor-mode-btn" onclick="ProspectosMobileController.cambiarModoEditorRuta('BORDES')">
+                    <span>✋ 2. Deformar Bordes</span>
+                </button>
+            </div>
+
+            <!-- Controles Modo 1: Ancho automático + Quitar esquina + Regenerar -->
+            <div id="controles-modo-camino" style="display: flex; align-items: center; justify-content: space-between; gap: 0.35rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+                    <span style="font-size: 0.68rem; font-weight: 800; color: #94a3b8;">Ancho:</span>
+                    <button type="button" class="ancho-pill-btn" data-ancho="150" onclick="ProspectosMobileController.seleccionarAnchoBufferEditor(150)">150m</button>
+                    <button type="button" class="ancho-pill-btn active" data-ancho="350" onclick="ProspectosMobileController.seleccionarAnchoBufferEditor(350)">350m</button>
+                    <button type="button" class="ancho-pill-btn" data-ancho="600" onclick="ProspectosMobileController.seleccionarAnchoBufferEditor(600)">600m</button>
+                    <button type="button" class="ancho-pill-btn" data-ancho="900" onclick="ProspectosMobileController.seleccionarAnchoBufferEditor(900)">900m</button>
+                </div>
+                <div style="display: flex; gap: 0.3rem;">
+                    <button type="button" onclick="ProspectosMobileController.deshacerUltimoWaypointEditor()" title="Quitar última esquina" style="background: #334155; border: 1px solid #475569; color: #cbd5e1; border-radius: 0.5rem; padding: 0.32rem 0.55rem; font-size: 0.72rem; font-weight: 800; cursor: pointer;">
+                        ↩️ Quitar Esquina
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controles Modo 2: Deformar Bordes Manualmente -->
+            <div id="controles-modo-bordes" style="display: none; align-items: center; justify-content: space-between; gap: 0.4rem;">
+                <span style="font-size: 0.71rem; color: #fdba74; font-weight: 700;">
+                    🟠 Arrastrá los bordes para ensanchar/angostar • ➕ suma borde
+                </span>
+                <button type="button" onclick="ProspectosMobileController.regenerarFranjaAutomaticaEditor(true)" style="background: #334155; border: 1px solid #475569; color: #e2e8f0; border-radius: 0.5rem; padding: 0.32rem 0.55rem; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                    ↺ Resetear Franja
+                </button>
+            </div>
+
+            <!-- Botón Guardar Ruta y Superficie -->
+            <button type="button" onclick="ProspectosMobileController.guardarRutaZonaDesdeEditor()" style="width: 100%; background: linear-gradient(135deg, #059669 0%, #047857 100%); border: 1px solid #34d399; color: #ffffff; border-radius: 0.7rem; padding: 0.65rem; font-size: 0.88rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);">
+                💾 Guardar Ruta / Superficie y Vincular Contactos
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="js/mobile.js?v=68"></script>
+    <script src="js/controllers/ProspectosMobileController.js?v=68"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!verificarSesion()) return;
+            ProspectosMobileController.init();
+        });
+    </script>
+</body>
+</html>

@@ -2,45 +2,36 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Ventas - LAMDA</title>
-    <link rel="icon" type="image/x-icon" href="../../favicon.ico?v=2">
+    <title>Ventas y Presupuestos - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/mobile.css?v=15">
+    <link rel="stylesheet" href="css/comercial.css?v=15">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="/env-config.js"></script>
     <style>
-        /* Estilos específicos para la landing del módulo de presupuestos */
         .presupuestos-page {
-            background-color: #f8fafc;
+            background-color: #0f172a;
             min-height: 100vh;
             padding-bottom: 2rem;
+            color: #f8fafc;
+            overflow-x: hidden;
         }
         
         .hero-section {
-            padding: 2rem 1.5rem;
+            padding: 2rem 1.5rem 1.5rem;
             text-align: center;
-            background: linear-gradient(180deg, #1e40af 0%, #2563eb 100%);
-            color: white;
-            border-bottom-left-radius: 1.5rem;
-            border-bottom-right-radius: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .hero-icon {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            text-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .btn-crear-presupuesto {
@@ -50,72 +41,77 @@
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             border: none;
-            padding: 1.25rem 2rem;
+            padding: 1.1rem 1.75rem;
             border-radius: 1rem;
-            font-size: 1.25rem;
+            font-size: 1.15rem;
             font-weight: 800;
             text-decoration: none;
-            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            margin-top: 1.5rem;
+            box-shadow: 0 10px 20px -3px rgba(16, 185, 129, 0.35);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 1.25rem;
             width: 100%;
             justify-content: center;
         }
 
         .btn-crear-presupuesto:active {
-            transform: scale(0.96);
-            box-shadow: 0 5px 10px rgba(16, 185, 129, 0.3);
+            transform: scale(0.97);
+            box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
         }
 
         /* Tabs Móviles */
         .tabs-container {
             display: flex;
-            background: white;
-            padding: 0.5rem;
-            margin: -1rem 1.5rem 1.5rem;
-            border-radius: 1rem;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            background: #1e293b;
+            padding: 0.4rem;
+            margin: 1.25rem 0.85rem 1rem;
+            border-radius: 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
             position: relative;
             z-index: 10;
         }
 
         .tab-btn {
             flex: 1;
-            padding: 0.75rem;
+            padding: 0.65rem;
             text-align: center;
             font-weight: 700;
-            color: #64748b;
-            border-radius: 0.75rem;
+            color: #94a3b8;
+            border-radius: 0.65rem;
+            font-size: 0.9rem;
             transition: all 0.2s ease;
+            cursor: pointer;
         }
 
         .tab-btn.active {
-            background: #2563eb;
+            background: #059669;
             color: white;
-            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+            box-shadow: 0 2px 8px rgba(5, 150, 105, 0.35);
         }
 
         .recientes-container {
-            padding: 2rem 1.5rem;
+            padding: 0 0.85rem 2rem;
+            box-sizing: border-box;
+            width: 100%;
+            overflow-x: hidden;
         }
 
         .section-title {
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 800;
-            color: #334155;
-            margin-bottom: 1rem;
+            color: #f8fafc;
+            margin-bottom: 0.85rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
 
         .placeholder-card {
-            background: white;
+            background: #1e293b;
             border-radius: 1rem;
-            padding: 1.5rem;
+            padding: 2rem 1rem;
             text-align: center;
-            color: #94a3b8;
-            border: 2px dashed #cbd5e1;
+            color: #64748b;
+            border: 1px dashed rgba(255, 255, 255, 0.12);
         }
     </style>
 </head>
@@ -124,124 +120,66 @@
     <!-- CABECERA PRINCIPAL -->
     <header class="mobile-header">
         <div class="header-top">
-            <button class="btn-icon" onclick="window.abrirSidebar()" title="Menú Principal" style="font-size: 1.5rem; padding: 0.2rem 0.6rem;">
-                ☰
-            </button>
-            <h1 class="header-title">Ventas</h1>
-            <div style="width: 44px;"></div> <!-- Spacer -->
+            <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" onclick="window.abrirSidebar(event)" title="Abrir Menú Principal" style="width: 36px; height: 36px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.08); padding: 3px; border: 1px solid rgba(255,255,255,0.15); cursor: pointer; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
+            <h1 class="header-title">Ventas y Presupuestos</h1>
+            <div style="width: 44px;"></div>
         </div>
     </header>
 
-    <!-- SIDEBAR GLOBAL -->
-    <div id="sidebar-overlay" class="sidebar-overlay" onclick="window.cerrarSidebar()"></div>
-    <div id="sidebar-menu" class="sidebar-menu">
-        <div class="sidebar-header">
-            <h2>LAMDA PWA</h2>
-            <p>Sistema Integral de Gestión</p>
-        </div>
-        <div class="sidebar-content">
-            <div class="sidebar-nav-title">Navegación</div>
-            
-            <a href="home.html" class="sidebar-item">
-                <span class="sidebar-icon">🏠</span>
-                <span>Inicio</span>
-            </a>
-
-            <div class="sidebar-nav-title" style="margin-top: 0.75rem;">Módulos Activos</div>
-            
-            <a href="ruta.html" class="sidebar-item">
-                <span class="sidebar-icon">🚚</span>
-                <span>Logística (Hoja de Ruta)</span>
-            </a>
-            
-            <a href="presupuestos.html" class="sidebar-item active-module">
-                <span class="sidebar-icon">💰</span>
-                <span>Ventas / Presupuestos</span>
-            </a>
-        </div>
-        <div class="sidebar-footer">
-            <button class="sidebar-logout" onclick="cerrarSesion()">
-                <span>🚪</span> Cerrar Sesión
-            </button>
-        </div>
-    </div>
+    <!-- SIDEBAR GLOBAL (Gestionado dinámicamente por mobile.js) -->
 
     <!-- CONTENIDO COMERCIAL -->
     <div class="hero-section">
-        <div class="hero-icon">💸</div>
-        <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Cajero Móvil</h2>
-        <p style="font-size: 0.95rem; opacity: 0.9;">Creá remitos en la calle con el asistente paso a paso.</p>
+        <div style="display:flex; justify-content:center; margin-bottom:0.75rem;">
+            <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" style="width:50px; height:50px; border-radius:12px; background:rgba(255,255,255,0.08); padding:5px; border:1px solid rgba(255,255,255,0.12);">
+        </div>
+        <h2 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 0.35rem; color:#f8fafc;">Ventas Búnker Móvil</h2>
+        <p style="font-size: 0.85rem; color:#94a3b8; max-width:320px; margin:0 auto;">Catálogo de precios Búnker, presupuestos en caliente y envío instantáneo por WhatsApp.</p>
         
-        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
-            <a href="crear-presupuesto-movil.html" class="btn-crear-presupuesto" style="margin-top: 0; padding: 1rem; width: 100%; flex: 1;">
-                <span style="font-size: 1.5rem; display:block">🚚</span> 
-                <span style="font-size: 1rem;">Vender</span>
+        <div style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.25rem;">
+            <a href="crear-presupuesto-movil.html" class="btn-crear-presupuesto" style="margin-top: 0; padding: 0.95rem; width: 100%; flex: 1;">
+                <span style="font-size: 1.25rem;">➕</span> 
+                <span style="font-size: 0.95rem;">Nueva Cotización</span>
             </a>
-            <a href="crear-retiro-movil.html" class="btn-crear-presupuesto" style="margin-top: 0; padding: 1rem; width: 100%; flex: 1; background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%); box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.4);">
-                <span style="font-size: 1.5rem; display:block">📦</span> 
-                <span style="font-size: 1rem;">Retirar</span>
+            <a href="crear-retiro-movil.html" class="btn-crear-presupuesto" style="margin-top: 0; padding: 0.95rem; width: 100%; flex: 1; background: linear-gradient(135deg, #d97706 0%, #b45309 100%); box-shadow: 0 10px 20px -3px rgba(217, 119, 6, 0.35);">
+                <span style="font-size: 1.25rem;">📦</span> 
+                <span style="font-size: 0.95rem;">Retirar</span>
             </a>
         </div>
     </div>
 
     <div class="tabs-container">
-        <div class="tab-btn active" onclick="switchTabComercial('ventas')" id="tab-ventas">Ventas</div>
+        <div class="tab-btn active" onclick="switchTabComercial('ventas')" id="tab-ventas">Cotizaciones</div>
         <div class="tab-btn" onclick="switchTabComercial('retiros')" id="tab-retiros">Retiros</div>
     </div>
 
-    <div class="recientes-container" style="padding-top: 0.5rem">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom: 1rem;">
-            <h3 class="section-title" style="margin:0"><span>🕒</span> Historial</h3>
+    <div class="recientes-container">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom: 0.85rem;">
+            <h3 class="section-title" style="margin:0"><span>🕒</span> Historial de Operaciones</h3>
             <div style="display:flex; gap:0.5rem">
-                <input type="date" id="filtro-fecha" class="wizard-input" style="padding:0.4rem; font-size:0.8rem; border-radius:0.5rem; height:auto; width:130px;" onchange="DashboardComercial.aplicarFiltroFecha()">
+                <input type="date" id="filtro-fecha" class="wizard-input" style="padding:0.4rem 0.6rem; font-size:0.8rem; border-radius:0.5rem; height:auto; width:135px;" onchange="DashboardComercial.aplicarFiltroFecha()">
             </div>
         </div>
         
-        <div class="placeholder-card" id="historial-container" style="padding: 1rem;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
-            <p><strong>Listado Vacío</strong><br>Aquí aparecerán tus operaciones recientes separadas por pestañas.</p>
-        </div>
-
-        <button id="btn-cargar-mas" class="btn-continue" style="display:none; margin-top:1rem; width:100%; padding: 0.8rem; font-size: 1rem; border-radius:0.75rem; background:#334155; box-shadow:none" onclick="DashboardComercial.cargarMas()">Cargar Más Antiguos ↓</button>
-    </div>
-
-    <!-- MODAL DE PRE-IMPRESIÓN -->
-    <div id="modal-impresion" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(3px); pointer-events:auto;">
-        <div style="background: white; width: 90%; max-width: 400px; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); pointer-events:auto; position:relative;">
-            <h3 style="margin-top:0; color:#1e293b;">🖨️ Opciones de Ticket</h3>
-            <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.5rem;">Configurá cómo se verá el documento del cliente.</p>
-
-            <div style="margin-bottom:1rem;">
-                <label style="font-weight:700; color:#1e293b; display:block; margin-bottom:0.5rem">Formato de I.V.A.:</label>
-                <select id="select-formato-impresion" class="wizard-select" style="pointer-events:auto;">
-                    <option value="IVA_DISCRIMINADO">Discriminado (Factura A)</option>
-                    <option value="IVA_INCLUIDO" selected>Incluido (Factura B / CF)</option>
-                </select>
-            </div>
-
-            <div style="margin-bottom:1.5rem; display:flex; align-items:center; gap:0.5rem; background:#f8fafc; padding:0.75rem; border-radius:0.5rem;" onclick="document.getElementById('chk-solo-lista-movil').click()">
-                <input type="checkbox" id="chk-solo-lista-movil" style="width:1.4rem; height:1.4rem; accent-color:#2563eb; pointer-events:auto;" onclick="event.stopPropagation()">
-                <label for="chk-solo-lista-movil" style="font-weight:700; color:#1e293b; margin:0; pointer-events:auto; cursor:pointer;">Ocultar Totales <span style="font-weight:normal; color:#64748b">(Solo Lista)</span></label>
-            </div>
-
-            <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
-                <button class="btn-secondary" style="padding:0.75rem 1rem; border:none; background:#e2e8f0; border-radius:0.5rem; font-weight:700; cursor:pointer; pointer-events:auto; color:#334155" onclick="DashboardComercial.cerrarPreImpresion()">Cancelar</button>
-                <button class="btn-primary" id="btn-generar-pdf-movil" style="padding:0.75rem 1rem; border:none; background:#2563eb; color:white; border-radius:0.5rem; font-weight:700; cursor:pointer; pointer-events:auto;" onclick="DashboardComercial.generarImpresion()">Compartir Ticket 📤</button>
+        <div id="historial-container">
+            <div class="placeholder-card">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+                <p><strong>Cargando operaciones...</strong></p>
             </div>
         </div>
+
+        <button id="btn-cargar-mas" class="btn-continue" style="display:none; margin-top:1rem; width:100%; padding: 0.8rem; font-size: 0.95rem; border-radius:0.75rem; background:#334155; box-shadow:none" onclick="DashboardComercial.cargarMas()">Cargar Más Antiguos ↓</button>
     </div>
 
     <!-- Scripts -->
-    <script src="js/mobile.js?v=6"></script>
-    <script src="js/controllers/PresupuestosDashboard.js?v=6"></script>
+    <script src="js/mobile.js?v=15"></script>
+    <script src="js/controllers/PresupuestosDashboard.js?v=15"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Utilizamos el mismo pipeline de verificación del chofer
             if (!verificarSesion()) {
                 window.location.href = 'index.html';
                 return;
             }
-            // Arrancar Controlador de Dashboard de Movimientos Reales
             DashboardComercial.init();
         });
         

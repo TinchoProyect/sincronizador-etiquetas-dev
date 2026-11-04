@@ -1,0 +1,36 @@
+User-agent: *
+Allow: /
+Allow: /institucional.html
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /catalogo-publico.json
+Allow: /sitemap.xml
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Google-Favicon
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://lamdaser.com/sitemap.xml

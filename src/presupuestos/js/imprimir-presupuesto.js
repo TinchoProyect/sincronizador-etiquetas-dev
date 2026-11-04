@@ -14,6 +14,7 @@ const CONFIG = {
 let presupuestoData = null;
 let presupuestoId = null;
 let formatoActual = null; // 'IVA_DISCRIMINADO' | 'IVA_INCLUIDO'
+let extrasData = null;
 
 /**
  * Inicialización al cargar el DOM
@@ -96,6 +97,80 @@ async function cargarPresupuesto(id) {
 
         console.log('✅ [IMPRIMIR-PRESUPUESTO] Datos cargados:', presupuestoData);
 
+        // Cargar complementos opcionales (promos activas, formas de pago, política de intereses)
+        try {
+            const responseExtras = await fetch(`/api/presupuestos/${id}/impresion-extras`);
+            if (responseExtras.ok) {
+                const dataExtras = await responseExtras.json();
+                if (dataExtras.success && dataExtras.data) {
+                    extrasData = dataExtras.data;
+                    console.log('✅ [IMPRIMIR-PRESUPUESTO] Extras cargados:', extrasData);
+                    if (typeof renderizarContenidoPromos === 'function') {
+                        renderizarContenidoPromos(extrasData.promos, extrasData.politica_comercial, presupuestoData.totales);
+                    }
+                    if (typeof actualizarInfoPoliticaIntereses === 'function') {
+                        actualizarInfoPoliticaIntereses(extrasData.politica_intereses);
+                    }
+                }
+            }
+        } catch (errExtras) {
+            console.warn('⚠️ [IMPRIMIR-PRESUPUESTO] Error al obtener complementos:', errExtras);
+        }
+
+        // Fallback resiliente para promociones si el backend en puerto 3003 aún no fue reiniciado
+        if (!extrasData || !extrasData.promos || extrasData.promos.length === 0) {
+            try {
+                let respOfr = await fetch('/api/ofertas-dinamicas?solo_activas=true').catch(() => null);
+                if (!respOfr || !respOfr.ok) {
+                    const host = window.location.hostname || 'localhost';
+                    respOfr = await fetch(`http://${host}:3000/api/ofertas-dinamicas?solo_activas=true`).catch(() => null);
+                }
+                if (respOfr && respOfr.ok) {
+                    const jsonOfr = await respOfr.json();
+                    if (jsonOfr.success && Array.isArray(jsonOfr.data)) {
+                        extrasData = extrasData || {};
+                        extrasData.promos = jsonOfr.data;
+                        console.log('✅ [IMPRIMIR-PRESUPUESTO] Promos cargadas vía fallback:', extrasData.promos);
+                        if (typeof renderizarContenidoPromos === 'function') {
+                            renderizarContenidoPromos(extrasData.promos, extrasData.politica_comercial, presupuestoData.totales);
+                        }
+                    }
+                }
+            } catch (eOfr) {
+                console.warn('⚠️ [IMPRIMIR-PRESUPUESTO] Fallback de ofertas falló:', eOfr);
+            }
+        }
+
+        // Fallback resiliente para política comercial si no vino en extras
+        if (!extrasData?.politica_comercial && presupuestoData?.presupuesto?.id_cliente) {
+            try {
+                const cliId = presupuestoData.presupuesto.id_cliente;
+                const respPol = await fetch(`/api/presupuestos/politicas/cliente/${cliId}`);
+                if (respPol.ok) {
+                    const dataPol = await respPol.json();
+                    if (dataPol.success && dataPol.data && dataPol.data.tiene_politica && dataPol.data.politica) {
+                        extrasData = extrasData || {};
+                        extrasData.politica_comercial = {
+                            id: dataPol.data.politica.id,
+                            nombre: dataPol.data.politica.nombre,
+                            lista_nombre: dataPol.data.lista_nombre,
+                            lista_id: dataPol.data.lista_id,
+                            tipo_calculo: dataPol.data.politica.tipo_calculo,
+                            aplica_sobre: dataPol.data.politica.aplica_sobre,
+                            tramos: dataPol.data.politica.tramos,
+                            excepcion: dataPol.data.excepcion
+                        };
+                        console.log('✅ [IMPRIMIR-PRESUPUESTO] Política comercial cargada vía fallback:', extrasData.politica_comercial);
+                        if (typeof renderizarContenidoPromos === 'function') {
+                            renderizarContenidoPromos(extrasData.promos, extrasData.politica_comercial, presupuestoData.totales);
+                        }
+                    }
+                }
+            } catch (ePol) {
+                console.warn('⚠️ [IMPRIMIR-PRESUPUESTO] Fallback de política comercial falló:', ePol);
+            }
+        }
+
         // Validar que hay datos mínimos
         if (!presupuestoData.detalles || presupuestoData.detalles.length === 0) {
             console.warn('⚠️ [IMPRIMIR-PRESUPUESTO] Presupuesto sin artículos');
@@ -143,6 +218,33 @@ async function cargarPresupuesto(id) {
             if(chk) {
                 chk.checked = false;
                 if(typeof window.toggleFaltantes === 'function') window.toggleFaltantes();
+            }
+        }
+
+        // Override: Modo Promociones y Ofertas
+        if (urlParamsOverride.get('promos') === 'true') {
+            const chk = document.getElementById('chk-promos');
+            if(chk) {
+                chk.checked = true;
+                if(typeof window.togglePromos === 'function') window.togglePromos(true);
+            }
+        }
+
+        // Override: Modo Formas de Pago
+        if (urlParamsOverride.get('pagos') === 'true') {
+            const chk = document.getElementById('chk-pagos');
+            if(chk) {
+                chk.checked = true;
+                if(typeof window.togglePagos === 'function') window.togglePagos(true);
+            }
+        }
+
+        // Override: Modo Política de Intereses
+        if (urlParamsOverride.get('intereses') === 'true') {
+            const chk = document.getElementById('chk-intereses');
+            if(chk) {
+                chk.checked = true;
+                if(typeof window.toggleIntereses === 'function') window.toggleIntereses(true);
             }
         }
 
@@ -221,17 +323,357 @@ async function cambiarFormato(nuevoFormato) {
 window.toggleSoloLista = function() {
     const isChecked = document.getElementById('chk-solo-lista')?.checked;
     const totalesSection = document.getElementById('totales-section-container') || document.querySelector('.totales-section');
-    
+    const barcodeLeft = document.querySelector('.barcode-left');
+    const hardwareCmds = document.querySelector('.comandos-hardware-relativos');
+    const docTitulo = document.querySelector('.documento-titulo');
+
+    const cabeceraTitulo = document.getElementById('cabecera-titulo');
+    const documentoTipo = document.getElementById('documento-tipo');
+    const condicionSec = document.getElementById('condicion-comercial-section');
+
+    // Determinar título original según estado del documento
+    const tituloDoc = (presupuestoData && presupuestoData.presupuesto && presupuestoData.presupuesto.estado === 'Orden de Retiro')
+        ? 'ORDEN DE RETIRO / DEVOLUCIÓN'
+        : 'PRESUPUESTO';
+
     if (totalesSection) {
-        if (isChecked) {
-            totalesSection.style.display = 'none';
-            console.log('👁️ [UI] Modo Solo Lista: Totales ocultos');
-        } else {
-            totalesSection.style.display = 'block'; // Block es el display original por defecto allí
-            console.log('👁️ [UI] Modo Normal: Totales visibles');
+        totalesSection.style.display = isChecked ? 'none' : 'block';
+    }
+    if (barcodeLeft) {
+        barcodeLeft.style.display = isChecked ? 'none' : 'flex';
+    }
+    if (hardwareCmds) {
+        hardwareCmds.style.display = isChecked ? 'none' : 'flex';
+    }
+    if (docTitulo) {
+        docTitulo.style.display = isChecked ? 'none' : 'flex';
+    }
+
+    if (isChecked) {
+        if (cabeceraTitulo) cabeceraTitulo.textContent = 'CONSULTA DE PRECIOS';
+        if (documentoTipo) documentoTipo.textContent = 'CONSULTA DE PRECIOS';
+        if (condicionSec && presupuestoData && presupuestoData.presupuesto) {
+            cargarCondicionComercial(presupuestoData.presupuesto);
+        }
+    } else {
+        if (cabeceraTitulo) cabeceraTitulo.textContent = tituloDoc;
+        if (documentoTipo) documentoTipo.textContent = tituloDoc;
+        // En presupuesto consolidado regular se oculta siempre la sección de condición comercial / bonificaciones
+        if (condicionSec) {
+            condicionSec.style.display = 'none';
         }
     }
+
+    console.log(`👁️ [UI] Modo Solo Lista: ${isChecked ? 'Activado (Consulta de Precios)' : 'Desactivado (Presupuesto completo)'}`);
 };
+
+/**
+ * Alternar visibilidad de Promociones y Ofertas Activas
+ */
+window.togglePromos = function(forceState) {
+    const chk = document.getElementById('chk-promos');
+    const btn = document.getElementById('btn-toggle-promos');
+    const badge = document.getElementById('badge-promos-status');
+    const sec = document.getElementById('promos-section');
+    if (!chk || !sec) return;
+
+    const newState = (typeof forceState === 'boolean') ? forceState : !chk.checked;
+    chk.checked = newState;
+
+    if (newState) {
+        if (!extrasData || !extrasData.promos || extrasData.promos.length === 0) {
+            try {
+                const host = window.location.hostname || 'localhost';
+                fetch(`http://${host}:3000/api/ofertas-dinamicas?solo_activas=true`)
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+                            extrasData = extrasData || {};
+                            extrasData.promos = res.data;
+                            renderizarContenidoPromos(extrasData.promos);
+                        }
+                    })
+                    .catch(() => {});
+            } catch(e) {}
+
+            if (typeof forceState !== 'boolean' && (!extrasData || !extrasData.promos || extrasData.promos.length === 0)) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Sin Promociones Activas',
+                    text: 'No se encontraron ofertas o promociones activas vigentes para este cliente en este momento.',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+        }
+        sec.style.display = 'block';
+        if (btn) btn.classList.add('active-promos');
+        if (badge) badge.textContent = 'ON ✓';
+    } else {
+        sec.style.display = 'none';
+        if (btn) btn.classList.remove('active-promos');
+        if (badge) badge.textContent = 'OFF';
+    }
+    console.log(`🏷️ [UI] Promos y Ofertas: ${newState ? 'Activado' : 'Desactivado'}`);
+};
+
+/**
+ * Alternar visibilidad de Formas de Pago
+ */
+window.togglePagos = function(forceState) {
+    const chk = document.getElementById('chk-pagos');
+    const btn = document.getElementById('btn-toggle-pagos');
+    const badge = document.getElementById('badge-pagos-status');
+    const sec = document.getElementById('formas-pago-section');
+    if (!chk || !sec) return;
+
+    const newState = (typeof forceState === 'boolean') ? forceState : !chk.checked;
+    chk.checked = newState;
+
+    if (newState) {
+        sec.style.display = 'block';
+        if (btn) btn.classList.add('active-pagos');
+        if (badge) badge.textContent = 'ON ✓';
+    } else {
+        sec.style.display = 'none';
+        if (btn) btn.classList.remove('active-pagos');
+        if (badge) badge.textContent = 'OFF';
+    }
+    console.log(`💳 [UI] Formas de Pago: ${newState ? 'Activado' : 'Desactivado'}`);
+};
+
+/**
+ * Alternar visibilidad de Política de Intereses (Modo Sombra)
+ */
+window.toggleIntereses = function(forceState) {
+    const chk = document.getElementById('chk-intereses');
+    const btn = document.getElementById('btn-toggle-intereses');
+    const badge = document.getElementById('badge-intereses-status');
+    const sec = document.getElementById('politica-intereses-section');
+    if (!chk || !sec) return;
+
+    const newState = (typeof forceState === 'boolean') ? forceState : !chk.checked;
+    chk.checked = newState;
+
+    if (newState) {
+        sec.style.display = 'block';
+        if (btn) btn.classList.add('active-intereses');
+        if (badge) badge.textContent = 'ON ✓';
+    } else {
+        sec.style.display = 'none';
+        if (btn) btn.classList.remove('active-intereses');
+        if (badge) badge.textContent = 'OFF';
+    }
+    console.log(`🛡️ [UI] Política de Intereses: ${newState ? 'Activado' : 'Desactivado'}`);
+};
+
+/**
+ * Renderiza el listado visual de promociones y ofertas en el contenedor del documento
+ * Incluye tanto ofertas dinámicas de productos como la Bonificación Comercial por Volumen (Escalas de Pedidos).
+ */
+function renderizarContenidoPromos(promos, politicaComercial, totales = {}) {
+    const container = document.getElementById('promos-container-body');
+    if (!container) return;
+
+    // Normalizar argumentos si se llama desde re-renderizados internos
+    if (!politicaComercial && extrasData?.politica_comercial) {
+        politicaComercial = extrasData.politica_comercial;
+    }
+    if (!promos && extrasData?.promos) {
+        promos = extrasData.promos;
+    }
+    if ((!totales || !totales.neto_total) && presupuestoData?.totales) {
+        totales = presupuestoData.totales;
+    }
+
+    const tienePromos = Array.isArray(promos) && promos.length > 0;
+    const tienePolitica = politicaComercial && politicaComercial.tramos && politicaComercial.tramos.length > 0;
+
+    if (!tienePromos && !tienePolitica) {
+        container.innerHTML = `
+            <div style="font-size: 0.85em; color: #78350f; font-style: italic; background: rgba(254, 243, 199, 0.5); padding: 8px 12px; border-radius: 4px;">
+                Actualmente no se registran ofertas o promociones especiales vigentes para este cliente.
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+
+    // 1. Renderizar Promociones Dinámicas de Artículos (si existen)
+    if (tienePromos) {
+        promos.forEach(p => {
+            const badgeDesc = p.tipo_beneficio === 'PORCENTAJE'
+                ? `${parseFloat(p.descuento_porcentaje)}% OFF`
+                : (p.precio_fijo_oferta ? `$${parseFloat(p.precio_fijo_oferta).toLocaleString('es-AR')} Fijo` : 'Oferta Especial');
+
+            let artsHtml = '';
+            if (p.articulos && p.articulos.length > 0) {
+                artsHtml = `<div style="margin-top: 6px; font-size: 0.8em; color: #451a03; display: flex; flex-wrap: wrap; gap: 6px;">`;
+                p.articulos.forEach(a => {
+                    artsHtml += `<span style="background: white; border: 1px solid #fde68a; padding: 2px 8px; border-radius: 12px; font-weight: 600;">🏷️ ${escapeHtml(a.descripcion || a.articulo_numero)}</span>`;
+                });
+                artsHtml += `</div>`;
+            }
+
+            // Limpiar descripción de menciones operativas internas (kilos, bolsones, etc.) y de lanzamiento
+            let descLimpia = (p.descripcion || '').trim();
+            descLimpia = descLimpia.replace(/de lanzamiento\s*/gi, '');
+            descLimpia = descLimpia.replace(/hasta agotar\s+\d+[\s\w(),.]*$/i, 'hasta agotar stock.').trim();
+            descLimpia = descLimpia.replace(/\s+/g, ' ');
+            if (descLimpia && !descLimpia.endsWith('.')) descLimpia += '.';
+
+            // Formateo fiel de fecha límite (sin desfase horario)
+            let fechaFmt = '';
+            if (p.fecha_fin) {
+                try {
+                    if (typeof p.fecha_fin === 'string' && p.fecha_fin.includes('T')) {
+                        fechaFmt = p.fecha_fin.split('T')[0].split('-').reverse().join('/');
+                    } else {
+                        const f = new Date(p.fecha_fin);
+                        fechaFmt = `${String(f.getUTCDate()).padStart(2, '0')}/${String(f.getUTCMonth() + 1).padStart(2, '0')}/${f.getUTCFullYear()}`;
+                    }
+                } catch(e) {}
+            }
+
+            let vigencia = '⏳ Condición: <strong>Hasta agotar stock</strong>';
+            if (fechaFmt) {
+                vigencia = `📅 Válido hasta el: <strong>${fechaFmt}</strong> (o hasta agotar stock)`;
+            }
+
+            html += `
+                <div style="background: white; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(245, 158, 11, 0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                        <div>
+                            <strong style="color: #92400e; font-size: 0.94em; text-transform: uppercase; letter-spacing: 0.3px;">${escapeHtml(p.titulo)}</strong>
+                            ${descLimpia ? `<p style="font-size: 0.84em; color: #78350f; margin: 3px 0 0 0; line-height: 1.35;">${escapeHtml(descLimpia)}</p>` : ''}
+                        </div>
+                        <span style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; padding: 3px 9px; border-radius: 12px; font-size: 0.78em; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 3px rgba(239, 68, 68, 0.25);">
+                            ${badgeDesc}
+                        </span>
+                    </div>
+                    ${artsHtml}
+                    
+                    <div style="font-size: 0.76em; color: #b45309; margin-top: 8px; border-top: 1px dashed #fef3c7; padding-top: 6px;">
+                        ${vigencia}
+                    </div>
+
+                    <!-- Letra chica y blindaje comercial -->
+                    <div style="margin-top: 6px; padding: 6px 10px; background: #fffdf5; border: 1px dashed #fde68a; border-radius: 4px; font-size: 0.74em; color: #78350f;">
+                        <strong style="color: #92400e; display: inline-flex; align-items: center; gap: 4px;">
+                            <span>ℹ️</span> Condiciones comerciales:
+                        </strong>
+                        <div style="margin-top: 3px; line-height: 1.35; color: #854d0e;">
+                            • <strong>No acumulable:</strong> No acumulable con la bonificación por volumen (5% en pedidos superiores a $300.000).<br>
+                            • <strong>Cuenta al día:</strong> Beneficio comercial exclusivo para pedidos con cuenta al día (saldo $0 / no aplica ante saldos vencidos o deudas pendientes).
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // 2. Renderizar Política Comercial General por Volumen (Escala de Pedidos)
+    if (tienePolitica) {
+        const pol = politicaComercial;
+        const listaNombre = pol.lista_nombre || 'General';
+        const primerTramo = pol.tramos[0];
+        const montoMinimo = parseFloat(primerTramo.monto_minimo) || 300000;
+        const pctDesc = parseFloat(primerTramo.descuento_porcentaje) || 5;
+
+        // Subtotal neto actual del presupuesto para contextualizar al cliente
+        const subtotalActual = (totales && totales.neto_total) ? parseFloat(totales.neto_total) : 0;
+        const calificaPorMonto = subtotalActual >= montoMinimo;
+        const montoMinFmt = montoMinimo.toLocaleString('es-AR');
+        const subtotalActualFmt = subtotalActual.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const exigeSaldoCero = pol.exige_saldo_cero !== false;
+        const toleranciaSaldo = parseFloat(pol.tolerancia_saldo) != null && !isNaN(parseFloat(pol.tolerancia_saldo)) ? parseFloat(pol.tolerancia_saldo) : 150.00;
+        const saldoCC = parseFloat(pol.saldo_cuenta_corriente) || 0;
+        const bloqueadoPorSaldo = exigeSaldoCero && (saldoCC > toleranciaSaldo);
+        const saldoFmt = Math.abs(saldoCC).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        let estadoCalificacionHtml = '';
+        if (subtotalActual > 0) {
+            if (bloqueadoPorSaldo) {
+                estadoCalificacionHtml = `
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px; margin-top: 6px; font-size: 0.76em; color: #991b1b; display: flex; align-items: center; justify-content: space-between;">
+                        <span>⛔ <strong>Beneficio retenido por saldo pendiente</strong> (Deuda en cuenta corriente: $${saldoFmt} — Debe regularizar saldo para acceder al descuento)</span>
+                        <span style="font-weight: 700; color: #dc2626; background: white; padding: 1px 6px; border-radius: 10px; border: 1px solid #fca5a5;">RETENIDO</span>
+                    </div>
+                `;
+            } else if (calificaPorMonto) {
+                estadoCalificacionHtml = `
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 5px 8px; margin-top: 6px; font-size: 0.76em; color: #166534; display: flex; align-items: center; justify-content: space-between;">
+                        <span>✅ <strong>¡Este pedido califica para la bonificación!</strong> (Subtotal neto: $${subtotalActualFmt} > $${montoMinFmt}) — Cuenta al día</span>
+                        <span style="font-weight: 700; color: #15803d; background: white; padding: 1px 6px; border-radius: 10px; border: 1px solid #86efac;">${pctDesc}% APLICADO</span>
+                    </div>
+                `;
+            } else {
+                const restante = (montoMinimo - subtotalActual).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                estadoCalificacionHtml = `
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 8px; margin-top: 6px; font-size: 0.76em; color: #475569; display: flex; align-items: center; justify-content: space-between;">
+                        <span>💡 <em>Subtotal neto actual: $${subtotalActualFmt}</em> — Superando los $${montoMinFmt} accede automáticamente al <strong>${pctDesc}% OFF</strong></span>
+                        <span style="font-weight: 600; color: #64748b; font-size: 0.9em;">Escala $${montoMinFmt}</span>
+                    </div>
+                `;
+            }
+        }
+
+        html += `
+            <div style="background: white; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 6px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(37, 99, 235, 0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <strong style="color: #1e40af; font-size: 0.94em; text-transform: uppercase; letter-spacing: 0.3px;">
+                                Bonificación Comercial por Volumen (Lista ${escapeHtml(listaNombre)})
+                            </strong>
+                        </div>
+                        <p style="font-size: 0.84em; color: #1e3a8a; margin: 3px 0 0 0; line-height: 1.35;">
+                            Escala comercial automática: Los pedidos que superen los <strong>$${montoMinFmt}</strong> (neto) acceden a una bonificación directa del <strong>${pctDesc}%</strong> sobre productos a precio de lista.
+                        </p>
+                    </div>
+                    <span style="background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.78em; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);">
+                        ${pctDesc}% OFF
+                    </span>
+                </div>
+
+                ${estadoCalificacionHtml}
+
+                <!-- Condiciones comerciales obligatorias -->
+                <div style="margin-top: 6px; padding: 6px 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 4px; font-size: 0.74em; color: #334155;">
+                    <strong style="color: #0f172a; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>ℹ️</span> Condiciones comerciales:
+                    </strong>
+                    <div style="margin-top: 3px; line-height: 1.35; color: #475569;">
+                        • <strong>Cuenta al día:</strong> ${exigeSaldoCero ? `Exige saldo en cuenta corriente cancelado (tolerancia hasta $${toleranciaSaldo.toLocaleString('es-AR')}). Estado actual del cliente: ${bloqueadoPorSaldo ? `<strong style="color: #dc2626;">Deuda pendiente de $${saldoFmt}</strong> (descuento bloqueado)` : `<strong style="color: #166534;">Al día ($${saldoCC <= 0 ? '0,00' : saldoFmt})</strong> (habilitado)`}.` : 'No condicionada a saldo de cuenta corriente.'}<br>
+                        • <strong>No acumulable:</strong> ${pol.no_acumulable !== false ? 'Aplica sobre los artículos a precio regular de lista; no duplica bonificación sobre productos con ofertas especiales vigentes.' : 'Acumulable con otras promociones activas.'}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+/**
+ * Actualiza la información dinámica de política de intereses
+ */
+function actualizarInfoPoliticaIntereses(politica) {
+    if (!politica) return;
+    const descEl = document.getElementById('intereses-tasa-descripcion');
+    if (descEl && politica.tasa_tem) {
+        const tasaDiaria = (politica.tasa_tem / 30).toFixed(2);
+        descEl.innerHTML = `Superado el Día 14 (o sin comodines disponibles), se liquida el interés exacto <strong>desde el Día 1 de entrega (${politica.tasa_tem}% TEM mensual / ${tasaDiaria}% diario)</strong> sobre el saldo pendiente, manteniendo la cuenta <strong>habilitada</strong>.`;
+    }
+    const comEl = document.getElementById('intereses-comodines-descripcion');
+    if (comEl && politica.cupo_cortesias_anual != null) {
+        const cupo = parseInt(politica.cupo_cortesias_anual, 10) || 3;
+        const disp = politica.cortesias_restantes_anio != null ? parseInt(politica.cortesias_restantes_anio, 10) : cupo;
+        comEl.innerHTML = `Excepción no habitual (máx. <strong>${cupo} comodines al año</strong>, ~1 por trimestre · Disponibles: <strong>${disp}/${cupo}</strong>). Cancelando hasta el Día 14 con comodín, el interés desde el Día 1 se <strong>bonifica al 100% ($0,00)</strong>.`;
+    }
+}
 
 /**
  * Normalizar texto para nombre de archivo (eliminar caracteres inválidos de Windows)
@@ -400,6 +842,9 @@ function renderizarPresupuesto(data) {
     // Renderizar totales
     renderizarTotales(presupuesto, totales);
 
+    // Renderizar condición comercial
+    cargarCondicionComercial(presupuesto);
+
     // Observaciones (si existen)
     if (presupuesto.nota && presupuesto.nota.trim()) {
         document.getElementById('observaciones-section').style.display = 'block';
@@ -419,7 +864,61 @@ function renderizarPresupuesto(data) {
     // Generar código de barras
     generarCodigoBarras(presupuesto.id_presupuesto || presupuesto.id);
 
+    // Aplicar reactivamente el estado actual del checkbox de modo solo lista
+    window.toggleSoloLista();
+
     console.log('✅ [IMPRIMIR-PRESUPUESTO] Presupuesto renderizado correctamente');
+}
+
+/**
+ * Cargar y renderizar la condición comercial del cliente o consulta genérica para prospectos.
+ * REGLA DE NEGOCIO: Esta sección SOLO aplica cuando se activa el Modo Solo Lista (Consulta de Precios).
+ * En presupuestos consolidados (con totales y precios definidos), NO se muestra esta nota.
+ */
+async function cargarCondicionComercial(presupuesto) {
+    const sec = document.getElementById('condicion-comercial-section');
+    const txt = document.getElementById('condicion-comercial-texto');
+    if (!sec || !txt) return;
+
+    // Solo mostrar si está explícitamente activo el Modo Solo Lista (Consulta de Precios)
+    const isSoloLista = document.getElementById('chk-solo-lista')?.checked;
+    if (!isSoloLista) {
+        sec.style.display = 'none';
+        return;
+    }
+
+    const clienteId = presupuesto.id_cliente;
+    const esProspecto = !clienteId || clienteId === '0' || String(clienteId).toLowerCase().includes('prospecto') || (presupuesto.concepto && presupuesto.concepto.toLowerCase().includes('prospecto'));
+
+    if (esProspecto) {
+        txt.textContent = 'Consulte por bonificaciones y escalas de descuento comercial por volumen.';
+        sec.style.display = 'block';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/presupuestos/politicas/cliente/${clienteId}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.data && data.data.tiene_politica && !data.data.excepcion) {
+                const tramos = data.data.politica?.tramos || [];
+                if (tramos.length > 0) {
+                    const desc = tramos.map(t => {
+                        const min = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(parseFloat(t.monto_minimo));
+                        return `Superando ${min}: ${parseFloat(t.descuento_porcentaje).toFixed(1)}% de bonificación automática`;
+                    }).join(' | ');
+                    txt.textContent = desc;
+                    sec.style.display = 'block';
+                    return;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Error al cargar condición comercial en impresión:', e);
+    }
+
+    txt.textContent = 'Consulte por bonificaciones y escalas de descuento comercial por volumen.';
+    sec.style.display = 'block';
 }
 
 /**
@@ -584,32 +1083,58 @@ function renderizarArticulos(detalles) {
         return;
     }
 
+    // -------------------------------------------------------------
+    // HEURÍSTICA DE KIT: Detectar insumos que siguen a una mezcla
+    // -------------------------------------------------------------
+    let isAfterBase = false;
+    const detallesProcesados = detalles.map(item => {
+        let descripcion = item.descripcion_articulo || item.descripcion || item.articulo || 'Sin descripción';
+        const descLower = descripcion.toLowerCase();
+        let isKit = false;
+        
+        if (descLower.includes('mezcla') || descLower.includes('mix')) {
+            isAfterBase = true;
+        } else if (isAfterBase && (descLower.includes('miel') || descLower.includes('coco') || descLower.includes('insumo'))) {
+            isKit = true;
+            descripcion = `↳ [Kit] ${descripcion}`;
+        } else {
+            isAfterBase = false;
+        }
+        
+        return {
+            ...item,
+            descripcionMostrar: descripcion,
+            isKit: isKit
+        };
+    });
+
+    const descGeneralPct = (parseFloat(presupuestoData.presupuesto?.descuento) || 0) * 100;
+
     if (formatoActual === 'IVA_DISCRIMINADO') {
         // FORMATO A: Con columna IVA
-        tbodyDiscriminado.innerHTML = detalles.map(item => {
+        tbodyDiscriminado.innerHTML = detallesProcesados.map(item => {
             const cantidad = parseFloat(item.cantidad) || 0;
             const valor1 = parseFloat(item.valor1) || 0; // Precio SIN IVA
             const camp2 = parseFloat(item.camp2) || 0; // Alícuota IVA decimal
+            const descEsp = parseFloat(item.descuento_adicional) || 0;
 
             // Convertir camp2 a porcentaje para mostrar
             const ivaPorcentaje = camp2 * 100; // 0.210 -> 21, 0.105 -> 10.5
-
-            // Descripción del artículo
-            const descripcion = item.descripcion_articulo ||
-                item.descripcion ||
-                item.articulo ||
-                'Sin descripción';
 
             // Precios SIN IVA
             const precioUnitario = valor1;
             const subtotalLinea = cantidad * valor1;
 
-            console.log(`📊 [ARTICULO-DISCRIMINADO] ${descripcion.substring(0, 30)}: camp2=${camp2}, IVA=${ivaPorcentaje}%`);
+            const extraStyle = item.isKit ? 'color: #475569; font-style: italic;' : '';
+            const badgeDescEsp = descEsp > 0
+                ? `<span class="badge-descuento-linea" style="display: block; font-size: 0.82em; color: #15803d; font-weight: 600; margin-top: 3px;">🏷️ Bonificación especial: ${formatearNumero(descEsp)}% (Desc. total aplicado: ${formatearNumero(descGeneralPct + descEsp)}%)</span>`
+                : '';
 
             return `
-                <tr>
+                <tr style="${extraStyle}">
                     <td>
-                        <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
+                        <span class="articulo-descripcion">${escapeHtml(item.descripcionMostrar)}</span>
+                        ${badgeDescEsp}
                     </td>
                     <td class="text-center">${formatearNumero(cantidad)}</td>
                     <td class="text-right">$ ${formatearNumero(precioUnitario)}</td>
@@ -621,27 +1146,26 @@ function renderizarArticulos(detalles) {
 
     } else {
         // FORMATO B: Sin columna IVA
-        tbodyIncluido.innerHTML = detalles.map(item => {
+        tbodyIncluido.innerHTML = detallesProcesados.map(item => {
             const cantidad = parseFloat(item.cantidad) || 0;
             const valor1 = parseFloat(item.valor1) || 0; // Precio SIN IVA
             const camp2 = parseFloat(item.camp2) || 0; // Alícuota IVA decimal
-
-            // Descripción del artículo
-            const descripcion = item.descripcion_articulo ||
-                item.descripcion ||
-                item.articulo ||
-                'Sin descripción';
+            const descEsp = parseFloat(item.descuento_adicional) || 0;
 
             // Precios CON IVA incluido
             const precioUnitario = valor1 * (1 + camp2);
             const subtotalLinea = cantidad * precioUnitario;
 
-            console.log(`💰 [ARTICULO-INCLUIDO] ${descripcion.substring(0, 30)}: precio con IVA=${precioUnitario.toFixed(2)}`);
+            const extraStyle = item.isKit ? 'color: #475569; font-style: italic;' : '';
+            const badgeDescEsp = descEsp > 0
+                ? `<span class="badge-descuento-linea" style="display: block; font-size: 0.82em; color: #15803d; font-weight: 600; margin-top: 3px;">🏷️ Bonificación especial: ${formatearNumero(descEsp)}% (Desc. total aplicado: ${formatearNumero(descGeneralPct + descEsp)}%)</span>`
+                : '';
 
             return `
-                <tr>
+                <tr style="${extraStyle}">
                     <td>
-                        <span class="articulo-descripcion">${escapeHtml(descripcion)}</span>
+                        <span class="articulo-descripcion">${escapeHtml(item.descripcionMostrar)}</span>
+                        ${badgeDescEsp}
                     </td>
                     <td class="text-center">${formatearNumero(cantidad)}</td>
                     <td class="text-right">$ ${formatearNumero(precioUnitario)}</td>
@@ -730,16 +1254,27 @@ function renderizarTotalesDiscriminado(presupuesto, detalles) {
 
     console.log('📊 [TOTALES-DISCRIMINADO] Subtotal General:', subtotalGeneral);
 
-    // 2. DESCUENTO (si existe)
+    // 2. DESCUENTOS
     const descuentoDecimal = parseFloat(presupuesto.descuento) || 0;
     const descuentoPorcentaje = descuentoDecimal * 100; // 0.05 -> 5%
-    const montoDescuento = subtotalGeneral * descuentoDecimal;
-    const baseConDescuento = subtotalGeneral - montoDescuento;
+    const montoDescuentoGeneral = subtotalGeneral * descuentoDecimal;
 
-    console.log('📊 [TOTALES-DISCRIMINADO] Descuento:', {
-        decimal: descuentoDecimal,
-        porcentaje: descuentoPorcentaje,
-        monto: montoDescuento,
+    let montoDescuentosEspeciales = 0;
+    detalles.forEach(item => {
+        const cantidad = parseFloat(item.cantidad) || 0;
+        const valor1 = parseFloat(item.valor1) || 0;
+        const descEsp = parseFloat(item.descuento_adicional) || 0;
+        if (descEsp > 0) {
+            montoDescuentosEspeciales += (cantidad * valor1) * (descEsp / 100);
+        }
+    });
+
+    const baseConDescuento = subtotalGeneral - montoDescuentoGeneral - montoDescuentosEspeciales;
+
+    console.log('📊 [TOTALES-DISCRIMINADO] Descuentos:', {
+        generalPct: descuentoPorcentaje,
+        montoGeneral: montoDescuentoGeneral,
+        montoEspeciales: montoDescuentosEspeciales,
         baseConDescuento
     });
 
@@ -751,13 +1286,15 @@ function renderizarTotalesDiscriminado(presupuesto, detalles) {
         const cantidad = parseFloat(item.cantidad) || 0;
         const valor1 = parseFloat(item.valor1) || 0;
         const camp2 = parseFloat(item.camp2) || 0; // Alícuota IVA como decimal
+        const descEsp = parseFloat(item.descuento_adicional) || 0;
 
         // Subtotal de la línea
         const subtotalLinea = cantidad * valor1;
+        const descTotalLinea = (descuentoPorcentaje + descEsp) / 100;
 
-        // Base de cálculo (con descuento aplicado proporcionalmente)
-        const baseLinea = descuentoDecimal > 0
-            ? subtotalLinea * (1 - descuentoDecimal)
+        // Base de cálculo (con descuento total aplicado a esta línea)
+        const baseLinea = descTotalLinea > 0
+            ? subtotalLinea * (1 - descTotalLinea)
             : subtotalLinea;
 
         // IVA de la línea
@@ -786,13 +1323,24 @@ function renderizarTotalesDiscriminado(presupuesto, detalles) {
     // ACTUALIZAR UI
     document.getElementById('total-subtotal').textContent = `$ ${formatearNumero(subtotalGeneral)}`;
 
-    // Mostrar descuento solo si existe
+    // Mostrar descuento general solo si existe
     if (descuentoPorcentaje > 0) {
         document.getElementById('descuento-row').style.display = 'flex';
         document.getElementById('descuento-porcentaje').textContent = formatearNumero(descuentoPorcentaje);
-        document.getElementById('total-descuento').textContent = `$ ${formatearNumero(montoDescuento)}`;
+        document.getElementById('total-descuento').textContent = `-$ ${formatearNumero(montoDescuentoGeneral)}`;
     } else {
         document.getElementById('descuento-row').style.display = 'none';
+    }
+
+    // Mostrar descuentos especiales solo si existen
+    const rowDescEsp = document.getElementById('descuentos-especiales-row');
+    if (rowDescEsp) {
+        if (montoDescuentosEspeciales > 0) {
+            rowDescEsp.style.display = 'flex';
+            document.getElementById('total-descuentos-especiales').textContent = `-$ ${formatearNumero(montoDescuentosEspeciales)}`;
+        } else {
+            rowDescEsp.style.display = 'none';
+        }
     }
 
     // Mostrar IVA 21% solo si existe
@@ -833,29 +1381,53 @@ function renderizarTotalesIncluido(presupuesto, detalles) {
 
     console.log('💰 [TOTALES-INCLUIDO] Subtotal General (con IVA):', subtotalGeneral);
 
-    // 2. DESCUENTO (si existe)
+    // 2. DESCUENTOS
     const descuentoDecimal = parseFloat(presupuesto.descuento) || 0;
     const descuentoPorcentaje = descuentoDecimal * 100; // 0.05 -> 5%
-    const montoDescuento = subtotalGeneral * descuentoDecimal;
-    const totalFinal = subtotalGeneral - montoDescuento;
+    const montoDescuentoGeneral = subtotalGeneral * descuentoDecimal;
 
-    console.log('💰 [TOTALES-INCLUIDO] Descuento:', {
-        decimal: descuentoDecimal,
-        porcentaje: descuentoPorcentaje,
-        monto: montoDescuento,
+    let montoDescuentosEspeciales = 0;
+    detalles.forEach(item => {
+        const cantidad = parseFloat(item.cantidad) || 0;
+        const valor1 = parseFloat(item.valor1) || 0;
+        const camp2 = parseFloat(item.camp2) || 0;
+        const precioConIva = valor1 * (1 + camp2);
+        const descEsp = parseFloat(item.descuento_adicional) || 0;
+        if (descEsp > 0) {
+            montoDescuentosEspeciales += (cantidad * precioConIva) * (descEsp / 100);
+        }
+    });
+
+    const totalFinal = subtotalGeneral - montoDescuentoGeneral - montoDescuentosEspeciales;
+
+    console.log('💰 [TOTALES-INCLUIDO] Descuentos:', {
+        generalPct: descuentoPorcentaje,
+        montoGeneral: montoDescuentoGeneral,
+        montoEspeciales: montoDescuentosEspeciales,
         totalFinal
     });
 
     // ACTUALIZAR UI (solo subtotal, descuento y total - SIN filas de IVA)
     document.getElementById('total-subtotal').textContent = `$ ${formatearNumero(subtotalGeneral)}`;
 
-    // Mostrar descuento solo si existe
+    // Mostrar descuento general solo si existe
     if (descuentoPorcentaje > 0) {
         document.getElementById('descuento-row').style.display = 'flex';
         document.getElementById('descuento-porcentaje').textContent = formatearNumero(descuentoPorcentaje);
-        document.getElementById('total-descuento').textContent = `$ ${formatearNumero(montoDescuento)}`;
+        document.getElementById('total-descuento').textContent = `-$ ${formatearNumero(montoDescuentoGeneral)}`;
     } else {
         document.getElementById('descuento-row').style.display = 'none';
+    }
+
+    // Mostrar descuentos especiales solo si existen
+    const rowDescEsp = document.getElementById('descuentos-especiales-row');
+    if (rowDescEsp) {
+        if (montoDescuentosEspeciales > 0) {
+            rowDescEsp.style.display = 'flex';
+            document.getElementById('total-descuentos-especiales').textContent = `-$ ${formatearNumero(montoDescuentosEspeciales)}`;
+        } else {
+            rowDescEsp.style.display = 'none';
+        }
     }
 
     // OCULTAR filas de IVA en formato incluido
@@ -1019,6 +1591,105 @@ window.volverALista = volverALista;
 window.cambiarFormato = cambiarFormato;
 window.enviarPresupuestoWhatsApp = enviarPresupuestoOmnicanal;
 window.enviarPresupuestoOmnicanal = enviarPresupuestoOmnicanal;
+/**
+ * Formateo y Normalización de Teléfonos Argentinos (con soporte AMBA e interior)
+ */
+const PREFIJOS_3 = new Set([
+    '221', '223', '261', '264', '280', '291', '299',
+    '341', '342', '343', '351', '353', '358', '362', '370', '376', '379',
+    '381', '383', '385', '387', '388'
+]);
+
+function stripLocal15(numberStr) {
+    if (!numberStr) return '';
+    if (numberStr.startsWith('11') && numberStr.length === 10 && numberStr.substring(2, 4) === '15') {
+        return '11' + numberStr.substring(4);
+    }
+    const prefix3 = numberStr.substring(0, 3);
+    if (numberStr.length === 12 && numberStr.substring(3, 5) === '15') {
+        return prefix3 + numberStr.substring(5);
+    }
+    const prefix4 = numberStr.substring(0, 4);
+    if (numberStr.length === 12 && numberStr.substring(4, 6) === '15') {
+        return prefix4 + numberStr.substring(6);
+    }
+    return numberStr;
+}
+
+function cleanInputForFormatting(val) {
+    let clean = (val || '').replace(/\D/g, '');
+    if (clean.startsWith('540')) {
+        clean = '549' + clean.substring(3);
+    } else if (clean.startsWith('54') && clean.length > 2 && !clean.startsWith('549')) {
+        clean = '549' + clean.substring(2);
+    }
+    if (!clean.startsWith('54') && clean.startsWith('0') && clean.length > 1) {
+        clean = clean.substring(1);
+    }
+    clean = stripLocal15(clean);
+    return clean;
+}
+
+function formatArgentinePhone(cleanDigits) {
+    if (!cleanDigits) return '';
+    let isInternational = false;
+    let base = cleanDigits;
+    
+    if (cleanDigits.startsWith('549')) {
+        isInternational = true;
+        base = cleanDigits.substring(3);
+    } else if (cleanDigits.startsWith('54')) {
+        isInternational = true;
+        base = cleanDigits.substring(2);
+    }
+    
+    let formattedBase = '';
+    if (base.startsWith('11')) {
+        const area = base.substring(0, 2);
+        const sub = base.substring(2);
+        if (sub.length > 4) {
+            formattedBase = `(${area}) ${sub.substring(0, 4)}-${sub.substring(4, 8)}`;
+        } else if (sub.length > 0) {
+            formattedBase = `(${area}) ${sub}`;
+        } else {
+            formattedBase = `(${area})`;
+        }
+    } else {
+        let prefixLength = 4;
+        if (base.length >= 3) {
+            const prefix3 = base.substring(0, 3);
+            if (PREFIJOS_3.has(prefix3)) {
+                prefixLength = 3;
+            }
+        }
+        
+        const area = base.substring(0, prefixLength);
+        const sub = base.substring(prefixLength);
+        
+        if (prefixLength === 3) {
+            if (sub.length > 3) {
+                formattedBase = `(${area}) ${sub.substring(0, 3)}-${sub.substring(3, 7)}`;
+            } else if (sub.length > 0) {
+                formattedBase = `(${area}) ${sub}`;
+            } else if (area.length > 0) {
+                formattedBase = `(${area})`;
+            }
+        } else {
+            if (sub.length > 2) {
+                formattedBase = `(${area}) ${sub.substring(0, 2)}-${sub.substring(2, 6)}`;
+            } else if (sub.length > 0) {
+                formattedBase = `(${area}) ${sub}`;
+            } else if (area.length > 0) {
+                formattedBase = `(${area})`;
+            }
+        }
+    }
+    
+    if (isInternational) {
+        return `+54 9 ${formattedBase}`;
+    }
+    return formattedBase;
+}
 
 /**
  * Resuelve el teléfono de WhatsApp del cliente
@@ -1065,9 +1736,26 @@ async function enviarPresupuestoOmnicanal() {
     const presupuesto = presupuestoData.presupuesto;
 
     // Generar el mensaje por defecto con el Alias simplificado
-    const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
-    const tituloDoc = presupuesto.estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
-    const defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${presupuestoId} de LAMDA. Saludos.` + transferInfo;
+    const isSoloLista = document.getElementById('chk-solo-lista')?.checked || false;
+    const isPromos = document.getElementById('chk-promos')?.checked || false;
+    const isPagos = document.getElementById('chk-pagos')?.checked || false;
+    const isIntereses = document.getElementById('chk-intereses')?.checked || false;
+
+    let defaultMensaje = '';
+    if (isSoloLista) {
+        defaultMensaje = `Hola, te enviamos la consulta de precios de LAMDA. Saludos.`;
+    } else {
+        let transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
+        if (isPagos) {
+            transferInfo = '\n\n*Formas de pago:* Sobres (efectivo), Transferencia (Alias: LAMDA.SER.MARTIN) o Cajero Galicia.';
+        }
+        let promoInfo = '';
+        if (isPromos) {
+            promoInfo = '\n🏷️ *¡Incluye promociones y ofertas vigentes al final del documento!*';
+        }
+        const tituloDoc = presupuesto.estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
+        defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${presupuestoId} de LAMDA. Saludos.` + transferInfo + promoInfo;
+    }
 
     // 1. Recuperar y parsear contactos de WhatsApp
     let contacts = [];
@@ -1085,6 +1773,7 @@ async function enviarPresupuestoOmnicanal() {
             cargo: ''
         })).filter(c => c.numero);
     }
+    contacts = contacts.filter(c => c && c.numero && typeof c.numero === 'string' && c.numero.replace(/\D/g, '').length >= 6);
 
     // 2. Recuperar y parsear contactos de Email
     let emails = [];
@@ -1102,13 +1791,17 @@ async function enviarPresupuestoOmnicanal() {
             cargo: ''
         })).filter(e => e.email);
     }
+    emails = emails.filter(e => e && e.email && typeof e.email === 'string' && e.email.includes('@') && e.email !== '[]' && e.email.trim().length > 0);
 
     // 3. Evaluar destinatarios predeterminados para el tildado inicial
-    const hasTypeDefaultWp = contacts.some(c => c.default_presupuesto === true);
-    const hasGeneralDefaultWp = !hasTypeDefaultWp && contacts.some(c => c.default === true);
+    // ¿Existe configuración explícita guardada para presupuestos en los contactos?
+    const hasWpPresupuestoConfig = contacts.some(c => typeof c.default_presupuesto === 'boolean');
+    const hasEmailPresupuestoConfig = emails.some(e => typeof e.default_presupuesto === 'boolean');
 
-    const hasTypeDefaultEmail = emails.some(e => e.default_presupuesto === true);
-    const hasGeneralDefaultEmail = !hasTypeDefaultEmail && emails.some(e => e.default === true);
+    const hasWpGeneralConfig = !hasWpPresupuestoConfig && contacts.some(c => typeof c.default === 'boolean');
+    const hasEmailGeneralConfig = !hasEmailPresupuestoConfig && emails.some(e => typeof e.default === 'boolean');
+
+    const canalPreferido = (presupuesto.canal_envio_preferido || '').toLowerCase();
 
     // 4. Construir contenido HTML de selección (Diseño doble columna indexado por checkboxes)
     let htmlContent = `
@@ -1122,18 +1815,26 @@ async function enviarPresupuestoOmnicanal() {
                     <div style="font-size: 12px; font-weight: 700; color: #10b981; text-transform: uppercase; margin-bottom: 8px; border-bottom: 2px solid #10b981; padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                         <span>📱 WhatsApp</span>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
+                    <div id="swal-wp-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
     `;
 
     if (contacts.length === 0) {
         htmlContent += `
-            <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+            <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
                 No hay contactos de WhatsApp cargados.
             </div>
         `;
     } else {
         contacts.forEach((c, index) => {
-            const isChecked = hasTypeDefaultWp ? (c.default_presupuesto === true) : (hasGeneralDefaultWp ? (c.default === true) : true);
+            let isChecked = false;
+            if (hasWpPresupuestoConfig) {
+                isChecked = (c.default_presupuesto === true);
+            } else if (hasWpGeneralConfig) {
+                isChecked = (c.default === true);
+            } else {
+                isChecked = (canalPreferido !== 'email');
+            }
+
             const formattedNum = c.numero.replace(/\D/g, '');
             let displayNum = c.numero;
             if (formattedNum.length === 10) {
@@ -1167,18 +1868,33 @@ async function enviarPresupuestoOmnicanal() {
                     <div style="font-size: 12px; font-weight: 700; color: #6366f1; text-transform: uppercase; margin-bottom: 8px; border-bottom: 2px solid #6366f1; padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                         <span>📧 Correo</span>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
+                    <div id="swal-email-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f9fafb;">
     `;
 
     if (emails.length === 0) {
         htmlContent += `
-            <div style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
+            <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
                 No hay correos cargados.
             </div>
         `;
     } else {
         emails.forEach((e, index) => {
-            const isChecked = hasTypeDefaultEmail ? (e.default_presupuesto === true) : (hasGeneralDefaultEmail ? (e.default === true) : true);
+            let isChecked = false;
+            if (hasEmailPresupuestoConfig) {
+                // Se respeta fielmente lo configurado por el usuario (si guardó false, NO se tilda)
+                isChecked = (e.default_presupuesto === true);
+            } else if (hasEmailGeneralConfig) {
+                isChecked = (e.default === true);
+            } else {
+                if (canalPreferido === 'email' || canalPreferido === 'ambos') {
+                    isChecked = true;
+                } else if (canalPreferido === 'whatsapp') {
+                    isChecked = false;
+                } else {
+                    isChecked = (contacts.length === 0);
+                }
+            }
+
             const labelText = e.nombre 
                 ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #e0e7ff; color: #4338ca; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
                 : `Correo #${index + 1}`;
@@ -1200,19 +1916,57 @@ async function enviarPresupuestoOmnicanal() {
                 </div>
             </div>
             
-            <!-- Campos adicionales -->
+            <!-- Campos adicionales rápidos -->
             <div style="display: flex; gap: 20px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
                 <div style="flex: 1;">
                     <label style="display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
-                        Otro número (opcional):
+                        Otro número (opcional para este envío):
                     </label>
-                    <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                    <input type="text" id="swal-custom-phone" placeholder="Ej: (221) 661-5746" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
                 </div>
                 <div style="flex: 1;">
                     <label style="display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
-                        Otro correo (opcional):
+                        Otro correo (opcional para este envío):
                     </label>
                     <input type="text" id="swal-custom-email" placeholder="Ej: admin@cliente.com" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <!-- Sección: Cargar Nuevo Contacto Directo a la Ficha -->
+            <div style="margin-top: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
+                <div id="toggle-nuevo-contacto-presupuesto" style="padding: 9px 12px; background: #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                    <span style="font-size: 12px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                        <span style="color: #6366f1;">➕</span> Cargar nuevo contacto para este cliente
+                    </span>
+                    <span id="icon-toggle-nuevo-contacto-presupuesto" style="font-size: 11px; color: #64748b; font-weight: 600;">▼ Desplegar</span>
+                </div>
+                <div id="form-nuevo-contacto-presupuesto" style="display: none; padding: 12px; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Nombre:</label>
+                            <input type="text" id="swal-presupuesto-nuevo-nombre" placeholder="Ej: Micaela" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Cargo / Rol:</label>
+                            <input type="text" id="swal-presupuesto-nuevo-cargo" placeholder="Ej: Dueña, Administración" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 2px;">📱 WhatsApp (con máscara):</label>
+                            <input type="text" id="swal-presupuesto-nuevo-wp" placeholder="(221) 305-1684" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #6366f1; margin-bottom: 2px;">📧 Correo (opcional):</label>
+                            <input type="email" id="swal-presupuesto-nuevo-email" placeholder="ejemplo@cliente.com" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 4px; padding-top: 4px;">
+                        <button type="button" id="btn-guardar-nuevo-contacto-presupuesto" style="background: #10b981; color: white; border: none; border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                            <span>💾</span> Guardar en Búnker y seleccionar
+                        </button>
+                    </div>
+                    <div id="swal-presupuesto-nuevo-feedback" style="display: none; font-size: 11.5px; font-weight: 600; padding: 6px 10px; border-radius: 4px; text-align: center; margin-top: 4px;"></div>
                 </div>
             </div>
             
@@ -1232,14 +1986,159 @@ async function enviarPresupuestoOmnicanal() {
 
     if (presupuesto && presupuesto.bunker_cliente_id) {
         htmlContent += `
-            <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 12px; color: #475569;">
-                <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
-                <span>Guardar esta selección como contactos predeterminados para presupuestos</span>
-            </label>
+            <div style="margin-top: 15px; padding-top: 12px; border-top: 1px dashed #cbd5e1; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: #475569; margin-bottom: 0;">
+                        <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
+                        <span>Guardar esta selección como predeterminados al enviar</span>
+                    </label>
+                    <button type="button" id="btn-guardar-predeterminados-manual" style="background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;">
+                        <span>💾</span> Guardar como predeterminados
+                    </button>
+                </div>
+                <div id="swal-save-feedback" style="display: none; font-size: 11.5px; font-weight: 500; padding: 6px 10px; border-radius: 4px; text-align: center;"></div>
+            </div>
         `;
     }
 
     htmlContent += `</div>`;
+
+    // Función auxiliar resiliente para persistir contactos predeterminados en Base de Datos (Logística Bunker)
+    const guardarContactosPredeterminados = async (selectedWpArr, selectedEmailArr, customPhoneStr = '', customEmailStr = '') => {
+        if (!presupuesto || !presupuesto.bunker_cliente_id) {
+            console.warn('⚠️ [OMNICANAL-FRONT] No hay bunker_cliente_id disponible para guardar predeterminados.');
+            return false;
+        }
+
+        // Mapear contactos existentes de WhatsApp
+        const finalWpMap = new Map();
+        contacts.forEach(c => {
+            const isSelected = selectedWpArr.some(num => String(num).trim() === String(c.numero).trim() || String(num).replace(/\D/g, '') === String(c.numero).replace(/\D/g, ''));
+            finalWpMap.set(c.numero, {
+                ...c,
+                default_presupuesto: isSelected
+            });
+        });
+
+        // Si se ingresó otro número manual, agregarlo a la lista de contactos como predeterminado
+        if (customPhoneStr) {
+            const cleaned = customPhoneStr.replace(/[^\d,]/g, '');
+            if (cleaned) {
+                cleaned.split(',').map(n => n.trim()).filter(n => n.length >= 6).forEach(num => {
+                    if (finalWpMap.has(num)) {
+                        finalWpMap.get(num).default_presupuesto = true;
+                    } else {
+                        finalWpMap.set(num, {
+                            numero: num,
+                            nombre: '',
+                            cargo: '',
+                            default_factura: false,
+                            default_presupuesto: true
+                        });
+                    }
+                });
+            }
+        }
+
+        // Mapear contactos existentes de Email
+        const finalEmailMap = new Map();
+        emails.forEach(e => {
+            const key = (e.email || '').toLowerCase().trim();
+            if (key) {
+                const isSelected = selectedEmailArr.some(em => String(em).toLowerCase().trim() === key);
+                finalEmailMap.set(key, {
+                    ...e,
+                    default_presupuesto: isSelected
+                });
+            }
+        });
+
+        // Si se ingresó otro correo manual, agregarlo a la lista de correos como predeterminado
+        if (customEmailStr) {
+            customEmailStr.split(',').map(em => em.trim()).filter(em => em.includes('@') && em !== '[]').forEach(em => {
+                const key = em.toLowerCase();
+                if (finalEmailMap.has(key)) {
+                    finalEmailMap.get(key).default_presupuesto = true;
+                } else {
+                    finalEmailMap.set(key, {
+                        email: em,
+                        nombre: '',
+                        cargo: '',
+                        default_factura: false,
+                        default_presupuesto: true
+                    });
+                }
+            });
+        }
+
+        const updatedWpContacts = Array.from(finalWpMap.values());
+        const updatedEmailContacts = Array.from(finalEmailMap.values());
+
+        // Determinar canal preferido coherente
+        let canalPreferido = 'ambos';
+        const hasSelectedWp = updatedWpContacts.some(c => c.default_presupuesto === true);
+        const hasSelectedEmail = updatedEmailContacts.some(e => e.default_presupuesto === true);
+        if (hasSelectedWp && !hasSelectedEmail) {
+            canalPreferido = 'whatsapp';
+        } else if (!hasSelectedWp && hasSelectedEmail) {
+            canalPreferido = 'email';
+        } else if (!hasSelectedWp && !hasSelectedEmail) {
+            canalPreferido = 'whatsapp';
+        }
+
+        const payload = {
+            whatsapp_facturas: JSON.stringify(updatedWpContacts),
+            email_facturas: JSON.stringify(updatedEmailContacts),
+            canal_envio_preferido: canalPreferido
+        };
+
+        let response = null;
+        // Intento 1: A través de ruta relativa (proxy Express en presupuestos)
+        try {
+            response = await fetch(`/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (fetchErr) {
+            console.warn('⚠️ [OMNICANAL-FRONT] Error llamando a endpoint relativo:', fetchErr.message);
+        }
+
+        // Intento 2 (Fallback): Directo al puerto 3005 de Logística (CORS habilitado)
+        if (!response || !response.ok) {
+            try {
+                const host = window.location.hostname || 'localhost';
+                const directUrl = `${window.location.protocol}//${host}:3005/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`;
+                console.log(`🔄 [OMNICANAL-FRONT] Reintentando persistencia directa en Logística (${directUrl})...`);
+                response = await fetch(directUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (directErr) {
+                console.error('❌ [OMNICANAL-FRONT] Error al contactar puerto 3005 de Logística:', directErr);
+            }
+        }
+
+        if (response && response.ok) {
+            presupuesto.whatsapp_bunker = payload.whatsapp_facturas;
+            presupuesto.email_bunker = payload.email_facturas;
+            presupuesto.canal_envio_preferido = canalPreferido;
+            if (presupuestoData && presupuestoData.presupuesto) {
+                presupuestoData.presupuesto.whatsapp_bunker = payload.whatsapp_facturas;
+                presupuestoData.presupuesto.email_bunker = payload.email_facturas;
+                presupuestoData.presupuesto.canal_envio_preferido = canalPreferido;
+            }
+            contacts = updatedWpContacts;
+            emails = updatedEmailContacts;
+            console.log('✅ [OMNICANAL-FRONT] Contactos predeterminados persistidos exitosamente en BD.');
+            return true;
+        } else {
+            const errStatus = response ? response.status : 'SIN_CONEXION';
+            console.error(`❌ [OMNICANAL-FRONT] No se pudo persistir contactos predeterminados. Status: ${errStatus}`);
+            return false;
+        }
+    };
 
     // 5. Mostrar SweetAlert2 Modal
     const { value: modalResult } = await Swal.fire({
@@ -1252,13 +2151,343 @@ async function enviarPresupuestoOmnicanal() {
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#6366f1',
         cancelButtonColor: '#6b7280',
-        preConfirm: () => {
-            const selectedWp = Array.from(document.querySelectorAll('.swal-contact-wp-chk:checked')).map(el => el.value);
-            const selectedEmail = Array.from(document.querySelectorAll('.swal-contact-email-chk:checked')).map(el => el.value);
-            const customPhone = document.getElementById('swal-custom-phone').value.trim();
-            const customEmail = document.getElementById('swal-custom-email').value.trim();
-            const saveDefaultCheckbox = document.getElementById('swal-save-default');
+        didOpen: (popup) => {
+            // 1. Máscara en teléfono adicional rápido
+            const customPhoneInput = popup.querySelector('#swal-custom-phone');
+            if (customPhoneInput) {
+                customPhoneInput.addEventListener('input', () => {
+                    let cursorPosition = customPhoneInput.selectionStart;
+                    const originalLength = customPhoneInput.value.length;
+                    const clean = cleanInputForFormatting(customPhoneInput.value);
+                    const formatted = formatArgentinePhone(clean);
+                    customPhoneInput.value = formatted;
+                    const newLength = formatted.length;
+                    cursorPosition = cursorPosition + (newLength - originalLength);
+                    customPhoneInput.setSelectionRange(cursorPosition, cursorPosition);
+                });
+            }
+
+            // 2. Máscara en nuevo contacto directo
+            const nuevoWpInput = popup.querySelector('#swal-presupuesto-nuevo-wp');
+            if (nuevoWpInput) {
+                nuevoWpInput.addEventListener('input', () => {
+                    let cursorPosition = nuevoWpInput.selectionStart;
+                    const originalLength = nuevoWpInput.value.length;
+                    const clean = cleanInputForFormatting(nuevoWpInput.value);
+                    const formatted = formatArgentinePhone(clean);
+                    nuevoWpInput.value = formatted;
+                    const newLength = formatted.length;
+                    cursorPosition = cursorPosition + (newLength - originalLength);
+                    nuevoWpInput.setSelectionRange(cursorPosition, cursorPosition);
+                });
+            }
+
+            // 3. Toggle acordeón nuevo contacto
+            const toggleNuevoBtn = popup.querySelector('#toggle-nuevo-contacto-presupuesto');
+            const formNuevoContainer = popup.querySelector('#form-nuevo-contacto-presupuesto');
+            const toggleNuevoIcon = popup.querySelector('#icon-toggle-nuevo-contacto-presupuesto');
+            if (toggleNuevoBtn && formNuevoContainer) {
+                toggleNuevoBtn.addEventListener('click', () => {
+                    const isOpen = formNuevoContainer.style.display === 'flex';
+                    formNuevoContainer.style.display = isOpen ? 'none' : 'flex';
+                    if (toggleNuevoIcon) toggleNuevoIcon.textContent = isOpen ? '▼ Desplegar' : '▲ Plegar';
+                    if (!isOpen) {
+                        setTimeout(() => popup.querySelector('#swal-presupuesto-nuevo-nombre')?.focus(), 50);
+                    }
+                });
+            }
+
+            // 4. Guardar nuevo contacto directo en Bunker y preseleccionar
+            const btnGuardarNuevo = popup.querySelector('#btn-guardar-nuevo-contacto-presupuesto');
+            const feedbackNuevoEl = popup.querySelector('#swal-presupuesto-nuevo-feedback');
+            if (btnGuardarNuevo) {
+                btnGuardarNuevo.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const nombreVal = (popup.querySelector('#swal-presupuesto-nuevo-nombre')?.value || '').trim();
+                    const cargoVal = (popup.querySelector('#swal-presupuesto-nuevo-cargo')?.value || '').trim();
+                    const rawWp = (popup.querySelector('#swal-presupuesto-nuevo-wp')?.value || '').trim();
+                    const cleanPhone = cleanInputForFormatting(rawWp);
+                    const emailVal = (popup.querySelector('#swal-presupuesto-nuevo-email')?.value || '').trim();
+
+                    if (!cleanPhone && !emailVal) {
+                        if (feedbackNuevoEl) {
+                            feedbackNuevoEl.style.display = 'block';
+                            feedbackNuevoEl.style.background = '#fef2f2';
+                            feedbackNuevoEl.style.color = '#991b1b';
+                            feedbackNuevoEl.style.border = '1px solid #fecaca';
+                            feedbackNuevoEl.textContent = 'Debe ingresar al menos un número de WhatsApp o un correo electrónico.';
+                        }
+                        return;
+                    }
+
+                    if (cleanPhone && cleanPhone.length < 8) {
+                        if (feedbackNuevoEl) {
+                            feedbackNuevoEl.style.display = 'block';
+                            feedbackNuevoEl.style.background = '#fef2f2';
+                            feedbackNuevoEl.style.color = '#991b1b';
+                            feedbackNuevoEl.style.border = '1px solid #fecaca';
+                            feedbackNuevoEl.textContent = 'El número de WhatsApp ingresado no parece ser un número válido.';
+                        }
+                        return;
+                    }
+
+                    btnGuardarNuevo.disabled = true;
+                    btnGuardarNuevo.innerHTML = '<span>⏳</span> Guardando...';
+
+                    try {
+                        let wpAdded = null;
+                        if (cleanPhone) {
+                            const alreadyExists = contacts.some(c => c.numero && c.numero.replace(/\D/g, '') === cleanPhone);
+                            if (!alreadyExists) {
+                                wpAdded = {
+                                    id: `cont_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
+                                    numero: cleanPhone,
+                                    nombre: nombreVal,
+                                    cargo: cargoVal,
+                                    enviar_alerta: true,
+                                    default_presupuesto: true,
+                                    default_factura: true,
+                                    default_resumen: true,
+                                    default: true
+                                };
+                                contacts.push(wpAdded);
+                            }
+                        }
+
+                        let emailAdded = null;
+                        if (emailVal && emailVal.includes('@')) {
+                            const alreadyExists = emails.some(em => em.email && em.email.toLowerCase() === emailVal.toLowerCase());
+                            if (!alreadyExists) {
+                                emailAdded = {
+                                    id: `em_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
+                                    email: emailVal,
+                                    nombre: nombreVal,
+                                    cargo: cargoVal,
+                                    enviar_alerta: true,
+                                    default_presupuesto: true,
+                                    default_factura: true,
+                                    default_resumen: true,
+                                    default: true
+                                };
+                                emails.push(emailAdded);
+                            }
+                        }
+
+                        if (presupuesto && presupuesto.bunker_cliente_id) {
+                            const payload = {
+                                whatsapp_facturas: JSON.stringify(contacts),
+                                email_facturas: JSON.stringify(emails),
+                                canal_envio_preferido: canalPreferido
+                            };
+
+                            let resp = null;
+                            try {
+                                resp = await fetch(`/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                });
+                            } catch (fErr) {
+                                console.warn('Fetch relativo falló:', fErr);
+                            }
+
+                            if (!resp || !resp.ok) {
+                                const host = window.location.hostname || 'localhost';
+                                resp = await fetch(`${window.location.protocol}//${host}:3005/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                });
+                            }
+
+                            if (!resp || !resp.ok) {
+                                throw new Error('No se pudo guardar el contacto en el servidor de Logística Bunker.');
+                            }
+
+                            presupuesto.whatsapp_bunker = payload.whatsapp_facturas;
+                            presupuesto.email_bunker = payload.email_facturas;
+                            if (presupuestoData && presupuestoData.presupuesto) {
+                                presupuestoData.presupuesto.whatsapp_bunker = payload.whatsapp_facturas;
+                                presupuestoData.presupuesto.email_bunker = payload.email_facturas;
+                            }
+                        }
+
+                        // Inyectar visualmente en el modal
+                        if (wpAdded) {
+                            const wpContainer = popup.querySelector('#swal-wp-list');
+                            if (wpContainer) {
+                                const emptyPlaceholder = wpContainer.querySelector('.empty-placeholder');
+                                if (emptyPlaceholder) emptyPlaceholder.remove();
+
+                                const formattedDisplay = formatArgentinePhone(cleanPhone);
+                                const labelText = wpAdded.nombre 
+                                    ? `<strong>${wpAdded.nombre}</strong>${wpAdded.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${wpAdded.cargo}</span>` : ''}`
+                                    : 'Contacto nuevo';
+
+                                const newLabel = document.createElement('label');
+                                newLabel.style = 'display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid #10b981; border-radius: 6px; background: #ecfdf5; cursor: pointer; margin-bottom: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);';
+                                newLabel.innerHTML = `
+                                    <input type="checkbox" class="swal-contact-wp-chk" value="${wpAdded.numero}" checked style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="font-size: 12px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${labelText}</div>
+                                        <div style="font-size: 11px; color: #059669; font-weight: 600;">📱 ${formattedDisplay}</div>
+                                    </div>
+                                `;
+                                wpContainer.prepend(newLabel);
+                            }
+                        }
+
+                        if (emailAdded) {
+                            const emailContainer = popup.querySelector('#swal-email-list');
+                            if (emailContainer) {
+                                const emptyPlaceholder = emailContainer.querySelector('.empty-placeholder');
+                                if (emptyPlaceholder) emptyPlaceholder.remove();
+
+                                const labelText = emailAdded.nombre 
+                                    ? `<strong>${emailAdded.nombre}</strong>${emailAdded.cargo ? ` <span style="font-size: 9px; background: #e0e7ff; color: #4338ca; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${emailAdded.cargo}</span>` : ''}`
+                                    : 'Contacto nuevo';
+
+                                const newLabel = document.createElement('label');
+                                newLabel.style = 'display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid #6366f1; border-radius: 6px; background: #f5f3ff; cursor: pointer; margin-bottom: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);';
+                                newLabel.innerHTML = `
+                                    <input type="checkbox" class="swal-contact-email-chk" value="${emailAdded.email}" checked style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="font-size: 12px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${labelText}</div>
+                                        <div style="font-size: 11px; color: #6366f1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📧 ${emailAdded.email}</div>
+                                    </div>
+                                `;
+                                emailContainer.prepend(newLabel);
+                            }
+                        }
+
+                        if (feedbackNuevoEl) {
+                            feedbackNuevoEl.style.display = 'block';
+                            feedbackNuevoEl.style.background = '#d1fae5';
+                            feedbackNuevoEl.style.color = '#065f46';
+                            feedbackNuevoEl.style.border = '1px solid #a7f3d0';
+                            feedbackNuevoEl.textContent = '✔️ ¡Contacto guardado en la ficha de Búnker y preseleccionado!';
+                        }
+
+                        popup.querySelector('#swal-presupuesto-nuevo-nombre').value = '';
+                        popup.querySelector('#swal-presupuesto-nuevo-cargo').value = '';
+                        popup.querySelector('#swal-presupuesto-nuevo-wp').value = '';
+                        popup.querySelector('#swal-presupuesto-nuevo-email').value = '';
+
+                        setTimeout(() => {
+                            btnGuardarNuevo.disabled = false;
+                            btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en Búnker y seleccionar';
+                        }, 2000);
+
+                    } catch (err) {
+                        console.error('Error guardando contacto nuevo en presupuesto:', err);
+                        if (feedbackNuevoEl) {
+                            feedbackNuevoEl.style.display = 'block';
+                            feedbackNuevoEl.style.background = '#fef2f2';
+                            feedbackNuevoEl.style.color = '#991b1b';
+                            feedbackNuevoEl.style.border = '1px solid #fecaca';
+                            feedbackNuevoEl.textContent = 'Error al guardar: ' + err.message;
+                        }
+                        btnGuardarNuevo.disabled = false;
+                        btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en Búnker y seleccionar';
+                    }
+                });
+            }
+
+            const btnGuardarManual = popup.querySelector('#btn-guardar-predeterminados-manual');
+            const feedbackEl = popup.querySelector('#swal-save-feedback');
+
+            if (btnGuardarManual) {
+                btnGuardarManual.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const curSelectedWp = Array.from(popup.querySelectorAll('.swal-contact-wp-chk:checked')).map(el => el.value);
+                    const curSelectedEmail = Array.from(popup.querySelectorAll('.swal-contact-email-chk:checked')).map(el => el.value);
+                    const customPhone = (popup.querySelector('#swal-custom-phone')?.value || '').trim();
+                    const customEmail = (popup.querySelector('#swal-custom-email')?.value || '').trim();
+
+                    btnGuardarManual.disabled = true;
+                    btnGuardarManual.style.opacity = '0.7';
+                    btnGuardarManual.innerHTML = '<span>⏳</span> Guardando...';
+
+                    if (feedbackEl) {
+                        feedbackEl.style.display = 'none';
+                    }
+
+                    try {
+                        const ok = await guardarContactosPredeterminados(curSelectedWp, curSelectedEmail, customPhone, customEmail);
+                        if (ok) {
+                            btnGuardarManual.innerHTML = '<span>✅</span> ¡Guardado!';
+                            btnGuardarManual.style.background = '#ecfdf5';
+                            btnGuardarManual.style.color = '#065f46';
+                            btnGuardarManual.style.borderColor = '#6ee7b7';
+
+                            if (feedbackEl) {
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = '#d1fae5';
+                                feedbackEl.style.color = '#065f46';
+                                feedbackEl.style.border = '1px solid #a7f3d0';
+                                feedbackEl.innerHTML = '✔️ Selección guardada como contactos predeterminados para este cliente.';
+                            }
+
+                            setTimeout(() => {
+                                btnGuardarManual.disabled = false;
+                                btnGuardarManual.style.opacity = '1';
+                                btnGuardarManual.innerHTML = '<span>💾</span> Guardar como predeterminados';
+                                btnGuardarManual.style.background = '#f8fafc';
+                                btnGuardarManual.style.color = '#334155';
+                                btnGuardarManual.style.borderColor = '#cbd5e1';
+                            }, 2500);
+                        } else {
+                            throw new Error('No se pudo guardar la configuración en el servidor.');
+                        }
+                    } catch (err) {
+                        console.error('❌ Error guardando contactos manual:', err);
+                        btnGuardarManual.disabled = false;
+                        btnGuardarManual.style.opacity = '1';
+                        btnGuardarManual.innerHTML = '<span>❌</span> Error';
+                        btnGuardarManual.style.background = '#fef2f2';
+                        btnGuardarManual.style.color = '#991b1b';
+                        btnGuardarManual.style.borderColor = '#fecaca';
+
+                        if (feedbackEl) {
+                            feedbackEl.style.display = 'block';
+                            feedbackEl.style.background = '#fee2e2';
+                            feedbackEl.style.color = '#991b1b';
+                            feedbackEl.style.border = '1px solid #fca5a5';
+                            feedbackEl.innerHTML = `⚠️ ${err.message || 'Error al guardar contactos en la base de datos'}`;
+                        }
+
+                        setTimeout(() => {
+                            btnGuardarManual.innerHTML = '<span>💾</span> Reintentar guardar';
+                            btnGuardarManual.style.background = '#f8fafc';
+                            btnGuardarManual.style.color = '#334155';
+                            btnGuardarManual.style.borderColor = '#cbd5e1';
+                        }, 3000);
+                    }
+                });
+            }
+        },
+        preConfirm: async () => {
+            const popup = Swal.getPopup();
+            const selectedWp = Array.from(popup.querySelectorAll('.swal-contact-wp-chk:checked')).map(el => el.value);
+            const selectedEmail = Array.from(popup.querySelectorAll('.swal-contact-email-chk:checked')).map(el => el.value);
+            const customPhone = (popup.querySelector('#swal-custom-phone')?.value || '').trim();
+            const customEmail = (popup.querySelector('#swal-custom-email')?.value || '').trim();
+            const saveDefaultCheckbox = popup.querySelector('#swal-save-default');
             const saveDefault = saveDefaultCheckbox ? saveDefaultCheckbox.checked : false;
+
+            // Si se marcó la casilla de guardar como predeterminados, persistir de forma atómica antes de cerrar
+            if (saveDefault && presupuesto && presupuesto.bunker_cliente_id) {
+                try {
+                    await guardarContactosPredeterminados(selectedWp, selectedEmail, customPhone, customEmail);
+                    console.log('✅ [OMNICANAL-FRONT] Persistencia predeterminada confirmada en preConfirm.');
+                } catch (e) {
+                    console.error('❌ [OMNICANAL-FRONT] Error al persistir en preConfirm:', e);
+                }
+            }
 
             const finalWp = [...selectedWp];
             if (customPhone) {
@@ -1277,7 +2506,7 @@ async function enviarPresupuestoOmnicanal() {
                 });
             }
 
-            const mensajeTexto = document.getElementById('swal-mensaje-texto').value;
+            const mensajeTexto = popup.querySelector('#swal-mensaje-texto')?.value || '';
 
             return {
                 destinatariosWp: finalWp,
@@ -1285,6 +2514,8 @@ async function enviarPresupuestoOmnicanal() {
                 saveDefault,
                 selectedWpRaw: selectedWp,
                 selectedEmailRaw: selectedEmail,
+                customPhone,
+                customEmail,
                 mensajeTexto
             };
         }
@@ -1292,7 +2523,7 @@ async function enviarPresupuestoOmnicanal() {
 
     if (!modalResult) return;
 
-    const { destinatariosWp, destinatariosEmail, saveDefault, selectedWpRaw, selectedEmailRaw, mensajeTexto } = modalResult;
+    const { destinatariosWp, destinatariosEmail, saveDefault, selectedWpRaw, selectedEmailRaw, customPhone, customEmail, mensajeTexto } = modalResult;
 
     // 6. Si no hay destinatarios seleccionados, descargar localmente
     if (destinatariosWp.length === 0 && destinatariosEmail.length === 0) {
@@ -1311,35 +2542,9 @@ async function enviarPresupuestoOmnicanal() {
     // 7. Si se marca guardar por defecto, actualizar en base de datos
     if (saveDefault && presupuesto && presupuesto.bunker_cliente_id) {
         try {
-            const updatedWpContacts = contacts.map(c => {
-                const isSelected = selectedWpRaw.includes(c.numero);
-                return {
-                    ...c,
-                    default_presupuesto: isSelected
-                };
-            });
-            presupuesto.whatsapp_bunker = JSON.stringify(updatedWpContacts);
-
-            const updatedEmailContacts = emails.map(e => {
-                const isSelected = selectedEmailRaw.includes(e.email);
-                return {
-                    ...e,
-                    default_presupuesto: isSelected
-                };
-            });
-            presupuesto.email_bunker = JSON.stringify(updatedEmailContacts);
-
-            await fetch(`/api/logistica/bunker/clientes/${presupuesto.bunker_cliente_id}/whatsapp-contacts`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    whatsapp_facturas: presupuesto.whatsapp_bunker,
-                    email_facturas: presupuesto.email_bunker
-                })
-            });
-            console.log('✅ [OMNICANAL-FRONT] Contactos predeterminados de WhatsApp y Email actualizados.');
+            await guardarContactosPredeterminados(selectedWpRaw, selectedEmailRaw, customPhone, customEmail);
         } catch (err) {
-            console.error('❌ [OMNICANAL-FRONT] Error al guardar contactos predeterminados:', err);
+            console.error('❌ [OMNICANAL-FRONT] Error al guardar contactos predeterminados al enviar:', err);
         }
     }
 
@@ -1365,6 +2570,9 @@ async function enviarPresupuestoOmnicanal() {
 
     const sololista = document.getElementById('chk-solo-lista')?.checked || false;
     const faltantes = document.getElementById('chk-faltantes')?.checked || false;
+    const promos = document.getElementById('chk-promos')?.checked || false;
+    const pagos = document.getElementById('chk-pagos')?.checked || false;
+    const intereses = document.getElementById('chk-intereses')?.checked || false;
 
     // A. Enviar por WhatsApp
     if (wpAttempted) {
@@ -1378,6 +2586,9 @@ async function enviarPresupuestoOmnicanal() {
                     formato: formatoActual,
                     sololista: sololista,
                     faltantes: faltantes,
+                    promos: promos,
+                    pagos: pagos,
+                    intereses: intereses,
                     nombreCliente: presupuesto.nombre_cliente || presupuesto.concepto || '',
                     estado: presupuesto.estado,
                     mensajeTexto: mensajeTexto
@@ -1406,7 +2617,10 @@ async function enviarPresupuestoOmnicanal() {
                     destinatarios: destinatariosEmailStr,
                     formato: formatoActual,
                     sololista: sololista,
-                    faltantes: faltantes
+                    faltantes: faltantes,
+                    promos: promos,
+                    pagos: pagos,
+                    intereses: intereses
                 })
             });
             const data = await response.json();

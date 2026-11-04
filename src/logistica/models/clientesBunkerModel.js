@@ -15,7 +15,7 @@ class ClientesBunkerModel {
      */
     static async obtenerTodos({ search } = {}) {
         let query = `
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.created_at, c.updated_at,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id,
                    EXISTS (
                        SELECT 1 FROM public.portal_invitaciones i 
@@ -34,13 +34,24 @@ class ClientesBunkerModel {
         const params = [];
 
         if (search) {
-            // Realiza una búsqueda flexible cruzando por múltiples campos clave
+            // Realiza una búsqueda flexible cruzando por múltiples campos clave y contactos
             query += `
                 WHERE c.codigo_bunker_cliente ILIKE $1 
                    OR c.cliente_nombre ILIKE $1 
                    OR c.razon_social ILIKE $1 
                    OR c.lomas_soft_id ILIKE $1
                    OR c.cuit_cuil ILIKE $1
+                   OR c.whatsapp_facturas ILIKE $1
+                   OR c.email_facturas ILIKE $1
+                   OR c.email_portal ILIKE $1
+                   OR c.email_portal_nombre ILIKE $1
+                   OR c.email_portal_cargo ILIKE $1
+                   OR c.domicilio_fiscal ILIKE $1
+                   OR EXISTS (
+                       SELECT 1 FROM clientes_domicilios cd 
+                       WHERE (cd.id_cliente = c.id OR (c.lomas_soft_id ~ '^[0-9]+$' AND cd.id_cliente = c.lomas_soft_id::integer))
+                         AND (cd.direccion ILIKE $1 OR cd.alias ILIKE $1)
+                   )
             `;
             params.push(`%${search}%`);
         }
@@ -58,7 +69,7 @@ class ClientesBunkerModel {
      */
     static async obtenerPorId(id) {
         const query = `
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.created_at, c.updated_at,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id,
                    EXISTS (
                        SELECT 1 FROM public.portal_invitaciones i 
@@ -73,7 +84,20 @@ class ClientesBunkerModel {
                    ) as listas_precios
             FROM public.bunker_clientes c
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
-            WHERE c.id = $1
+            WHERE c.codigo_bunker_cliente = $1::text
+               OR c.lomas_soft_id = $1::text
+               OR (CASE WHEN $1::text ~ '^[0-9]+$' AND LENGTH($1::text) < 10 THEN c.id = $1::integer ELSE false END)
+               OR (LENGTH($1::text) <= 4 AND $1::text ~ '^[0-9]+$' AND c.lomas_soft_id = LPAD($1::text, 4, '0'))
+            ORDER BY 
+               CASE 
+                  WHEN c.codigo_bunker_cliente = $1::text THEN 1
+                  WHEN c.lomas_soft_id = $1::text THEN 2
+                  WHEN $1::text !~ '^0' AND $1::text ~ '^[0-9]+$' AND LENGTH($1::text) < 10 AND c.id = $1::integer THEN 3
+                  WHEN LENGTH($1::text) <= 4 AND $1::text ~ '^[0-9]+$' AND c.lomas_soft_id = LPAD($1::text, 4, '0') THEN 4
+                  WHEN $1::text ~ '^[0-9]+$' AND LENGTH($1::text) < 10 AND c.id = $1::integer THEN 5
+                  ELSE 6
+               END ASC
+            LIMIT 1
         `;
         const result = await pool.query(query, [id]);
         return result.rows.length ? result.rows[0] : null;
@@ -86,7 +110,7 @@ class ClientesBunkerModel {
      */
     static async obtenerPorCodigoBunker(codigo) {
         const query = `
-            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, created_at, updated_at
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, created_at, updated_at
             FROM public.bunker_clientes
             WHERE codigo_bunker_cliente = $1
         `;
@@ -170,7 +194,7 @@ class ClientesBunkerModel {
      * @returns {Promise<Object>} Cliente insertado
      */
     static async crear(datos) {
-        let { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo } = datos;
+        let { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
         
         // Si no se suministra un código o viene vacío, lo autogeneramos dinámicamente
         if (!codigo_bunker_cliente || !codigo_bunker_cliente.trim()) {
@@ -182,66 +206,13 @@ class ClientesBunkerModel {
         // Sanitización preventiva del CUIT/CUIL a solo dígitos para evitar conflictos en BD
         const cuitSanitizado = cuit_cuil ? cuit_cuil.replace(/[^0-9]/g, '') : null;
 
-        const query = `
-            INSERT INTO public.bunker_clientes (codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-            RETURNING *
-        `;
-        const result = await pool.query(query, [
-            codigo_bunker_cliente, 
-            cliente_nombre, 
-            razon_social, 
-            lomas_soft_id, 
-            cuitSanitizado, 
-            condicion_iva || null, 
-            domicilio_fiscal || null, 
-            provincia || null,
-            estado_clave || null,
-            categoria_monotributo || null,
-            actividad_principal || null,
-            whatsapp_facturas || null,
-            email_facturas || null,
-            canal_envio_preferido || 'whatsapp',
-            email_portal || null,
-            email_portal_nombre || null,
-            email_portal_cargo || null
-        ]);
-        return result.rows[0];
-    }
-
-    /**
-     * Actualizar los datos de un cliente existente
-     * @param {number} id - ID secuencial del cliente a actualizar
-     * @param {Object} datos - Nuevos atributos del cliente
-     * @returns {Promise<Object>} Cliente actualizado
-     */
-    static async actualizar(id, datos) {
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo } = datos;
-        
-        // Sanitización preventiva del CUIT/CUIL a solo dígitos
-        const cuitSanitizado = cuit_cuil ? cuit_cuil.replace(/[^0-9]/g, '') : null;
+        const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion) 
+            ? preferencia_facturacion 
+            : 'PREGUNTAR';
 
         const query = `
-            UPDATE public.bunker_clientes
-            SET codigo_bunker_cliente = $1,
-                cliente_nombre = $2,
-                razon_social = $3,
-                lomas_soft_id = $4,
-                cuit_cuil = $5,
-                condicion_iva = $6,
-                domicilio_fiscal = $7,
-                provincia = $8,
-                estado_clave = $9,
-                categoria_monotributo = $10,
-                actividad_principal = $11,
-                whatsapp_facturas = $12,
-                email_facturas = $13,
-                canal_envio_preferido = $14,
-                email_portal = $15,
-                email_portal_nombre = $16,
-                email_portal_cargo = $17,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = $18
+            INSERT INTO public.bunker_clientes (codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING *
         `;
         const result = await pool.query(query, [
@@ -262,8 +233,101 @@ class ClientesBunkerModel {
             email_portal || null,
             email_portal_nombre || null,
             email_portal_cargo || null,
+            prefFacturacion,
+            !!ver_stock
+        ]);
+
+        // Sincronizar en espejo con public.clientes si tiene lomas_soft_id numérico
+        if (lomas_soft_id && /^\d+$/.test(lomas_soft_id.trim())) {
+            try {
+                await pool.query(
+                    `UPDATE public.clientes SET preferencia_facturacion = $1 WHERE cliente_id = $2`,
+                    [prefFacturacion, parseInt(lomas_soft_id.trim(), 10)]
+                );
+            } catch (errSync) {
+                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando preferencia_facturacion en tabla clientes:', errSync.message);
+            }
+        }
+
+        return result.rows[0];
+    }
+
+    /**
+     * Actualizar los datos de un cliente existente
+     * @param {number} id - ID secuencial del cliente a actualizar
+     * @param {Object} datos - Nuevos atributos del cliente
+     * @returns {Promise<Object>} Cliente actualizado
+     */
+    static async actualizar(id, datos) {
+        const { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
+        
+        // Sanitización preventiva del CUIT/CUIL a solo dígitos
+        const cuitSanitizado = cuit_cuil ? cuit_cuil.replace(/[^0-9]/g, '') : null;
+
+        const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion) 
+            ? preferencia_facturacion 
+            : 'PREGUNTAR';
+
+        const query = `
+            UPDATE public.bunker_clientes
+            SET codigo_bunker_cliente = $1,
+                cliente_nombre = $2,
+                razon_social = $3,
+                lomas_soft_id = $4,
+                cuit_cuil = $5,
+                condicion_iva = $6,
+                domicilio_fiscal = $7,
+                provincia = $8,
+                estado_clave = $9,
+                categoria_monotributo = $10,
+                actividad_principal = $11,
+                whatsapp_facturas = $12,
+                email_facturas = $13,
+                canal_envio_preferido = $14,
+                email_portal = $15,
+                email_portal_nombre = $16,
+                email_portal_cargo = $17,
+                preferencia_facturacion = $18,
+                ver_stock = $19,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $20
+            RETURNING *
+        `;
+        const result = await pool.query(query, [
+            codigo_bunker_cliente, 
+            cliente_nombre, 
+            razon_social, 
+            lomas_soft_id, 
+            cuitSanitizado, 
+            condicion_iva || null, 
+            domicilio_fiscal || null, 
+            provincia || null, 
+            estado_clave || null,
+            categoria_monotributo || null,
+            actividad_principal || null,
+            whatsapp_facturas || null,
+            email_facturas || null,
+            canal_envio_preferido || 'whatsapp',
+            email_portal || null,
+            email_portal_nombre || null,
+            email_portal_cargo || null,
+            prefFacturacion,
+            !!ver_stock,
             id
         ]);
+
+        // Sincronizar en espejo con public.clientes si tiene lomas_soft_id numérico
+        if (lomas_soft_id && /^\d+$/.test(lomas_soft_id.trim())) {
+            try {
+                await pool.query(
+                    `UPDATE public.clientes SET preferencia_facturacion = $1 WHERE cliente_id = $2`,
+                    [prefFacturacion, parseInt(lomas_soft_id.trim(), 10)]
+                );
+            } catch (errSync) {
+                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando preferencia_facturacion en tabla clientes:', errSync.message);
+            }
+        }
+
         return result.rows[0];
     }
 
@@ -300,6 +364,103 @@ class ClientesBunkerModel {
         const query = 'INSERT INTO public.bunker_cliente_listas_precios (bunker_cliente_id, bunker_lista_precio_id) VALUES ($1, $2) RETURNING *';
         const result = await pool.query(query, [clienteId, listaId]);
         return result.rows[0];
+    }
+
+    /**
+     * Obtener historial relacional puro de artículos comprados/facturados a un cliente B2B
+     * Integra presupuestos, facturas y vinculación 1 a 1 por ID único entre Artículos Búnker y Legacy.
+     * Excluye estrictamente comprobantes o presupuestos anulados, cancelados o dados de baja.
+     * @param {number} clienteId - ID del cliente búnker
+     * @returns {Promise<Array>} Lista de artículos comprados con frecuencia y última fecha
+     */
+    static async obtenerArticulosComprados(clienteId) {
+        const query = `
+            WITH cliente_ref AS (
+                SELECT 
+                    id, 
+                    lomas_soft_id, 
+                    codigo_bunker_cliente,
+                    LTRIM(COALESCE(lomas_soft_id, ''), '0') as clean_lomas_id
+                FROM public.bunker_clientes
+                WHERE id::text = $1::text 
+                   OR lomas_soft_id = $1::text 
+                   OR codigo_bunker_cliente = $1::text 
+                   OR (LTRIM(COALESCE(lomas_soft_id, ''), '0') != '' AND LTRIM(COALESCE(lomas_soft_id, ''), '0') = LTRIM($1::text, '0'))
+                ORDER BY CASE
+                    WHEN id::text = $1::text THEN 0
+                    WHEN codigo_bunker_cliente = $1::text THEN 1
+                    WHEN lomas_soft_id = $1::text THEN 2
+                    ELSE 3
+                END
+                LIMIT 1
+            ),
+            articulos_presupuestos AS (
+                SELECT DISTINCT 
+                    ba.articulo_id,
+                    ba.descripcion,
+                    ba.descripcion_generada,
+                    p.fecha as fecha_compra
+                FROM cliente_ref cr
+                JOIN public.presupuestos p ON (
+                    (cr.lomas_soft_id IS NOT NULL AND cr.lomas_soft_id != '' AND p.id_cliente::text = cr.lomas_soft_id)
+                    OR (cr.codigo_bunker_cliente IS NOT NULL AND cr.codigo_bunker_cliente != '' AND p.id_cliente::text = cr.codigo_bunker_cliente)
+                    OR (cr.clean_lomas_id != '' AND LTRIM(p.id_cliente::text, '0') = cr.clean_lomas_id)
+                )
+                JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
+                LEFT JOIN public.articulos a ON (a.numero::text = pd.articulo OR a.codigo_barras::text = pd.articulo OR LOWER(a.nombre) = LOWER(pd.articulo))
+                JOIN public.bunker_articulos ba ON (
+                    LOWER(TRIM(ba.articulo_id::text)) = LOWER(TRIM(pd.articulo::text))
+                    OR (a.numero IS NOT NULL AND LOWER(TRIM(ba.articulo_id::text)) = LOWER(TRIM(a.numero::text)))
+                    OR (a.codigo_barras IS NOT NULL AND LOWER(TRIM(ba.articulo_id::text)) = LOWER(TRIM(a.codigo_barras::text)))
+                )
+                WHERE (p.estado IS NULL OR LOWER(TRIM(p.estado)) NOT IN ('anulado', 'anulada', 'cancelado', 'cancelada', 'baja', 'eliminado', 'eliminada'))
+                  AND (p.activo IS NULL OR p.activo = true)
+                  AND (p.archivado IS NULL OR p.archivado = false)
+            ),
+            articulos_facturas AS (
+                SELECT DISTINCT 
+                    ba.articulo_id,
+                    ba.descripcion,
+                    ba.descripcion_generada,
+                    f.fecha_emision as fecha_compra
+                FROM cliente_ref cr
+                JOIN public.factura_facturas f ON (
+                    (cr.lomas_soft_id IS NOT NULL AND cr.lomas_soft_id != '' AND f.cliente_id::text = cr.lomas_soft_id)
+                    OR (cr.clean_lomas_id != '' AND LTRIM(f.cliente_id::text, '0') = cr.clean_lomas_id)
+                )
+                JOIN public.factura_factura_items fi ON fi.factura_id = f.id
+                LEFT JOIN public.articulos a ON (
+                    TRIM(a.codigo_barras::text) = TRIM(COALESCE(fi.articulo_id::text, ''))
+                    OR LOWER(TRIM(a.numero::text)) = LOWER(TRIM(COALESCE(fi.articulo_id::text, '')))
+                    OR a.numero::text = fi.descripcion
+                    OR a.codigo_barras::text = fi.descripcion
+                    OR LOWER(a.nombre) = LOWER(fi.descripcion)
+                )
+                JOIN public.bunker_articulos ba ON (
+                    LOWER(TRIM(ba.articulo_id::text)) = LOWER(TRIM(COALESCE(a.numero, fi.articulo_id, fi.descripcion)::text))
+                    OR ba.articulo_id::text = fi.descripcion
+                    OR (a.codigo_barras IS NOT NULL AND ba.articulo_id::text = a.codigo_barras::text)
+                )
+                WHERE (f.estado IS NULL OR LOWER(TRIM(f.estado)) NOT IN ('anulada', 'anulado', 'cancelada', 'cancelado', 'baja', 'eliminada', 'eliminado'))
+                  AND COALESCE(f.tipo_cbte, 0) NOT IN (3, 8, 13)
+            ),
+            articulos_union AS (
+                SELECT * FROM articulos_presupuestos
+                UNION ALL
+                SELECT * FROM articulos_facturas
+            )
+            SELECT 
+                articulo_id,
+                descripcion,
+                descripcion_generada,
+                COUNT(*)::integer as frecuencia_compra,
+                MAX(fecha_compra) as ultima_compra
+            FROM articulos_union
+            GROUP BY articulo_id, descripcion, descripcion_generada
+            ORDER BY frecuencia_compra DESC, ultima_compra DESC;
+        `;
+        const result = await pool.query(query, [clienteId]);
+        return result.rows;
     }
 }
 

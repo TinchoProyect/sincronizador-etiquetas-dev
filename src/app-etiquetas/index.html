@@ -14,7 +14,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestiones Lamda</title>
   <link rel="icon" type="image/png" href="favicon.ico?v=2" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=4.5" />
 
 </head>
 <body>
@@ -55,6 +55,15 @@
           <span class="nav-icon">🚚</span>
           <span class="nav-text">Logística</span>
         </a>
+        <button type="button" class="nav-btn" onclick="if (window.abrirEspacioMamus) window.abrirEspacioMamus()" title="Espacio de Mamus — Retiro rápido de ingredientes" style="background: #fdf2f8; color: #be185d; border: 1px solid #f472b6; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 16px;">
+          <span>🌸</span>
+          <span>Mamus</span>
+        </button>
+        <button type="button" class="nav-btn" onclick="if (window.abrirConsolaWhatsappLamda) window.abrirConsolaWhatsappLamda()" title="WhatsApp LAMDA — Consola Comercial & CRM en 3 Columnas" style="background: #dcfce7; color: #14532d; border: 1px solid #22c55e; font-size: 0.82rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 16px;">
+          <span>💬</span>
+          <span>WhatsApp</span>
+          <span id="nav-whatsapp-crm-badge" style="display: none; background: #dc2626; color: #ffffff; border-radius: 10px; padding: 1px 6px; font-size: 0.72rem; font-weight: 800;">0</span>
+        </button>
       </nav>
 
       <!-- Margen Derecho: Menú Hamburguesa -->
@@ -99,19 +108,159 @@
       </div>
     </div>
 
+    <!-- Modal Programar Seguimiento WhatsApp (CRM) -->
+    <div id="modal-programar-whatsapp" class="modal" style="display: none;">
+      <div class="modal-content" style="max-width: 620px; width: 94%;">
+        <div class="modal-header" style="border-bottom: 2px solid #25D366; padding-bottom: 10px;">
+          <h2 id="crm-modal-titulo" style="display: flex; align-items: center; gap: 8px; color: #15803d; margin: 0; font-size: 1.25rem;">
+            📅 CRM Seguimiento WhatsApp
+          </h2>
+          <button type="button" class="modal-close" onclick="cerrarModalProgramarWhatsApp()">&times;</button>
+        </div>
+
+        <!-- Pestañas de Navegación Modal: [➕ Programar Nuevo] / [📋 Monitor de Programados (N)] -->
+        <div class="crm-modal-tabs">
+          <button type="button" id="crm-tab-btn-nuevo" class="crm-modal-tab active" onclick="cambiarTabCrm('nuevo')">
+            ➕ Programar / Editar
+          </button>
+          <button type="button" id="crm-tab-btn-monitor" class="crm-modal-tab" onclick="cambiarTabCrm('monitor')">
+            📋 Monitor de Programados <span id="crm-badge-total-programados" class="crm-tab-badge">0</span>
+          </button>
+        </div>
+
+        <!-- VISTA 1: Formulario Programar / Editar -->
+        <div id="crm-vista-nuevo" style="display: block;">
+          <form id="form-programar-whatsapp" onsubmit="event.preventDefault(); guardarProgramacionWhatsApp();" style="margin-top: 12px;">
+            <!-- 1. Cliente Búnker con Filtro en Vivo (Política Universal de Búsqueda LAMDA) -->
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="crm-cliente-search" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">
+                Buscar Cliente Búnker:
+              </label>
+              <input type="text" id="crm-cliente-search" class="crm-search-input" placeholder="🔍 Escribí el nombre, código o razón social (ej: sopresatta, rica, 034)..." oninput="filtrarClientesCrm(this.value)" autocomplete="off">
+              
+              <label for="crm-cliente-select" style="font-size: 0.8rem; color: #64748b; margin-bottom: 2px; display: block;">
+                Cliente seleccionado:
+              </label>
+              <select id="crm-cliente-select" onchange="onCrmClienteSeleccionado()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem;" required>
+                <option value="">Cargando clientes...</option>
+              </select>
+            </div>
+
+            <!-- 2. Contacto / Teléfono -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+              <div class="form-group" style="margin: 0;">
+                <label for="crm-contacto-select" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Contacto Registrado:</label>
+                <select id="crm-contacto-select" onchange="onCrmContactoSeleccionado()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85rem;" disabled>
+                  <option value="">Primero elija un cliente...</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin: 0;">
+                <label for="crm-contacto-nombre-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Nombre Contacto:</label>
+                <input type="text" id="crm-contacto-nombre-input" placeholder="Ej: Francisco" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="crm-telefono-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Número WhatsApp (con código de país, sin + ni guiones):</label>
+              <input type="text" id="crm-telefono-input" placeholder="Ej: 5492215960405" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.95rem; font-family: monospace; box-sizing: border-box;" required>
+            </div>
+
+            <!-- 3. Fecha y Hora Programada con Shortcuts Dinámicos -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+              <label style="font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; display: block;">¿Cuándo debe aparecer en la Pizarra?</label>
+              
+              <div id="crm-shortcuts-container" class="crm-shortcuts-container"></div>
+
+              <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; align-items: center; margin-top: 8px;">
+                <div>
+                  <label for="crm-fecha-input" style="font-size: 0.78rem; color: #64748b; display: block;">Fecha exacta:</label>
+                  <input type="date" id="crm-fecha-input" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+                </div>
+                <div>
+                  <label for="crm-hora-input" style="font-size: 0.78rem; color: #64748b; display: block;">Hora estimada:</label>
+                  <input type="time" id="crm-hora-input" value="09:00" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. Nota interna / Estrategia -->
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="crm-nota-input" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Nota interna / Estrategia comercial (opcional):</label>
+              <input type="text" id="crm-nota-input" placeholder="Ej: Ofrecer bolsa 20kg MCVX20 con 5% off, pago 7/15 días" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.88rem; box-sizing: border-box;">
+            </div>
+
+            <!-- 5. Burbujas de Mensaje -->
+            <div class="form-group" style="margin-bottom: 15px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; flex-wrap: wrap;">
+                <label style="font-weight: 600; font-size: 0.88rem; margin: 0;">Mensajes a enviar (Burbujas / Partes secuenciales):</label>
+                <div style="display: flex; gap: 6px;">
+                  <button type="button" onclick="dividirBurbujasEnModal()" style="background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" title="Divide un mensaje largo en varios mensajitos cortos (Saludo, Cuerpo y Cierre)">
+                    ✂️ Dividir en mensajitos
+                  </button>
+                  <button type="button" class="btn-bubble-add" onclick="agregarBurbujaMensaje()" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;">
+                    ➕ Agregar otra burbuja
+                  </button>
+                </div>
+              </div>
+              <div id="crm-bubbles-container"></div>
+              <span style="font-size: 0.78rem; color: #64748b; display: block; margin-top: 4px;">
+                💡 Cada burbuja se despacha como un mensaje corto de WhatsApp separado (con 1,2 seg de pausa entre cada uno).
+              </span>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; flex-wrap: wrap;">
+              <button type="button" onclick="enviarPruebaDesdeModalProgramador()" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; font-weight: 700; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;">
+                🧪 Enviar Prueba (221 661 5746)
+              </button>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-cancelar" onclick="cerrarModalProgramarWhatsApp()">Cancelar</button>
+                <button type="submit" class="btn-acceder" style="background: #25D366; color: white; border: none; font-weight: 700; padding: 8px 18px; border-radius: 6px; cursor: pointer;">💾 Guardar Programación</button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- VISTA 2: Monitor de Seguimientos Programados -->
+        <div id="crm-vista-monitor" style="display: none; margin-top: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="crm-monitor-filter-btn active" onclick="filtrarMonitorTab(this, 'TODOS')">Todos</button>
+              <button type="button" class="crm-monitor-filter-btn" onclick="filtrarMonitorTab(this, 'PENDIENTE')">🟡 Pendientes</button>
+              <button type="button" class="crm-monitor-filter-btn" onclick="filtrarMonitorTab(this, 'ENVIADO')">🟢 Enviados</button>
+            </div>
+            <button type="button" onclick="cargarMonitorSeguimientos()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; font-size: 0.8rem; cursor: pointer; color: #475569; font-weight: 600;">
+              🔄 Actualizar
+            </button>
+          </div>
+          <div id="crm-monitor-lista" style="max-height: 480px; overflow-y: auto; padding-right: 4px;"></div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Dashboard Principal (Full-Screen clock) -->
     <div class="dashboard-container">
       <div id="pizarra-canvas" class="pizarra-card">
-        <!-- Botón de Limpieza Pizarra (Vía B) -->
-        <button id="btn-limpiar-pizarra" class="btn-limpiar-pizarra" style="display: none;" title="Limpiar realizados" onclick="purgaManualAlertas()">
-          <span>🧹</span>
-          <span class="btn-limpiar-text">Limpiar realizados</span>
-        </button>
-        <div class="pizarra-clock-wrapper">
-          <div id="pizarra-time" class="pizarra-time">--:--:--</div>
-          <div id="pizarra-date" class="pizarra-date">Cargando fecha...</div>
+        <div style="width: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div class="pizarra-clock-wrapper">
+            <div id="pizarra-time" class="pizarra-time">--:--:--</div>
+            <div id="pizarra-date" class="pizarra-date">Cargando fecha...</div>
+          </div>
+          <!-- Derecha: Botón de Limpieza Pizarra + Contador Global de Tokens y Estado de Crédito IA -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;">
+            <button id="btn-limpiar-pizarra" class="btn-limpiar-pizarra" style="display: none; position: static;" title="Limpiar realizados" onclick="purgaManualAlertas()">
+              <span>🧹</span>
+              <span class="btn-limpiar-text">Limpiar realizados</span>
+            </button>
+            <div id="pizarra-ia-global-widget" onclick="if (window.abrirModalControlCreditoIaGlobal) window.abrirModalControlCreditoIaGlobal()" style="cursor: pointer;" title="Clic para abrir el Control General de Crédito y Consumo IA del Sistema"></div>
+          </div>
         </div>
+        <!-- Botón de Inicio de Jornada (Arriba de todo) -->
+        <div id="pizarra-colaborador-btn-top" class="pizarra-colaborador-btn-top"></div>
+        <!-- Widgets de Producción, Mantenimiento y Alertas Operativas -->
         <div id="pizarra-extra-widgets" class="pizarra-extra-widgets"></div>
+        <!-- Registros de Jornadas y Turnos (Al final de todo) -->
+        <div id="pizarra-colaboradores-container" class="pizarra-colaboradores-container"></div>
       </div>
     </div>
 
@@ -130,6 +279,73 @@
               <span class="tree-icon">👤</span> Administración
             </a>
           </li>
+
+          <!-- Acceso Directo Principal: Estadísticas de la Página Pública -->
+          <li class="tree-item">
+            <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-link" style="background: #f8f3f8; border-left: 4px solid #82467E; color: #82467E; font-weight: 700;">
+              <span class="tree-icon">📊</span> Estadísticas Página Pública & IAs
+            </a>
+          </li>
+
+          <!-- Rama: Página Pública & Estadísticas Web -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">🌐</span> Página Pública (Accesos y Enlaces)
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li>
+                <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-sublink" style="color: #82467E; font-weight: 700;">
+                  <span class="tree-icon">📊</span> Estadísticas de Visitas, Flujo e IAs
+                </a>
+              </li>
+              <li>
+                <a href="/institucional.html" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span class="tree-icon">🖥️</span> Ver Página Institucional (Local)
+                </a>
+              </li>
+              <li>
+                <a href="https://lamdaser.com" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span class="tree-icon">🌍</span> Abrir Dominio Público (lamdaser.com)
+                </a>
+              </li>
+            </ul>
+          </li>
+
+          <!-- Rama: Colaboradores -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">🤝</span> Colaboradores
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li>
+                <a href="pages/colaboradores-jornadas.html" class="tree-sublink">
+                  <span class="tree-icon">⏱️</span> Horarios y Jornadas
+                </a>
+              </li>
+            </ul>
+          </li>
+
+          <!-- Rama: Inteligencia de Costos y Precios -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">🎛️</span> Inteligencia de Costos y Precios
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li>
+                <a href="http://localhost:3002/pages/pizarra-simulacion.html" class="tree-sublink">
+                  <span class="tree-icon">📊</span> Mesa de Trabajo (Pizarra Inteligente)
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3002/pages/gestion-cambios-precios.html" class="tree-sublink">
+                  <span class="tree-icon">🔔</span> Gestión de Cambios y Notificaciones
+                </a>
+              </li>
+            </ul>
+          </li>
           
           <!-- Rama 2: Gestión Comercial y Financiera -->
           <li class="tree-item branch">
@@ -138,27 +354,125 @@
               <span class="chevron">▼</span>
             </div>
             <ul class="tree-submenu">
+              <!-- Sección: Comercial & CRM -->
+              <li class="tree-section-header">Comercial & CRM</li>
               <li>
-                <a href="http://localhost:3005/pages/listado-clientes.html" class="tree-sublink">Clientes Búnker</a>
+                <a href="http://localhost:3005/pages/listado-clientes.html" class="tree-sublink">
+                  <span class="tree-icon">👥</span> Clientes Búnker
+                </a>
               </li>
               <li>
-                <a href="http://localhost:3004" class="tree-sublink">Facturación</a>
+                <a href="http://localhost:3005/pages/prospectos.html" class="tree-sublink" style="color: #ea580c; font-weight: 600;">
+                  <span class="tree-icon">🎯</span> Preventa & Prospectos (Calle / Depósito)
+                </a>
               </li>
               <li>
-                <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="tree-sublink">Cuentas Bancarias</a>
+                <a href="javascript:void(0)" onclick="if (window.abrirConsolaWhatsappLamda) window.abrirConsolaWhatsappLamda(); closeSidebar();" class="tree-sublink" style="color: #075e54; font-weight: 800;">
+                  <span class="tree-icon">💬</span> Consola WhatsApp LAMDA (3 Cols)
+                </a>
               </li>
-              <!-- Sub-rama: Portal -->
+              <li>
+                <a href="javascript:void(0)" onclick="abrirModalProgramarWhatsApp(); closeSidebar();" class="tree-sublink" style="color: #16a34a; font-weight: 600;">
+                  <span class="tree-icon">📅💬</span> Programar WA (Seguimiento)
+                </a>
+              </li>
+              <li>
+                <a href="pages/crm-seguimientos.html" class="tree-sublink" style="color: #15803d; font-weight: 600;">
+                  <span class="tree-icon">📋</span> Monitor WA (Seguimientos)
+                </a>
+              </li>
+
+              <!-- Sub-rama: Ofertas Dinámicas & Cuotas -->
               <li class="tree-item branch nested-branch">
                 <div class="tree-branch-header" onclick="toggleBranch(this)">
-                  <span class="tree-icon">📁</span> Portal
+                  <span class="tree-icon">🏷️</span> Ofertas & Promociones
                   <span class="chevron">▼</span>
                 </div>
                 <ul class="tree-submenu">
                   <li>
-                    <a href="javascript:void(0)" onclick="window.abrirPortalB2B(); closeSidebar();" class="tree-sublink">Portal B2B (Accesos)</a>
+                    <a href="pages/ofertas-dinamicas.html" class="tree-sublink">
+                      <span class="tree-icon">📊</span> Monitor de Ofertas
+                    </a>
                   </li>
                   <li>
-                    <a href="javascript:void(0)" onclick="window.sincronizarB2BManual(); closeSidebar();" class="tree-sublink">Sincronización Manual</a>
+                    <a href="pages/ofertas-dinamicas.html?nueva=true" class="tree-sublink">
+                      <span class="tree-icon">➕</span> Nueva Oferta Dinámica
+                    </a>
+                  </li>
+                  <li>
+                    <a href="http://localhost:3003/pages/presupuestos.html?politicas=true" class="tree-sublink">
+                      <span class="tree-icon">📈</span> Políticas Comerciales (Volumen)
+                    </a>
+                  </li>
+                </ul>
+              </li>
+
+              <!-- Sección: Facturación & Finanzas -->
+              <li class="tree-section-header">Facturación & Finanzas</li>
+              <li>
+                <a href="http://localhost:3004" class="tree-sublink">
+                  <span class="tree-icon">🧾</span> Facturación
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="tree-sublink">
+                  <span class="tree-icon">🏦</span> Cuentas Bancarias
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3005/pages/recepcion-efectivo.html" class="tree-sublink">
+                  <span class="tree-icon">✉️</span> Recepción de Efectivo Ensobrado
+                </a>
+              </li>
+
+              <!-- Sección: Portal B2B & Cloud -->
+              <li class="tree-section-header">Portal B2B & Cloud</li>
+              <!-- Sub-rama: Portal B2B -->
+              <li class="tree-item branch nested-branch">
+                <div class="tree-branch-header" onclick="toggleBranch(this)">
+                  <span class="tree-icon">🌐</span> Portal B2B
+                  <span class="chevron">▼</span>
+                </div>
+                <ul class="tree-submenu">
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirPortalB2B(); closeSidebar();" class="tree-sublink">
+                      <span class="tree-icon">🔑</span> Accesos (Modo Espejo)
+                    </a>
+                  </li>
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.sincronizarB2BManual(); closeSidebar();" class="tree-sublink">
+                      <span class="tree-icon">🔄</span> Sincronización Manual
+                    </a>
+                  </li>
+                  <li>
+                    <a href="http://localhost:3005/pages/configuracion-jerarquia-b2b.html" class="tree-sublink" target="_blank">
+                      <span class="tree-icon">🌿</span> Configurar Jerarquía B2B
+                    </a>
+                  </li>
+                </ul>
+              </li>
+
+              <!-- Sub-rama: Telemetría & Auditoría -->
+              <li class="tree-item branch nested-branch">
+                <div class="tree-branch-header" onclick="toggleBranch(this)">
+                  <span class="tree-icon">⚡</span> Telemetría & Auditoría
+                  <span class="chevron">▼</span>
+                </div>
+                <ul class="tree-submenu">
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirTelemetriaCloudflareMenu(); closeSidebar();" class="tree-sublink">
+                      <span class="tree-icon">📈</span> Telemetría Cloudflare
+                    </a>
+                  </li>
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-sublink" style="color: #82467E; font-weight: 700;">
+                      <span class="tree-icon">🌐</span> Estadísticas Página Pública & IAs
+                    </a>
+                  </li>
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirAuditoriaEntregasQRMenu(); closeSidebar();" class="tree-sublink">
+                      <span class="tree-icon">📦</span> Auditoría Entregas y QR
+                    </a>
                   </li>
                 </ul>
               </li>
@@ -173,19 +487,34 @@
             </div>
             <ul class="tree-submenu">
               <li>
-                <a href="http://localhost:3002/pages/recepcion-lotes.html" class="tree-sublink">Recepción de Lotes</a>
+                <a href="http://localhost:3002/pages/recepcion-lotes.html" class="tree-sublink">
+                  <span class="tree-icon">📥</span> Recepción de Lotes
+                </a>
               </li>
               <li>
-                <a href="http://localhost:3005/pages/listado-bunker.html" class="tree-sublink">Artículos Búnker</a>
+                <a href="http://localhost:3005/pages/listado-bunker.html" class="tree-sublink">
+                  <span class="tree-icon">🏷️</span> Artículos Búnker
+                </a>
               </li>
               <li>
-                <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal(); closeSidebar();" class="tree-sublink warning-link">Enviar a Mantenimiento</a>
+                <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal(); closeSidebar();" class="tree-sublink warning-link">
+                  <span class="tree-icon">⚠️</span> Enviar a Mantenimiento
+                </a>
               </li>
               <li>
-                <a href="pages/impresion.html" class="tree-sublink">Impresión de Etiquetas</a>
+                <a href="pages/impresion.html" class="tree-sublink">
+                  <span class="tree-icon">🖨️</span> Impresión de Etiquetas
+                </a>
               </li>
               <li>
-                <a href="pages/informe-faltantes.html" class="tree-sublink">Demanda no Satisfecha</a>
+                <a href="pages/informe-faltantes.html" class="tree-sublink">
+                  <span class="tree-icon">📋</span> Demanda no Satisfecha
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="if (window.abrirModalControlCreditoIaGlobal) window.abrirModalControlCreditoIaGlobal(); closeSidebar();" class="tree-sublink" style="color: #0369a1; font-weight: 700;">
+                  <span class="tree-icon">🤖</span> Control de Crédito y Consumo IA
+                </a>
               </li>
             </ul>
           </li>
@@ -200,10 +529,15 @@
     </footer>
   </div>
 
-  <script src="js/main.js"></script>
+  <script src="js/main.js?v=4.6"></script>
 
 <!-- CDN SweetAlert2 -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="js/modal-gestion-demanda.js?v=1.0"></script>
+<script src="js/crm-seguimientos-wa.js?v=3.1"></script>
+<script src="js/crm-whatsapp-mesa-agentes.js?v=5.3"></script>
+<script src="js/crm-whatsapp-hub.js?v=8.7"></script>
+<script src="js/retiro-mamus.js?v=5"></script>
 <script>
 window.iniciarTrasladoGlobal = async function() {
     console.log("🛠️ [VIGÍA DEPURADOR] Iniciando flujo 'Enviar a Cuarentena Global'");
@@ -543,7 +877,8 @@ window.sincronizarB2BManual = async function() {
         { id: 'cuentas', name: 'Cuentas Corrientes' },
         { id: 'listas', name: 'Clientes y Listas' },
         { id: 'pedidos', name: 'Pedidos desde B2B' },
-        { id: 'estados', name: 'Estados Logísticos B2B' }
+        { id: 'estados', name: 'Estados Logísticos B2B' },
+        { id: 'ofertas', name: 'Ofertas Dinámicas' }
     ];
 
     const results = {};
@@ -690,37 +1025,107 @@ window.abrirPortalB2B = async function() {
                     throw new Error(data.error || 'No se pudo obtener la lista de clientes.');
                 }
 
-                const clientesB2B = data.data.filter(c => c.onboarding_completado === true);
+                const clientesB2B = data.data.filter(c => c.onboarding_completado === true || c.estado_clave === 'ACTIVO' || c.codigo_bunker_cliente === 'CB-0038');
 
                 if (clientesB2B.length === 0) {
                     Swal.fire('Sin Clientes Activos', 'No hay clientes registrados y activos en el Portal B2B actualmente.', 'warning');
                     return;
                 }
 
-                const optionsHtml = clientesB2B.map(c => 
-                    `<option value="${c.codigo_bunker_cliente}">[${c.codigo_bunker_cliente}] ${c.cliente_nombre} - ${c.email_portal}</option>`
-                ).join('');
-
                 Swal.fire({
                     title: 'Seleccione un Cliente',
                     html: `
-                        <div style="text-align: left; font-family: sans-serif; font-size: 14px;">
-                            <label for="swal-select-cliente" style="font-weight: 600; display: block; margin-bottom: 6px;">Cliente B2B Activo:</label>
-                            <select id="swal-select-cliente" class="swal2-select" style="width: 100%; margin: 0; padding: 8px; border-radius: 6px; font-size: 13px;">
-                                ${optionsHtml}
-                            </select>
-                            <span style="font-size: 11px; color: #64748b; margin-top: 6px; display: block;">Se iniciará una sesión segura en modo espejo en representación de este cliente.</span>
+                        <div style="text-align: left; font-family: sans-serif; font-size: 14px; color: #334155;">
+                            <label for="swal-search-cliente" style="font-weight: 600; display: block; margin-bottom: 6px;">Buscar Cliente B2B Activo:</label>
+                            <input type="text" id="swal-search-cliente" placeholder="🔎 Escriba ID, Cód. Búnker, Nombre o Razón Social..." style="width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; outline: none; transition: border-color 0.2s; margin-bottom: 8px;" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#cbd5e1'">
+                            
+                            <input type="hidden" id="swal-selected-cliente-code" value="">
+                            <input type="hidden" id="swal-selected-cliente-label" value="">
+
+                            <div id="swal-cliente-lista" style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc;">
+                                <!-- Se poblará dinámicamente -->
+                            </div>
+                            <span style="font-size: 11px; color: #64748b; margin-top: 8px; display: block;">Se iniciará una sesión segura en modo espejo en representación del cliente seleccionado.</span>
                         </div>
                     `,
                     showCancelButton: true,
                     confirmButtonText: '🔑 Ingresar',
                     confirmButtonColor: '#7c3aed',
                     cancelButtonText: 'Cancelar',
+                    didOpen: () => {
+                        const searchInput = document.getElementById('swal-search-cliente');
+                        const listaDiv = document.getElementById('swal-cliente-lista');
+                        const selectedCodeInput = document.getElementById('swal-selected-cliente-code');
+                        const selectedLabelInput = document.getElementById('swal-selected-cliente-label');
+                        const confirmButton = Swal.getConfirmButton();
+
+                        // Deshabilitar botón de confirmación hasta seleccionar
+                        confirmButton.disabled = true;
+
+                        function renderList(filteredClients) {
+                            if (filteredClients.length === 0) {
+                                listaDiv.innerHTML = `<div style="padding: 12px; color: #64748b; font-style: italic; text-align: center; font-size: 13px;">No se encontraron clientes coincidentes.</div>`;
+                                return;
+                            }
+
+                            listaDiv.innerHTML = filteredClients.map(c => {
+                                const isSelected = selectedCodeInput.value === c.codigo_bunker_cliente;
+                                const bgStyle = isSelected ? 'background-color: #f3e8ff; border-left: 4px solid #7c3aed;' : 'border-left: 4px solid transparent;';
+                                return `
+                                    <div class="cliente-option" data-codigo="${c.codigo_bunker_cliente}" data-label="[${c.codigo_bunker_cliente}] ${c.cliente_nombre}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; ${bgStyle}" onmouseover="if('${selectedCodeInput.value}'!=='${c.codigo_bunker_cliente}') this.style.backgroundColor='#f1f5f9'" onmouseout="if('${selectedCodeInput.value}'!=='${c.codigo_bunker_cliente}') this.style.backgroundColor='transparent'">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                            <span style="font-weight: 700; color: #1e293b; font-size: 13px;">${c.cliente_nombre}</span>
+                                            <span style="font-size: 11px; font-weight: 600; color: #7c3aed; background: #f3e8ff; padding: 2px 6px; border-radius: 4px;">Legacy: ${c.lomas_soft_id || 'S/N'}</span>
+                                        </div>
+                                        <div style="font-size: 12px; color: #475569; margin-bottom: 2px;">Razón Social: <span style="font-weight: 550;">${c.razon_social || 'N/A'}</span></div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #64748b;">
+                                            <span>Cód Búnker: <span style="font-weight: 600;">${c.codigo_bunker_cliente}</span></span>
+                                            <span style="color: #0ea5e9; font-weight: 500;">📧 ${c.email_portal}</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+
+                            // Agregar listeners para clics
+                            const options = listaDiv.querySelectorAll('.cliente-option');
+                            options.forEach(opt => {
+                                opt.addEventListener('click', () => {
+                                    const codigo = opt.getAttribute('data-codigo');
+                                    const label = opt.getAttribute('data-label');
+                                    selectedCodeInput.value = codigo;
+                                    selectedLabelInput.value = label;
+                                    confirmButton.disabled = false;
+                                    // Re-renderizar para marcar selección
+                                    renderList(filteredClients);
+                                });
+                            });
+                        }
+
+                        // Renderizar lista inicial
+                        renderList(clientesB2B);
+
+                        // Escuchar cambios de búsqueda
+                        searchInput.addEventListener('input', (e) => {
+                            const term = e.target.value.toLowerCase().trim();
+                            const filtered = clientesB2B.filter(c => {
+                                const matchLegacy = (c.lomas_soft_id || '').toLowerCase().includes(term);
+                                const matchBunker = (c.codigo_bunker_cliente || '').toLowerCase().includes(term);
+                                const matchNombre = (c.cliente_nombre || '').toLowerCase().includes(term);
+                                const matchRazon = (c.razon_social || '').toLowerCase().includes(term);
+                                const matchEmail = (c.email_portal || '').toLowerCase().includes(term);
+                                return matchLegacy || matchBunker || matchNombre || matchRazon || matchEmail;
+                            });
+                            renderList(filtered);
+                        });
+                    },
                     preConfirm: () => {
-                        const selectEl = document.getElementById('swal-select-cliente');
-                        const codigo = selectEl.value;
-                        const label = selectEl.options[selectEl.selectedIndex].text;
-                        return { codigo, label };
+                        const selectedCode = document.getElementById('swal-selected-cliente-code').value;
+                        const selectedLabel = document.getElementById('swal-selected-cliente-label').value;
+                        if (!selectedCode) {
+                            Swal.showValidationMessage('Debe seleccionar un cliente de la lista');
+                            return false;
+                        }
+                        return { codigo: selectedCode, label: selectedLabel };
                     }
                 }).then(async (selectionResult) => {
                     if (selectionResult.isConfirmed) {
@@ -743,8 +1148,13 @@ window.abrirPortalB2B = async function() {
                                 throw new Error(maestroData.message || 'Error al obtener el enlace del portal.');
                             }
 
-                            Swal.close();
-                            window.open(maestroData.redirectUrl, '_blank');
+                            const targetUrl = maestroData.redirectUrl || maestroData.magicLink || maestroData.url;
+                            if (targetUrl) {
+                                Swal.close();
+                                window.open(targetUrl, '_blank');
+                            } else {
+                                throw new Error('No se recibió una URL de enlace maestro válida.');
+                            }
 
                         } catch (err) {
                             console.error('Error al ingresar espejo:', err);
@@ -761,6 +1171,1015 @@ window.abrirPortalB2B = async function() {
     });
 };
 
+window.abrirTelemetriaCloudflareMenu = async function() {
+    Swal.fire({
+        title: '⚡ Telemetría y Auditoría de Actividad B2B',
+        html: `<div style="text-align:center; padding: 20px;"><p style="margin-top:10px;">Consultando actividad detallada de clientes en el Portal B2B, radar comercial y métricas de Cloudflare...</p></div>`,
+        showConfirmButton: false,
+        width: '960px'
+    });
+
+    try {
+        const [respCf, respEv] = await Promise.all([
+            fetch('http://localhost:3005/api/logistica/telemetria/cloudflare'),
+            fetch('http://localhost:3005/api/logistica/telemetria/entregas-qr')
+        ]);
+        const resCf = await respCf.json();
+        const resEv = await respEv.json();
+
+        if (!resCf.success) throw new Error(resCf.error || 'Error al obtener telemetría de Cloudflare');
+
+        const cf = resCf.resumenCloudflare;
+        const agrupado = resEv.agrupadoPorFecha || {};
+        const perfilesComerciales = resEv.perfilesComerciales || {};
+        const todosLosEventos = resEv.eventos || [];
+        const fechasDisponibles = Object.keys(agrupado);
+
+        // Seleccionar por defecto la primera fecha (fecha actual)
+        let fechaSeleccionada = fechasDisponibles.length > 0 ? fechasDisponibles[0] : 'TODAS';
+
+        window.toggleSwalClientGroup = (groupId) => {
+            const bodyEl = document.getElementById(groupId + '-body');
+            const iconEl = document.getElementById(groupId + '-icon');
+            if (bodyEl) {
+                if (bodyEl.style.display === 'none') {
+                    bodyEl.style.display = 'block';
+                    if (iconEl) iconEl.style.transform = 'rotate(90deg)';
+                } else {
+                    bodyEl.style.display = 'none';
+                    if (iconEl) iconEl.style.transform = 'rotate(0deg)';
+                }
+            }
+        };
+
+        window.toggleSwalSubGroup = (subId) => {
+            const subBodyEl = document.getElementById(subId + '-body');
+            const subIconEl = document.getElementById(subId + '-icon');
+            if (subBodyEl) {
+                if (subBodyEl.style.display === 'none') {
+                    subBodyEl.style.display = 'block';
+                    if (subIconEl) subIconEl.style.transform = 'rotate(90deg)';
+                } else {
+                    subBodyEl.style.display = 'none';
+                    if (subIconEl) subIconEl.style.transform = 'rotate(0deg)';
+                }
+            }
+        };
+
+        const normalizarNombre = (str) => {
+            if (!str) return 'INGRESO PORTAL B2B';
+            const clean = String(str).replace(/,/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+            if (clean.includes('SERRANO') && clean.includes('MARTIN')) {
+                return 'SERRANO, MARTIN IGNACIO';
+            }
+            return clean;
+        };
+
+        // Pre-indexar historial global por cliente para enriquecer el diagnóstico aunque miremos solo el día de hoy
+        const historialGlobalPorCliente = {};
+        todosLosEventos.forEach(ev => {
+            const nk = normalizarNombre(ev.receptor || ev.cliente_nombre || 'Ingreso Portal B2B');
+            if (!historialGlobalPorCliente[nk]) {
+                historialGlobalPorCliente[nk] = [];
+            }
+            historialGlobalPorCliente[nk].push(ev);
+        });
+
+        const getBadgeEstiloCategoria = (cat) => {
+            switch (cat) {
+                case 'busqueda':
+                case 'articulo':
+                case 'familia':
+                case 'partida':
+                    return { bg: '#fef3c7', color: '#b45309', border: '#fde68a' };
+                case 'ofertas':
+                case 'favoritos':
+                    return { bg: '#ffedd5', color: '#c2410c', border: '#fed7aa' };
+                case 'carrito':
+                case 'pedidos':
+                    return { bg: '#dcfce7', color: '#15803d', border: '#bbf7d0' };
+                case 'catalogo':
+                    return { bg: '#e0e7ff', color: '#4338ca', border: '#c7d2fe' };
+                case 'saldos':
+                    return { bg: '#e0f2fe', color: '#0369a1', border: '#bae6fd' };
+                case 'apertura':
+                case 'sesion':
+                    return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
+                default:
+                    return { bg: '#f3e8ff', color: '#6b21a8', border: '#e9d5ff' };
+            }
+        };
+
+        const renderFilasTabla = (fechaClave) => {
+            let lista = [];
+            if (fechaClave === 'TODAS') {
+                lista = todosLosEventos;
+            } else {
+                lista = agrupado[fechaClave] || [];
+                if (lista.length === 0 && fechaClave.includes('/')) {
+                    const parts = fechaClave.split('/');
+                    const d = String(parts[0]).padStart(2, '0');
+                    const m = String(parts[1]).padStart(2, '0');
+                    const y = parts[2];
+                    const normKey = `${d}/${m}/${y}`;
+                    lista = agrupado[normKey] || [];
+                }
+            }
+
+            if (lista.length === 0) {
+                return `<div style="text-align:center; color:#94a3b8; padding:24px; font-weight:600;">Sin registros de conexiones ni lecturas QR para la fecha seleccionada</div>`;
+            }
+
+            // Agrupar determinísticamente por Cliente / Persona
+            const gruposCliente = {};
+            lista.forEach(c => {
+                const rawNombre = c.receptor || c.cliente_nombre || 'Ingreso Portal B2B';
+                const nombreKey = normalizarNombre(rawNombre);
+                
+                if (!gruposCliente[nombreKey]) {
+                    gruposCliente[nombreKey] = {
+                        nombre: nombreKey,
+                        eventosPortal: [],
+                        eventosActivos: [],
+                        eventosPasivos: [],
+                        eventosQr: []
+                    };
+                }
+                const esQr = (c.tipo_evento || c.tipo_acceso || '').toLowerCase().includes('qr') || (c.tipo_evento || '').toLowerCase().includes('recep');
+                if (esQr) {
+                    gruposCliente[nombreKey].eventosQr.push(c);
+                } else {
+                    gruposCliente[nombreKey].eventosPortal.push(c);
+                    if (c.es_interaccion_activa) {
+                        gruposCliente[nombreKey].eventosActivos.push(c);
+                    } else {
+                        gruposCliente[nombreKey].eventosPasivos.push(c);
+                    }
+                }
+            });
+
+            const nombresOrdenados = Object.keys(gruposCliente);
+
+            return nombresOrdenados.map((nombreKey, idx) => {
+                const grupo = gruposCliente[nombreKey];
+                const totalEventos = grupo.eventosPortal.length + grupo.eventosQr.length;
+                const isPortalOnly = nombreKey.includes('INGRESO PORTAL') || nombreKey.includes('PWA') || nombreKey.includes('ANÓNIMA');
+                const badgeBg = isPortalOnly ? '#f3e8ff' : '#dcfce7';
+                const badgeColor = isPortalOnly ? '#6b21a8' : '#15803d';
+                const icon = isPortalOnly ? '🌐' : '👤';
+                const groupId = `swal-group-client-${idx}`;
+
+                // Contadores de actividad en la vista actual y en el historial global del cliente
+                const histCliente = historialGlobalPorCliente[nombreKey] || grupo.eventosPortal;
+                const cantCatalogoVista = grupo.eventosPortal.filter(e => e.categoria_actividad === 'catalogo').length;
+                const cantArticulosVista = grupo.eventosPortal.filter(e => ['busqueda', 'articulo', 'familia', 'partida', 'ofertas', 'favoritos'].includes(e.categoria_actividad)).length;
+                const cantCarritoVista = grupo.eventosPortal.filter(e => ['carrito', 'pedidos'].includes(e.categoria_actividad)).length;
+                const cantSaldosVista = grupo.eventosPortal.filter(e => e.categoria_actividad === 'saldos').length;
+                const cantSesionVista = grupo.eventosPasivos.length;
+
+                const cantCatalogoGlobal = histCliente.filter(e => e.categoria_actividad === 'catalogo').length;
+                const cantSaldosGlobal = histCliente.filter(e => e.categoria_actividad === 'saldos').length;
+                const cantArticulosGlobal = histCliente.filter(e => ['busqueda', 'articulo', 'familia', 'partida', 'ofertas', 'favoritos'].includes(e.categoria_actividad)).length;
+                const cantCarritoGlobal = histCliente.filter(e => ['carrito', 'pedidos'].includes(e.categoria_actividad)).length;
+
+                // Extraer focos de interés específicos (búsquedas, familias, artículos, fotos de lote, carrito)
+                const focosSet = new Set();
+                histCliente.forEach(e => {
+                    if (e.foco_interes) focosSet.add(e.foco_interes);
+                });
+                const focosInteresArr = Array.from(focosSet).slice(0, 12);
+
+                const perfilCom = perfilesComerciales[nombreKey] || null;
+                const habitualesArr = perfilCom && Array.isArray(perfilCom.articulos_habituales) ? perfilCom.articulos_habituales : [];
+
+                // Construir diagnóstico ejecutivo del comportamiento del cliente
+                let textoDiagnostico = '';
+                if (cantArticulosVista > 0 || cantCarritoVista > 0) {
+                    textoDiagnostico = `🎯 <strong>Interés comercial activo hoy:</strong> Estuvo explorando artículos específicos, rubros o armando carrito (${cantArticulosVista + cantCarritoVista} interacciones).`;
+                } else if (cantCatalogoVista > 0 && cantSaldosVista > 0) {
+                    textoDiagnostico = `📊 <strong>Revisión comercial completa:</strong> Entró a mirar el <strong>Catálogo de Artículos y Precios (${cantCatalogoVista}x)</strong> y también revisó su <strong>Cuenta Corriente / Saldos (${cantSaldosVista}x)</strong>.`;
+                } else if (cantCatalogoVista > 0) {
+                    textoDiagnostico = `📦 <strong>Miró precios y stock:</strong> Ingresó al <strong>Catálogo de Artículos y Precios (${cantCatalogoVista} ${cantCatalogoVista === 1 ? 'vez' : 'veces'})</strong> en este período.`;
+                } else if (cantSaldosVista > 0) {
+                    textoDiagnostico = `💰 <strong>Revisión contable:</strong> Entró específicamente a consultar su <strong>Estado de Cuenta Corriente y Saldos (${cantSaldosVista} ${cantSaldosVista === 1 ? 'vez' : 'veces'})</strong>.`;
+                } else if (cantCatalogoGlobal > 0 || cantSaldosGlobal > 0 || cantArticulosGlobal > 0) {
+                    const partesGlob = [];
+                    if (cantCatalogoGlobal > 0) partesGlob.push(`<strong>${cantCatalogoGlobal} ingresos a Catálogo de Artículos</strong>`);
+                    if (cantArticulosGlobal > 0) partesGlob.push(`<strong>${cantArticulosGlobal} consultas de artículos/rubros</strong>`);
+                    if (cantSaldosGlobal > 0) partesGlob.push(`<strong>${cantSaldosGlobal} consultas de Cuenta Corriente</strong>`);
+                    textoDiagnostico = `🖥️ <strong>Pestaña abierta hoy + Navegación previa:</strong> En esta fecha mantuvo la sesión abierta en su navegador (${cantSesionVista} pings), y en su historial reciente registra ${partesGlob.join(', ')}.`;
+                } else {
+                    textoDiagnostico = `🚀 <strong>Solo apertura / Sesión abierta:</strong> Abrió el portal en la pantalla de inicio o dejó la pestaña abierta sin entrar aún a artículos ni saldos.`;
+                }
+
+                // Renderizador de tabla de eventos detallados
+                const renderSubTabla = (eventos, mostrarFecha = false) => {
+                    return eventos.map(c => {
+                        const dt = new Date(c.created_at);
+                        const horaStr = dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                        const fechaCorta = c.fecha_formateada ? c.fecha_formateada.slice(0, 5) : '';
+                        const estBadge = getBadgeEstiloCategoria(c.categoria_actividad);
+                        const etiqueta = c.etiqueta_corta || (c.es_interaccion_activa ? '🌐 Navegación' : '🖥️ Sesión');
+                        const detalle = c.novedad || c.tipo_evento || c.tipo_acceso || 'Conexión HTTPS';
+
+                        return `
+                            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.83em;">
+                                <td style="padding: 7px 10px; font-weight: 700; color: #334155; white-space: nowrap; width: ${mostrarFecha ? '115px' : '82px'};">
+                                    🕒 ${mostrarFecha && fechaCorta ? `<span style="color:#64748b;font-weight:600;">${fechaCorta}</span> ` : ''}${horaStr}
+                                </td>
+                                <td style="padding: 7px 8px; white-space: nowrap; width: 150px;">
+                                    <span style="background: ${estBadge.bg}; color: ${estBadge.color}; border: 1px solid ${estBadge.border}; padding: 2px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 700; display: inline-block;">
+                                        ${etiqueta}
+                                    </span>
+                                </td>
+                                <td style="padding: 7px 10px; color: #1e293b; font-weight: ${c.es_interaccion_activa ? '600' : '400'};">
+                                    ${detalle}
+                                </td>
+                                <td style="padding: 7px 8px; color: #64748b; font-size:0.78em; text-align: right; white-space: nowrap;">
+                                    ${c.dispositivo || c.telefono || 'Navegador'}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                };
+
+                // Si en la fecha elegida no hay eventos activos pero el cliente sí tiene eventos activos en días recientes, mostrarlos como referencia inmediata
+                const activosRecientesOtrasFechas = (grupo.eventosActivos.length === 0 && fechaClave !== 'TODAS')
+                    ? histCliente.filter(e => e.es_interaccion_activa).slice(0, 10)
+                    : [];
+
+                // Tarjeta de Radar Comercial y Resumen de Actividad del Cliente
+                const htmlRadarCliente = isPortalOnly ? '' : `
+                    <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-left: 4px solid #6366f1; border-radius: 8px; margin: 8px 12px; padding: 10px 12px;">
+                        <div style="font-size: 0.84em; color: #1e293b; line-height: 1.4;">
+                            ${textoDiagnostico}
+                        </div>
+
+                        ${focosInteresArr.length > 0 ? `
+                            <div style="margin-top: 8px; padding-top: 7px; border-top: 1px dashed #cbd5e1;">
+                                <div style="font-size: 0.75em; font-weight: 800; color: #b45309; text-transform: uppercase; margin-bottom: 4px;">
+                                    🔎 Artículos, Rubros y Búsquedas Exploradas en el Portal:
+                                </div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                    ${focosInteresArr.map(f => `
+                                        <span style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 2px 8px; border-radius: 6px; font-size: 0.76em; font-weight: 700;">
+                                            ${f}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        ${(perfilCom && (habitualesArr.length > 0 || perfilCom.ultimo_pedido_fecha)) ? `
+                            <div style="margin-top: 8px; padding-top: 7px; border-top: 1px dashed #cbd5e1;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 5px;">
+                                    <span style="font-size: 0.75em; font-weight: 800; color: #4338ca; text-transform: uppercase;">
+                                        🎯 Radar para Ofertas (Qué compra habitualmente este cliente):
+                                    </span>
+                                    ${perfilCom.ultimo_pedido_fecha ? `
+                                        <span style="font-size: 0.75em; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: ${perfilCom.ultimo_pedido_dias > 14 ? '#fee2e2' : '#dcfce7'}; color: ${perfilCom.ultimo_pedido_dias > 14 ? '#b91c1c' : '#15803d'};">
+                                            📅 Último pedido B2B: ${perfilCom.ultimo_pedido_fecha} (hace ${perfilCom.ultimo_pedido_dias} días)
+                                        </span>
+                                    ` : ''}
+                                </div>
+                                ${habitualesArr.length > 0 ? `
+                                    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px;">
+                                        ${habitualesArr.slice(0, 8).map(h => `
+                                            <span title="Última compra: ${h.ultima_compra || 'N/A'}" style="background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 2px 7px; border-radius: 6px; font-size: 0.75em; font-weight: 600;">
+                                                ⭐ <strong>${h.descripcion}</strong> <span style="color:#6366f1;">(${h.codigo})</span> · ${h.frecuencia}x
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                const htmlSubActivos = grupo.eventosActivos.length > 0 ? `
+                    <div style="border: 1px solid #c7d2fe; border-radius: 6px; margin: 8px 12px; overflow: hidden; background: #fff;">
+                        <div onclick="event.stopPropagation(); window.toggleSwalSubGroup('${groupId}-sub-activos')" style="display: flex; justify-content: space-between; align-items: center; padding: 7px 12px; background: #eef2ff; cursor: pointer; user-select: none;">
+                            <span style="font-weight: 800; color: #3730a3; font-size: 0.84em;">
+                                🎯 Navegación y Actividad Específica en el Portal (${grupo.eventosActivos.length})
+                            </span>
+                            <span id="${groupId}-sub-activos-icon" style="font-size: 0.78em; color: #3730a3; transition: transform 0.2s; transform: rotate(90deg);">▶</span>
+                        </div>
+                        <div id="${groupId}-sub-activos-body" style="display: block; background: #fff;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>
+                                    ${renderSubTabla(grupo.eventosActivos, fechaClave === 'TODAS')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : (activosRecientesOtrasFechas.length > 0 ? `
+                    <div style="border: 1px solid #fde68a; border-radius: 6px; margin: 8px 12px; overflow: hidden; background: #fffbeb;">
+                        <div onclick="event.stopPropagation(); window.toggleSwalSubGroup('${groupId}-sub-activos-hist')" style="display: flex; justify-content: space-between; align-items: center; padding: 7px 12px; background: #fef3c7; cursor: pointer; user-select: none;">
+                            <span style="font-weight: 800; color: #92400e; font-size: 0.83em;">
+                                🕓 Últimas Secciones y Artículos Visitados en Días Previos (${activosRecientesOtrasFechas.length})
+                            </span>
+                            <span id="${groupId}-sub-activos-hist-icon" style="font-size: 0.78em; color: #92400e; transition: transform 0.2s; transform: rotate(90deg);">▶</span>
+                        </div>
+                        <div id="${groupId}-sub-activos-hist-body" style="display: block; background: #fff;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>
+                                    ${renderSubTabla(activosRecientesOtrasFechas, true)}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : '');
+
+                const htmlSubPasivos = grupo.eventosPasivos.length === 0 ? '' : `
+                    <div style="border: 1px solid #e2e8f0; border-radius: 6px; margin: 8px 12px; overflow: hidden; background: #f8fafc;">
+                        <div onclick="event.stopPropagation(); window.toggleSwalSubGroup('${groupId}-sub-portal')" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: #f1f5f9; cursor: pointer; user-select: none;">
+                            <span style="font-weight: 700; color: #475569; font-size: 0.82em;">
+                                🖥️ Aperturas de App y Pestaña Abierta en Navegador (${grupo.eventosPasivos.length})
+                            </span>
+                            <span id="${groupId}-sub-portal-icon" style="font-size: 0.78em; color: #475569; transition: transform 0.2s;">▶</span>
+                        </div>
+                        <div id="${groupId}-sub-portal-body" style="display: none; background: #fff;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>
+                                    ${renderSubTabla(grupo.eventosPasivos, fechaClave === 'TODAS')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                const htmlSubQr = grupo.eventosQr.length === 0 ? '' : `
+                    <div style="border: 1px solid #bbf7d0; border-radius: 6px; margin: 8px 12px 12px 12px; overflow: hidden; background: #f0fdf4;">
+                        <div onclick="event.stopPropagation(); window.toggleSwalSubGroup('${groupId}-sub-qr')" style="display: flex; justify-content: space-between; align-items: center; padding: 7px 12px; background: #dcfce7; cursor: pointer; user-select: none;">
+                            <span style="font-weight: 700; color: #15803d; font-size: 0.85em;">
+                                📦 Recepciones de Pedidos por QR (${grupo.eventosQr.length})
+                            </span>
+                            <span id="${groupId}-sub-qr-icon" style="font-size: 0.78em; color: #15803d; transition: transform 0.2s;">▶</span>
+                        </div>
+                        <div id="${groupId}-sub-qr-body" style="display: none; background: #fff;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>
+                                    ${renderSubTabla(grupo.eventosQr, fechaClave === 'TODAS')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                // Badges de resumen rápido en la cabecera plegada del cliente
+                const pillsCabecera = [];
+                if (cantArticulosVista > 0) {
+                    pillsCabecera.push(`<span style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;padding:2px 7px;border-radius:999px;font-size:0.74em;font-weight:800;">🏷️ ${cantArticulosVista} Interés Art.</span>`);
+                }
+                if (cantCarritoVista > 0) {
+                    pillsCabecera.push(`<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:2px 7px;border-radius:999px;font-size:0.74em;font-weight:800;">🛒 ${cantCarritoVista} Carrito/Ped.</span>`);
+                }
+                if (cantCatalogoVista > 0) {
+                    pillsCabecera.push(`<span style="background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;padding:2px 7px;border-radius:999px;font-size:0.74em;font-weight:700;">📦 ${cantCatalogoVista} Catálogo</span>`);
+                } else if (cantCatalogoGlobal > 0 && fechaClave !== 'TODAS') {
+                    pillsCabecera.push(`<span title="Ingresos a Catálogo en días previos" style="background:#eef2ff;color:#4f46e5;border:1px dashed #a5b4fc;padding:2px 7px;border-radius:999px;font-size:0.73em;font-weight:600;">📦 ${cantCatalogoGlobal} Catálogo (hist.)</span>`);
+                }
+                if (cantSaldosVista > 0) {
+                    pillsCabecera.push(`<span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:2px 7px;border-radius:999px;font-size:0.74em;font-weight:700;">💰 ${cantSaldosVista} Saldos</span>`);
+                } else if (cantSaldosGlobal > 0 && fechaClave !== 'TODAS') {
+                    pillsCabecera.push(`<span title="Consultas de Saldos en días previos" style="background:#f0f9ff;color:#0284c7;border:1px dashed #7dd3fc;padding:2px 7px;border-radius:999px;font-size:0.73em;font-weight:600;">💰 ${cantSaldosGlobal} Saldos (hist.)</span>`);
+                }
+                if (cantSesionVista > 0) {
+                    pillsCabecera.push(`<span style="background:#f1f5f9;color:#64748b;padding:2px 7px;border-radius:999px;font-size:0.73em;font-weight:600;">🖥️ ${cantSesionVista} Sesión</span>`);
+                }
+                if (grupo.eventosQr.length > 0) {
+                    pillsCabecera.push(`<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:999px;font-size:0.73em;font-weight:700;">📦 ${grupo.eventosQr.length} QR</span>`);
+                }
+
+                return `
+                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                        <!-- Encabezado de Cliente (Plegado por Default) -->
+                        <div onclick="window.toggleSwalClientGroup('${groupId}')" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8fafc; cursor: pointer; user-select: none; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.1em;">${icon}</span>
+                                <div>
+                                    <span style="font-weight: 800; color: #1e293b; font-size: 0.95em;">${nombreKey}</span>
+                                    <span style="margin-left: 8px; background: ${badgeBg}; color: ${badgeColor}; font-size: 0.74em; font-weight: 700; padding: 2px 8px; border-radius: 12px;">
+                                        ${totalEventos} ${totalEventos === 1 ? 'evento' : 'eventos'}
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                ${pillsCabecera.join('')}
+                                <span id="${groupId}-icon" style="font-size: 0.85em; color: #64748b; transition: transform 0.2s; margin-left: 4px;">▶</span>
+                            </div>
+                        </div>
+
+                        <!-- Cuerpo Desplegable (Cerrado por Default) -->
+                        <div id="${groupId}-body" style="display: none; background: #fafafa; border-top: 1px solid #e2e8f0; padding-top: 4px; padding-bottom: 6px;">
+                            ${htmlRadarCliente}
+                            ${htmlSubActivos}
+                            ${htmlSubPasivos}
+                            ${htmlSubQr}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        const opcionesFechaHtml = `
+            ${fechasDisponibles.map(f => `<option value="${f}" ${f === fechaSeleccionada ? 'selected' : ''}>${f} (${(agrupado[f]||[]).length})</option>`).join('')}
+            <option value="TODAS">📅 Todas las fechas (${resEv.totalEventos || 0})</option>
+        `;
+
+        Swal.fire({
+            title: '📊 Telemetría & Actividad Comercial del Portal B2B',
+            width: '960px',
+            html: `
+                <div style="text-align: left; font-family: sans-serif; font-size: 0.95em;">
+                    <!-- Acceso rápido a Estadísticas de Página Pública (Agrupadas por IP) y Ofertas Dinámicas -->
+                    <div style="background: #f8f3f8; border: 1px solid #dfc9dd; border-left: 4px solid #82467E; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <div style="font-weight: 800; color: #82467E; font-size: 0.9em;">🌐 Inteligencia Comercial B2B & Página Pública (lamdaser.com)</div>
+                            <div style="font-size: 0.78em; color: #475569;">Hacé clic en cada cliente abajo para ver qué secciones visitó, qué artículos buscó/miró y su radar de compras habituales</div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" onclick="window.open('http://localhost:3000/pages/ofertas-dinamicas.html', '_blank')" style="background: #d97706; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; font-weight: 700; font-size: 0.8em; cursor: pointer;">
+                                🔥 Crear Oferta Dinámica
+                            </button>
+                            <button type="button" onclick="window.abrirEstadisticasSitioInstitucional()" style="background: #82467E; color: #fff; border: none; padding: 7px 12px; border-radius: 6px; font-weight: 700; font-size: 0.8em; cursor: pointer;">
+                                📊 Web Pública por IP
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Tarjetas de Métricas de Red Cloudflare (Worker proud-darkness-ac3d) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 10px;">
+                            <div style="color: #64748b; font-size: 0.76em; font-weight: 600;">ESTADO WORKER B2B</div>
+                            <div style="color: #16a34a; font-size: 0.95em; font-weight: 700; margin-top: 2px;">🟢 100% Operativo</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 10px;">
+                            <div style="color: #64748b; font-size: 0.76em; font-weight: 600;">SOLICITUDES ACTIVAS (30d)</div>
+                            <div style="color: #2563eb; font-size: 1.05em; font-weight: 700; margin-top: 2px;">⚡ ${cf.peticionesTotales ?? 0}</div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 10px;">
+                            <div style="color: #64748b; font-size: 0.76em; font-weight: 600;">TASA ACIERTO CACHÉ</div>
+                            <div style="color: #059669; font-size: 1.05em; font-weight: 700; margin-top: 2px;">🎯 ${cf.tasaCacheHits ?? '0.00%'}</div>
+                        </div>
+                    </div>
+
+                    <!-- Bloque Auditoría de Eventos de Aplicación y Lectura QR -->
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <h4 style="margin: 0; color: #1e293b; font-size: 0.95em;">
+                                📋 Actividad Detallada por Cliente en el Portal B2B (Catálogo, Artículos, Saldos y Carrito)
+                            </h4>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="font-size: 0.82em; font-weight: 600; color: #64748b;">📅 Solapa de Fecha:</label>
+                                <select id="swal-select-fecha-telemetria" style="padding: 4px 8px; font-size: 0.85em; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #6b21a8;">
+                                    ${opcionesFechaHtml}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="swal-tbody-telemetria" style="max-height: 410px; overflow-y: auto; padding-right: 4px;">
+                            ${renderFilasTabla(fechaSeleccionada)}
+                        </div>
+                    </div>
+
+                    <div style="text-align: right; color: #94a3b8; font-size: 0.78em; margin-top: 10px;">
+                        Sincronizado con Worker Cloudflare: ${new Date(resCf.timestamp || Date.now()).toLocaleTimeString()}
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '🔄 Actualizar Métricas',
+            confirmButtonColor: '#8b5cf6',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar',
+            didOpen: () => {
+                const selectEl = document.getElementById('swal-select-fecha-telemetria');
+                const containerEl = document.getElementById('swal-tbody-telemetria');
+                if (selectEl && containerEl) {
+                    selectEl.addEventListener('change', () => {
+                        containerEl.innerHTML = renderFilasTabla(selectEl.value);
+                    });
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.abrirTelemetriaCloudflareMenu();
+            }
+        });
+    } catch(err) {
+        Swal.fire('Error', err.message, 'error');
+    }
+};
+
+window.abrirAuditoriaEntregasQRMenu = async function() {
+    Swal.fire({
+        title: '📦 Auditoría de Entregas y Lectura QR',
+        html: `<div style="text-align:center; padding: 20px;"><p style="margin-top:10px;">Cargando registros de recepciones y escaneos en calle...</p></div>`,
+        showConfirmButton: false,
+        width: '840px'
+    });
+
+    try {
+        const resp = await fetch('http://localhost:3005/api/logistica/telemetria/entregas-qr');
+        const res = await resp.json();
+        if (!res.success) throw new Error(res.error || 'Error al obtener auditoría de entregas');
+
+        const agrupado = res.agrupadoPorFecha || {};
+        const fechasDisponibles = Object.keys(agrupado);
+
+        let fechaSeleccionada = fechasDisponibles.length > 0 ? fechasDisponibles[0] : 'TODAS';
+
+        const renderFilasTabla = (fechaClave) => {
+            let lista = [];
+            if (fechaClave === 'TODAS') {
+                lista = res.eventos || [];
+            } else {
+                lista = agrupado[fechaClave] || [];
+                if (lista.length === 0 && fechaClave.includes('/')) {
+                    // Fallback para matchear 11/08/2026 vs 11/8/2026
+                    const parts = fechaClave.split('/');
+                    const d = String(parts[0]).padStart(2, '0');
+                    const m = String(parts[1]).padStart(2, '0');
+                    const y = parts[2];
+                    const normKey = `${d}/${m}/${y}`;
+                    lista = agrupado[normKey] || [];
+                }
+            }
+
+            if (lista.length === 0) {
+                return `<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:16px;">Sin recepciones ni escaneos QR asentados para la fecha seleccionada</td></tr>`;
+            }
+            return lista.map(item => {
+                const esReclamo = (item.tipo_evento || '').includes('Reclamo') || (item.novedad || '').toLowerCase().includes('faltante');
+                return `
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px; font-weight: 700; color: #1e293b;">
+                            <div style="font-size:0.95em; color:#1e293b;">${item.hora_formateada || '12:00:00'}</div>
+                            <div style="font-size:0.75em; color:#64748b;">${item.fecha_formateada || ''}</div>
+                        </td>
+                        <td style="padding: 10px; color: #4b5563;">
+                            <div style="font-weight: 700; color: #1e293b;">${item.receptor || 'Receptor'}</div>
+                            <div style="font-size: 0.8em; color: #0284c7; font-weight:600;">${item.cliente_id || item.telefono}</div>
+                        </td>
+                        <td style="padding: 10px; text-align: center;">
+                            <span style="background:${esReclamo ? '#fff7ed' : '#f0fdf4'}; color:${esReclamo ? '#ea580c' : '#166534'}; padding: 4px 10px; border-radius: 6px; font-size:0.82em; font-weight:700; border: 1px solid ${esReclamo ? '#ffedd5' : '#bbf7d0'};">
+                                ${item.tipo_evento || 'Recepción QR'}
+                            </span>
+                        </td>
+                        <td style="padding: 10px; text-align: right; color: #475569; font-size:0.85em;">
+                            ${item.novedad || 'Entregado Conforme'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
+        const opcionesFechaHtml = `
+            <option value="TODAS">📅 Todas las fechas (${res.totalEventos || 0})</option>
+            ${fechasDisponibles.map(f => `<option value="${f}">${f} (${(agrupado[f]||[]).length})</option>`).join('')}
+        `;
+
+        Swal.fire({
+            title: '📦 Auditoría de Entregas y QR (Calle)',
+            width: '850px',
+            html: `
+                <div style="text-align: left; font-family: sans-serif; font-size: 0.95em;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div>
+                            <div style="font-weight: 700; color: #1e293b; font-size: 0.95em;">📋 Eventos de Recepción Asentados</div>
+                            <div style="font-size: 0.8em; color: #64748b;">Registro en tiempo real de remitos escaneados en calle y firmas</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="font-size: 0.82em; font-weight: 600; color: #64748b;">📅 Solapa de Fecha:</label>
+                            <select id="swal-select-fecha-qr" style="padding: 4px 8px; font-size: 0.85em; font-weight: 700; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #0284c7;">
+                                ${opcionesFechaHtml}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: #f1f5f9; color: #334155; text-align: left; border-bottom: 1px solid #e2e8f0;">
+                                    <th style="padding: 10px;">Hora</th>
+                                    <th style="padding: 10px;">Quien Recibió / Teléfono</th>
+                                    <th style="padding: 10px; text-align: center;">Estado Evento</th>
+                                    <th style="padding: 10px; text-align: right;">Detalle / Novedad</th>
+                                </tr>
+                            </thead>
+                            <tbody id="swal-tbody-qr">
+                                ${renderFilasTabla(fechaSeleccionada)}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="text-align: right; color: #94a3b8; font-size: 0.78em; margin-top: 10px;">
+                        Última actualización local: ${new Date(res.timestamp).toLocaleTimeString()}
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '🔄 Actualizar Registros',
+            confirmButtonColor: '#0284c7',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar',
+            didOpen: () => {
+                const selectEl = document.getElementById('swal-select-fecha-qr');
+                const tbodyEl = document.getElementById('swal-tbody-qr');
+                if (selectEl && tbodyEl) {
+                    selectEl.addEventListener('change', () => {
+                        tbodyEl.innerHTML = renderFilasTabla(selectEl.value);
+                    });
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.abrirAuditoriaEntregasQRMenu();
+            }
+        });
+    } catch(err) {
+        Swal.fire('Error', err.message, 'error');
+    }
+};
+
+
+window.copiarLinkSitioPublico = function(url) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(url);
+    }
+    const aviso = document.getElementById('aviso-copiado-sitio');
+    if (aviso) {
+        aviso.style.display = 'inline-block';
+        setTimeout(() => { aviso.style.display = 'none'; }, 2200);
+    }
+};
+
+window.toggleGrupoIpSitio = function(groupId) {
+    const bodyEl = document.getElementById(groupId + '-body');
+    const iconEl = document.getElementById(groupId + '-icon');
+    if (bodyEl) {
+        if (bodyEl.style.display === 'none') {
+            bodyEl.style.display = 'block';
+            if (iconEl) iconEl.style.transform = 'rotate(90deg)';
+        } else {
+            bodyEl.style.display = 'none';
+            if (iconEl) iconEl.style.transform = 'rotate(0deg)';
+        }
+    }
+};
+
+window.abrirEstadisticasSitioInstitucional = async function() {
+    Swal.fire({
+        title: '🌐 Estadísticas de la Página Institucional & Flujo de IAs',
+        html: '<div style="text-align:center; padding: 24px;"><p style="margin-top:10px; color:#52525b;">Consultando accesos en tiempo real, interacciones de visitantes, búsquedas en catálogo y tráfico de Cloudflare...</p></div>',
+        showConfirmButton: false,
+        width: '980px'
+    });
+
+    try {
+        const resp = await fetch('http://localhost:3005/api/logistica/telemetria/sitio-estadisticas');
+        const res = await resp.json();
+        if (!res.success) throw new Error(res.error || 'No se pudieron obtener las estadísticas');
+
+        const k = res.kpis || {};
+        const cf = res.cloudflareGlobal || {};
+        const topBusq = res.topBusquedas || [];
+        const eventos = res.eventos || [];
+
+        // Obtener lista de fechas únicas ordenadas (más reciente primero)
+        const conteoPorFecha = {};
+        eventos.forEach(ev => {
+            const f = ev.fecha_formateada || 'Sin fecha';
+            conteoPorFecha[f] = (conteoPorFecha[f] || 0) + 1;
+        });
+        const fechasDisponibles = Object.keys(conteoPorFecha);
+        const fechaInicial = fechasDisponibles.length > 0 ? fechasDisponibles[0] : 'TODAS';
+
+        const badgeEvento = (ev) => {
+            const t = ev.tipo_evento;
+            if (t === 'vista_pagina') return '<span style="background:#f3e8ff;color:#6b21a8;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">👁️ Vista de Página</span>';
+            if (t === 'clic_whatsapp' || t === 'envio_formulario_whatsapp') return '<span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">💬 Clic / Consulta WhatsApp</span>';
+            if (t === 'apertura_contacto') return '<span style="background:#fae8ff;color:#86198f;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">✉️ Abrió Panel Contacto</span>';
+            if (t === 'busqueda_catalogo') return '<span style="background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">🔍 Miró / Buscó Artículo</span>';
+            if (t === 'cambio_idioma_zh') return '<span style="background:#fef3c7;color:#b45309;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">🇨🇳 Cambió a Chino (中文)</span>';
+            if (t === 'cambio_idioma_es') return '<span style="background:#f1f5f9;color:#334155;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">🇦🇷 Cambió a Español</span>';
+            if (t === 'lectura_archivo_ia' || t === 'rastreo_bot_web' || ev.es_ia_bot) return '<span style="background:#ede9fe;color:#5b21b6;padding:3px 8px;border-radius:12px;font-weight:700;font-size:0.75rem;">🤖 Rastreo IA / Buscador</span>';
+            return '<span style="background:#f1f5f9;color:#475569;padding:3px 8px;border-radius:12px;font-weight:600;font-size:0.75rem;">' + t + '</span>';
+        };
+
+        const filtrarListaEventos = (fechaSel, filtroTipo) => {
+            return eventos.filter(ev => {
+                if (fechaSel && fechaSel !== 'TODAS' && ev.fecha_formateada !== fechaSel) return false;
+                if (!filtroTipo || filtroTipo === 'TODOS') return true;
+                if (filtroTipo === 'HUMANOS') return !ev.es_ia_bot;
+                if (filtroTipo === 'WHATSAPP') return ['clic_whatsapp', 'envio_formulario_whatsapp', 'apertura_contacto'].includes(ev.tipo_evento);
+                if (filtroTipo === 'BUSQUEDAS') return ev.tipo_evento === 'busqueda_catalogo';
+                if (filtroTipo === 'CHINO') return ev.idioma === 'zh' || ev.tipo_evento === 'cambio_idioma_zh';
+                if (filtroTipo === 'IA') return ev.es_ia_bot || ['lectura_archivo_ia', 'rastreo_bot_web'].includes(ev.tipo_evento);
+                return true;
+            });
+        };
+
+        const renderContenidoFlujo = (fechaSel, filtroTipo, modoVista) => {
+            const filtrados = filtrarListaEventos(fechaSel, filtroTipo);
+
+            if (filtrados.length === 0) {
+                return '<div style="padding:24px;text-align:center;color:#64748b;font-weight:600;">No hay interacciones registradas para la fecha y filtro seleccionados.</div>';
+            }
+
+            // MODO 1: AGRUPADO POR FECHA Y POR IP (Acordeón Desplegable)
+            if (modoVista !== 'PLANO') {
+                // Si se eligió "TODAS" las fechas, agrupamos por Fecha + IP; si se eligió una fecha, agrupamos por IP
+                const gruposPorIp = {};
+                filtrados.forEach(ev => {
+                    const ip = (ev.ip_origen || 'IP Desconocida').trim();
+                    const claveGrupo = fechaSel === 'TODAS' ? `${ev.fecha_formateada}__${ip}` : ip;
+                    if (!gruposPorIp[claveGrupo]) {
+                        gruposPorIp[claveGrupo] = {
+                            ip: ip,
+                            fecha: ev.fecha_formateada || '',
+                            esIaBot: Boolean(ev.es_ia_bot),
+                            nombreAgente: ev.nombre_agente || 'Visitante Humano',
+                            dispositivoModo: ev.dispositivo_modo || 'PC',
+                            sistemaOperativo: ev.sistema_operativo || '',
+                            dominioHost: ev.dominio_host || 'lamdaser.com',
+                            eventos: [],
+                            vistasCount: 0,
+                            whatsappCount: 0,
+                            usoChino: false,
+                            articulosMirados: new Set(),
+                            recursosIa: new Set()
+                        };
+                    }
+                    const g = gruposPorIp[claveGrupo];
+                    g.eventos.push(ev);
+                    if (!ev.es_ia_bot && g.esIaBot) {
+                        g.esIaBot = false;
+                        g.nombreAgente = 'Visitante Humano';
+                    }
+                    if (ev.nombre_agente && ev.nombre_agente !== 'Visitante Humano' && g.esIaBot) {
+                        g.nombreAgente = ev.nombre_agente;
+                    }
+                    if (ev.tipo_evento === 'vista_pagina') g.vistasCount++;
+                    if (['clic_whatsapp', 'envio_formulario_whatsapp', 'apertura_contacto'].includes(ev.tipo_evento)) g.whatsappCount++;
+                    if (ev.idioma === 'zh' || ev.tipo_evento === 'cambio_idioma_zh') g.usoChino = true;
+                    if (ev.tipo_evento === 'busqueda_catalogo' && (ev.termino_busqueda || ev.detalle)) {
+                        g.articulosMirados.add(ev.termino_busqueda || ev.detalle);
+                    }
+                    if ((ev.es_ia_bot || ev.tipo_evento === 'lectura_archivo_ia' || ev.tipo_evento === 'rastreo_bot_web') && ev.detalle) {
+                        g.recursosIa.add(ev.detalle.replace('Recurso leído: ', '').replace('Recurso leído (Nube 24/7): ', ''));
+                    }
+                });
+
+                const listaGrupos = Object.values(gruposPorIp);
+
+                return '<div style="padding:10px;display:flex;flex-direction:column;gap:8px;">' +
+                    listaGrupos.map((g, idx) => {
+                        const groupId = 'swal-ip-group-' + idx;
+                        const totalEv = g.eventos.length;
+                        const horaUltima = g.eventos[0]?.hora_formateada || '';
+                        const horaPrimera = g.eventos[g.eventos.length - 1]?.hora_formateada || '';
+                        const rangoHora = (horaPrimera && horaUltima && horaPrimera !== horaUltima)
+                            ? `${horaPrimera.replace(' hs','')} a ${horaUltima}`
+                            : horaUltima;
+
+                        const iconoDispositivo = g.esIaBot
+                            ? '🤖'
+                            : (String(g.dispositivoModo).toLowerCase().includes('celular') ? '📱' : '🖥️');
+
+                        const colorBorde = g.esIaBot ? '#ddd6fe' : (g.whatsappCount > 0 ? '#bbf7d0' : '#e2e8f0');
+                        const bgHeader = g.esIaBot ? '#faf5ff' : (g.whatsappCount > 0 ? '#f0fdf4' : '#f8fafc');
+
+                        // Chips de resumen de lo que hizo esta IP
+                        const chipsResumen = [];
+                        if (g.vistasCount > 0) {
+                            chipsResumen.push(`<span style="background:#f3e8ff;color:#6b21a8;padding:2px 8px;border-radius:10px;font-size:0.74rem;font-weight:700;">👁️ ${g.vistasCount} ${g.vistasCount === 1 ? 'ingreso' : 'ingresos'}</span>`);
+                        }
+                        if (g.articulosMirados.size > 0) {
+                            const listaArt = Array.from(g.articulosMirados).slice(0, 4).join(', ');
+                            chipsResumen.push(`<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:10px;font-size:0.74rem;font-weight:700;">🔍 Miró/Buscó: "${listaArt}"</span>`);
+                        }
+                        if (g.whatsappCount > 0) {
+                            chipsResumen.push(`<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:0.74rem;font-weight:700;">💬 ${g.whatsappCount} Contacto/WhatsApp</span>`);
+                        }
+                        if (g.usoChino) {
+                            chipsResumen.push(`<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:0.74rem;font-weight:700;">🇨🇳 Idioma Chino (中文)</span>`);
+                        }
+                        if (g.recursosIa.size > 0 && g.esIaBot) {
+                            const listaRec = Array.from(g.recursosIa).slice(0, 3).join(', ');
+                            chipsResumen.push(`<span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px;font-size:0.74rem;font-weight:600;">📄 ${listaRec}</span>`);
+                        }
+
+                        const filasInternas = g.eventos.map(ev => {
+                            const idiomaTag = ev.idioma === 'zh'
+                                ? '<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;font-weight:700;font-size:0.72rem;">中文</span>'
+                                : '<span style="background:#f1f5f9;color:#334155;padding:2px 6px;border-radius:4px;font-weight:600;font-size:0.72rem;">ES</span>';
+                            return `<tr style="border-bottom:1px solid #f1f5f9;font-size:0.8rem;">
+                                <td style="padding:7px 10px;white-space:nowrap;color:#334155;font-weight:700;width:110px;">🕒 ${ev.hora_formateada}</td>
+                                <td style="padding:7px 10px;width:185px;">${badgeEvento(ev)}</td>
+                                <td style="padding:7px 10px;color:#475569;width:130px;">${ev.dispositivo_modo || ''} · ${ev.sistema_operativo || ''}</td>
+                                <td style="padding:7px 10px;text-align:center;width:60px;">${idiomaTag}</td>
+                                <td style="padding:7px 10px;color:#1e293b;font-weight:500;">${ev.termino_busqueda ? ('🔍 Buscó: <strong>' + ev.termino_busqueda + '</strong>') : (ev.detalle || '—')}</td>
+                            </tr>`;
+                        }).join('');
+
+                        return `
+                            <div style="border:1px solid ${colorBorde};border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                                <div onclick="window.toggleGrupoIpSitio('${groupId}')" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:${bgHeader};cursor:pointer;user-select:none;gap:10px;flex-wrap:wrap;">
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                            <span style="font-size:1.05rem;">${iconoDispositivo}</span>
+                                            <span style="font-family:monospace;font-weight:800;font-size:0.92rem;color:#1e293b;background:#fff;border:1px solid #cbd5e1;padding:2px 8px;border-radius:6px;">📍 IP: ${g.ip}</span>
+                                            <span style="font-weight:700;color:#334155;font-size:0.86rem;">${g.nombreAgente}</span>
+                                            <span style="color:#64748b;font-size:0.78rem;">(${g.dispositivoModo}${g.sistemaOperativo ? ' · ' + g.sistemaOperativo : ''})</span>
+                                            <span style="background:#82467E;color:#fff;font-size:0.73rem;font-weight:700;padding:2px 8px;border-radius:12px;">
+                                                ${totalEv} ${totalEv === 1 ? 'evento' : 'eventos'}
+                                            </span>
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;">
+                                            ${chipsResumen.join('')}
+                                        </div>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <div style="text-align:right;">
+                                            <div style="font-size:0.78rem;font-weight:700;color:#334155;">📅 ${g.fecha}</div>
+                                            <div style="font-size:0.74rem;color:#64748b;">🕒 ${rangoHora}</div>
+                                        </div>
+                                        <span id="${groupId}-icon" style="font-size:0.85rem;color:#64748b;transition:transform 0.2s;display:inline-block;">▶</span>
+                                    </div>
+                                </div>
+                                <div id="${groupId}-body" style="display:none;background:#fff;border-top:1px solid #e2e8f0;">
+                                    <table style="width:100%;border-collapse:collapse;text-align:left;">
+                                        <thead style="background:#f8fafc;font-size:0.72rem;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0;">
+                                            <tr>
+                                                <th style="padding:6px 10px;">Hora</th>
+                                                <th style="padding:6px 10px;">Acción</th>
+                                                <th style="padding:6px 10px;">Dispositivo</th>
+                                                <th style="padding:6px 10px;text-align:center;">Idioma</th>
+                                                <th style="padding:6px 10px;">Detalle / Qué artículo miró o buscó</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${filasInternas}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') +
+                '</div>';
+            }
+
+            // MODO 2: TABLA CRONOLÓGICA PLANA
+            return `
+                <table style="width:100%;border-collapse:collapse;text-align:left;">
+                    <thead style="position:sticky;top:0;background:#f1f5f9;font-size:0.75rem;text-transform:uppercase;color:#475569;">
+                        <tr>
+                            <th style="padding:9px 10px;">Fecha / Hora</th>
+                            <th style="padding:9px 10px;">Acción / Flujo</th>
+                            <th style="padding:9px 10px;">Dispositivo</th>
+                            <th style="padding:9px 10px;text-align:center;">Idioma</th>
+                            <th style="padding:9px 10px;">Detalle / Búsqueda</th>
+                            <th style="padding:9px 10px;">Dominio / IP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filtrados.map(ev => {
+                            const iconoModo = ev.es_ia_bot ? '🤖 Bot/IA' : (String(ev.dispositivo_modo).toLowerCase().includes('celular') ? '📱 Celular' : '🖥️ PC');
+                            const idiomaTag = ev.idioma === 'zh'
+                                ? '<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;font-weight:700;font-size:0.75rem;">中文</span>'
+                                : '<span style="background:#f1f5f9;color:#334155;padding:2px 6px;border-radius:4px;font-weight:600;font-size:0.75rem;">ES</span>';
+                            return '<tr style="border-bottom:1px solid #e2e8f0;font-size:0.82rem;">' +
+                                '<td style="padding:8px 10px;white-space:nowrap;color:#334155;"><strong>' + ev.fecha_formateada + '</strong><br><span style="color:#64748b;font-size:0.76rem;">' + ev.hora_formateada + '</span></td>' +
+                                '<td style="padding:8px 10px;">' + badgeEvento(ev) + '</td>' +
+                                '<td style="padding:8px 10px;font-weight:600;color:#1e293b;">' + iconoModo + '<br><span style="color:#64748b;font-weight:400;font-size:0.75rem;">' + (ev.sistema_operativo || '') + '</span></td>' +
+                                '<td style="padding:8px 10px;text-align:center;">' + idiomaTag + '</td>' +
+                                '<td style="padding:8px 10px;color:#334155;">' + (ev.detalle || ev.termino_busqueda || '—') + '</td>' +
+                                '<td style="padding:8px 10px;color:#64748b;font-size:0.76rem;">' + (ev.dominio_host || '') + '<br><span>IP: ' + (ev.ip_origen || '') + '</span></td>' +
+                            '</tr>';
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        };
+
+        const chipsBusquedas = topBusq.length > 0
+            ? topBusq.map(b => '<span style="background:#f8fafc;border:1px solid #cbd5e1;padding:4px 10px;border-radius:14px;font-size:0.8rem;color:#1e293b;font-weight:600;">🔍 ' + b.termino + ' <strong style="color:#82467E;">(' + b.cantidad + ')</strong></span>').join(' ')
+            : '<span style="color:#64748b;font-size:0.82rem;">Todavía no se registraron búsquedas en el catálogo público.</span>';
+
+        const opcionesFechaHtml = fechasDisponibles.map(f => `<option value="${f}" ${f === fechaInicial ? 'selected' : ''}>📅 ${f} (${conteoPorFecha[f]})</option>`).join('') +
+            `<option value="TODAS" ${fechasDisponibles.length === 0 ? 'selected' : ''}>📅 Todas las fechas (${eventos.length})</option>`;
+
+        Swal.fire({
+            title: '🌐 Estadísticas de Página Pública LAMDA & Rastreo de IAs',
+            width: '1000px',
+            html: `
+                <div style="text-align:left;font-family:system-ui,-apple-system,sans-serif;color:#1e293b;">
+                    <!-- Barra de Dominios Públicos Activos -->
+                    <div style="background:#f8f3f8;border:1px solid #dfc9dd;border-left:4px solid #82467E;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                        <div>
+                            <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#82467E;">Direcciones Públicas Activas (PC + Celular + IA)</div>
+                            <div style="font-size:0.9rem;font-weight:700;color:#222221;margin-top:2px;">
+                                <a href="https://lamdaser.com" target="_blank" style="color:#82467E;text-decoration:underline;">https://lamdaser.com</a>
+                                &nbsp;·&nbsp;
+                                <a href="https://gentle-mode-5038.miserrano75.workers.dev" target="_blank" style="color:#334155;text-decoration:underline;">https://gentle-mode-5038.miserrano75.workers.dev</a>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span id="aviso-copiado-sitio" style="display:none;color:#15803d;font-size:0.78rem;font-weight:700;">✓ Copiado</span>
+                            <button type="button" onclick="window.copiarLinkSitioPublico('https://lamdaser.com')" style="background:#82467E;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;">📋 Copiar Link (lamdaser.com)</button>
+                        </div>
+                    </div>
+
+                    <!-- Grilla de 4 KPIs Principales -->
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                            <div style="font-size:0.74rem;font-weight:700;color:#64748b;text-transform:uppercase;">Visitas a la Página</div>
+                            <div style="font-size:1.55rem;font-weight:800;color:#82467E;margin-top:2px;">${k.total_visitas_humanas || 0}</div>
+                            <div style="font-size:0.75rem;color:#64748b;">Hoy: <strong>${k.visitas_hoy || 0}</strong> · 7 días: <strong>${k.visitas_7d || 0}</strong></div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                            <div style="font-size:0.74rem;font-weight:700;color:#64748b;text-transform:uppercase;">Formato Dispositivo</div>
+                            <div style="font-size:1.15rem;font-weight:800;color:#1e293b;margin-top:6px;">🖥️ PC: ${k.vistas_pc || 0} &nbsp;|&nbsp; 📱 Cel: ${k.vistas_celular || 0}</div>
+                            <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Detección automática activa</div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                            <div style="font-size:0.74rem;font-weight:700;color:#64748b;text-transform:uppercase;">Interés Comercial</div>
+                            <div style="font-size:1.45rem;font-weight:800;color:#15803d;margin-top:2px;">💬 ${k.clics_whatsapp || 0} <span style="font-size:0.82rem;font-weight:600;color:#475569;">WhatsApp</span></div>
+                            <div style="font-size:0.75rem;color:#64748b;">Panel Contacto abierto: <strong>${k.aperturas_contacto || 0}</strong></div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                            <div style="font-size:0.74rem;font-weight:700;color:#64748b;text-transform:uppercase;">Idioma Chino & IAs</div>
+                            <div style="font-size:1.15rem;font-weight:800;color:#b45309;margin-top:6px;">🇨🇳 中文: ${k.interacciones_chino || 0} &nbsp;|&nbsp; 🤖 IA: ${k.lecturas_ia_bots || 0}</div>
+                            <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Cloudflare 30d: <strong>${cf.peticiones30d || 0}</strong> reqs</div>
+                        </div>
+                    </div>
+
+                    <!-- Qué están buscando en el Catálogo -->
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+                        <div style="font-size:0.76rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;">
+                            🔍 Artículos, Términos y Rubros Mirados/Buscados en el Catálogo Público (${k.total_busquedas_catalogo || 0} consultas)
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                            ${chipsBusquedas}
+                        </div>
+                    </div>
+
+                    <!-- Controles de Fecha, Agrupación por IP y Filtro -->
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0;">
+                        <div style="font-size:0.88rem;font-weight:800;color:#1e293b;">📋 Flujo de Accesos (Agrupado por Fecha e IP)</div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <select id="swal-fecha-sitio-eventos" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;font-weight:700;color:#6b21a8;background:#fff;">
+                                ${opcionesFechaHtml}
+                            </select>
+                            <select id="swal-modo-sitio-eventos" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;font-weight:700;color:#1e293b;background:#fff;">
+                                <option value="AGRUPADO_IP" selected>📍 Agrupado por IP (Desplegable)</option>
+                                <option value="PLANO">📋 Cronológico suelto (Uno por uno)</option>
+                            </select>
+                            <select id="swal-filtro-sitio-eventos" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;font-weight:600;color:#1e293b;background:#fff;">
+                                <option value="TODOS">Todos (${eventos.length})</option>
+                                <option value="HUMANOS">👤 Solo Visitantes Humanos</option>
+                                <option value="WHATSAPP">💬 Solo Clics a WhatsApp y Contacto</option>
+                                <option value="BUSQUEDAS">🔍 Solo Artículos Mirados/Buscados</option>
+                                <option value="CHINO">🇨🇳 Solo Interacciones en Chino (中文)</option>
+                                <option value="IA">🤖 Solo Bots e Inteligencias Artificiales</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="swal-contenedor-flujo-sitio" style="max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">
+                        ${renderContenidoFlujo(fechaInicial, 'TODOS', 'AGRUPADO_IP')}
+                    </div>
+                </div>
+            `,
+            confirmButtonText: '🔄 Actualizar Estadísticas',
+            confirmButtonColor: '#82467E',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar',
+            didOpen: () => {
+                const selFecha = document.getElementById('swal-fecha-sitio-eventos');
+                const selModo = document.getElementById('swal-modo-sitio-eventos');
+                const selFiltro = document.getElementById('swal-filtro-sitio-eventos');
+                const cont = document.getElementById('swal-contenedor-flujo-sitio');
+                const actualizarVista = () => {
+                    if (!cont) return;
+                    cont.innerHTML = renderContenidoFlujo(
+                        selFecha ? selFecha.value : 'TODAS',
+                        selFiltro ? selFiltro.value : 'TODOS',
+                        selModo ? selModo.value : 'AGRUPADO_IP'
+                    );
+                };
+                if (selFecha) selFecha.addEventListener('change', actualizarVista);
+                if (selModo) selModo.addEventListener('change', actualizarVista);
+                if (selFiltro) selFiltro.addEventListener('change', actualizarVista);
+            }
+        }).then((r) => {
+            if (r.isConfirmed) {
+                window.abrirEstadisticasSitioInstitucional();
+            }
+        });
+    } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+    }
+};
 </script>
 </body>
 </html>

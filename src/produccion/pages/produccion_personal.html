@@ -104,6 +104,200 @@
             background: #0056b3;
         }
 
+        .topbar-btn-medicion {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: #fffbeb;
+            border: 1.5px solid #ca8a04;
+            color: #854d0e;
+            font-size: 13.5px;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .topbar-btn-medicion:hover {
+            background: #fef08a;
+            border-color: #a16207;
+            color: #713f12;
+        }
+
+        
+        .topbar-btn-medicion.completada {
+            background: #ecfdf5;
+            border-color: #10b981;
+            color: #065f46;
+            font-weight: 700;
+        }
+
+        .topbar-btn-medicion.completada:hover {
+            background: #d1fae5;
+            border-color: #059669;
+        }
+
+        .topbar-btn-medicion.activo {
+            background: #f59e0b;
+            border-color: #d97706;
+            color: #0f172a;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+            font-weight: 700;
+        }
+
+        /* Widget Central: Estimación de Tiempos */
+        .topbar-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tiempo-pill-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px;
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .tiempo-pill-container:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .tiempo-pill-icon {
+            font-size: 19px;
+            line-height: 1;
+        }
+
+        .tiempo-pill-text {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+            line-height: 1.15;
+        }
+
+        .tiempo-pill-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .tiempo-pill-val {
+            font-size: 14.5px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        .badge-origen-tiempo {
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 20px;
+            letter-spacing: 0.2px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-origen-tiempo.origen-planta {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+
+        .badge-origen-tiempo.origen-mixto, .badge-origen-tiempo.origen-planta_parcial {
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #60a5fa;
+        }
+
+        .badge-origen-tiempo.origen-arbitraria {
+            background: #fffbeb;
+            color: #92400e;
+            border: 1px solid #f59e0b;
+        }
+
+        .badge-origen-tiempo.origen-sin-datos {
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+        }
+
+        /* Rengloncito de Tiempo por Artículo */
+        .articulo-renglon-tiempo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 12px;
+            margin-top: 6px;
+            border-radius: 5px;
+            font-size: 12px;
+            line-height: 1.3;
+            transition: all 0.2s ease;
+        }
+
+        .articulo-renglon-tiempo.origen-planta {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }
+
+        .articulo-renglon-tiempo.origen-arbitraria {
+            background: #fffbeb;
+            border: 1px solid #fef08a;
+            color: #854d0e;
+        }
+
+        .articulo-renglon-tiempo.origen-sin-datos {
+            background: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            color: #64748b;
+        }
+
+        .articulo-tiempo-badge {
+            font-weight: 700;
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .articulo-tiempo-badge.planta {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #86efac;
+        }
+
+        .articulo-tiempo-badge.arbitraria {
+            background: #fef9c3;
+            color: #a16207;
+            border: 1px solid #fde047;
+        }
+
+        .articulo-tiempo-badge.sin-datos {
+            background: #e2e8f0;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+        }
+
+
+
         /* Ajuste del contenedor principal */
         .container {
             padding: 0;
@@ -217,6 +411,130 @@
             background-color: #007bff;
             color: white;
         }
+    
+/* Tarjeta de Resumen de Métricas de Tiempo de Producción */
+.card-resumen-metricas-finalizado {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid #10b981;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-titulo {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-resumen-metricas-finalizado .metricas-badge-guardado {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.card-resumen-metricas-finalizado .stat-box-metrica {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+}
+
+.card-resumen-metricas-finalizado .stat-box-metrica.total {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.card-resumen-metricas-finalizado .stat-label-metrica {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: block;
+    margin-bottom: 3px;
+}
+
+.card-resumen-metricas-finalizado .stat-value-metrica {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.card-resumen-metricas-finalizado .stat-value-metrica.text-success {
+    color: #15803d;
+}
+
+.card-resumen-metricas-finalizado .stat-sub-metrica {
+    font-size: 10px;
+    color: #94a3b8;
+    display: block;
+    margin-top: 2px;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-top: 10px;
+    margin-bottom: 12px;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas th {
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    text-align: left;
+    padding: 7px 10px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-footer {
+    font-size: 11.5px;
+    color: #475569;
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px dashed #cbd5e1;
+}
+
     </style>
 </head>
 
@@ -228,7 +546,20 @@
                 <h1 class="topbar-titulo">🏭 Producción</h1>
                 <a href="#" class="topbar-volver" onclick="window.close(); return false;">← Volver</a>
             </div>
+            <!-- Widget Central: Estimación Predictiva de Tiempo del Carro -->
+            <div class="topbar-center" id="topbar-estimacion-tiempo" style="display: none;">
+                <div class="tiempo-pill-container" id="tiempo-pill-container" onclick="if(window.mostrarDetalleEstimacionCarro) window.mostrarDetalleEstimacionCarro();" title="Click para ver desglose predictivo de tiempos">
+                    <span class="tiempo-pill-icon">⏳</span>
+                    <div class="tiempo-pill-text">
+                        <span class="tiempo-pill-label">Demora Estimada</span>
+                        <strong id="topbar-tiempo-val" class="tiempo-pill-val">~ 0 min</strong>
+                    </div>
+                    <span id="topbar-tiempo-badge" class="badge-origen-tiempo origen-planta">🟢 Planta</span>
+                </div>
+            </div>
+
             <div class="topbar-right">
+                <button type="button" id="btn-topbar-modo-medicion" class="topbar-btn-medicion" onclick="if(window.hudMedicion) window.hudMedicion.toggleActivar()" title="Activar/desactivar medición de tiempos">⏱️ Activar Modo Medición</button>
                 <div class="topbar-usuario">
                     <span class="topbar-usuario-icono">👤</span>
                     <p class="topbar-usuario-nombre" id="nombre-colaborador">Cargando...</p>
@@ -243,7 +574,10 @@
 
                     <!-- Sección de artículos del carro activo -->
                     <div id="lista-articulos" class="seccion-articulos">
-                        <p>No hay carro activo</p>
+                        <div class="aviso-sin-carro">
+                            <p>No hay carro de producción seleccionado</p>
+                            <small>Seleccione un carro del historial inferior para visualizarlo o cree uno nuevo.</small>
+                        </div>
                     </div>
 
                     <!-- Sección de carros disponibles -->
@@ -289,6 +623,31 @@
 
                                 </div>
 
+                                <div id="calculo-merma" style="display: none; margin-top: 10px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                    <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px;">📊 Análisis de Reducción por Cocción</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+                                        <div>
+                                            <strong>Total Mezcla en Crudo:</strong>
+                                            <span id="total-crudo" style="font-weight: bold; color: #495057;">0.00 kg</span>
+                                        </div>
+                                        <div>
+                                            <strong>Kilos Producidos:</strong>
+                                            <span id="kilos-final" style="font-weight: bold; color: #495057;">0.00 kg</span>
+                                        </div>
+                                        <div>
+                                            <strong>Diferencia de Peso:</strong>
+                                            <span id="diferencia-peso" style="font-weight: bold;">0.00 kg</span>
+                                        </div>
+                                        <div>
+                                            <strong>% de Reducción:</strong>
+                                            <span id="porcentaje-reduccion" style="font-weight: bold;">0.00%</span>
+                                        </div>
+                                    </div>
+                                    <p style="margin: 8px 0 0 0; font-size: 11px; color: #856404; font-style: italic;">
+                                        💡 La reducción es normal debido a la evaporación de líquidos durante la cocción.
+                                    </p>
+                                </div>
+
                                 <small class="help-text"
                                     style="display: block; margin-top: 5px; color: #6c757d;">Ingrese la cantidad real
                                     producida. El sistema convertirá automáticamente.</small>
@@ -306,22 +665,25 @@
                                 onclick="revertirCarroPreparado()" title="Revertir a Edición">
                                 <i class="fas fa-undo" style="font-size: 1.1em;"></i>
                             </button>
+                            
+                            <button id="guardado-ingredientes" class="btn btn-success" style="display: none;"
+                                onclick="abrirModalGuardadoIngredientes(sessionStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦
+                                Guardado de ingredientes</button>
 
-                            <button id="imprimir-etiquetas" class="btn btn-secondary" style="display: none;"
-                                onclick="imprimirEtiquetasCarro()">Imprimir
-                                etiquetas</button>
-
-                            <button id="imprimir-etiquetas-lote" class="btn btn-info" style="display: none; background-color: #6f42c1; border-color: #6f42c1; color: white;"
-                                onclick="imprimirEtiquetasCarroConLote()">Imprimir con lote</button>
+                            <button id="imprimir-etiquetas-lote" class="btn btn-info" style="display: none; background-color: #6f42c1; border-color: #6f42c1; color: white; font-weight: bold; padding: 10px 18px; box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3); border-radius: 6px;"
+                                onclick="imprimirEtiquetasCarroConLote()">
+                                <i class="fas fa-print" style="margin-right: 6px;"></i> Imprimir con lote
+                            </button>
 
                             <div id="check-fechas-lote-container" style="display: none; align-items: center; gap: 6px; margin: 0 10px; vertical-align: middle;">
                                 <input type="checkbox" id="check-fechas-lote" style="width: 16px; height: 16px; cursor: pointer;">
                                 <label for="check-fechas-lote" style="margin: 0; font-size: 0.9em; cursor: pointer; color: #495057; font-weight: 500; user-select: none;">Con Vencimiento</label>
                             </div>
 
-                            <button id="guardado-ingredientes" class="btn btn-success" style="display: none;"
-                                onclick="abrirModalGuardadoIngredientes(sessionStorage.getItem('carroActivo'), JSON.parse(localStorage.getItem('colaboradorActivo')).id)">📦
-                                Guardado de ingredientes</button>
+                            <button id="imprimir-etiquetas" class="btn" style="display: none; font-size: 11px; padding: 4px 8px; background-color: #f8f9fa; color: #888; border: 1px solid #ddd; margin-left: 25px; opacity: 0.8;"
+                                onclick="imprimirEtiquetasCarro()" title="Imprimir etiquetas simples (sin lote)">
+                                Imprimir etiquetas
+                            </button>
                         </div>
                         <div id="carro-actual" class="carro-info">
                             <p>No hay carro activo</p>
@@ -342,16 +704,16 @@
                         <div class="seccion-body" id="tabla-resumen-ingredientes"></div>
                     </div>
 
-                    <!-- Nueva sección de resumen de mixes -->
-                    <div id="resumen-mixes" class="seccion-resumen">
-                        <h3>Total de Ingredientes Compuestos Necesarios</h3>
-                        <div id="tabla-resumen-mixes"></div>
+                    <!-- Sección de resumen de artículos/mezclas de Receta UP (solo para carros externos) -->
+                    <div id="resumen-articulos" class="seccion-resumen" style="display: none;">
+                        <h3>📦 Mezclas e Insumos de Depósito (Receta UP)</h3>
+                        <div id="tabla-resumen-articulos"></div>
                     </div>
 
-                    <!-- Nueva sección de resumen de artículos (solo para carros externos) -->
-                    <div id="resumen-articulos" class="seccion-resumen" style="display: none;">
-                        <h3>Artículos de Producción Externa Necesarios</h3>
-                        <div id="tabla-resumen-articulos"></div>
+                    <!-- Nueva sección de resumen de mixes -->
+                    <div id="resumen-mixes" class="seccion-resumen" style="display: none;">
+                        <h3>Total de Ingredientes Compuestos Necesarios</h3>
+                        <div id="tabla-resumen-mixes"></div>
                     </div>
 
                     <!-- Nueva sección de ingresos manuales (Acordeón - Plegado por defecto) -->
@@ -371,32 +733,122 @@
         </footer>
     </div>
 
-    <!-- Modal Tipos de Carro (Unificación UX) -->
+    <!-- Modal Tipos de Carro y Línea Productiva (Unificación UX) -->
     <div id="modal-tipo-carro" class="modal" style="display: none; align-items: center; justify-content: center; z-index: 2000; background-color: rgba(0,0,0,0.5); opacity: 1; visibility: visible;">
-        <div class="modal-content minimalist" style="max-width: 400px; padding: 30px; text-align: center; border-radius: 12px; box-shadow: 0px 10px 40px rgba(0,0,0,0.2);">
-            <h2 style="font-size: 20px; margin: 0 0 25px 0; color: #1e293b; font-weight: 600; letter-spacing: -0.5px;">¿Qué tipo de carro desea crear?</h2>
+        <div class="modal-content minimalist" style="max-width: 520px; padding: 26px; text-align: center; border-radius: 12px; box-shadow: 0px 10px 40px rgba(0,0,0,0.2);">
             
-            <div style="display: flex; flex-direction: column; gap: 15px;">
-                <!-- Botón: Producción Interna -->
-                <button id="btn-opcion-interna" onclick="window.ejecutarCreacionCarro('interna')" style="padding: 16px; background: #f8f9fa; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; outline: none;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa';" onfocus="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.2)';" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa'; this.style.boxShadow='none';">
-                    <span style="font-size: 28px;">🏭</span>
-                    <div>
-                        <div style="font-weight: 600; font-size: 16px; color: #1e293b;">Producción Interna</div>
-                        <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Flujo estándar de trabajo y mezclas.</div>
-                    </div>
-                </button>
+            <!-- PASO 1: Selección de Tipo de Carro -->
+            <div id="modal-paso-tipo" style="display: block;">
+                <h2 style="font-size: 20px; margin: 0 0 8px 0; color: #1e293b; font-weight: 600; letter-spacing: -0.5px;">¿Qué tipo de carro desea crear?</h2>
+                <p style="font-size: 13.5px; color: #64748b; margin: 0 0 22px 0;">Seleccione el modo operativo para iniciar la jornada</p>
                 
-                <!-- Botón: Producción Externa (Oculto por defecto, revelado por carro.js) -->
-                <button id="btn-opcion-externa" onclick="window.ejecutarCreacionCarro('externa')" style="padding: 16px; background: #f1f5f9; border: 2px solid #94a3b8; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; display: none;" onmouseover="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#eff6ff';" onmouseout="this.style.borderColor='#94a3b8'; this.style.backgroundColor='#f1f5f9';">
-                    <span style="font-size: 28px;">🚚</span>
-                    <div>
-                        <div style="font-weight: 600; font-size: 16px; color: #1d4ed8;">Producción Externa</div>
-                        <div style="font-size: 13px; color: #3b82f6; margin-top: 4px;">Gestión de ingredientes y despacho.</div>
-                    </div>
-                </button>
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <!-- Botón: Producción Interna (Avanza a Paso 2 de Líneas Internas: Línea 3 vs Línea 2) -->
+                    <button id="btn-opcion-interna" type="button" onclick="window.mostrarPasoLineaNegocio('interna')" style="padding: 16px; background: #f8f9fa; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; outline: none;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5';" onmouseout="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa';" onfocus="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5'; this.style.boxShadow='0 0 0 3px rgba(16, 185, 129, 0.2)';" onblur="this.style.borderColor='#e2e8f0'; this.style.backgroundColor='#f8f9fa'; this.style.boxShadow='none';">
+                        <span style="font-size: 28px;">🏭</span>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 16px; color: #1e293b;">Producción Interna</div>
+                            <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Línea 3 (Artículos Puente / Mixes x Kilo) o Línea 2 (Fracciones comerciales).</div>
+                        </div>
+                        <span style="color: #10b981; font-size: 18px; font-weight: bold;">➔</span>
+                    </button>
+                    
+                    <!-- Botón: Producción Externa (Avanza a Paso 2 de Líneas Productivas Externas) -->
+                    <button id="btn-opcion-externa" type="button" onclick="window.mostrarPasoLineaNegocio('externa')" style="padding: 16px; background: #f1f5f9; border: 2px solid #94a3b8; border-radius: 10px; cursor: pointer; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 16px; display: none;" onmouseover="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#eff6ff';" onmouseout="this.style.borderColor='#94a3b8'; this.style.backgroundColor='#f1f5f9';">
+                        <span style="font-size: 28px;">🚚</span>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 16px; color: #1d4ed8;">Producción Externa</div>
+                            <div style="font-size: 13px; color: #3b82f6; margin-top: 4px;">Tostadero, Barritas o Granolas en UP Externa.</div>
+                        </div>
+                        <span style="color: #3b82f6; font-size: 18px; font-weight: bold;">➔</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- PASO 2 INTERNA: Selección de Etapa / Línea de Negocio (Línea 3 vs Línea 2) -->
+            <div id="modal-paso-linea-interna" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <button type="button" onclick="window.mostrarPasoLineaNegocio(false)" style="background: none; border: none; color: #059669; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;" onmouseover="this.style.backgroundColor='#ecfdf5';" onmouseout="this.style.backgroundColor='transparent';">
+                        ← Volver
+                    </button>
+                    <span style="background: #ecfdf5; color: #065f46; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; border: 1px solid #a7f3d0; text-transform: uppercase;">🏭 Producción Interna</span>
+                </div>
+                <h2 style="font-size: 19px; margin: 6px 0 4px 0; color: #1e293b; font-weight: 700; letter-spacing: -0.5px;">¿Qué etapa de producción va a realizar?</h2>
+                <p style="font-size: 13px; color: #64748b; margin: 0 0 16px 0;">Seleccione la línea para filtrar el buscador y guiar el proceso sin errores:</p>
+
+                <div style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+                    <!-- Opción 1: Línea 3 - Artículos Puente / Mixes a Granel -->
+                    <button id="btn-linea-interna-3" type="button" onclick="window.ejecutarCreacionCarro('interna', 3)" style="padding: 14px 16px; background: #f5f3ff; border: 2px solid #c4b5fd; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: flex-start; gap: 14px;" onmouseover="this.style.borderColor='#7c3aed'; this.style.backgroundColor='#ede9fe';" onmouseout="this.style.borderColor='#c4b5fd'; this.style.backgroundColor='#f5f3ff';">
+                        <span style="font-size: 28px; margin-top: 2px;">🥣</span>
+                        <div>
+                            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                <span style="font-weight: 800; font-size: 15px; color: #4c1d95;">Producir Artículos Puente (Mixes x Kilo)</span>
+                                <span style="font-size: 11.5px; font-weight: 700; color: #5b21b6; background: #ddd6fe; padding: 2px 8px; border-radius: 6px;">Línea 3 · 1° Etapa</span>
+                            </div>
+                            <div style="font-size: 12.5px; color: #5b21b6; margin-top: 5px; line-height: 1.4;">
+                                <strong>Elaboración previa de mezcla a granel:</strong> combina ingredientes de los sectores (A, B, etc.) y se guarda como <strong>Artículo Puente por kilo</strong> (ej: <em>Mix Color Tropical x 1kg</em>).
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Opción 2: Línea 2 - Fracciones Comerciales -->
+                    <button id="btn-linea-interna-2" type="button" onclick="window.ejecutarCreacionCarro('interna', 2)" style="padding: 14px 16px; background: #ecfdf5; border: 2px solid #6ee7b7; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: flex-start; gap: 14px;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#d1fae5';" onmouseout="this.style.borderColor='#6ee7b7'; this.style.backgroundColor='#ecfdf5';">
+                        <span style="font-size: 28px; margin-top: 2px;">📦</span>
+                        <div>
+                            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                <span style="font-weight: 800; font-size: 15px; color: #065f46;">Hacer Fracciones (Envasado Comercial)</span>
+                                <span style="font-size: 11.5px; font-weight: 700; color: #047857; background: #a7f3d0; padding: 2px 8px; border-radius: 6px;">Línea 2 · 2° Etapa</span>
+                            </div>
+                            <div style="font-size: 12.5px; color: #065f46; margin-top: 5px; line-height: 1.4;">
+                                <strong>Envasado final (ej: x 2kg, x 5kg, x 300g):</strong> se nutre del <strong>ingrediente simple</strong> (que recibe al Artículo Puente o bulto cerrado) más la bolsa correspondiente.
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- PASO 2 EXTERNA: Selección de Línea Productiva (Producción Externa) -->
+            <div id="modal-paso-linea" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <button type="button" onclick="window.mostrarPasoLineaNegocio(false)" style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;" onmouseover="this.style.backgroundColor='#eff6ff';" onmouseout="this.style.backgroundColor='transparent';">
+                        ← Volver
+                    </button>
+                    <span style="background: #eff6ff; color: #1e40af; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; border: 1px solid #bfdbfe; text-transform: uppercase;">🚚 Producción Externa</span>
+                </div>
+                <h2 style="font-size: 19px; margin: 6px 0 4px 0; color: #1e293b; font-weight: 700; letter-spacing: -0.5px;">Seleccione la Línea Productiva</h2>
+                <p style="font-size: 13px; color: #64748b; margin: 0 0 16px 0;">El carro se configurará y filtrará según el proceso seleccionado:</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 11px; text-align: left;">
+                    <!-- Opción 1: Línea 4 - Tostadero -->
+                    <button type="button" onclick="window.ejecutarCreacionCarro('externa', 4)" style="padding: 13px 15px; background: #fffbeb; border: 2px solid #fcd34d; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 14px;" onmouseover="this.style.borderColor='#f59e0b'; this.style.backgroundColor='#fef3c7';" onmouseout="this.style.borderColor='#fcd34d'; this.style.backgroundColor='#fffbeb';">
+                        <span style="font-size: 26px;">🥜</span>
+                        <div>
+                            <div style="font-weight: 700; font-size: 14.5px; color: #92400e;">Producción de Tostadero <span style="font-size: 12px; font-weight: 600; color: #b45309; background: #fde68a; padding: 2px 6px; border-radius: 6px; margin-left: 6px;">Línea 4</span></div>
+                            <div style="font-size: 12.5px; color: #78350f; margin-top: 3px;">Almendras, castañas y frutos tostados/salados en UP simple.</div>
+                        </div>
+                    </button>
+
+                    <!-- Opción 2: Línea 5 - Barritas -->
+                    <button type="button" onclick="window.ejecutarCreacionCarro('externa', 5)" style="padding: 13px 15px; background: #fdf2f8; border: 2px solid #fbcfe8; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 14px;" onmouseover="this.style.borderColor='#ec4899'; this.style.backgroundColor='#fce7f3';" onmouseout="this.style.borderColor='#fbcfe8'; this.style.backgroundColor='#fdf2f8';">
+                        <span style="font-size: 26px;">🍫</span>
+                        <div>
+                            <div style="font-weight: 700; font-size: 14.5px; color: #9d174d;">Producción de Barritas <span style="font-size: 12px; font-weight: 600; color: #be185d; background: #fbcfe8; padding: 2px 6px; border-radius: 6px; margin-left: 6px;">Línea 5</span></div>
+                            <div style="font-size: 12.5px; color: #831843; margin-top: 3px;">Mezcla base interna + moldeado y cocción en UP externa.</div>
+                        </div>
+                    </button>
+
+                    <!-- Opción 3: Línea 6 - Granolas -->
+                    <button type="button" onclick="window.ejecutarCreacionCarro('externa', 6)" style="padding: 13px 15px; background: #f0fdf4; border: 2px solid #bbf7d0; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 14px;" onmouseover="this.style.borderColor='#22c55e'; this.style.backgroundColor='#dcfce7';" onmouseout="this.style.borderColor='#bbf7d0'; this.style.backgroundColor='#f0fdf4';">
+                        <span style="font-size: 26px;">🥣</span>
+                        <div>
+                            <div style="font-weight: 700; font-size: 14.5px; color: #166534;">Producción de Granolas <span style="font-size: 12px; font-weight: 600; color: #15803d; background: #bbf7d0; padding: 2px 6px; border-radius: 6px; margin-left: 6px;">Línea 6</span></div>
+                            <div style="font-size: 12.5px; color: #14532d; margin-top: 3px;">Doble mezcla: horneado en UP + ensamble seco en taller.</div>
+                        </div>
+                    </button>
+                </div>
             </div>
             
-            <button onclick="document.getElementById('modal-tipo-carro').style.display='none'" style="margin-top: 25px; background: none; border: none; color: #64748b; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: underline; transition: color 0.2s;" onmouseover="this.style.color='#1e293b';" onmouseout="this.style.color='#64748b';">Cancelar</button>
+            <button type="button" onclick="window.cerrarModalTipoCarro()" style="margin-top: 22px; background: none; border: none; color: #64748b; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: underline; transition: color 0.2s;" onmouseover="this.style.color='#1e293b';" onmouseout="this.style.color='#64748b';">Cancelar</button>
         </div>
     </div>
 
@@ -407,6 +859,9 @@
                 <h2>Seleccionar artículos</h2>
                 <span class="close-modal">&times;</span>
             </div>
+
+            <!-- Banner contextual de Línea de Negocio (Línea 3 vs Línea 2) -->
+            <div id="banner-filtro-linea-modal" style="display: none; margin: 0 20px 10px 20px;"></div>
 
             <!-- Toolbar Minimalista -->
             <div class="modal-toolbar-minimalist">
@@ -618,7 +1073,7 @@
     </div>
 
     <!-- Modal para editar composición de mix -->
-    <div id="modal-mix" class="modal">
+    <div id="modal-mix" class="modal modal-new-ui" style="display: none; cursor: default;">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 id="modal-mix-titulo">Composición del Mix</h5>
@@ -661,6 +1116,8 @@
 
             <!-- Botón de guardar -->
             <div class="modal-footer">
+                <button type="button" class="close-modal-btn" style="padding: 10px 16px; background: white; border: 1px solid #cbd5e1; color: #64748b; border-radius: 8px; font-weight: 600; cursor: pointer;">Cancelar</button>
+                <button type="button" id="btn-eliminar-formula" style="display: none; padding: 10px 16px; background: #fee2e2; border: 1px solid #fecaca; color: #ef4444; border-radius: 8px; font-weight: 600; cursor: pointer;">Eliminar Fórmula</button>
                 <button id="btn-guardar-mix" class="btn-guardar-mix">
                     Guardar Receta
                 </button>
@@ -1021,6 +1478,7 @@
     <script type="module" src="/js/sustitucionIngredientes.js"></script>
     <script type="module" src="/js/ajusteRapido.js"></script>
     <script type="module" src="/js/modal-draggable.js"></script>
+    <script type="module" src="/js/hudMedicionTemporal.js?v=2_flujo_sincronizado"></script>
     <script src="/js/resizer.js"></script>
 
 

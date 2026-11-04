@@ -1,205 +1,1000 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Informe de Producción Interna - Gestiones Lamda</title>
-    <link rel="stylesheet" href="/css/style.css?v=6.0">
-    <link rel="stylesheet" href="/css/informe-produccion-interna.css?v=6.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planificación y Diagnóstico de Producción — Gestiones LAMDA</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+
+  <!-- Tipografías Premium del Taller -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Estilos del Módulo -->
+  <link rel="stylesheet" href="/css/informe-produccion-interna.css?v=8.6">
 </head>
+
 <body>
-    <div class="container">
-        <header>
-            <h1>📊 Informe de Producción Interna</h1>
-            <a href="produccion.html" class="back-button">← Volver a Producción</a>
-        </header>
 
-        <main>
-            <!-- Layout de 2 columnas: Sidebar + Panel Principal -->
-            <div class="informe-container">
-                
-                <!-- ==========================================
-                     SIDEBAR IZQUIERDO (CONFIGURACIÓN)
-                     ========================================== -->
-                <aside class="sidebar">
-                    <!-- Botón de colapsar/expandir -->
-                    <button class="sidebar-toggle" title="Colapsar/Expandir">◀</button>
-                    
-                    <!-- Header del sidebar -->
-                    <div class="sidebar-header">
-                        <h2>⚙️ Configuración</h2>
-                    </div>
-                    
-                    <!-- Contenido del sidebar -->
-                    <div class="sidebar-content">
-                        
-                        <!-- Acordeón: Tipos de Movimiento -->
-                        <div class="accordion">
-                            <div class="accordion-item">
-                                <div class="accordion-header" id="accordion-tipos-header">
-                                    <span>🔍 Tipos de Movimiento</span>
-                                    <span class="accordion-icon">▶</span>
-                                </div>
-                                <div class="accordion-content" id="accordion-tipos-content">
-                                    <div class="accordion-body">
-                                        <p style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
-                                            Seleccione los tipos de movimiento a incluir en el informe:
-                                        </p>
-                                        <div id="tipos-checkboxes">
-                                            <!-- Los checkboxes se generarán dinámicamente -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Acordeón: Configuración de Periodos -->
-                        <div class="accordion">
-                            <div class="accordion-item">
-                                <div class="accordion-header" id="accordion-periodos-header">
-                                    <span>📅 Configuración de Periodos</span>
-                                    <span class="accordion-icon">▶</span>
-                                </div>
-                                <div class="accordion-content" id="accordion-periodos-content">
-                                    <div class="accordion-body">
-                                        <div class="periodo-config">
-                                            <div class="form-group">
-                                                <label for="periodo-nombre">Nombre del Periodo:</label>
-                                                <input 
-                                                    type="text" 
-                                                    id="periodo-nombre" 
-                                                    placeholder="Ej: Enero 2024"
-                                                    maxlength="50"
-                                                >
-                                            </div>
-                                            
-                                            <div class="form-group">
-                                                <label for="periodo-fecha-inicio">Fecha Inicio:</label>
-                                                <input 
-                                                    type="date" 
-                                                    id="periodo-fecha-inicio"
-                                                >
-                                            </div>
-                                            
-                                            <div class="form-group">
-                                                <label for="periodo-fecha-fin">Fecha Fin:</label>
-                                                <input 
-                                                    type="date" 
-                                                    id="periodo-fecha-fin"
-                                                >
-                                            </div>
-                                            
-                                            <button 
-                                                id="btn-agregar-periodo" 
-                                                class="btn-agregar-periodo"
-                                                disabled
-                                            >
-                                                ➕ Agregar Periodo
-                                            </button>
-                                        </div>
-                                        
-                                        <!-- Lista de periodos agregados -->
-                                        <div class="periodos-lista" id="periodos-lista">
-                                            <!-- Los periodos se agregarán dinámicamente aquí -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Espacio para futuros acordeones -->
-                        <!-- 
-                        <div class="accordion">
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>🔍 Filtros Avanzados</span>
-                                    <span class="accordion-icon">▶</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-body">
-                                        Próximamente...
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        -->
-                        
-                    </div>
-                    
-                    <!-- Resizer (borde arrastrable) -->
-                    <div class="sidebar-resizer"></div>
-                </aside>
-                
-                <!-- ==========================================
-                     PANEL PRINCIPAL (RESULTADOS)
-                     ========================================== -->
-                <section class="main-panel">
-                    <!-- Header del panel -->
-                    <div class="main-panel-header">
-                        <h2>📈 Historial de Producción Interna</h2>
-                        
-                        <!-- Estadísticas resumidas -->
-                        <div class="estadisticas-resumen">
-                            <div class="estadistica-item">
-                                <div class="estadistica-label">Total Artículos</div>
-                                <div class="estadistica-valor" id="stat-total-articulos">0</div>
-                            </div>
-                            <div class="estadistica-item">
-                                <div class="estadistica-label">Total Registros</div>
-                                <div class="estadistica-valor" id="stat-total-registros">0</div>
-                            </div>
-                            <div class="estadistica-item">
-                                <div class="estadistica-label">Cantidad Total</div>
-                                <div class="estadistica-valor" id="stat-cantidad-total">0</div>
-                            </div>
-                            <div class="estadistica-item">
-                                <div class="estadistica-label">Kilos Totales</div>
-                                <div class="estadistica-valor" id="stat-kilos-totales">0 kg</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Contenido del panel -->
-                    <div class="main-panel-content">
-                        <table class="tabla-produccion">
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Artículo</th>
-                                    <th class="col-numero">Unidades Producidas</th>
-                                    <th class="col-numero">Peso Total (kg)</th>
-                                    <!-- Las columnas de periodos se agregarán dinámicamente -->
-                                </tr>
-                            </thead>
-                            <tbody id="tabla-produccion-body">
-                                <!-- Los datos se cargarán dinámicamente aquí -->
-                                <tr>
-                                    <td colspan="5" class="loading-message">
-                                        <div class="loading-spinner"></div>
-                                        <p>Cargando datos de producción...</p>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-                
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2024 Gestiones Lamda - Módulo de Inteligencia de Producción</p>
-        </footer>
+  <!-- ========================================================================
+       HEADER EJECUTIVO
+       ======================================================================== -->
+  <header class="header-top">
+    <div class="header-brand">
+      <div class="brand-icon">📊</div>
+      <div class="brand-titles">
+        <h1>
+          Planificación y Diagnóstico de Producción
+          <span class="badge-tag">Informe del Lunes</span>
+        </h1>
+        <div class="brand-subtitle">
+          Sistema LAMDA &bull; Inteligencia Operacional Determinista sobre los 6 Flujos de Producción y Abastecimiento
+        </div>
+      </div>
     </div>
 
-    <!-- Scripts del módulo (orden importante) -->
-    <script src="/js/informe-produccion/sidebar-resizer.js?v=6.0"></script>
-    <script src="/js/informe-produccion/data-fetcher.js?v=6.0"></script>
-    <script src="/js/informe-produccion/table-manager.js?v=6.0"></script>
-    <script src="/js/informe-produccion/tipos-movimiento-config.js?v=6.0"></script>
-    <script src="/js/informe-produccion/periodos-config.js?v=6.0"></script>
-    <script src="/js/informe-produccion/main.js?v=6.0"></script>
+    <div class="header-controls">
+      <!-- Selector de Ventana de Demanda -->
+      <div class="control-group" title="Ventana temporal para el cálculo de la Demanda Diaria Promedio (DDP)">
+        <label for="select-ventana">Demanda:</label>
+        <select id="select-ventana" class="select-compact" onchange="cambiarVentanaDemanda(this.value)">
+          <option value="7">Últimos 7 días (Sensible)</option>
+          <option value="14" selected>Últimos 14 días (Estándar)</option>
+          <option value="30">Últimos 30 días (Mensual)</option>
+          <option value="60">Últimos 60 días (Bimestral)</option>
+          <option value="90">Últimos 90 días (Trimestral - Filtra esporádicos)</option>
+          <option value="9999">Todas las facturas (Histórico Completo)</option>
+        </select>
+      </div>
+
+      <!-- Selector de Objetivo de Cobertura -->
+      <div class="control-group" title="Días deseados de stock cubierto para generar el lote sugerido">
+        <label for="select-objetivo">Objetivo:</label>
+        <select id="select-objetivo" class="select-compact" onchange="cambiarDiasObjetivo(this.value)">
+          <option value="7">7 días (Semanal / Rotación Rápida)</option>
+          <option value="14">14 días (Quincenal)</option>
+          <option value="21" selected>21 días (Recomendado)</option>
+          <option value="30">30 días (Mes Completo)</option>
+          <option value="60">60 días (Bimestral)</option>
+          <option value="90">90 días (Trimestral)</option>
+          <option value="manual">✍️ Manual / Personalizado...</option>
+        </select>
+        <button type="button" onclick="window.ingresarDiasObjetivoManual('header')" class="btn-action btn-secondary" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255,255,255,0.18);" title="Ingresar días manualmente">
+          ✏️ Manual
+        </button>
+      </div>
+
+      <!-- Acciones Globales -->
+      <button onclick="cargarPlanificacion()" class="btn-action btn-secondary" title="Recalcular métricas en tiempo real">
+        🔄 Refrescar
+      </button>
+
+      <button onclick="imprimirReporte()" class="btn-action btn-print" title="Imprimir hoja de ruta para reunión operativa">
+        🖨️ Imprimir
+      </button>
+
+      <a href="produccion.html" class="btn-action btn-secondary" title="Regresar al panel general de producción">
+        ← Volver
+      </a>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       LAYOUT PRINCIPAL
+       ======================================================================== -->
+  <main class="main-layout">
+
+    <!-- ESTADO DE CARGA -->
+    <div id="loading-state" class="loading-wrapper">
+      <div class="loading-spinner"></div>
+      <p style="font-weight: 600; font-size: 0.95rem; color: #f3f4f6;">Calculando diagnóstico determinista de producción y abastecimiento...</p>
+      <p style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">Analizando demanda viva de facturación, stock consolidado y recetas de las 6 Líneas de Negocio...</p>
+    </div>
+
+    <!-- CONTENEDOR DEL DASHBOARD -->
+    <div id="dashboard-content" style="display: none; flex-direction: column; gap: 20px;">
+
+      <!-- TARJETAS KPI EJECUTIVAS -->
+      <section class="kpi-grid">
+        <!-- KPI 1: Producción Interna Taller -->
+        <div class="kpi-card fraccionado" onclick="cambiarTab('tab-produccion-interna')" style="cursor: pointer;" title="Clic para ver la orden de trabajo y envasado del taller">
+          <div class="kpi-header">
+            <span class="kpi-title">Producción Interna (Taller)</span>
+            <span class="kpi-icon">🏭</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-value" id="kpi-taller-items">0</span>
+            <span class="kpi-badge-detail badge-success" id="kpi-taller-kg">0 kg tot.</span>
+          </div>
+          <div class="kpi-footer">Fraccionados Puros (LDN 2) + Mixes (LDN 3)</div>
+        </div>
+
+        <!-- KPI 2: Carros de Mezcla Granel -->
+        <div class="kpi-card mixes" onclick="cambiarTab('tab-produccion-interna', { autoScroll: false }); setTimeout(() => document.getElementById('bloque-carros-mix')?.scrollIntoView({ behavior: 'smooth' }), 50);" style="cursor: pointer;" title="Clic para ver los carros de mezcla a preparar">
+          <div class="kpi-header">
+            <span class="kpi-title">Carros de Mezcla Granel</span>
+            <span class="kpi-icon">🥣</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-value" id="kpi-mixes">0</span>
+            <span class="kpi-badge-detail badge-accent" id="kpi-mixes-kg" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">0 kg tot.</span>
+          </div>
+          <div class="kpi-footer" id="kpi-mixes-footer">Fase 1: Preparación a granel</div>
+        </div>
+
+        <!-- KPI 3: Quiebre Inminente / Sin Stock -->
+        <div class="kpi-card critico" onclick="cambiarTab('tab-produccion-interna', { resetFiltros: false }); cambiarFiltroSemaforo('criticos');" style="cursor: pointer;" title="Clic para ver artículos de taller en quiebre o riesgo crítico">
+          <div class="kpi-header">
+            <span class="kpi-title">Quiebre / Crítico Taller</span>
+            <span class="kpi-icon">🚨</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-value" id="kpi-criticos">0</span>
+            <span class="kpi-badge-detail badge-danger">≤ 5 días cobertura</span>
+          </div>
+          <div class="kpi-footer">Stock agotado o pedidos comprometidos</div>
+        </div>
+
+        <!-- KPI 4: Abastecimiento y Compras a Proveedores -->
+        <div class="kpi-card compras" onclick="cambiarTab('tab-abastecimiento')" style="cursor: pointer;" title="Clic para ver la orden consolidada de compras a proveedores (30 días)">
+          <div class="kpi-header">
+            <span class="kpi-title">Órdenes de Compra Sugeridas</span>
+            <span class="kpi-icon">🛒</span>
+          </div>
+          <div class="kpi-body">
+            <span class="kpi-value" id="kpi-compras">0</span>
+            <span class="kpi-badge-detail badge-warning" id="kpi-compras-bultos">0 Bultos</span>
+          </div>
+          <div class="kpi-footer" id="kpi-compras-footer">[Compras Proveedores] 30 días proyectados (Base 90d)</div>
+        </div>
+      </section>
+
+      <!-- BANNER DE ALERTAS BLOQUEANTES (CUELLOS DE BOTELLA) -->
+      <div id="container-banner-bloqueos" style="display: none;">
+        <!-- Inyectado dinámicamente por JS -->
+      </div>
+
+      <!-- BARRA DE PESTAÑAS Y BUSCADOR UNIFICADO -->
+      <div class="controls-bar">
+        <nav class="tabs-nav">
+          <button class="tab-btn active" data-tab="tab-produccion-interna" onclick="cambiarTab('tab-produccion-interna')">
+            🏭 Producción Interna (Taller) <span class="tab-count" id="count-tab-taller">0</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-prod-externa" onclick="cambiarTab('tab-prod-externa')">
+            🚚 Producción Externa UPs <span class="tab-count" id="count-tab-externa">0</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-abastecimiento" onclick="cambiarTab('tab-abastecimiento')">
+            🛒 Compras a Proveedores <span class="tab-count" id="count-tab-compras">0</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-frecuencias" onclick="cambiarTab('tab-frecuencias')">
+            📈 Frecuencias de Producción
+          </button>
+        </nav>
+
+        <div class="filter-and-search">
+          <!-- Selector de Tanda Estándar Carros Mix -->
+          <select id="select-tanda-mix" class="filter-semaforo-select" style="max-width: 175px;" onchange="window.cambiarTandaMix(this.value)" title="Tamaño estándar de lote por carro de mezcla">
+            <option value="10" selected>🥣 Tanda Mix: 10 kg</option>
+            <option value="15">🥣 Tanda Mix: 15 kg</option>
+            <option value="20">🥣 Tanda Mix: 20 kg</option>
+            <option value="25">🥣 Tanda Mix: 25 kg</option>
+            <option value="30">🥣 Tanda Mix: 30 kg</option>
+            <option value="50">🥣 Tanda Mix: 50 kg</option>
+          </select>
+
+          <!-- Filtro de Semáforo -->
+          <select id="select-semaforo" class="filter-semaforo-select" onchange="cambiarFiltroSemaforo(this.value)">
+            <option value="todos">Todos los Estados</option>
+            <option value="criticos">🚨 Solo Quiebres / Críticos</option>
+            <option value="atencion">🟡 Solo en Atención (5-12d)</option>
+            <option value="con_sugerencia">⚡ Solo con Producción Sugerida</option>
+            <option value="optimos">🟢 Solo Óptimos</option>
+            <option value="sobre_stock">🔵 Solo Sobre-stock</option>
+          </select>
+
+          <!-- Buscador Unificado LAMDA (Fase 49) -->
+          <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-global" class="search-input" placeholder="Buscar por código, nombre, familia..." oninput="filtrarBusqueda()">
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           PESTAÑA 1: INFORME DE PRODUCCIÓN INTERNA (TALLER / DEPÓSITO)
+           ==================================================================== -->
+      <div id="tab-produccion-interna" class="tab-pane active">
+        
+        <!-- CABECERA RESUMEN DEL TALLER Y BOTONES DE ACCIÓN -->
+        <div class="content-card mb-4" style="border-left: 4px solid #10b981; background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(15, 23, 42, 0.4));">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
+            <div>
+              <h2 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                <span>🏭</span> Hoja de Trabajo y Producción Interna (Depósito)
+              </h2>
+              <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #94a3b8;">
+                Directiva operativa ordenada por apuro de producción: Carros de Mezcla a granel + Fraccionamiento en mesa/máquina + Armado de Packs.
+              </p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button onclick="window.abrirVisorTaller('taller')" class="btn-action btn-primary" style="background: #10b981; border-color: #059669; padding: 7px 14px; font-size: 0.82rem;" title="Imprimir hoja membretada A4 con checklist de taller">
+                🖨️ Imprimir Hoja de Taller
+              </button>
+              <button onclick="window.copiarReporteTallerWhatsApp()" class="btn-action btn-secondary" style="padding: 7px 14px; font-size: 0.82rem;" title="Copiar directiva de trabajo para WhatsApp">
+                📋 Copiar para WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <!-- Mini KPIs Taller -->
+          <div id="kpis-resumen-taller" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px;">
+            <!-- Inyectado dinámicamente -->
+          </div>
+        </div>
+
+        <!-- BLOQUE A: 🥣 CARROS DE MEZCLA A GRANEL (LDN 3 - ARTÍCULOS PUENTE) -->
+        <div id="bloque-carros-mix" class="content-card mb-4" style="border-left: 4px solid #06b6d4;">
+          <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="content-card-title" style="color: #22d3ee; display: flex; align-items: center; gap: 8px;">
+              <span>🥣</span> <strong>Fase 1: Carros de Mezcla a Granel</strong>
+              <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(Pre-requisito para envasar las fracciones de mix)</span>
+            </div>
+            <div style="font-size: 0.78rem; color: #94a3b8;" id="resumen-carros-mix-subtitulo">
+              <!-- Calculado dinámicamente -->
+            </div>
+          </div>
+          
+          <div id="container-carros-mixes-taller" style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Tarjetas de pesaje inyectadas por JS -->
+          </div>
+        </div>
+
+        <!-- BLOQUE B: 📋 TABLA MAESTRA DE ENVASADO (AGRUPADO: LDN 2, LDN 3 Y PACKS AL FINAL) -->
+        <div class="content-card">
+          <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="content-card-title" style="display: flex; align-items: center; gap: 8px;">
+              <span>📋</span> <strong>Fase 2: Mesa de Fraccionamiento y Envasado</strong>
+              <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(Agrupado por LDN &bull; Packs en Depósito al Final &bull; Orden por Urgencia y Cantidad)</span>
+            </div>
+            <div style="font-size: 0.78rem; color: #94a3b8;" id="resumen-envasado-subtitulo">
+              <!-- Calculado dinámicamente -->
+            </div>
+          </div>
+
+          <!-- Barra de Navegación y Filtro Rápido de Grupo -->
+          <div style="padding: 10px 16px; background: rgba(15, 23, 42, 0.45); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase;">Filtrar Grupo:</span>
+              <button type="button" class="btn-group-pill active" id="btn-filtro-taller-todos" onclick="window.filtrarGrupoTaller('todos')">
+                📋 Todos Agrupados
+              </button>
+              <button type="button" class="btn-group-pill" id="btn-filtro-taller-ldn2" onclick="window.filtrarGrupoTaller('ldn2')">
+                🌾 Solo LDN 2: Fraccionados Puros
+              </button>
+              <button type="button" class="btn-group-pill" id="btn-filtro-taller-ldn3" onclick="window.filtrarGrupoTaller('ldn3')">
+                🥣 Solo LDN 3: Mixes Comerciales
+              </button>
+              <button type="button" class="btn-group-pill" id="btn-filtro-taller-packs" onclick="window.filtrarGrupoTaller('packs')">
+                📦 Solo Packs (Depósito)
+              </button>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button onclick="window.abrirVisorTaller('fraccionado')" class="btn-action btn-secondary" style="font-size: 0.72rem; padding: 4px 9px;" title="Ver e imprimir directiva de fraccionamiento puro (LDN 2)">
+                🌾 Imprimir LDN 2
+              </button>
+              <button onclick="window.abrirVisorTaller('mixes')" class="btn-action btn-secondary" style="font-size: 0.72rem; padding: 4px 9px;" title="Ver e imprimir directiva de carros y mezclas (LDN 3)">
+                🥣 Imprimir LDN 3
+              </button>
+              <button onclick="window.abrirVisorTaller('taller')" class="btn-action btn-primary" style="font-size: 0.72rem; padding: 4px 9px; background: #10b981; border-color: #059669;" title="Imprimir directiva completa del taller (Puros + Mixes + Packs)">
+                🖨️ Imprimir Todo
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 145px;">Apuro / Semáforo</th>
+                  <th>Código</th>
+                  <th>Artículo / Familia</th>
+                  <th style="text-align: right;">Stock Actual</th>
+                  <th style="text-align: right;">Demanda Diaria</th>
+                  <th>Cobertura</th>
+                  <th style="text-align: right; background-color: rgba(16, 185, 129, 0.08);">A Envasar (Bolsas / Kg)</th>
+                  <th>Materia Prima / Origen</th>
+                  <th style="text-align: center;">Detalle</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-produccion-interna-taller">
+                <!-- Filas inyectadas dinámicamente por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ====================================================================
+           PESTAÑA 2: PRODUCCIÓN EXTERNA (LDN 4, 5 & 6)
+           ==================================================================== -->
+      <div id="tab-prod-externa" class="tab-pane">
+        
+        <!-- CABECERA RESUMEN DE PRODUCCIÓN EXTERNA Y BOTONES DE ACCIÓN -->
+        <div class="content-card mb-4" style="border-left: 4px solid #f97316; background: linear-gradient(135deg, rgba(249, 115, 22, 0.05), rgba(15, 23, 42, 0.4));">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
+            <div>
+              <h2 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                <span>🚚</span> Despachos y Producción Externa (Unidades Productivas)
+              </h2>
+              <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #94a3b8;">
+                Directiva para preparar bultos crudos en depósito y despachar a tostaderos (LDN 4), barritas (LDN 5) y granolas (LDN 6) con cálculo de mermas y factibilidad.
+              </p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button onclick="window.abrirVisorExterna()" class="btn-action btn-primary" style="background: #ea580c; border-color: #c2410c; padding: 7px 14px; font-size: 0.82rem;" title="Imprimir hoja membretada de despacho a UPs">
+                🖨️ Imprimir Hoja de Despacho
+              </button>
+              <button onclick="window.copiarExternaWhatsApp()" class="btn-action btn-secondary" style="padding: 7px 14px; font-size: 0.82rem;" title="Copiar directiva de despacho para WhatsApp">
+                📋 Copiar para WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <!-- Mini KPIs Producción Externa -->
+          <div id="kpis-resumen-externa-tab" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px;">
+            <!-- Inyectado dinámicamente -->
+          </div>
+        </div>
+
+        <!-- Sub-sección LDN 4: Tostaderos Agrupados por Producción -->
+        <div class="content-card mb-4" style="border-left: 4px solid #f59e0b;">
+          <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="content-card-title" style="color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+              <span>🥜</span> <strong>[LDN 4] Tostaderos y UPs Externas (Agrupado por Producción)</strong>
+              <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(Consolidación de fracciones por lote de tostadero + Despacho de crudo con merma)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div style="font-size: 0.78rem; color: #94a3b8;" id="resumen-ldn4-subtitulo">
+                <!-- Calculado dinámicamente -->
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-action btn-secondary" onclick="window.desplegarTodosTostaderos(true)" style="padding: 4px 8px; font-size: 0.72rem;" title="Desplegar todas las producciones">
+                  📂 Desplegar Todo
+                </button>
+                <button type="button" class="btn-action btn-secondary" onclick="window.desplegarTodosTostaderos(false)" style="padding: 4px 8px; font-size: 0.72rem;" title="Colapsar todas las producciones">
+                  📁 Colapsar Todo
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div id="container-tostaderos-agrupados" style="padding: 16px; display: flex; flex-direction: column; gap: 14px;">
+            <!-- Acordeones inyectados dinámicamente por JS -->
+          </div>
+        </div>
+
+        <!-- Sub-sección LDN 5 y 6: Barritas y Granolas -->
+        <div class="content-card" style="border-left: 4px solid #8b5cf6;">
+          <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="content-card-title" style="color: #c084fc; display: flex; align-items: center; gap: 8px;">
+              <span>🍫</span> <strong>[LDN 5 & 6] Barritas y Granolas Complejas (Circuitos Bi-fásicos)</strong>
+              <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(Mezcla base en taller + Elaboración en UP + Fraccionamiento/Ensamble final)</span>
+            </div>
+            <div style="font-size: 0.78rem; color: #94a3b8;" id="resumen-ldn56-subtitulo">
+              <!-- Calculado dinámicamente -->
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">Prioridad / Semáforo</th>
+                  <th>Código SKU</th>
+                  <th>Artículo / Variedad</th>
+                  <th>Línea</th>
+                  <th style="text-align: right;">Stock Actual</th>
+                  <th style="text-align: right;">Demanda Diaria</th>
+                  <th>Cobertura</th>
+                  <th style="text-align: right; background-color: rgba(139, 92, 246, 0.08);">Producción Sugerida</th>
+                  <th>Circuito y Factibilidad</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-prod-ldn56">
+                <!-- Inyectado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           PESTAÑA 3: ABASTECIMIENTO Y COMPRAS A PROVEEDORES (MRP PURO)
+           ==================================================================== -->
+      <div id="tab-abastecimiento" class="tab-pane">
+        <div class="content-card">
+          <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div class="content-card-title">
+                🛒 Orden Consolidada de Compras a Proveedores (Base Trimestral 90d &bull; Proyección Sincronizada)
+              </div>
+              <span style="font-size: 0.74rem; color: var(--text-muted);">
+                Despiece puro a materias primas de fábrica (LDN 2 a 6) y bultos de reventa directa (LDN 1) integrando ventas y presupuestos activos comprometidos.
+              </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="select-horizonte-compras" style="font-size: 0.78rem; color: #94a3b8; font-weight: 600;">Proyección:</label>
+              <select id="select-horizonte-compras" class="select-compact" onchange="window.cambiarHorizonteCompras(this.value)" style="padding: 5px 10px; font-size: 0.78rem;">
+                <option value="7">Proyección: 7 días (Semanal)</option>
+                <option value="14">Proyección: 14 días (Quincenal)</option>
+                <option value="21">Proyección: 21 días (3 Semanas)</option>
+                <option value="30" selected>Proyección: 30 días (Mes Estándar)</option>
+                <option value="60">Proyección: 60 días (Bimestre)</option>
+                <option value="90">Proyección: 90 días (Trimestre)</option>
+                <option value="manual">✍️ Manual / Personalizado...</option>
+              </select>
+              <button type="button" onclick="window.ingresarDiasObjetivoManual('compras')" class="btn-action btn-secondary" style="padding: 5px 8px; font-size: 0.78rem; border-color: rgba(255,255,255,0.18);" title="Ingresar días de compra manualmente">
+                ✏️ Manual
+              </button>
+              <button onclick="window.abrirVisorCompras()" class="btn-action btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">
+                🖨️ Imprimir Hoja Membretada
+              </button>
+              <button onclick="window.copiarReporteWhatsApp()" class="btn-action btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">
+                📋 Copiar para WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <!-- MINI KPIs DE COMPRAS EN CABECERA DE PESTAÑA -->
+          <div id="kpis-resumen-compras-tab" class="kpis-resumen-compras" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; padding: 12px 16px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <!-- Inyectado por JS -->
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">Prioridad</th>
+                  <th>Tipo / Origen</th>
+                  <th>Código SKU</th>
+                  <th>Descripción Bulto Proveedor</th>
+                  <th style="text-align: right;">Stock Total</th>
+                  <th style="text-align: right;">Demanda Diaria</th>
+                  <th style="text-align: right;">Cobertura</th>
+                  <th style="text-align: right;">Faltante</th>
+                  <th style="text-align: right; background-color: rgba(59, 130, 246, 0.12);" class="col-pedir-header">Bultos a Pedir</th>
+                  <th>Destino / Alimenta</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-compras-proveedores-tab">
+                <!-- Inyectado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           PESTAÑA 5: HISTORIAL Y FRECUENCIAS DE PRODUCCIÓN REAL
+           ==================================================================== -->
+      <div id="tab-frecuencias" class="tab-pane">
+        <div class="content-card">
+          <div class="content-card-header">
+            <div class="content-card-title">
+              📈 Trazabilidad y Cadencia Real de Producción (Carros Confirmados)
+            </div>
+            <span style="font-size: 0.74rem; color: var(--text-muted);">
+              Auditoría histórica extraída directamente de carros_produccion y carros_articulos
+            </span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Artículo Producido</th>
+                  <th style="text-align: right;">Stock Actual</th>
+                  <th style="text-align: center;">Última Producción</th>
+                  <th style="text-align: center;">Cadencia</th>
+                  <th style="text-align: right;">Carros en 90 días</th>
+                  <th style="text-align: right;">Lote Promedio</th>
+                  <th>Estado de Cobertura</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-frecuencias-produccion">
+                <!-- Inyectado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================
+       MODAL: SELECTOR DE EMISIÓN DE INFORMES E IMPRESIÓN
+       ======================================================================== -->
+  <div id="modal-selector-impresion" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🖨️ Centro de Emisión e Impresión de Informes</span>
+        </div>
+        <button class="modal-btn-close" onclick="cerrarModalSelectorImpresion()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-subtitle">
+          Selecciona el tipo de informe que deseas emitir y configura el horizonte temporal determinista:
+        </p>
+
+        <!-- Opciones de Reporte en Tarjetas Seleccionables -->
+        <div class="report-options-grid">
+          
+          <!-- Opción 1: Compras a Proveedores (Recomendada) -->
+          <label class="report-card selected" id="card-report-compras" onclick="seleccionarTipoReporte('compras')">
+            <input type="radio" name="tipo_reporte" value="compras" checked>
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">🛒</span>
+                <span class="report-badge-rec">⭐ RECOMENDADO</span>
+              </div>
+              <div class="report-name">Informe para el Área de Compras a Proveedores</div>
+              <div class="report-desc">
+                Orden priorizada de abastecimiento consolidando Bultos Directos de reventa (LDN 1) y Materias Primas críticas para recetas de taller (LDN 2 a 6).
+              </div>
+              <div class="report-tagline">
+                Base estadística de 90 días (Último Trimestre) &bull; Proyección mensual a 30 días
+              </div>
+            </div>
+          </label>
+
+          <!-- Opción 2: Fraccionamiento Puro (LDN 2) -->
+          <label class="report-card" id="card-report-fraccionado" onclick="seleccionarTipoReporte('fraccionado')">
+            <input type="radio" name="tipo_reporte" value="fraccionado">
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">🌾</span>
+                <span class="report-badge-normal">TALLER LOCAL</span>
+              </div>
+              <div class="report-name">Fraccionamiento Puro (LDN 2) — Hoja de Taller</div>
+              <div class="report-desc">
+                Lista de fraccionamiento de mono-ingredientes y bolsas chicas con casillas de verificación física y stock en taller o depósito.
+              </div>
+            </div>
+          </label>
+
+          <!-- Opción 3: Carros de Mix (LDN 3) -->
+          <label class="report-card" id="card-report-mixes" onclick="seleccionarTipoReporte('mixes')">
+            <input type="radio" name="tipo_reporte" value="mixes">
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">🧪</span>
+                <span class="report-badge-normal">TALLER LOCAL</span>
+              </div>
+              <div class="report-name">Carros de Mix y Mezclas (LDN 3) — Hoja de Taller</div>
+              <div class="report-desc">
+                Fórmulas de pesaje de materias primas por carro granel (AP) y directiva de envasado en presentaciones comerciales chicas.
+              </div>
+            </div>
+          </label>
+
+          <!-- Opción 4: Hoja Integral de Taller (LDN 2 + LDN 3) -->
+          <label class="report-card" id="card-report-taller" onclick="seleccionarTipoReporte('taller')">
+            <input type="radio" name="tipo_reporte" value="taller">
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">🏭</span>
+                <span class="report-badge-normal">TALLER COMPLETO</span>
+              </div>
+              <div class="report-name">Directiva Integral de Taller (Puros + Carros Mix)</div>
+              <div class="report-desc">
+                Plan completo para el equipo de producción interna (Equipo de Taller) con checklist ordenado por urgencia.
+              </div>
+            </div>
+          </label>
+
+          <!-- Opción 5: Producción Externa UPs -->
+          <label class="report-card" id="card-report-externa" onclick="seleccionarTipoReporte('externa')">
+            <input type="radio" name="tipo_reporte" value="externa">
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">🚚</span>
+                <span class="report-badge-normal">UPs EXTERNAS</span>
+              </div>
+              <div class="report-name">Plan de Despacho a Producción Externa</div>
+              <div class="report-desc">
+                Lotes de despacho de crudo a tostaderos (LDN 4), elaboración de barritas (LDN 5) y horneado de granolas (LDN 6) con cálculo de mermas.
+              </div>
+            </div>
+          </label>
+
+          <!-- Opción 6: Informe Integral Completo -->
+          <label class="report-card" id="card-report-general" onclick="seleccionarTipoReporte('general')">
+            <input type="radio" name="tipo_reporte" value="general">
+            <div class="report-card-content">
+              <div class="report-card-top">
+                <span class="report-icon">📋</span>
+                <span class="report-badge-normal">AUDITORÍA</span>
+              </div>
+              <div class="report-name">Informe General de Planificación Completo</div>
+              <div class="report-desc">
+                Diagnóstico global de las 6 Líneas de Negocio, KPIs ejecutivos, semáforos de stock y trazabilidad de frecuencias.
+              </div>
+            </div>
+          </label>
+
+        </div>
+
+        <!-- Parámetros del Reporte -->
+        <div class="modal-params-section">
+          <div class="param-item">
+            <label for="modal-select-demanda">Base Estadística de Ventas:</label>
+            <select id="modal-select-demanda" class="select-compact">
+              <option value="90" selected>Último Trimestre (90 días) — Recomendado para Compras</option>
+              <option value="60">Últimos 60 días (Bimestral)</option>
+              <option value="30">Últimos 30 días (Mes)</option>
+              <option value="14">Últimos 14 días (Quincena)</option>
+              <option value="7">Últimos 7 días (Semana)</option>
+              <option value="9999">Todas las facturas (Histórico Completo)</option>
+            </select>
+          </div>
+
+          <div class="param-item">
+            <label for="modal-select-objetivo">Horizonte Proyectado a Cubrir:</label>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <select id="modal-select-objetivo" class="select-compact" style="flex: 1;" onchange="window.verificarObjetivoModal(this.value)">
+                <option value="7">7 días (Urgencias de la semana)</option>
+                <option value="14">14 días (Rotación rápida)</option>
+                <option value="21">21 días (Ciclo estándar)</option>
+                <option value="30" selected>30 días (Mes Completo — Objetivo sugerido)</option>
+                <option value="60">60 días (Bimestral)</option>
+                <option value="90">90 días (Trimestral)</option>
+                <option value="manual">✍️ Manual / Personalizado...</option>
+              </select>
+              <button type="button" onclick="window.ingresarDiasObjetivoManual('modal')" class="btn-action btn-secondary" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(255,255,255,0.18);" title="Ingresar días manualmente">
+                ✏️ Manual
+              </button>
+            </div>
+          </div>
+
+          <div class="param-checkbox">
+            <label>
+              <input type="checkbox" id="modal-check-solo-faltantes" checked>
+              <span>Mostrar únicamente artículos con necesidad de reposición o en alerta (Recomendado)</span>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-action btn-secondary" onclick="cerrarModalSelectorImpresion()">Cancelar</button>
+        <button class="btn-action btn-print" onclick="generarReporteSeleccionado()">
+          ⚡ Generar y Previsualizar Reporte
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: VISOR DE REPORTE Y PLANTILLA DE IMPRESIÓN DE COMPRAS A PROVEEDORES
+       ======================================================================== -->
+  <div id="modal-visor-compras" class="modal-overlay modal-fullscreen" style="display: none;">
+    <div class="modal-card modal-card-reporte">
+      
+      <!-- Barra de herramientas superior (oculta al imprimir físicamente) -->
+      <div class="report-toolbar no-print">
+        <div class="toolbar-left">
+          <span class="toolbar-title">🛒 Previsualización: Informe para el Área de Compras</span>
+          <span class="toolbar-subtitle" id="visor-subtitle-meta">Base: Trimestre 90d &bull; Proyección: 30d</span>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn-action btn-secondary" onclick="copiarReporteWhatsApp()" title="Copiar resumen para enviar por WhatsApp al comprador o proveedor">
+            📋 Copiar para WhatsApp
+          </button>
+          <button class="btn-action btn-print" onclick="ejecutarImpresionLimpia()" title="Imprimir hoja de ruta formal o guardar como PDF">
+            🖨️ Imprimir / Guardar PDF
+          </button>
+          <button class="btn-action btn-secondary" onclick="cerrarModalVisorCompras()" title="Cerrar vista previa">
+            ❌ Cerrar
+          </button>
+        </div>
+      </div>
+
+      <!-- Hoja del Reporte (Diseño formal corporativo) -->
+      <div id="hoja-reporte-compras-print" class="printable-sheet">
+        
+        <!-- Membrete Ejecutivo -->
+        <div class="sheet-header">
+          <div class="sheet-brand">
+            <img src="/img/logo_LAMDA_grande.png" alt="LAMDA" class="sheet-logo-img" onerror="this.src='/src/produccion/img/logo_LAMDA_grande.png';">
+            <div class="brand-subtext">DIRECCIÓN DE OPERACIONES &bull; ÁREA DE COMPRAS Y ABASTECIMIENTO</div>
+          </div>
+          <div class="sheet-doc-meta">
+            <div class="doc-title-main">ORDEN DE NECESIDADES DE COMPRAS</div>
+            <div class="doc-meta-item"><strong>Fecha de Emisión:</strong> <span id="sheet-meta-fecha">--/--/----</span></div>
+            <div class="doc-meta-item"><strong>Base Estadística:</strong> <span id="sheet-meta-demanda">Último Trimestre (90 días)</span></div>
+            <div class="doc-meta-item"><strong>Horizonte Proyectado:</strong> <span id="sheet-meta-objetivo">30 días (Mes Completo)</span></div>
+          </div>
+        </div>
+
+        <div class="sheet-divider"></div>
+
+        <!-- Tarjetas KPIs de Compras -->
+        <div class="sheet-kpis-grid">
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">Total Ítems a Pedir</span>
+            <span class="kpi-box-val" id="sheet-kpi-total-items">0</span>
+          </div>
+          <div class="sheet-kpi-box box-critico">
+            <span class="kpi-box-lbl">🔴 Quiebres Inmediatos (Stock 0)</span>
+            <span class="kpi-box-val" id="sheet-kpi-quiebres">0</span>
+          </div>
+          <div class="sheet-kpi-box box-alerta">
+            <span class="kpi-box-lbl">🟠 Alerta Crítica (≤ 7 días)</span>
+            <span class="kpi-box-val" id="sheet-kpi-criticos">0</span>
+          </div>
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">🟡 Atención (8 - 15 días)</span>
+            <span class="kpi-box-val" id="sheet-kpi-atencion">0</span>
+          </div>
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">📦 Total Bultos Sugeridos</span>
+            <span class="kpi-box-val" id="sheet-kpi-bultos">0</span>
+          </div>
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">⚖️ Kilos Totales Requeridos</span>
+            <span class="kpi-box-val" id="sheet-kpi-kilos">0 kg</span>
+          </div>
+        </div>
+
+        <!-- Tabla Priorizada de Compras -->
+        <div class="sheet-table-wrapper">
+          <table class="sheet-table">
+            <thead>
+              <tr>
+                <th style="width: 140px;">Prioridad / Urgencia</th>
+                <th style="width: 130px;">Tipo de Insumo</th>
+                <th style="width: 110px;">Código SKU</th>
+                <th>Descripción de Compra / Bulto</th>
+                <th style="text-align: right; width: 85px;">Stock Actual</th>
+                <th style="text-align: right; width: 75px;">DDP (90d)</th>
+                <th style="text-align: right; width: 75px;">Cobertura</th>
+                <th style="text-align: right; width: 85px;">Faltante Kg</th>
+                <th style="text-align: right; width: 100px; background-color: #f1f5f9;">A PEDIR</th>
+                <th style="width: 180px;">Destino / Afecta</th>
+              </tr>
+            </thead>
+            <tbody id="sheet-tbody-compras">
+              <!-- Inyectado por JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Firmas y Responsables -->
+        <div class="sheet-signatures">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Responsable de Producción / Planificación</div>
+            <div class="sig-role">Emisión de Necesidades</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Responsable del Área de Compras</div>
+            <div class="sig-role">Aprobación y Orden a Proveedores</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Recepción en Depósito / Control Físico</div>
+            <div class="sig-role">Verificación de Lotes Entrantes</div>
+          </div>
+        </div>
+
+        <div class="sheet-footer">
+          <span>Generado automáticamente por el Sistema LAMDA &bull; Inteligencia Determinista de Operaciones</span>
+          <span>Página 1 de 1</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: VISOR DE HOJA DE RUTA Y DIRECTIVA DE TALLER / PRODUCCIÓN INTERNA
+       ======================================================================== -->
+  <div id="modal-visor-taller" class="modal-overlay modal-fullscreen" style="display: none;">
+    <div class="modal-card modal-card-reporte">
+      
+      <!-- Barra de herramientas superior (oculta al imprimir físicamente) -->
+      <div class="report-toolbar no-print">
+        <div class="toolbar-left">
+          <span class="toolbar-title" id="visor-taller-titulo">📋 Previsualización: Hoja de Taller y Producción</span>
+          <span class="toolbar-subtitle" id="visor-taller-subtitle">Directiva operativa con checklist físico para operarios</span>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn-action btn-secondary" onclick="copiarReporteTallerWhatsApp()" title="Copiar directiva para enviar por WhatsApp al encargado del taller">
+            📋 Copiar para WhatsApp
+          </button>
+          <button class="btn-action btn-print" onclick="ejecutarImpresionTaller()" title="Imprimir hoja de ruta formal o guardar como PDF">
+            🖨️ Imprimir / Guardar PDF
+          </button>
+          <button class="btn-action btn-secondary" onclick="cerrarModalVisorTaller()" title="Cerrar vista previa">
+            ❌ Cerrar
+          </button>
+        </div>
+      </div>
+
+      <!-- Hoja del Reporte Imprimible -->
+      <div id="hoja-reporte-taller-print" class="printable-sheet">
+        
+        <!-- Membrete Ejecutivo -->
+        <div class="sheet-header">
+          <div class="sheet-brand">
+            <img src="/img/logo_LAMDA_grande.png" alt="LAMDA" class="sheet-logo-img" onerror="this.src='/src/produccion/img/logo_LAMDA_grande.png';">
+            <div class="brand-subtext">DIRECCIÓN DE OPERACIONES &bull; PLANTA DE PRODUCCIÓN INTERNA Y TALLER</div>
+          </div>
+          <div class="sheet-doc-meta">
+            <div class="doc-title-main" id="sheet-taller-doc-title">DIRECTIVA OPERATIVA DE PRODUCCIÓN</div>
+            <div class="doc-meta-item"><strong>Fecha y Hora:</strong> <span id="sheet-taller-meta-fecha">--/--/----</span></div>
+            <div class="doc-meta-item"><strong>Área de Ejecución:</strong> <span id="sheet-taller-meta-sector">Taller Local &bull; Envasado y Mezclas</span></div>
+            <div class="doc-meta-item"><strong>Responsable:</strong> <span id="sheet-taller-meta-responsable">Equipo de Taller</span></div>
+            <div class="doc-meta-item"><strong>Base Estadística:</strong> <span id="sheet-taller-meta-demanda">--</span></div>
+            <div class="doc-meta-item"><strong>Horizonte Proyectado:</strong> <span id="sheet-taller-meta-objetivo">--</span></div>
+          </div>
+        </div>
+
+        <div class="sheet-divider"></div>
+
+        <!-- Mini Tarjetas KPIs de Taller -->
+        <div class="sheet-kpis-grid" id="sheet-taller-kpis-grid">
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">Total Tareas / Lotes</span>
+            <span class="kpi-box-val" id="sheet-taller-kpi-tareas">0</span>
+          </div>
+          <div class="sheet-kpi-box box-critico">
+            <span class="kpi-box-lbl">🔴 Quiebres Urgentes</span>
+            <span class="kpi-box-val" id="sheet-taller-kpi-quiebres">0</span>
+          </div>
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">🌾 Fraccionados Puros</span>
+            <span class="kpi-box-val" id="sheet-taller-kpi-fraccionados">0 kg</span>
+          </div>
+          <div class="sheet-kpi-box">
+            <span class="kpi-box-lbl">🧪 Carros de Mix</span>
+            <span class="kpi-box-val" id="sheet-taller-kpi-mixes">0 carros</span>
+          </div>
+          <div class="sheet-kpi-box box-alerta">
+            <span class="kpi-box-lbl">⚖️ Kilos Totales a Procesar</span>
+            <span class="kpi-box-val" id="sheet-taller-kpi-kilos">0 kg</span>
+          </div>
+        </div>
+
+        <!-- Contenedor Dinámico de Tablas del Checklist (Inyectado por JS) -->
+        <div id="sheet-taller-contenido-print">
+          <!-- Inyectado dinámicamente según sea Fraccionado Puro, Carros de Mix o Ambos -->
+        </div>
+
+        <!-- Firmas y Responsables -->
+        <div class="sheet-signatures" style="margin-top: 30px;">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Operador Responsable de Taller</div>
+            <div class="sig-role">Pesaje, Mezclado y Envasado</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Control de Calidad y Sellado</div>
+            <div class="sig-role">Verificación de Pesos y Fechas</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Supervisión de Depósito / Producción</div>
+            <div class="sig-role">Ingreso a Stock y Cierre de Lotes</div>
+          </div>
+        </div>
+
+        <div class="sheet-footer">
+          <span>Generado automáticamente por el Sistema LAMDA &bull; Inteligencia Determinista de Operaciones</span>
+          <span>Página 1 de 1</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: VISOR DE HOJA DE DESPACHO Y PRODUCCIÓN EXTERNA (UPs)
+       ======================================================================== -->
+  <div id="modal-visor-externa" class="modal-overlay modal-fullscreen" style="display: none;">
+    <div class="modal-card modal-card-reporte">
+      
+      <!-- Barra de herramientas superior -->
+      <div class="report-toolbar no-print">
+        <div class="toolbar-left">
+          <span class="toolbar-title" id="visor-externa-titulo">🚚 Previsualización: Hoja de Despacho a UPs Externas</span>
+          <span class="toolbar-subtitle" id="visor-externa-subtitle">Directiva de despacho de bultos crudos y control de mermas</span>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn-action btn-secondary" onclick="copiarExternaWhatsApp()" title="Copiar directiva para enviar por WhatsApp">
+            📋 Copiar para WhatsApp
+          </button>
+          <button class="btn-action btn-print" onclick="ejecutarImpresionExterna()" title="Imprimir hoja de despacho formal o guardar como PDF">
+            🖨️ Imprimir / Guardar PDF
+          </button>
+          <button class="btn-action btn-secondary" onclick="cerrarModalVisorExterna()" title="Cerrar vista previa">
+            ❌ Cerrar
+          </button>
+        </div>
+      </div>
+
+      <!-- Hoja del Reporte Imprimible -->
+      <div id="hoja-reporte-externa-print" class="printable-sheet">
+        
+        <!-- Membrete Ejecutivo -->
+        <div class="sheet-header">
+          <div class="sheet-brand">
+            <img src="/img/logo_LAMDA_grande.png" alt="LAMDA" class="sheet-logo-img" onerror="this.src='/src/produccion/img/logo_LAMDA_grande.png';">
+            <div class="brand-subtext">DIRECCIÓN DE OPERACIONES &bull; DESPACHO A UNIDADES PRODUCTIVAS EXTERNAS</div>
+          </div>
+          <div class="sheet-doc-meta">
+            <div class="doc-title-main">ORDEN DE DESPACHO Y PRODUCCIÓN EXTERNA</div>
+            <div class="doc-meta-item"><strong>Fecha y Hora:</strong> <span id="sheet-externa-meta-fecha">--/--/----</span></div>
+            <div class="doc-meta-item"><strong>Horizonte Proyectado:</strong> <span id="sheet-externa-meta-objetivo">-- días de cobertura</span></div>
+            <div class="doc-meta-item"><strong>Destino:</strong> <span>Unidades Productivas (Tostaderos / Barritas / Granolas)</span></div>
+            <div class="doc-meta-item"><strong>Emisión:</strong> <span>Depósito Central LAMDA</span></div>
+          </div>
+        </div>
+
+        <div class="sheet-divider"></div>
+
+        <!-- KPI Resumen de Despacho -->
+        <div class="sheet-kpi-summary" id="sheet-externa-kpis-summary">
+          <!-- Inyectado por JS -->
+        </div>
+
+        <!-- Contenedor Dinámico de Tablas de Despacho (Inyectado por JS) -->
+        <div id="sheet-externa-contenido-print">
+          <!-- Inyectado dinámicamente -->
+        </div>
+
+        <!-- Firmas y Responsables -->
+        <div class="sheet-signatures" style="margin-top: 30px;">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Despacho Depósito Central</div>
+            <div class="sig-role">Pesaje y Salida de Bultos Crudos</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Recepción en UP Externa / Tostadero</div>
+            <div class="sig-role">Firma de Conformidad de Bultos</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-name">Control de Retorno y Mermas</div>
+            <div class="sig-role">Pesaje de Tostados / Elaborados</div>
+          </div>
+        </div>
+
+        <div class="sheet-footer">
+          <span>Generado automáticamente por el Sistema LAMDA &bull; Inteligencia Determinista de Operaciones</span>
+          <span>Página 1 de 1</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLADOR CLIENTE -->
+  <script src="/js/informe-produccion/planificacion-lunes.js?v=9.8"></script>
+
 </body>
 </html>
+

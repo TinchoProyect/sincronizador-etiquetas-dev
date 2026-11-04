@@ -178,6 +178,13 @@ async function cargarPedidosPorCliente() {
         window.clientesPedidos = pedidos;
 
         renderPedidosCliente(pedidos);
+
+        // Sincronizar automáticamente el resumen de faltantes y carros
+        if (typeof window.actualizarResumenFaltantes === 'function') {
+            window.actualizarResumenFaltantes();
+        } else if (typeof window.actualizarResumen === 'function') {
+            window.actualizarResumen();
+        }
     } catch (error) {
         console.error('❌ Error al cargar pedidos:', error);
         // Mostrar error en todos los contenedores
@@ -388,16 +395,28 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             // Calcular estado del presupuesto
             let faltantes = 0;
             let completos = 0;
+            let enDisputa = 0;
             presupuesto.articulos.forEach(art => {
-                if (art.faltante > 0) {
+                if (art.es_ingrediente === true) {
+                    completos++;
+                } else if (art.faltante > 0) {
                     faltantes++;
+                } else if (art.en_disputa === true || art.estado_stock === 'EN_DISPUTA') {
+                    enDisputa++;
                 } else {
                     completos++;
                 }
             });
 
-            const estadoPresupuesto = faltantes > 0 ? 'FALTANTES' : 'COMPLETO';
-            const estadoClass = faltantes > 0 ? 'indicador-faltantes' : 'indicador-completo';
+            let estadoPresupuesto = 'COMPLETO';
+            let estadoClass = 'indicador-completo';
+            if (faltantes > 0) {
+                estadoPresupuesto = 'FALTANTES';
+                estadoClass = 'indicador-faltantes';
+            } else if (enDisputa > 0) {
+                estadoPresupuesto = '⚠️ EN DISPUTA';
+                estadoClass = 'indicador-disputa';
+            }
 
             const presupuestoDiv = document.createElement('div');
             presupuestoDiv.style.marginBottom = '15px';
@@ -470,6 +489,36 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     imprimirPresupuestoIndividual(cliente.cliente_id, presupuesto.presupuesto_id);
                 });
                 botonesPresupuesto.appendChild(btnImprimirPresup);
+
+                // Botón "⏳ En Espera" si el presupuesto tiene al menos un faltante
+                const articulosFaltantesPresup = (presupuesto.articulos || []).filter(a => !a.es_ingrediente && parseFloat(a.faltante) > 0);
+                if (articulosFaltantesPresup.length > 0) {
+                    const btnEsperaPresup = document.createElement('button');
+                    btnEsperaPresup.innerHTML = '⏳ En Espera';
+                    btnEsperaPresup.className = 'admin-button';
+                    btnEsperaPresup.style.padding = '6px 12px';
+                    btnEsperaPresup.style.fontSize = '12px';
+                    btnEsperaPresup.style.backgroundColor = '#d97706'; // Ámbar cálido
+                    btnEsperaPresup.style.color = '#ffffff';
+                    btnEsperaPresup.style.border = 'none';
+                    btnEsperaPresup.style.marginLeft = '4px';
+                    btnEsperaPresup.title = 'Enviar este pedido a la solapa Pendientes de Compra (En Espera)';
+                    btnEsperaPresup.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const faltantePrincipal = articulosFaltantesPresup[0];
+                        if (typeof window.abrirModalDerivarCompras === 'function') {
+                            window.abrirModalDerivarCompras({
+                                articulo_numero: faltantePrincipal.articulo_numero,
+                                codigo_barras: faltantePrincipal.codigo_barras,
+                                descripcion: faltantePrincipal.descripcion,
+                                cantidad_faltante: faltantePrincipal.faltante,
+                                id_presupuesto_local: presupuesto.id_presupuesto_local || faltantePrincipal.id_presupuesto_local || presupuesto.presupuesto_id,
+                                id_presupuesto_ext: presupuesto.presupuesto_id || ''
+                            });
+                        }
+                    });
+                    botonesPresupuesto.appendChild(btnEsperaPresup);
+                }
             }
 
             // Botón verificar (solo en acordeón "Armar Pedido")
@@ -684,7 +733,14 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     tr.appendChild(tdArticulo);
 
                     const tdDescripcion = document.createElement('td');
-                    tdDescripcion.textContent = articulo.descripcion || '-';
+                    if (articulo.es_ingrediente) {
+                        tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.85em; color: #64748b; font-style: italic;">(Stock Cliente)</span>`;
+                    } else if (articulo.es_saldo_ingrediente) {
+                        const kgTxt = articulo.kilos_saldo ? `${Number(articulo.kilos_saldo)} kg` : 'Saldo';
+                        tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.82em; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">⚖️ Saldo Ingrediente (${kgTxt})</span>`;
+                    } else {
+                        tdDescripcion.textContent = articulo.descripcion || '-';
+                    }
                     tr.appendChild(tdDescripcion);
 
                     const tdPedidoTotal = document.createElement('td');
@@ -692,19 +748,93 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     tr.appendChild(tdPedidoTotal);
 
                     const tdStockDisponible = document.createElement('td');
-                    tdStockDisponible.textContent = articulo.stock_disponible;
+                    if (articulo.es_ingrediente) {
+                        tdStockDisponible.textContent = '-';
+                    } else if (articulo.es_saldo_ingrediente) {
+                        tdStockDisponible.innerHTML = `<span style="color:#b45309;font-weight:700;font-size:0.88em;" title="Ya descontado del stock de ingredientes">⚖️ Descontado</span>`;
+                    } else {
+                        tdStockDisponible.textContent = articulo.stock_disponible;
+                        if (articulo.en_disputa === true || articulo.estado_stock === 'EN_DISPUTA') {
+                            const subInfo = document.createElement('div');
+                            subInfo.style.fontSize = '0.75em';
+                            subInfo.style.color = '#d9480f';
+                            subInfo.style.fontWeight = 'bold';
+                            subInfo.textContent = `(Cola: ${articulo.demanda_global || articulo.pedido_total})`;
+                            subInfo.title = `Demanda activa total: ${articulo.demanda_global || articulo.pedido_total} un. en ${articulo.pedidos_demandantes || 'varios'} pedidos`;
+                            tdStockDisponible.appendChild(subInfo);
+                        }
+                    }
                     tr.appendChild(tdStockDisponible);
 
                     const tdFaltante = document.createElement('td');
-                    tdFaltante.textContent = articulo.faltante;
-                    tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
+                    tdFaltante.textContent = (articulo.es_ingrediente || articulo.es_saldo_ingrediente) ? '0' : articulo.faltante;
+                    tdFaltante.className = (!articulo.es_ingrediente && !articulo.es_saldo_ingrediente && articulo.faltante > 0) ? 'cantidad-faltante' : 'cantidad-completa';
                     tr.appendChild(tdFaltante);
 
                     const tdEstado = document.createElement('td');
                     const indicador = document.createElement('span');
-                    indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
-                    indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
+                    if (articulo.es_ingrediente) {
+                        indicador.className = 'indicador-estado';
+                        indicador.style.backgroundColor = '#e2e8f0';
+                        indicador.style.color = '#475569';
+                        indicador.style.fontWeight = 'bold';
+                        indicador.style.padding = '3px 8px';
+                        indicador.style.borderRadius = '4px';
+                        indicador.textContent = 'KIT / OMITIDO';
+                    } else if (articulo.es_saldo_ingrediente) {
+                        indicador.className = 'indicador-estado indicador-completo';
+                        indicador.textContent = '⚖️ Saldo Listo';
+                    } else {
+                        indicador.className = 'indicador-estado ' + calcularIndicadorEstado(articulo);
+                        if (articulo.en_disputa === true || articulo.estado_stock === 'EN_DISPUTA') {
+                            indicador.textContent = 'En Disputa';
+                            indicador.title = `Stock Comprometido: Hay ${articulo.stock_disponible} disponible(s) para ${articulo.demanda_global || articulo.pedido_total} unidades demandadas en ${articulo.pedidos_demandantes || 'varios'} pedidos`;
+                            tr.classList.add('fila-en-disputa');
+                        } else {
+                            indicador.textContent = articulo.faltante > 0 ? 'Faltante' : 'Completo';
+                        }
+                    }
                     tdEstado.appendChild(indicador);
+
+                    // Botón pequeño "⏳ En Espera" en la fila específica si hay faltante
+                    if (containerId === 'pedidos-imprimir' && !articulo.es_ingrediente && !articulo.es_saldo_ingrediente && parseFloat(articulo.faltante) > 0) {
+                        const btnFilaEspera = document.createElement('button');
+                        btnFilaEspera.innerHTML = '⏳ En Espera';
+                        btnFilaEspera.className = 'btn-fila-espera';
+                        btnFilaEspera.title = `Enviar este pedido a Pendientes por faltante de ${articulo.descripcion || articulo.articulo_numero}`;
+                        btnFilaEspera.style.marginLeft = '8px';
+                        btnFilaEspera.style.padding = '2px 7px';
+                        btnFilaEspera.style.fontSize = '11px';
+                        btnFilaEspera.style.fontWeight = 'bold';
+                        btnFilaEspera.style.backgroundColor = '#fef3c7';
+                        btnFilaEspera.style.color = '#92400e';
+                        btnFilaEspera.style.border = '1px solid #f59e0b';
+                        btnFilaEspera.style.borderRadius = '4px';
+                        btnFilaEspera.style.cursor = 'pointer';
+                        btnFilaEspera.style.verticalAlign = 'middle';
+                        btnFilaEspera.style.transition = 'all 0.2s';
+                        btnFilaEspera.addEventListener('mouseover', () => {
+                            btnFilaEspera.style.backgroundColor = '#fde68a';
+                        });
+                        btnFilaEspera.addEventListener('mouseout', () => {
+                            btnFilaEspera.style.backgroundColor = '#fef3c7';
+                        });
+                        btnFilaEspera.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (typeof window.abrirModalDerivarCompras === 'function') {
+                                window.abrirModalDerivarCompras({
+                                    articulo_numero: articulo.articulo_numero,
+                                    codigo_barras: articulo.codigo_barras,
+                                    descripcion: articulo.descripcion,
+                                    cantidad_faltante: articulo.faltante,
+                                    id_presupuesto_local: presupuesto.id_presupuesto_local || articulo.id_presupuesto_local || presupuesto.presupuesto_id,
+                                    id_presupuesto_ext: presupuesto.presupuesto_id || ''
+                                });
+                            }
+                        });
+                        tdEstado.appendChild(btnFilaEspera);
+                    }
+
                     tr.appendChild(tdEstado);
                 }
 
@@ -785,6 +915,7 @@ function renderPedidosCliente(pedidos) {
 
 // Función para calcular clase indicador estado
 function calcularIndicadorEstado(articulo) {
+    if (articulo.en_disputa === true || articulo.estado_stock === 'EN_DISPUTA') return 'indicador-disputa';
     if (articulo.faltante === 0) return 'indicador-completo';
     if (articulo.faltante < articulo.pedido_total) return 'indicador-parcial';
     return 'indicador-faltantes';
@@ -1229,7 +1360,32 @@ async function preValidarImpresion(queryString) {
             });
             
             if (result.isConfirmed) {
-                console.log(`[VIGÍA] FRONTEND - Usuario Confirmó Kilos! Resolviendo con:`, result.value);
+                console.log(`[VIGÍA] FRONTEND - Usuario Confirmó Kilos! Guardando y Resolviendo con:`, result.value);
+                
+                // Persistir los pesos de forma asíncrona en la base de datos local
+                const savePromises = Object.entries(result.value).map(async ([artNum, peso]) => {
+                    try {
+                        const response = await fetch(`/api/logistica/articulos/${encodeURIComponent(artNum)}/peso`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ kilos_unidad: peso })
+                        });
+                        const resData = await response.json();
+                        if (resData.success) {
+                            console.log(`✅ [VIGÍA] FRONTEND - Peso persistido para ${artNum} -> ${peso} kg`);
+                        } else {
+                            console.warn(`⚠️ [VIGÍA] FRONTEND - Error guardando peso para ${artNum}:`, resData.error);
+                        }
+                    } catch (saveErr) {
+                        console.error(`❌ [VIGÍA] FRONTEND - Falla de red guardando peso para ${artNum}:`, saveErr);
+                    }
+                });
+                
+                // Esperar a que se guarden todos los pesos en BD antes de proceder
+                await Promise.all(savePromises);
+                
                 return result.value; // Resuelve con los overrides
             } else {
                 console.log(`[VIGÍA] FRONTEND - Usuario CANCELÓ Modal! Bloqueando promesa.`);
@@ -1498,7 +1654,11 @@ function renderPedidosArticulos(articulos, totales) {
         tr.appendChild(tdArticulo);
 
         const tdDescripcion = document.createElement('td');
-        tdDescripcion.textContent = articulo.descripcion || '-';
+        if (articulo.es_ingrediente) {
+            tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.85em; color: #64748b; font-style: italic;">(Stock Cliente)</span>`;
+        } else {
+            tdDescripcion.textContent = articulo.descripcion || '-';
+        }
         tr.appendChild(tdDescripcion);
 
         const tdPedidoTotal = document.createElement('td');
@@ -1506,18 +1666,28 @@ function renderPedidosArticulos(articulos, totales) {
         tr.appendChild(tdPedidoTotal);
 
         const tdStockDisponible = document.createElement('td');
-        tdStockDisponible.textContent = articulo.stock_disponible;
+        tdStockDisponible.textContent = articulo.es_ingrediente ? '-' : articulo.stock_disponible;
         tr.appendChild(tdStockDisponible);
 
         const tdFaltante = document.createElement('td');
-        tdFaltante.textContent = articulo.faltante;
-        tdFaltante.className = articulo.faltante > 0 ? 'cantidad-faltante' : 'cantidad-completa';
+        tdFaltante.textContent = articulo.es_ingrediente ? '0' : articulo.faltante;
+        tdFaltante.className = (!articulo.es_ingrediente && articulo.faltante > 0) ? 'cantidad-faltante' : 'cantidad-completa';
         tr.appendChild(tdFaltante);
 
         const tdEstado = document.createElement('td');
         const indicador = document.createElement('span');
-        indicador.className = 'indicador-estado ' + calcularIndicadorEstadoArticulo(articulo);
-        indicador.textContent = articulo.estado;
+        if (articulo.es_ingrediente) {
+            indicador.className = 'indicador-estado';
+            indicador.style.backgroundColor = '#e2e8f0';
+            indicador.style.color = '#475569';
+            indicador.style.fontWeight = 'bold';
+            indicador.style.padding = '3px 8px';
+            indicador.style.borderRadius = '4px';
+            indicador.textContent = 'KIT / OMITIDO';
+        } else {
+            indicador.className = 'indicador-estado ' + calcularIndicadorEstadoArticulo(articulo);
+            indicador.textContent = articulo.estado;
+        }
         tdEstado.appendChild(indicador);
         tr.appendChild(tdEstado);
 
@@ -1550,13 +1720,17 @@ function renderPedidosArticulos(articulos, totales) {
  * Reutiliza la misma lógica que la vista por cliente
  */
 function calcularIndicadorEstadoArticulo(articulo) {
-    switch (articulo.estado.toUpperCase()) {
+    const estado = (articulo.estado || '').toUpperCase();
+    switch (estado) {
         case 'COMPLETO':
             return 'indicador-completo';
         case 'PARCIAL':
             return 'indicador-parcial';
         case 'FALTANTE':
             return 'indicador-faltantes';
+        case 'EN_DISPUTA':
+        case 'DISPUTA':
+            return 'indicador-disputa';
         default:
             return 'indicador-faltantes';
     }
@@ -1641,12 +1815,15 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
     estadoVerificacion = {
         presupuesto_id: presupuestoId,
         cliente_id: clienteId,
-        articulos: articulos.map(art => ({
-            ...art,
-            cantidad_confirmada: 0,
-            confirmado: false
-        })),
-        articulosConfirmados: 0,
+        articulos: articulos.map(art => {
+            const esIng = art.es_ingrediente === true;
+            return {
+                ...art,
+                cantidad_confirmada: esIng ? art.pedido_total : 0,
+                confirmado: esIng ? true : false
+            };
+        }),
+        articulosConfirmados: articulos.filter(art => art.es_ingrediente === true).length,
         totalArticulos: articulos.length
     };
 
@@ -1682,6 +1859,9 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
     if (modal) {
         modal.style.display = 'flex';
     }
+
+    // Verificar si ya está listo (por si solo había artículos completados/ingredientes)
+    verificarEstadoCompleto();
 }
 
 /**
@@ -1714,7 +1894,7 @@ function renderizarTablaVerificacion() {
         // Estado
         const tdEstado = document.createElement('td');
         tdEstado.className = 'estado-check';
-        tdEstado.textContent = articulo.confirmado ? '✅' : '⏳';
+        tdEstado.textContent = articulo.es_ingrediente ? '✅ KIT' : (articulo.confirmado ? '✅' : '⏳');
         tr.appendChild(tdEstado);
 
         // Código
@@ -1724,7 +1904,14 @@ function renderizarTablaVerificacion() {
 
         // Descripción
         const tdDescripcion = document.createElement('td');
-        tdDescripcion.textContent = articulo.descripcion || '-';
+        if (articulo.es_ingrediente) {
+            tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.85em; color: #64748b; font-style: italic;">(Stock Cliente)</span>`;
+        } else if (articulo.es_saldo_ingrediente) {
+            const kgTxt = articulo.kilos_saldo ? `${Number(articulo.kilos_saldo)} kg` : 'Saldo';
+            tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.82em; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">⚖️ Saldo Ingrediente (${kgTxt})</span>`;
+        } else {
+            tdDescripcion.textContent = articulo.descripcion || '-';
+        }
         tr.appendChild(tdDescripcion);
 
         // Cantidad Pedida
@@ -1737,13 +1924,15 @@ function renderizarTablaVerificacion() {
         const tdConfirmada = document.createElement('td');
         const inputConfirmada = document.createElement('input');
         inputConfirmada.type = 'number';
+        inputConfirmada.step = 'any';
         inputConfirmada.min = '0';
         inputConfirmada.max = articulo.pedido_total;
-        inputConfirmada.value = articulo.cantidad_confirmada;
+        inputConfirmada.value = articulo.es_ingrediente ? articulo.pedido_total : articulo.cantidad_confirmada;
+        if (articulo.es_ingrediente) inputConfirmada.disabled = true;
         inputConfirmada.style.width = '80px';
         inputConfirmada.style.textAlign = 'center';
         inputConfirmada.addEventListener('change', (e) => {
-            const cantidad = parseInt(e.target.value) || 0;
+            const cantidad = parseFloat(e.target.value) || 0;
             marcarArticuloConfirmado(index, cantidad);
         });
         tdConfirmada.appendChild(inputConfirmada);
@@ -1752,8 +1941,9 @@ function renderizarTablaVerificacion() {
         // Acciones
         const tdAcciones = document.createElement('td');
         const btnMarcar = document.createElement('button');
-        btnMarcar.textContent = articulo.confirmado ? '✓' : '✓ OK';
+        btnMarcar.textContent = articulo.es_ingrediente ? '✓ KIT' : (articulo.confirmado ? '✓' : '✓ OK');
         btnMarcar.className = 'btn-marcar-manual';
+        if (articulo.es_ingrediente) btnMarcar.disabled = true;
         btnMarcar.addEventListener('click', () => {
             marcarArticuloConfirmado(index, articulo.pedido_total);
         });
@@ -1794,9 +1984,11 @@ function configurarScannerInput() {
 function procesarCodigoEscaneado(codigo) {
     console.log(`🔍 Código escaneado: ${codigo}`);
 
-    // Buscar artículo en la lista
+    // Buscar artículo en la lista (por articulo_numero o codigo_barras)
     const index = estadoVerificacion.articulos.findIndex(art =>
-        art.articulo_numero === codigo || art.articulo_numero.toString() === codigo
+        art.articulo_numero === codigo ||
+        String(art.articulo_numero || '') === codigo ||
+        String(art.codigo_barras || '') === codigo
     );
 
     const feedback = document.getElementById('scanner-feedback');
@@ -1804,22 +1996,25 @@ function procesarCodigoEscaneado(codigo) {
     if (index !== -1) {
         // Artículo encontrado
         const articulo = estadoVerificacion.articulos[index];
+        const totalPedido = parseFloat(articulo.pedido_total) || 0;
+        const confirmadaActual = parseFloat(articulo.cantidad_confirmada) || 0;
+        const restante = Math.round((totalPedido - confirmadaActual) * 1000) / 1000;
 
-        // Incrementar cantidad confirmada en 1 (no marcar completo directamente)
-        const nuevaCantidad = articulo.cantidad_confirmada + 1;
-
-        if (nuevaCantidad > articulo.pedido_total) {
+        if (restante <= 0.0001) {
             // Ya se escaneó la cantidad completa
             mostrarFeedback(`⚠️ Artículo ${codigo} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
         } else {
-            // Incrementar en 1
+            // Si es un saldo de ingrediente (o fracción < 1), un solo pistoleo valida el saldo completo
+            const incremento = (articulo.es_saldo_ingrediente || totalPedido < 1 || restante < 1) ? restante : 1;
+            const nuevaCantidad = Math.round((confirmadaActual + incremento) * 1000) / 1000;
+
             marcarArticuloConfirmado(index, nuevaCantidad);
 
             // Feedback diferenciado según si completó o no
-            if (nuevaCantidad >= articulo.pedido_total) {
+            if (nuevaCantidad >= totalPedido - 0.0001) {
                 mostrarFeedback(`✅ Artículo ${codigo} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
             } else {
-                mostrarFeedback(`✅ Artículo ${codigo} +1 → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
+                mostrarFeedback(`✅ Artículo ${codigo} +${incremento} → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
             }
         }
     } else {
@@ -1836,7 +2031,7 @@ function marcarArticuloConfirmado(index, cantidad) {
     const cantidadAnterior = articulo.cantidad_confirmada;
 
     articulo.cantidad_confirmada = cantidad;
-    articulo.confirmado = (cantidad >= articulo.pedido_total);
+    articulo.confirmado = (cantidad >= articulo.pedido_total - 0.0001);
 
     // Si cambió el estado de confirmación, actualizar contador
     if (!articulo.confirmado && cantidadAnterior >= articulo.pedido_total) {
@@ -3040,4 +3235,114 @@ async function consultarTrazabilidadLote() {
 }
 
 window.consultarTrazabilidadLote = consultarTrazabilidadLote;
+
+/**
+ * Abre un modal interactivo para solicitar la cantidad de etiquetas LAMDA a imprimir (mínimo 2)
+ * y luego envía la orden a la impresora mediante la API de app-etiquetas.
+ */
+async function imprimirEtiquetaLamdaModal() {
+    if (typeof Swal === 'undefined') {
+        const cantStr = prompt('¿Cuántas etiquetas LAMDA desea imprimir? (Mínimo 2):', '2');
+        if (!cantStr) return;
+        const cant = parseInt(cantStr, 10);
+        if (isNaN(cant) || cant < 2) {
+            alert('La cantidad mínima es de 2 etiquetas.');
+            return;
+        }
+        return ejecutarImpresionLamda(cant);
+    }
+
+    const { value: cantidad } = await Swal.fire({
+        title: '🖨️ Imprimir Etiqueta LAMDA',
+        html: `
+            <div style="font-size: 0.95em; color: #475569; margin-bottom: 12px; line-height: 1.4;">
+                Ingrese la cantidad de etiquetas a imprimir:<br>
+                <small style="color: #64748b; font-style: italic;">(La etiquetadora imprime en pares, mínimo 2 etiquetas)</small>
+            </div>
+        `,
+        input: 'number',
+        inputValue: 2,
+        inputAttributes: {
+            min: 2,
+            step: 1,
+            style: 'text-align: center; font-size: 1.3em; font-weight: bold; width: 130px; margin: 10px auto; border: 2px solid #0284c7; border-radius: 6px;'
+        },
+        showCancelButton: true,
+        confirmButtonText: '🖨️ Imprimir',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#0284c7',
+        cancelButtonColor: '#64748b',
+        focusConfirm: false,
+        didOpen: () => {
+            const input = Swal.getInput();
+            if (input) {
+                input.select();
+            }
+        },
+        inputValidator: (value) => {
+            const num = parseInt(value, 10);
+            if (!value || isNaN(num)) {
+                return 'Por favor ingrese un número válido.';
+            }
+            if (num < 2) {
+                return 'La cantidad mínima a imprimir es de 2 etiquetas.';
+            }
+        }
+    });
+
+    if (cantidad) {
+        await ejecutarImpresionLamda(parseInt(cantidad, 10));
+    }
+}
+
+/**
+ * Envía la solicitud de impresión a la API de app-etiquetas (puerto 3000)
+ */
+async function ejecutarImpresionLamda(cantidad = 2) {
+    const datos = {
+        textoPrincipal: 'LAMDA',
+        textoSecundario: '221-6615746',
+        textoAdicional: ''
+    };
+
+    try {
+        const res = await fetch('http://localhost:3000/api/imprimir-personalizada', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ datos, cantidad }),
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Enviado a impresora!',
+                    text: `Se enviaron ${cantidad} etiqueta${cantidad > 1 ? 's' : ''} LAMDA a la impresora.`,
+                    timer: 2500,
+                    showConfirmButton: false
+                });
+            } else {
+                alert(`Se enviaron ${cantidad} etiquetas LAMDA a la impresora.`);
+            }
+        } else {
+            console.error('Error al imprimir etiqueta LAMDA:', data.error);
+            if (typeof Swal !== 'undefined') {
+                Swal.fire('Error', 'No se pudo contactar al servidor LAMDA Impresiones: ' + (data.error || 'Error desconocido'), 'error');
+            } else {
+                alert('Error al imprimir: ' + (data.error || 'Error desconocido'));
+            }
+        }
+    } catch (error) {
+        console.error('Error al pedir impresión de etiqueta LAMDA:', error.message);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire('Error', 'Impresora App-Etiquetas fuera de línea: ' + error.message, 'error');
+        } else {
+            alert('Error al imprimir: ' + error.message);
+        }
+    }
+}
+
+window.imprimirEtiquetaLamda = ejecutarImpresionLamda;
+window.imprimirEtiquetaLamdaModal = imprimirEtiquetaLamdaModal;
 

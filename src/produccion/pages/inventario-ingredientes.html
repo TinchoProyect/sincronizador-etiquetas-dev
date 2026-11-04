@@ -7,6 +7,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventario de Ingredientes - Sistema de Producción</title>
 
+    <!-- Tipografías Corporativas LAMDA -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
     <!-- Estilos existentes del sistema -->
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/modal-articulos.css">
@@ -14,8 +19,29 @@
 
     <!-- Estilos específicos para inventario de ingredientes -->
     <style>
+        :root {
+            --lamda-dark: #0b0f19;
+            --lamda-slate: #1e293b;
+            --lamda-blue: #0284c7;
+            --lamda-blue-hover: #0369a1;
+            --lamda-emerald: #10b981;
+            --lamda-emerald-hover: #059669;
+            --lamda-amber: #f59e0b;
+            --lamda-red: #ef4444;
+            --lamda-border: #e2e8f0;
+            --lamda-bg-light: #f8fafc;
+        }
+
+        body {
+            background-color: #f1f5f9;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
         .content-section {
-            max-width: 1400px;
+            max-width: 1440px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -24,35 +50,128 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
+            margin-bottom: 24px;
+            padding: 20px 28px;
+            background: linear-gradient(135deg, #0b0f19 0%, #1e293b 100%);
+            border-radius: 12px;
             color: white;
+            box-shadow: 0 4px 15px rgba(15, 23, 42, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .header-brand-box {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .header-logo-img {
+            height: 48px;
+            width: auto;
+            object-fit: contain;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .header-title-box {
+            display: flex;
+            flex-direction: column;
         }
 
         .header-title {
-            font-size: 28px;
-            font-weight: bold;
+            font-family: 'Outfit', sans-serif;
+            font-size: 26px;
+            font-weight: 700;
             margin: 0;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .badge-header-tag {
+            font-size: 0.75rem;
+            font-weight: 700;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 3px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
 
         .header-subtitle {
-            font-size: 14px;
-            opacity: 0.9;
-            margin: 5px 0 0 0;
+            font-size: 13px;
+            color: #94a3b8;
+            margin: 4px 0 0 0;
         }
 
         .header-actions {
             display: flex;
-            gap: 15px;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
-        .btn-primary {
-            background: #28a745;
+        .btn-lamda-primary {
+            background: #0284c7;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+        }
+        .btn-lamda-primary:hover {
+            background: #0369a1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(2, 132, 199, 0.35);
+        }
+
+        .btn-lamda-secondary {
+            background: #334155;
+            color: white;
+            border: 1px solid #475569;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-lamda-secondary:hover {
+            background: #475569;
+            transform: translateY(-1px);
+        }
+
+        .btn-lamda-volver {
+            background: transparent;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-lamda-volver:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+            border-color: #94a3b8;
+        }
             border-radius: 6px;
             font-size: 14px;
             font-weight: 600;
@@ -278,6 +397,250 @@
             flex-direction: column;
         }
 
+        #modal-inventario .modal-content {
+            max-width: 680px;
+        }
+
+        #modal-ajustes .modal-content {
+            max-width: 860px;
+            width: 95%;
+        }
+
+        /* Badges de stock dual en tabla principal */
+        .badge-kilos-stock {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #86efac;
+            font-family: monospace;
+        }
+        .badge-kilos-stock.cero {
+            background: #f8fafc;
+            color: #64748b;
+            border-color: #cbd5e1;
+        }
+        .badge-kilos-stock.negativo {
+            background: #fef2f2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+
+        .badge-bultos-stock {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            background: #faf5ff;
+            color: #6b21a8;
+            border: 1px solid #d8b4fe;
+            font-family: monospace;
+        }
+        .badge-bultos-stock.cero {
+            background: #f8fafc;
+            color: #94a3b8;
+            border-color: #e2e8f0;
+        }
+
+        .badge-lote-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            background: #f3e8ff;
+            color: #7e22ce;
+            border: 1px solid #d8b4fe;
+            margin: 2px;
+            white-space: nowrap;
+        }
+
+        .badge-potencial-stock {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 5px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+            font-family: monospace;
+        }
+
+        /* Estilos para las tarjetas de Ajuste Puntual */
+        .ajuste-item-card {
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 18px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            text-align: left;
+        }
+
+        .ajuste-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+
+        .ajuste-dual-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .ajuste-dual-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .ajuste-box-kilos {
+            background: #f0fdf4;
+            border: 1.5px solid #86efac;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .ajuste-box-bultos {
+            background: #faf5ff;
+            border: 1.5px solid #d8b4fe;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .ajuste-box-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ajuste-lote-row {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ajuste-btn-step {
+            width: 30px;
+            height: 30px;
+            border-radius: 5px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #1e293b;
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        .ajuste-btn-step:hover {
+            background: #e2e8f0;
+        }
+
+        .ajuste-input-cajas {
+            width: 55px;
+            height: 30px;
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 800;
+            border: 1.5px solid #94a3b8;
+            border-radius: 4px;
+            color: #0f172a;
+            background: #ffffff;
+        }
+
+        .ajuste-summary-bar {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .lote-counter-row-pc {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-lote-qty-pc {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #f1f5f9;
+            color: #1e293b;
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .btn-lote-qty-pc:hover {
+            background: #e2e8f0;
+        }
+
+        .input-lote-cajas-pc {
+            width: 45px;
+            height: 30px;
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 800;
+            border: 1.5px solid #94a3b8;
+            border-radius: 4px;
+            color: #0f172a;
+            background: #ffffff;
+        }
+
+        .dropdown-item-pc {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .dropdown-item-pc:hover {
+            background: #f8fafc;
+        }
+
         @keyframes modalSlideIn {
             from {
                 opacity: 0;
@@ -485,19 +848,657 @@
             border: 1px solid #dee2e6;
         }
 
-        /* Modo selección */
-        .tabla-ingredientes.modo-seleccion th:first-child,
-        .tabla-ingredientes.modo-seleccion td:first-child {
-            display: table-cell;
+        /* Barra de Herramientas de Acordeones */
+        .toolbar-acordeones {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+            flex-wrap: wrap;
+            gap: 14px;
         }
 
-        .tabla-ingredientes th:first-child,
-        .tabla-ingredientes td:first-child {
+        .stats-globales-inventario {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .badge-stat-global {
+            font-size: 0.84rem;
+            font-weight: 700;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #334155;
+            padding: 6px 14px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .badge-stat-global.kilos {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+        .badge-stat-global.bultos {
+            background: #faf5ff;
+            border-color: #e9d5ff;
+            color: #7e22ce;
+        }
+        .badge-stat-global.potencial {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1e40af;
+        }
+
+        .acciones-acordeones {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-tool-acordeon {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-tool-acordeon:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+            color: #0f172a;
+        }
+        .btn-tool-acordeon.btn-print-global {
+            background: #0284c7;
+            color: white;
+            border-color: #0284c7;
+            box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);
+        }
+        .btn-tool-acordeon.btn-print-global:hover {
+            background: #0369a1;
+        }
+
+        .btn-tool-acordeon.btn-toggle-precios {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            color: #334155;
+            user-select: none;
+        }
+        .btn-tool-acordeon.btn-toggle-precios:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+        .btn-tool-acordeon.btn-toggle-precios.activo {
+            background: #f0fdf4;
+            border-color: #22c55e;
+            color: #15803d;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+        }
+
+        /* Acordeones de Sectores */
+        .sectores-acordeon-container {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 30px;
+        }
+
+        .sector-accordion-card {
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .sector-accordion-card:hover {
+            border-color: #cbd5e1;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .sector-accordion-header {
+            background: #ffffff;
+            padding: 14px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            user-select: none;
+            transition: background-color 0.15s ease;
+        }
+        .sector-accordion-header:hover {
+            background-color: #f8fafc;
+        }
+        .sector-accordion-header.abierto {
+            background-color: #f8fafc;
+            border-bottom: 1.5px solid #e2e8f0;
+        }
+
+        .sector-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sector-chevron {
+            font-size: 0.85rem;
+            color: #64748b;
+            transition: transform 0.2s ease;
+            display: inline-block;
+            width: 14px;
+            text-align: center;
+        }
+        .sector-accordion-header.abierto .sector-chevron {
+            transform: rotate(90deg);
+            color: #0284c7;
+        }
+
+        .badge-sector-letra {
+            background: #0f172a;
+            color: #38bdf8;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.92rem;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .sector-nombre-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .badge-sector-count {
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+        }
+
+        .sector-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sector-metric-pill {
+            font-size: 0.8rem;
+            padding: 4px 9px;
+            border-radius: 6px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .sector-metric-pill.kilos {
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .sector-metric-pill.bultos {
+            background: #faf5ff;
+            color: #7e22ce;
+            border: 1px solid #e9d5ff;
+        }
+        .sector-metric-pill.potencial {
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+
+        .btn-imprimir-sector {
+            background: #0284c7;
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 1px 4px rgba(2, 132, 199, 0.25);
+            white-space: nowrap;
+        }
+        .btn-imprimir-sector:hover {
+            background: #0369a1;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(2, 132, 199, 0.35);
+        }
+
+        .sector-accordion-body {
             display: none;
+            overflow-x: auto;
         }
 
-        .tabla-ingredientes.modo-seleccion th:first-child {
-            background: #28a745;
+        /* Tablas de Sector */
+        .tabla-ingredientes-sector {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .tabla-ingredientes-sector th {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 11px 12px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+        }
+
+        .tabla-ingredientes-sector td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.88rem;
+        }
+
+        .tabla-ingredientes-sector tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .tabla-ingredientes-sector .checkbox-cell {
+            display: none;
+            width: 40px;
+            text-align: center;
+        }
+
+        .modo-seleccion .tabla-ingredientes-sector .checkbox-cell,
+        .tabla-ingredientes-sector.modo-seleccion .checkbox-cell,
+        .tabla-ingredientes.modo-seleccion .checkbox-cell {
+            display: table-cell !important;
+        }
+
+        .modo-seleccion .tabla-ingredientes-sector th.checkbox-cell,
+        .tabla-ingredientes.modo-seleccion th.checkbox-cell {
+            background: #16a34a !important;
+        }
+
+        .modal .tabla-ingredientes .checkbox-cell {
+            display: table-cell !important;
+        }
+
+        /* Modal de Visor e Impresión de Reporte Formal LAMDA */
+        .modal-overlay-print {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .print-modal-toolbar {
+            width: 100%;
+            max-width: 1120px;
+            background: #0f172a;
+            border-radius: 10px 10px 0 0;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #334155;
+            border-bottom: none;
+            color: white;
+        }
+
+        .print-toolbar-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .print-toolbar-meta {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-left: 12px;
+        }
+
+        .print-toolbar-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-print-action {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: none;
+        }
+        .btn-imprimir-confirm {
+            background: #0284c7;
+            color: white;
+        }
+        .btn-imprimir-confirm:hover {
+            background: #0369a1;
+        }
+        .btn-cerrar-print {
+            background: #475569;
+            color: white;
+        }
+        .btn-cerrar-print:hover {
+            background: #64748b;
+        }
+        .btn-print-action.btn-toggle-modal {
+            background: #334155;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            user-select: none;
+        }
+        .btn-print-action.btn-toggle-modal:hover {
+            background: #475569;
+            color: white;
+        }
+        .btn-print-action.btn-toggle-modal.activo {
+            background: #166534;
+            color: #86efac;
+            border-color: #22c55e;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+        }
+
+        .print-modal-scroll-wrapper {
+            width: 100%;
+            max-width: 1120px;
+            background: #ffffff;
+            border-radius: 0 0 10px 10px;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 40px;
+        }
+
+        /* Hoja Imprimible (Formato A4 Corporativo) */
+        .printable-sheet {
+            background: #ffffff;
+            color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .sheet-brand {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .sheet-logo-img {
+            height: 44px;
+            width: auto;
+            max-width: 180px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .brand-subtext {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #64748b;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .sheet-doc-meta {
+            text-align: right;
+        }
+
+        .doc-title-main {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+
+        .highlight-sector {
+            color: #0284c7;
+            font-weight: 800;
+        }
+
+        .doc-meta-item {
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
+        .sheet-divider {
+            height: 2px;
+            background: linear-gradient(90deg, #0284c7 0%, #cbd5e1 100%);
+            margin-bottom: 16px;
+        }
+
+        .sheet-kpis-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .sheet-kpis-grid.con-precios {
+            grid-template-columns: repeat(6, 1fr);
+        }
+
+        .sheet-kpi-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px 10px;
+            text-align: center;
+        }
+        .sheet-kpi-box.box-potencial {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        .kpi-box-lbl {
+            display: block;
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .kpi-box-val {
+            display: block;
+            font-size: 1rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+
+        .sheet-table-wrapper {
+            margin-bottom: 20px;
+        }
+
+        .sheet-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.76rem;
+        }
+
+        .sheet-table th {
+            background: #f1f5f9;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+        }
+
+        .sheet-table td {
+            border: 1px solid #e2e8f0;
+            padding: 5px 8px;
+            color: #1e293b;
+        }
+
+        .sheet-table tfoot td {
+            background: #f8fafc;
+            border-top: 2px solid #0f172a;
+            font-weight: 800;
+            color: #0f172a;
+            padding: 6px 8px;
+        }
+
+        .sheet-signatures {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 30px;
+            margin-bottom: 16px;
+        }
+
+        .sig-box {
+            text-align: center;
+        }
+
+        .sig-line {
+            border-top: 1px solid #94a3b8;
+            margin-bottom: 4px;
+        }
+
+        .sig-name {
+            font-size: 0.74rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .sig-role {
+            font-size: 0.68rem;
+            color: #64748b;
+        }
+
+        .sheet-footer {
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.68rem;
+            color: #64748b;
+        }
+
+        /* @media print */
+        @page {
+            size: A4 landscape;
+            margin: 8mm 10mm;
+        }
+
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            .content-section,
+            .header-section,
+            .filters-section,
+            .toolbar-acordeones,
+            .sectores-acordeon-container,
+            .modal,
+            .no-print,
+            .print-modal-toolbar,
+            .swal2-container {
+                display: none !important;
+            }
+
+            .modal-overlay-print {
+                position: static !important;
+                display: block !important;
+                background: transparent !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                backdrop-filter: none !important;
+            }
+
+            .print-modal-scroll-wrapper {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+
+            .printable-sheet {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+
+            .sheet-header,
+            .sheet-kpis-grid,
+            .sheet-signatures {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+
+            .sheet-table tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
         }
 
         /* Responsive */
@@ -505,6 +1506,11 @@
             .header-section {
                 flex-direction: column;
                 gap: 15px;
+                text-align: center;
+            }
+
+            .header-brand-box {
+                flex-direction: column;
                 text-align: center;
             }
 
@@ -518,18 +1524,25 @@
                 align-items: stretch;
             }
 
+            .toolbar-acordeones {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .sector-accordion-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .sector-header-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+
             .modal-content {
                 width: 95%;
                 margin: 10% auto;
-            }
-
-            .tabla-ingredientes {
-                font-size: 12px;
-            }
-
-            .tabla-ingredientes th,
-            .tabla-ingredientes td {
-                padding: 8px 6px;
             }
         }
     </style>
@@ -537,35 +1550,57 @@
 
 <body>
     <div class="content-section">
-        <!-- Header -->
+        <!-- Header Corporativo LAMDA -->
         <div class="header-section">
-            <div>
-                <h1 class="header-title">🧪 Inventario de Ingredientes</h1>
-                <p class="header-subtitle">Gestión completa de stock de ingredientes</p>
+            <div class="header-brand-box">
+                <img src="/img/logo_LAMDA_grande.png" alt="LAMDA" class="header-logo-img" onerror="this.src='../img/logo_LAMDA_grande.png';">
+                <div class="header-title-box">
+                    <h1 class="header-title">
+                        🧪 Inventario de Ingredientes
+                        <span class="badge-header-tag">Taller LAMDA</span>
+                    </h1>
+                    <p class="header-subtitle">Control y Auditoría de Stock con Doble Guarda (Balanza + Búnker) agrupado por Sector</p>
+                </div>
             </div>
             <div class="header-actions">
-                <button id="btn-iniciar-inventario" class="btn-primary">
+                <button id="btn-iniciar-inventario" class="btn-lamda-primary" title="Iniciar sesión de inventario móvil/PC">
                     📋 Iniciar Inventario
                 </button>
-                <button id="btn-ajustes-puntuales" class="btn-secondary">
+                <button id="btn-ajustes-puntuales" class="btn-lamda-secondary" title="Realizar ajustes de balanza y lotes">
                     ⚙️ Ajustes Puntuales
                 </button>
-                <button id="btn-confirmar-seleccion" class="btn-primary" style="display: none;">
+                <button id="btn-historial-inventarios" class="btn-lamda-secondary" style="background: #4f46e5; border-color: #6366f1;" title="Ver auditorías e historiales">
+                    📜 Historial
+                </button>
+                <button id="btn-confirmar-seleccion" class="btn-lamda-primary" style="display: none; background: #16a34a;">
                     ✅ Confirmar Selección
                 </button>
+                <a href="ingredientes.html" class="btn-lamda-volver" title="Regresar al panel general de gestión de ingredientes">
+                    ← Volver a Ingredientes
+                </a>
             </div>
         </div>
 
         <!-- Filtros -->
         <div class="filters-section">
-            <h3 class="filters-title">🔍 Filtros</h3>
-            <div class="filters-row">
-                <div class="filter-group">
-                    <label>Buscar por nombre</label>
-                    <input type="text" id="filtro-nombre" placeholder="Escribir nombre del ingrediente...">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <h3 class="filters-title" style="margin: 0; font-size: 1rem; color: #1e293b; font-weight: 700;">🔍 Búsqueda y Filtrado de Ingredientes</h3>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-tool-acordeon" onclick="window.toggleTodosAcordeones(true)" title="Desplegar todos los sectores">
+                        ➕ Desplegar Todos
+                    </button>
+                    <button type="button" class="btn-tool-acordeon" onclick="window.toggleTodosAcordeones(false)" title="Contraer todos los sectores">
+                        ➖ Contraer Todos
+                    </button>
                 </div>
-                <div class="filter-group">
-                    <label>Filtrar por stock</label>
+            </div>
+            <div class="filters-row">
+                <div class="filter-group" style="flex: 1; min-width: 260px;">
+                    <label>Buscar por nombre o código (Espacio = AND)</label>
+                    <input type="text" id="filtro-nombre" placeholder="Escribir nombre, código o lote..." autocomplete="off">
+                </div>
+                <div class="filter-group" style="min-width: 220px;">
+                    <label>Filtrar por condición de stock</label>
                     <select id="filtro-stock">
                         <option value="todos">Todos los ingredientes</option>
                         <option value="mayor-cero">Con stock (> 0)</option>
@@ -576,33 +1611,40 @@
             </div>
         </div>
 
-        <!-- Tabla de Ingredientes -->
-        <div class="table-section">
-            <div class="table-header">
-                <h3 class="table-title">📦 Lista de Ingredientes</h3>
-                <div class="table-stats">
-                    <span id="total-ingredientes"></span>
-                </div>
+        <!-- Barra de Herramientas y Resumen Global -->
+        <div class="toolbar-acordeones">
+            <div class="stats-globales-inventario">
+                <span class="badge-stat-global" id="total-ingredientes-badge">📦 0 ingredientes</span>
+                <span class="badge-stat-global kilos" id="total-kilos-global-badge">⚖️ 0.00 kg abiertos</span>
+                <span class="badge-stat-global bultos" id="total-bultos-global-badge">📦 0 cj cerradas</span>
+                <span class="badge-stat-global potencial" id="total-potencial-global-badge">⚡ 0.00 kg total</span>
             </div>
-            <div style="overflow-x: auto;">
-                <table class="tabla-ingredientes">
-                    <thead>
-                        <tr>
-                            <th>
-                                <input type="checkbox" id="seleccionar-todos">
-                            </th>
-                            <th>Nombre</th>
-                            <th>Código</th>
-                            <th>Stock Actual</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabla-ingredientes-body">
-                        <tr>
-                            <td colspan="5" class="mensaje-info">Cargando ingredientes...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="acciones-acordeones">
+                <label id="label-seleccionar-todos" class="check-todos-label" style="display: none; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; color: #1e293b; background: #e2e8f0; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <input type="checkbox" id="seleccionar-todos" style="width: 16px; height: 16px; cursor: pointer;">
+                    <span>Seleccionar Todos</span>
+                </label>
+                <button type="button" class="btn-tool-acordeon btn-toggle-precios" id="btn-toggle-precios-toolbar" onclick="window.togglePreciosReporte()" title="Activar o desactivar costos y precios en los informes PDF (Predeterminado: Desactivado)">
+                    <span id="icono-precios-toolbar">💵</span> Precios en Informes: <strong id="lbl-status-precios-toolbar" style="margin-left: 3px; color: #64748b;">NO</strong>
+                </button>
+                <button type="button" class="btn-tool-acordeon btn-print-global" onclick="window.imprimirInventarioCompleto()" title="Imprimir informe consolidado oficial de todos los sectores">
+                    🖨️ Imprimir Todo el Inventario
+                </button>
             </div>
+        </div>
+
+        <!-- Contenedor Dinámico de Acordeones por Sector -->
+        <div id="contenedor-sectores-acordeon" class="sectores-acordeon-container">
+            <div class="mensaje-info" style="padding: 30px; text-align: center; background: white; border-radius: 12px; border: 1px solid #e2e8f0;">
+                Cargando ingredientes y sectores...
+            </div>
+        </div>
+
+        <!-- Contenedor oculto para compatibilidad de selectores legados -->
+        <div style="display: none;">
+            <table>
+                <tbody id="tabla-ingredientes-body"></tbody>
+            </table>
         </div>
     </div>
 
@@ -669,7 +1711,17 @@
                             <h3 style="margin: 0; color: #333;">📡 Panel de Inventario</h3>
                             <div id="sectores-inventario-texto" style="font-size: 12px; color: #666;"></div>
                         </div>
-                        <div style="display: flex; gap: 10px;">
+                        <!-- Cronómetro en Vivo PC -->
+                        <div id="cronometro-inventario-pc" style="display: none; align-items: center; gap: 8px; background: #e0e7ff; border: 1.5px solid #818cf8; padding: 4px 14px; border-radius: 20px; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.15);">
+                            <span style="font-size: 1.1rem;">⏱️</span>
+                            <span style="font-size: 0.75rem; font-weight: 700; color: #3730a3; text-transform: uppercase; letter-spacing: 0.5px;">Tiempo:</span>
+                            <span id="display-tiempo-inventario-pc" style="font-size: 1.15rem; font-weight: 800; color: #312e81; font-family: monospace; letter-spacing: 1px;">00:00:00</span>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button id="btn-finalizar-inventario-pc-header" class="btn-success"
+                                style="font-size: 12px; background: #16a34a; color: white; font-weight: 700; padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
+                                🏁 Finalizar Inventario
+                            </button>
                             <button id="btn-imprimir-sector-pc" class="btn-secondary" style="font-size: 12px;">🖨️
                                 Imprimir Sector</button>
                             <button id="btn-cancelar-inventario-pc" class="btn-cancel"
@@ -695,31 +1747,137 @@
                     </div>
 
                     <!-- CONTENIDO TABS -->
-                    <div id="contenedor-tabs-pc" style="height: 400px; overflow-y: auto;">
+                    <div id="contenedor-tabs-pc" style="min-height: 420px; max-height: 72vh; overflow-y: auto;">
 
-                        <!-- 1. TAB CARGA -->
-                        <div id="view-carga-pc" class="tab-view-pc"
-                            style="display: block; text-align: center; padding: 20px;">
-                            <div style="max-width: 500px; margin: 0 auto;">
-                                <div class="qr-section"
-                                    style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 10px;">
-                                    <div id="qr-canvas"></div>
-                                    <p style="margin-top: 5px; font-size: 0.9em; color: #666;">Escanear para unir
-                                        celular</p>
+                        <!-- 1. TAB CARGA PC (ESPEJO TOTAL CON MÓVIL) -->
+                        <div id="view-carga-pc" class="tab-view-pc" style="display: block; padding: 15px;">
+
+                            <!-- SECCIÓN QR CELULAR (Visible por defecto para conexión rápida) -->
+                            <div id="seccion-qr-pc" style="margin-bottom: 12px; background: #ffffff; border: 2px solid #6366f1; border-radius: 10px; padding: 10px 14px; text-align: center; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.08);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 1.1rem;">📱</span>
+                                        <strong style="color: #4338ca; font-size: 0.92rem;">Conectar Celular (Escanear Código QR)</strong>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span id="badge-qr-estado" style="background: #e0e7ff; color: #3730a3; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 12px;">Esperando móvil...</span>
+                                        <button type="button" id="btn-toggle-qr" onclick="window.toggleSeccionQR()" style="background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; color: #64748b; cursor: pointer;">Minimizar</button>
+                                    </div>
                                 </div>
-
-                                <div class="form-group">
-                                    <label>Carga Manual Rápida</label>
-                                    <input type="text" id="input-codigo-barras"
-                                        placeholder="Escanear código o escribir..."
-                                        style="font-size: 1.2em; text-align: center;">
+                                <div id="contenido-qr-pc">
+                                    <div id="qr-canvas" style="display: flex; justify-content: center; margin: 8px auto;"></div>
+                                    <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #64748b;">Escaneá este código QR con la cámara del celular para comenzar a inventariar en espejo</p>
                                 </div>
-
-                                <button id="btn-finalizar-inventario" class="btn-primary"
-                                    style="width: 100%; margin-top: 20px;">
-                                    🏁 Finalizar Inventario
-                                </button>
                             </div>
+
+                            <!-- ENTRADA DUAL DE ESCANEO PC -->
+                            <div class="dual-scan-inputs-container-pc" style="margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; text-align: left;">
+                                <!-- 1. MODO BALANZA: INGREDIENTE / KILOS SUELTOS -->
+                                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 8px 12px;">
+                                    <div style="font-size: 0.75rem; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between;">
+                                        <span>⚖️ 1. MODO BALANZA (Kilos Sueltos)</span>
+                                        <small style="color: #15803d; font-weight: 500;">Pesar en balanza</small>
+                                    </div>
+                                    <div style="position: relative;">
+                                        <input type="text" id="buscador-pc" class="form-control form-control-sm" placeholder="Escanear etiqueta de ingrediente o buscar..."
+                                            style="width: 100%; padding: 8px 10px; font-size: 0.95rem; border-color: #86efac; background: #fff;" autocomplete="off">
+                                        <div id="search-dropdown-pc" class="dropdown-list" style="display:none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; z-index: 100; max-height: 200px; overflow-y: auto; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);"></div>
+                                    </div>
+                                </div>
+
+                                <!-- 2. MODO BULTOS CERRADOS: ESCÁNER DE LOTES -->
+                                <div style="background: #faf5ff; border: 1.5px solid #d8b4fe; border-radius: 8px; padding: 8px 12px;">
+                                    <div style="font-size: 0.75rem; font-weight: 800; color: #6b21a8; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between;">
+                                        <span>📦 2. MODO BULTOS CERRADOS (Lotes)</span>
+                                        <small style="color: #7e22ce; font-weight: 500;">+1 bolsa por disparo</small>
+                                    </div>
+                                    <div style="position: relative;">
+                                        <input type="text" id="buscador-lote-pc" class="form-control form-control-sm" placeholder="Disparar a etiqueta de lote del bulto cerrado..."
+                                            style="width: 100%; padding: 8px 35px 8px 10px; font-size: 0.95rem; border-color: #d8b4fe; background: #fff;" autocomplete="off">
+                                        <span style="position: absolute; right: 10px; top: 7px; font-size: 1rem; opacity: 0.6;">🏷️</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TARJETA DE PRODUCTO ACTIVO PC (IDÉNTICA A MÓVIL) -->
+                            <div id="info-articulo-pc" class="product-card-pc" style="display: none; background: white; border: 2px solid #3b82f6; border-radius: 10px; padding: 14px; text-align: left; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 10px;">
+                                    <div>
+                                        <h3 id="nombre-articulo-pc" style="margin: 0; font-size: 1.15rem; color: #1e293b;">Nombre del Ingrediente</h3>
+                                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 3px;">
+                                            <small id="codigo-articulo-pc" style="color: #64748b; font-weight: 600;">COD: --</small>
+                                            <span id="stock-sistema-badge-pc" style="background: #e2e8f0; color: #334155; font-size: 0.75rem; padding: 1px 6px; border-radius: 4px;">Sys: 0 kg | 0 cj</span>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 5px;">
+                                        <button id="btn-imprimir-pc-card" class="btn btn-sm btn-outline-secondary" title="Imprimir Etiqueta">🖨️</button>
+                                        <button id="btn-cerrar-tarjeta-pc" class="btn btn-sm btn-outline-danger" title="Cerrar Ficha">✕</button>
+                                    </div>
+                                </div>
+
+                                <!-- BLOQUE 1: KILOS SUELTOS -->
+                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #16a34a; border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <strong style="color: #166534; font-size: 0.85rem;">⚖️ SECCIÓN 1: Kilos Sueltos (Balanza)</strong>
+                                        <small id="kilos-sys-label-pc" style="color: #64748b;">Sys: 0.00 kg</small>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                        <input type="text" inputmode="decimal" id="cantidad-pc" class="form-control" placeholder="0.00" autocomplete="off" style="font-size: 1.15rem; font-weight: 700; width: 130px; text-align: right;">
+                                        <span style="font-weight: 700; color: #475569;" id="unidad-label-pc">kg</span>
+                                        <span id="diff-text-pc" style="font-size: 0.8rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: #e2e8f0; color: #475569;">Diff: 0.00 kg</span>
+                                        <button type="button" id="btn-confirmar-sugerido-pc" class="btn btn-sm btn-outline-success" style="font-weight: 700; display: none; align-items: center; gap: 4px; padding: 4px 10px; border-width: 1.5px; border-radius: 6px;" title="Confirmar peso sugerido y pasar a bultos">
+                                            ✅ Es correcto (<span id="txt-sugerido-kilos-pc">0.00</span> kg) ➔ Ir a Bultos
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- BLOQUE 2: BULTOS CERRADOS POR LOTE -->
+                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #9333ea; border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <strong style="color: #6b21a8; font-size: 0.85rem;">📦 SECCIÓN 2: Bultos Cerrados por Lote</strong>
+                                        <span id="badge-total-cajas-contadas-pc" style="background: #f3e8ff; color: #7e22ce; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">0 cj</span>
+                                    </div>
+                                    <!-- Banner guiado para escaneo continuo de lotes PC -->
+                                    <div id="banner-instruccion-lote-pc" style="display: none; background: #f3e8ff; border: 1.5px dashed #a855f7; border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; color: #6b21a8; font-weight: 600; margin-bottom: 8px; text-align: center;">
+                                        🎯 <strong>MODO BULTOS:</strong> Dispará a la etiqueta de lote de cada bolsa (+1 por disparo)
+                                    </div>
+                                    <div style="margin-bottom: 8px; position: relative;">
+                                        <input type="text" id="input-scan-lote-pc" class="form-control form-control-sm" placeholder="📦 Disparar a etiqueta de Lote aquí..." style="border-color: #d8b4fe;" autocomplete="off">
+                                    </div>
+                                    <div id="contenedor-lotes-pc">
+                                        <!-- Lotes renderizados dinámicamente -->
+                                    </div>
+                                </div>
+
+                                <!-- TOTAL CONSOLIDADO EN VIVO PC -->
+                                <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <span style="font-size: 0.85rem; font-weight: 700; color: #1e40af;">Stock Total (kg):</span>
+                                    <span id="total-potencial-live-pc" style="font-size: 1.15rem; font-weight: 800; color: #1d4ed8; font-family: monospace;">0.00 kg</span>
+                                </div>
+
+                                <button id="btn-cargar-pc" class="btn btn-success" style="width: 100%; font-weight: 700; font-size: 1rem; padding: 10px;">💾 CONFIRMAR Y GUARDAR CONTEO</button>
+                            </div>
+
+                            <div id="placeholder-carga-pc" style="padding: 25px; text-align: center; color: #64748b; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 15px;">
+                                <p style="margin: 0; font-weight: 500;">💡 Escaneá un producto para balanza o una bolsa de lote para contar bultos</p>
+                            </div>
+
+                            <!-- Panel de Actividad en Vivo Sincronizada con Celular -->
+                            <div id="live-activity-pc" style="margin-top: 10px; padding: 10px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: left; display: none;">
+                                <div style="font-size: 0.75rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 3px;">
+                                    ⚡ Último Conteo en Vivo (Móvil)
+                                </div>
+                                <div id="live-activity-nombre" style="font-size: 1rem; font-weight: 700; color: #1e293b;">
+                                    --
+                                </div>
+                                <div id="live-activity-detalles" style="font-size: 0.85rem; color: #475569; margin-top: 2px;">
+                                    --
+                                </div>
+                            </div>
+
+                            <button id="btn-finalizar-inventario" class="btn-primary" style="width: 100%; margin-top: 15px;">
+                                🏁 Finalizar Inventario
+                            </button>
                         </div>
 
                         <!-- 2. TAB PENDIENTES -->
@@ -830,10 +1988,241 @@
         </div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Modal Resultados / Auditoría de Inventario -->
+    <div id="modal-resultado-inventario-pc" class="modal" style="display: none; z-index: 2000;">
+        <div class="modal-content" style="max-width: 1050px; width: 95%;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);">
+                <h2 class="modal-title">📋 Resultado y Auditoría de Inventario</h2>
+                <button class="close-modal" id="close-modal-resultado-pc">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <!-- Metadatos de la sesión -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div style="font-size: 1.05rem; font-weight: 700; color: #1e293b;" id="res-modal-titulo">Auditoría de Inventario Finalizado</div>
+                        <div style="font-size: 0.85rem; color: #64748b; margin-top: 2px;">
+                            <span id="res-modal-sectores">Sectores: -</span> &nbsp;|&nbsp; 
+                            <span id="res-modal-usuario">Responsable: -</span> &nbsp;|&nbsp; 
+                            <span id="res-modal-fecha">Fecha: -</span>
+                        </div>
+                        <div id="res-modal-duracion" style="margin-top: 4px; font-size: 0.85rem; color: #4338ca; font-weight: 700; display: none;">
+                            ⏱️ <strong>Duración Conteo:</strong> --
+                        </div>
+                    </div>
+                    <div>
+                        <button id="btn-imprimir-pdf-modal-res" class="btn-primary" style="background: #2563eb; padding: 8px 16px; font-size: 0.9rem;">
+                            🖨️ Imprimir Informe PDF
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPIs Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                    <div style="background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <small style="color: #64748b; font-weight: 600; text-transform: uppercase;">Total Evaluados</small>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #0f172a;" id="kpi-res-total">0</div>
+                    </div>
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; text-align: center;">
+                        <small style="color: #991b1b; font-weight: 600; text-transform: uppercase;">Ajustados / Con Diferencia</small>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #b91c1c;" id="kpi-res-ajustados">0</div>
+                    </div>
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; text-align: center;">
+                        <small style="color: #166534; font-weight: 600; text-transform: uppercase;">Sin Variación / Coincidentes</small>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #15803d;" id="kpi-res-sin-cambio">0</div>
+                    </div>
+                    <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 12px; text-align: center;">
+                        <small style="color: #6b21a8; font-weight: 600; text-transform: uppercase;">Total Bultos Finales</small>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #7e22ce;" id="kpi-res-bultos">0 cj</div>
+                    </div>
+                </div>
+
+                <!-- Barra de búsqueda rápida de resultados -->
+                <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="filtro-tabla-res" placeholder="🔍 Filtrar resultados de esta sesión..." style="flex: 1; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem;">
+                    <button type="button" id="btn-filtro-res-todos" class="btn btn-sm btn-outline-secondary active" style="font-size: 0.8rem; padding: 6px 12px; font-weight: 700;">Todos</button>
+                    <button type="button" id="btn-filtro-res-ajustados" class="btn btn-sm btn-outline-danger" style="font-size: 0.8rem; padding: 6px 12px; font-weight: 700;">Solo Ajustados</button>
+                </div>
+
+                <!-- Tabla Detallada -->
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+                    <table class="tabla-ingredientes" style="margin: 0; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #1e293b; color: white; z-index: 10;">
+                            <tr>
+                                <th style="padding: 8px 10px;">Ingrediente</th>
+                                <th style="padding: 8px 10px;">Código</th>
+                                <th style="padding: 8px 10px; text-align: right;">Kilos (Sis ➔ Cont)</th>
+                                <th style="padding: 8px 10px; text-align: right;">Dif. Kilos</th>
+                                <th style="padding: 8px 10px; text-align: right;">Bultos (Sis ➔ Cont)</th>
+                                <th style="padding: 8px 10px; text-align: right;">Dif. Bultos</th>
+                                <th style="padding: 8px 10px;">Detalle Lotes</th>
+                                <th style="padding: 8px 10px; text-align: center;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-resultado-pc-body">
+                            <!-- Filas generadas dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <button id="btn-cerrar-resultado-pc" class="btn-cancel" style="padding: 10px 20px;">✕ Cerrar y Actualizar Stock</button>
+                    <button id="btn-imprimir-pdf-modal-res-bottom" class="btn-primary" style="background: #2563eb; padding: 10px 24px;">
+                        🖨️ Descargar / Imprimir Informe PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Historial de Inventarios -->
+    <div id="modal-historial-inventarios" class="modal" style="display: none; z-index: 1500;">
+        <div class="modal-content" style="max-width: 980px; width: 92%;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);">
+                <h2 class="modal-title">📜 Historial de Inventarios Realizados</h2>
+                <button class="close-modal" id="close-modal-historial">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 15px;">
+                    Aquí podés consultar las "fotos" históricas de todos los inventarios cerrados y reimprimir los informes PDF oficiales en cualquier momento.
+                </p>
+                <div style="max-height: 480px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <table class="tabla-ingredientes" style="margin: 0; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #1e293b; color: white; z-index: 10;">
+                            <tr>
+                                <th style="padding: 10px;">Fecha y Hora</th>
+                                <th style="padding: 10px;">Sectores Auditados</th>
+                                <th style="padding: 10px;">Responsable</th>
+                                <th style="padding: 10px; text-align: center;">Artículos / Ajustes</th>
+                                <th style="padding: 10px; text-align: center;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-historial-body">
+                            <!-- Filas generadas dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-actions" style="margin-top: 15px; text-align: right;">
+                    <button id="btn-cerrar-historial" class="btn-cancel">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================
+         MODAL DE VISOR E IMPRESIÓN FORMAL DE INFORME PDF — SISTEMA LAMDA
+         ======================================================================== -->
+    <div id="modal-impresion-sector" class="modal-overlay-print" style="display: none;">
+        <!-- Barra de herramientas (No imprimible) -->
+        <div class="print-modal-toolbar no-print">
+            <div class="print-toolbar-info">
+                <span class="print-toolbar-title" id="print-sector-toolbar-title">🖨️ Vista Previa de Impresión Oficial</span>
+                <span class="print-toolbar-meta" id="print-sector-toolbar-meta">Formato A4 Corporativo LAMDA</span>
+            </div>
+            <div class="print-toolbar-actions">
+                <button type="button" class="btn-print-action btn-toggle-modal" id="btn-toggle-precios-modal" onclick="window.togglePreciosReporte()" title="Alternar costos y precios en este informe (Predeterminado: Desactivado)">
+                    <span id="icono-precios-modal">💵</span> Precios: <strong id="lbl-status-precios-modal">NO</strong>
+                </button>
+                <button type="button" class="btn-print-action btn-imprimir-confirm" onclick="window.ejecutarImpresionSector()" title="Lanzar diálogo de impresión física o exportar a archivo PDF">
+                    🖨️ Imprimir / Guardar como PDF
+                </button>
+                <button type="button" class="btn-print-action btn-cerrar-print" onclick="window.cerrarReporteImpresionSector()" title="Cerrar vista previa">
+                    ✕ Cerrar
+                </button>
+            </div>
+        </div>
+
+        <!-- Hoja de Reporte Imprimible -->
+        <div class="print-modal-scroll-wrapper">
+            <div id="hoja-reporte-sector-print" class="printable-sheet">
+                <!-- Membrete Corporativo -->
+                <div class="sheet-header">
+                    <div class="sheet-brand">
+                        <img src="/img/logo_LAMDA_grande.png" alt="LAMDA" class="sheet-logo-img" onerror="this.src='../img/logo_LAMDA_grande.png';">
+                        <div class="brand-subtext">DIRECCIÓN DE OPERACIONES &bull; PLANTA INDUSTRIAL &bull; CONTROL DE STOCK</div>
+                    </div>
+                    <div class="sheet-doc-meta">
+                        <div class="doc-title-main" id="print-doc-titulo">INFORME OFICIAL DE STOCK E INVENTARIO</div>
+                        <div class="doc-meta-item"><strong>Sector:</strong> <span id="print-doc-sector" class="highlight-sector">SECTOR --</span></div>
+                        <div class="doc-meta-item"><strong>Fecha de Emisión:</strong> <span id="print-doc-fecha">--/--/---- --:--</span></div>
+                        <div class="doc-meta-item"><strong>Responsable / Emisor:</strong> <span id="print-doc-responsable">Taller LAMDA</span></div>
+                    </div>
+                </div>
+
+                <div class="sheet-divider"></div>
+
+                <!-- KPIs Ejecutivos del Sector -->
+                <div class="sheet-kpis-grid">
+                    <div class="sheet-kpi-box">
+                        <span class="kpi-box-lbl">Total Ingredientes</span>
+                        <span class="kpi-box-val" id="print-kpi-items">0</span>
+                    </div>
+                    <div class="sheet-kpi-box">
+                        <span class="kpi-box-lbl">⚖️ Kilos Abiertos</span>
+                        <span class="kpi-box-val" id="print-kpi-kilos">0.00 kg</span>
+                    </div>
+                    <div class="sheet-kpi-box">
+                        <span class="kpi-box-lbl">📦 Bultos Cerrados</span>
+                        <span class="kpi-box-val" id="print-kpi-bultos">0 cj</span>
+                    </div>
+                    <div class="sheet-kpi-box">
+                        <span class="kpi-box-lbl">🏷️ Lotes Activos</span>
+                        <span class="kpi-box-val" id="print-kpi-lotes">0</span>
+                    </div>
+                    <div class="sheet-kpi-box box-potencial">
+                        <span class="kpi-box-lbl">⚖️ Stock Total (kg)</span>
+                        <span class="kpi-box-val" id="print-kpi-potencial">0.00 kg</span>
+                    </div>
+                    <div class="sheet-kpi-box" id="print-kpi-box-valor" style="display: none;">
+                        <span class="kpi-box-lbl">💰 Valorización Total</span>
+                        <span class="kpi-box-val" id="print-kpi-valor">$0.00</span>
+                    </div>
+                </div>
+
+                <!-- Tabla de Stock Imprimible -->
+                <div class="sheet-table-wrapper">
+                    <table class="sheet-table">
+                        <thead id="print-table-thead">
+                            <!-- Se puebla dinámicamente con/sin precios según switch -->
+                        </thead>
+                        <tbody id="print-table-tbody">
+                            <!-- Se puebla dinámicamente -->
+                        </tbody>
+                        <tfoot id="print-table-tfoot">
+                            <!-- Fila de totales generada dinámicamente -->
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Firmas de Auditoría -->
+                <div class="sheet-signatures">
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Responsable de Inventario</div>
+                        <div class="sig-role">Auditoría / Conteo Físico</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Supervisor de Depósito / Guarda</div>
+                        <div class="sig-role">Verificación de Búnker</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Dirección de Operaciones LAMDA</div>
+                        <div class="sig-role">Aprobación y Cierre</div>
+                    </div>
+                </div>
+
+                <!-- Pie de Reporte -->
+                <div class="sheet-footer">
+                    <span>SISTEMA LAMDA &bull; CUIT: 23-24892174-9 &bull; Alias: LAMDA.SER.MARTIN &bull; WhatsApp: (221) 6615746</span>
+                    <span id="print-timestamp-footer">Emitido el --/--/----</span>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="../js/gestionIngredientes.js?v=6.0"></script>
+    <script src="../js/gestionIngredientes.js?v=8.4"></script>
 
     <!-- Script para hacer los modales draggables -->
     <script>

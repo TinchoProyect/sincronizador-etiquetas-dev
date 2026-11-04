@@ -1,0 +1,14 @@
+
+==================================================
+        MOCK COMPROBANTE OFICIAL - SISTEMA LAMDA
+==================================================
+ID Movimiento Local: 5
+Tipo Comprobante:    FC
+Detalle:             Factura A 0032-00000002 (CAE: 86239249314564)
+Debe:                $ 334235.66
+Haber:               $ 0
+Fecha de Emision:    21/6/2026
+==================================================
+Este documento es una simulacion de caja negra en local
+para desarrollo y depuracion en el sandbox.
+==================================================

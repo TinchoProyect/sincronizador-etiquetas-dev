@@ -99,6 +99,138 @@ router.post('/usuarios/:id/tarifas', async (req, res) => {
   }
 });
 
+// --- OBTENER TARIFAS DE RENDIMIENTO ACTIVAS ---
+router.get('/usuarios/tarifas/rendimiento', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT tr.id, tr.usuario_id, tr.articulo_numero, tr.valor_por_unidad, tr.unidad_medida, 
+             tr.fecha_desde, tr.activo, u.nombre_completo as colaborador_nombre,
+             a.nombre as articulo_nombre
+      FROM public.colaboradores_tarifas_rendimiento tr
+      JOIN public.usuarios u ON tr.usuario_id = u.id
+      LEFT JOIN public.articulos a ON tr.articulo_numero = a.numero
+      WHERE tr.activo = true
+      ORDER BY u.nombre_completo ASC, a.nombre ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener tarifas de rendimiento:', error);
+    res.status(500).json({ error: 'Error interno al obtener tarifas de rendimiento' });
+  }
+});
+
+// --- OBTENER HISTORIAL DE TARIFAS DE RENDIMIENTO DE UN COLABORADOR ---
+router.get('/usuarios/:id/tarifas/rendimiento/historial', async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const result = await pool.query(`
+      SELECT tr.id, tr.articulo_numero, tr.valor_por_unidad, tr.unidad_medida, 
+             tr.fecha_desde, tr.fecha_hasta, tr.activo, tr.creado_en,
+             a.nombre as articulo_nombre
+      FROM public.colaboradores_tarifas_rendimiento tr
+      LEFT JOIN public.articulos a ON tr.articulo_numero = a.numero
+      WHERE tr.usuario_id = $1
+      ORDER BY tr.activo DESC, tr.fecha_desde DESC, tr.id DESC
+    `, [userId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener historial de tarifas de rendimiento:', error);
+    res.status(500).json({ error: 'Error interno al obtener historial de tarifas de rendimiento' });
+  }
+});
+
+// --- GUARDAR O ACTUALIZAR TARIFA DE RENDIMIENTO DE UN COLABORADOR (HISTORIAL CRONOLÓGICO) ---
+router.post('/usuarios/:id/tarifas/rendimiento', async (req, res) => {
+  const userId = req.params.id;
+  const { articulo_numero, valor_por_unidad, unidad_medida } = req.body;
+
+  if (!articulo_numero || valor_por_unidad === undefined || isNaN(parseFloat(valor_por_unidad)) || parseFloat(valor_por_unidad) < 0) {
+    return res.status(400).json({ error: 'Datos de entrada inválidos para la tarifa de rendimiento' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Obtener la tarifa activa actual para este operario y SKU
+    const currentActiveRes = await client.query(`
+      SELECT id, valor_por_unidad, unidad_medida 
+      FROM public.colaboradores_tarifas_rendimiento 
+      WHERE usuario_id = $1 AND articulo_numero = $2 AND activo = true
+    `, [userId, articulo_numero]);
+
+    if (currentActiveRes.rowCount > 0) {
+      const activeTarifa = currentActiveRes.rows[0];
+      
+      // Si es exactamente idéntica, commit y retorno
+      if (parseFloat(activeTarifa.valor_por_unidad) === parseFloat(valor_por_unidad) && activeTarifa.unidad_medida === unidad_medida) {
+        await client.query('COMMIT');
+        return res.json({ success: true, message: 'La tarifa ya tiene este valor.', unchanged: true });
+      }
+
+      // 2. Inactivar la tarifa activa actual
+      await client.query(`
+        UPDATE public.colaboradores_tarifas_rendimiento 
+        SET activo = false, fecha_hasta = CURRENT_TIMESTAMP 
+        WHERE id = $1
+      `, [activeTarifa.id]);
+    }
+
+    // 3. Crear el nuevo registro activo
+    await client.query(`
+      INSERT INTO public.colaboradores_tarifas_rendimiento 
+        (usuario_id, articulo_numero, valor_por_unidad, unidad_medida, fecha_desde, activo)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, true)
+    `, [userId, articulo_numero, valor_por_unidad, unidad_medida || 'kg']);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Tarifa de rendimiento guardada e integrada al historial.' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al actualizar tarifa de rendimiento:', error);
+    res.status(500).json({ error: 'Error interno al guardar tarifa de rendimiento' });
+  } finally {
+    client.release();
+  }
+});
+
+// --- DESACTIVAR TARIFA DE RENDIMIENTO DE UN COLABORADOR ---
+router.post('/usuarios/:id/tarifas/rendimiento/desactivar', async (req, res) => {
+  const userId = req.params.id;
+  const { articulo_numero } = req.body;
+
+  if (!articulo_numero) {
+    return res.status(400).json({ error: 'Falta especificar el artículo para desactivar' });
+  }
+
+  try {
+    await pool.query(`
+      UPDATE public.colaboradores_tarifas_rendimiento 
+      SET activo = false, fecha_hasta = CURRENT_TIMESTAMP 
+      WHERE usuario_id = $1 AND articulo_numero = $2 AND activo = true
+    `, [userId, articulo_numero]);
+    res.json({ success: true, message: 'Tarifa desactivada correctamente.' });
+  } catch (error) {
+    console.error('Error al desactivar tarifa de rendimiento:', error);
+    res.status(500).json({ error: 'Error interno al desactivar tarifa de rendimiento' });
+  }
+});
+
+// --- HELPER OBTENER ARTÍCULOS DE PRODUCCIÓN ---
+router.get('/usuarios/articulos/produccion', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT numero, nombre 
+      FROM public.articulos 
+      ORDER BY nombre ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener artículos para producción:', error);
+    res.status(500).json({ error: 'Error al obtener artículos' });
+  }
+});
+
 // --- OBTENER USUARIO POR ID ---
 router.get('/usuarios/:id', async (req, res) => {
   const userId = req.params.id;
@@ -106,9 +238,10 @@ router.get('/usuarios/:id', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT u.id, u.nombre_completo, u.usuario, u.rol_id, u.activo, u.comentario,
-             r.nombre AS rol_nombre
+             r.nombre AS rol_nombre, bc.id AS cliente_bunker_id
       FROM usuarios u
       LEFT JOIN roles r ON u.rol_id = r.id
+      LEFT JOIN public.bunker_clientes bc ON u.id = bc.usuario_id
       WHERE u.id = $1
     `, [userId]);
 
@@ -149,9 +282,11 @@ router.get('/usuarios/con-permiso/:permiso', async (req, res) => {
 router.get('/usuarios', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.nombre_completo, u.usuario, u.activo, r.nombre AS rol_nombre
+      SELECT u.id, u.nombre_completo, u.usuario, u.activo, r.nombre AS rol_nombre,
+             bc.cliente_nombre AS cliente_bunker_nombre
       FROM usuarios u
       LEFT JOIN roles r ON u.rol_id = r.id
+      LEFT JOIN public.bunker_clientes bc ON u.id = bc.usuario_id
       ORDER BY u.id
     `);
     res.json(result.rows);
@@ -184,25 +319,30 @@ router.delete('/usuarios/:id', async (req, res) => {
 // --- ACTUALIZAR USUARIO ---
 router.put('/usuarios/:id', async (req, res) => {
   const userId = req.params.id;
-  const { nombre_completo, usuario, contraseña, rol_id, comentario, activo } = req.body;
+  const { nombre_completo, usuario, contraseña, rol_id, comentario, activo, cliente_bunker_id } = req.body;
 
   if (!nombre_completo || !usuario) {
     return res.status(400).json({ error: 'Nombre completo y usuario son obligatorios' });
   }
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Verificar si el usuario existe
-    const userExists = await pool.query('SELECT 1 FROM usuarios WHERE id = $1', [userId]);
+    const userExists = await client.query('SELECT 1 FROM usuarios WHERE id = $1', [userId]);
     if (userExists.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
     // Verificar si el nuevo nombre de usuario ya existe (excluyendo el usuario actual)
-    const usuarioExists = await pool.query(
+    const usuarioExists = await client.query(
       'SELECT 1 FROM usuarios WHERE usuario = $1 AND id != $2',
       [usuario, userId]
     );
     if (usuarioExists.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Ese nombre de usuario ya existe' });
     }
 
@@ -225,39 +365,73 @@ router.put('/usuarios/:id', async (req, res) => {
     query += ` WHERE id = $${params.length + 1}`;
     params.push(userId);
 
-    await pool.query(query, params);
+    await client.query(query, params);
 
+    // Lógica transaccional de vinculación: limpiar usuario_id previo
+    await client.query(
+      'UPDATE public.bunker_clientes SET usuario_id = NULL WHERE usuario_id = $1',
+      [userId]
+    );
+
+    // Vincular nuevo cliente si fue provisto
+    if (cliente_bunker_id) {
+      await client.query(
+        'UPDATE public.bunker_clientes SET usuario_id = $1 WHERE id = $2',
+        [userId, cliente_bunker_id]
+      );
+    }
+
+    await client.query('COMMIT');
     res.json({ message: 'Usuario actualizado correctamente' });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error al actualizar usuario:', error);
     res.status(500).json({ error: 'Error interno al actualizar usuario' });
+  } finally {
+    client.release();
   }
 });
 
 // --- CREAR USUARIO ---
 router.post('/usuarios', async (req, res) => {
-  const { nombre_completo, usuario, contraseña, rol_id } = req.body;
+  const { nombre_completo, usuario, contraseña, rol_id, cliente_bunker_id } = req.body;
 
   if (!nombre_completo || !usuario || !contraseña) {
     return res.status(400).json({ error: 'Faltan campos obligatorios' });
   }
 
+  const client = await pool.connect();
   try {
-    const existe = await pool.query('SELECT 1 FROM usuarios WHERE usuario = $1', [usuario]);
+    await client.query('BEGIN');
+    const existe = await client.query('SELECT 1 FROM usuarios WHERE usuario = $1', [usuario]);
     if (existe.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Ese nombre de usuario ya existe' });
     }
 
-    await pool.query(
+    const insertRes = await client.query(
       `INSERT INTO usuarios (nombre_completo, usuario, contraseña, rol_id, activo)
-       VALUES ($1, $2, $3, $4, true)`,
+       VALUES ($1, $2, $3, $4, true) RETURNING id`,
       [nombre_completo, usuario, contraseña, rol_id]
     );
 
+    const newUserId = insertRes.rows[0].id;
+
+    if (cliente_bunker_id) {
+      await client.query(
+        'UPDATE public.bunker_clientes SET usuario_id = $1 WHERE id = $2',
+        [newUserId, cliente_bunker_id]
+      );
+    }
+
+    await client.query('COMMIT');
     res.status(201).json({ message: 'Usuario creado' });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error al crear usuario:', error);
     res.status(500).json({ error: 'Error interno al crear usuario' });
+  } finally {
+    client.release();
   }
 });
 
@@ -529,6 +703,21 @@ router.post('/roles/:id/permisos', async (req, res) => {
   } catch (error) {
     console.error('Error al modificar permisos del rol:', error);
     res.status(500).json({ error: 'Error interno al modificar permisos del rol' });
+  }
+});
+
+// --- OBTENER CLIENTES BÚNKER PARA VINCULACIÓN ---
+router.get('/bunker_clientes', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, codigo_bunker_cliente, cliente_nombre, usuario_id
+      FROM public.bunker_clientes
+      ORDER BY cliente_nombre ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener clientes búnker:', error);
+    res.status(500).json({ error: 'Error interno al obtener clientes búnker' });
   }
 });
 

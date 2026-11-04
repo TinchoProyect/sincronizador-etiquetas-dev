@@ -2,27 +2,22 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      window.__PWA_NAV_START__ = Date.now();
+      window.__PWA_PERF_START__ = performance.now();
+    </script>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <script>
-      // Desregistrar de forma inmediata cualquier service worker heredado en el navegador del cliente
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (var i = 0; i < registrations.length; i++) {
-            registrations[i].unregister().then(function(success) {
-              if (success) {
-                console.log('🗑️ [PWA] Service worker heredado desregistrado con éxito.');
-                window.location.reload();
-              }
-            });
-          }
-        });
-      }
-    </script>
-    
+    <!-- Prevención Estricta de Caché de Disco WebAPK en Android -->
+    <!-- Carga Asíncrona de Fuentes (Cero Bloqueo de Renderizado en Redes Móviles) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+
     <!-- SEO & Metadata clean -->
     <title>LAMDA</title>
     <meta name="description" content="Portal de autogestión comercial" />
@@ -39,5 +34,49 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        const hadInitialController = !!navigator.serviceWorker.controller;
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            console.log('⚡ Service Worker PWA activo:', reg.scope);
+            
+            // Forzar comprobación de nueva versión de inmediato
+            reg.update();
+
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('⚡ [PWA] Nueva versión desplegada, actualizando...');
+                    window.location.reload();
+                  }
+                });
+              }
+            });
+          }).catch((err) => {
+            console.warn('⚠️ Error al registrar Service Worker:', err);
+          });
+
+          // Si cambia el controlador de un Service Worker existente (actualización real), recargar limpiamente
+          // No recargar en la primera instalación (cuando hadInitialController era false) para no cortar el onboarding
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (hadInitialController && !refreshing) {
+              refreshing = true;
+              window.location.reload();
+            }
+          });
+
+          // Al retomar el foco de la app en celulares, verificar actualizaciones
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              navigator.serviceWorker.ready.then((reg) => reg.update()).catch(() => {});
+            }
+          });
+        });
+      }
+    </script>
   </body>
 </html>

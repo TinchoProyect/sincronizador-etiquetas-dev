@@ -1,29 +1,41 @@
 /**
- * Modal "Abrir Caja" - Transformar stock de cajas a unidades
- * Versión: 3.1 - Búsqueda Avanzada (Tokenizada)
+ * Modal "Abrir Caja Manual" - Desempacar producto de cajas cerradas a unidades
+ * Versión: 4.0 - UX Clara + Búsqueda por Nombre + Asignación de Lote e Impresión Dual
  * 
  * @module modal-abrir-caja
  */
-
-// ==========================================
-// NAMESPACE AISLADO
-// ==========================================
 
 const ModalAbrirCaja = (function () {
     'use strict';
 
     // Variables privadas del módulo
     let modalElement = null;
-    let datosArticuloUnidad = null; // El contenido (lo que se produce)
+    let datosArticuloUnidad = null; // El contenido (la unidad a extraer)
     let cajaSeleccionada = null;    // El origen (la caja cerrada)
+    let loteActual = '';            // Código de lote asignado
+    let origenLote = 'generado';    // 'lote_caja' o 'generado'
     let etiquetasImpresas = false;
-    let modoManual = false; // Flag para saber si estamos en flujo manual
+    let modoManual = false;
 
-    // ==========================================
-    // UTILIDADES DE BÚSQUEDA
-    // ==========================================
+    // Formatear fechas predeterminadas (hoy y hoy + 8 meses)
+    function obtenerFechasPorDefecto() {
+        const hoy = new Date();
+        const elabDia = String(hoy.getDate()).padStart(2, '0');
+        const elabMes = String(hoy.getMonth() + 1).padStart(2, '0');
+        const elabAnio = hoy.getFullYear();
+        const elaboracion = `${elabDia}/${elabMes}/${elabAnio}`;
 
-    // Normalizar texto (quitar acentos, minúsculas y ñ→n)
+        const venc = new Date(hoy);
+        venc.setMonth(venc.getMonth() + 8);
+        const vencDia = String(venc.getDate()).padStart(2, '0');
+        const vencMes = String(venc.getMonth() + 1).padStart(2, '0');
+        const vencAnio = venc.getFullYear();
+        const vencimiento = `${vencDia}/${vencMes}/${vencAnio}`;
+
+        return { elaboracion, vencimiento };
+    }
+
+    // Normalizar texto
     function normalizarTexto(texto) {
         if (!texto) return '';
         return texto.toString()
@@ -45,7 +57,7 @@ const ModalAbrirCaja = (function () {
             return false;
         }
 
-        console.log('✅ [ABRIR-CAJA] Modal encontrado, configurando...');
+        console.log('✅ [ABRIR-CAJA] Modal encontrado, configurando listeners...');
         configurarEventListeners();
         hacerDraggable();
         return true;
@@ -71,13 +83,13 @@ const ModalAbrirCaja = (function () {
         // Búsqueda CAJA - Descripción
         const inputDesc = document.getElementById('input-descripcion-caja');
         if (inputDesc) {
-            inputDesc.addEventListener('input', debounce(buscarPorDescripcion, 500));
+            inputDesc.addEventListener('input', debounce(buscarPorDescripcion, 400));
         }
 
-        // NUEVO: Búsqueda UNIDAD (Manual)
+        // Búsqueda UNIDAD (Paso 1 Manual por Nombre)
         const inputBusquedaUnidad = document.getElementById('input-busqueda-unidad');
         if (inputBusquedaUnidad) {
-            inputBusquedaUnidad.addEventListener('input', debounce(buscarUnidadAvanzada, 400));
+            inputBusquedaUnidad.addEventListener('input', debounce(buscarUnidadAvanzada, 300));
             inputBusquedaUnidad.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -86,21 +98,32 @@ const ModalAbrirCaja = (function () {
             });
         }
 
-        // NUEVO: Botón Cambiar Unidad
+        // Botón Cambiar Unidad
         document.getElementById('btn-cambiar-unidad')?.addEventListener('click', configurarModoManual);
 
-        // NUEVO: Botón Global de Apertura - Se vincula también en DOMContentLoaded por seguridad
-        document.getElementById('btn-abrir-caja-global')?.addEventListener('click', () => {
-            abrir();
+        // Botón Regenerar Lote
+        document.getElementById('btn-regenerar-lote')?.addEventListener('click', () => {
+            solicitarLoteSugerido(cajaSeleccionada?.articulo_numero, datosArticuloUnidad?.articulo_numero, true);
+        });
+
+        // Entrada manual en input de lote
+        document.getElementById('abrir-caja-lote')?.addEventListener('input', (e) => {
+            loteActual = e.target.value.trim().toUpperCase();
+            e.target.value = loteActual;
+            actualizarInfoLote();
+            validarFormulario();
         });
 
         // Botones de Acción
         document.getElementById('btn-imprimir-caja')?.addEventListener('click', imprimirEtiquetas);
         document.getElementById('btn-confirmar-caja')?.addEventListener('click', confirmarApertura);
 
-        // Validación
+        // Validación y sincronización de cantidad
         document.getElementById('abrir-caja-usuario')?.addEventListener('change', validarFormulario);
-        document.getElementById('abrir-caja-cantidad')?.addEventListener('input', validarFormulario);
+        document.getElementById('abrir-caja-cantidad')?.addEventListener('input', () => {
+            actualizarContadorEtiquetas();
+            validarFormulario();
+        });
     }
 
     function hacerDraggable() {
@@ -136,77 +159,195 @@ const ModalAbrirCaja = (function () {
     }
 
     // ==========================================
-    // LÓGICA DE NEGOCIO - FLUJO Y ESTADOS
+    // FLUJO Y ESTADOS
     // ==========================================
 
     /**
-     * Configura el modal para el MODO MANUAL (Búsqueda inicial de unidad)
+     * PASO 1 (Modo Manual): Búsqueda clara del producto a extraer por nombre
      */
     function configurarModoManual() {
         modoManual = true;
 
-        // Mostrar paso 1, ocultar paso 2
         mostrarElemento('paso-seleccion-unidad', true);
         mostrarElemento('paso-seleccion-caja', false);
 
-        // Resetear datos
-        document.getElementById('input-busqueda-unidad').value = '';
-        document.getElementById('resultados-unidad').style.display = 'none';
-        document.getElementById('btn-cambiar-unidad').style.display = 'none'; // No se puede cambiar si no seleccionó nada
+        const inputBusqueda = document.getElementById('input-busqueda-unidad');
+        if (inputBusqueda) inputBusqueda.value = '';
+        const resUnidad = document.getElementById('resultados-unidad');
+        if (resUnidad) resUnidad.style.display = 'none';
+
+        document.getElementById('btn-cambiar-unidad').style.display = 'none';
 
         datosArticuloUnidad = null;
         cajaSeleccionada = null;
+        loteActual = '';
+        etiquetasImpresas = false;
 
-        // Foco
         setTimeout(() => document.getElementById('input-busqueda-unidad')?.focus(), 100);
-
-        console.log('🛠️ [ABRIR-CAJA] Modo Manual activado');
+        console.log('🛠️ [ABRIR-CAJA] Paso 1 activado: Selección de producto por nombre');
     }
 
     /**
-     * Configura el modal para el MODO CONTEXTUAL (Unidad ya definida)
-     * También se usa como "Paso 2" del modo manual
+     * PASO 2 (Modo Contextual o tras elegir unidad): Selección de caja, lote y confirmación
      */
     async function configurarModoContextual(articuloNumero, datosArticulo) {
-        // En modo manual, 'modoManual' sigue siendo true, pero avanzamos de paso.
-        // Si venimos de click derecho, datosArticulo suele venir lleno.
-
         datosArticuloUnidad = datosArticulo || { articulo_numero: articuloNumero };
 
-        // Mostrar paso 2, ocultar paso 1
         mostrarElemento('paso-seleccion-unidad', false);
         mostrarElemento('paso-seleccion-caja', true);
 
-        // Mostrar botón de cambiar solo si estamos en modo manual original
-        if (modoManual) {
-            document.getElementById('btn-cambiar-unidad').style.display = 'inline-block';
-        } else {
-            document.getElementById('btn-cambiar-unidad').style.display = 'none';
-        }
+        // Botón de cambiar disponible siempre que se abrió o se seleccionó
+        document.getElementById('btn-cambiar-unidad').style.display = 'inline-block';
 
-        // Llenar info de la unidad
-        document.getElementById('unidad-descripcion-caja').textContent = datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre || '-';
-        document.getElementById('unidad-codigo-caja').textContent = articuloNumero;
-        document.getElementById('unidad-stock-caja').textContent =
-            datosArticuloUnidad.stock_disponible !== undefined
-                ? `${parseFloat(datosArticuloUnidad.stock_disponible).toFixed(2)} unidades`
-                : (datosArticuloUnidad.stock !== undefined ? `${parseFloat(datosArticuloUnidad.stock).toFixed(2)} unidades` : '-');
+        // Llenar info de la unidad a extraer
+        const descripcion = datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre || '-';
+        const sku = datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo || articuloNumero;
+        const barcode = datosArticuloUnidad.codigo_barras || datosArticuloUnidad.codigo || sku;
+        const stock = datosArticuloUnidad.stock_disponible !== undefined
+            ? parseFloat(datosArticuloUnidad.stock_disponible).toFixed(2)
+            : (datosArticuloUnidad.stock_consolidado !== undefined 
+                ? parseFloat(datosArticuloUnidad.stock_consolidado).toFixed(2)
+                : (datosArticuloUnidad.stock !== undefined ? parseFloat(datosArticuloUnidad.stock).toFixed(2) : '-'));
 
-        // Resetear selección de caja
+        document.getElementById('unidad-descripcion-caja').textContent = descripcion;
+        document.getElementById('unidad-codigo-caja').textContent = sku;
+        const elBarcode = document.getElementById('unidad-barcode-caja');
+        if (elBarcode) elBarcode.textContent = barcode;
+        document.getElementById('unidad-stock-caja').textContent = `${stock} un.`;
+
+        // Pre-cargar fechas de envasado/vencimiento sugeridas
+        const fechasDef = obtenerFechasPorDefecto();
+        const inputElab = document.getElementById('abrir-caja-fecha-elab');
+        const inputVenc = document.getElementById('abrir-caja-fecha-venc');
+        if (inputElab && !inputElab.value) inputElab.value = fechasDef.elaboracion;
+        if (inputVenc && !inputVenc.value) inputVenc.value = fechasDef.vencimiento;
+
+        // Resetear caja seleccionada
         document.getElementById('caja-seleccionada-display').style.display = 'none';
         cajaSeleccionada = null;
+        etiquetasImpresas = false;
+
         document.getElementById('btn-imprimir-caja').disabled = true;
         document.getElementById('btn-confirmar-caja').disabled = true;
 
-        // Cargar dependencias
+        actualizarContadorEtiquetas();
+
+        // Cargar usuarios y sugerencias de cajas
         await cargarUsuarios();
-        await cargarSugerencias(articuloNumero);
+        await cargarSugerencias(sku);
 
-        // Foco en usuario (flujo rápido)
-        setTimeout(() => document.getElementById('abrir-caja-usuario')?.focus(), 100);
+        // Obtener lote preliminar para la unidad
+        await solicitarLoteSugerido(null, sku);
 
-        console.log(`✅ [ABRIR-CAJA] Unidad configurada: ${articuloNumero}`);
+        console.log(`✅ [ABRIR-CAJA] Unidad lista para desempacar: ${sku} - ${descripcion}`);
     }
+
+    // ==========================================
+    // BÚSQUEDA DEL PRODUCTO A EXTRAER (PASO 1)
+    // ==========================================
+
+    async function buscarUnidadAvanzada() {
+        const input = document.getElementById('input-busqueda-unidad');
+        const texto = input?.value.trim();
+
+        if (!texto || texto.length < 2) {
+            const container = document.getElementById('resultados-unidad');
+            if (container) container.style.display = 'none';
+            return;
+        }
+
+        const container = document.getElementById('resultados-unidad');
+        if (container) {
+            container.innerHTML = '<div style="padding: 12px; color: #1976d2;"><i class="fas fa-spinner fa-spin"></i> Buscando artículos...</div>';
+            container.style.display = 'block';
+        }
+
+        try {
+            // Usamos el endpoint unificado /api/produccion/buscar-articulos que aplica AND sobre tokens
+            const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(texto)}`);
+            if (!response.ok) throw new Error('Error al buscar artículos');
+
+            const data = await response.json();
+            const resultados = data.articulos || data.data || [];
+
+            mostrarResultadosUnidad(resultados);
+        } catch (error) {
+            console.error('❌ [ABRIR-CAJA] Error búsqueda avanzada de unidad:', error);
+            if (container) container.innerHTML = '<div style="padding: 12px; color: #d32f2f;">Error al consultar artículos. Intente nuevamente.</div>';
+        }
+    }
+
+    function mostrarResultadosUnidad(resultados) {
+        const container = document.getElementById('resultados-unidad');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (!resultados || resultados.length === 0) {
+            container.innerHTML = '<div style="padding: 12px; color: #757575; font-size: 13px;">No se encontraron artículos con esa descripción. Intente con otra palabra.</div>';
+            container.style.display = 'block';
+            return;
+        }
+
+        const muestra = resultados.slice(0, 40);
+
+        muestra.forEach(art => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding: 10px 14px; border-bottom: 1px solid #e0e0e0; cursor: pointer; transition: background-color 0.15s;';
+
+            const nombre = art.descripcion || art.nombre || '-';
+            const sku = art.articulo_numero || art.codigo || '-';
+            const barcode = art.codigo_barras || '-';
+            const stock = parseFloat(art.stock_consolidado ?? art.stock_disponible ?? art.stock ?? 0).toFixed(2);
+
+            div.innerHTML = `
+                <div style="font-weight: 700; color: #0d47a1; font-size: 14px;">${nombre}</div>
+                <div style="font-size: 12px; color: #555; margin-top: 3px; display: flex; gap: 12px;">
+                    <span>SKU: <strong style="font-family: monospace;">${sku}</strong></span>
+                    <span>Cód. Barras: <span style="font-family: monospace;">${barcode}</span></span>
+                    <span>Stock: <strong style="color: ${parseFloat(stock) > 0 ? '#2e7d32' : '#c62828'};">${stock} un.</strong></span>
+                </div>
+            `;
+
+            div.onclick = () => {
+                seleccionarUnidad({
+                    articulo_numero: sku,
+                    descripcion: nombre,
+                    codigo_barras: barcode,
+                    stock_disponible: stock,
+                    kilos_unidad: art.kilos_unidad || 0
+                });
+            };
+
+            div.addEventListener('mouseenter', () => div.style.backgroundColor = '#e3f2fd');
+            div.addEventListener('mouseleave', () => div.style.backgroundColor = 'white');
+
+            container.appendChild(div);
+        });
+
+        if (resultados.length > 40) {
+            const footer = document.createElement('div');
+            footer.style.padding = '8px';
+            footer.style.textAlign = 'center';
+            footer.style.color = '#757575';
+            footer.style.fontSize = '12px';
+            footer.style.background = '#f9f9f9';
+            footer.textContent = `Mostrando los primeros 40 de ${resultados.length} resultados. Escriba más detalles para acotar.`;
+            container.appendChild(footer);
+        }
+
+        container.style.display = 'block';
+    }
+
+    function seleccionarUnidad(articulo) {
+        console.log('✅ [ABRIR-CAJA] Unidad seleccionada:', articulo);
+        const numero = articulo.articulo_numero || articulo.codigo;
+        configurarModoContextual(numero, articulo);
+    }
+
+    // ==========================================
+    // SUGERENCIAS Y BÚSQUEDA DE CAJA (PASO 2)
+    // ==========================================
 
     function cambiarModoBusquedaCaja(modo) {
         const btnCodigo = document.getElementById('btn-codigo-caja');
@@ -231,192 +372,6 @@ const ModalAbrirCaja = (function () {
         ocultarResultadosCaja();
     }
 
-    // ==========================================
-    // NUEVA LÓGICA: BÚSQUEDA AVANZADA DE UNIDAD
-    // ==========================================
-
-    async function buscarUnidadAvanzada() {
-        const input = document.getElementById('input-busqueda-unidad');
-        const texto = input?.value.trim();
-
-        if (!texto || texto.length < 2) {
-            const container = document.getElementById('resultados-unidad');
-            if (container) container.style.display = 'none';
-            return;
-        }
-
-        console.log(`🔍 [ABRIR-CAJA] Buscando unidad (avanzado): "${texto}"`);
-        const container = document.getElementById('resultados-unidad');
-        if (container) {
-            container.innerHTML = '<div style="padding: 10px; color: #666;">Buscando...</div>';
-            container.style.display = 'block';
-        }
-
-        // 1. Normalización y Tokenización
-        const textoNorm = normalizarTexto(texto);
-        // Dividir por espacios y filtrar vacíos
-        const tokens = textoNorm.split(/\s+/).filter(t => t.length > 0);
-
-        if (tokens.length === 0) return;
-
-        try {
-            // 2. Estrategia de Búsqueda:
-            // Si parece código de barras (solo números), buscar exacto.
-            // Si es texto, usar el PRIMER token para traer candidatos y filtrar en cliente.
-
-            let resultadosCandidatos = [];
-            const esCodigo = /^\d+$/.test(texto);
-
-            if (esCodigo) {
-                // Búsqueda exacta por código
-                const response = await fetch(`/api/produccion/articulos?codigo_barras=${encodeURIComponent(texto)}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.data) resultadosCandidatos = data.data;
-                }
-            } else {
-                // Búsqueda por descripción (usando primer token para ser eficiente con el backend)
-                // Usamos el endpoint que sabemos que busca por "q" o descripción
-                const primerToken = tokens[0];
-                const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(primerToken)}`);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    // Algunos endpoints devuelven { success: true, articulos: [...] } o { success: true, data: [...] }
-                    // Unificamos
-                    if (data.success) {
-                        resultadosCandidatos = data.articulos || data.data || [];
-                    }
-                } else {
-                    // Fallback a endpoint genérico si el de buscar-articulos falla
-                    const response2 = await fetch(`/api/produccion/articulos?q=${encodeURIComponent(primerToken)}`);
-                    if (response2.ok) {
-                        const data2 = await response2.json();
-                        if (data2.success) resultadosCandidatos = data2.data || [];
-                    }
-                }
-            }
-
-            // 3. Filtrado Cliente (AND Logic)
-            // Solo si no fue búsqueda directa por código
-            let resultadosFiltrados = resultadosCandidatos;
-
-            if (!esCodigo && resultadosCandidatos.length > 0) {
-                resultadosFiltrados = resultadosCandidatos.filter(art => {
-                    // Normalizar descripción del artículo
-                    const descripcionArt = normalizarTexto(art.descripcion || art.nombre || '');
-                    const codigoArt = normalizarTexto(art.codigo_barras || art.articulo_numero || '');
-
-                    // Verificar que CADA token esté presente en la descripción O en el código
-                    return tokens.every(token =>
-                        descripcionArt.includes(token) || codigoArt.includes(token)
-                    );
-                });
-            }
-
-            mostrarResultadosUnidad(resultadosFiltrados);
-
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error búsqueda avanzada:', error);
-            if (container) container.innerHTML = '<div style="padding: 10px; color: red;">Error al buscar</div>';
-        }
-    }
-
-    function mostrarResultadosUnidad(resultados) {
-        const container = document.getElementById('resultados-unidad');
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        if (!resultados || resultados.length === 0) {
-            container.innerHTML = '<div style="padding: 10px; color: #666;">No se encontraron artículos.</div>';
-            return;
-        }
-
-        // Limitar a 50 resultados para no saturar UI
-        const muestra = resultados.slice(0, 50);
-
-        muestra.forEach(art => {
-            const div = document.createElement('div');
-            // Estilo unificado
-            div.style.cssText = 'padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; transition: background-color 0.2s;';
-
-            // Highlight match (opcional, simple)
-            const nombre = art.descripcion || art.nombre;
-            const codigo = art.articulo_numero || art.codigo || art.codigo_barras;
-            const stock = art.stock_disponible || art.stock || 0;
-
-            div.innerHTML = `
-                <div style="font-weight: bold; color: #333;">${nombre}</div>
-                <div style="font-size: 12px; color: #888;">
-                    Cód: <span style="font-family: monospace;">${codigo}</span> | 
-                    Stock: <strong>${stock}</strong>
-                </div>
-            `;
-
-            div.onclick = () => seleccionarUnidad(art);
-
-            div.addEventListener('mouseenter', () => div.style.backgroundColor = '#f0f0f0');
-            div.addEventListener('mouseleave', () => div.style.backgroundColor = 'white');
-
-            container.appendChild(div);
-        });
-
-        if (resultados.length > 50) {
-            const footer = document.createElement('div');
-            footer.style.padding = '8px';
-            footer.style.textAlign = 'center';
-            footer.style.color = '#888';
-            footer.style.fontSize = '12px';
-            footer.textContent = `Mostrando 50 de ${resultados.length} resultados. Refine su búsqueda.`;
-            container.appendChild(footer);
-        }
-
-        container.style.display = 'block';
-    }
-
-    function seleccionarUnidad(articulo) {
-        console.log('✅ [ABRIR-CAJA] Unidad seleccionada:', articulo);
-
-        // Normalizar datos
-        const numero = articulo.articulo_numero || articulo.codigo || articulo.codigo_barras; // Asegurar campo
-
-        // Avanzar al paso 2 (Configuración igual a Contextual)
-        configurarModoContextual(numero, articulo);
-    }
-
-    // ==========================================
-    // LÓGICA DE NEGOCIO - CARGA DE DATOS Y CAJAS
-    // ==========================================
-
-    async function cargarUsuarios() {
-        try {
-            const response = await fetch('/api/usuarios/con-permiso/Produccion');
-            if (!response.ok) throw new Error('Error al cargar usuarios');
-
-            const usuarios = await response.json();
-            const select = document.getElementById('abrir-caja-usuario');
-
-            if (select) {
-                // Mantener selección si existe
-                const valorPrevio = select.value;
-                select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
-                usuarios.forEach(u => {
-                    const opt = document.createElement('option');
-                    opt.value = u.id;
-                    opt.textContent = u.nombre_completo;
-                    select.appendChild(opt);
-                });
-                if (valorPrevio) select.value = valorPrevio;
-            }
-
-            console.log(`✅ [ABRIR-CAJA] ${usuarios.length} usuarios cargados`);
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al cargar usuarios:', error);
-            mostrarMensaje('Error al cargar usuarios', 'error');
-        }
-    }
-
     async function cargarSugerencias(articuloNumero) {
         try {
             const response = await fetch(`/api/produccion/abrir-caja/sugerencias?articulo_unidad=${articuloNumero}`);
@@ -426,12 +381,11 @@ const ModalAbrirCaja = (function () {
             if (data.success && data.sugerencias && data.sugerencias.length > 0) {
                 mostrarSugerencias(data.sugerencias);
             } else {
-                // Si no hay sugerencias, ocultar contenedor
                 const container = document.getElementById('sugerencias-container-caja');
                 if (container) container.style.display = 'none';
             }
         } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al cargar sugerencias:', error);
+            console.error('❌ [ABRIR-CAJA] Error al cargar sugerencias de cajas:', error);
         }
     }
 
@@ -440,27 +394,26 @@ const ModalAbrirCaja = (function () {
         const lista = document.getElementById('sugerencias-lista-caja');
 
         if (!container || !lista) return;
-
         lista.innerHTML = '';
 
         sugerencias.forEach((sug, idx) => {
             const div = document.createElement('div');
             div.style.cssText = `
-                padding: 12px;
-                background: ${idx === 0 ? '#e8f5e9' : '#f5f5f5'};
+                padding: 10px 14px;
+                background: ${idx === 0 ? '#e8f5e9' : '#f9f9f9'};
                 border: 2px solid ${idx === 0 ? '#4caf50' : '#e0e0e0'};
                 border-radius: 6px;
                 cursor: pointer;
-                transition: all 0.3s ease;
+                transition: all 0.2s ease;
             `;
-            div.setAttribute('title', 'Clic para usar esta caja');
+            div.setAttribute('title', 'Clic para seleccionar esta caja de origen');
 
             div.innerHTML = `
-                <div style="font-weight: 600; color: #212121;">${sug.descripcion_caja}</div>
-                <div style="font-size: 12px; color: #757575; margin-top: 4px;">
-                    Código: <span style="font-family: monospace;">${sug.codigo_caja}</span> | 
-                    Stock: <strong>${parseFloat(sug.stock_actual).toFixed(2)}</strong>
-                    ${idx === 0 ? ' <span style="color: #4caf50; font-weight: bold;">⭐ Sugerido</span>' : ''}
+                <div style="font-weight: 700; color: #212121; font-size: 13px;">${sug.descripcion_caja}</div>
+                <div style="font-size: 12px; color: #616161; margin-top: 3px; display: flex; gap: 12px;">
+                    <span>Código: <strong style="font-family: monospace;">${sug.codigo_caja}</strong></span>
+                    <span>Stock: <strong style="color: ${parseFloat(sug.stock_actual) > 0 ? '#2e7d32' : '#c62828'};">${parseFloat(sug.stock_actual).toFixed(2)} cajas</strong></span>
+                    ${idx === 0 ? '<span style="color: #2e7d32; font-weight: 700;">⭐ Frecuente</span>' : ''}
                 </div>
             `;
 
@@ -468,18 +421,9 @@ const ModalAbrirCaja = (function () {
                 articulo_numero: sug.codigo_caja,
                 descripcion: sug.descripcion_caja,
                 codigo_barras: sug.codigo_barras,
-                stock_actual: sug.stock_actual
+                stock_actual: sug.stock_actual,
+                pack_unidades: sug.pack_unidades || sug.cantidad_promedio || 0
             }));
-
-            div.addEventListener('mouseenter', () => {
-                div.style.background = idx === 0 ? '#c8e6c9' : '#eeeeee';
-                div.style.transform = 'translateX(5px)';
-            });
-
-            div.addEventListener('mouseleave', () => {
-                div.style.background = idx === 0 ? '#e8f5e9' : '#f5f5f5';
-                div.style.transform = 'translateX(0)';
-            });
 
             lista.appendChild(div);
         });
@@ -498,18 +442,17 @@ const ModalAbrirCaja = (function () {
 
         try {
             const response = await fetch(`/api/produccion/abrir-caja/buscar?codigo_barras=${encodeURIComponent(codigo)}`);
-            if (!response.ok) throw new Error('Error en búsqueda');
+            if (!response.ok) throw new Error('Error en búsqueda por código');
 
             const data = await response.json();
-
             if (data.success && data.resultados && data.resultados.length > 0) {
                 seleccionarCaja(data.resultados[0]);
             } else {
-                mostrarMensaje('No se encontró caja con ese código (verifique que sea una caja válida)', 'warning');
+                mostrarMensaje('No se encontró caja con ese código de barras en el depósito.', 'warning');
             }
         } catch (error) {
             console.error('❌ [ABRIR-CAJA] Error búsqueda código:', error);
-            mostrarMensaje('Error al buscar caja', 'error');
+            mostrarMensaje('Error al buscar caja por código', 'error');
         }
     }
 
@@ -517,21 +460,20 @@ const ModalAbrirCaja = (function () {
         const input = document.getElementById('input-descripcion-caja');
         const desc = input?.value.trim();
 
-        if (!desc || desc.length < 3) {
+        if (!desc || desc.length < 2) {
             ocultarResultadosCaja();
             return;
         }
 
         try {
             const response = await fetch(`/api/produccion/abrir-caja/buscar?descripcion=${encodeURIComponent(desc)}`);
-            if (!response.ok) throw new Error('Error en búsqueda');
+            if (!response.ok) throw new Error('Error en búsqueda de caja');
 
             const data = await response.json();
-
             if (data.success && data.resultados && data.resultados.length > 0) {
                 mostrarResultadosCaja(data.resultados);
             } else {
-                mostrarMensaje('No se encontraron cajas con esa descripción', 'warning');
+                mostrarMensaje('No se encontraron cajas con esa descripción.', 'warning');
             }
         } catch (error) {
             console.error('❌ [ABRIR-CAJA] Error búsqueda descripción:', error);
@@ -542,23 +484,23 @@ const ModalAbrirCaja = (function () {
     function mostrarResultadosCaja(resultados) {
         const container = document.getElementById('resultados-caja');
         if (!container) return;
-
         container.innerHTML = '';
 
         resultados.forEach(res => {
             const div = document.createElement('div');
-            div.style.cssText = 'padding: 10px; border-bottom: 1px solid #e0e0e0; cursor: pointer; transition: background 0.2s;';
+            div.style.cssText = 'padding: 10px; border-bottom: 1px solid #e0e0e0; cursor: pointer; transition: background 0.15s;';
 
             div.innerHTML = `
-                <div style="font-weight: 600; color: #212121;">${res.descripcion}</div>
-                <div style="font-size: 12px; color: #757575; margin-top: 4px;">
-                    Código: <span style="font-family: monospace;">${res.articulo_numero}</span> | 
-                    Stock: <strong style="color: ${res.stock_actual >= 1 ? '#4caf50' : '#f44336'};">${parseFloat(res.stock_actual).toFixed(2)}</strong>
+                <div style="font-weight: 700; color: #212121; font-size: 13px;">${res.descripcion}</div>
+                <div style="font-size: 12px; color: #616161; margin-top: 3px; display: flex; gap: 12px;">
+                    <span>Código: <strong style="font-family: monospace;">${res.articulo_numero}</strong></span>
+                    <span>Stock: <strong style="color: ${parseFloat(res.stock_actual) > 0 ? '#2e7d32' : '#c62828'};">${parseFloat(res.stock_actual).toFixed(2)} cajas</strong></span>
+                    ${res.pack_unidades ? `<span>Unidades: <strong>${res.pack_unidades}</strong></span>` : ''}
                 </div>
             `;
 
             div.addEventListener('click', () => seleccionarCaja(res));
-            div.addEventListener('mouseenter', () => div.style.background = '#f5f5f5');
+            div.addEventListener('mouseenter', () => div.style.background = '#f1f8e9');
             div.addEventListener('mouseleave', () => div.style.background = 'white');
 
             container.appendChild(div);
@@ -577,74 +519,197 @@ const ModalAbrirCaja = (function () {
 
         document.getElementById('caja-nombre').textContent = caja.descripcion;
         document.getElementById('caja-codigo').textContent = caja.articulo_numero;
-        document.getElementById('caja-stock').textContent = `${parseFloat(caja.stock_actual).toFixed(2)} cajas`;
+        const elBarcode = document.getElementById('caja-barcode');
+        if (elBarcode) elBarcode.textContent = caja.codigo_barras || '-';
+        document.getElementById('caja-stock').textContent = `${parseFloat(caja.stock_actual || 0).toFixed(2)} cajas`;
         document.getElementById('caja-seleccionada-display').style.display = 'block';
 
         ocultarResultadosCaja();
 
-        // Limpiar inputs caja
+        // Si la caja ya tiene pack_unidades definido, autocompletar cantidad
+        const inputCant = document.getElementById('abrir-caja-cantidad');
+        if (inputCant && caja.pack_unidades && parseInt(caja.pack_unidades) > 0) {
+            inputCant.value = caja.pack_unidades;
+        } else if (inputCant && (!inputCant.value || parseInt(inputCant.value) <= 0)) {
+            inputCant.value = 12; // Valor sugerido habitual si no está configurado
+        }
+
+        // Limpiar inputs de búsqueda de caja
         const inputCodigo = document.getElementById('input-codigo-caja');
         const inputDesc = document.getElementById('input-descripcion-caja');
         if (inputCodigo) inputCodigo.value = '';
         if (inputDesc) inputDesc.value = '';
 
+        // Solicitar lote sugerido vinculado a la caja
+        solicitarLoteSugerido(caja.articulo_numero, datosArticuloUnidad?.articulo_numero);
+
+        actualizarContadorEtiquetas();
         validarFormulario();
         mostrarMensaje('Caja seleccionada correctamente', 'success');
 
-        console.log('✅ [ABRIR-CAJA] Caja seleccionada:', caja.articulo_numero);
+        console.log('✅ [ABRIR-CAJA] Caja de origen seleccionada:', caja.articulo_numero);
     }
+
+    // ==========================================
+    // GESTIÓN DE LOTES Y TRAZABILIDAD
+    // ==========================================
+
+    async function solicitarLoteSugerido(codigoCaja = null, codigoUnidad = null, forzarNuevo = false) {
+        try {
+            let url = `/api/produccion/abrir-caja/lote-sugerido?forzar_nuevo=${forzarNuevo ? '1' : '0'}`;
+            if (codigoCaja) url += `&codigo_caja=${encodeURIComponent(codigoCaja)}`;
+            if (codigoUnidad) url += `&codigo_unidad=${encodeURIComponent(codigoUnidad)}`;
+
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Error al consultar lote');
+
+            const data = await response.json();
+            if (data.success && data.lote) {
+                loteActual = data.lote;
+                origenLote = data.origen || 'generado';
+
+                const inputLote = document.getElementById('abrir-caja-lote');
+                if (inputLote) inputLote.value = loteActual;
+
+                actualizarInfoLote(data.descripcion);
+            }
+        } catch (error) {
+            console.error('❌ [ABRIR-CAJA] Error al obtener lote:', error);
+            // Fallback: generar código rápido en cliente
+            if (!loteActual) {
+                loteActual = 'L' + Math.random().toString(36).substring(2, 9).toUpperCase();
+                const inputLote = document.getElementById('abrir-caja-lote');
+                if (inputLote) inputLote.value = loteActual;
+                actualizarInfoLote();
+            }
+        }
+    }
+
+    function actualizarInfoLote(descripcionExtra = '') {
+        const badge = document.getElementById('badge-origen-lote');
+        const info = document.getElementById('info-lote-origen');
+
+        if (badge) {
+            if (origenLote === 'lote_caja') {
+                badge.style.background = '#e8f5e9';
+                badge.style.color = '#2e7d32';
+                badge.textContent = '🟢 Heredado de Caja';
+            } else {
+                badge.style.background = '#e3f2fd';
+                badge.style.color = '#1565c0';
+                badge.textContent = '✨ Lote Generado';
+            }
+        }
+
+        if (info) {
+            if (descripcionExtra) {
+                info.textContent = descripcionExtra;
+            } else if (origenLote === 'lote_caja') {
+                info.textContent = 'Lote vinculado a la partida de la caja seleccionada.';
+            } else {
+                info.textContent = 'Lote nuevo asignado a las unidades extraídas.';
+            }
+        }
+    }
+
+    function actualizarContadorEtiquetas() {
+        const cantidadInput = document.getElementById('abrir-caja-cantidad')?.value;
+        const cantidad = parseInt(cantidadInput) || 0;
+        const display = document.getElementById('display-cant-etiquetas');
+        const btnImprimir = document.getElementById('btn-imprimir-caja');
+
+        if (display) {
+            if (cantidad > 0) {
+                display.textContent = `${cantidad} pares de etiquetas (${cantidad} de producto + ${cantidad} de lote)`;
+            } else {
+                display.textContent = `0 etiquetas listas para imprimir`;
+            }
+        }
+
+        if (btnImprimir) {
+            if (cantidad > 0) {
+                btnImprimir.textContent = `🏷️ Imprimir ${cantidad} Etiquetas (con Lote)`;
+            } else {
+                btnImprimir.textContent = `🏷️ Imprimir Etiquetas (con Lote)`;
+            }
+        }
+    }
+
+    // ==========================================
+    // IMPRESIÓN DE ETIQUETAS (CON LOTE)
+    // ==========================================
 
     async function imprimirEtiquetas() {
         const cantidad = parseInt(document.getElementById('abrir-caja-cantidad')?.value);
+        const loteInput = document.getElementById('abrir-caja-lote')?.value.trim();
+        const lote = loteInput || loteActual;
 
         if (!cantidad || cantidad < 1) {
-            mostrarMensaje('Ingrese la cantidad de unidades', 'warning');
+            mostrarMensaje('Ingrese la cantidad de unidades que trae la caja', 'warning');
             return;
         }
 
         if (!datosArticuloUnidad) {
-            mostrarMensaje('Error: datos del artículo no disponibles', 'error');
+            mostrarMensaje('Error: datos del producto a extraer no disponibles', 'error');
             return;
         }
 
+        const fechaElab = document.getElementById('abrir-caja-fecha-elab')?.value.trim();
+        const fechaVenc = document.getElementById('abrir-caja-fecha-venc')?.value.trim();
+
         try {
-            mostrarMensaje('Imprimiendo etiquetas...', 'info');
+            mostrarMensaje(`Enviando ${cantidad} etiquetas con Lote ${lote} a la impresora...`, 'info');
+
+            const payload = {
+                articulo: {
+                    nombre: datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre,
+                    numero: datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo,
+                    codigo_barras: datosArticuloUnidad.codigo_barras || datosArticuloUnidad.articulo_numero
+                },
+                cantidad: cantidad,
+                lote: lote,
+                fechas: (fechaElab && fechaVenc) ? {
+                    elaboracion: fechaElab,
+                    vencimiento: fechaVenc
+                } : null
+            };
 
             const response = await fetch('http://localhost:3000/api/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    articulo: {
-                        nombre: datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre,
-                        numero: datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo,
-                        codigo_barras: datosArticuloUnidad.codigo_barras || datosArticuloUnidad.articulo_numero
-                    },
-                    cantidad: cantidad
-                })
+                body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error('Error al imprimir');
+            if (!response.ok) throw new Error('Error al conectar con la impresora');
 
             etiquetasImpresas = true;
-            mostrarMensaje(`✅ ${cantidad} etiquetas enviadas a impresión`, 'success');
+            mostrarMensaje(`✅ ${cantidad} etiquetas impresas exitosamente con Lote ${lote}`, 'success');
             validarFormulario();
 
-            console.log('✅ [ABRIR-CAJA] Etiquetas impresas');
+            console.log('✅ [ABRIR-CAJA] Impresión completada con Lote:', lote);
         } catch (error) {
             console.error('❌ [ABRIR-CAJA] Error impresión:', error);
-            mostrarMensaje(`Error al imprimir: ${error.message}`, 'error');
+            mostrarMensaje(`Error al imprimir etiquetas: ${error.message}`, 'error');
         }
     }
 
+    // ==========================================
+    // REGISTRO Y APERTURA DE CAJA
+    // ==========================================
+
     async function confirmarApertura() {
         if (!validarFormulario()) {
-            mostrarMensaje('Complete todos los campos requeridos', 'warning');
+            mostrarMensaje('Complete los campos obligatorios (Usuario, Cantidad y Caja de Origen)', 'warning');
             return;
         }
 
+        const lote = document.getElementById('abrir-caja-lote')?.value.trim() || loteActual;
+
         if (!etiquetasImpresas) {
-            const confirmar = confirm('⚠️ No se detectó impresión de etiquetas.\n\n¿Desea imprimir antes de confirmar?');
-            if (confirmar) {
+            const confirmarSinImprimir = confirm(
+                `⚠️ Aún no has impreso las etiquetas con el lote asignado (${lote}).\n\n¿Deseas imprimir las etiquetas antes de continuar?`
+            );
+            if (confirmarSinImprimir) {
                 await imprimirEtiquetas();
                 return;
             }
@@ -657,7 +722,7 @@ const ModalAbrirCaja = (function () {
             document.getElementById('btn-confirmar-caja').disabled = true;
             document.getElementById('btn-imprimir-caja').disabled = true;
 
-            mostrarMensaje('Procesando apertura...', 'info');
+            mostrarMensaje('Procesando apertura y actualización de stock...', 'info');
 
             const response = await fetch('/api/produccion/abrir-caja', {
                 method: 'POST',
@@ -667,6 +732,7 @@ const ModalAbrirCaja = (function () {
                     codigo_unidad: datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo,
                     cantidad_unidades: cantidad,
                     usuario_id: usuarioId,
+                    lote: lote,
                     kilos_caja: 0,
                     kilos_unidad: datosArticuloUnidad.kilos_unidad || 0
                 })
@@ -679,21 +745,19 @@ const ModalAbrirCaja = (function () {
 
             const result = await response.json();
 
-            mostrarMensaje(`✅ Caja abierta: ${cantidad} unidades agregadas al stock`, 'success');
+            mostrarMensaje(`✅ Caja abierta con éxito: ${cantidad} unidades sumadas al stock (Lote: ${lote})`, 'success');
 
             setTimeout(() => {
                 cerrarModal();
                 if (typeof window.actualizarResumenFaltantes === 'function') {
                     window.actualizarResumenFaltantes();
                 }
-                // Si es manual, recargar podría ser molesto si quiere abrir otra, 
-                // pero por consistencia de stock mejor recargamos o actualizamos UI
-                setTimeout(() => location.reload(), 500);
-            }, 2000);
+                setTimeout(() => location.reload(), 600);
+            }, 1800);
 
             console.log('✅ [ABRIR-CAJA] Apertura exitosa:', result);
         } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error apertura:', error);
+            console.error('❌ [ABRIR-CAJA] Error al confirmar apertura:', error);
             mostrarMensaje(`Error: ${error.message}`, 'error');
             document.getElementById('btn-confirmar-caja').disabled = false;
             document.getElementById('btn-imprimir-caja').disabled = false;
@@ -703,15 +767,44 @@ const ModalAbrirCaja = (function () {
     function validarFormulario() {
         const usuario = document.getElementById('abrir-caja-usuario')?.value;
         const cantidad = document.getElementById('abrir-caja-cantidad')?.value;
+        const lote = document.getElementById('abrir-caja-lote')?.value.trim();
         const btnImprimir = document.getElementById('btn-imprimir-caja');
         const btnConfirmar = document.getElementById('btn-confirmar-caja');
 
-        const completo = usuario && cantidad && parseInt(cantidad) > 0 && cajaSeleccionada && datosArticuloUnidad;
+        const datosCompletos = usuario && cantidad && parseInt(cantidad) > 0 && cajaSeleccionada && datosArticuloUnidad && lote;
 
-        if (btnImprimir) btnImprimir.disabled = !cajaSeleccionada || !datosArticuloUnidad || !cantidad || parseInt(cantidad) < 1;
-        if (btnConfirmar) btnConfirmar.disabled = !completo;
+        if (btnImprimir) {
+            btnImprimir.disabled = !cajaSeleccionada || !datosArticuloUnidad || !cantidad || parseInt(cantidad) < 1 || !lote;
+        }
+        if (btnConfirmar) {
+            btnConfirmar.disabled = !datosCompletos;
+        }
 
-        return completo;
+        return datosCompletos;
+    }
+
+    async function cargarUsuarios() {
+        try {
+            const response = await fetch('/api/usuarios/con-permiso/Produccion');
+            if (!response.ok) throw new Error('Error al cargar usuarios');
+
+            const usuarios = await response.json();
+            const select = document.getElementById('abrir-caja-usuario');
+
+            if (select) {
+                const valorPrevio = select.value;
+                select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+                usuarios.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.id;
+                    opt.textContent = u.nombre_completo;
+                    select.appendChild(opt);
+                });
+                if (valorPrevio) select.value = valorPrevio;
+            }
+        } catch (error) {
+            console.error('❌ [ABRIR-CAJA] Error al cargar usuarios:', error);
+        }
     }
 
     function mostrarMensaje(texto, tipo) {
@@ -719,18 +812,21 @@ const ModalAbrirCaja = (function () {
         if (!el) return;
 
         el.textContent = texto;
-        el.className = tipo === 'success' ? 'mensaje-exito' :
-            tipo === 'error' ? 'mensaje-error' : 'mensaje-info';
+        el.className = tipo === 'success' ? 'alert alert-success' :
+            tipo === 'error' ? 'alert alert-danger' :
+            tipo === 'warning' ? 'alert alert-warning' : 'alert alert-info';
         el.style.display = 'block';
 
         if (tipo === 'success') {
-            setTimeout(() => el.style.display = 'none', 5000);
+            setTimeout(() => { if (el) el.style.display = 'none'; }, 6000);
         }
     }
 
     function resetearModal() {
         datosArticuloUnidad = null;
         cajaSeleccionada = null;
+        loteActual = '';
+        origenLote = 'generado';
         etiquetasImpresas = false;
         modoManual = false;
 
@@ -739,27 +835,27 @@ const ModalAbrirCaja = (function () {
         const inputCod = document.getElementById('input-codigo-caja');
         const inputDesc = document.getElementById('input-descripcion-caja');
         const inputBusquedaUnidad = document.getElementById('input-busqueda-unidad');
+        const inputLote = document.getElementById('abrir-caja-lote');
 
         if (select) select.value = '';
         if (inputCant) inputCant.value = '';
         if (inputCod) inputCod.value = '';
         if (inputDesc) inputDesc.value = '';
-        if (inputBusquedaUnidad) inputBusquedaUnidad.value = ''; // Resetear búsqueda unidad
+        if (inputBusquedaUnidad) inputBusquedaUnidad.value = '';
+        if (inputLote) inputLote.value = '';
 
-        // Ocultar resultados
         ocultarResultadosCaja();
         const resultadosUnidad = document.getElementById('resultados-unidad');
         if (resultadosUnidad) resultadosUnidad.style.display = 'none';
 
-        // Ocultar contenedores
         const sugerenciasContainer = document.getElementById('sugerencias-container-caja');
         if (sugerenciasContainer) sugerenciasContainer.style.display = 'none';
 
         document.getElementById('caja-seleccionada-display').style.display = 'none';
         document.getElementById('mensaje-abrir-caja').style.display = 'none';
 
-        // Reset tabs
         cambiarModoBusquedaCaja('codigo');
+        actualizarContadorEtiquetas();
 
         document.getElementById('btn-imprimir-caja').disabled = true;
         document.getElementById('btn-confirmar-caja').disabled = true;
@@ -767,7 +863,6 @@ const ModalAbrirCaja = (function () {
 
     function cerrarModal() {
         if (modalElement) modalElement.style.display = 'none';
-        // resetearModal(); // Opcional: limpiar al cerrar
     }
 
     function debounce(func, wait) {
@@ -784,11 +879,11 @@ const ModalAbrirCaja = (function () {
     }
 
     // ==========================================
-    // API PÚBLICA (ABRIR)
+    // API PÚBLICA
     // ==========================================
 
     function abrir(articuloNumero = null, datosArticulo = null) {
-        console.log(`🔓 [ABRIR-CAJA] Solicitud de apertura. Arg:`, articuloNumero);
+        console.log(`📦 [ABRIR-CAJA] Solicitud de apertura. Arg:`, articuloNumero);
 
         if (!modalElement) {
             if (!inicializarModal()) {
@@ -801,11 +896,11 @@ const ModalAbrirCaja = (function () {
         modalElement.style.display = 'flex';
 
         if (articuloNumero) {
-            // MODO CONTEXTUAL (Viene con artículo definido)
+            // MODO CONTEXTUAL: Ya tenemos el artículo
             modoManual = false;
             configurarModoContextual(articuloNumero, datosArticulo);
         } else {
-            // MODO MANUAL (Sin artículo definido)
+            // MODO MANUAL: Paso 1 Búsqueda por Nombre
             configurarModoManual();
         }
     }
@@ -816,16 +911,13 @@ const ModalAbrirCaja = (function () {
     };
 })();
 
-// ==========================================
-// INTEGRACIÓN CON MENÚ CONTEXTUAL
-// ==========================================
-
+// Menú contextual en tabla de producción
 window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, datosArticulo) {
     if (!menuContextual) return;
 
     const opcion = document.createElement('div');
     opcion.className = 'context-menu-item';
-    opcion.innerHTML = '🔓 Abrir Caja';
+    opcion.innerHTML = '📦 Abrir Caja';
     opcion.style.cssText = `
         padding: 12px 16px;
         cursor: pointer;
@@ -841,15 +933,9 @@ window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, 
         e.stopPropagation();
         e.stopImmediatePropagation();
 
-        console.log('🔓 [ABRIR-CAJA] Click en opción del menú');
-
-        // Cerrar menú primero
         const menuElement = document.getElementById('context-menu-articulo');
-        if (menuElement) {
-            menuElement.remove();
-        }
+        if (menuElement) menuElement.remove();
 
-        // Abrir modal
         if (window.ModalAbrirCaja && typeof window.ModalAbrirCaja.abrir === 'function') {
             window.ModalAbrirCaja.abrir(articuloNumero, datosArticulo);
         } else {
@@ -868,13 +954,8 @@ window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, 
 // Exponer módulo globalmente
 window.ModalAbrirCaja = ModalAbrirCaja;
 
-// ==========================================
-// INICIALIZACIÓN AUTOMÁTICA AL CARGAR
-// ==========================================
+// Inicialización de listener del botón global
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('✅ [ABRIR-CAJA] DOM listo, inicializando listeners globales...');
-
-    // Vincular botón global inmediatamente para evitar problemas de orden de carga
     const btnGlobal = document.getElementById('btn-abrir-caja-global');
     if (btnGlobal) {
         btnGlobal.addEventListener('click', function (e) {
@@ -887,8 +968,5 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert('El módulo de Abrir Caja no está listo aún. Intente de nuevo.');
             }
         });
-        console.log('✅ [ABRIR-CAJA] Listener global vinculado correctamente');
-    } else {
-        console.warn('⚠️ [ABRIR-CAJA] Botón global no encontrado al cargar DOM');
     }
 });

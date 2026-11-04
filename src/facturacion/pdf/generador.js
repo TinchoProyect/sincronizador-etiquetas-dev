@@ -204,9 +204,16 @@ const construirPDF = async (doc, factura, items) => {
         if (isPuesto90) {
             const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
             tipoDesc = esNC ? 'Remito de Entrega' : 'Presupuesto Aprobado';
+        } else if (factura.estado === 'PENDIENTE_FACTURACION') {
+            tipoDesc = `${tipoDesc} (Diferida)`;
         }
         // Desplazar a middleColumn + 35 para dar más margen y evitar colisiones
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#8e4785').text(tipoDesc.toUpperCase(), middleColumn + 35, rightY);
+        
+        if (factura.estado === 'PENDIENTE_FACTURACION') {
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0284c7').text('⏳ PENDIENTE DE FACTURAR ARCA', middleColumn + 35, rightY + 12);
+            rightY += 8;
+        }
         
         rightY += 15;
         
@@ -366,6 +373,8 @@ const construirPDF = async (doc, factura, items) => {
     // Calcular altura total requerida por el panel de totales
     let totalRows = 1; // Para TOTAL
     const descuento = parseFloat(factura.descuento) || 0;
+    const montoDescuento = subtotalAntesDescuento * descuento;
+    const subtotalConDescuento = subtotalAntesDescuento - montoDescuento;
     if (descuento > 0) totalRows += 2;
     if (netoGravado > 0) totalRows += 1;
     if (netoExento > 0) totalRows += 1;
@@ -450,9 +459,16 @@ const construirPDF = async (doc, factura, items) => {
         localY += 4;
     }
     
+    const totalIvaSumPdf = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
+    const impTotalCalculadoPdf = (parseFloat(factura.imp_total) > 0)
+        ? (parseFloat(factura.imp_total))
+        : ((descuento > 0) 
+            ? (subtotalConDescuento + totalIvaSumPdf + (parseFloat(factura.imp_trib) || 0)) 
+            : (parseFloat(factura.imp_total) || 0));
+
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#8e4785');
     doc.text('TOTAL:', totalsX, localY);
-    doc.text(formatearMoneda(factura.imp_total), totalsX + 60, localY, { width: 80, align: 'right' });
+    doc.text(formatearMoneda(impTotalCalculadoPdf), totalsX + 60, localY, { width: 80, align: 'right' });
     
     yPos = Math.max(yPos + cardHeight + 10, localY + 16);
     
@@ -514,6 +530,16 @@ const construirPDF = async (doc, factura, items) => {
         doc.text(`Vencimiento CAE: ${formatearFecha(factura.cae_vto)}`, leftColumn, qrStartY + 72, { align: 'right', width: contentWidth - 15 });
         
         yPos += 120;
+    } else if (factura.estado === 'PENDIENTE_FACTURACION') {
+        yPos += 10;
+        doc.save();
+        doc.roundedRect(leftColumn, yPos, contentWidth, 38, 4).fillColor('#f0f9ff').fill();
+        doc.roundedRect(leftColumn, yPos, contentWidth, 38, 4).strokeColor('#0284c7').lineWidth(1).stroke();
+        doc.restore();
+
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#0369a1').text('⏳ COMPROBANTE DE ENTREGA - PENDIENTE DE FACTURACIÓN ARCA', leftColumn + 10, yPos + 8, { align: 'center', width: contentWidth - 20 });
+        doc.fontSize(7.5).font('Helvetica').fillColor('#0284c7').text('Mercadería despachada y debitada en Cuenta Corriente. Emisión fiscal oficial programada para el próximo período.', leftColumn + 10, yPos + 22, { align: 'center', width: contentWidth - 20 });
+        yPos += 48;
     }
     
     // ===========================================

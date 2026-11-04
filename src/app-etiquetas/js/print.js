@@ -258,6 +258,7 @@ class PrintManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...datosImpresion,
+          articulo: datosImpresion,
           cantidad
         }),
       });

@@ -54,6 +54,14 @@ const allowedOrigins = [
     'http://192.168.1.178:3003',
     'http://192.168.1.178:3004',
     'http://192.168.1.178:3005',
+    // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
+    'https://lamdaser.com',
+    'http://lamdaser.com',
+    'https://www.lamdaser.com',
+    'http://www.lamdaser.com',
+    'https://proud-darkness-ac3d.miserrano75.workers.dev',
+    'https://logistica.lamdaser.com',
+    'http://logistica.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',
@@ -93,10 +101,33 @@ app.use(dbMiddleware);
 
 // Configurar archivos estáticos
 const staticPath = path.join(__dirname);
+const { registrarAccesoServidorSitio } = require('./controllers/cloudflareAnalyticsController');
+app.use((req, res, next) => {
+    const host = (req.headers.host || '').toLowerCase();
+    const recursosPublicos = ['/institucional.html', '/llms.txt', '/llms-full.txt', '/catalogo-publico.json', '/sitemap.xml', '/robots.txt'];
+    if (recursosPublicos.includes(req.path)) {
+        registrarAccesoServidorSitio(req, req.path);
+    }
+    if ((host === 'lamdaser.com' || host === 'www.lamdaser.com') && req.path === '/') {
+        registrarAccesoServidorSitio(req, '/institucional.html');
+        return res.sendFile(path.join(staticPath, 'institucional.html'));
+    }
+    next();
+});
 app.use(express.static(staticPath));
 app.use('/pages', express.static(path.join(staticPath, 'pages')));
 app.use('/js', express.static(path.join(staticPath, 'js')));
 app.use('/css', express.static(path.join(staticPath, 'css')));
+app.use('/img', express.static(path.join(staticPath, 'img')));
+app.use('/mobile', express.static(path.join(staticPath, 'public/mobile'), {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
+        res.setHeader('CDN-Cache-Control', 'no-store');
+    }
+}));
 
 console.log('[LOGISTICA] 📁 Archivos estáticos configurados desde:', staticPath);
 
@@ -158,6 +189,19 @@ app.use('/api/produccion', createProxyMiddleware({
     }
 }));
 
+// Proxy para las transacciones API de Tiempos y Métricas de Producción (puerto 3002)
+app.use('/api/tiempos', createProxyMiddleware({
+    target: 'http://localhost:3002',
+    changeOrigin: true,
+    pathRewrite: (path, req) => {
+        return '/api/tiempos' + req.url; 
+    },
+    onError: (err, req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy de Tiempos (API):', err.message);
+        res.status(503).json({ error: 'Módulo de tiempos fuera de línea.' });
+    }
+}));
+
 
 // Proxy para las transacciones API de Facturación (puerto 3004)
 app.use('/api/facturacion', createProxyMiddleware({
@@ -195,6 +239,10 @@ app.get('/env-config.js', (req, res) => {
 // Rutas API
 console.log('[LOGISTICA] Montando rutas API...');
 
+// Disparador reactivo automático en 2do plano hacia Portal B2B ante cambios locales
+const { createB2BAutoSyncMiddleware } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+app.use(createB2BAutoSyncMiddleware('logistica'));
+
 // Rutas de Domicilios
 app.use('/api/logistica/domicilios', require('./routes/domicilios'));
 console.log('[LOGISTICA] ✅ Rutas de Domicilios montadas en /api/logistica/domicilios');
@@ -213,11 +261,16 @@ console.log('[LOGISTICA] ✅ Rutas de Artículos montadas en /api/logistica/arti
 
 // Rutas del Búnker (Core Financiero)
 app.use('/api/logistica/bunker', require('./routes/bunker'));
-console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker');
+app.use('/api/bunker', require('./routes/bunker'));
+console.log('[LOGISTICA] ✅ Rutas del Búnker montadas en /api/logistica/bunker y /api/bunker');
 
 // Rutas de Clientes Búnker
 app.use('/api/logistica/bunker/clientes', require('./routes/clientesBunker'));
 console.log('[LOGISTICA] ✅ Rutas de Clientes Búnker montadas en /api/logistica/bunker/clientes');
+
+// Rutas de Prospectos (CRM Preventa Calle y Depósito)
+app.use('/api/logistica/prospectos', require('./routes/prospectos'));
+console.log('[LOGISTICA] ✅ Rutas de Prospectos montadas en /api/logistica/prospectos');
 
 // Rutas de Cuenta Corriente Búnker
 app.use('/api/logistica/bunker/cuentas-corrientes', require('./routes/cuentaCorriente'));
@@ -240,9 +293,10 @@ console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/pr
 app.use('/api/logistica/usuarios', require('./routes/usuarios'));
 console.log('[LOGISTICA] ✅ Rutas de Usuarios montadas en /api/logistica/usuarios');
 
-// Rutas de Móvil
+// Rutas de Móvil y Resolución QR Pública
 app.use('/api/logistica/movil', require('./routes/movil'));
-console.log('[LOGISTICA] ✅ Rutas de Móvil montadas en /api/logistica/movil');
+app.use('/api/logistica/public-qr-resolve', require('./routes/movil'));
+console.log('[LOGISTICA] ✅ Rutas de Móvil y Resolución QR montadas');
 
 // Rutas de Diagnóstico (desarrollo)
 app.use('/api/logistica/diagnostico', require('./routes/diagnostico-secuencia'));
@@ -250,7 +304,17 @@ console.log('[LOGISTICA] ✅ Rutas de Diagnóstico montadas en /api/logistica/di
 
 // Rutas de Onboarding B2B
 app.use('/api/logistica/b2b-onboarding', require('./routes/b2bOnboarding'));
-console.log('[LOGISTICA] ✅ Rutas de Onboarding B2B montadas en /api/logistica/b2b-onboarding');
+app.use('/api/b2b', require('./routes/b2bOnboarding'));
+console.log('[LOGISTICA] ✅ Rutas de Onboarding B2B montadas en /api/logistica/b2b-onboarding y /api/b2b');
+
+// Rutas de Colaborador B2B (Exclusivo Matías)
+app.use('/api/b2b/colaborador', require('./routes/b2bColaborador'));
+app.use('/api/logistica/b2b-colaborador', require('./routes/b2bColaborador'));
+console.log('[LOGISTICA] ✅ Rutas de Colaborador B2B montadas en /api/b2b/colaborador');
+
+// Rutas de Telemetría Cloudflare & B2B
+app.use('/api/logistica/telemetria', require('./routes/telemetria'));
+console.log('[LOGISTICA] ✅ Rutas de Telemetría Cloudflare montadas en /api/logistica/telemetria');
 
 // Rutas de Tratamientos e Inmunización (Retiros Fase 1 y 2)
 app.use('/api/logistica/tratamientos', require('./routes/tratamientos'));
@@ -263,6 +327,19 @@ console.log('[LOGISTICA] ✅ Rutas de Auditorías montadas en /api/logistica/aud
 // Rutas del Reservorio Cronológico Satelital
 app.use('/api/logistica/reservorio', require('./routes/reservorioRoutes'));
 console.log('[LOGISTICA] ✅ Rutas del Reservorio Satelital montadas en /api/logistica/reservorio');
+
+// Rutas de Jerarquía y Subcategorías B2B
+app.use('/api/logistica/b2b-jerarquia', require('./routes/b2bJerarquia'));
+app.use('/api/bunker/portal-b2b-jerarquia', require('./routes/b2bJerarquia'));
+console.log('[LOGISTICA] ✅ Rutas de Jerarquía B2B montadas en /api/logistica/b2b-jerarquia');
+
+// Rutas de Pagos en Efectivo Ensobrados
+app.use('/api/logistica/pagos-efectivo', require('./routes/pagosEfectivo'));
+console.log('[LOGISTICA] ✅ Rutas de Pagos en Efectivo montadas en /api/logistica/pagos-efectivo');
+
+// Rutas de Inspección Visual de Partidas / Fotos de Lotes B2B
+app.use('/api/logistica/b2b-fotos-lotes', require('./routes/b2bFotosLotes'));
+console.log('[LOGISTICA] ✅ Rutas de Fotos de Partidas B2B montadas en /api/logistica/b2b-fotos-lotes');
 
 
 // Ruta de health check

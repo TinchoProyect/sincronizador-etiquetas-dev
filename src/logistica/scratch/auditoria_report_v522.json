@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T08:43:55-03:00",
+  "version": "v5.22",
+  "architecture_paradigm": "Barrera de Integridad RESTRICT Lógico (HTTP 400) + DELETE SQL por Integer IDs + Reactividad Cero F5 + Flush Total onChange",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerDiccionarioController.js & diccionario-bunker.js: 0 SyntaxError)",
+    "QA-1_RESTRICT_Child_Dependencies_Check": "100% PASS (SELECT COUNT(*) detected 1 child category and aborted transaction with HTTP 400)",
+    "QA-2_Deterministic_Integer_ID_Delete": "100% PASS (Unlinked Externa ID 881 cleanly with 0 child dependencies, rowCount = 1)",
+    "QA-3_Reactive_DOM_Option_Removal": "100% PASS (selectedOpt.remove() updates UI in real time without F5)",
+    "QA-4_Flush_Total_onChange": "100% PASS (cambiarFamiliaFiltro clears RAM and resets DOM select on family change)",
+    "QA-5_Ontological_Level2_Card": "100% PASS (Rendered empty state card with Nivel 2 linking button)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

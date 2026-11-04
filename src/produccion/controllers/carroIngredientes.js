@@ -912,19 +912,25 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
             return [];
         }
 
-        // 1. Obtener artículos del carro que tienen vínculos
+        // 1. Obtener artículos del carro que tienen vínculos (filtrando insumos nexo de entrada)
         const queryArticulosVinculados = `
         SELECT
-        ca.articulo_numero,
+            ca.articulo_numero,
             ca.cantidad,
             rel.articulo_kilo_codigo,
             rel.ingredientes_custom,
             COALESCE(rel.multiplicador_ingredientes, 1) as multiplicador_ingredientes
-            FROM carros_articulos ca
-            INNER JOIN articulos_produccion_externa_relacion rel 
-                ON ca.articulo_numero = rel.articulo_produccion_codigo
-            WHERE ca.carro_id = $1
-            `;
+        FROM carros_articulos ca
+        INNER JOIN articulos_produccion_externa_relacion rel 
+            ON ca.articulo_numero = rel.articulo_produccion_codigo
+        WHERE ca.carro_id = $1
+          AND rel.articulo_kilo_codigo NOT IN (
+              SELECT ra.articulo_numero 
+              FROM recetas r 
+              JOIN receta_articulos ra ON r.id = ra.receta_id 
+              WHERE r.articulo_numero = ca.articulo_numero
+          )
+        `;
         const articulosVinculadosResult = await pool.query(queryArticulosVinculados, [carroId]);
 
         console.log(`🔗 ARTÍCULOS CON VÍNCULOS: ${articulosVinculadosResult.rows.length} `);
@@ -956,7 +962,8 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                 CAST(ri.cantidad AS DECIMAL(20, 10)) as cantidad,
                 COALESCE(i.nombre, ri.nombre_ingrediente) as nombre_ingrediente,
                 COALESCE(i.unidad_medida, 'Kilo') as unidad_medida,
-                COALESCE(i.es_insumo, false) as es_insumo
+                COALESCE(i.es_insumo, false) as es_insumo,
+                COALESCE(ri.fase_produccion, 'externa') as fase_produccion
                     FROM recetas r
                     JOIN receta_ingredientes ri ON r.id = ri.receta_id
                     LEFT JOIN ingredientes i ON i.id = ri.ingrediente_id
@@ -1025,7 +1032,12 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                         );
 
                         if (ingredientesExpandidos.length > 0) {
-                            todosLosIngredientesVinculados = todosLosIngredientesVinculados.concat(ingredientesExpandidos);
+                            const mappedExp = ingredientesExpandidos.map(exp => ({
+                                ...exp,
+                                fase_produccion: ing.fase_produccion || 'externa',
+                                es_post_coccion: true
+                            }));
+                            todosLosIngredientesVinculados = todosLosIngredientesVinculados.concat(mappedExp);
                         } else {
                             console.log(`⚠️ Error: No se obtuvieron ingredientes expandidos para el mix vinculado ${ing.nombre_ingrediente} `);
                         }
@@ -1037,7 +1049,9 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                             nombre: ing.nombre_ingrediente,
                             unidad_medida: ing.unidad_medida,
                             cantidad: cantidadTotal,
-                            cantidad_base_por_kilo: cantidadBasePorKilo
+                            cantidad_base_por_kilo: cantidadBasePorKilo,
+                            fase_produccion: ing.fase_produccion || 'externa',
+                            es_post_coccion: true
                         });
                     }
                 } else {
@@ -1048,7 +1062,9 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                         nombre: ing.nombre_ingrediente,
                         unidad_medida: ing.unidad_medida,
                         cantidad: cantidadTotal,
-                        cantidad_base_por_kilo: cantidadBasePorKilo
+                        cantidad_base_por_kilo: cantidadBasePorKilo,
+                        fase_produccion: ing.fase_produccion || 'externa',
+                        es_post_coccion: true
                     });
                 }
             }

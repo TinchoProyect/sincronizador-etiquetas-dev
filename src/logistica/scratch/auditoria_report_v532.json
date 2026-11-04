@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T14:30:15-03:00",
+  "version": "v5.32",
+  "architecture_paradigm": "Delegación Global de Eventos (addEventListener sobre #modal-gestor-precios para input, keyup y change en #gp-sim-descuento) + Evasión Lógica de Candados de Margen + Hidratación Real Backend ($52.629,04) + Inmutabilidad de #gp-precio-final + Renderizado Paralelo en #gp-precio-facturado-simulado",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerController, bunkerService, bunker.js & listado-bunker.js: 0 SyntaxError)",
+    "QA-1_Real_Backend_Frontend_Hydration": "100% PASS (BunkerService.obtenerArticulo injects costo_real_vigente = $52629.04; bunker.html hydrates from active Finance cost)",
+    "QA-2_Direct_Simulator_Reactivity_Event_Delegation": "100% PASS (Event delegation on #modal-gestor-precios triggers calcularPreciosFila() instantly upon typing in #gp-sim-descuento without requiring tab or margin clicks)",
+    "QA-3_Margin_Lock_Evasion": "100% PASS (Simulator recalculates right panel in real-time even when margin is locked by pattern at 12%, leaving base price and margin untouched)",
+    "QA-4_Inmutability_and_Automatic_State_Preservation": "100% PASS (#gp-precio-final retains base list price; saving preserves modo_calculo = AUTOMATIC and locked margin in DB)",
+    "QA-5_Atomic_Transaction_Fail_Safe": "100% PASS (bunker_articulos, bunker_margenes and bunker_lista_articulos executed inside single BEGIN/COMMIT transaction with ROLLBACK on error)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

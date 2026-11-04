@@ -235,129 +235,98 @@ export const estilosTablaCarros = `
         position: relative;
     }
 
-    .carros-table th, .carros-table td {
-        padding: 8px;
-        border: 1px solid #ddd;
+    .tabla-carros-grupo tr {
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .tabla-carros-grupo th, .tabla-carros-grupo td {
+        padding: 9px 12px;
         text-align: left;
+        font-size: 12.5px;
     }
 
-    .carros-table th {
-        background-color: #f5f5f5;
+    .tabla-carros-grupo th {
+        background-color: #f8fafc;
+        color: #475569;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        border-bottom: 2px solid #cbd5e1;
     }
 
+    /* Carro Interno Activo */
     .carro-activo {
-        background-color: #e8f5e9;
+        background-color: #f0fdf4 !important;
+        border-left: 4px solid #10b981 !important;
     }
 
     .carro-finalizado {
-        background-color: #f8f9fa !important;
-        opacity: 0.7;
-        color: #6c757d;
-    }
-
-    .carro-finalizado td {
-        font-style: italic;
+        background-color: #f8fafc;
+        color: #64748b;
     }
 
     .carro-finalizado.carro-activo {
-        background-color: #e9ecef !important;
-        opacity: 0.8;
+        background-color: #f1f5f9 !important;
     }
 
     /* ---------------------------------------------------
        IDENTIDAD VISUAL EXCLUSIVA: PRODUCCIÓN EXTERNA
        --------------------------------------------------- */
        
-    /* 1. Estado Inicial (Azul Tenue) y Tipografía */
     .carro-externo {
-        background-color: #f1f5f9;
-        border-left: 4px solid #3b82f6;
-        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-        letter-spacing: 0.4px;
-        transition: all 0.2s ease-in-out;
+        background-color: #f8fafc;
+        border-left: 4px solid #94a3b8;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
 
-    .carro-externo td {
-        font-weight: 500;
-        color: #1e293b;
+    .carro-externo:hover {
+        background-color: #eff6ff;
     }
 
-    /* 2. Estado Listo para Producir / Activo (Azul Medio) */
     .carro-externo.carro-activo {
-        background-color: #dbeafe !important;
+        background-color: #eff6ff !important;
         border-left: 4px solid #2563eb !important;
-        box-shadow: inset 0 0 10px rgba(37, 99, 235, 0.05);
     }
 
-    /* 3. Estado Asentado / Finalizado (Azul Oscuro/Slate) */
     .carro-externo.carro-finalizado {
-        background-color: #1e293b !important;
-        border-left: 4px solid #0f172a !important;
-        opacity: 1 !important;
+        background-color: #f8fafc;
+        border-left: 4px solid #64748b;
     }
-
-    .carro-externo.carro-finalizado td {
-        color: #f8fafc !important;
-        font-style: normal; /* Remueve italic interno */
-        font-weight: 500;
-    }
-    
-    /* Contraste en Botones para Estado Finalizado Oscuro */
-    .carro-externo.carro-finalizado .btn-eliminar {
-        background-color: #ef4444;
-        opacity: 0.9;
-        border: 1px solid #7f1d1d;
-    }
-    
-    /* Icono o Emocionador sutil externo */
-    .carro-externo td:nth-child(4) {
-        font-weight: 600;
-        color: #2563eb;
-    }
-    .carro-externo.carro-finalizado td:nth-child(4) {
-        color: #93c5fd;
-    }
-
-    /* --------------------------------------------------- */
 
     .btn-group {
-        display: flex;
-        gap: 5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
     }
 
-    .btn-seleccionar,
-    .btn-deseleccionar,
     .btn-eliminar {
-        padding: 5px 10px;
-        border: none;
-        border-radius: 4px;
+        padding: 4px 8px;
+        background-color: #fee2e2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
         cursor: pointer;
+        transition: all 0.15s ease;
     }
 
-    .btn-seleccionar {
-        background-color: #4caf50;
+    .btn-eliminar:hover {
+        background-color: #ef4444;
         color: white;
-    }
-
-    .btn-deseleccionar {
-        background-color: #f44336;
-        color: white;
-    }
-
-    .btn-eliminar {
-        background-color: #ff9800;
-        color: white;
+        border-color: #dc2626;
     }
 
     .no-carros {
         text-align: center;
-        padding: 20px;
-        background-color: #f5f5f5;
-        border-radius: 4px;
+        padding: 30px 20px;
+        background-color: #f8fafc;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
         margin: 20px 0;
+        color: #64748b;
     }
-
-    
-
- 
 `;

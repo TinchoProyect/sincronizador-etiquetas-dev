@@ -44,16 +44,26 @@ CREATE POLICY "Clientes pueden leer sus propios retiros" ON public.clientes_b2b_
     TO authenticated
     USING (cliente_id = (auth.jwt() -> 'app_metadata' ->> 'cliente_id'));
 
--- Política de Check-in (El cliente puede completar los datos si está pendiente por su parte)
+-- Política de Check-in (El cliente puede completar o modificar los datos de sus retiros antes de la validación del chofer, o cancelar)
 DROP POLICY IF EXISTS "Clientes pueden completar el checkin de sus retiros" ON public.clientes_b2b_retiros;
 CREATE POLICY "Clientes pueden completar el checkin de sus retiros" ON public.clientes_b2b_retiros
     FOR UPDATE
     TO authenticated
     USING (
         cliente_id = (auth.jwt() -> 'app_metadata' ->> 'cliente_id')
-        AND estado_logistico = 'PENDIENTE_CLIENTE'
+        AND estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION')
     )
     WITH CHECK (
         cliente_id = (auth.jwt() -> 'app_metadata' ->> 'cliente_id')
-        AND estado_logistico = 'PENDIENTE_VALIDACION'
+        AND estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'CANCELADO')
+    );
+
+-- Política de Eliminación (El cliente puede eliminar físicamente retiros en estado pendiente)
+DROP POLICY IF EXISTS "Clientes pueden eliminar sus retiros pendientes" ON public.clientes_b2b_retiros;
+CREATE POLICY "Clientes pueden eliminar sus retiros pendientes" ON public.clientes_b2b_retiros
+    FOR DELETE
+    TO authenticated
+    USING (
+        cliente_id = (auth.jwt() -> 'app_metadata' ->> 'cliente_id')
+        AND estado_logistico IN ('PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION', 'CANCELADO')
     );

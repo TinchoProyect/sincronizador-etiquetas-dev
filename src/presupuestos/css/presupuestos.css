@@ -243,54 +243,122 @@ main {
     transform: translateY(-2px) scale(1.02);
 }
 
-/* Filtros compactos - Reorganizados para mejor uso del espacio */
+/* Filtros Modernos Dinámicos LAMDA */
 .filters-section-compact {
     background-color: var(--white);
-    padding: 12px 20px;
-    border-radius: var(--border-radius);
+    padding: 14px 20px;
+    border-radius: 0 8px 8px 8px;
     box-shadow: var(--shadow);
-    display: grid;
-    grid-template-columns: 1fr 1.2fr 2fr;
+    border-top: 2px solid var(--secondary-color);
+    display: flex;
+    flex-direction: column;
     gap: 12px;
-    align-items: end;
-    margin-top: 10px;
+    margin-top: 0;
     position: relative;
     padding-right: 80px; /* Espacio para el botón flotante */
+    z-index: 5;
+}
+
+.filters-primary-row {
+    display: grid;
+    grid-template-columns: 1.3fr 1.3fr 1fr 1fr 1.1fr auto;
+    gap: 12px;
+    align-items: end;
 }
 
 .filter-item {
     display: flex;
     flex-direction: column;
     gap: 5px;
+    min-width: 0;
 }
 
 .filter-item label {
-    font-weight: 500;
+    font-weight: 600;
     color: var(--primary-color);
-    font-size: 0.8em;
+    font-size: 0.78em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .filter-item select,
 .filter-item input {
     padding: 7px 10px;
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius);
+    border: 1.5px solid var(--border-color);
+    border-radius: 6px;
     font-size: 0.85em;
+    background-color: #fbfbfb;
     transition: var(--transition);
+    height: 36px;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .filter-item select:focus,
 .filter-item input:focus {
     outline: none;
     border-color: var(--secondary-color);
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    background-color: #ffffff;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
 }
 
-/* Botones de estado - Más compactos */
+.filter-item-actions {
+    display: flex;
+    align-items: flex-end;
+}
+
+.btn-clear-filters {
+    padding: 7px 12px;
+    height: 36px;
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.82em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.btn-clear-filters:hover {
+    background-color: #e2e8f0;
+    color: #1e293b;
+    border-color: #94a3b8;
+    transform: translateY(-1px);
+}
+
+.filters-secondary-row {
+    padding-top: 10px;
+    border-top: 1px solid #f1f5f9;
+}
+
+.filter-item-estados-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.filter-item-estados-wrapper .label-estados {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 0.8em;
+    white-space: nowrap;
+}
+
+/* Botones de estado - Modernos y profesionales */
 .botones-estado {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 6px;
     align-items: center;
 }
 
@@ -301,22 +369,25 @@ main {
 }
 
 .btn-estado {
-    padding: 5px 10px;
-    border: 2px solid var(--border-color);
-    background-color: var(--white);
-    color: var(--text-color);
-    border-radius: 5px;
+    padding: 5px 12px;
+    border: 1.5px solid #cbd5e1;
+    background-color: #ffffff;
+    color: #334155;
+    border-radius: 20px;
     font-size: 0.75em;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .btn-estado:hover {
     border-color: var(--secondary-color);
-    background-color: #f0f8ff;
+    background-color: #f0f7ff;
+    color: var(--secondary-color);
     transform: translateY(-1px);
 }
 
@@ -324,7 +395,7 @@ main {
     background-color: var(--secondary-color);
     color: var(--white);
     border-color: var(--secondary-color);
-    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.3);
+    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.35);
 }
 
 .btn-estado.active:hover {
@@ -567,14 +638,9 @@ footer {
 }
 
 /* Responsive design */
-@media (max-width: 1024px) {
-    .filters-section-compact {
-        grid-template-columns: 1fr 1fr;
-        padding-right: 80px;
-    }
-    
-    .filter-item:last-child {
-        grid-column: 1 / -1;
+@media (max-width: 1200px) {
+    .filters-primary-row {
+        grid-template-columns: 1fr 1fr 1fr;
     }
 }
 
@@ -642,9 +708,11 @@ footer {
         font-size: 1.8em;
     }
     
-    .filters-section-compact {
+    .filters-primary-row {
         grid-template-columns: 1fr;
-        margin-top: 10px;
+    }
+    
+    .filters-section-compact {
         padding: 12px 15px;
         padding-right: 70px;
     }
@@ -1971,6 +2039,30 @@ footer {
     color: var(--white);
 }
 
+.estado-badge.estado-sin-confirmar,
+.estado-badge.estado-standby,
+.estado-badge.estado-muestra-de-fraccionados {
+    background-color: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffe0b2;
+}
+
+tr.fila-standby {
+    background-color: rgba(255, 152, 0, 0.05);
+}
+
+tr.fila-standby:hover {
+    background-color: rgba(255, 152, 0, 0.1) !important;
+}
+
+.btn-action.btn-standby:hover {
+    background-color: rgba(255, 152, 0, 0.15) !important;
+}
+
+.btn-action.btn-confirmar-standby:hover {
+    background-color: rgba(40, 167, 69, 0.15) !important;
+}
+
 /* Responsive para modal de configuración */
 @media (max-width: 768px) {
     .modal-content {
@@ -2574,3 +2666,90 @@ footer {
     opacity: 0.6;
     cursor: wait;
 }
+
+/* ===================================================
+   MODAL DE POLÍTICAS COMERCIALES Y DESCUENTOS ESCALONADOS
+   =================================================== */
+/* SweetAlert2 siempre al frente de cualquier modal o backdrop */
+.swal2-container {
+    z-index: 9999999 !important;
+}
+
+.modal-politicas-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    transition: padding 0.2s ease-in-out;
+}
+
+.modal-politicas-content {
+    background: #ffffff;
+    border-radius: 12px;
+    width: 1350px;
+    max-width: 96vw;
+    height: 92vh;
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    transition: all 0.2s ease-in-out;
+}
+
+.modal-politicas-header {
+    background: #0f172a;
+    color: white;
+    padding: 14px 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.btn-modal-header-action {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #cbd5e1;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 1.1em;
+    cursor: pointer;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.btn-modal-header-action:hover {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* Modo Maximizado / Pantalla Completa */
+.modal-politicas-overlay.is-maximized {
+    padding: 0 !important;
+}
+
+.modal-politicas-overlay.is-maximized .modal-politicas-content {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+}
+
+.modal-politicas-overlay.is-maximized #columna-politicas-sidebar {
+    width: 320px !important;
+}
+

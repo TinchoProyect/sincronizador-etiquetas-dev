@@ -1,26 +1,7 @@
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'etiquetas',
-    password: process.env.DB_PASSWORD || 'ta3Mionga',
-    port: parseInt(process.env.DB_PORT || '5432'),
-});
-
-async function main() {
-    try {
-        console.log("=== FIRST 10 DOMICILIOS ===");
-        const res = await pool.query(`
-            SELECT * FROM public.clientes_domicilios LIMIT 10
-        `);
-        console.log(JSON.stringify(res.rows, null, 2));
-    } catch (e) {
-        console.error(e);
-    } finally {
-        await pool.end();
-    }
+const pool = require('../src/usuarios/pool');
+async function run() {
+  const r = await pool.query("SELECT id, codigo_bunker_cliente, cliente_nombre, lomas_soft_id, email_portal FROM public.bunker_clientes WHERE lomas_soft_id = '621'");
+  console.log('CLIENTE 621:', r.rows);
+  await pool.end();
 }
-
-main();
+run();

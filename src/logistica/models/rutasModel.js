@@ -34,9 +34,13 @@ class RutasModel {
                 r.duracion_neta_minutos,
                 EXISTS (SELECT 1 FROM rutas_auditorias a WHERE a.id_ruta = r.id) as auditada,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) + 
-                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) as cantidad_presupuestos,
+                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) +
+                (SELECT COUNT(*) FROM public.factura_pagos_efectivo s WHERE s.id_ruta = r.id) +
+                (SELECT COUNT(*) FROM public.bunker_prospectos pr WHERE pr.id_ruta = r.id AND pr.activo = true) as cantidad_presupuestos,
                 (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id AND p.estado_logistico IN ('ENTREGADO', 'RETIRADO')) +
-                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id AND t.estado_logistico IN ('ENTREGADO', 'RETIRADO')) as presupuestos_entregados
+                (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id AND t.estado_logistico IN ('ENTREGADO', 'RETIRADO')) +
+                (SELECT COUNT(*) FROM public.factura_pagos_efectivo s WHERE s.id_ruta = r.id AND s.estado IN ('EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO')) +
+                (SELECT COUNT(*) FROM public.bunker_prospectos pr WHERE pr.id_ruta = r.id AND pr.activo = true AND pr.estado_ruta IN ('VISITADO', 'NO_ENCONTRADO', 'NO_CONCRETADA')) as presupuestos_entregados
             FROM rutas r
             LEFT JOIN usuarios u ON r.id_chofer = u.id
             WHERE 1=1
@@ -136,7 +140,8 @@ class RutasModel {
                 p.id,
                 p.id_presupuesto_ext,
                 p.estado,
-                p.id_cliente,
+                COALESCE(c.cliente_id::text, ltrim(p.id_cliente, '0'), p.id_cliente) as id_cliente,
+                c.cliente_id,
                 c.nombre as cliente_nombre,
                 p.id_domicilio_entrega,
                 cd.alias as domicilio_alias,
@@ -162,9 +167,9 @@ class RutasModel {
                      FROM presupuestos_detalles pd
                      WHERE pd.id_presupuesto = p.id),
                     0
-                ) * (1 - COALESCE(p.descuento, 0))) as total,
+                ) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END))) as total,
                 (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
-                EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado = 'APROBADA') as esta_facturado
+                EXISTS(SELECT 1 FROM public.factura_facturas f WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')) as esta_facturado
             FROM presupuestos p
             INNER JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
@@ -180,6 +185,7 @@ class RutasModel {
                 p.id as id_presupuesto_ext,
                 'Orden de Tratamiento' as estado,
                 p.id_cliente::text as id_cliente,
+                c.cliente_id,
                 COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin nombre') as cliente_nombre,
                 cd.id as id_domicilio_entrega,
                 'Domicilio Cliente' as domicilio_alias,
@@ -216,8 +222,118 @@ class RutasModel {
 
         const resultadoTratamientos = await pool.query(queryTratamientos, [id]);
 
+        const querySobres = `
+            SELECT 
+                'SOB-' || p.id as id,
+                p.codigo_sobre as id_presupuesto_ext,
+                'Sobre de Efectivo' as estado,
+                COALESCE(c.cliente_id::text, NULLIF(LTRIM(TRIM(bc.lomas_soft_id), '0'), ''), p.cliente_id) as id_cliente,
+                c.cliente_id as cliente_id,
+                COALESCE(c.nombre, bc.cliente_nombre, bc.razon_social, p.cliente_id) as cliente_nombre,
+                cd.id as id_domicilio_entrega,
+                COALESCE(cd.alias, 'Domicilio Cliente') as domicilio_alias,
+                COALESCE(cd.direccion, bc.domicilio_fiscal, 'Retiro de Sobre') as domicilio_direccion,
+                cd.latitud,
+                cd.longitud,
+                p.orden_entrega,
+                CASE 
+                    WHEN p.estado IN ('EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO') THEN 'RETIRADO'
+                    ELSE 'ASIGNADO'
+                END as estado_logistico,
+                NULL as estado_tratamiento,
+                false as bloqueo_entrega,
+                p.fecha_actualizacion as fecha_asignacion_ruta,
+                p.fecha_retiro_chofer as fecha_entrega_real,
+                NULL as comprobante_lomasoft,
+                NULL as id_factura_lomasoft,
+                0 as subtotal_bruto,
+                0 as descuento_aplicado,
+                COALESCE(p.monto_declarado, 0) as total,
+                true as esta_facturado,
+                true as es_sobre_efectivo,
+                p.id as sobre_id_numerico,
+                p.codigo_sobre,
+                p.cliente_id as codigo_bunker_cliente,
+                COALESCE(p.monto_declarado, 0) as monto_declarado,
+                p.foto_frente_url,
+                p.foto_dorso_url,
+                p.estado as estado_sobre
+            FROM public.factura_pagos_efectivo p
+            LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = p.cliente_id OR bc.lomas_soft_id = p.cliente_id
+            LEFT JOIN public.clientes c ON (bc.lomas_soft_id IS NOT NULL AND c.cliente_id::text = ltrim(bc.lomas_soft_id, '0'))
+                                        OR (bc.id IS NULL AND c.cliente_id::text = ltrim(p.cliente_id, '0'))
+            LEFT JOIN public.clientes_domicilios cd ON cd.id = COALESCE(
+                p.id_domicilio_entrega,
+                (
+                    SELECT cd_sub.id 
+                    FROM public.clientes_domicilios cd_sub
+                    WHERE (
+                        cd_sub.id_cliente = bc.id
+                        OR cd_sub.id_cliente = c.id
+                        OR cd_sub.id_cliente::text = bc.lomas_soft_id
+                        OR cd_sub.id_cliente::text = c.cliente_id::text
+                    ) AND cd_sub.activo = true
+                    ORDER BY cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
+                    LIMIT 1
+                )
+            )
+            WHERE p.id_ruta = $1
+            ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC
+        `;
+
+        const resultadoSobres = await pool.query(querySobres, [id]);
+
+        const queryProspectos = `
+            SELECT 
+                'PR-' || p.id as id,
+                p.codigo_prospecto as id_presupuesto_ext,
+                'Visita Comercial' as estado,
+                p.codigo_prospecto as id_cliente,
+                p.codigo_prospecto as cliente_id,
+                p.nombre_fantasia as cliente_nombre,
+                p.id as id_domicilio_entrega,
+                COALESCE(p.zona, p.localidad, 'Preventa') as domicilio_alias,
+                COALESCE(p.direccion, 'Presentación Comercial') as domicilio_direccion,
+                p.latitud,
+                p.longitud,
+                p.orden_entrega,
+                CASE 
+                    WHEN p.estado_ruta = 'VISITADO' THEN 'ENTREGADO'
+                    WHEN p.estado_ruta IN ('NO_ENCONTRADO', 'NO_CONCRETADA') THEN 'RECHAZADO'
+                    ELSE 'ASIGNADO'
+                END as estado_logistico,
+                p.estado_ruta,
+                NULL as estado_tratamiento,
+                false as bloqueo_entrega,
+                p.updated_at as fecha_asignacion_ruta,
+                p.fecha_visita_ruta as fecha_entrega_real,
+                NULL as comprobante_lomasoft,
+                NULL as id_factura_lomasoft,
+                0 as subtotal_bruto,
+                0 as descuento_aplicado,
+                0 as total,
+                true as esta_facturado,
+                true as es_visita_preventa,
+                p.id as prospecto_id_numerico,
+                p.codigo_prospecto,
+                p.origen_contacto,
+                p.cliente_activo_id,
+                p.cliente_domicilio_id,
+                p.rubro,
+                p.contacto_nombre,
+                p.contacto_rol,
+                p.telefono_whatsapp,
+                p.email,
+                p.notas,
+                p.estado as estado_prospecto
+            FROM public.bunker_prospectos p
+            WHERE p.id_ruta = $1 AND p.activo = true
+            ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC
+        `;
+        const resultadoProspectos = await pool.query(queryProspectos, [id]);
+
         // Sort them together in memory by their synchronized orden_entrega
-        const presupuestosHibridos = [...resultadoPresupuestos.rows, ...resultadoTratamientos.rows];
+        const presupuestosHibridos = [...resultadoPresupuestos.rows, ...resultadoTratamientos.rows, ...resultadoSobres.rows, ...resultadoProspectos.rows];
         presupuestosHibridos.sort((a, b) => {
             const ordenA = a.orden_entrega ?? 999;
             const ordenB = b.orden_entrega ?? 999;
@@ -339,6 +455,10 @@ class RutasModel {
         try {
             await client.query('BEGIN');
 
+            // Auto-asignar domicilios a presupuestos huérfanos antes de validar
+            const { autoAsignarDomicilios } = require('./presupuestosModel');
+            await autoAsignarDomicilios(client);
+
             // Validar que la ruta existe y está en estado ARMANDO
             const rutaQuery = await client.query(
                 'SELECT id, estado FROM rutas WHERE id = $1 FOR UPDATE',
@@ -353,8 +473,23 @@ class RutasModel {
                 throw new Error('Solo se pueden asignar presupuestos a rutas en estado ARMANDO');
             }
 
-            const idsNormales = ids_presupuestos.filter(id => Number.isInteger(id) || !String(id).toUpperCase().startsWith('RT-')).map(id => parseInt(id));
+            const idsNormales = ids_presupuestos.filter(id => Number.isInteger(id) || (!String(id).toUpperCase().startsWith('RT-') && !String(id).toUpperCase().startsWith('SOB-') && !String(id).toUpperCase().startsWith('PR-'))).map(id => parseInt(id));
             const idsRetiros = ids_presupuestos.filter(id => String(id).toUpperCase().startsWith('RT-')).map(id => parseInt(String(id).toUpperCase().replace('RT-', '')));
+            const idsSobres = ids_presupuestos.filter(id => String(id).toUpperCase().startsWith('SOB-')).map(id => parseInt(String(id).toUpperCase().replace('SOB-', '')));
+            const idsProspectos = ids_presupuestos.filter(id => String(id).toUpperCase().startsWith('PR-')).map(id => parseInt(String(id).toUpperCase().replace('PR-', '')));
+
+            // FASE 5: Asignar Visitas Comerciales de Preventa
+            if (idsProspectos.length > 0) {
+                await client.query(
+                    `UPDATE public.bunker_prospectos
+                     SET id_ruta = $1,
+                         en_pool_logistica = true,
+                         estado_ruta = 'PENDIENTE',
+                         updated_at = NOW()
+                     WHERE id = ANY($2::int[])`,
+                    [id_ruta, idsProspectos]
+                );
+            }
 
             // FASE 3: Asignar Retiros de Inmunización (Sin validación de coordenadas estrictas)
             if (idsRetiros.length > 0) {
@@ -367,6 +502,38 @@ class RutasModel {
                          END
                      WHERE id = ANY($2::int[])`,
                     [id_ruta, idsRetiros]
+                );
+            }
+
+            // FASE 4: Asignar Sobres de Efectivo Cerrados
+            if (idsSobres.length > 0) {
+                const sobresQuery = await client.query(
+                    `SELECT id, codigo_sobre, id_ruta, estado, modalidad_entrega
+                     FROM public.factura_pagos_efectivo
+                     WHERE id = ANY($1::int[])
+                     FOR UPDATE`,
+                    [idsSobres]
+                );
+
+                if (sobresQuery.rows.length !== idsSobres.length) {
+                    throw new Error('Algunos sobres de efectivo seleccionados no existen');
+                }
+
+                for (const s of sobresQuery.rows) {
+                    if (s.id_ruta && s.id_ruta !== id_ruta) {
+                        throw new Error(`El sobre ${s.codigo_sobre} ya está asignado a otra ruta`);
+                    }
+                    if (!['PREPARADO', 'EN_TRANSITO'].includes(s.estado)) {
+                        throw new Error(`El sobre ${s.codigo_sobre} no está en estado PREPARADO (Estado actual: ${s.estado})`);
+                    }
+                }
+
+                await client.query(
+                    `UPDATE public.factura_pagos_efectivo
+                     SET id_ruta = $1,
+                         fecha_actualizacion = NOW()
+                     WHERE id = ANY($2::int[])`,
+                    [id_ruta, idsSobres]
                 );
             }
 
@@ -441,6 +608,26 @@ class RutasModel {
                     );
                 }
             }
+
+            // Sincronizar id_domicilio_entrega y orden_entrega de sobres en la ruta cuando el mismo cliente ya tiene un presupuesto en la ruta
+            await client.query(`
+                UPDATE public.factura_pagos_efectivo s
+                SET id_domicilio_entrega = COALESCE(sub.id_domicilio_entrega, s.id_domicilio_entrega),
+                    orden_entrega = COALESCE(sub.orden_entrega, s.orden_entrega)
+                FROM (
+                    SELECT DISTINCT ON (s2.id)
+                        s2.id as sobre_id,
+                        p.id_domicilio_entrega,
+                        p.orden_entrega
+                    FROM public.factura_pagos_efectivo s2
+                    LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = s2.cliente_id OR bc.lomas_soft_id = s2.cliente_id
+                    INNER JOIN public.presupuestos p ON p.id_ruta = s2.id_ruta
+                        AND ltrim(p.id_cliente, '0') = COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id), '0'), ''), LTRIM(TRIM(s2.cliente_id), '0'))
+                    WHERE s2.id_ruta = $1
+                    ORDER BY s2.id, p.orden_entrega ASC NULLS LAST, p.id ASC
+                ) sub
+                WHERE s.id = sub.sobre_id
+            `, [id_ruta]);
 
             await client.query('COMMIT');
 
@@ -553,6 +740,30 @@ class RutasModel {
                 );
                 console.log('[RUTAS-MODEL] ✅ Órdenes de tratamiento restauradas:', cantidadTratamientos);
             }
+
+            // 2c. Restaurar sobres de efectivo (desvincular de la ruta eliminada)
+            const resSobresRest = await client.query(
+                `UPDATE public.factura_pagos_efectivo 
+                 SET id_ruta = NULL,
+                     orden_entrega = 999,
+                     fecha_actualizacion = NOW()
+                 WHERE id_ruta = $1`,
+                [id]
+            );
+            if (resSobresRest.rowCount > 0) {
+                console.log('[RUTAS-MODEL] ✅ Sobres de efectivo restaurados:', resSobresRest.rowCount);
+            }
+
+            // 2d. Restaurar visitas de preventa (desvincular de la ruta eliminada)
+            await client.query(
+                `UPDATE public.bunker_prospectos
+                 SET id_ruta = NULL,
+                     orden_entrega = 999,
+                     estado_ruta = 'PENDIENTE',
+                     updated_at = NOW()
+                 WHERE id_ruta = $1`,
+                [id]
+            );
 
             // 3. Eliminar la ruta
             const deleteQuery = await client.query(

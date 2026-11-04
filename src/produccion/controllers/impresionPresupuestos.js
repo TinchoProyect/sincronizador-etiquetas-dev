@@ -353,8 +353,10 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     FROM public.presupuestos p
                     WHERE p.activo = true 
                       AND CAST(p.id_cliente AS integer) = $1
-                      AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'
-                      AND ($2::text IS NULL OR p.id_presupuesto_ext = $2)
+                      AND p.estado NOT IN ('Sin Confirmar', 'Standby', 'Muestra de Fraccionados')
+                      AND COALESCE(p.secuencia, '') NOT IN ('Standby')
+                      AND ($2::text IS NOT NULL OR REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden' OR LOWER(p.estado) = 'facturado')
+                      AND ($2::text IS NULL OR LOWER(p.id_presupuesto_ext) = LOWER($2))
                       AND ($3::date IS NULL OR p.fecha <= $3)
                 )
                 SELECT 
@@ -374,12 +376,24 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
                                         'articulo_numero', pd.articulo,
-                                        'descripcion', COALESCE(
-                                            NULLIF(TRIM(ba.descripcion_generada), ''),
-                                            NULLIF(TRIM(ba.descripcion), ''),
-                                            NULLIF(TRIM(a.nombre), ''),
-                                            pd.articulo
-                                        ),
+                                        'descripcion', CASE
+                                            WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
+                                                COALESCE(
+                                                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                    NULLIF(TRIM(ba.descripcion), ''),
+                                                    NULLIF(TRIM(a.nombre), ''),
+                                                    NULLIF(TRIM(ing.nombre), ''),
+                                                    pd.articulo
+                                                ) || ' (Saldo: ' || TRIM(TO_CHAR(pd.kilos_saldo, 'FM999990D999')) || ' kg)'
+                                            ELSE
+                                                COALESCE(
+                                                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                    NULLIF(TRIM(ba.descripcion), ''),
+                                                    NULLIF(TRIM(a.nombre), ''),
+                                                    NULLIF(TRIM(ing.nombre), ''),
+                                                    pd.articulo
+                                                )
+                                        END,
                                         'cantidad', COALESCE(pd.cantidad, 0),
                                         'precio1', pd.precio1,
                                         'valor1', pd.valor1,
@@ -387,10 +401,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                         'iva_tasa', pd.camp2,
                                         'kilos_unidad', src.kilos_unidad,
                                         'es_pack', src.es_pack,
-                                        'pack_unidades', src.pack_unidades
+                                        'pack_unidades', src.pack_unidades,
+                                        'es_ingrediente', CASE WHEN ing.id IS NOT NULL THEN true ELSE false END
                                     ) ORDER BY pd.articulo
                                 )
                                 FROM public.presupuestos_detalles pd
+                                LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
                                 LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
                                 LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                 LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
@@ -557,11 +573,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             }
             
         } else if (presupuestos_ext_ids) {
-            // CASO 3: Por lista de IDs externos (para "Imprimir todos" del acordeón)
-            const idsArray = presupuestos_ext_ids.split(',').map(id => id.trim()).filter(id => id);
+            // CASO 3: Por lista de IDs externos (para "Imprimir todos" del acordeón o presupuesto individual por ID)
+            const idsArray = presupuestos_ext_ids.split(',').map(id => id.trim().toLowerCase()).filter(id => id);
             console.log(`📋 [REMITO-R] Filtrando por ${idsArray.length} IDs externos:`, idsArray);
-            
-            const placeholders = idsArray.map((_, index) => `$${index + 1}`).join(',');
             
             query = `
                 WITH presupuestos_filtrados AS (
@@ -574,8 +588,10 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         COALESCE(p.descuento, 0) as descuento
                     FROM public.presupuestos p
                     WHERE p.activo = true 
-                      AND REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden'
-                      AND p.id_presupuesto_ext IN (${placeholders})
+                      AND (
+                        LOWER(p.id_presupuesto_ext) = ANY($1::text[])
+                        OR REPLACE(LOWER(p.id_presupuesto_ext), 'b', 'v') = ANY(SELECT REPLACE(x, 'b', 'v') FROM UNNEST($1::text[]) x)
+                      )
                 )
                 SELECT 
                     JSON_AGG(
@@ -597,12 +613,24 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
-                                                    'descripcion', COALESCE(
-                                                        NULLIF(TRIM(ba.descripcion_generada), ''),
-                                                        NULLIF(TRIM(ba.descripcion), ''),
-                                                        NULLIF(TRIM(a.nombre), ''),
-                                                        pd.articulo
-                                                    ),
+                                                    'descripcion', CASE
+                                                        WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
+                                                            COALESCE(
+                                                                NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                                NULLIF(TRIM(ba.descripcion), ''),
+                                                                NULLIF(TRIM(a.nombre), ''),
+                                                                NULLIF(TRIM(ing.nombre), ''),
+                                                                pd.articulo
+                                                            ) || ' (Saldo: ' || TRIM(TO_CHAR(pd.kilos_saldo, 'FM999990D999')) || ' kg)'
+                                                        ELSE
+                                                            COALESCE(
+                                                                NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                                NULLIF(TRIM(ba.descripcion), ''),
+                                                                NULLIF(TRIM(a.nombre), ''),
+                                                                NULLIF(TRIM(ing.nombre), ''),
+                                                                pd.articulo
+                                                            )
+                                                    END,
                                                     'cantidad', COALESCE(pd.cantidad, 0),
                                                     'precio1', pd.precio1,
                                                     'valor1', pd.valor1,
@@ -610,10 +638,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                     'iva_tasa', pd.camp2,
                                                     'kilos_unidad', src.kilos_unidad,
                                                     'es_pack', src.es_pack,
-                                                    'pack_unidades', src.pack_unidades
+                                                    'pack_unidades', src.pack_unidades,
+                                                    'es_ingrediente', CASE WHEN ing.id IS NOT NULL THEN true ELSE false END
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
+                                            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
                                             LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
                                             LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                             LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
@@ -634,7 +664,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                 );
             `;
             
-            params = idsArray;
+            params = [idsArray];
             
             console.log('🔍 [REMITO-R] Consulta por IDs externos con parámetros:', params);
             result = await pool.query(query, params);
@@ -772,12 +802,24 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
-                                                    'descripcion', COALESCE(
-                                                        NULLIF(TRIM(ba.descripcion_generada), ''),
-                                                        NULLIF(TRIM(ba.descripcion), ''),
-                                                        NULLIF(TRIM(a.nombre), ''),
-                                                        pd.articulo
-                                                    ),
+                                                    'descripcion', CASE
+                                                        WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
+                                                            COALESCE(
+                                                                NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                                NULLIF(TRIM(ba.descripcion), ''),
+                                                                NULLIF(TRIM(a.nombre), ''),
+                                                                NULLIF(TRIM(ing.nombre), ''),
+                                                                pd.articulo
+                                                            ) || ' (Saldo: ' || TRIM(TO_CHAR(pd.kilos_saldo, 'FM999990D999')) || ' kg)'
+                                                        ELSE
+                                                            COALESCE(
+                                                                NULLIF(TRIM(ba.descripcion_generada), ''),
+                                                                NULLIF(TRIM(ba.descripcion), ''),
+                                                                NULLIF(TRIM(a.nombre), ''),
+                                                                NULLIF(TRIM(ing.nombre), ''),
+                                                                pd.articulo
+                                                            )
+                                                    END,
                                                     'cantidad', COALESCE(pd.cantidad, 0),
                                                     'precio1', pd.precio1,
                                                     'valor1', pd.valor1,
@@ -785,10 +827,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                     'iva_tasa', pd.camp2,
                                                     'kilos_unidad', src.kilos_unidad,
                                                     'es_pack', src.es_pack,
-                                                    'pack_unidades', src.pack_unidades
+                                                    'pack_unidades', src.pack_unidades,
+                                                    'es_ingrediente', CASE WHEN ing.id IS NOT NULL THEN true ELSE false END
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
+                                            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
                                             LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
                                             LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
                                             LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
@@ -1000,24 +1044,53 @@ function generarCSSRemito() {
             margin: 2px 0 0 0;
         }
         
-        .logo-lamda { 
-            font-size: 24px; 
-            font-weight: 300; 
-            letter-spacing: 2px;
-            color: #000;
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            margin-bottom: 10px;
+        }
+        
+        .header-left {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .header-center {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .header-right {
+            flex: 1;
+            text-align: right;
+        }
+        
+        .logo-lamda-img {
+            height: 30px;
+            width: auto;
+            display: block;
         }
         
         .letra-r {
-            font-size: 36px;
+            font-size: 20px;
             font-weight: bold;
             color: #000;
             border: 2px solid #000;
-            width: 50px;
-            height: 50px;
+            width: 34px;
+            height: 34px;
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: 4px;
+            text-align: center;
+            line-height: 1;
+            margin: 0 auto;
         }
         
         /* ESTILOS PARA ORDEN EN ESPERA */
@@ -1361,12 +1434,13 @@ function generarHTMLPresupuestoUnico({
         <!-- ENCABEZADO MODERNO -->
         <div class="header">
             <div class="header-left">
+                <img src="/img/logo_LAMDA_grande.png" class="logo-lamda-img" alt="LAMDA" onerror="this.style.display='none'">
+            </div>
+            
+            <div class="header-center">
                 ${esPendienteCompra ? 
                     '<div class="orden-espera">ORDEN EN ESPERA</div>' : 
-                    `
-                    <div class="logo-lamda">LAMDA</div>
-                    <div class="letra-r">R</div>
-                    `
+                    '<div class="letra-r">R</div>'
                 }
             </div>
             
@@ -1457,10 +1531,13 @@ function generarHTMLPresupuestoUnico({
 `;
                 articulosConStock.forEach(articulo => {
                     const tdExtra = generarCeldasEmilio(articulo);
+                    const descFormateada = articulo.es_ingrediente 
+                        ? `${articulo.descripcion} <span style="font-size: 0.8em; color: #64748b; font-style: italic; font-weight: normal;">(Ingrediente / Stock Cliente)</span>`
+                        : articulo.descripcion;
                     html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
-                    <td class="col-descripcion">${articulo.descripcion}</td>
+                    <td class="col-descripcion">${descFormateada}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                     ${tdExtra}
                 </tr>
@@ -1477,10 +1554,13 @@ function generarHTMLPresupuestoUnico({
 `;
                 articulosSinStock.forEach(articulo => {
                     const tdExtra = generarCeldasEmilio(articulo);
+                    const descFormateada = articulo.es_ingrediente 
+                        ? `${articulo.descripcion} <span style="font-size: 0.8em; color: #64748b; font-style: italic; font-weight: normal;">(Ingrediente / Stock Cliente)</span>`
+                        : articulo.descripcion;
                     html += `
                 <tr class="articulo-en-falta">
                     <td class="col-codigo">${articulo.articulo_numero}</td>
-                    <td class="col-descripcion">${articulo.descripcion}</td>
+                    <td class="col-descripcion">${descFormateada}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                     ${tdExtra}
                 </tr>
@@ -1491,10 +1571,13 @@ function generarHTMLPresupuestoUnico({
             // Modo normal (sin pendientes de compra)
             articulosSorted.forEach(articulo => {
                 const tdExtra = generarCeldasEmilio(articulo);
+                const descFormateada = articulo.es_ingrediente 
+                    ? `${articulo.descripcion} <span style="font-size: 0.8em; color: #64748b; font-style: italic; font-weight: normal;">(Ingrediente / Stock Cliente)</span>`
+                    : articulo.descripcion;
                 html += `
                 <tr>
                     <td class="col-codigo">${articulo.articulo_numero}</td>
-                    <td class="col-descripcion">${articulo.descripcion}</td>
+                    <td class="col-descripcion">${descFormateada}</td>
                     <td class="col-cantidad">${articulo.cantidad}</td>
                     ${tdExtra}
                 </tr>
@@ -1670,7 +1753,8 @@ function renderizarPDFPresupuestoUnico(doc, {
     horaHoy,
     paginaActual,
     totalPaginas,
-    esContextoProduccion = false
+    esContextoProduccion = false,
+    qrBuffer = null
 }) {
     const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
     
@@ -1696,20 +1780,57 @@ function renderizarPDFPresupuestoUnico(doc, {
     }
     
     // ENCABEZADO
-    doc.fontSize(22).font('Helvetica').text('LAMDA', 50, 50);
-    
-    if (esPendienteCompra) {
-        // ORDEN EN ESPERA en lugar de R
-        doc.fillColor('#dc3545').strokeColor('#dc3545').lineWidth(2)
-           .roundedRect(130, 45, 120, 35, 3).stroke();
-        doc.fillColor('#fff3cd').rect(131, 46, 118, 33).fill();
-        doc.fillColor('#dc3545').fontSize(9).font('Helvetica-Bold')
-           .text('ORDEN EN ESPERA', 135, 57, { width: 110, align: 'center' });
-        doc.fillColor('black');
+    const pathLogo = require('path').join(__dirname, '..', '..', 'facturacion', 'img', 'logo_LAMDA_grande.png');
+    if (require('fs').existsSync(pathLogo)) {
+        doc.image(pathLogo, 50, 42, { height: 30 });
     } else {
-        // R normal
-        doc.roundedRect(130, 45, 35, 35, 3).stroke();
-        doc.fontSize(20).font('Helvetica-Bold').text('R', 142, 57);
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('black').text('LAMDA', 50, 50);
+    }
+    
+    // R normal / ORDEN EN ESPERA / INDICADOR MODIFICADO en el centro del encabezado
+    const esModificadoDoc = presupuesto._snapshot && (
+        presupuesto._snapshot.motivo === 'modificado' || 
+        presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado'
+    );
+
+    if (esPendienteCompra) {
+        doc.fillColor('#dc3545').strokeColor('#dc3545').lineWidth(2)
+           .roundedRect(237, 42, 120, 34, 4).stroke();
+        doc.fillColor('#fff3cd').rect(238, 43, 118, 32).fill();
+        doc.fillColor('#dc3545').fontSize(9).font('Helvetica-Bold')
+           .text('ORDEN EN ESPERA', 237, 54, { width: 120, align: 'center' });
+        doc.fillColor('black');
+    } else if (esModificadoDoc) {
+        const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
+        const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
+        
+        // R versión compacta en X = 285, Y = 36 (arriba del texto MODIFICADO)
+        doc.lineWidth(1.2).strokeColor('black')
+           .roundedRect(285, 36, 25, 23, 3).stroke();
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('black')
+           .text('R', 285, 40, { width: 25, align: 'center' });
+
+        // Texto MODIFICADO N centrado debajo de la R (Y = 63)
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#dc3545')
+            .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 63, {
+               width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+               align: 'center'
+            });
+        
+        // Fecha de modificación centrada debajo (Y = 76)
+        doc.fontSize(7.5).font('Helvetica').fillColor('#666666')
+            .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 76, {
+               width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+               align: 'center'
+            });
+
+        console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
+    } else {
+        // R normal centrada en X = 280 (Centro del papel A4)
+        doc.lineWidth(1.5).strokeColor('black')
+           .roundedRect(280, 42, 34, 34, 4).stroke();
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('black')
+           .text('R', 280, 49, { width: 34, align: 'center' });
     }
     
     doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
@@ -1740,33 +1861,6 @@ function renderizarPDFPresupuestoUnico(doc, {
     // TOTAL ARTÍCULOS
     doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
        .text(`Items Distintos: ${totalArticulos}`, 395, 134, { width: 150, align: 'right' });
-    
-    // Indicador de modificación si corresponde
-    if (presupuesto._snapshot) {
-        const esModificado = presupuesto._snapshot.motivo === 'modificado' || 
-                            presupuesto._snapshot.secuencia_en_snapshot === 'Imprimir_Modificado';
-        
-        if (esModificado) {
-            const numeroModificacion = (presupuesto._snapshot.numero_impresion || 1) - 1;
-            const fechaModificacion = new Date(presupuesto._snapshot.fecha_snapshot).toLocaleDateString('es-AR');
-            
-            // Centrar el texto "MODIFICADO" en el ancho de la página
-            doc.fontSize(12).font('Helvetica-Bold').fillColor('#dc3545')
-                .text(`MODIFICADO ${numeroModificacion}`, doc.page.margins.left, 60, {
-                   width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-                   align: 'center'
-                });
-            
-            // Centrar la fecha de modificación debajo
-            doc.fontSize(8).font('Helvetica').fillColor('#666')
-                .text(`Fecha de modificación: ${fechaModificacion}`, doc.page.margins.left, 75, {
-                   width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-                   align: 'center'
-                });
-
-            console.log(`[PRINT-MOD] PDF: Agregado indicador Modificado ${numeroModificacion} para presupuesto ${presupuesto.id_presupuesto_ext}`);
-        }
-    }
     
     doc.fillColor('black');
     
@@ -1839,13 +1933,26 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     
-                    let descripcion = articulo.descripcion;
-                    let descMaxLen = hasPrecioKilo ? 32 : 35;
-                    if (descripcion.length > descMaxLen) {
-                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
+                    let descripcion = articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion;
+                    
+                    let descFontSize = 12;
+                    let descOffsetY = 5;
+                    if (descripcion.length > 55) {
+                        descFontSize = 7.5;
+                        descOffsetY = 3.5;
+                    } else if (descripcion.length > 40) {
+                        descFontSize = 8.5;
+                        descOffsetY = 4.5;
+                    } else if (descripcion.length > 25) {
+                        descFontSize = 9.5;
+                        descOffsetY = 5.5;
+                    } else if (descripcion.length > 18) {
+                        descFontSize = 11;
+                        descOffsetY = 5.5;
                     }
-                    doc.fontSize(14).font('Helvetica').fillColor('black')
-                       .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                    
+                    doc.fontSize(descFontSize).font('Helvetica').fillColor('black')
+                       .text(descripcion, 60 + colWidths[0], currentY + descOffsetY, { width: colWidths[1] - 20 });
                     
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
@@ -1923,12 +2030,25 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     
                     let descripcion = articulo.descripcion;
-                    let descMaxLen = hasPrecioKilo ? 32 : 35;
-                    if (descripcion.length > descMaxLen) {
-                        descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
+                    
+                    let descFontSize = 12;
+                    let descOffsetY = 5;
+                    if (descripcion.length > 55) {
+                        descFontSize = 7.5;
+                        descOffsetY = 3.5;
+                    } else if (descripcion.length > 40) {
+                        descFontSize = 8.5;
+                        descOffsetY = 4.5;
+                    } else if (descripcion.length > 25) {
+                        descFontSize = 9.5;
+                        descOffsetY = 5.5;
+                    } else if (descripcion.length > 18) {
+                        descFontSize = 11;
+                        descOffsetY = 5.5;
                     }
-                    doc.fontSize(14).font('Helvetica-Bold').fillColor('#856404')
-                       .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                    
+                    doc.fontSize(descFontSize).font('Helvetica-Bold').fillColor('#856404')
+                       .text(descripcion, 60 + colWidths[0], currentY + descOffsetY, { width: colWidths[1] - 20 });
                     
                     doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
@@ -1994,13 +2114,26 @@ function renderizarPDFPresupuestoUnico(doc, {
                 doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                 doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                 
-                let descripcion = articulo.descripcion;
-                let descMaxLen = hasPrecioKilo ? 32 : 35;
-                if (descripcion.length > descMaxLen) {
-                    descripcion = descripcion.substring(0, descMaxLen - 3) + '...';
+                let descripcion = articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion;
+                
+                let descFontSize = 12;
+                let descOffsetY = 5;
+                if (descripcion.length > 55) {
+                    descFontSize = 7.5;
+                    descOffsetY = 3.5;
+                } else if (descripcion.length > 40) {
+                    descFontSize = 8.5;
+                    descOffsetY = 4.5;
+                } else if (descripcion.length > 25) {
+                    descFontSize = 9.5;
+                    descOffsetY = 5.5;
+                } else if (descripcion.length > 18) {
+                    descFontSize = 11;
+                    descOffsetY = 5.5;
                 }
-                doc.fontSize(14).font('Helvetica').fillColor('black')
-                   .text(descripcion, 60 + colWidths[0], currentY + 4, { width: colWidths[1] - 20 });
+                
+                doc.fontSize(descFontSize).font('Helvetica').fillColor('black')
+                   .text(descripcion, 60 + colWidths[0], currentY + descOffsetY, { width: colWidths[1] - 20 });
                 
                 doc.moveTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
                 doc.moveTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + rowHeight).stroke();
@@ -2088,17 +2221,19 @@ function renderizarPDFPresupuestoUnico(doc, {
             if (diferenciasRelevantes.length > 0) {
                 currentY += 10;
                 
-                // Título del bloque
-                doc.strokeColor('#ffc107').lineWidth(2)
-                   .roundedRect(50, currentY, 490, 20 + (diferenciasRelevantes.length * 12), 3).stroke();
-                doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, 18).fill();
+                const boxHeight = 26 + (diferenciasRelevantes.length * 15);
+                
+                // Título del bloque y marco contenedor amarillo con padding holgado
+                doc.strokeColor('#ffc107').lineWidth(1.5)
+                   .roundedRect(50, currentY, 490, boxHeight, 4).stroke();
+                doc.fillColor('#fffbf0').rect(51, currentY + 1, 488, boxHeight - 2).fill();
                 doc.fillColor('#856404').fontSize(10).font('Helvetica-Bold')
-                   .text('CAMBIOS:', 60, currentY + 6);
+                   .text('CAMBIOS:', 62, currentY + 6);
                 
-                currentY += 25;
+                let lineY = currentY + 22;
                 
-                // Mostrar cada cambio
-                diferenciasRelevantes.forEach((dif, index) => {
+                // Mostrar cada cambio con tipografía destacada y sin superponer el borde inferior
+                diferenciasRelevantes.forEach((dif) => {
                     let textoCambio = '';
                     let colorTexto = '#333333';
                     
@@ -2113,13 +2248,13 @@ function renderizarPDFPresupuestoUnico(doc, {
                         colorTexto = '#dc3545';
                     }
                     
-                    doc.fontSize(8).font('Helvetica').fillColor(colorTexto)
-                       .text(`• ${textoCambio}`, 60, currentY, { width: 480 });
+                    doc.fontSize(8.5).font('Helvetica-Bold').fillColor(colorTexto)
+                       .text(`• ${textoCambio}`, 62, lineY, { width: 470 });
                     
-                    currentY += 12;
+                    lineY += 15;
                 });
                 
-                currentY += 5;
+                currentY += boxHeight + 8;
                 
                 console.log(`[PRINT-MOD] PDF: Bloque de cambios agregado (${diferenciasRelevantes.length} diferencias)`);
             }
@@ -2146,7 +2281,8 @@ function renderizarPDFPresupuestoUnico(doc, {
     }
     
     // CONTROL DE ENTREGA
-    const controlY = Math.min(currentY + 15, 720);
+    const tieneQr = !!qrBuffer;
+    const controlY = tieneQr ? Math.min(currentY + 10, 630) : Math.min(currentY + 15, 720);
     const controlHeight = 35;
     
     doc.fillColor('black').strokeColor('#dee2e6').lineWidth(1)
@@ -2166,7 +2302,7 @@ function renderizarPDFPresupuestoUnico(doc, {
     
 
     // CÓDIGO DE BARRAS PRINCIPAL Y PIE DE PÁGINA (Aislados del resto del contenido)
-    const pieY = Math.min(controlY + controlHeight + 50, 780);
+    const pieY = tieneQr ? Math.min(controlY + controlHeight + 40, 690) : Math.min(controlY + controlHeight + 50, 780);
     
     if (bufferCodigoBarras) {
         try {
@@ -2207,6 +2343,25 @@ function renderizarPDFPresupuestoUnico(doc, {
                .text('OFF', 475, bottomRelY + 22, { width: 70, align: 'center' });
         } catch (imgError) {
             console.error(`❌ [BARCODE-PDF] Error al insertar Comando OFF:`, imgError.message);
+        }
+    }
+    
+    // =========================================================
+    // INYECCIÓN DE CÓDIGO QR EN LA BASE DEL DOCUMENTO
+    // =========================================================
+    if (tieneQr) {
+        try {
+            // QR centrado en la base
+            const qrSize = 80;
+            const qrX = 257.5; // (595 - 80) / 2 para centrado exacto
+            const qrY = pieY + 25;
+            
+            doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#2563eb')
+               .text('QR DE CONTROL', 50, qrY + qrSize + 5, { width: 495, align: 'center' });
+            console.log(`✅ [QR-PDF] Código QR renderizado en el pie de página`);
+        } catch (qrErr) {
+            console.error('❌ Error al renderizar QR en pie de página:', qrErr.message);
         }
     }
     
@@ -2252,7 +2407,9 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
     <div class="remito-container">
         <div class="header">
             <div class="header-left">
-                <div class="logo-lamda">LAMDA</div>
+                <img src="/img/logo_LAMDA_grande.png" class="logo-lamda-img" alt="LAMDA" onerror="this.style.display='none'">
+            </div>
+            <div class="header-center">
                 <div class="letra-r">R</div>
             </div>
             <div class="fecha-emision">
@@ -2313,7 +2470,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
+async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
     try {
         let PDFDocument;
         try {
@@ -2344,10 +2501,58 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
         
         doc.pipe(res);
         
-        // Generar una página por cada presupuesto usando la función compartida
-        clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
+        // Generar una página por cada presupuesto usando la función compartida de forma asíncrona
+        let presupIndex = 0;
+        for (const presupuesto of clienteData.presupuestos) {
             if (presupIndex > 0) {
                 doc.addPage();
+            }
+            
+            let qrBuffer = null;
+            try {
+                const idLocal = presupuesto._id_presupuesto || presupuesto.id_presupuesto || 0;
+                let supabasePedidoId = null;
+                
+                if (idLocal > 0) {
+                    const resMap = await pool.query(
+                        'SELECT supabase_pedido_id FROM public.b2b_pedidos_mapeo WHERE local_presupuesto_id = $1 LIMIT 1',
+                        [idLocal]
+                    );
+                    const rawSupaId = resMap.rows[0]?.supabase_pedido_id;
+                    if (rawSupaId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSupaId)) {
+                        supabasePedidoId = rawSupaId;
+                    }
+                }
+                
+                // Fallback: Si no hay mapeo, pero id_presupuesto_ext es un UUID, lo usamos directamente
+                if (!supabasePedidoId && presupuesto.id_presupuesto_ext) {
+                    const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(presupuesto.id_presupuesto_ext);
+                    if (esUUID) {
+                        supabasePedidoId = presupuesto.id_presupuesto_ext;
+                        console.log(`📲 [QR-PDF-FALLBACK] Usando id_presupuesto_ext como UUID para QR: ${supabasePedidoId}`);
+                    }
+                }
+                
+                // Sincronización on-the-fly si sigue sin mapeo
+                if (!supabasePedidoId && idLocal > 0) {
+                    try {
+                        console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
+                        const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
+                        supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
+                    } catch (syncErr) {
+                        console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
+                    }
+                }
+                
+                if (supabasePedidoId) {
+                    const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+                    const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                    const QRCode = require('qrcode');
+                    qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
+                    console.log(`📲 [QR-PDF] QR generado con éxito para pedido B2B: ${supabasePedidoId}`);
+                }
+            } catch (qrErr) {
+                console.error('❌ Error al generar QR para remito:', qrErr.message);
             }
             
             renderizarPDFPresupuestoUnico(doc, {
@@ -2362,9 +2567,12 @@ function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, art
                 horaHoy,
                 paginaActual: presupIndex + 1,
                 totalPaginas: clienteData.presupuestos.length,
-                esContextoProduccion
+                esContextoProduccion,
+                qrBuffer
             });
-        });
+            
+            presupIndex++;
+        }
         
         doc.end();
         
@@ -2464,7 +2672,7 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduc
  * Genera PDF para TODOS los clientes (impresión general / "Imprimir Todos")
  * Una página por cada presupuesto de cada cliente
  */
-function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
+async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
     try {
         let PDFDocument;
         try {
@@ -2503,14 +2711,61 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProducc
         
         let presupuestoGlobalIndex = 0;
         
-        // Iterar por cada cliente y cada presupuesto usando la función compartida
-        clientesData.forEach((cliente, clienteIndex) => {
-            cliente.presupuestos.forEach((presupuesto, presupIndex) => {
+        // Iterar por cada cliente y cada presupuesto usando la función compartida de forma asíncrona
+        for (const cliente of clientesData) {
+            for (const presupuesto of cliente.presupuestos) {
                 if (presupuestoGlobalIndex > 0) {
                     doc.addPage();
                 }
                 
                 presupuestoGlobalIndex++;
+                
+                let qrBuffer = null;
+                try {
+                    const idLocal = presupuesto._id_presupuesto || presupuesto.id_presupuesto || 0;
+                    let supabasePedidoId = null;
+                    
+                    if (idLocal > 0) {
+                        const resMap = await pool.query(
+                            'SELECT supabase_pedido_id FROM public.b2b_pedidos_mapeo WHERE local_presupuesto_id = $1 LIMIT 1',
+                            [idLocal]
+                        );
+                        const rawSupaId = resMap.rows[0]?.supabase_pedido_id;
+                        if (rawSupaId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSupaId)) {
+                            supabasePedidoId = rawSupaId;
+                        }
+                    }
+                    
+                    // Fallback: Si no hay mapeo, pero id_presupuesto_ext es un UUID, lo usamos directamente
+                    if (!supabasePedidoId && presupuesto.id_presupuesto_ext) {
+                        const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(presupuesto.id_presupuesto_ext);
+                        if (esUUID) {
+                            supabasePedidoId = presupuesto.id_presupuesto_ext;
+                            console.log(`📲 [QR-PDF-FALLBACK] Usando id_presupuesto_ext como UUID para QR: ${supabasePedidoId}`);
+                        }
+                    }
+                    
+                    // Sincronización on-the-fly si sigue sin mapeo
+                    if (!supabasePedidoId && idLocal > 0) {
+                        try {
+                            console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
+                            const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
+                            supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
+                        } catch (syncErr) {
+                            console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
+                        }
+                    }
+                    
+                    if (supabasePedidoId) {
+                        const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+                        const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                        const QRCode = require('qrcode');
+                        qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
+                        console.log(`📲 [QR-PDF-GEN] QR generado para pedido B2B: ${supabasePedidoId}`);
+                    }
+                } catch (qrErr) {
+                    console.error('❌ Error al generar QR para remito general:', qrErr.message);
+                }
                 
                 renderizarPDFPresupuestoUnico(doc, {
                     clienteId: cliente.cliente_id,
@@ -2523,10 +2778,11 @@ function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProducc
                     horaHoy,
                     paginaActual: presupuestoGlobalIndex,
                     totalPaginas: totalPresupuestos,
-                    esContextoProduccion
+                    esContextoProduccion,
+                    qrBuffer
                 });
-            });
-        });
+            }
+        }
         
         doc.end();
         

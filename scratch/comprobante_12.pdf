@@ -1,0 +1,14 @@
+
+==================================================
+        MOCK COMPROBANTE OFICIAL - SISTEMA LAMDA
+==================================================
+ID Movimiento Local: 12
+Tipo Comprobante:    NC
+Detalle:             Nota de Crédito B 0032-00000001 (CAE: 86249485617879)
+Debe:                $ 0
+Haber:               $ 35319.9
+Fecha de Emision:    21/6/2026
+==================================================
+Este documento es una simulacion de caja negra en local
+para desarrollo y depuracion en el sandbox.
+==================================================

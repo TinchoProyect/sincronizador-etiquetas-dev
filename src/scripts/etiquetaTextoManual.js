@@ -2,8 +2,92 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const { exec } = require('child_process');
 const path = require('path');
+const { createCanvas, loadImage } = require('canvas');
 
-function generarParEtiquetas({ textoPrincipal, textoSecundario, textoAdicional }) {
+async function obtenerLogoZpl(targetWidth) {
+  try {
+    const logoPath = path.resolve(__dirname, '../../b2b-portal/public/logo_LAMDA.png');
+    const img = await loadImage(logoPath);
+    
+    const w = targetWidth || 280;
+    const h = Math.round((img.height / img.width) * w);
+    
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const pixels = imgData.data;
+    
+    const bytesPerRow = Math.ceil(w / 8);
+    const totalBytes = bytesPerRow * h;
+    
+    let hexString = '';
+    for (let y = 0; y < h; y++) {
+      for (let xByte = 0; xByte < bytesPerRow; xByte++) {
+        let byteVal = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte * 8 + bit;
+          let isBlack = false;
+          if (x < w) {
+            const idx = (y * w + x) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            const a = pixels[idx + 3];
+            
+            if (a >= 50) {
+              const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+              isBlack = luma < 180;
+            }
+          }
+          if (isBlack) {
+            byteVal |= (1 << (7 - bit));
+          }
+        }
+        hexString += byteVal.toString(16).padStart(2, '0').toUpperCase();
+      }
+    }
+    
+    return {
+      zpl: `^GFA,${totalBytes},${totalBytes},${bytesPerRow},${hexString}`,
+      w,
+      h
+    };
+  } catch (err) {
+    console.error("❌ Error al rasterizar el logo de LAMDA:", err);
+    return null;
+  }
+}
+
+async function generarParEtiquetas({ textoPrincipal, textoSecundario, textoAdicional }) {
+  const esLogoLamda = textoPrincipal && (textoPrincipal.toUpperCase() === 'LAMDA' || textoPrincipal.toUpperCase() === 'LAMBDA');
+
+  if (esLogoLamda) {
+    const logoInfo = await obtenerLogoZpl(280);
+    if (logoInfo) {
+      const tel = textoSecundario || '221-6615746';
+      const posX1 = Math.round((400 - logoInfo.w) / 2);
+      const posX2 = 425 + posX1;
+      
+      let etiqueta1 = `^FO${posX1},30${logoInfo.zpl}^FS
+^FO15,130^FB400,1,0,C^A0N,32,24^FD${tel}^FS`;
+
+      let etiqueta2 = `^FO${posX2},30${logoInfo.zpl}^FS
+^FO425,130^FB400,1,0,C^A0N,32,24^FD${tel}^FS`;
+
+      return `^XA
+^LH0,0
+^LT0
+${etiqueta1}
+${etiqueta2}
+^XZ`;
+    }
+  }
+
   // Configuración de fuentes según importancia
   const fuentePrincipal = '^CF0,80';    // Fuente más grande para texto principal
   const fuenteSecundaria = '^CF0,30';   // Fuente mediana para texto secundario
@@ -109,7 +193,7 @@ async function main() {
     let contenido = '';
     const paresDeEtiquetas = cantidadPar / 2;
     for (let i = 0; i < paresDeEtiquetas; i++) {
-      contenido += generarParEtiquetas(datos);
+      contenido += await generarParEtiquetas(datos);
     }
 
     // Escribir archivo

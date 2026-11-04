@@ -1,3 +1,107 @@
+// Función para verificar si los artículos del carro requieren entrada dual (Unidades <-> Kilos)
+export function verificarYConfigurarModoDual() {
+    const containerUnidades = document.getElementById('container-unidades-helper');
+    const inputKilos = document.getElementById('kilos-producidos');
+    const inputUnidades = document.getElementById('unidades-producidas');
+    const labelFactor = document.getElementById('factor-conversion-texto');
+
+    if (!containerUnidades || !inputKilos || !inputUnidades) return false;
+
+    let factorConversion = null;
+    let descCoincidencia = '';
+
+    // 1. Chequeo determinista por Línea de Negocio 5 (Barritas)
+    const ldnActiva = Number(window.carroActivoMetadata?.linea_negocio || window._carroActivoInfo?.linea_negocio || 0);
+    if (ldnActiva === 5) {
+        factorConversion = 0.05;
+        descCoincidencia = 'Línea 5: Barritas (50g / 20u por kg)';
+    }
+
+    // 2. Fallback por inspección de códigos y descripciones de artículos en el DOM
+    if (!factorConversion) {
+        const elementos = document.querySelectorAll(
+            '#lista-articulos .articulo-descripcion, #lista-articulos .articulo-codigo, ' +
+            '.seccion-articulos-vinculados-editable .articulo-descripcion, .seccion-articulos-vinculados-editable .articulo-codigo, ' +
+            '.articulo-vinculado .articulo-descripcion, .articulo-vinculado .articulo-codigo, ' +
+            '.articulo-secundario-editable .articulo-descripcion, .articulo-secundario-editable .articulo-codigo, ' +
+            '.articulo-container .articulo-descripcion, .articulo-container .articulo-codigo, ' +
+            '.articulo-descripcion'
+        );
+
+        const textos = Array.from(elementos).map(el => (el.textContent || '').toLowerCase().trim());
+
+        for (const txt of textos) {
+            if (txt.includes('barra flor') || txt.includes('barrita') || txt.includes('barra') || txt.includes('bfx') || txt.startsWith('bf')) {
+                factorConversion = 0.05;
+                descCoincidencia = 'Barritas (50g / 20u por kg)';
+                break;
+            } else if (txt.includes('alfajor')) {
+                factorConversion = 0.06;
+                descCoincidencia = 'Alfajor (60g)';
+                break;
+            }
+        }
+    }
+
+    if (!factorConversion) {
+        containerUnidades.style.display = 'none';
+        return false;
+    }
+
+    console.log(`⚖️ [MODO DUAL] Activado para ${descCoincidencia} - Factor: ${factorConversion}`);
+    containerUnidades.style.display = 'block';
+    const labelUnidadesEl = containerUnidades.querySelector('label[for="unidades-producidas"]');
+    if (labelUnidadesEl) {
+        labelUnidadesEl.textContent = factorConversion === 0.05 ? 'O cantidad de Barritas (unidades):' : 'O cantidad de unidades:';
+    }
+    if (labelFactor) {
+        labelFactor.textContent = factorConversion === 0.05
+            ? '1 barrita = 0.05 kg (20 barritas = 1 kg · Ej: 96 u = 4.80 kg)'
+            : `1 unidad ≈ ${factorConversion} kg`;
+    }
+
+    // Si ya hay kilos cargados pero no unidades, sincronizar unidades
+    if (inputKilos.value && !inputUnidades.value) {
+        const k = parseFloat(inputKilos.value.replace(',', '.'));
+        if (!isNaN(k) && k > 0) {
+            inputUnidades.value = Math.round(k / factorConversion);
+        }
+    }
+
+    // Configurar listeners bidireccionales sin duplicar llamadas a calcularMermaProduccion
+    inputUnidades.oninput = function () {
+        const u = parseFloat(this.value.replace(',', '.'));
+        if (!isNaN(u) && u > 0) {
+            inputKilos.value = (u * factorConversion).toFixed(2);
+        } else {
+            inputKilos.value = '';
+        }
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || window.carroIdGlobal || sessionStorage.getItem('carroActivo') || localStorage.getItem('carroActivo');
+        if (window.calcularMermaProduccion && carroId) {
+            window.calcularMermaProduccion(carroId, true);
+        }
+        if (typeof window._recalcularVinculados === 'function') {
+            window._recalcularVinculados.call(inputKilos);
+        }
+    };
+
+    inputKilos.oninput = function () {
+        const k = parseFloat(this.value.replace(',', '.'));
+        if (!isNaN(k) && k > 0) {
+            inputUnidades.value = Math.round(k / factorConversion);
+        } else {
+            inputUnidades.value = '';
+        }
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || window.carroIdGlobal || sessionStorage.getItem('carroActivo') || localStorage.getItem('carroActivo');
+        if (window.calcularMermaProduccion && carroId) {
+            window.calcularMermaProduccion(carroId, true);
+        }
+    };
+
+    return true;
+}
+window.verificarYConfigurarModoDual = verificarYConfigurarModoDual;
+
 // Función para actualizar la visibilidad de los botones según el estado del carro
 export async function actualizarVisibilidadBotones() {
     const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -9,6 +113,7 @@ export async function actualizarVisibilidadBotones() {
     const btnImprimirEtiquetasLote = document.getElementById('imprimir-etiquetas-lote');
     const btnImprimirOrden = document.getElementById('imprimir-orden-produccion');
     const btnGuardadoIngredientes = document.getElementById('guardado-ingredientes');
+    const btnToggleModoMedicion = document.getElementById('btn-toggle-modo-medicion');
 
     // Ocultar por defecto al iniciar chequeo
     if (btnImprimirEtiquetasLote) btnImprimirEtiquetasLote.style.display = 'none';
@@ -22,8 +127,11 @@ export async function actualizarVisibilidadBotones() {
         if (btnFinalizarProduccion) btnFinalizarProduccion.style.display = 'none';
         if (btnAgregarArticulo) btnAgregarArticulo.style.display = 'none';
         if (btnImprimirEtiquetas) btnImprimirEtiquetas.style.display = 'none';
+        if (btnImprimirEtiquetasLote) btnImprimirEtiquetasLote.style.display = 'none';
         if (btnImprimirOrden) btnImprimirOrden.style.display = 'none';
         if (btnGuardadoIngredientes) btnGuardadoIngredientes.style.display = 'none';
+        if (checkFechasLoteContainer) checkFechasLoteContainer.style.display = 'none';
+        document.querySelectorAll('.btn-imprimir-padre').forEach(btn => btn.remove());
         return;
     }
 
@@ -93,6 +201,36 @@ export async function actualizarVisibilidadBotones() {
                 if (data.tipo_carro === 'externa') {
                     console.log('🚚 Carro externo en estado preparado - creando campo de kilos producidos...');
 
+                    // Guardar metadatos de Línea de Negocio (Regla 5 AGENTS.md)
+                    window.carroActivoMetadata = data;
+                    const ldnNum = data.linea_negocio || 4;
+                    const ldnNombre = data.nombre_linea_negocio || (ldnNum === 4 ? 'Línea de Negocio 4: Tostadero (UP Externa Simple)' : ldnNum === 5 ? 'Línea de Negocio 5: Barritas (Mezcla Interna + UP Externa)' : 'Línea de Negocio 6: Granolas (Doble Mezcla / UP Externa)');
+                    const ldnIcono = data.icono_linea_negocio || (ldnNum === 4 ? '🔥' : ldnNum === 5 ? '🍫' : '🥣');
+                    const ldnSubtitulo = data.subtitulo_linea_negocio || (ldnNum === 4 ? 'Tostadero (UP Externa Simple — Bulto Crudo Directo)' : ldnNum === 5 ? 'Barritas (Mezcla Interna + UP Externa)' : 'Granolas (Doble Mezcla / UP Externa)');
+                    
+                    const ldnStyles = ldnNum === 4 ? {
+                        bg: '#fff7ed', border: '#fdba74', text: '#9a3412', badgeBg: '#ffedd5', badgeBorder: '#f97316'
+                    } : ldnNum === 5 ? {
+                        bg: '#f5f3ff', border: '#c4b5fd', text: '#5b21b6', badgeBg: '#ede9fe', badgeBorder: '#8b5cf6'
+                    } : {
+                        bg: '#ecfdf5', border: '#a7f3d0', text: '#065f46', badgeBg: '#d1fae5', badgeBorder: '#10b981'
+                    };
+
+                    const bannerLdnHtml = `
+                        <div id="banner-linea-negocio-carro" style="background: ${ldnStyles.bg}; border: 1px solid ${ldnStyles.border}; border-left: 4px solid ${ldnStyles.badgeBorder}; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.4em;">${ldnIcono}</span>
+                                <div>
+                                    <div style="font-weight: bold; color: ${ldnStyles.text}; font-size: 0.92em;">${ldnNombre}</div>
+                                    <div style="font-size: 0.78em; color: #64748b;">${ldnSubtitulo}</div>
+                                </div>
+                            </div>
+                            <span style="background: ${ldnStyles.badgeBg}; color: ${ldnStyles.text}; border: 1px solid ${ldnStyles.badgeBorder}; font-size: 0.75em; font-weight: 800; padding: 2px 8px; border-radius: 9999px;">
+                                FLUJO ${ldnNum}
+                            </span>
+                        </div>
+                    `;
+
                     let kilosProducidosContainer = document.getElementById('kilos-producidos-container');
 
                     // Si no existe, crearlo dinámicamente
@@ -102,8 +240,9 @@ export async function actualizarVisibilidadBotones() {
                         kilosProducidosContainer.className = 'kilos-producidos-container';
                         kilosProducidosContainer.style.cssText = 'margin: 15px 0;';
 
-                        // 1. GENERAR HTML (Con soporte para Unidades y Merma)
+                        // 1. GENERAR HTML (Con soporte para Unidades, Merma y Línea de Negocio)
                         kilosProducidosContainer.innerHTML = `
+                            ${bannerLdnHtml}
                             <div class="inputs-produccion-wrapper" style="display: flex; gap: 15px; align-items: flex-start; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                                 <div class="input-group-produccion" style="flex: 1;">
                                     <label for="kilos-producidos" style="display: block; margin-bottom: 5px; font-weight: bold;">Kilos Producidos:</label>
@@ -147,70 +286,21 @@ export async function actualizarVisibilidadBotones() {
                             </div>
                         `;
 
-                        // 2. ACTIVAR LÓGICA DE BARRITAS (Calculadora de Unidades)
-                        setTimeout(() => {
-                            const descripcionElement = document.querySelector('.articulo-descripcion');
-                            // Verificamos si hay algún artículo que sea "Barra Flor"
-                            if (descripcionElement && descripcionElement.textContent.toLowerCase().includes('barra flor')) {
-                                const containerUnidades = document.getElementById('container-unidades-helper');
-                                const inputUnidades = document.getElementById('unidades-producidas');
-                                const inputKilos = document.getElementById('kilos-producidos');
-                                const factor = 0.05; // 4.8kg / 96u
-
-                                if (containerUnidades && inputUnidades && inputKilos) {
-                                    console.log('⚖️ Activando calculadora de unidades para Barra Flor en Carro Preparado');
-                                    containerUnidades.style.display = 'block';
-
-                                    // A. Escribe Unidades -> Calcula Kilos
-                                    inputUnidades.addEventListener('input', function () {
-                                        const uStr = this.value.replace(',', '.');
-                                        const u = parseFloat(uStr);
-                                        if (!isNaN(u)) {
-                                            inputKilos.value = (u * factor).toFixed(2);
-                                            // Disparar evento para que se actualice la merma también
-                                            inputKilos.dispatchEvent(new Event('input'));
-                                        } else {
-                                            inputKilos.value = '';
-                                        }
-                                    });
-
-                                    // B. Escribe Kilos -> Calcula Unidades
-                                    inputKilos.addEventListener('input', function () {
-                                        const kStr = this.value.replace(',', '.');
-                                        const k = parseFloat(kStr);
-                                        if (!isNaN(k)) {
-                                            inputUnidades.value = Math.round(k / factor);
-                                        } else {
-                                            inputUnidades.value = '';
-                                        }
-                                    });
-                                }
-                            }
-                        }, 500); // Pequeño delay para asegurar que el DOM cargó
-
                         // Insertar después del botón de finalizar producción
                         if (btnFinalizarProduccion && btnFinalizarProduccion.parentElement) {
                             btnFinalizarProduccion.parentElement.insertBefore(kilosProducidosContainer, btnFinalizarProduccion.nextSibling);
                             console.log('✅ Campo de kilos producidos creado e insertado en el DOM');
                         }
-
-                        // 🎯 AGREGAR EVENT LISTENER para cálculo dinámico de merma
-                        const inputKilos = document.getElementById('kilos-producidos');
-                        if (inputKilos) {
-                            inputKilos.addEventListener('input', () => {
-                                console.log('🎯 [EVENT] Input detectado en kilos-producidos');
-                                calcularMermaProduccion(carroId);
-                            });
-                            inputKilos.addEventListener('blur', () => {
-                                console.log('🎯 [EVENT] Blur detectado en kilos-producidos');
-                                calcularMermaProduccion(carroId);
-                            });
-                            console.log('✅ Event listeners para cálculo de merma agregados');
-                        }
                     } else {
-                        // Si ya existe, solo mostrarlo
+                        // Si ya existe, solo mostrarlo y refrescar banner de línea de negocio
                         kilosProducidosContainer.style.display = 'block';
                         console.log('✅ Campo de kilos producidos mostrado (ya existía)');
+                        const bannerExistente = document.getElementById('banner-linea-negocio-carro');
+                        if (bannerExistente) {
+                            bannerExistente.outerHTML = bannerLdnHtml;
+                        } else {
+                            kilosProducidosContainer.insertAdjacentHTML('afterbegin', bannerLdnHtml);
+                        }
 
                         // ⚠️ NO CLONAR - Solo verificar que el panel exista
                         const panelMerma = document.getElementById('calculo-merma');
@@ -224,6 +314,26 @@ export async function actualizarVisibilidadBotones() {
                         }
                         console.log('✅ Panel de merma verificado en DOM');
                     }
+
+                    // 🎯 AGREGAR EVENT LISTENER para cálculo dinámico de merma (para nuevo o ya existente)
+                    const inputKilos = document.getElementById('kilos-producidos');
+                    if (inputKilos && !inputKilos.hasMermaListener) {
+                        inputKilos.addEventListener('input', () => {
+                            if (typeof inputKilos.oninput === 'function') return; // Evitar doble disparo cuando Modo Dual está activo
+                            console.log('🎯 [EVENT] Input detectado en kilos-producidos');
+                            calcularMermaProduccion(carroId, true);
+                        });
+                        inputKilos.addEventListener('blur', () => {
+                            console.log('🎯 [EVENT] Blur detectado en kilos-producidos');
+                            calcularMermaProduccion(carroId, true);
+                        });
+                        inputKilos.hasMermaListener = true;
+                        console.log('✅ Event listeners para cálculo de merma agregados');
+                    }
+
+                    // 🎯 Activar calculadora dual (Unidades <-> Kilos) inmediatamente y pre-mostrar peso crudo
+                    verificarYConfigurarModoDual();
+                    calcularMermaProduccion(carroId, true);
                 } else {
                     // Ocultar para carros internos
                     const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
@@ -236,6 +346,7 @@ export async function actualizarVisibilidadBotones() {
                 if (data.tipo_carro === 'externa' && data.fase_actual === 'articulos_secundarios') {
                     console.log('🔄 Activando modo artículos secundarios para carro externo');
                     await activarModoArticulosSecundarios();
+                    verificarYConfigurarModoDual();
                 }
                 break;
 
@@ -320,18 +431,26 @@ export async function actualizarVisibilidadBotones() {
                                                 btnPadre.disabled = true;
                                                 btnPadre.textContent = 'Imprimiendo...';
                                                 
-                                                const resPrint = await fetch('http://localhost:3000/api/imprimir', {
+                                                const packPayload = {
+                                                    articulo: {
+                                                        numero: padre.padre_articulo_numero,
+                                                        nombre: padre.padre_descripcion,
+                                                        codigo_barras: padre.padre_codigo_barras
+                                                    },
+                                                    cantidad: qty
+                                                };
+                                                let resPrint = await fetch('/api/produccion/articulos/imprimir-etiqueta', {
                                                     method: 'POST',
                                                     headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                        articulo: {
-                                                            numero: padre.padre_articulo_numero,
-                                                            nombre: padre.padre_descripcion,
-                                                            codigo_barras: padre.padre_codigo_barras
-                                                        },
-                                                        cantidad: qty
-                                                    })
-                                                });
+                                                    body: JSON.stringify(packPayload)
+                                                }).catch(() => null);
+                                                if (!resPrint || !resPrint.ok) {
+                                                    resPrint = await fetch('http://localhost:3000/api/imprimir', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify(packPayload)
+                                                    });
+                                                }
                                                 
                                                 if (!resPrint.ok) throw new Error('Error de comunicación con el motor de impresión');
                                                 
@@ -454,7 +573,7 @@ async function mostrarArticulosSecundariosEditables() {
         const colaborador = JSON.parse(colaboradorData);
 
         // Obtener artículos vinculados del carro
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
+        const response = await fetch(`/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
 
         if (!response.ok) {
             console.warn('⚠️ No se pudieron obtener artículos vinculados');
@@ -503,6 +622,9 @@ async function mostrarArticulosSecundariosEditables() {
             const vinculo = articulosVinculados.find(v => v.articulo_produccion_codigo === numeroPadre);
 
             if (vinculo) {
+                const codPuenteSafe = String(vinculo.articulo_kilo_codigo || '').replace(/'/g, "\\'");
+                const nomPuenteSafe = String(vinculo.articulo_kilo_nombre || '').replace(/'/g, "\\'");
+                const barPuenteSafe = String(vinculo.articulo_kilo_codigo_barras || '').replace(/'/g, "\\'");
                 html += `
                     <div class="articulo-secundario-editable" data-relacion-id="${vinculo.id}">
                         <div class="articulo-info">
@@ -512,7 +634,13 @@ async function mostrarArticulosSecundariosEditables() {
                             ${vinculo.articulo_kilo_codigo_barras ? `<span class="codigo-barras" title="Código de barras: ${vinculo.articulo_kilo_codigo_barras}">📊 ${vinculo.articulo_kilo_codigo_barras}</span>` : ''}
                             <span class="vinculo-etiqueta">Vinculado a: ${vinculo.articulo_produccion_codigo}</span>
                         </div>
-                        <div class="articulo-actions">
+                        <div class="articulo-actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button type="button"
+                                    class="btn-imprimir-etiqueta-puente"
+                                    onclick="window.imprimirEtiquetaArticuloPuente && window.imprimirEtiquetaArticuloPuente('${codPuenteSafe}', '${nomPuenteSafe}', '${barPuenteSafe}', '${carroId}')"
+                                    style="background: #16a34a; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: pointer;">
+                                🏷️ Imprimir Etiqueta
+                            </button>
                             <button class="btn-editar-vinculo-secundario" 
                                     data-relacion-id="${vinculo.id}"
                                     data-articulo-padre="${vinculo.articulo_produccion_codigo}">
@@ -578,8 +706,11 @@ async function mostrarInformesIngredientesVinculados() {
         console.group('🕵️‍♂️ VIGÍA DEPURADOR: Flujo de Ingredientes Locales (Secundarios)');
         console.log(`[Petición] Consultando API -> /api/produccion/carro/${carroId}/ingredientes-vinculados`);
         
-        // Obtener ingredientes de artículos vinculados
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`);
+        // Obtener ingredientes de artículos vinculados (post-cocción) E insumos/mezclas base de Receta UP
+        const [response, resArticulosUp] = await Promise.all([
+            fetch(`/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`),
+            fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${colaborador.id}`).catch(() => null)
+        ]);
 
         if (!response.ok) {
             console.error(`❌ [FALLA API] HTTP Error: ${response.status} - El endpoint de ingredientes vinculados colapsó o no encontró datos.`);
@@ -589,6 +720,7 @@ async function mostrarInformesIngredientesVinculados() {
         }
 
         const ingredientesVinculados = await response.json();
+        const articulosUpResumen = (resArticulosUp && resArticulosUp.ok) ? (await resArticulosUp.json()) : [];
         console.log(`✅ [VIGÍA A] Payload crudo recibido del Backend:`);
         console.table(ingredientesVinculados);
         console.groupEnd();
@@ -616,18 +748,77 @@ async function mostrarInformesIngredientesVinculados() {
             }
         }
 
-        // Generar HTML para el informe
-        let html = `
-            <h3>🔗 Ingredientes de Artículos Vinculados</h3>
-            <div class="descripcion-informe">
-                <p>Estos ingredientes corresponden a los artículos vinculados y se obtienen del stock general de producción.</p>
-            </div>
-        `;
+        // Si no hay ni insumos UP ni ingredientes post-cocción, ocultar la caja para no mostrar un mensaje vacío engañoso
+        if ((!articulosUpResumen || articulosUpResumen.length === 0) && (!ingredientesVinculados || ingredientesVinculados.length === 0)) {
+            seccionInformesVinculados.style.display = 'none';
+            seccionInformesVinculados.classList.remove('activa');
+            return;
+        }
 
-        if (ingredientesVinculados.length === 0) {
-            html += '<p>No hay ingredientes vinculados para mostrar</p>';
-        } else {
+        let html = '';
+
+        // 1. Mostrar Insumo Base / Mezcla de la Receta UP retirado de depósito (ej: MPB Mezcla p/ Barritas x 4 kg)
+        if (articulosUpResumen && articulosUpResumen.length > 0) {
             html += `
+                <div style="margin-bottom: ${ingredientesVinculados.length > 0 ? '18px' : '0'};">
+                    <h3 style="color: #4c1d95; display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        📦 Mezcla / Insumo Base de Receta UP (Cargado en Carro)
+                    </h3>
+                    <div class="descripcion-informe" style="background: #f5f3ff; border-left: 4px solid #8b5cf6; padding: 8px 12px; border-radius: 4px; margin-bottom: 10px;">
+                        <p style="margin: 0; color: #4c1d95; font-size: 0.9em;">
+                            Este artículo/mezcla forma parte de la receta de la Unidad Productiva (UP) y <strong>ya fue cargado y descontado automáticamente</strong> del stock general de depósito al preparar el carro.
+                        </p>
+                    </div>
+                    <table class="tabla-resumen">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Mezcla / Insumo Base</th>
+                                <th>Cant. Cargada</th>
+                                <th>Peso Total</th>
+                                <th>Stock Restante</th>
+                                <th>Estado en este Carro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            articulosUpResumen.forEach(art => {
+                const cantU = parseFloat(art.cantidad_total) || 1;
+                const kUnidad = parseFloat(art.kilos_unidad) || 1;
+                const kTot = parseFloat(art.kilos_totales) || (cantU * kUnidad);
+                const stockAct = parseFloat(art.stock_actual) || 0;
+
+                html += `
+                    <tr class="stock-ok" style="background: #faf5ff;">
+                        <td><strong>${art.articulo_numero}</strong></td>
+                        <td><strong>${art.nombre || art.articulo_numero}</strong></td>
+                        <td><strong>${cantU.toFixed(2)} u</strong></td>
+                        <td style="color: #5b21b6; font-weight: 700;">${kTot.toFixed(2)} kg</td>
+                        <td>${stockAct.toFixed(2)} u</td>
+                        <td>
+                            <span class="stock-suficiente" style="background: #dcfce7; color: #15803d; padding: 3px 8px; border-radius: 9999px; font-weight: 700; font-size: 0.85em;">
+                                ✅ Cargado automáticamente (Receta UP)
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // 2. Mostrar Ingredientes de Artículos Vinculados (Post-Cocción, ej: Línea 6 Granolas) SOLO si existen
+        if (ingredientesVinculados && ingredientesVinculados.length > 0) {
+            html += `
+                <h3>🔗 Ingredientes de Artículos Vinculados (Agregados Post-Cocción)</h3>
+                <div class="descripcion-informe">
+                    <p>Estos ingredientes corresponden al artículo vinculado de salida y se obtienen del stock general de producción según los kilos producidos.</p>
+                </div>
                 <table class="tabla-resumen tabla-vinculados">
                     <thead>
                         <tr>
@@ -651,7 +842,7 @@ async function mostrarInformesIngredientesVinculados() {
                 console.log(`✅ [VIGÍA B] Estado almacenado antes de renderizar para ${ing.nombre}: Base=${cantidadBase}, Stock=${stockActual}`);
 
                 html += `
-                    <tr class="ingrediente-vinculado" data-base-kilo="${cantidadBase}" data-stock="${stockActual}" data-unidad="${ing.unidad_medida || ''}" data-id="${ing.id}">
+                    <tr class="ingrediente-vinculado" data-base-kilo="${cantidadBase}" data-stock="${stockActual}" data-unidad="${ing.unidad_medida || ''}" data-id="${ing.id}" data-es-post-coccion="${ing.es_post_coccion ? 'true' : 'false'}">
                         <td>${ing.nombre || 'Sin nombre'}</td>
                         <td class="cell-proporcion font-weight-bold" style="color: #17a2b8;">${cantidadBase.toFixed(3)}</td>
                         <td class="cell-requerido font-weight-bold" style="color: #6c757d;">0.000 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${ing.unidad_medida || 'kg'}</span></td>
@@ -741,6 +932,519 @@ async function mostrarInformesIngredientesVinculados() {
     }
 }
 
+function normalizarTextoBusqueda(texto) {
+    if (!texto) return '';
+    return String(texto)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Motor de Búsqueda Universal LAMDA (Regla 3: 9 campos estáticos + propiedades_dinamicas)
+if (typeof window.obtenerTextoBusquedaArticulo !== 'function') {
+    window.obtenerTextoBusquedaArticulo = function (art) {
+        if (!art) return '';
+        const camposEstaticos = [
+            art.codigo || art.numero || art.articulo_numero,
+            art.descripcion || art.nombre || art.nombre_legacy || art.descripcion_generada,
+            art.codigo_barras,
+            art.familia_nombre || art.familia,
+            art.articulo_principal || art.ingrediente_base,
+            art.subfamilia,
+            art.marca,
+            art.proveedor,
+            art.presentacion
+        ].filter(Boolean).join(' ');
+
+        let camposDinamicos = '';
+        if (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object') {
+            camposDinamicos = Object.values(art.propiedades_dinamicas)
+                .map(v => (v && typeof v === 'object') ? (v.valor || v.texto || v.nombre || JSON.stringify(v)) : v)
+                .filter(Boolean)
+                .join(' ');
+        }
+        return normalizarTextoBusqueda(`${camposEstaticos} ${camposDinamicos}`);
+    };
+}
+
+/**
+ * Solicita al colaborador el artículo físico real que se lleva a tostar (Línea 4 - Producción de Tostadero),
+ * trayendo pre-cargado el último artículo configurado en la UP para selección rápida, y separando las dos opciones
+ * de búsqueda igual que en el resto del sistema:
+ *  1) Escaneo con lector de código de barras (📷)
+ *  2) Búsqueda por texto por grupo de caracteres (🔍)
+ */
+async function solicitarArticuloLlevadoTostadero(carroId, usuarioId) {
+    // 1. Obtener el artículo configurado en la UP (articulos-resumen) y los artículos del carro
+    let resumenDefault = [];
+    let articulosCarro = [];
+    try {
+        const [resResumen, resCarro] = await Promise.all([
+            fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${usuarioId}`),
+            fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${usuarioId}`)
+        ]);
+        if (resResumen.ok) resumenDefault = await resResumen.json();
+        if (resCarro.ok) articulosCarro = await resCarro.json();
+    } catch (e) {
+        console.warn('No se pudo precargar resumen default de Tostadero:', e);
+    }
+
+    // 2. Cargar catálogo completo de artículos ({ success, data, total })
+    let catalogoArticulos = [];
+    try {
+        const resCat = await fetch('/api/produccion/articulos');
+        if (resCat.ok) {
+            const dataCat = await resCat.json();
+            catalogoArticulos = Array.isArray(dataCat) ? dataCat : (dataCat.data || dataCat.articulos || []);
+        }
+    } catch (e) {
+        console.error('Error al cargar catálogo de artículos:', e);
+    }
+
+    const defaultArt = resumenDefault[0] || null;
+    const upPrincipal = articulosCarro[0] || null;
+    const cantidadSugerida = defaultArt
+        ? (parseFloat(defaultArt.cantidad_total || defaultArt.cantidad) || 1)
+        : (upPrincipal ? (parseFloat(upPrincipal.cantidad) || 1) : 1);
+
+    // Armar objeto normalizado a partir de un item del catálogo o del resumen
+    const normalizarItemArticulo = (rawArt) => {
+        if (!rawArt) return null;
+        const cod = String(rawArt.numero || rawArt.codigo || rawArt.articulo_numero || '').trim();
+        const matchCat = catalogoArticulos.find(a =>
+            String(a.numero || a.codigo || a.articulo_numero || '').trim() === cod
+        );
+        const desc = rawArt.nombre || rawArt.descripcion || (matchCat && (matchCat.nombre || matchCat.descripcion)) || cod;
+        const bar = rawArt.codigo_barras || (matchCat && matchCat.codigo_barras) || '';
+        const stock = parseFloat(
+            rawArt.stock_actual ?? rawArt.stock_consolidado ?? (matchCat && matchCat.stock_consolidado) ?? 0
+        );
+        const kilosU = parseFloat(
+            rawArt.kilos_unidad || (matchCat && matchCat.kilos_unidad) || 1
+        );
+        return {
+            numero: cod,
+            descripcion: desc,
+            codigo_barras: bar,
+            stock_consolidado: isNaN(stock) ? 0 : stock,
+            kilos_unidad: isNaN(kilosU) || kilosU <= 0 ? 1 : kilosU
+        };
+    };
+
+    const ultimoArticuloUP = normalizarItemArticulo(defaultArt);
+    let articuloSeleccionado = ultimoArticuloUP ? { ...ultimoArticuloUP } : null;
+
+    if (typeof Swal === 'undefined') {
+        const codPrompt = prompt(
+            `🔥 PRODUCCIÓN DE TOSTADERO\nIngrese o escanee el código/código de barras del artículo que se lleva a tostar:`,
+            articuloSeleccionado ? articuloSeleccionado.numero : ''
+        );
+        if (!codPrompt) return null;
+        return {
+            articulo_numero: codPrompt.trim(),
+            cantidad: cantidadSugerida
+        };
+    }
+
+    const upInfoHtml = upPrincipal
+        ? `<div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+             <div>
+                 <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:#1e40af; letter-spacing:0.4px;">🔥 Unidad Productiva a Producir (Carro #${carroId})</div>
+                 <div style="font-size:14.5px; font-weight:700; color:#1e3a8a; margin-top:2px;">[${upPrincipal.numero}] ${upPrincipal.descripcion}</div>
+             </div>
+             <span style="background:#dbeafe; color:#1e40af; font-weight:800; font-size:13px; padding:4px 10px; border-radius:6px;">Cantidad UP: ${upPrincipal.cantidad} u</span>
+           </div>`
+        : '';
+
+    const ultimoConfiguradoCardHtml = ultimoArticuloUP
+        ? `<div id="swal-card-ultimo-up"
+                style="background:#fffbeb; border:2px solid #f59e0b; border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+             <div style="flex:1; min-width:220px;">
+                 <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:#b45309; letter-spacing:0.4px;">
+                     ⭐ Último artículo configurado en esta UP (Selección Rápida)
+                 </div>
+                 <div style="font-size:14.5px; font-weight:700; color:#0f172a; margin-top:3px;">
+                     [${ultimoArticuloUP.numero}] ${ultimoArticuloUP.descripcion}
+                 </div>
+                 <div style="font-size:12px; color:#475569; margin-top:2px;">
+                     📷 Cód. Barras: <strong>${ultimoArticuloUP.codigo_barras || 'Sin código'}</strong> &nbsp;|&nbsp;
+                     ⚖️ Peso/u: <strong>${ultimoArticuloUP.kilos_unidad} kg</strong> &nbsp;|&nbsp;
+                     📦 Stock: <strong style="color:${ultimoArticuloUP.stock_consolidado > 0 ? '#15803d' : '#dc2626'};">${ultimoArticuloUP.stock_consolidado} u</strong>
+                 </div>
+             </div>
+             <button type="button" id="swal-btn-seleccionar-ultimo"
+                     style="background:#16a34a; color:#ffffff; border:none; border-radius:6px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                 ✅ Seleccionado
+             </button>
+           </div>`
+        : '';
+
+    return await new Promise((resolve) => {
+        Swal.fire({
+            title: '🔥 ¿Qué artículo te llevás a tostar?',
+            width: '780px',
+            html: `
+                <div style="text-align: left; font-family: inherit;">
+                    ${upInfoHtml}
+                    ${ultimoConfiguradoCardHtml}
+
+                    <!-- Toolbar con las 2 opciones separadas igual que en #modal-articulos -->
+                    <div class="modal-toolbar-minimalist" style="padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:10px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+                        <div class="toolbar-search-group" style="position:relative; flex:1.3; min-width:230px;">
+                            <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:4px;">🔍 Buscar por texto (grupo de caracteres):</div>
+                            <div style="position:relative;">
+                                <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:14px; pointer-events:none;">🔍</span>
+                                <input type="text"
+                                       id="swal-busqueda-texto-tostadero"
+                                       placeholder="Buscar artículo (ej: almend non 10)..."
+                                       autocomplete="off"
+                                       style="width:100%; padding:9px 10px 9px 34px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13.5px; outline:none; background:#ffffff; box-sizing:border-box;" />
+                            </div>
+                        </div>
+
+                        <div class="toolbar-barcode-group" style="position:relative; flex:1; min-width:200px;">
+                            <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:4px;">📷 Escanear con lector de código de barras:</div>
+                            <div style="position:relative;">
+                                <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:14px; pointer-events:none;">📷</span>
+                                <input type="text"
+                                       id="swal-codigo-barras-tostadero"
+                                       placeholder="Código de barras..."
+                                       autocomplete="off"
+                                       style="width:100%; padding:9px 10px 9px 34px; border:1.5px solid #2563eb; border-radius:6px; font-size:13.5px; outline:none; background:#ffffff; box-sizing:border-box;" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de artículos estilo modal-articulos -->
+                    <div class="table-responsive" style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:12px; background:#ffffff;">
+                        <table class="tabla-minimalista tabla-articulos" style="width:100%; border-collapse:collapse; font-size:13px;">
+                            <thead style="position:sticky; top:0; background:#f1f5f9; z-index:1;">
+                                <tr>
+                                    <th style="padding:8px 10px; text-align:left; border-bottom:1px solid #cbd5e1;">Código</th>
+                                    <th style="padding:8px 10px; text-align:left; border-bottom:1px solid #cbd5e1;">Descripción</th>
+                                    <th style="padding:8px 10px; text-align:center; border-bottom:1px solid #cbd5e1;">Cód. Barras</th>
+                                    <th style="padding:8px 10px; text-align:center; border-bottom:1px solid #cbd5e1;">Stock</th>
+                                    <th style="padding:8px 10px; text-align:center; border-bottom:1px solid #cbd5e1;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="swal-tbody-articulos-tostadero">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Tarjeta resumen del artículo actualmente seleccionado -->
+                    <div id="swal-seleccionado-card"
+                         style="background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: ${articuloSeleccionado ? 'flex' : 'none'}; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #15803d; letter-spacing: 0.5px;">
+                                ✅ Artículo Seleccionado para Llevar a Tostar
+                            </div>
+                            <div id="swal-sel-titulo" style="font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 2px;">
+                                ${articuloSeleccionado ? `[${articuloSeleccionado.numero}] ${articuloSeleccionado.descripcion}` : ''}
+                            </div>
+                            <div id="swal-sel-meta" style="font-size: 12px; color: #475569; margin-top: 2px;">
+                                ${articuloSeleccionado ? `Cód. Barras: <strong>${articuloSeleccionado.codigo_barras || 'S/D'}</strong> | Peso/u: <strong>${articuloSeleccionado.kilos_unidad || 1} kg</strong> | Stock actual: <strong>${articuloSeleccionado.stock_consolidado} u</strong>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; justify-content:space-between; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px;">
+                        <div>
+                            <label for="swal-input-cantidad-tostadero" style="font-weight:700; font-size:13.5px; color:#0f172a;">
+                                📦 Cantidad de Unidades / Bultos que se lleva:
+                            </label>
+                            <div id="swal-kilos-estimados" style="font-size:12px; color:#0369a1; font-weight:600; margin-top:2px;">
+                                ${articuloSeleccionado ? `Equivalente en kilos de entrada: ${(cantidadSugerida * (articuloSeleccionado.kilos_unidad || 1)).toFixed(2)} kg` : ''}
+                            </div>
+                        </div>
+                        <input id="swal-input-cantidad-tostadero"
+                               type="number"
+                               step="0.01"
+                               min="0.01"
+                               value="${cantidadSugerida}"
+                               style="width:110px; padding:8px 10px; border:1.5px solid #94a3b8; border-radius:6px; font-size:15px; font-weight:700; text-align:center;" />
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✅ Confirmar y Preparar Carro',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#64748b',
+            focusConfirm: false,
+            didOpen: () => {
+                const inputTexto = document.getElementById('swal-busqueda-texto-tostadero');
+                const inputBarcode = document.getElementById('swal-codigo-barras-tostadero');
+                const tbody = document.getElementById('swal-tbody-articulos-tostadero');
+                const cardSel = document.getElementById('swal-seleccionado-card');
+                const selTitulo = document.getElementById('swal-sel-titulo');
+                const selMeta = document.getElementById('swal-sel-meta');
+                const inputCant = document.getElementById('swal-input-cantidad-tostadero');
+                const divKilos = document.getElementById('swal-kilos-estimados');
+                const btnUltimo = document.getElementById('swal-btn-seleccionar-ultimo');
+                const cardUltimo = document.getElementById('swal-card-ultimo-up');
+
+                const actualizarEstadoBotonUltimo = () => {
+                    if (!btnUltimo || !ultimoArticuloUP) return;
+                    const esElUltimo = articuloSeleccionado && String(articuloSeleccionado.numero) === String(ultimoArticuloUP.numero);
+                    if (esElUltimo) {
+                        btnUltimo.textContent = '✅ Seleccionado';
+                        btnUltimo.style.background = '#16a34a';
+                        if (cardUltimo) cardUltimo.style.borderColor = '#16a34a';
+                    } else {
+                        btnUltimo.textContent = '⚡ Seleccionar este artículo';
+                        btnUltimo.style.background = '#2563eb';
+                        if (cardUltimo) cardUltimo.style.borderColor = '#f59e0b';
+                    }
+                };
+
+                const seleccionarArticulo = (artObj) => {
+                    articuloSeleccionado = normalizarItemArticulo(artObj);
+                    if (!articuloSeleccionado) {
+                        cardSel.style.display = 'none';
+                        divKilos.textContent = '';
+                        actualizarEstadoBotonUltimo();
+                        return;
+                    }
+                    cardSel.style.display = 'flex';
+                    selTitulo.textContent = `[${articuloSeleccionado.numero}] ${articuloSeleccionado.descripcion}`;
+                    selMeta.innerHTML = `Cód. Barras: <strong>${articuloSeleccionado.codigo_barras || 'S/D'}</strong> | Peso/u: <strong>${articuloSeleccionado.kilos_unidad || 1} kg</strong> | Stock actual: <strong>${articuloSeleccionado.stock_consolidado ?? 0} u</strong>`;
+                    const cantVal = parseFloat(inputCant.value) || 0;
+                    divKilos.textContent = `Equivalente en kilos de entrada: ${(cantVal * (articuloSeleccionado.kilos_unidad || 1)).toFixed(2)} kg`;
+                    actualizarEstadoBotonUltimo();
+                    aplicarFiltrosTabla();
+                };
+
+                const renderizarTabla = (lista) => {
+                    if (!tbody) return;
+                    if (!lista || lista.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" style="padding:14px; text-align:center; color:#64748b;">No se encontraron artículos coincidentes.</td></tr>`;
+                        return;
+                    }
+
+                    tbody.innerHTML = lista.slice(0, 60).map(a => {
+                        const item = normalizarItemArticulo(a);
+                        const esSel = articuloSeleccionado && String(articuloSeleccionado.numero) === String(item.numero);
+                        const esUltimo = ultimoArticuloUP && String(ultimoArticuloUP.numero) === String(item.numero);
+                        const colorStock = item.stock_consolidado > 0 ? '#15803d' : '#dc2626';
+
+                        return `
+                            <tr class="fila-articulo-tostadero"
+                                data-codigo="${String(item.numero).replace(/"/g, '&quot;')}"
+                                style="border-bottom:1px solid #f1f5f9; background:${esSel ? '#dcfce7' : (esUltimo ? '#fffbeb' : '#ffffff')}; cursor:pointer;">
+                                <td style="padding:8px 10px; font-weight:700; color:#0f172a; white-space:nowrap;">
+                                    ${item.numero}
+                                    ${esUltimo ? `<div style="font-size:10px; color:#b45309; font-weight:800;">⭐ Último en UP</div>` : ''}
+                                </td>
+                                <td style="padding:8px 10px; color:#1e293b;">
+                                    ${item.descripcion}
+                                    <span style="color:#64748b; font-size:11.5px; margin-left:4px;">(${item.kilos_unidad} kg/u)</span>
+                                </td>
+                                <td style="padding:8px 10px; text-align:center; color:#475569; font-family:monospace; font-size:12px;">
+                                    ${item.codigo_barras || '-'}
+                                </td>
+                                <td style="padding:8px 10px; text-align:center; font-weight:700; color:${colorStock};">
+                                    ${item.stock_consolidado}
+                                </td>
+                                <td style="padding:8px 10px; text-align:center;">
+                                    <button type="button"
+                                            class="btn-sel-fila-tostadero"
+                                            data-codigo="${String(item.numero).replace(/"/g, '&quot;')}"
+                                            style="background:${esSel ? '#16a34a' : '#2563eb'}; color:#ffffff; border:none; border-radius:5px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                                        ${esSel ? '✅ Seleccionado' : 'Seleccionar'}
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+
+                    tbody.querySelectorAll('.fila-articulo-tostadero').forEach(tr => {
+                        tr.addEventListener('click', () => {
+                            const cod = tr.getAttribute('data-codigo');
+                            const found = catalogoArticulos.find(x => String(x.numero || x.codigo || x.articulo_numero) === String(cod))
+                                || (ultimoArticuloUP && String(ultimoArticuloUP.numero) === String(cod) ? ultimoArticuloUP : null);
+                            if (found) seleccionarArticulo(found);
+                        });
+                    });
+                };
+
+                const aplicarFiltrosTabla = () => {
+                    const queryTexto = inputTexto ? inputTexto.value.trim() : '';
+                    const queryBarcode = inputBarcode ? inputBarcode.value.trim() : '';
+
+                    // 1. Si hay código de barras escrito/escaneado, filtrar por código de barras (o código exacto)
+                    if (queryBarcode) {
+                        const barNorm = queryBarcode.toLowerCase();
+                        const porBarra = catalogoArticulos.filter(art =>
+                            (art.codigo_barras && String(art.codigo_barras).trim().toLowerCase().includes(barNorm)) ||
+                            String(art.numero || art.codigo || '').trim().toLowerCase() === barNorm
+                        );
+                        renderizarTabla(porBarra);
+                        return;
+                    }
+
+                    // 2. Si hay búsqueda por texto (grupo de caracteres separados por espacios = AND)
+                    if (queryTexto) {
+                        const terminos = normalizarTextoBusqueda(queryTexto).split(/\s+/).filter(Boolean);
+                        let filtrados = catalogoArticulos;
+                        for (const t of terminos) {
+                            filtrados = filtrados.filter(art => window.obtenerTextoBusquedaArticulo(art).includes(t));
+                        }
+                        renderizarTabla(filtrados);
+                        return;
+                    }
+
+                    // 3. Sin filtros activos: mostrar primero el último artículo configurado en la UP + el seleccionado + artículos con stock
+                    const listaInicial = [];
+                    const vistos = new Set();
+
+                    if (ultimoArticuloUP) {
+                        listaInicial.push(ultimoArticuloUP);
+                        vistos.add(String(ultimoArticuloUP.numero));
+                    }
+                    if (articuloSeleccionado && !vistos.has(String(articuloSeleccionado.numero))) {
+                        listaInicial.push(articuloSeleccionado);
+                        vistos.add(String(articuloSeleccionado.numero));
+                    }
+                    for (const art of catalogoArticulos) {
+                        const c = String(art.numero || art.codigo || '');
+                        if (!vistos.has(c)) {
+                            listaInicial.push(art);
+                            vistos.add(c);
+                        }
+                        if (listaInicial.length >= 40) break;
+                    }
+                    renderizarTabla(listaInicial);
+                };
+
+                // Inicializar tabla y estado al abrir el modal
+                actualizarEstadoBotonUltimo();
+                aplicarFiltrosTabla();
+
+                // Foco inicial en el lector de código de barras (o buscador)
+                if (inputBarcode) {
+                    setTimeout(() => inputBarcode.focus(), 80);
+
+                    const procesarEscaneoCodigoBarras = (valor) => {
+                        const codigo = String(valor || '').trim();
+                        if (!codigo) {
+                            aplicarFiltrosTabla();
+                            return;
+                        }
+                        const matchExacto = catalogoArticulos.find(art =>
+                            (art.codigo_barras && String(art.codigo_barras).trim().toLowerCase() === codigo.toLowerCase()) ||
+                            String(art.numero || art.codigo || '').trim().toLowerCase() === codigo.toLowerCase()
+                        );
+                        if (matchExacto) {
+                            if (inputTexto) inputTexto.value = '';
+                            seleccionarArticulo(matchExacto);
+                        } else {
+                            aplicarFiltrosTabla();
+                        }
+                    };
+
+                    inputBarcode.addEventListener('change', (e) => {
+                        procesarEscaneoCodigoBarras(e.target.value);
+                    });
+
+                    inputBarcode.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            procesarEscaneoCodigoBarras(inputBarcode.value);
+                        }
+                    });
+
+                    inputBarcode.addEventListener('input', () => {
+                        const val = inputBarcode.value.trim();
+                        if (!val) {
+                            aplicarFiltrosTabla();
+                            return;
+                        }
+                        // Si coincide exactamente con un código de barras, auto-seleccionar al instante
+                        const exacto = catalogoArticulos.find(art =>
+                            art.codigo_barras && String(art.codigo_barras).trim() === val
+                        );
+                        if (exacto) {
+                            if (inputTexto) inputTexto.value = '';
+                            seleccionarArticulo(exacto);
+                        } else {
+                            aplicarFiltrosTabla();
+                        }
+                    });
+                }
+
+                // Buscador por texto (por grupo de caracteres)
+                if (inputTexto) {
+                    inputTexto.addEventListener('input', () => {
+                        if (inputBarcode && inputBarcode.value) {
+                            inputBarcode.value = '';
+                        }
+                        aplicarFiltrosTabla();
+                    });
+
+                    inputTexto.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const queryTexto = inputTexto.value.trim();
+                            if (!queryTexto) return;
+                            const terminos = normalizarTextoBusqueda(queryTexto).split(/\s+/).filter(Boolean);
+                            let filtrados = catalogoArticulos;
+                            for (const t of terminos) {
+                                filtrados = filtrados.filter(art => window.obtenerTextoBusquedaArticulo(art).includes(t));
+                            }
+                            if (filtrados.length > 0) {
+                                seleccionarArticulo(filtrados[0]);
+                            }
+                        }
+                    });
+                }
+
+                // Botón de Selección Rápida del último artículo configurado en la UP
+                if (btnUltimo && ultimoArticuloUP) {
+                    btnUltimo.addEventListener('click', () => {
+                        if (inputTexto) inputTexto.value = '';
+                        if (inputBarcode) inputBarcode.value = '';
+                        seleccionarArticulo(ultimoArticuloUP);
+                    });
+                }
+
+                if (inputCant) {
+                    inputCant.addEventListener('input', () => {
+                        if (articuloSeleccionado) {
+                            const cantVal = parseFloat(inputCant.value) || 0;
+                            divKilos.textContent = `Equivalente en kilos de entrada: ${(cantVal * (articuloSeleccionado.kilos_unidad || 1)).toFixed(2)} kg`;
+                        }
+                    });
+                }
+            },
+            preConfirm: () => {
+                if (!articuloSeleccionado || !articuloSeleccionado.numero) {
+                    Swal.showValidationMessage('Debe escanear o seleccionar el artículo que se lleva a tostar.');
+                    return false;
+                }
+                const inputCant = document.getElementById('swal-input-cantidad-tostadero');
+                const cant = parseFloat(inputCant?.value);
+                if (!cant || isNaN(cant) || cant <= 0) {
+                    Swal.showValidationMessage('Ingrese una cantidad válida mayor a 0.');
+                    return false;
+                }
+                return {
+                    articulo_numero: articuloSeleccionado.numero,
+                    descripcion: articuloSeleccionado.descripcion,
+                    codigo_barras: articuloSeleccionado.codigo_barras,
+                    cantidad: cant
+                };
+            }
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                resolve(result.value);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
 // Función para marcar un carro como preparado
 export async function marcarCarroPreparado(carroIdParam) {
     const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -766,14 +1470,43 @@ export async function marcarCarroPreparado(carroIdParam) {
             throw new Error('No se encontró información del colaborador activo');
         }
 
+        // Consultar el estado y línea de negocio del carro para verificar si es Producción de Tostadero (Línea 4)
+        let articuloLlevadoPayload = null;
+        try {
+            const estadoRes = await fetch(`/api/produccion/carro/${carroId}/estado`);
+            if (estadoRes.ok) {
+                const estadoCarro = await estadoRes.json();
+                const esExterno = estadoCarro.tipo_carro === 'externa';
+                const lineaNegocio = Number(estadoCarro.linea_negocio || 4);
+                if (esExterno && lineaNegocio === 4) {
+                    const seleccion = await solicitarArticuloLlevadoTostadero(carroId, colaborador.id);
+                    if (!seleccion) {
+                        // Usuario canceló el modal: restaurar botón y abortar sin error
+                        btnCarroPreparado.disabled = false;
+                        btnCarroPreparado.classList.remove('procesando');
+                        btnCarroPreparado.textContent = 'Carro listo para producir';
+                        return;
+                    }
+                    articuloLlevadoPayload = seleccion;
+                }
+            }
+        } catch (errCheck) {
+            console.warn('Aviso al verificar línea de negocio del carro:', errCheck);
+        }
+
+        const bodyPayload = {
+            usuarioId: colaborador.id
+        };
+        if (articuloLlevadoPayload) {
+            bodyPayload.articulo_llevado = articuloLlevadoPayload;
+        }
+
         const response = await fetch(`/api/produccion/carro/${carroId}/preparado`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                usuarioId: colaborador.id
-            })
+            body: JSON.stringify(bodyPayload)
         });
 
         if (!response.ok) {
@@ -783,6 +1516,16 @@ export async function marcarCarroPreparado(carroIdParam) {
 
         // Mostrar notificación de éxito
         mostrarNotificacion('Carro marcado como preparado exitosamente');
+
+        // ⏱️ Sincronizar automáticamente el avance a Etapa 2 si la medición temporal estaba en preparación (Etapa 1)
+        if (window.hudMedicion && window.hudMedicion.modoActivo && window.hudMedicion.etapaActual === 1) {
+            console.log('⏱️ Sincronizando avance a Etapa 2 (Producción) desde marcarCarroPreparado...');
+            try {
+                await window.hudMedicion.avanzarEtapaBackend(2);
+            } catch (errMed) {
+                console.warn('Aviso al sincronizar avance a Etapa 2:', errMed);
+            }
+        }
 
         console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI...');
 
@@ -824,6 +1567,14 @@ export async function marcarCarroPreparado(carroIdParam) {
                 }
                 console.log('✅ [PREPARADO] Resumen de artículos externos actualizado');
             }
+        }
+
+        // 4. Actualizar lista de artículos del carro y el informe de ingresos manuales/receta UP
+        if (window.mostrarArticulosDelCarro) {
+            await window.mostrarArticulosDelCarro();
+        }
+        if (window.actualizarInformeIngresosManuales) {
+            await window.actualizarInformeIngresosManuales();
         }
 
         console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
@@ -996,7 +1747,198 @@ export async function finalizarProduccion(carroIdParam) {
             kilosProducidos = null; // Asegurar que sea null para carros internos
         }
 
-        console.log(`🔍 Enviando al backend - Tipo: ${tipoCarro}, Kilos: ${kilosProducidos}`);
+        // 🌐 PRE-CÁLCULO Y CONFIRMACIÓN DE LIQUIDACIÓN PARA CARRO EXTERNO
+        let totalCrudoVal = null;
+        if (tipoCarro === 'externa') {
+            let relacion = null;
+            let tarifa = null;
+            let creditoCalculado = 0;
+            
+            // Leer valores de merma del DOM
+            const txtCrudo = document.getElementById('total-crudo')?.textContent || '0.00 kg';
+            const txtDiferencia = document.getElementById('diferencia-peso')?.textContent || '0.00 kg';
+            const txtPorcentaje = document.getElementById('porcentaje-reduccion')?.textContent || '0.00%';
+            totalCrudoVal = parseFloat(txtCrudo.replace(' kg', '')) || 0;
+            
+            // Calcular suma de ingredientes vinculados agregados en caliente (únicamente post-cocción)
+            let sumaVinculadosVal = 0;
+            const filasVinculadas = document.querySelectorAll('.ingrediente-vinculado');
+            filasVinculadas.forEach(fila => {
+                if (fila.dataset.esPostCoccion === 'true') {
+                    const baseKilo = parseFloat(fila.dataset.baseKilo) || 0;
+                    sumaVinculadosVal += baseKilo * kilosProducidos;
+                }
+            });
+            sumaVinculadosVal = Number(sumaVinculadosVal.toFixed(3));
+            
+            try {
+                // 1. Consultar relaciones de artículos del carro para saber el SKU de salida
+                const relRes = await fetch(`/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
+                if (relRes.ok) {
+                    const rels = await relRes.json();
+                    if (rels && rels.length > 0) {
+                        relacion = rels[0];
+                    }
+                }
+                
+                // 2. Si hay relación, buscar tarifa de rendimiento activa (mismo origen primero, fallback puerto 3005)
+                if (relacion && relacion.articulo_kilo_codigo) {
+                    const skuEncoded = encodeURIComponent(relacion.articulo_kilo_codigo);
+                    let tarRes = await fetch(`/api/produccion/colaboradores/tarifa-rendimiento?colaborador_id=${colaborador.id}&sku=${skuEncoded}`).catch(() => null);
+                    if (!tarRes || !tarRes.ok) {
+                        const host = window.location.hostname || 'localhost';
+                        tarRes = await fetch(`http://${host}:3005/api/logistica/bunker/colaboradores/tarifa-rendimiento?colaborador_id=${colaborador.id}&sku=${skuEncoded}`).catch(() => null);
+                    }
+                    if (tarRes && tarRes.ok) {
+                        const tarData = await tarRes.json();
+                        if (tarData && tarData.success && tarData.data) {
+                            tarifa = tarData.data;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('No se pudo pre-consultar tarifas para confirmación:', err);
+            }
+            
+            let htmlConfirm = '';
+            let confirmBtnColor = '#10b981';
+            let iconType = 'question';
+
+            const ldnMeta = window.carroActivoMetadata || {};
+            const ldnNum = ldnMeta.linea_negocio || 4;
+            const ldnNombre = ldnMeta.nombre_linea_negocio || `Línea de Negocio ${ldnNum}`;
+            const ldnIcono = ldnMeta.icono_linea_negocio || (ldnNum === 4 ? '🔥' : ldnNum === 5 ? '🍫' : '🥣');
+            const ldnSubtitulo = ldnMeta.subtitulo_linea_negocio || (ldnNum === 4 ? 'Tostadero (UP Externa Simple)' : ldnNum === 5 ? 'Barritas (Mezcla Interna + UP Externa)' : 'Granolas (Doble Mezcla / UP Externa)');
+            
+            const ldnBadgeModal = `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.3em;">${ldnIcono}</span>
+                        <div>
+                            <div style="font-weight: bold; color: #1e293b; font-size: 0.9em;">${ldnNombre}</div>
+                            <div style="font-size: 0.75em; color: #64748b;">${ldnSubtitulo}</div>
+                        </div>
+                    </div>
+                    <span style="background: #e2e8f0; color: #334155; font-size: 0.72em; font-weight: 800; padding: 2px 7px; border-radius: 9999px;">FLUJO ${ldnNum}</span>
+                </div>
+            `;
+            
+            if (tarifa && relacion) {
+                let v_cantidad = kilosProducidos;
+                let calculoTexto = '';
+                
+                if (tarifa.unidad_medida === 'un') {
+                    const unidadesInput = document.getElementById('unidades-producidas');
+                    if (unidadesInput && !isNaN(parseFloat(unidadesInput.value))) {
+                        v_cantidad = parseFloat(unidadesInput.value);
+                    } else {
+                        v_cantidad = kilosProducidos * 20; // fallback standard
+                    }
+                    creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
+                    calculoTexto = `Cálculo: ${v_cantidad.toLocaleString('es-AR')} un × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/un`;
+                } else {
+                    v_cantidad = kilosProducidos + sumaVinculadosVal;
+                    creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
+                    calculoTexto = `Cálculo: (${kilosProducidos.toLocaleString('es-AR')} kg cocido + ${sumaVinculadosVal.toLocaleString('es-AR')} kg agregados) × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/kg`;
+                }
+
+                htmlConfirm = `
+                    <div style="text-align: left; font-size: 0.95em; line-height: 1.5;">
+                        ${ldnBadgeModal}
+                        <p style="margin: 4px 0;"><strong>Colaborador:</strong> ${colaborador.nombre_completo || 'Matías'}</p>
+                        <p style="margin: 4px 0;"><strong>Artículo:</strong> ${relacion.articulo_kilo_nombre || relacion.articulo_kilo_codigo} (${relacion.articulo_kilo_codigo})</p>
+                        
+                        <h4 style="margin-top: 15px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; font-size: 1.05em; color: #1e293b; font-weight: bold;">⚖️ Rendimiento y Merma Física</h4>
+                        <table style="width: 100%; font-size: 0.9em; margin-bottom: 15px; border-collapse: collapse;">
+                            <tr><td style="color:#64748b; padding: 4px 0;">Mezcla Cruda (Entrada):</td><td style="text-align: right; font-weight: bold;">${txtCrudo}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Salida de Cocción (Tostado):</td><td style="text-align: right; font-weight: bold; color: #2563eb;">${kilosProducidos.toFixed(2)} kg</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Ingredientes Vinculados Agregados:</td><td style="text-align: right; font-weight: bold; color: #16a34a;">+ ${sumaVinculadosVal.toFixed(3)} kg</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Diferencia de Peso Cocción:</td><td style="text-align: right; font-weight: bold; color: #dc2626;">${txtDiferencia}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Reducción por Cocción:</td><td style="text-align: right; font-weight: bold; color: #b45309;">${txtPorcentaje}</td></tr>
+                        </table>
+ 
+                        <h4 style="border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; font-size: 1.05em; color: #1e293b; font-weight: bold;">💰 Liquidación (Cuenta Corriente)</h4>
+                        <div style="background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; text-align: center; margin-top: 5px;">
+                            <span style="font-size: 0.85em; color: #64748b; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Monto a Acreditar</span>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #15803d; margin-top: 4px;">
+                                $ ${creditoCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS
+                            </div>
+                            <div style="font-size: 0.85em; color: #475569; margin-top: 4px; font-weight: 500;">
+                                ${calculoTexto}
+                            </div>
+                        </div>
+                        <p style="margin-top: 12px; font-size: 0.85em; color: #64748b; text-align: center; font-style: italic;">
+                            Se generará una orden de pago automática en su cuenta corriente.
+                        </p>
+                    </div>
+                `;
+            } else {
+                iconType = 'warning';
+                confirmBtnColor = '#f59e0b';
+                htmlConfirm = `
+                    <div style="text-align: left; font-size: 0.95em; line-height: 1.5;">
+                        ${ldnBadgeModal}
+                        <p style="margin: 4px 0;"><strong>Colaborador:</strong> ${colaborador.nombre_completo || 'Matías'}</p>
+                        <p style="margin: 4px 0;"><strong>Rendimiento Neto:</strong> ${kilosProducidos} kg</p>
+                        
+                        <h4 style="margin-top: 15px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; font-size: 1.05em; color: #1e293b; font-weight: bold;">⚖️ Rendimiento y Merma Física</h4>
+                        <table style="width: 100%; font-size: 0.9em; margin-bottom: 15px; border-collapse: collapse;">
+                            <tr><td style="color:#64748b; padding: 4px 0;">Mezcla Cruda (Entrada):</td><td style="text-align: right; font-weight: bold;">${txtCrudo}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Salida de Cocción (Tostado):</td><td style="text-align: right; font-weight: bold; color: #2563eb;">${kilosProducidos.toFixed(2)} kg</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Ingredientes Vinculados Agregados:</td><td style="text-align: right; font-weight: bold; color: #16a34a;">+ ${sumaVinculadosVal.toFixed(3)} kg</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Diferencia de Peso Cocción:</td><td style="text-align: right; font-weight: bold; color: #dc2626;">${txtDiferencia}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Reducción por Cocción:</td><td style="text-align: right; font-weight: bold; color: #b45309;">${txtPorcentaje}</td></tr>
+                        </table>
+                        
+                        <div style="margin-top: 12px; background: #fffbeb; padding: 12px; border-radius: 6px; border: 1px solid #fef3c7; color: #b45309; font-size: 0.85em;">
+                            ⚠️ <strong>Aviso:</strong> No se encontró tarifa de rendimiento activa para este artículo. La producción se asentará <strong>sin liquidación</strong> de pago en cuenta corriente.
+                        </div>
+                    </div>
+                `;
+            }
+            
+            const confirmResult = await Swal.fire({
+                title: tarifa ? '¿Confirmar liquidación y producción?' : '¿Confirmar producción?',
+                html: htmlConfirm,
+                icon: iconType,
+                showCancelButton: true,
+                confirmButtonText: tarifa ? '💾 Sí, asentar y liquidar' : '💾 Sí, asentar igualmente',
+                cancelButtonText: '❌ Cancelar y modificar',
+                confirmButtonColor: confirmBtnColor,
+                cancelButtonColor: '#64748b',
+                allowOutsideClick: false
+            });
+            
+            if (!confirmResult.isConfirmed) {
+                btnFinalizarProduccion.disabled = false;
+                btnFinalizarProduccion.classList.remove('procesando');
+                btnFinalizarProduccion.textContent = 'Asentar producción';
+                return;
+            }
+        } else {
+            const confirmResult = await Swal.fire({
+                title: '¿Asentar producción?',
+                text: 'Se registrarán los movimientos de stock central correspondientes.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, asentar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#64748b'
+            });
+            
+            if (!confirmResult.isConfirmed) {
+                btnFinalizarProduccion.disabled = false;
+                btnFinalizarProduccion.classList.remove('procesando');
+                btnFinalizarProduccion.textContent = 'Asentar producción';
+                return;
+            }
+        }
+
+        const unidadesInput = document.getElementById('unidades-producidas');
+        const unidadesVal = (unidadesInput && !isNaN(parseFloat(unidadesInput.value))) ? parseFloat(unidadesInput.value) : undefined;
+
+        console.log(`🔍 Enviando al backend - Tipo: ${tipoCarro}, Kilos: ${kilosProducidos}, Unidades: ${unidadesVal}, Entrada: ${totalCrudoVal}`);
 
         const response = await fetch(`/api/produccion/carro/${carroId}/finalizar`, {
             method: 'POST',
@@ -1005,17 +1947,31 @@ export async function finalizarProduccion(carroIdParam) {
             },
             body: JSON.stringify({
                 usuarioId: colaborador.id,
-                kilos_producidos: kilosProducidos
+                kilos_producidos: kilosProducidos,
+                unidades_producidas: unidadesVal,
+                kilos_entrada: totalCrudoVal
             })
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Error HTTP ${response.status}`);
+            const msg = errorData.detalle ? `${errorData.error}: ${errorData.detalle}` : (errorData.error || `Error HTTP ${response.status}`);
+            throw new Error(msg);
         }
 
         // Mostrar notificación de éxito
+                // Mostrar notificación de éxito
         mostrarNotificacion('Producción finalizada exitosamente');
+
+        // ⏱️ Sincronizar automáticamente el avance a Etapa 3 si la medición estaba en producción (Etapa 2)
+        if (window.hudMedicion && window.hudMedicion.modoActivo && window.hudMedicion.etapaActual === 2) {
+            console.log('⏱️ Sincronizando avance a Etapa 3 (Etiquetado y Guardado) desde finalizarProduccion...');
+            try {
+                await window.hudMedicion.avanzarEtapaBackend(3);
+            } catch (errMed) {
+                console.warn('Aviso al sincronizar avance a Etapa 3:', errMed);
+            }
+        }
 
         console.log('🔄 [FINALIZADO] Iniciando actualización completa de la UI...');
 
@@ -1057,6 +2013,13 @@ export async function finalizarProduccion(carroIdParam) {
                 }
                 console.log('✅ [FINALIZADO] Resumen de artículos externos actualizado');
             }
+        }
+
+        if (window.mostrarArticulosDelCarro) {
+            await window.mostrarArticulosDelCarro();
+        }
+        if (window.actualizarInformeIngresosManuales) {
+            await window.actualizarInformeIngresosManuales();
         }
 
         console.log('✅ [FINALIZADO] Actualización completa de UI finalizada');
@@ -1124,20 +2087,27 @@ export async function imprimirEtiquetasCarro(carroIdParam) {
 
         // Imprimir etiquetas para cada artículo según su cantidad
         for (const articulo of articulos) {
-            const imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const payloadArt = {
+                articulo: {
+                    numero: articulo.articulo_numero,
+                    nombre: articulo.descripcion,
+                    codigo_barras: articulo.codigo_barras
                 },
-                body: JSON.stringify({
-                    articulo: {
-                        numero: articulo.articulo_numero,
-                        nombre: articulo.descripcion,
-                        codigo_barras: articulo.codigo_barras
-                    },
-                    cantidad: articulo.cantidad
-                })
-            });
+                cantidad: articulo.cantidad
+            };
+            let imprimirResponse = await fetch('/api/produccion/articulos/imprimir-etiqueta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadArt)
+            }).catch(() => null);
+
+            if (!imprimirResponse || !imprimirResponse.ok) {
+                imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadArt)
+                });
+            }
 
             if (!imprimirResponse.ok) {
                 throw new Error(`Error al imprimir etiqueta para ${articulo.descripcion}`);
@@ -1177,44 +2147,33 @@ export const actualizarVisibilidadBotonPreparado = actualizarVisibilidadBotones;
  * 
  * ⚠️ VERSIÓN CON DEPURACIÓN AGRESIVA Y VISUALIZACIÓN FORZADA
  */
-async function calcularMermaProduccion(carroId) {
+async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
     console.log('🚀 [MERMA] ========================================');
     console.log('🚀 [MERMA] FUNCIÓN calcularMermaProduccion INICIADA');
-    console.log('🚀 [MERMA] Carro ID:', carroId);
+    console.log('🚀 [MERMA] Carro ID:', carroId, 'Previa:', mostrarPreviaCrudo);
     console.log('🚀 [MERMA] ========================================');
 
     try {
         // PASO 1: Verificar elementos del DOM
-        console.log('🔍 [MERMA-PASO-1] Buscando elementos del DOM...');
         const inputKilos = document.getElementById('kilos-producidos');
         const calculoMerma = document.getElementById('calculo-merma');
 
-        console.log('🔍 [MERMA-PASO-1] Input encontrado:', !!inputKilos);
-        console.log('🔍 [MERMA-PASO-1] Panel encontrado:', !!calculoMerma);
-
         if (!inputKilos || !calculoMerma) {
-            console.error('❌ [MERMA-PASO-1] FALLO: Elementos del DOM no encontrados');
             return;
         }
 
         // PASO 2: Obtener valor del input
-        console.log('🔍 [MERMA-PASO-2] Obteniendo valor del input...');
         const valorInput = inputKilos.value.replace(',', '.');
-        console.log('🔍 [MERMA-PASO-2] Valor raw del input:', valorInput);
-
         const kilosProducidos = parseFloat(valorInput);
-        console.log('🔍 [MERMA-PASO-2] Valor parseado:', kilosProducidos);
-        console.log('🔍 [MERMA-PASO-2] Es NaN?:', isNaN(kilosProducidos));
-        console.log('🔍 [MERMA-PASO-2] Es <= 0?:', kilosProducidos <= 0);
+        const tieneKilosValidos = !isNaN(kilosProducidos) && kilosProducidos > 0;
 
-        // Si no hay valor válido, ocultar el cálculo
-        if (isNaN(kilosProducidos) || kilosProducidos <= 0) {
-            console.log('⚠️ [MERMA-PASO-2] Valor inválido, ocultando panel');
+        // Si no hay valor válido y no estamos mostrando la previa en crudo, ocultar el cálculo
+        if (!tieneKilosValidos && !mostrarPreviaCrudo) {
             calculoMerma.style.display = 'none';
             return;
         }
 
-        console.log('✅ [MERMA-PASO-2] Valor válido, continuando...');
+        console.log('✅ [MERMA-PASO-2] Continuando (tieneKilosValidos:', tieneKilosValidos, ')...');
 
         // PASO 3: Obtener colaborador
         console.log('🔍 [MERMA-PASO-3] Obteniendo colaborador...');
@@ -1238,66 +2197,50 @@ async function calcularMermaProduccion(carroId) {
         console.log('✅ [MERMA-PASO-3] Colaborador OK, ID:', colaborador.id);
 
         // PASO 4: Obtener peso del artículo base (INSUMOS A RETIRAR)
-        console.log('🔍 [MERMA-PASO-4] Obteniendo peso artículo base (insumos a retirar)...');
+        console.log('🔍 [MERMA-PASO-4] Obteniendo peso artículo base mediante API articulos-resumen...');
         let pesoArticuloBase = 0;
 
         try {
-            // 🎯 ESTRATEGIA: Consultar stock_real_consolidado.kilos_unidad directamente
-            console.log('🔍 [MERMA-PASO-4] Consultando kilos_unidad desde stock_real_consolidado...');
+            // 🎯 ESTRATEGIA PRINCIPAL: Consultar /api/produccion/carro/${carroId}/articulos-resumen directamente
+            const resumenResponse = await fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${colaborador.id}`);
+            if (resumenResponse.ok) {
+                const insumos = await resumenResponse.json();
+                console.log(`✅ [MERMA-PASO-4] Insumos de receta obtenidos: ${insumos.length}`, insumos);
+                for (const ins of insumos) {
+                    const kTotales = parseFloat(ins.kilos_totales) || (parseFloat(ins.cantidad_total || 0) * (parseFloat(ins.kilos_unidad) || 1));
+                    pesoArticuloBase += kTotales;
+                    console.log(`   - Insumo ${ins.articulo_numero} (${ins.nombre}): ${kTotales} kg`);
+                }
+            } else {
+                console.warn(`⚠️ [MERMA-PASO-4] Falló articulos-resumen (${resumenResponse.status}), intentando fallback`);
+            }
 
-            // Primero obtener los códigos de artículos del carro
-            const tablaArticulos = document.querySelector('#resumen-articulos table tbody');
-
-            if (tablaArticulos) {
-                const filas = tablaArticulos.querySelectorAll('tr');
-                console.log('🔍 [MERMA-PASO-4] Artículos en tabla:', filas.length);
-
-                for (const fila of filas) {
-                    const celdas = fila.querySelectorAll('td');
-                    if (celdas.length >= 1) {
-                        const codigo = celdas[0]?.textContent.trim();
-                        console.log(`🔍 [MERMA-PASO-4] Consultando kilos_unidad para: ${codigo}`);
-
-                        // 🔧 CODIFICAR URL para manejar caracteres especiales como /
-                        const codigoCodificado = encodeURIComponent(codigo);
-                        const stockResponse = await fetch(`http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
-
-                        console.log(`🔍 [MERMA-PASO-4] URL: http://localhost:3002/api/produccion/stock/${codigoCodificado}`);
-                        console.log(`🔍 [MERMA-PASO-4] Response status: ${stockResponse.status}`);
-
-                        if (stockResponse.ok) {
-                            const stockData = await stockResponse.json();
-                            const kilosUnidad = parseFloat(stockData.kilos_unidad || 0);
-
-                            console.log(`✅ [MERMA-PASO-4] ${codigo}:`);
-                            console.log(`   - kilos_unidad: ${kilosUnidad} kg`);
-                            console.log(`   - stock_consolidado: ${stockData.stock_consolidado} kg`);
-
-                            pesoArticuloBase += kilosUnidad;
-                        } else {
-                            console.warn(`⚠️ [MERMA-PASO-4] Error ${stockResponse.status} para ${codigo}`);
-                            // Intentar leer el error
-                            try {
-                                const errorData = await stockResponse.json();
-                                console.warn(`⚠️ [MERMA-PASO-4] Detalle error:`, errorData);
-                            } catch (e) {
-                                console.warn(`⚠️ [MERMA-PASO-4] No se pudo leer el error`);
+            // Fallback si pesoArticuloBase sigue en 0: consultar stock_real_consolidado de la tabla del DOM
+            if (pesoArticuloBase <= 0) {
+                const tablaArticulos = document.querySelector('#resumen-articulos table tbody');
+                if (tablaArticulos) {
+                    const filas = tablaArticulos.querySelectorAll('tr');
+                    console.log('🔍 [MERMA-PASO-4 Fallback] Artículos en tabla:', filas.length);
+                    for (const fila of filas) {
+                        const celdas = fila.querySelectorAll('td');
+                        if (celdas.length >= 1) {
+                            const codigo = celdas[0]?.textContent.trim();
+                            const codigoCodificado = encodeURIComponent(codigo);
+                            const stockResponse = await fetch(`/api/produccion/stock/${codigoCodificado}`);
+                            if (stockResponse.ok) {
+                                const stockData = await stockResponse.json();
+                                const kilosUnidad = parseFloat(stockData.kilos_unidad || 0);
+                                pesoArticuloBase += kilosUnidad;
                             }
                         }
                     }
                 }
-
-                console.log(`✅ [MERMA-PASO-4] Peso total desde stock_real_consolidado: ${pesoArticuloBase} kg`);
-            } else {
-                console.warn('⚠️ [MERMA-PASO-4] No se encontró tabla de artículos externos');
             }
 
-            console.log(`✅ [MERMA-PASO-4] Peso total artículos base: ${pesoArticuloBase} kg`);
-
+            console.log(`✅ [MERMA-PASO-4] Peso total insumos base: ${pesoArticuloBase} kg`);
         } catch (error) {
             console.error('❌ [MERMA-PASO-4] ERROR:', error);
             console.error('❌ [MERMA-PASO-4] Stack:', error.stack);
-            // Continuar con peso 0
         }
 
         // PASO 5: Obtener peso de ingredientes
@@ -1305,7 +2248,7 @@ async function calcularMermaProduccion(carroId) {
         let pesoIngredientes = 0;
 
         try {
-            const urlIngredientes = `http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`;
+            const urlIngredientes = `/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`;
             console.log('🔍 [MERMA-PASO-5] URL ingredientes:', urlIngredientes);
 
             const ingredientesResponse = await fetch(urlIngredientes);
@@ -1332,32 +2275,31 @@ async function calcularMermaProduccion(carroId) {
         }
 
         // PASO 6: Calcular totales
-        console.log('🔍 [MERMA-PASO-6] Calculando totales...');
         const totalCrudo = pesoArticuloBase + pesoIngredientes;
-        const diferenciaPeso = kilosProducidos - totalCrudo;
-        const porcentajeReduccion = totalCrudo > 0 ? (Math.abs(diferenciaPeso) / totalCrudo) * 100 : 0;
-
-        console.log('📊 [MERMA-PASO-6] RESULTADOS:');
-        console.log(`   - Peso artículos base: ${pesoArticuloBase} kg`);
-        console.log(`   - Peso ingredientes: ${pesoIngredientes} kg`);
-        console.log(`   - Total en crudo: ${totalCrudo} kg`);
-        console.log(`   - Kilos producidos: ${kilosProducidos} kg`);
-        console.log(`   - Diferencia: ${diferenciaPeso} kg`);
-        console.log(`   - % Reducción: ${porcentajeReduccion}%`);
+        const diferenciaPeso = tieneKilosValidos ? (kilosProducidos - totalCrudo) : 0;
+        const porcentajeReduccion = (tieneKilosValidos && totalCrudo > 0) ? (Math.abs(diferenciaPeso) / totalCrudo) * 100 : 0;
 
         // PASO 7: Actualizar UI (SIEMPRE)
-        console.log('🔍 [MERMA-PASO-7] Actualizando UI...');
-
         document.getElementById('total-crudo').textContent = `${totalCrudo.toFixed(2)} kg`;
-        document.getElementById('kilos-final').textContent = `${kilosProducidos.toFixed(2)} kg`;
+        document.getElementById('kilos-final').textContent = tieneKilosValidos ? `${kilosProducidos.toFixed(2)} kg` : 'Pendiente (ingrese kilos o barritas)';
 
         const spanDiferencia = document.getElementById('diferencia-peso');
-        spanDiferencia.textContent = `${diferenciaPeso.toFixed(2)} kg`;
-        spanDiferencia.style.color = diferenciaPeso < 0 ? '#dc3545' : '#28a745';
+        if (tieneKilosValidos) {
+            spanDiferencia.textContent = `${diferenciaPeso.toFixed(2)} kg`;
+            spanDiferencia.style.color = diferenciaPeso < 0 ? '#dc3545' : '#28a745';
+        } else {
+            spanDiferencia.textContent = '-';
+            spanDiferencia.style.color = '#6c757d';
+        }
 
         const spanPorcentaje = document.getElementById('porcentaje-reduccion');
-        spanPorcentaje.textContent = `${porcentajeReduccion.toFixed(2)}%`;
-        spanPorcentaje.style.color = porcentajeReduccion > 15 ? '#dc3545' : porcentajeReduccion > 10 ? '#ffc107' : '#28a745';
+        if (tieneKilosValidos) {
+            spanPorcentaje.textContent = `${porcentajeReduccion.toFixed(2)}%`;
+            spanPorcentaje.style.color = porcentajeReduccion > 15 ? '#dc3545' : porcentajeReduccion > 10 ? '#ffc107' : '#28a745';
+        } else {
+            spanPorcentaje.textContent = '-';
+            spanPorcentaje.style.color = '#6c757d';
+        }
 
         // ⚠️ FORZAR VISUALIZACIÓN DEL PANEL
         calculoMerma.style.display = 'block';
@@ -1454,22 +2396,29 @@ export async function imprimirEtiquetasCarroConLote(carroIdParam) {
 
         // Imprimir etiquetas para cada artículo según su cantidad con lote
         for (const articulo of articulos) {
-            const imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const payloadLote = {
+                articulo: {
+                    numero: articulo.articulo_numero,
+                    nombre: articulo.descripcion,
+                    codigo_barras: articulo.codigo_barras
                 },
-                body: JSON.stringify({
-                    articulo: {
-                        numero: articulo.articulo_numero,
-                        nombre: articulo.descripcion,
-                        codigo_barras: articulo.codigo_barras
-                    },
-                    cantidad: articulo.cantidad,
-                    lote: `L-${carroId}`,
-                    fechas: fechasPayload
-                })
-            });
+                cantidad: articulo.cantidad,
+                lote: `L-${carroId}`,
+                fechas: fechasPayload
+            };
+            let imprimirResponse = await fetch('/api/produccion/articulos/imprimir-etiqueta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadLote)
+            }).catch(() => null);
+
+            if (!imprimirResponse || !imprimirResponse.ok) {
+                imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadLote)
+                });
+            }
 
             if (!imprimirResponse.ok) {
                 throw new Error(`Error al imprimir etiqueta para ${articulo.descripcion}`);
@@ -1494,3 +2443,156 @@ export async function imprimirEtiquetasCarroConLote(carroIdParam) {
 
 window.imprimirEtiquetasCarroConLote = imprimirEtiquetasCarroConLote;
 
+/**
+ * Imprime la etiqueta del Artículo Puente (ej: APTSPGXKPM) vinculado al carro de producción externa.
+ */
+export async function imprimirEtiquetaArticuloPuente(codigo, nombre, codigoBarras, carroIdParam) {
+    try {
+        const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+        let cod = String(codigo || '').trim();
+        let nom = String(nombre || '').trim();
+        let bar = String(codigoBarras || '').trim();
+
+        if (!cod) {
+            mostrarNotificacion('No se encontró el código del Artículo Puente', true);
+            return;
+        }
+
+        // Si falta el código de barras o el nombre, consultarlo en el catálogo de artículos
+        if (!bar || !nom) {
+            try {
+                const resCat = await fetch('/api/produccion/articulos');
+                if (resCat.ok) {
+                    const dataCat = await resCat.json();
+                    const lista = Array.isArray(dataCat) ? dataCat : (dataCat.data || dataCat.articulos || []);
+                    const match = lista.find(a => String(a.codigo || a.numero || a.articulo_numero || '').trim() === cod);
+                    if (match) {
+                        bar = bar || match.codigo_barras || cod;
+                        nom = nom || match.descripcion || match.nombre || cod;
+                    }
+                }
+            } catch (e) {
+                console.warn('No se pudo completar datos del Artículo Puente desde catálogo:', e);
+            }
+        }
+        if (!bar) bar = cod;
+        if (!nom) nom = cod;
+
+        let cantidadImprimir = 1;
+        let incluirLote = !!carroId;
+        let incluirFechas = false;
+
+        if (typeof Swal !== 'undefined') {
+            const result = await Swal.fire({
+                title: '🏷️ Imprimir Etiqueta — Artículo Puente',
+                width: '480px',
+                html: `
+                    <div style="text-align:left; font-family:inherit;">
+                        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+                            <div style="font-size:11.5px; font-weight:800; color:#1e40af; text-transform:uppercase;">🔗 Artículo Puente (Stock de Ventas)</div>
+                            <div style="font-size:15px; font-weight:700; color:#0f172a; margin-top:3px;">[${cod}] ${nom}</div>
+                            <div style="font-size:12px; color:#475569; margin-top:2px;">Código de barras: <strong>${bar}</strong></div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+                            <label for="swal-cant-etiquetas-puente" style="font-weight:700; font-size:13.5px; color:#0f172a;">
+                                🔢 Cantidad de etiquetas:
+                            </label>
+                            <input id="swal-cant-etiquetas-puente"
+                                   type="number"
+                                   min="1"
+                                   step="1"
+                                   value="1"
+                                   style="width:90px; padding:6px 10px; border:1.5px solid #94a3b8; border-radius:6px; font-size:15px; font-weight:700; text-align:center;" />
+                        </div>
+
+                        ${carroId ? `
+                            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#1e293b; cursor:pointer; margin-bottom:8px;">
+                                <input type="checkbox" id="swal-check-lote-puente" checked style="width:16px; height:16px; cursor:pointer;" />
+                                <span>Incluir número de lote (<strong>L-${carroId}</strong>)</span>
+                            </label>
+                        ` : ''}
+
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#1e293b; cursor:pointer;">
+                            <input type="checkbox" id="swal-check-fechas-puente" style="width:16px; height:16px; cursor:pointer;" />
+                            <span>Incluir fecha de elaboración y vencimiento (+8 meses)</span>
+                        </label>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '🖨️ Imprimir Etiqueta',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#16a34a',
+                cancelButtonColor: '#64748b',
+                preConfirm: () => {
+                    const cant = parseInt(document.getElementById('swal-cant-etiquetas-puente')?.value, 10);
+                    if (!cant || isNaN(cant) || cant < 1) {
+                        Swal.showValidationMessage('Ingrese una cantidad válida (mínimo 1).');
+                        return false;
+                    }
+                    const chkLote = document.getElementById('swal-check-lote-puente');
+                    const chkFechas = document.getElementById('swal-check-fechas-puente');
+                    return {
+                        cantidad: cant,
+                        lote: chkLote ? chkLote.checked : false,
+                        fechas: chkFechas ? chkFechas.checked : false
+                    };
+                }
+            });
+
+            if (!result.isConfirmed || !result.value) return;
+            cantidadImprimir = result.value.cantidad;
+            incluirLote = result.value.lote;
+            incluirFechas = result.value.fechas;
+        }
+
+        let fechasPayload = null;
+        if (incluirFechas) {
+            const d = new Date();
+            const elaboracion = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            const v = new Date();
+            v.setMonth(v.getMonth() + 8);
+            const vencimiento = `${String(v.getDate()).padStart(2, '0')}/${String(v.getMonth() + 1).padStart(2, '0')}/${v.getFullYear()}`;
+            fechasPayload = { elaboracion, vencimiento };
+        }
+
+        const payload = {
+            articulo: {
+                numero: cod,
+                nombre: nom,
+                codigo_barras: bar
+            },
+            cantidad: cantidadImprimir
+        };
+
+        if (incluirLote && carroId) {
+            payload.lote = `L-${carroId}`;
+            if (fechasPayload) payload.fechas = fechasPayload;
+        }
+
+        let imprimirResponse = await fetch('/api/produccion/articulos/imprimir-etiqueta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(() => null);
+
+        if (!imprimirResponse || !imprimirResponse.ok) {
+            imprimirResponse = await fetch('http://localhost:3000/api/imprimir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+
+        if (!imprimirResponse.ok) {
+            throw new Error(`Error al enviar etiqueta de ${cod} al servidor de impresión`);
+        }
+
+        mostrarNotificacion(`Etiqueta de ${cod} enviada a imprimir correctamente`);
+    } catch (error) {
+        console.error('Error al imprimir etiqueta del Artículo Puente:', error);
+        mostrarNotificacion(`Error al imprimir etiqueta: ${error.message}`, true);
+    }
+}
+
+window.imprimirEtiquetaArticuloPuente = imprimirEtiquetaArticuloPuente;

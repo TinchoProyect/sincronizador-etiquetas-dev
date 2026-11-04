@@ -7,10 +7,10 @@ const puppeteer = require('puppeteer');
  * @returns {Promise<Buffer>}
  */
 async function generarPDFPresupuestoBuffer(id, queryParams) {
-    const { formato, sololista, faltantes } = queryParams;
+    const { formato, sololista, faltantes, promos, pagos, intereses } = queryParams;
     let browser;
     try {
-        console.log(`📄 [PDF-BUFFER] Generando buffer para Presupuesto #${id}. Opciones: formato=${formato}, sololista=${sololista}, faltantes=${faltantes}`);
+        console.log(`📄 [PDF-BUFFER] Generando buffer para Presupuesto #${id}. Opciones: formato=${formato}, sololista=${sololista}, faltantes=${faltantes}, promos=${promos}, pagos=${pagos}, intereses=${intereses}`);
 
         browser = await puppeteer.launch({
             headless: 'new',
@@ -20,7 +20,7 @@ async function generarPDFPresupuestoBuffer(id, queryParams) {
         const page = await browser.newPage();
         
         // Construir la URL local del servidor central (3003) para renderizar la plantilla HTML
-        const pdfUrl = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${id}&formato=${formato || ''}${sololista === 'true' ? '&sololista=true' : ''}${faltantes === 'false' ? '&faltantes=false' : ''}`;
+        let pdfUrl = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${id}&formato=${formato || ''}${(sololista === 'true' || sololista === true) ? '&sololista=true' : ''}${(faltantes === 'false' || faltantes === false) ? '&faltantes=false' : ''}${(promos === 'true' || promos === true) ? '&promos=true' : ''}${(pagos === 'true' || pagos === true) ? '&pagos=true' : ''}${(intereses === 'true' || intereses === true) ? '&intereses=true' : ''}`;
         
         console.log(`📄 [PDF-BUFFER] Navegando (Headless) a: ${pdfUrl}`);
         
@@ -78,7 +78,7 @@ async function generarPDFPresupuesto(req, res) {
  */
 async function enviarPDFPresupuestoWhatsApp(req, res) {
     const { id } = req.params;
-    const { destinatarios, formato, sololista, faltantes, nombreCliente, estado } = req.body;
+    const { destinatarios, formato, sololista, faltantes, nombreCliente, estado, promos, pagos, intereses } = req.body;
 
     if (!id) {
         return res.status(400).json({ success: false, error: 'ID de presupuesto requerido' });
@@ -92,7 +92,7 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
         console.log(`📱 [WHATSAPP-BACK] Iniciando flujo de WhatsApp para Presupuesto #${id}`);
         
         // 1. Generar el PDF buffer
-        const pdfBuffer = await generarPDFPresupuestoBuffer(id, { formato, sololista, faltantes });
+        const pdfBuffer = await generarPDFPresupuestoBuffer(id, { formato, sololista, faltantes, promos, pagos, intereses });
         
         // 2. Convertir buffer a Base64
         const pdfBase64 = pdfBuffer.toString('base64');
@@ -105,9 +105,14 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
         const filename = `${id}-Presu-${cleanNombre}-${fechaHoy}.pdf`;
         
         // 4. Determinar mensaje (usar el enviado por el cliente o generar por defecto)
-        const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
-        const tituloDoc = estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
-        const defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${id} de LAMDA. Saludos.` + transferInfo;
+        let defaultMensaje = '';
+        if (sololista === 'true' || sololista === true) {
+            defaultMensaje = `Hola, te enviamos la consulta de precios de LAMDA. Saludos.`;
+        } else {
+            const transferInfo = '\n\n*Datos para transferencia:*\n*ALIAS:* LAMDA.SER.MARTIN';
+            const tituloDoc = estado === 'Orden de Retiro' ? 'Orden de Retiro / Devolución' : 'Presupuesto';
+            defaultMensaje = `Hola, te enviamos el ${tituloDoc.toLowerCase()} N° ${id} de LAMDA. Saludos.` + transferInfo;
+        }
         const mensajeTexto = req.body.mensajeTexto || defaultMensaje;
 
         console.log(`📱 [WHATSAPP-BACK] Despachando PDF por WhatsApp a destinatarios: "${destinatarios}"`);
@@ -130,10 +135,12 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
         
         if (!response.ok || !data.success) {
             console.error(`❌ [WHATSAPP-BACK] Error del servicio de mensajería (3004):`, data);
+            const detalleError = (data.detalles && data.detalles.length > 0 && data.detalles.map(d => d.error).filter(Boolean).join('; ')) || '';
             return res.status(response.status || 502).json({
                 success: false,
                 error: data.error || 'Error del servicio de mensajería',
-                message: data.message || 'No se pudo enviar el documento por WhatsApp.'
+                message: detalleError || data.message || 'No se pudo enviar el documento por WhatsApp.',
+                detalles: data.detalles
             });
         }
 
@@ -155,7 +162,7 @@ async function enviarPDFPresupuestoWhatsApp(req, res) {
  */
 async function enviarPDFPresupuestoEmail(req, res) {
     const { id } = req.params;
-    const { destinatarios, formato, sololista, faltantes } = req.body;
+    const { destinatarios, formato, sololista, faltantes, promos, pagos, intereses } = req.body;
 
     if (!id) {
         return res.status(400).json({ success: false, error: 'ID de presupuesto requerido' });
@@ -169,7 +176,7 @@ async function enviarPDFPresupuestoEmail(req, res) {
         console.log(`📧 [EMAIL-BACK] Iniciando flujo de Email para Presupuesto #${id}`);
         
         // 1. Generar el PDF buffer
-        const pdfBuffer = await generarPDFPresupuestoBuffer(id, { formato, sololista, faltantes });
+        const pdfBuffer = await generarPDFPresupuestoBuffer(id, { formato, sololista, faltantes, promos, pagos, intereses });
         const pdfBase64 = pdfBuffer.toString('base64');
         
         // 2. Obtener datos del cliente de la base de datos

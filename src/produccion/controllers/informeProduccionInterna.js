@@ -419,9 +419,91 @@ async function obtenerProduccionMensual(req, res) {
     }
 }
 
+/**
+ * Obtener diagnóstico determinista y plan de producción para el Lunes a la Mañana
+ * GET /api/produccion/informe/planificacion-lunes
+ */
+const { 
+    obtenerAnalisisPlanificacionLunes,
+    obtenerInformeComprasProveedores 
+} = require('../services/planificacionProduccionService');
+
+async function obtenerPlanificacionLunes(req, res) {
+    try {
+        if (req.query.modo === 'plan_deposito_pizarra') {
+            delete require.cache[require.resolve('../services/planificacionProduccionService')];
+            delete require.cache[require.resolve('../../app-etiquetas/services/planTrabajoDepositoService')];
+            const { obtenerPlanTrabajoDeposito } = require('../../app-etiquetas/services/planTrabajoDepositoService');
+            const planDeposito = await obtenerPlanTrabajoDeposito(req.db || pool, {
+                forceRefresh: req.query.force === 'true'
+            });
+            return res.json(planDeposito);
+        }
+
+        const ventanaDias = parseInt(req.query.dias_demanda || req.query.ventana_dias || 14);
+        const diasObjetivo = parseInt(req.query.dias_objetivo || 21);
+        const tandaMixKg = parseInt(req.query.tanda_mix_kg || 10);
+
+        console.log(`📊 [INFORME-PROD] GET /planificacion-lunes (Ventana: ${ventanaDias}d, Objetivo: ${diasObjetivo}d, Tanda Mix: ${tandaMixKg}kg)`);
+
+        delete require.cache[require.resolve('../services/planificacionProduccionService')];
+        const { obtenerAnalisisPlanificacionLunes } = require('../services/planificacionProduccionService');
+
+        const resultado = await obtenerAnalisisPlanificacionLunes(
+            { ventanaDias, diasObjetivo, tandaMixKg },
+            req.db || pool
+        );
+
+        res.json(resultado);
+
+    } catch (error) {
+        console.error('❌ [INFORME-PROD] Error en obtenerPlanificacionLunes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al generar la planificación determinista de producción',
+            message: error.message
+        });
+    }
+}
+
+/**
+ * Obtener informe especializado para Compras a Proveedores
+ * GET /api/produccion/informe/compras-proveedores
+ */
+async function obtenerInformeCompras(req, res) {
+    try {
+        const diasDemanda = parseInt(req.query.demanda || 90);
+        const diasObjetivo = parseInt(req.query.objetivo || 30);
+        const soloFaltantes = req.query.solo_faltantes !== 'false';
+
+        console.log(`🛒 [INFORME-PROD] GET /compras-proveedores (Demanda: ${diasDemanda}d, Objetivo: ${diasObjetivo}d, SoloFaltantes: ${soloFaltantes})`);
+
+        delete require.cache[require.resolve('../services/planificacionProduccionService')];
+        const { obtenerInformeComprasProveedores } = require('../services/planificacionProduccionService');
+
+        const resultado = await obtenerInformeComprasProveedores(
+            { diasDemanda, diasObjetivo, soloFaltantes },
+            req.db || pool
+        );
+
+        res.json(resultado);
+
+    } catch (error) {
+        console.error('❌ [INFORME-PROD] Error en obtenerInformeCompras:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al generar el informe de compras a proveedores',
+            message: error.message
+        });
+    }
+}
+
 module.exports = {
     obtenerHistorialProduccion,
     obtenerProduccionPorPeriodo,
     obtenerRubrosSubrubros,
-    obtenerProduccionMensual
+    obtenerProduccionMensual,
+    obtenerPlanificacionLunes,
+    obtenerInformeCompras
 };
+

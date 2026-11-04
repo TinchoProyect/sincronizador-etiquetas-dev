@@ -439,22 +439,30 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
     vc_estado_actual.presupuesto_id_ext = articulosAProcesar[0].presupuesto_ext || articulosAProcesar[0].id_presupuesto_ext || '';
     
     let subtotalLineasPedidas = 0;
+    let initialEscaneados = 0;
     
     vc_estado_actual.articulos = articulosAProcesar.map(art => {
-        const pedida = art.pedido_total || art.cantidad || 0;
-        subtotalLineasPedidas += pedida;
+        const pedida = parseFloat(art.pedido_total || art.cantidad || 0);
+        const esIng = art.es_ingrediente === true;
+        const esSaldo = art.es_saldo_ingrediente === true;
+        subtotalLineasPedidas = Number((subtotalLineasPedidas + pedida).toFixed(4));
+        if (esIng) initialEscaneados = Number((initialEscaneados + pedida).toFixed(4));
+        
         return {
             codigo_principal: art.articulo_numero || art.codigo,
             codigo_barras: (art.codigo_barras || '').toString().trim(),
             descripcion: art.descripcion,
             pedido_total: pedida,
-            cantidad_escaneada: 0,
-            completado: false
+            cantidad_escaneada: esIng ? pedida : 0,
+            completado: esIng ? true : false,
+            es_ingrediente: esIng,
+            es_saldo_ingrediente: esSaldo,
+            kilos_saldo: art.kilos_saldo || 0
         };
     });
     
     vc_estado_actual.total_pedidos = subtotalLineasPedidas;
-    vc_estado_actual.total_escaneados = 0;
+    vc_estado_actual.total_escaneados = initialEscaneados;
     vc_estado_actual.errores = {}; // Reset de matriz de errores
     window.rejectedScans = []; // Reset Inmutable
     vc_renderizarErrores(); // Purga visual del modal
@@ -520,30 +528,33 @@ function vc_procesarArticuloFisico(codigo_escaneado) {
     }
 
     // EXCEPCIÓN 1: OVERSCANNING
-    if (itemAsociado.cantidad_escaneada >= itemAsociado.pedido_total) {
+    if (itemAsociado.cantidad_escaneada >= itemAsociado.pedido_total - 0.0005) {
         vc_beepError();
         vc_registrarError(itemAsociado.codigo_principal || term, itemAsociado.descripcion, true, false);
         vc_mostrarFeedback(`EXCESO (Overscan): El artículo "${itemAsociado.descripcion}" ya está completo (${itemAsociado.pedido_total}/${itemAsociado.pedido_total}).`, "error");
         return;
     }
 
-    // FLUJO FELIZ: Incremento de unidad
-    itemAsociado.cantidad_escaneada += 1;
-    vc_estado_actual.total_escaneados += 1;
+    // FLUJO FELIZ: Incremento de unidad (si es saldo de ingrediente o fracción < 1, completa el paquete en 1 lectura)
+    const restante = Number((itemAsociado.pedido_total - itemAsociado.cantidad_escaneada).toFixed(4));
+    const incremento = (itemAsociado.es_saldo_ingrediente || itemAsociado.pedido_total < 1 || restante < 1) ? restante : 1;
+
+    itemAsociado.cantidad_escaneada = Number((itemAsociado.cantidad_escaneada + incremento).toFixed(4));
+    vc_estado_actual.total_escaneados = Number((vc_estado_actual.total_escaneados + incremento).toFixed(4));
     
-    if (itemAsociado.cantidad_escaneada === itemAsociado.pedido_total) {
+    if (Math.abs(itemAsociado.cantidad_escaneada - itemAsociado.pedido_total) < 0.001 || itemAsociado.cantidad_escaneada >= itemAsociado.pedido_total) {
         itemAsociado.completado = true;
     }
 
     vc_beepSuccess();
-    vc_mostrarFeedback(`✅ +1 ${itemAsociado.descripcion} (${itemAsociado.cantidad_escaneada}/${itemAsociado.pedido_total})`, "success");
+    vc_mostrarFeedback(`✅ +${incremento} ${itemAsociado.descripcion} (${itemAsociado.cantidad_escaneada}/${itemAsociado.pedido_total})`, "success");
     
     // Re-render UI
     vc_actualizarFilaArticulo(indexEnArray);
     vc_actualizarBarraDeProgreso();
     
-    // Comprobación de final de pedido
-    if (vc_estado_actual.total_escaneados === vc_estado_actual.total_pedidos) {
+    // Comprobación de final de pedido (tolerancia flotante para fracciones ej: 0.36)
+    if (Math.abs(vc_estado_actual.total_escaneados - vc_estado_actual.total_pedidos) < 0.001 || vc_estado_actual.total_escaneados >= vc_estado_actual.total_pedidos) {
         vc_cerrarPedidoAutomáticamente();
     }
 }
@@ -667,14 +678,20 @@ function vc_renderizarTablaArticulos() {
         const tdEstado = document.createElement('td');
         tdEstado.id = `vc-cell-estado-${index}`;
         tdEstado.style.textAlign = 'center';
-        tdEstado.textContent = art.completado ? '✅' : '⏳';
+        tdEstado.textContent = art.es_ingrediente ? '✅ KIT' : (art.completado ? '✅' : '⏳');
         
         // Detalles
         const tdCod = document.createElement('td');
         tdCod.textContent = art.codigo_principal;
         
         const tdDesc = document.createElement('td');
-        tdDesc.textContent = art.descripcion;
+        if (art.es_ingrediente) {
+            tdDesc.innerHTML = `${art.descripcion || '-'} <span style="font-size: 0.85em; color: #64748b; font-style: italic;">(Stock Cliente)</span>`;
+        } else if (art.es_saldo_ingrediente) {
+            tdDesc.innerHTML = `${art.descripcion || '-'} <span style="font-size: 0.8em; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;">⚖️ Saldo Ingrediente${art.kilos_saldo ? ': ' + art.kilos_saldo + ' kg' : ''}</span>`;
+        } else {
+            tdDesc.textContent = art.descripcion;
+        }
         
         // Pedido Total
         const tdPed = document.createElement('td');

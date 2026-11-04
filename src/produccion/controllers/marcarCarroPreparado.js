@@ -10,7 +10,7 @@ const { registrarMovimientoStockUsuarioFIFO } = require('./ingredientesStockUsua
 async function marcarCarroPreparado(req, res) {
     const db = req.db;
     const { id: carroId } = req.params;
-    const { usuarioId } = req.body;
+    const { usuarioId, articulo_llevado, articulos_llevados } = req.body;
 
     if (!carroId || !usuarioId) {
         return res.status(400).json({
@@ -98,20 +98,8 @@ async function marcarCarroPreparado(req, res) {
         // Validación mejorada para carros externos
         if (!ingredientesConsolidados || ingredientesConsolidados.length === 0) {
             if (carro.tipo_carro === 'externa') {
-                console.log('⚠️ Carro externo sin ingredientes - verificando si tiene artículos vinculados...');
-
-                // Verificar si hay artículos vinculados configurados
-                const { obtenerRelacionesCarro } = require('./relacionesArticulos');
-                const relaciones = await obtenerRelacionesCarro(carroId, usuarioId);
-
-                if (relaciones && relaciones.length > 0) {
-                    console.log('✅ Carro externo con vínculos pero sin ingredientes - permitir continuar');
-                    console.log(`🔗 Relaciones encontradas: ${relaciones.length}`);
-                    // Para carros externos con vínculos pero sin ingredientes, crear array vacío
-                    ingredientesConsolidados = [];
-                } else {
-                    throw new Error('Carro de producción externa sin artículos vinculados configurados');
-                }
+                console.log('⚠️ Carro externo sin ingredientes - permitiendo continuar para asignación/vinculación');
+                ingredientesConsolidados = [];
             } else {
                 throw new Error('No se encontraron ingredientes para los artículos del carro');
             }
@@ -145,18 +133,10 @@ async function marcarCarroPreparado(req, res) {
             return true;
         });
 
-        // ✅ MODIFICACIÓN CLAVE: Permitir continuar con 0 ingredientes válidos para carros externos con vínculos
+        // ✅ MODIFICACIÓN CLAVE: Permitir continuar con 0 ingredientes válidos para carros externos
         if (ingredientesValidos.length === 0) {
             if (carro.tipo_carro === 'externa') {
-                console.log('✅ Carro externo sin ingredientes válidos - verificando vínculos...');
-                const { obtenerRelacionesCarro } = require('./relacionesArticulos');
-                const relaciones = await obtenerRelacionesCarro(carroId, usuarioId);
-
-                if (relaciones && relaciones.length > 0) {
-                    console.log('✅ Carro externo con vínculos - saltando movimientos de ingredientes');
-                } else {
-                    throw new Error('No se encontraron ingredientes válidos ni vínculos configurados');
-                }
+                console.log('✅ Carro externo sin ingredientes de almacén - saltando movimientos de ingredientes');
             } else {
                 throw new Error('No se encontraron ingredientes válidos para registrar movimientos');
             }
@@ -340,9 +320,65 @@ async function marcarCarroPreparado(req, res) {
                 console.log('⚠️ Sin ingredientes válidos - saltando movimientos de ingredientes');
             }
 
-            // NUEVO: Obtener artículos de recetas y registrar movimientos en stock_ventas_movimientos
+            // NUEVO: Obtener artículos a descontar (override explícito para Tostadero L4 o receta por defecto)
             const { obtenerArticulosDeRecetas } = require('./carroIngredientes');
-            const articulosRecetas = await obtenerArticulosDeRecetas(carroId, usuarioId);
+            let articulosRecetas = [];
+
+            const listaOverride = Array.isArray(articulos_llevados) && articulos_llevados.length > 0
+                ? articulos_llevados
+                : (articulo_llevado && articulo_llevado.articulo_numero ? [articulo_llevado] : null);
+
+            if (listaOverride) {
+                console.log('🥜 [TOSTADERO / OVERRIDE] Usando artículo(s) seleccionado(s) manualmente al retirar:', listaOverride);
+                for (const item of listaOverride) {
+                    const numArt = String(item.articulo_numero || '').trim();
+                    const cantArt = parseFloat(item.cantidad);
+                    if (!numArt || isNaN(cantArt) || cantArt <= 0) {
+                        throw new Error(`Artículo o cantidad inválida para retiro externo: ${numArt} (${item.cantidad})`);
+                    }
+                    const { rows: [artInfo] } = await db.query(
+                        'SELECT numero, nombre, codigo_barras FROM articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1',
+                        [numArt]
+                    );
+                    articulosRecetas.push({
+                        articulo_numero: artInfo ? artInfo.numero : numArt,
+                        descripcion: artInfo ? artInfo.nombre : (item.descripcion || numArt),
+                        cantidad: Number(cantArt.toPrecision(10)),
+                        codigo_barras: artInfo ? (artInfo.codigo_barras || '') : (item.codigo_barras || '')
+                    });
+                }
+
+                // Actualizar el artículo configurado en la receta de la UP para que quede como el último artículo de la UP
+                if (articulosRecetas.length === 1) {
+                    try {
+                        const { rows: upRows } = await db.query(
+                            `SELECT r.id as receta_id
+                             FROM carros_articulos ca
+                             JOIN recetas r ON r.articulo_numero = ca.articulo_numero
+                             WHERE ca.carro_id = $1`,
+                            [carroId]
+                        );
+                        if (upRows.length === 1) {
+                            const recetaIdUp = upRows[0].receta_id;
+                            const { rows: raRows } = await db.query(
+                                'SELECT id FROM receta_articulos WHERE receta_id = $1 ORDER BY id ASC',
+                                [recetaIdUp]
+                            );
+                            if (raRows.length === 1) {
+                                await db.query(
+                                    'UPDATE receta_articulos SET articulo_numero = $1 WHERE id = $2',
+                                    [articulosRecetas[0].articulo_numero, raRows[0].id]
+                                );
+                                console.log(`🔄 [TOSTADERO] Actualizado último artículo en receta de la UP (receta_id=${recetaIdUp}) -> ${articulosRecetas[0].articulo_numero}`);
+                            }
+                        }
+                    } catch (errUpdReceta) {
+                        console.warn('⚠️ No se pudo actualizar el último artículo en la receta de la UP:', errUpdReceta.message);
+                    }
+                }
+            } else {
+                articulosRecetas = await obtenerArticulosDeRecetas(carroId, usuarioId);
+            }
 
             console.log('\n🔍 ===== DIAGNÓSTICO TÉCNICO - EGRESO POR RECETA EXTERNA =====');
             console.log(`📋 CARRO ID: ${carroId}`);

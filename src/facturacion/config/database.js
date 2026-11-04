@@ -18,6 +18,11 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000,
 });
 
+// Catch pool errors to prevent process crashes on idle connection losses
+pool.on('error', (err) => {
+    console.error('⚠️ [DB-FACTURACION] Unexpected error on idle client:', err.message);
+});
+
 /**
  * Verificar conexión al iniciar
  */
@@ -207,6 +212,34 @@ const inicializarTablasBancarias = async () => {
             CREATE INDEX IF NOT EXISTS idx_fin_cheques_cliente ON public.fin_cheques_vinculados(cliente_id);
         `);
 
+        // 3c. Crear tabla local para registrar el aprendizaje y memoria de alias bancarios de clientes
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.fin_alias_bancarios_clientes (
+                id SERIAL PRIMARY KEY,
+                cliente_id INTEGER NOT NULL REFERENCES public.bunker_clientes(id) ON DELETE CASCADE,
+                cuit_origen VARCHAR(20) DEFAULT NULL,
+                cbu_cvu_origen VARCHAR(30) DEFAULT NULL,
+                titular_origen VARCHAR(255) DEFAULT NULL,
+                veces_vinculado INTEGER NOT NULL DEFAULT 1,
+                origen VARCHAR(50) DEFAULT 'MANUAL',
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_fin_alias_cliente_cuit 
+            ON public.fin_alias_bancarios_clientes (cliente_id, cuit_origen) 
+            WHERE cuit_origen IS NOT NULL;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_fin_alias_cliente_cbu 
+            ON public.fin_alias_bancarios_clientes (cliente_id, cbu_cvu_origen) 
+            WHERE cbu_cvu_origen IS NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_fin_alias_cuit ON public.fin_alias_bancarios_clientes(cuit_origen);
+            CREATE INDEX IF NOT EXISTS idx_fin_alias_cbu ON public.fin_alias_bancarios_clientes(cbu_cvu_origen);
+            CREATE INDEX IF NOT EXISTS idx_fin_alias_titular ON public.fin_alias_bancarios_clientes(titular_origen);
+            CREATE INDEX IF NOT EXISTS idx_fin_alias_cliente ON public.fin_alias_bancarios_clientes(cliente_id);
+        `);
+
         // 4. Sembrado (Seed) de la cuenta Galicia por defecto
         const checkCuenta = await client.query('SELECT COUNT(*) FROM public.fin_cuentas_bancarias');
         if (parseInt(checkCuenta.rows[0].count) === 0) {
@@ -251,6 +284,38 @@ const inicializarTablasBancarias = async () => {
 };
 
 /**
+ * Asegura la existencia de las columnas para la foto contable permanente de costos en facturación
+ */
+const inicializarColumnasFotoCostos = async () => {
+    try {
+        await pool.query(`
+            ALTER TABLE public.factura_facturas
+            ADD COLUMN IF NOT EXISTS alicuota_iibb NUMERIC(5, 2) DEFAULT 4.00,
+            ADD COLUMN IF NOT EXISTS imp_iibb NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS imp_dif_iva NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_mercaderia_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_mano_obra_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_insumos_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS ganancia_sin_iibb_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS ganancia_real_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS foto_capturada BOOLEAN DEFAULT FALSE;
+
+            ALTER TABLE public.factura_factura_items
+            ADD COLUMN IF NOT EXISTS articulo_id VARCHAR(50) DEFAULT NULL,
+            ADD COLUMN IF NOT EXISTS costo_mercaderia_unitario NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_mano_obra_unitario NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_insumos_unitario NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_mercaderia_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_mano_obra_total NUMERIC(15, 2) DEFAULT 0.00,
+            ADD COLUMN IF NOT EXISTS costo_insumos_total NUMERIC(15, 2) DEFAULT 0.00;
+        `);
+        console.log('✅ [FACTURACION-DB] Columnas de foto contable permanente verificadas en factura_facturas y factura_factura_items.');
+    } catch (err) {
+        console.error('❌ [FACTURACION-DB] Error asegurando columnas de foto contable:', err.message);
+    }
+};
+
+/**
  * Verificar existencia de tablas requeridas
  * @returns {Promise<Object>} Estado de las tablas
  */
@@ -262,6 +327,13 @@ const verificarTablas = async () => {
         await inicializarTablasBancarias();
     } catch (err) {
         console.error('❌ [FACTURACION-DB] Error crítico al inicializar tablas bancarias:', err.message);
+    }
+
+    // Asegurar inicialización de columnas de foto contable
+    try {
+        await inicializarColumnasFotoCostos();
+    } catch (err) {
+        console.error('❌ [FACTURACION-DB] Error asegurando columnas de foto contable:', err.message);
     }
 
     const tablasRequeridas = [

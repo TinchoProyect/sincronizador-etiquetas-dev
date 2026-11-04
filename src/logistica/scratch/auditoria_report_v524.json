@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-08-01T09:46:25-03:00",
+  "version": "v5.24",
+  "architecture_paradigm": "Erradicación del Fallback Backend (data: []) + Doble Candado Guardián Frontend (📭) + Estado Pasivo (👆) + RESTRICT Lógico (HTTP 400) + DELETE por Integer IDs",
+  "qa_matrix_results": {
+    "QA-0_AST_JS_Syntax_Validation": "100% PASS (bunkerTaxonomiaController.js, bunkerDiccionarioController.js & diccionario-bunker.js: 0 SyntaxError)",
+    "QA-1_Backend_API_Response_Clean": "100% PASS (GET /bunker-taxonomia/familias/42/categorias returns data: [] without queryFallback)",
+    "QA-2_Doble_Candado_Guardian_Frontend": "100% PASS (renderizarAcordeon aborts execution immediately if tienePlantillaExplicita=false, rendering 📭 empty state banner with 0 phantom rows)",
+    "QA-3_Passive_Wait_State_onChange": "100% PASS (familiaCambiada sets passive waiting card 👆 without automatic fetch)",
+    "QA-4_RESTRICT_Child_Dependencies_Check": "100% PASS (SELECT COUNT(*) detected child dependencies and aborted transaction with HTTP 400)",
+    "QA-5_Tear_down_Clean_Integer_Delete_Zero_F5": "100% PASS (Unlinked Produccion principal with 0 child dependencies, rowCount = 1, selectedOpt.remove() in real time)"
+  },
+  "database_backups_verified": {
+    "bunker_articulos_backup_v510": "162 rows active",
+    "bunker_relacion_backup_v511": "80 rows active"
+  }
+}

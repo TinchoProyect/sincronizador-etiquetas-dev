@@ -1,6 +1,6 @@
 /**
- * Módulo de Mapa Interactivo
- * Gestión del mapa con pin-drop para selección de ubicación
+ * Módulo de Mapa Interactivo (Estándar Módulo Logística)
+ * Replicación exacta del motor cartográfico y geolocalizador de DomiciliosUI.js
  */
 
 class MapaInteractivo {
@@ -14,315 +14,154 @@ class MapaInteractivo {
     }
     
     /**
-     * Inicializar mapa en un contenedor
+     * Inicializar mapa en un contenedor usando el motor de Google Maps Logística
      * @param {string} containerId - ID del contenedor HTML
      * @param {Object} opciones - Opciones de inicialización
      */
     async inicializar(containerId, opciones = {}) {
         const {
-            lat = -34.9214,  // La Plata por defecto
-            lng = -57.9545,
+            lat = -34.9205, // La Plata Centro por defecto
+            lng = -57.9536,
             zoom = 15,
             draggable = true
         } = opciones;
         
         try {
-            // Verificar que Google Maps esté cargado
             if (typeof google === 'undefined' || !google.maps) {
-                throw new Error('Google Maps no está cargado');
+                console.warn('[MAPA-LOGISTICA] Google Maps SDK no está disponible en este momento');
+                return;
             }
             
             const container = document.getElementById(containerId);
-            if (!container) {
-                throw new Error(`Contenedor ${containerId} no encontrado`);
-            }
+            if (!container) return;
             
-            // Crear mapa
+            const center = { lat, lng };
+            
             this.map = new google.maps.Map(container, {
-                center: { lat, lng },
+                center: center,
                 zoom: zoom,
                 mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: false,
-                zoomControl: true
+                zoomControl: true,
+                mapTypeId: 'roadmap',
+                gestureHandling: 'greedy'
             });
             
-            // Crear marker draggable
-            this.marker = new google.maps.Marker({
-                position: { lat, lng },
-                map: this.map,
-                draggable: draggable,
-                title: 'Arrastra para seleccionar ubicación',
-                animation: google.maps.Animation.DROP
-            });
-            
-            // Inicializar geocoder
             this.geocoder = new google.maps.Geocoder();
             
-            // Guardar coordenadas iniciales
+            this.marker = new google.maps.Marker({
+                position: center,
+                map: this.map,
+                draggable: draggable,
+                animation: google.maps.Animation.DROP,
+                title: 'Ubicación de entrega'
+            });
+            
             this.coordenadas = { lat, lng };
             
-            // Event listener para drag del marker
-            this.marker.addListener('dragend', (event) => {
-                this.actualizarCoordenadas(
-                    event.latLng.lat(),
-                    event.latLng.lng()
-                );
-            });
+            if (draggable) {
+                this.marker.addListener('dragend', () => {
+                    const pos = this.marker.getPosition();
+                    this.actualizarCoordenadas(pos.lat(), pos.lng());
+                });
+                
+                this.map.addListener('click', (e) => {
+                    const pos = e.latLng;
+                    this.marker.setPosition(pos);
+                    this.actualizarCoordenadas(pos.lat(), pos.lng());
+                });
+            }
             
-            // Event listener para click en el mapa
-            this.map.addListener('click', (event) => {
-                this.moverMarker(
-                    event.latLng.lat(),
-                    event.latLng.lng()
-                );
-            });
-            
-            console.log('[MAPA] Mapa inicializado correctamente');
-            
-            return true;
-            
-        } catch (error) {
-            console.error('[MAPA] Error al inicializar:', error);
-            throw error;
+            console.log('[MAPA-LOGISTICA] Mapa estándar de Logística inicializado correctamente');
+        } catch (err) {
+            console.error('[MAPA-LOGISTICA] Error al inicializar mapa:', err);
         }
     }
-    
-    /**
-     * Mover marker a una nueva posición
-     * @param {number} lat - Latitud
-     * @param {number} lng - Longitud
-     */
-    moverMarker(lat, lng) {
-        if (!this.marker) return;
-        
-        const position = { lat, lng };
-        this.marker.setPosition(position);
-        this.map.panTo(position);
-        
-        this.actualizarCoordenadas(lat, lng);
-    }
-    
-    /**
-     * Actualizar coordenadas y ejecutar callbacks
-     * @param {number} lat - Latitud
-     * @param {number} lng - Longitud
-     */
-    async actualizarCoordenadas(lat, lng) {
+
+    actualizarCoordenadas(lat, lng) {
         this.coordenadas = { lat, lng };
-        
-        console.log('[MAPA] Coordenadas actualizadas:', this.coordenadas);
-        
-        // Callback de coordenadas
         if (this.onCoordenadasChange) {
             this.onCoordenadasChange(lat, lng);
         }
-        
-        // Reverse geocoding automático
-        try {
-            const direccion = await this.reverseGeocode(lat, lng);
-            
-            if (direccion && this.onDireccionChange) {
-                this.onDireccionChange(direccion);
-            }
-        } catch (error) {
-            console.warn('[MAPA] Error en reverse geocoding:', error);
-        }
     }
     
     /**
-     * Reverse Geocoding: Obtener dirección desde coordenadas
-     * @param {number} lat - Latitud
-     * @param {number} lng - Longitud
-     * @returns {Promise<Object>} Datos de la dirección
-     */
-    async reverseGeocode(lat, lng) {
-        if (!this.geocoder) {
-            throw new Error('Geocoder no inicializado');
-        }
-        
-        return new Promise((resolve, reject) => {
-            this.geocoder.geocode(
-                { location: { lat, lng } },
-                (results, status) => {
-                    if (status === 'OK' && results[0]) {
-                        const result = results[0];
-                        
-                        // Extraer componentes de la dirección
-                        const componentes = this.extraerComponentes(result.address_components);
-                        
-                        const direccion = {
-                            direccion_completa: result.formatted_address,
-                            calle: componentes.route || '',
-                            numero: componentes.street_number || '',
-                            localidad: componentes.locality || componentes.administrative_area_level_2 || '',
-                            provincia: componentes.administrative_area_level_1 || '',
-                            codigo_postal: componentes.postal_code || '',
-                            pais: componentes.country || 'Argentina'
-                        };
-                        
-                        console.log('[MAPA] Reverse geocoding exitoso:', direccion);
-                        resolve(direccion);
-                        
-                    } else {
-                        console.warn('[MAPA] Reverse geocoding falló:', status);
-                        reject(new Error(`Geocoding falló: ${status}`));
-                    }
-                }
-            );
-        });
-    }
-    
-    /**
-     * Extraer componentes de dirección de Google Maps
-     * @param {Array} addressComponents - Componentes de Google Maps
-     * @returns {Object} Componentes extraídos
-     */
-    extraerComponentes(addressComponents) {
-        const componentes = {};
-        
-        addressComponents.forEach(component => {
-            const types = component.types;
-            
-            if (types.includes('street_number')) {
-                componentes.street_number = component.long_name;
-            }
-            if (types.includes('route')) {
-                componentes.route = component.long_name;
-            }
-            if (types.includes('locality')) {
-                componentes.locality = component.long_name;
-            }
-            if (types.includes('administrative_area_level_2')) {
-                componentes.administrative_area_level_2 = component.long_name;
-            }
-            if (types.includes('administrative_area_level_1')) {
-                componentes.administrative_area_level_1 = component.long_name;
-            }
-            if (types.includes('postal_code')) {
-                componentes.postal_code = component.long_name;
-            }
-            if (types.includes('country')) {
-                componentes.country = component.long_name;
-            }
-        });
-        
-        return componentes;
-    }
-    
-    /**
-     * Geocoding: Obtener coordenadas desde dirección
+     * Geocoding: Obtener coordenadas desde dirección mediante el Geocoder estándar de Google
      * @param {string} direccion - Dirección a geocodificar
-     * @returns {Promise<Object>} Coordenadas
+     * @returns {Promise<Object|null>} Coordenadas o null
      */
     async geocode(direccion) {
-        if (!this.geocoder) {
-            throw new Error('Geocoder no inicializado');
-        }
+        if (!this.geocoder || !direccion) return null;
         
-        return new Promise((resolve, reject) => {
-            this.geocoder.geocode(
-                { address: direccion + ', Argentina' },
-                (results, status) => {
-                    if (status === 'OK' && results[0]) {
-                        const location = results[0].geometry.location;
-                        const coordenadas = {
-                            lat: location.lat(),
-                            lng: location.lng()
-                        };
-                        
-                        console.log('[MAPA] Geocoding exitoso:', coordenadas);
-                        resolve(coordenadas);
-                        
-                    } else {
-                        console.warn('[MAPA] Geocoding falló:', status);
-                        reject(new Error(`Geocoding falló: ${status}`));
+        return new Promise((resolve) => {
+            const query = direccion.trim().toLowerCase().includes('argentina') ? direccion.trim() : `${direccion.trim()}, Argentina`;
+            
+            this.geocoder.geocode({ address: query }, (results, status) => {
+                if (status === 'OK' && results && results[0]) {
+                    const loc = results[0].geometry.location;
+                    const coords = { lat: loc.lat(), lng: loc.lng() };
+                    
+                    if (this.map && this.marker) {
+                        this.map.panTo(coords);
+                        this.marker.setPosition(coords);
+                        this.actualizarCoordenadas(coords.lat, coords.lng);
                     }
+                    console.log('[MAPA-LOGISTICA] Geocodificación exitosa:', coords);
+                    resolve(coords);
+                } else {
+                    console.log('[MAPA-LOGISTICA] Geocodificación sin resultados directos (status:', status, ')');
+                    resolve(null);
                 }
-            );
+            });
         });
     }
-    
+
     /**
-     * Centrar mapa en una dirección
-     * @param {string} direccion - Dirección a buscar
-     */
-    async centrarEnDireccion(direccion) {
-        try {
-            const coordenadas = await this.geocode(direccion);
-            this.moverMarker(coordenadas.lat, coordenadas.lng);
-            return coordenadas;
-        } catch (error) {
-            console.error('[MAPA] Error al centrar en dirección:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Obtener coordenadas actuales
-     * @returns {Object} Coordenadas {lat, lng}
-     */
-    obtenerCoordenadas() {
-        return { ...this.coordenadas };
-    }
-    
-    /**
-     * Posicionar marcador en coordenadas específicas (para edición)
+     * Reverse Geocoding: Obtener componentes de dirección a partir de lat/lng
      * @param {number} lat - Latitud
      * @param {number} lng - Longitud
+     * @returns {Promise<Object|null>} Componentes de dirección o null
      */
-    posicionarMarcador(lat, lng) {
-        if (!this.map || !this.marker) {
-            console.warn('[MAPA] Mapa no inicializado');
-            return;
-        }
+    async reverseGeocode(lat, lng) {
+        if (!this.geocoder || !lat || !lng) return null;
         
-        const position = { lat, lng };
-        
-        // Mover marcador
-        this.marker.setPosition(position);
-        
-        // Centrar mapa
-        this.map.setCenter(position);
-        this.map.setZoom(16);
-        
-        // Actualizar coordenadas internas
-        this.coordenadas = { lat, lng };
-        
-        // Disparar callback
-        if (this.onCoordenadasChange) {
-            this.onCoordenadasChange(lat, lng);
-        }
-        
-        // Hacer reverse geocoding
-        this.reverseGeocode(lat, lng).catch(err => {
-            console.warn('[MAPA] Error en reverse geocoding:', err);
+        return new Promise((resolve) => {
+            this.geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                if (status === 'OK' && results && results[0]) {
+                    const res = results[0];
+                    let calle = '', numero = '', localidad = '', provincia = '';
+                    
+                    if (res.address_components) {
+                        res.address_components.forEach(comp => {
+                            if (comp.types.includes('route')) calle = comp.long_name;
+                            if (comp.types.includes('street_number')) numero = comp.short_name;
+                            if (comp.types.includes('locality')) localidad = comp.long_name;
+                            if (comp.types.includes('administrative_area_level_1')) provincia = comp.long_name;
+                        });
+                    }
+                    
+                    const direccionStr = `${calle} ${numero}`.trim() || res.formatted_address.split(',')[0];
+                    const resultado = {
+                        direccion_completa: res.formatted_address,
+                        calle: direccionStr,
+                        localidad,
+                        provincia
+                    };
+                    
+                    if (this.onDireccionChange) {
+                        this.onDireccionChange(resultado);
+                    }
+                    
+                    resolve(resultado);
+                } else {
+                    resolve(null);
+                }
+            });
         });
-        
-        console.log('[MAPA] Marcador posicionado en:', lat, lng);
-    }
-    
-    /**
-     * Destruir mapa y limpiar recursos
-     */
-    destruir() {
-        if (this.marker) {
-            this.marker.setMap(null);
-            this.marker = null;
-        }
-        
-        if (this.map) {
-            this.map = null;
-        }
-        
-        this.geocoder = null;
-        this.coordenadas = { lat: null, lng: null };
-        this.onCoordenadasChange = null;
-        this.onDireccionChange = null;
-        
-        console.log('[MAPA] Mapa destruido');
     }
 }
 
-// Exportar para uso global
-window.MapaInteractivo = MapaInteractivo;
+if (typeof window !== 'undefined') {
+    window.MapaInteractivo = MapaInteractivo;
+}

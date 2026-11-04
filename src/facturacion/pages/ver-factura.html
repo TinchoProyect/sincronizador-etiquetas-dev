@@ -233,6 +233,12 @@
             border: 1px solid #cbd5e1;
         }
 
+        .badge.pendiente_facturacion {
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+
         /* Panel del Cliente */
         .client-panel {
             background-color: var(--bg-light);
@@ -595,7 +601,7 @@
             <button class="btn btn-primary" id="btn-whatsapp" onclick="enviarPorWhatsApp()" style="background-color: #10b981; border-color: #059669; display: none; color: white;">
                 🟢 Enviar por WhatsApp
             </button>
-            <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir Factura</button>
+            <button class="btn btn-primary" id="btn-print" onclick="window.print()">🖨️ Imprimir Factura</button>
         </div>
     </div>
 
@@ -705,6 +711,8 @@
                 badgeClass = 'rechazada';
             } else if (factura.estado === 'ANULADA') {
                 badgeClass = 'anulada';
+            } else if (factura.estado === 'PENDIENTE_FACTURACION') {
+                badgeClass = 'pendiente_facturacion';
             }
 
             const formatMoney = (num) => {
@@ -727,14 +735,20 @@
             };
 
             const ptoVtaInt = parseInt(factura.pto_vta || 0, 10);
+            const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte || 0, 10));
             const esTipoE = [19, 20, 21].includes(parseInt(factura.tipo_cbte || 0, 10));
             // No discriminar IVA si es puesto 2, puesto 90 o tipo E, pero SIEMPRE discriminar si es puesto 1
             const noDiscriminaIva = (ptoVtaInt === 2 || ptoVtaInt === 90 || esTipoE) && ptoVtaInt !== 1;
             const isPuesto90 = ptoVtaInt === 90;
+
+            // Actualizar botón de imprimir según tipo de comprobante
+            const btnPrint = document.getElementById('btn-print');
+            if (btnPrint) {
+                btnPrint.innerHTML = esNC ? '🖨️ Imprimir Nota de Crédito' : '🖨️ Imprimir Factura';
+            }
             
             let tipoComprobante = tiposComprobante[factura.tipo_cbte] || `Tipo ${factura.tipo_cbte}`;
             if (isPuesto90) {
-                const esNC = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
                 tipoComprobante = esNC ? 'Remito Entrega (NC)' : 'Presupuesto Aprobado';
             }
 
@@ -870,15 +884,30 @@
 
                 factura.items.forEach(item => {
                     const qtyVal = parseFloat(item.qty) || 0;
-                    const impTotalVal = parseFloat(item.imp_total) || 0;
-                    const pUnitVal = noDiscriminaIva ? (qtyVal > 0 ? impTotalVal / qtyVal : 0) : (parseFloat(item.p_unit) || 0);
-                    const subtotalVal = noDiscriminaIva ? impTotalVal : (qtyVal * (parseFloat(item.p_unit) || 0));
+                    // Guardarraíl: Si imp_total no está definido, intentar la suma de neto + iva, o multiplicar cant * p_unit
+                    const impTotalVal = parseFloat(item.imp_total) || 
+                                       (parseFloat(item.imp_neto || 0) + parseFloat(item.imp_iva || 0)) || 
+                                       (qtyVal * (parseFloat(item.p_unit) || 0)) || 
+                                       0;
+                    const pUnitVal = noDiscriminaIva 
+                        ? (qtyVal > 0 ? impTotalVal / qtyVal : 0) 
+                        : (parseFloat(item.p_unit) || (qtyVal > 0 ? impTotalVal / qtyVal : 0));
+                    const subtotalVal = noDiscriminaIva ? impTotalVal : (qtyVal * pUnitVal);
                     
                     const colIvaVal = noDiscriminaIva ? '' : `<td class="text-right">${obtenerAlicuotaIVA(item.alic_iva_id)}</td>`;
                     
+                    const rawDesc = item.descripcion || 'Sin descripción';
+                    const isSubItem = rawDesc.includes('↳') || rawDesc.includes('Stock Cliente') || rawDesc === '135' || rawDesc === '136';
+                    
+                    let descFormatted = rawDesc;
+                    if (rawDesc === '135') descFormatted = '↳ (Stock Cliente) Aceite de Coco';
+                    if (rawDesc === '136') descFormatted = '↳ (Stock Cliente) Miel';
+
+                    const tdDescStyle = isSubItem ? 'padding-left: 24px; color: #475569; font-style: italic; font-size: 0.93em; border-left: 3px solid #cbd5e1;' : '';
+                    
                     html += `
                         <tr>
-                            <td>${item.descripcion || 'Sin descripción'}</td>
+                            <td style="${tdDescStyle}">${descFormatted}</td>
                             <td class="text-right">${qtyVal}</td>
                             <td class="text-right">${formatMoney(pUnitVal)}</td>
                             ${colIvaVal}
@@ -927,7 +956,8 @@
                 }
             });
 
-            if (descuento > 0) {
+            // Solo para facturas heredadas históricas (Lomasoft) los ítems vienen sin descuento prorrateado
+            if (factura.es_heredada && descuento > 0) {
                 netoExento = netoExento * (1 - descuento);
                 netoGravado = netoGravado * (1 - descuento);
                 Object.keys(ivasPorAlicuota).forEach(codigo => {
@@ -1008,10 +1038,15 @@
                 }
             }
 
+            const totalIvaSum = Object.values(ivasPorAlicuota).reduce((sum, val) => sum + val, 0);
+            const impTotalCalculado = (parseFloat(factura.imp_total) > 0)
+                ? (parseFloat(factura.imp_total))
+                : ((descuento > 0 ? (netoGravado + netoExento) : subtotalAntesDescuento) + totalIvaSum + (parseFloat(factura.imp_trib) || 0));
+
             html += `
                     <tr style="border-top: 1.5px solid var(--primary-color);">
                         <td class="totals-label" style="font-size: 12px; font-weight: bold; color: var(--primary-color);">TOTAL:</td>
-                        <td class="totals-val total-val">${formatMoney(factura.imp_total)}</td>
+                        <td class="totals-val total-val">${formatMoney(impTotalCalculado)}</td>
                     </tr>
                 </table>
             </div>
@@ -1200,11 +1235,14 @@
 
             // Mostrar botón "Obtener CAE" si corresponde
             const btnCae = document.getElementById('btn-obtener-cae');
-            if ((factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA') && factura.requiere_afip && !factura.cae) {
+            if ((factura.estado === 'BORRADOR' || factura.estado === 'RECHAZADA' || factura.estado === 'PENDIENTE_FACTURACION') && factura.requiere_afip && !factura.cae) {
                 btnCae.style.display = 'inline-block';
                 if (factura.estado === 'RECHAZADA') {
                     btnCae.innerHTML = '🔄 Reintentar Emisión ARCA';
                     btnCae.className = 'btn btn-warning';
+                } else if (factura.estado === 'PENDIENTE_FACTURACION') {
+                    btnCae.innerHTML = '🚀 Obtener CAE (Facturación Diferida)';
+                    btnCae.className = 'btn btn-success';
                 } else {
                     btnCae.innerHTML = '📄 Obtener CAE de ARCA';
                     btnCae.className = 'btn btn-success';
@@ -1265,6 +1303,9 @@
                 if (result.success) {
                     alert('✅ CAE obtenido exitosamente: ' + result.data.cae);
                     console.log('✅ CAE obtenido:', result.data);
+                    if (window.opener && typeof window.opener.cargarFacturas === 'function') {
+                        try { window.opener.cargarFacturas(); } catch (e) {}
+                    }
                     window.location.reload();
                 } else {
                     throw new Error(result.detalle || result.message || 'Error al obtener CAE');
@@ -1427,84 +1468,186 @@
                 return;
             }
 
-            const raw = (currentFactura.whatsapp_facturas || '').trim();
-            if (!raw) {
-                Swal.fire({
-                    title: 'Sin números',
-                    text: 'Esta factura no tiene números de WhatsApp configurados.',
-                    icon: 'warning'
-                });
-                return;
-            }
-
-            let contacts = [];
-            if (raw.startsWith('[')) {
+            // 1. Mapear contactos de WhatsApp
+            const rawWp = (currentFactura.whatsapp_facturas || '').trim();
+            let wpContacts = [];
+            if (rawWp.startsWith('[')) {
                 try {
-                    contacts = JSON.parse(raw);
+                    wpContacts = JSON.parse(rawWp);
                 } catch(e) {}
-            }
-            if (!Array.isArray(contacts) || contacts.length === 0) {
+            } else if (rawWp) {
                 // Soporte para formato legado (separado por comas)
-                contacts = raw.split(',').map(num => ({
+                wpContacts = rawWp.split(',').map(num => ({
                     numero: num.trim(),
                     nombre: '',
                     cargo: ''
                 })).filter(c => c.numero);
             }
 
-            const hasTypeDefault = contacts.some(c => c.default_factura === true);
-            const hasGeneralDefault = !hasTypeDefault && contacts.some(c => c.default === true);
+            // 2. Mapear contactos de Correo Electrónico
+            const rawEmail = (currentFactura.email_facturas || '').trim();
+            let emailContacts = [];
+            if (rawEmail.startsWith('[')) {
+                try {
+                    emailContacts = JSON.parse(rawEmail);
+                } catch(e) {}
+            } else if (rawEmail) {
+                // Soporte para formato legado (separado por comas)
+                emailContacts = rawEmail.split(',').map(m => ({
+                    email: m.trim(),
+                    nombre: '',
+                    cargo: ''
+                })).filter(e => e.email);
+            }
 
+            // 3. Determinar tipo de comprobante y plantilla de texto
+            const ptoVtaPad = String(currentFactura.pto_vta || '0').padStart(4, '0');
+            const cbtePad = String(currentFactura.cbte_nro || currentFactura.nro_interno || facturaId).padStart(8, '0');
+            const nroComp = `${ptoVtaPad}-${cbtePad}`;
+
+            const tiposComprobanteNC = {
+                3: 'Nota de Crédito A',
+                8: 'Nota de Crédito B',
+                13: 'Nota de Crédito C'
+            };
+            const esNC = [3, 8, 13].includes(parseInt(currentFactura.tipo_cbte || 0, 10));
+            const tipoCompNombre = esNC 
+                ? (tiposComprobanteNC[currentFactura.tipo_cbte] || 'Nota de Crédito') 
+                : 'Factura';
+
+            // Mensaje predeterminado según el tipo de comprobante
+            let defaultMessage = `Hola, te adjuntamos la ${tipoCompNombre} Nro ${nroComp} de tu cuenta corriente. Saludos, muchas gracias.`;
+            if (!esNC) {
+                defaultMessage += '\n\n*Datos para transferencia:*\n*Banco:* Galicia\n*DU:* 24892174\n*Cuenta (CTA):* 4007844-1 373-4\n*CBU:* 0070373230004007844141\n*CUIL:* 23248921749\n*ALIAS:* LAMDA.SER.MARTIN';
+            }
+
+            // 4. Construir contenido HTML del modal
             let htmlContent = `
                 <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
                     <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
-                        Seleccione los destinatarios para enviar la factura:
+                        Seleccione los destinatarios para enviar ${esNC ? 'la nota de crédito' : 'la factura'}:
                     </p>
-                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px;">
+                    
+                    <!-- Sección de WhatsApp -->
+                    <div style="margin-bottom: 15px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">
+                            🟢 Canales de WhatsApp
+                        </span>
+                        <div style="display: flex; flex-direction: column; gap: 8px; max-height: 140px; overflow-y: auto; padding: 2px; border: 1px solid #f3f4f6; border-radius: 6px; background: #fafafa;">
             `;
 
-            contacts.forEach((c, index) => {
-                const isChecked = hasTypeDefault ? (c.default_factura === true) : (hasGeneralDefault ? (c.default === true) : true);
-                const formattedNum = c.numero.replace(/\D/g, '');
-                let displayNum = c.numero;
-                if (formattedNum.length === 10) {
-                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
-                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
-                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
-                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
-                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
-                }
-                
-                const labelText = c.nombre 
-                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 6px;">${c.cargo}</span>` : ''}`
-                    : `Contacto #${index + 1}`;
+            if (wpContacts.length === 0) {
+                htmlContent += `<div style="font-size: 12px; color: #9ca3af; padding: 10px; text-align: center;">No hay celulares registrados</div>`;
+            } else {
+                const hasWpTypeDefault = esNC 
+                    ? wpContacts.some(c => c.default_nc === true) 
+                    : wpContacts.some(c => c.default_factura === true);
+                const hasWpGeneralDefault = !hasWpTypeDefault && wpContacts.some(c => c.default === true);
 
-                htmlContent += `
-                    <label style="display: flex; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
-                        <input type="checkbox" class="swal-contact-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
-                        <div style="flex: 1;">
-                            <div style="font-size: 13px; color: #1f2937; margin-bottom: 2px;">${labelText}</div>
-                            <div style="font-size: 12px; color: #6b7280;">📱 ${displayNum}</div>
-                        </div>
-                    </label>
-                `;
-            });
+                wpContacts.forEach((c, index) => {
+                    const isChecked = hasWpTypeDefault 
+                        ? (esNC ? c.default_nc === true : c.default_factura === true) 
+                        : (hasWpGeneralDefault ? c.default === true : true);
+
+                    const formattedNum = c.numero.replace(/\D/g, '');
+                    let displayNum = c.numero;
+                    if (formattedNum.length === 10) {
+                        displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
+                    } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
+                        displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-\d${formattedNum.substring(9,13)}`;
+                    }
+                    
+                    const labelText = c.nombre 
+                        ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                        : `Celular #${index + 1}`;
+
+                    htmlContent += `
+                        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #f3f4f6; cursor: pointer; margin-bottom: 0; background: white;">
+                            <input type="checkbox" class="swal-contact-chk" value="${c.numero}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 13px; color: #1f2937;">${labelText}</div>
+                                <div style="font-size: 11px; color: #6b7280;">📱 ${displayNum}</div>
+                            </div>
+                        </label>
+                    `;
+                });
+            }
 
             htmlContent += `
+                        </div>
                     </div>
-                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
-                        <label style="display: block; font-size: 13px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
-                            Otro número (opcional):
+
+                    <!-- Sección de Correo -->
+                    <div style="margin-bottom: 15px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">
+                            ✉️ Canales de Correo Electrónico
+                        </span>
+                        <div style="display: flex; flex-direction: column; gap: 8px; max-height: 140px; overflow-y: auto; padding: 2px; border: 1px solid #f3f4f6; border-radius: 6px; background: #fafafa;">
+            `;
+
+            if (emailContacts.length === 0) {
+                htmlContent += `<div style="font-size: 12px; color: #9ca3af; padding: 10px; text-align: center;">No hay correos registrados</div>`;
+            } else {
+                const hasEmailTypeDefault = esNC 
+                    ? emailContacts.some(e => e.default_nc === true) 
+                    : emailContacts.some(e => e.default_factura === true);
+                const hasEmailGeneralDefault = !hasEmailTypeDefault && emailContacts.some(e => e.default === true);
+
+                emailContacts.forEach((e, index) => {
+                    const isChecked = hasEmailTypeDefault 
+                        ? (esNC ? e.default_nc === true : e.default_factura === true) 
+                        : (hasEmailGeneralDefault ? e.default === true : true);
+
+                    const labelText = e.nombre 
+                        ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
+                        : `Correo #${index + 1}`;
+
+                    htmlContent += `
+                        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #f3f4f6; cursor: pointer; margin-bottom: 0; background: white;">
+                            <input type="checkbox" class="swal-email-chk" value="${e.email}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer; width: 15px; height: 15px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 13px; color: #1f2937;">${labelText}</div>
+                                <div style="font-size: 11px; color: #6b7280;">✉️ ${e.email}</div>
+                            </div>
                         </label>
-                        <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; box-sizing: border-box;">
+                    `;
+                });
+            }
+
+            htmlContent += `
+                        </div>
+                    </div>
+
+                    <!-- Canales Manuales -->
+                    <div style="display: flex; gap: 10px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                                Otro celular (opcional):
+                            </label>
+                            <input type="text" id="swal-custom-phone" placeholder="Ej: 2216615746" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                                Otro correo (opcional):
+                            </label>
+                            <input type="email" id="swal-custom-email" placeholder="Ej: administracion@cliente.com" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <!-- Texto del Mensaje -->
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 4px;">
+                            Mensaje personalizado:
+                        </label>
+                        <textarea id="swal-message-text" rows="3" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; box-sizing: border-box; resize: vertical; font-family: inherit;"></textarea>
                     </div>
             `;
 
             if (currentFactura && currentFactura.bunker_cliente_id) {
                 htmlContent += `
-                    <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 13px; color: #475569;">
-                        <input type="checkbox" id="swal-save-default" style="width: 16px; height: 16px; cursor: pointer;">
-                        <span>Guardar esta selección como contactos predeterminados para facturas</span>
+                    <label style="display: flex; align-items: center; gap: 8px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #cbd5e1; cursor: pointer; font-size: 12px; color: #475569;">
+                        <input type="checkbox" id="swal-save-default" style="width: 15px; height: 15px; cursor: pointer;">
+                        <span>Guardar esta selección como contactos predeterminados para ${esNC ? 'nota de crédito' : 'facturas'}</span>
                     </label>
                 `;
             }
@@ -1512,108 +1655,178 @@
             htmlContent += `</div>`;
 
             Swal.fire({
-                title: 'Enviar por WhatsApp',
+                title: 'Enviar Comprobante',
                 html: htmlContent,
                 icon: 'question',
                 showCancelButton: true,
+                showDenyButton: true,
                 confirmButtonText: '🟢 Enviar',
+                denyButtonText: '💾 Guardar Configuración',
                 cancelButtonText: 'Cancelar',
                 confirmButtonColor: '#10b981',
+                denyButtonColor: '#3b82f6',
                 cancelButtonColor: '#6b7280',
+                didOpen: () => {
+                    document.getElementById('swal-message-text').value = defaultMessage;
+                },
                 preConfirm: () => {
-                    const selected = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    const selectedWps = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    const selectedEmails = Array.from(document.querySelectorAll('.swal-email-chk:checked')).map(el => el.value);
                     const customPhone = document.getElementById('swal-custom-phone').value.trim();
+                    const customEmail = document.getElementById('swal-custom-email').value.trim();
+                    const messageText = document.getElementById('swal-message-text').value.trim();
                     const saveDefaultCheckbox = document.getElementById('swal-save-default');
                     const saveDefault = saveDefaultCheckbox ? saveDefaultCheckbox.checked : false;
 
+                    const wps = [...selectedWps];
                     if (customPhone) {
                         const cleaned = customPhone.replace(/[^\d,]/g, '');
                         if (cleaned) {
                             cleaned.split(',').forEach(num => {
-                                if (num.trim()) selected.push(num.trim());
+                                if (num.trim()) wps.push(num.trim());
                             });
                         }
                     }
 
-                    if (selected.length === 0) {
-                        Swal.showValidationMessage('Debes seleccionar o ingresar al menos un número.');
+                    const emails = [...selectedEmails];
+                    if (customEmail) {
+                        customEmail.split(',').forEach(email => {
+                            if (email.trim()) emails.push(email.trim());
+                        });
+                    }
+
+                    if (wps.length === 0 && emails.length === 0) {
+                        Swal.showValidationMessage('Debe seleccionar o ingresar al menos un destinatario (WhatsApp o Correo).');
                         return false;
                     }
 
-                    return {
-                        destinatarios: selected,
-                        saveDefault: saveDefault
-                    };
+                    return { wps, emails, messageText, saveDefault };
+                },
+                preDeny: () => {
+                    const selectedWps = Array.from(document.querySelectorAll('.swal-contact-chk:checked')).map(el => el.value);
+                    const selectedEmails = Array.from(document.querySelectorAll('.swal-email-chk:checked')).map(el => el.value);
+                    return { wps: selectedWps, emails: selectedEmails };
                 }
             }).then(async (result) => {
-                if (!result.isConfirmed) return;
+                if (result.isDismissed) return;
 
+                const isSaveOnly = result.isDenied;
                 const modalResult = result.value;
 
-                // Si se marca guardar por defecto, actualizar en base de datos
-                if (modalResult.saveDefault && currentFactura && currentFactura.bunker_cliente_id) {
-                    try {
-                        const updatedContacts = contacts.map(c => {
-                            const isSelected = modalResult.destinatarios.includes(c.numero);
-                            return {
-                                ...c,
-                                default_factura: isSelected
-                            };
-                        });
+                const shouldSave = isSaveOnly || (modalResult && modalResult.saveDefault);
 
-                        currentFactura.whatsapp_facturas = JSON.stringify(updatedContacts);
+                // Guardar la selección en la base de datos
+                if (shouldSave && currentFactura && currentFactura.bunker_cliente_id) {
+                    try {
+                        const targetWps = isSaveOnly ? modalResult.wps : modalResult.wps;
+                        const targetEmails = isSaveOnly ? modalResult.emails : modalResult.emails;
+
+                        const updatedWpContacts = wpContacts.map(c => ({
+                            ...c,
+                            [esNC ? 'default_nc' : 'default_factura']: targetWps.includes(c.numero)
+                        }));
+                        currentFactura.whatsapp_facturas = JSON.stringify(updatedWpContacts);
+
+                        const updatedEmailContacts = emailContacts.map(e => ({
+                            ...e,
+                            [esNC ? 'default_nc' : 'default_factura']: targetEmails.includes(e.email)
+                        }));
+                        currentFactura.email_facturas = JSON.stringify(updatedEmailContacts);
 
                         await fetch(`/api/logistica/bunker/clientes/${currentFactura.bunker_cliente_id}/whatsapp-contacts`, {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ whatsapp_facturas: currentFactura.whatsapp_facturas })
+                            body: JSON.stringify({
+                                whatsapp_facturas: currentFactura.whatsapp_facturas,
+                                email_facturas: currentFactura.email_facturas
+                            })
                         });
-                        console.log('✅ [WHATSAPP-FRONT] Contactos predeterminados de WhatsApp actualizados (Facturas).');
+
+                        console.log('✅ Contactos predeterminados guardados.');
+
+                        if (isSaveOnly) {
+                            Swal.fire({
+                                title: '¡Configuración Guardada!',
+                                text: 'Los contactos predeterminados se actualizaron correctamente.',
+                                icon: 'success',
+                                confirmButtonColor: '#10b981'
+                            });
+                            return;
+                        }
                     } catch (err) {
-                        console.error('❌ [WHATSAPP-FRONT] Error al guardar contactos predeterminados:', err);
+                        console.error('❌ Error al guardar predeterminados:', err);
+                        if (isSaveOnly) {
+                            Swal.fire({
+                                title: 'Error',
+                                text: 'No se pudo guardar la configuración.',
+                                icon: 'error'
+                            });
+                            return;
+                        }
                     }
                 }
 
-                const destinatariosSeleccionados = modalResult.destinatarios;
+                // Enviar comprobante por los canales seleccionados
+                if (result.isConfirmed && modalResult) {
+                    const { wps, emails, messageText } = modalResult;
+                    const promises = [];
 
-                Swal.fire({
-                    title: 'Enviando...',
-                    text: 'Generando comprobante y enviando mensaje...',
-                    allowOutsideClick: false,
-                    didOpen: () => {
-                        Swal.showLoading();
-                    }
-                });
-
-                try {
-                    const response = await fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ destinatarios: destinatariosSeleccionados })
+                    Swal.fire({
+                        title: 'Enviando...',
+                        text: 'Generando comprobante y despachando notificaciones...',
+                        allowOutsideClick: false,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
                     });
 
-                    const data = await response.json();
+                    // Canal WhatsApp
+                    if (wps.length > 0) {
+                        promises.push(
+                            fetch(`${API_URL}/whatsapp/facturas/${facturaId}/enviar`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ destinatarios: wps, mensajeTexto: messageText })
+                            }).then(async res => {
+                                const data = await res.json();
+                                if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Fallo WhatsApp');
+                                return data;
+                            })
+                        );
+                    }
 
-                    if (response.ok && data.success) {
+                    // Canal Email
+                    if (emails.length > 0) {
+                        promises.push(
+                            fetch(`${API_URL}/email/facturas/${facturaId}/enviar`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ destinatarios: emails, mensajeTexto: messageText })
+                            }).then(async res => {
+                                const data = await res.json();
+                                if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Fallo Correo');
+                                return data;
+                            })
+                        );
+                    }
+
+                    try {
+                        await Promise.all(promises);
                         Swal.fire({
-                            title: '¡Factura Enviada!',
-                            text: `Se envió la factura con éxito a: ${data.data.destinatarios}`,
+                            title: '¡Enviado!',
+                            text: 'El comprobante ha sido despachado correctamente.',
                             icon: 'success',
                             confirmButtonColor: '#10b981'
                         });
-                    } else {
-                        throw new Error(data.message || data.error || 'Error desconocido al enviar');
+                    } catch (err) {
+                        console.error('Error de envío:', err);
+                        Swal.fire({
+                            title: 'Error al enviar',
+                            text: err.message,
+                            icon: 'error',
+                            confirmButtonColor: '#ef4444'
+                        });
                     }
-                } catch (err) {
-                    console.error('Error enviando por WhatsApp:', err);
-                    Swal.fire({
-                        title: 'Error al enviar',
-                        text: err.message,
-                        icon: 'error',
-                        confirmButtonColor: '#ef4444'
-                    });
                 }
             });
         }

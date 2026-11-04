@@ -353,3 +353,373 @@ main {
         padding: 10px;
     }
 }
+
+/* ==========================================
+   7. BRAND IDENTITY & ATMÓSFERA CROMÁTICA
+   ========================================== */
+
+/* Atmósfera Contexto Externo */
+body.contexto-externo {
+    background-color: #f1f5f9;
+}
+
+#workspace-container.theme-externo {
+    background-color: #f8fafc;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.06);
+}
+
+.badge-externo {
+    display: inline-block;
+    background: #2563eb;
+    color: #ffffff;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-left: 10px;
+    vertical-align: middle;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+/* Encabezados y Badges de Estado del Carro Activo */
+.header-articulos-carro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.titulo-articulos {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.badge-estado-carro {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.badge-estado-carro.finalizado {
+    background-color: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.badge-estado-carro.preparado {
+    background-color: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.badge-estado-carro.en-edicion {
+    background-color: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+/* Badges de Tipo de Carro en Tabla */
+.badge-tipo-carro {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.badge-tipo-carro.interna {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+}
+
+.badge-tipo-carro.externa {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+/* Chip Activo / Deseleccionar */
+.chip-activo-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #10b981;
+    color: #ffffff;
+    padding: 3px 10px;
+    border-radius: 16px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+    user-select: none;
+}
+
+.chip-activo-toggle:hover {
+    background: #ef4444;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+    transform: translateY(-1px);
+}
+
+.chip-activo-toggle .icon-close {
+    font-size: 12px;
+    font-weight: bold;
+    opacity: 0.85;
+}
+
+/* Tarjeta Síntesis Producción Externa Finalizada */
+.card-resumen-externo-finalizado {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.card-resumen-externo-finalizado .resumen-externo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.card-resumen-externo-finalizado .resumen-externo-titulo {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-resumen-externo-finalizado .resumen-externo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.card-resumen-externo-finalizado .stat-box {
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+}
+
+.card-resumen-externo-finalizado .stat-label {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.card-resumen-externo-finalizado .stat-value {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.card-resumen-externo-finalizado .stat-value.text-success {
+    color: #059669;
+}
+
+.card-resumen-externo-finalizado .stat-value.text-warning {
+    color: #d97706;
+}
+
+.card-resumen-externo-finalizado .resumen-externo-footer {
+    font-size: 12px;
+    color: #475569;
+    background: #f1f5f9;
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Modo Lectura en Carro Finalizado */
+.cantidad-badge-readonly {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background-color: #f1f5f9;
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 13px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+}
+
+.aviso-sin-carro {
+    text-align: center;
+    padding: 35px 20px;
+    background: #ffffff;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #64748b;
+    margin: 15px 0;
+}
+
+.aviso-sin-carro p {
+    font-size: 16px;
+    font-weight: 600;
+    color: #334155;
+    margin: 0 0 6px 0;
+}
+
+.aviso-sin-carro small {
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+
+
+/* Tarjeta de Resumen de Métricas de Tiempo de Producción */
+.card-resumen-metricas-finalizado {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid #10b981;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-titulo {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-resumen-metricas-finalizado .metricas-badge-guardado {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.card-resumen-metricas-finalizado .stat-box-metrica {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+}
+
+.card-resumen-metricas-finalizado .stat-box-metrica.total {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.card-resumen-metricas-finalizado .stat-label-metrica {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: block;
+    margin-bottom: 3px;
+}
+
+.card-resumen-metricas-finalizado .stat-value-metrica {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.card-resumen-metricas-finalizado .stat-value-metrica.text-success {
+    color: #15803d;
+}
+
+.card-resumen-metricas-finalizado .stat-sub-metrica {
+    font-size: 10px;
+    color: #94a3b8;
+    display: block;
+    margin-top: 2px;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-top: 10px;
+    margin-bottom: 12px;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas th {
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    text-align: left;
+    padding: 7px 10px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.card-resumen-metricas-finalizado .tabla-articulos-metricas td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+}
+
+.card-resumen-metricas-finalizado .resumen-metricas-footer {
+    font-size: 11.5px;
+    color: #475569;
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px dashed #cbd5e1;
+}
