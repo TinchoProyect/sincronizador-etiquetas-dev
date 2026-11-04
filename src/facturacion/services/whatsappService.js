@@ -17,6 +17,34 @@ const _audiosYaTranscritos = new Set();
 // Asegurar tablas CRM al cargar el servicio
 crmWhatsappDb.asegurarTablasCrmWhatsapp().catch(() => {});
 
+
+function esModoLaboratorioWa() {
+    const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+    const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+    return dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+}
+
+function esModoEspejoWa() {
+    const flagEspejo = String(process.env.WHATSAPP_MODO_ESPEJO || '').trim().toLowerCase();
+    return flagEspejo === 'true' || flagEspejo === '1';
+}
+
+function interceptarEnvioEnModoSeguro(numeros, tipoEnvio, detalle = '') {
+    if (!esModoLaboratorioWa() && !esModoEspejoWa()) return null;
+    const modo = esModoLaboratorioWa() ? 'MODO_LABORATORIO (etiquetas_pruebas)' : 'WHATSAPP_MODO_ESPEJO (Fase 3)';
+    const lista = String(numeros || '')
+        .split(',')
+        .map(n => n.replace(/[^0-9]/g, '').trim())
+        .filter(Boolean);
+    console.log(`🔒 [WHATSAPP-GUARD] Envío real de ${tipoEnvio} BLOQUEADO preventivamente por ${modo}. Destinatarios simulados: [${lista.join(', ')}] ${detalle}`);
+    return lista.map(numero => ({
+        numero,
+        success: true,
+        simulated: true,
+        blockedByGuard: modo
+    }));
+}
+
 let client = null;
 let qrCodeDataUrl = null;
 let connectionStatus = 'DESCONECTADO'; // 'DESCONECTADO', 'ESPERANDO_QR', 'CONECTADO', 'CONECTANDO'
@@ -201,6 +229,10 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             connectionStepText = '¡Listo! Dispositivo conectado.';
             qrCodeDataUrl = null;
 
+            if (esModoEspejoWa() || esModoLaboratorioWa()) {
+                console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Laboratorio activo: se omite sincronización CRM en segundo plano para evitar colisiones.");
+                return;
+            }
             // Sincronizar en segundo plano los chats recientes con clientes Búnker al conectar
             setTimeout(() => {
                 sincronizarChatsRecientes({ maxChats: 45, mensajesPorChat: 15 }).catch(err => {
@@ -489,6 +521,8 @@ async function resolverChatId(numero) {
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = '', mensajeTextoCustom = null) => {
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "FACTURA_PDF", `Factura #${nroComprobante || facturaId}`);
+    if (simRes) return simRes;
     if (connectionStatus !== 'CONECTADO') {
         throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }
@@ -582,6 +616,8 @@ const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = 
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = 'Te enviamos el documento solicitado. Saludos.') => {
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "DOCUMENTO_PDF", filename);
+    if (simRes) return simRes;
     if (connectionStatus !== 'CONECTADO') {
         throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }
@@ -643,6 +679,8 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarMensajeTexto = async (numeros, mensajeTexto) => {
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "MENSAJE_TEXTO", String(mensajeTexto || "").slice(0, 60));
+    if (simRes) return simRes;
     if (connectionStatus !== 'CONECTADO') {
         throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }
@@ -707,6 +745,8 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensajeTexto = '') => {
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "IMAGEN_BASE64", filename);
+    if (simRes) return simRes;
     if (connectionStatus !== 'CONECTADO') {
         throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }

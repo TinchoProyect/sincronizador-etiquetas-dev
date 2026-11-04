@@ -13,9 +13,16 @@ console.log('🔍 [FACTURACION-AFIP] Cargando configuración de AFIP...');
  * - Tipos soportados: 6 (Factura B), 11 (Factura C)
  */
 
-// Entorno actual (HOMO o PROD)
-const ENTORNO = process.env.AFIP_ENV || 'HOMO';
+const IS_MODO_LABORATORIO =
+    String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' ||
+    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
 
+// Entorno actual (HOMO o PROD) — En Modo Laboratorio siempre se fuerza HOMO
+const ENTORNO = IS_MODO_LABORATORIO ? 'HOMO' : (process.env.AFIP_ENV || 'HOMO');
+
+if (IS_MODO_LABORATORIO) {
+    console.log('🛠️ [FACTURACION-AFIP] MODO LABORATORIO ACTIVO: Forzando AFIP_ENV=HOMO y bloqueando emisión fiscal real en PROD.');
+}
 console.log(`🌍 [FACTURACION-AFIP] Entorno configurado: ${ENTORNO}`);
 
 // CUIT de la empresa (EXACTO para HOMO)
@@ -24,8 +31,8 @@ const CUIT = process.env.AFIP_CUIT || '23248921749';
 // Punto de venta (EXACTO para HOMO)
 const PTO_VTA = parseInt(process.env.AFIP_PTO_VTA || '32');
 
-// Activar AFIP real o usar stubs
-const USE_REAL = process.env.AFIP_USE_REAL === 'true';
+// Activar AFIP real o usar stubs (En Modo Laboratorio se desactiva emisión fiscal real)
+const USE_REAL = IS_MODO_LABORATORIO ? false : (process.env.AFIP_USE_REAL === 'true');
 
 console.log(`🔧 [FACTURACION-AFIP] CUIT: ${CUIT}`);
 console.log(`🔧 [FACTURACION-AFIP] Punto de Venta: ${PTO_VTA}`);
@@ -61,10 +68,13 @@ const CERTIFICADOS = {
 };
 
 /**
- * Rutas adicionales para WSAA
+ * Rutas adicionales para WSAA (Auto-detección multiplataforma Windows / Linux Cloud)
  */
 const WSAA_WORKDIR = process.env.WSAA_WORKDIR || path.resolve(__dirname, '..', './wsaa');
-const OPENSSL_EXE = process.env.OPENSSL_EXE || 'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe';
+const rawOpenSsl = process.env.OPENSSL_EXE || process.env.OPENSSL_BIN || '';
+const OPENSSL_EXE = (process.platform !== 'win32' && (!rawOpenSsl || rawOpenSsl.includes(':\\')))
+    ? 'openssl'
+    : (rawOpenSsl || 'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe');
 
 console.log(`📁 [FACTURACION-AFIP] WSAA Workdir: ${WSAA_WORKDIR}`);
 console.log(`🔧 [FACTURACION-AFIP] OpenSSL: ${OPENSSL_EXE}`);
@@ -294,6 +304,7 @@ module.exports = {
     CONDICIONES_IVA,
     MONEDAS,
     TIPOS_CBTE_SOPORTADOS,
+    IS_MODO_LABORATORIO,
     obtenerConfiguracion,
     validarConfiguracion
 };

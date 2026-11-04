@@ -1657,7 +1657,7 @@ function actualizarBotonFacturacion(estaFacturado, facturaId) {
         btn.textContent = "ðŸ‘ï¸ Ver Factura";
         btn.className = "btn btn-secondary";
         btn.onclick = () => {
-            window.location.href = `http://localhost:3004/pages/ver-factura.html?id=${facturaId}`;
+            window.location.href = (window.LAMDA_RESOLVE_URL ? window.LAMDA_RESOLVE_URL(`http://localhost:3004/pages/ver-factura.html?id=${facturaId}`) : `http://localhost:3004/pages/ver-factura.html?id=${facturaId}`);
         };
         console.log(`[FACTURAR] âœ… BotÃ³n configurado como "Ver Factura" (ID: ${facturaId})`);
     } else {

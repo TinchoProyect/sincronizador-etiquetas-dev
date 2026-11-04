@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script src="/lamda-cloud-runtime.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cuenta Corriente de Cliente - Búnker</title>
@@ -679,7 +680,7 @@
             <button class="btn-premium" style="background:#eab308; color:#000; font-size: 0.95em;" onclick="window.location.href='listado-clientes.html'">
                 ← Volver a Clientes
             </button>
-            <button class="btn-premium" style="background:#3b82f6; color:#fff; font-size: 0.95em;" onclick="window.location.href='http://localhost:3000'">
+            <button class="btn-premium" style="background:#3b82f6; color:#fff; font-size: 0.95em;" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')">
                 🏠 Menú Principal
             </button>
         </div>

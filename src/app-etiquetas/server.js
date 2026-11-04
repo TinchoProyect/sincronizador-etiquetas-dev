@@ -21,6 +21,8 @@ app.use(cors({
     // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
     'https://logistica.lamdaser.com',
     'http://logistica.lamdaser.com',
+    'https://nube.lamdaser.com',
+    'http://nube.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',
@@ -93,6 +95,10 @@ app.use('/api/logistica', createProxyMiddleware({
 
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ limit: '30mb', extended: true }));
+
+// 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
+const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
+attachLamdaCloudRuntime(app, port);
 app.use((req, res, next) => {
   if (req.path === '/' || req.path.endsWith('.html') || req.path.endsWith('.js')) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -124,7 +130,9 @@ app.get('/', (req, res) => {
 // 🧾 [PRESUPUESTOS] Ruta para servir la página principal del módulo
 app.get('/presupuestos', (req, res) => {
   console.log('🔍 [PRESUPUESTOS] Sirviendo página principal del módulo');
-  res.redirect('http://localhost:3003');
+  const host = String(req.headers.host || '').toLowerCase();
+  const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+  res.redirect(isLocal ? 'http://localhost:3003' : '/gw/3003/');
 });
 
 // Importar pool centralizado de usuarios

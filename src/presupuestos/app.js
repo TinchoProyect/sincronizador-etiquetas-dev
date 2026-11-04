@@ -38,6 +38,8 @@ const corsOptions = {
         'http://127.0.0.1:5173',
         // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
         'https://logistica.lamdaser.com',
+        'https://nube.lamdaser.com',
+        'http://nube.lamdaser.com',
         'http://logistica.lamdaser.com',
         // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
         'http://lamda-logistica.tplinkdns.com:3005',
@@ -57,6 +59,10 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 // Middleware básico
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
+const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
+attachLamdaCloudRuntime(app, PORT);
 
 // Proxy para el módulo de producción (3002) - Necesario para el endpoint del Kit SSOT
 app.use('/api/produccion', createProxyMiddleware({

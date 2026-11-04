@@ -61,6 +61,8 @@ const allowedOrigins = [
     'http://www.lamdaser.com',
     'https://proud-darkness-ac3d.miserrano75.workers.dev',
     'https://logistica.lamdaser.com',
+    'https://nube.lamdaser.com',
+    'http://nube.lamdaser.com',
     'http://logistica.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
@@ -219,8 +221,36 @@ app.use('/api/facturacion', createProxyMiddleware({
 
 // Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)
 // Se inyecta aquí para no interferir con el parseo en crudo del Proxy.
+
+// 🌐 GATEWAY UNIFICADO CLOUD 24/7 (/gw/3000, /gw/3002, /gw/3003, /gw/3004)
+// Permite que todas las pantallas y endpoints operen bajo un único dominio HTTPS (3005)
+// sin romper el funcionamiento local multi-puerto.
+[
+    { prefix: '/gw/3000', target: 'http://127.0.0.1:3000', name: 'Etiquetas (3000)' },
+    { prefix: '/gw/3002', target: 'http://127.0.0.1:3002', name: 'Producción (3002)' },
+    { prefix: '/gw/3003', target: 'http://127.0.0.1:3003', name: 'Presupuestos (3003)' },
+    { prefix: '/gw/3004', target: 'http://127.0.0.1:3004', name: 'Facturación (3004)' }
+].forEach(({ prefix, target, name }) => {
+    app.use(prefix, createProxyMiddleware({
+        target,
+        changeOrigin: true,
+        ws: true,
+        pathRewrite: (pathUrl) => pathUrl.replace(new RegExp('^' + prefix), '') || '/',
+        onError: (err, req, res) => {
+            console.error(`[LOGISTICA-GW] ❌ Error en Gateway ${name}:`, err.message);
+            if (!res.headersSent) {
+                res.status(503).json({ error: `Módulo ${name} fuera de línea.` });
+            }
+        }
+    }));
+});
+
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+
+// 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
+const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
+attachLamdaCloudRuntime(app, PORT);
 
 // Ruta raíz - redirigir al dashboard
 app.get('/', (req, res) => {

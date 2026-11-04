@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:3004/facturacion/cuentas-bancarias';
+const API_BASE_URL = (typeof window !== 'undefined' && window.LAMDA_RESOLVE_URL) ? window.LAMDA_RESOLVE_URL('http://localhost:3004/facturacion/cuentas-bancarias') : 'http://localhost:3004/facturacion/cuentas-bancarias';
 const LOGISTICA_API_BASE = (typeof window !== 'undefined' && window.location && window.location.port === '3004') ? 'http://localhost:3005' : '';
 let currentAccountId = null;
 let debounceTimer = null;

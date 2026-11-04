@@ -1011,7 +1011,7 @@ async function procesarEnvioFacturacionLote(items) {
         }).then((res) => {
             cargarPedidos();
             if (res.isConfirmed) {
-                window.location.href = 'http://localhost:3004';
+                window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3004'):'http://localhost:3004');
             }
         });
     } else {
@@ -1030,7 +1030,7 @@ async function procesarEnvioFacturacionLote(items) {
         }).then((res) => {
             cargarPedidos();
             if (res.isConfirmed) {
-                window.location.href = 'http://localhost:3004';
+                window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3004'):'http://localhost:3004');
             }
         });
     }
@@ -1155,7 +1155,7 @@ async function enviarRutaAFacturacion(rutaId) {
                 cancelButtonColor: '#64748b'
             }).then((res) => {
                 if (res.isConfirmed) {
-                    window.location.href = 'http://localhost:3004';
+                    window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3004'):'http://localhost:3004');
                 }
             });
         } else {
@@ -1173,7 +1173,7 @@ async function enviarRutaAFacturacion(rutaId) {
                 confirmButtonColor: '#2563eb'
             }).then((res) => {
                 if (res.isConfirmed) {
-                    window.location.href = 'http://localhost:3004';
+                    window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3004'):'http://localhost:3004');
                 }
             });
         }

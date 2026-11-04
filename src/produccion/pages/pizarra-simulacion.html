@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+    <script src="/lamda-cloud-runtime.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pizarra de Simulación de Costos y Precios - Gestiones Lamda</title>
@@ -1566,7 +1567,7 @@
       <button class="btn btn-success btn-icon-header" id="btn-save-prices" onclick="abrirConfirmacionGuardado()" title="Aplicar Precios Simulados a la Base de Datos" style="padding: 6px 12px;">
         💾 <span id="header-changes-count" style="margin-left: 4px; background: rgba(255,255,255,0.25); color: #fff; padding: 1px 6px; border-radius: 10px; font-weight: 700; font-size: 0.74rem;">0</span>
       </button>
-      <button class="btn btn-exit btn-icon-header" onclick="window.location.href='http://localhost:3000'" title="Salir de la Mesa / Volver al Menú Principal">
+      <button class="btn btn-exit btn-icon-header" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')" title="Salir de la Mesa / Volver al Menú Principal">
         🚪
       </button>
     </div>

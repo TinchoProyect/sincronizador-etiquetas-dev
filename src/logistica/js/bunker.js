@@ -275,7 +275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <button class="btn-secondary" onclick="window.location.href='listado-bunker.html'" style="background-color: #3b82f6; color: white; border: none; cursor: pointer;">
                     ← Volver a Gestión de Artículos
                 </button>
-                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" style="cursor: pointer;">
+                <button class="btn-secondary" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')" style="cursor: pointer;">
                     ← Volver al Menú Principal
                 </button>
             `;
@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <button class="btn-secondary" onclick="window.location.href='listado-bunker.html'" style="background-color: #8b5cf6; color: white; border: none; cursor: pointer;">
                     ← Volver a Gestión de Artículos
                 </button>
-                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" style="cursor: pointer;">
+                <button class="btn-secondary" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')" style="cursor: pointer;">
                     ← Volver al Menú Principal
                 </button>
             `;
@@ -319,7 +319,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <button class="btn-secondary" onclick="window.location.href='listado-bunker.html'" style="background-color: #7c3aed; color: white; border: none; cursor: pointer;">
                         ← Volver a Gestión de Artículos
                     </button>
-                    <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" style="cursor: pointer;">
+                    <button class="btn-secondary" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')" style="cursor: pointer;">
                         ← Volver al Menú Principal
                     </button>
                 `;

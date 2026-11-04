@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+    <script src="/lamda-cloud-runtime.js"></script>
   <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -307,7 +308,7 @@
                 <p style="margin: 0;">Sistema LAMDA - Módulo de Facturación</p>
             </div>
             <div>
-                <button onclick="window.location.href='http://localhost:3000'"
+                <button onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')"
                     style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;"
                     onmouseover="this.style.background='rgba(255,255,255,0.1)';"
                     onmouseout="this.style.background='transparent';">
@@ -452,7 +453,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3004/facturacion';
+        const API_URL = (typeof window !== 'undefined' && window.LAMDA_RESOLVE_URL) ? window.LAMDA_RESOLVE_URL('http://localhost:3004/facturacion') : 'http://localhost:3004/facturacion';
         let facturaId = null;
         let facturaData = null;
 

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script src="/lamda-cloud-runtime.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logística y Reparto - Gestiones Lamda</title>
@@ -16,10 +17,10 @@
                 <span class="subtitle">Gestión de Rutas y Entregas</span>
             </div>
             <div class="header-right">
-                <button class="btn-secondary" onclick="window.location.href='http://localhost:3000'" title="Volver al Menú Principal">
+                <button class="btn-secondary" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000')" title="Volver al Menú Principal">
                     ← Menú Principal
                 </button>
-                <button class="btn-secondary btn-facturacion-nav" onclick="window.location.href='http://localhost:3004'" title="Ir a Gestión de Facturas y Presupuestos Aprobados">
+                <button class="btn-secondary btn-facturacion-nav" onclick="window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3004'):'http://localhost:3004')" title="Ir a Gestión de Facturas y Presupuestos Aprobados">
                     🧾 Gestión de Facturas
                 </button>
 

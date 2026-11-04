@@ -1,110 +1,39 @@
-const fs = require('fs').promises;
-const fsSync = require('fs');
-const { exec } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+const { despacharZplAZebra } = require('../services/zebraPrintBridgeService');
 
-async function main() {
-  try {
-    if (process.argv.length < 4) {
-      throw new Error('Faltan argumentos: node imprimirEtiquetaLote.js <cantidad> <archivo_json>');
+async function imprimirEtiquetaLote({ fechaElaboracion, fechaVencimiento, lote, cantidad }) {
+    console.log('🖨️ Datos recibidos en imprimirEtiquetaLote:', { fechaElaboracion, fechaVencimiento, lote, cantidad });
+
+    if (!fechaElaboracion || !fechaVencimiento || !lote || !cantidad || cantidad < 1) {
+        throw new Error('Faltan datos requeridos para imprimir la etiqueta de lote.');
     }
 
-    const cantidad = parseInt(process.argv[2], 10);
-    const jsonPath = process.argv[3];
+    const zpl = `
+^XA
+^CI28
+^PW650
+^LL320
+^LH20,0
 
-    if (isNaN(cantidad) || cantidad < 1) {
-      throw new Error('Cantidad inválida');
-    }
+^FO0,50^A0N,45,45^FB600,1,0,C^FDFecha de Elab: ${fechaElaboracion}^FS
+^FO0,130^A0N,45,45^FB600,1,0,C^FDFecha de Vto: ${fechaVencimiento}^FS
+^FO0,210^A0N,55,55^FB600,1,0,C^FDLote: ${lote}^FS
 
-    // Leer datos del archivo JSON temporal
-    console.log('Leyendo archivo JSON:', jsonPath);
-    const jsonContent = await fs.readFile(jsonPath, 'utf8');
-    const datos = JSON.parse(jsonContent);
-    console.log('Datos del lote parseados:', datos);
+^PQ${cantidad}
+^XZ
+`.trim();
 
-    const idCorto = datos.id_corto;
-    const descripcion = datos.descripcion || 'S/D';
+    const nombreArchivo = path.join(__dirname, `../../temp_lote_${Date.now()}.zpl`);
+    fs.writeFileSync(nombreArchivo, zpl, 'utf8');
 
-    // Directorio temporal en app-etiquetas
-    const tempDir = path.resolve(__dirname, '../app-etiquetas/temp');
-    
-    // Crear directorio temporal si no existe
-    try {
-      await fs.mkdir(tempDir, { recursive: true });
-    } catch (err) {}
-
-    const nombreArchivo = path.join(tempDir, `etiqueta_lote_${Date.now()}.zpl`);
-    const nombreImpresora = 'Zebra';
-    
-    // Imprimimos por duplicado en el mismo papel para aprovechar el ancho (Zebra imprime doble)
-    const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
-
-    const generarParEtiquetasLote = (id, desc) => {
-      // Ajuste de fuente según el largo de la descripción
-      let fuenteDescripcion = '^CF0,30'; // fuente grande por defecto
-      if (desc.length > 30) {
-        fuenteDescripcion = '^CF0,20'; // fuente chica
-      } else if (desc.length > 20) {
-        fuenteDescripcion = '^CF0,25'; // fuente mediana
-      }
-
-      // Diseño térmico
-      // Arriba: Descripción del producto.
-      // Centro: El ID corto del lote en formato de Código de Barras grande
-      // Abajo: El texto legible del ID corto del lote.
-
-      const etiqueta1 = `${fuenteDescripcion}
-^FO23,20^FD${desc}^FS
-^CF0,25
-^FO23,55^FDL: ${id}^FS
-^BY3,2,55
-^FO23,85^BCN,55,N,N,N
-^FD${id}^FS`;
-
-      const etiqueta2 = `${fuenteDescripcion}
-^FO443,20^FD${desc}^FS
-^CF0,25
-^FO443,55^FDL: ${id}^FS
-^BY3,2,55
-^FO443,85^BCN,55,N,N,N
-^FD${id}^FS`;
-
-      return `^XA
-^LH0,0
-^LT0
-${etiqueta1}
-${etiqueta2}
-^XZ`;
-    };
-
-    let contenido = '';
-    const paresNecesarios = Math.ceil(cantidadPar / 2);
-    for (let i = 0; i < paresNecesarios; i++) {
-      contenido += generarParEtiquetasLote(idCorto, descripcion);
-    }
-
-    // Escribir archivo ZPL
-    await fs.writeFile(nombreArchivo, contenido, { encoding: 'utf8' });
-    console.log('Archivo ZPL creado exitosamente:', nombreArchivo);
-
-    // Enviar a impresora
-    exec(`COPY /B "${nombreArchivo}" \\\\localhost\\${nombreImpresora}`, (error, stdout, stderr) => {
-      // Limpiar archivo temporal ZPL después de enviarlo a la impresora
-      try {
-        if (fsSync.existsSync(nombreArchivo)) fsSync.unlinkSync(nombreArchivo);
-      } catch(e) {}
-
-      if (error) {
-        console.error(`Error al imprimir lote: ${error.message}`);
-        process.exit(1);
-      }
-      console.log('Impresión de lote enviada correctamente a Zebra.');
+    return despacharZplAZebra({
+        zplContent: zpl,
+        zplFilePath: nombreArchivo,
+        tipoEtiqueta: 'ETIQUETA_LOTE',
+        descripcion: `Lote (${cantidad}x): ${lote} | Vto: ${fechaVencimiento}`,
+        nombreImpresora: 'Zebra'
     });
-
-  } catch (error) {
-    console.error('Error en el proceso de impresión de lote:', error.message);
-    process.exit(1);
-  }
 }
 
-main();
+module.exports = { imprimirEtiquetaLote };

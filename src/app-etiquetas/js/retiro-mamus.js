@@ -1183,7 +1183,7 @@
             return;
         }
 
-        window.location.href = 'http://localhost:3000';
+        window.location.href=(window.LAMDA_RESOLVE_URL?window.LAMDA_RESOLVE_URL('http://localhost:3000'):'http://localhost:3000');
     };
 
     document.addEventListener('DOMContentLoaded', () => {

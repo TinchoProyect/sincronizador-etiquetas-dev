@@ -46,6 +46,8 @@ const corsOptions = {
         'http://localhost:3005',  // Servidor de logística
         // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
         'https://logistica.lamdaser.com',
+        'https://nube.lamdaser.com',
+        'http://nube.lamdaser.com',
         'http://logistica.lamdaser.com',
         // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
         'http://lamda-logistica.tplinkdns.com:3005',
@@ -63,6 +65,10 @@ console.log('✅ [FACTURACION] CORS configurado para orígenes:', corsOptions.or
 // Middleware básico
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
+const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
+attachLamdaCloudRuntime(app, PORT);
 
 // Middleware de base de datos
 app.use(dbMiddleware);

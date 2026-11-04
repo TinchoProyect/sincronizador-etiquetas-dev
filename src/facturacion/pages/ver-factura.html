@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+    <script src="/lamda-cloud-runtime.js"></script>
   <link rel="icon" type="image/png" href="/favicon.ico?v=2" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -612,7 +613,7 @@
         const numeroFactura = urlParams.get('numero_factura') || 'Factura Histórica';
 
         // Constante para la URL base de la API
-        const API_URL = 'http://localhost:3004/facturacion';
+        const API_URL = (typeof window !== 'undefined' && window.LAMDA_RESOLVE_URL) ? window.LAMDA_RESOLVE_URL('http://localhost:3004/facturacion') : 'http://localhost:3004/facturacion';
 
         let companyConfig = null;
         let currentFactura = null;

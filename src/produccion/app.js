@@ -41,6 +41,10 @@ app.use('/api/logistica', createProxyMiddleware({
 app.use(cors());
 app.use(express.json());
 
+// 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
+const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
+attachLamdaCloudRuntime(app, 3002);
+
 //Temporizacion -Mari
 const tiemposRouter = require('./routes/tiemposCarro');
 app.use('/api/tiempos', tiemposRouter);
