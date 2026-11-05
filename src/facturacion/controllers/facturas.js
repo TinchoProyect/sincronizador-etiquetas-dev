@@ -27,8 +27,8 @@ const crearFactura = async (req, res) => {
 
     try {
         if (req.body.es_nota_credito && req.body.factura_asociada_id) {
-            console.log(`📝 [FACTURACION-CTRL] Autocompletando cliente desde factura original ${req.body.factura_asociada_id}`);
-            const checkFacturaOriginal = `SELECT cliente_id, doc_tipo, doc_nro, condicion_iva_id FROM factura_facturas WHERE id = $1`;
+            console.log(`📝 [FACTURACION-CTRL] Autocompletando cliente y tipo_cbte desde factura original ${req.body.factura_asociada_id}`);
+            const checkFacturaOriginal = `SELECT cliente_id, doc_tipo, doc_nro, condicion_iva_id, tipo_cbte, pto_vta, concepto FROM factura_facturas WHERE id = $1`;
             const resultOriginal = await pool.query(checkFacturaOriginal, [req.body.factura_asociada_id]);
 
             if (resultOriginal.rows.length > 0) {
@@ -39,6 +39,12 @@ const crearFactura = async (req, res) => {
                     doc_nro: fOrig.doc_nro,
                     condicion_iva_id: fOrig.condicion_iva_id
                 };
+                if (!req.body.pto_vta) req.body.pto_vta = fOrig.pto_vta || 32;
+                if (!req.body.concepto) req.body.concepto = fOrig.concepto || 1;
+                if (!req.body.tipo_cbte) {
+                    const origTipo = parseInt(fOrig.tipo_cbte, 10);
+                    req.body.tipo_cbte = origTipo === 1 ? 3 : (origTipo === 6 ? 8 : (origTipo === 11 ? 13 : 8));
+                }
             }
         }
 

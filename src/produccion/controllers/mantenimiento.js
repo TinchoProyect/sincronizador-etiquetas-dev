@@ -54,7 +54,26 @@ async function getStockMantenimiento(req, res) {
                     ot.codigo_qr_hash as hash
                 FROM public.mantenimiento_movimientos mm
                 LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
-                LEFT JOIN public.presupuestos p_padre ON p.tipo_comprobante = 'Orden de Retiro' AND p.origen_numero_factura = p_padre.id::text
+                LEFT JOIN LATERAL (
+                    SELECT p_orig.id, p_orig.comprobante_lomasoft, p_orig.factura_id, p_orig.origen_facturacion
+                    FROM public.presupuestos p_orig
+                    LEFT JOIN public.factura_facturas f_orig ON f_orig.presupuesto_id = p_orig.id AND f_orig.tipo_cbte IN (1, 6, 11)
+                    WHERE (p.tipo_comprobante = 'Orden de Retiro' OR p.estado IN ('Orden de Retiro', 'Administrativa NC'))
+                      AND p.origen_numero_factura IS NOT NULL
+                      AND TRIM(p.origen_numero_factura) != ''
+                      AND (
+                          p_orig.id::text = TRIM(p.origen_numero_factura)
+                          OR (
+                              f_orig.cbte_nro::text = TRIM(p.origen_numero_factura)
+                              AND (
+                                  (p.origen_punto_venta ~ '^[0-9]+$' AND f_orig.pto_vta = CAST(p.origen_punto_venta AS INTEGER))
+                                  OR f_orig.cliente_id::text = p.id_cliente::text
+                              )
+                          )
+                      )
+                    ORDER BY (p_orig.id::text = TRIM(p.origen_numero_factura)) DESC, p_orig.id DESC
+                    LIMIT 1
+                ) p_padre ON true
                 LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
                 LEFT JOIN public.clientes c ON COALESCE(p.id_cliente::text, ot.id_cliente::text) = c.cliente_id::text
                 WHERE mm.estado IN ('PENDIENTE', 'CONCILIADO', 'BORRADOR', 'EN_TRATAMIENTO')
@@ -156,11 +175,20 @@ async function getStockMantenimiento(req, res) {
                 LIMIT 1
             ) tto ON true
             LEFT JOIN LATERAL (
-                SELECT id AS id_orden_retiro
+                SELECT p_retiro.id AS id_orden_retiro
                 FROM public.presupuestos p_retiro
-                WHERE p_retiro.origen_numero_factura = sc.id_presupuesto_origen::text
-                  AND p_retiro.tipo_comprobante = 'Orden de Retiro'
-                ORDER BY p_retiro.id DESC
+                WHERE (
+                    p_retiro.origen_numero_factura = sc.id_presupuesto_origen::text
+                    OR p_retiro.id = sc.id_presupuesto_origen
+                    OR p_retiro.origen_numero_factura IN (
+                        SELECT ff_orig.cbte_nro::text
+                        FROM public.factura_facturas ff_orig
+                        WHERE ff_orig.presupuesto_id = sc.id_presupuesto_origen
+                          AND ff_orig.cbte_nro IS NOT NULL
+                    )
+                )
+                  AND (p_retiro.tipo_comprobante = 'Orden de Retiro' OR p_retiro.estado IN ('Orden de Retiro', 'Administrativa NC'))
+                ORDER BY (p_retiro.id = sc.id_presupuesto_origen) DESC, p_retiro.id DESC
                 LIMIT 1
             ) or_retiro ON true
             ORDER BY sc.ultima_actualizacion DESC
@@ -617,13 +645,33 @@ async function confirmarConciliacion(req, res) {
         `;
         const resMov = await client.query(findMovSql, queryParams);
 
-        if (resMov.rowCount === 0) {
-            throw new Error('No se encontró movimiento pendiente para conciliar (o ya fue conciliado por otro usuario).');
-        }
+        let idMovimiento = null;
+        let idPresupuesto = null;
+        let estadoPresupuesto = null;
 
-        const idMovimiento = resMov.rows[0].id;
-        const idPresupuesto = resMov.rows[0].id_presupuesto;
-        const estadoPresupuesto = resMov.rows[0].estado_presupuesto;
+        if (resMov.rowCount > 0) {
+            idMovimiento = resMov.rows[0].id;
+            idPresupuesto = resMov.rows[0].id_presupuesto;
+            estadoPresupuesto = resMov.rows[0].estado_presupuesto;
+        } else {
+            const rawMovParam = req.body.movimiento_id || id_presupuesto_origen || '';
+            const cleanPresId = String(rawMovParam).toUpperCase().startsWith('ADMIN-')
+                ? parseInt(String(rawMovParam).replace(/^ADMIN-/i, '').trim(), 10)
+                : (id_presupuesto_origen ? parseInt(String(id_presupuesto_origen).trim(), 10) : null);
+            if (cleanPresId && !isNaN(cleanPresId)) {
+                const resAdminPres = await client.query(
+                    'SELECT id, estado FROM public.presupuestos WHERE id = $1 FOR UPDATE',
+                    [cleanPresId]
+                );
+                if (resAdminPres.rowCount > 0) {
+                    idPresupuesto = resAdminPres.rows[0].id;
+                    estadoPresupuesto = resAdminPres.rows[0].estado;
+                }
+            }
+            if (!idPresupuesto) {
+                throw new Error('No se encontró movimiento pendiente para conciliar (o ya fue conciliado por otro usuario).');
+            }
+        }
 
         // 1.5. CHECK EXCLUSIÓN MUTUA: Verificar que ARCA no tenga un borrador en curso
         const arcaCheck = `
@@ -673,18 +721,19 @@ async function confirmarConciliacion(req, res) {
         `;
         await client.query(insertItem, [idConciliacion, articuloReal, cantidad, idMovimiento]);
 
-        // 4. Actualizar Estado del Movimiento
-        const updateMov = `
-            UPDATE public.mantenimiento_movimientos
-            SET estado = 'CONCILIADO', 
-                observaciones = observaciones || ' [Conciliado con NC ' || $1 || ']'
-            WHERE id = $2
-        `;
-
-        await client.query(updateMov, [
-            `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
-            idMovimiento
-        ]);
+        // 4. Actualizar Estado del Movimiento (si existe movimiento físico en mantenimiento_movimientos)
+        if (idMovimiento) {
+            const updateMov = `
+                UPDATE public.mantenimiento_movimientos
+                SET estado = 'CONCILIADO', 
+                    observaciones = observaciones || ' [Conciliado con NC ' || $1 || ']'
+                WHERE id = $2
+            `;
+            await client.query(updateMov, [
+                `${comprobante.pto_vta}-${comprobante.numero_comprobante}`,
+                idMovimiento
+            ]);
+        }
 
         // 5. Sincronización Inversa: Actualizar la Orden de Retiro original (Presupuestos)
         const updatePresupuesto = `
@@ -986,8 +1035,15 @@ async function emitirNotaCreditoBorrador(req, res) {
     try {
         const payloadFacturacion = req.body;
         const itemsInfo = payloadFacturacion.items;
-        const cliente_id = payloadFacturacion.cliente?.cliente_id;
-        const idPresupuestoOrigen = payloadFacturacion.id_presupuesto_origen || null;
+        const cliente_id = payloadFacturacion.cliente?.cliente_id || payloadFacturacion.cliente_id;
+        let idPresupuestoOrigen = payloadFacturacion.id_presupuesto_origen
+            ? (parseInt(String(payloadFacturacion.id_presupuesto_origen).replace(/^ADMIN-/i, '').trim(), 10) || null)
+            : null;
+        const topRawMov = payloadFacturacion.id_movimiento || (Array.isArray(itemsInfo) && itemsInfo[0] ? itemsInfo[0].id_movimiento : null);
+        if (!idPresupuestoOrigen && topRawMov && String(topRawMov).trim().toUpperCase().startsWith('ADMIN-')) {
+            const parsedAdmin = parseInt(String(topRawMov).trim().replace(/^ADMIN-/i, '').trim(), 10);
+            if (!isNaN(parsedAdmin)) idPresupuestoOrigen = parsedAdmin;
+        }
         const usuario = req.user ? req.user.username : 'SISTEMA';
 
         if (!cliente_id || !itemsInfo || !Array.isArray(itemsInfo) || itemsInfo.length === 0) {
@@ -998,13 +1054,53 @@ async function emitirNotaCreditoBorrador(req, res) {
 
         await client.query('BEGIN');
 
-        // 0.5. RECUPERAR DESCUENTO GLOBAL DE LA FACTURA / PRESUPUESTO ORIGEN (Fix Fuga Financiera NC)
+        // 0.5. RECUPERAR DESCUENTO GLOBAL Y TRAZABILIDAD DE LA FACTURA / PRESUPUESTO ORIGEN (Fix Fuga Financiera NC + ADMIN-{id})
         let descuentoDecimal = 0;
         if (idPresupuestoOrigen) {
-            const resP = await client.query('SELECT descuento FROM public.presupuestos WHERE id = $1', [idPresupuestoOrigen]);
+            const resP = await client.query(`
+                SELECT p.id, p.descuento, p.origen_numero_factura, p.origen_punto_venta
+                FROM public.presupuestos p
+                WHERE p.id = $1
+                   OR p.id = (SELECT pd_sub.id_presupuesto FROM public.presupuestos_detalles pd_sub WHERE pd_sub.id = $1 LIMIT 1)
+                ORDER BY (p.id = $1) DESC
+                LIMIT 1
+            `, [idPresupuestoOrigen]);
             if (resP.rows.length > 0) {
+                idPresupuestoOrigen = resP.rows[0].id;
+                payloadFacturacion.id_presupuesto_origen = idPresupuestoOrigen;
                 descuentoDecimal = parseFloat(resP.rows[0].descuento) || 0;
+
+                if (!payloadFacturacion.factura_asociada_id && resP.rows[0].origen_numero_factura) {
+                    const origRef = String(resP.rows[0].origen_numero_factura).trim();
+                    const origPto = (resP.rows[0].origen_punto_venta && /^\d+$/.test(String(resP.rows[0].origen_punto_venta).trim()))
+                        ? parseInt(String(resP.rows[0].origen_punto_venta).trim(), 10)
+                        : null;
+                    if (origRef) {
+                        const resFacOrig = await client.query(`
+                            SELECT f.id, f.pto_vta, f.tipo_cbte, f.concepto
+                            FROM public.factura_facturas f
+                            LEFT JOIN public.presupuestos p_orig ON f.presupuesto_id = p_orig.id
+                            WHERE f.tipo_cbte IN (1, 6, 11)
+                              AND f.estado != 'ANULADA'
+                              AND (
+                                  p_orig.id::text = $1
+                                  OR p_orig.id_presupuesto_ext = $1
+                                  OR ($1 ~ '^[0-9]+$' AND f.cbte_nro = $1::bigint)
+                              )
+                              AND ($2::int IS NULL OR f.pto_vta = $2::int)
+                            ORDER BY (p_orig.id::text = $1) DESC, f.id DESC
+                            LIMIT 1
+                        `, [origRef, origPto]);
+                        if (resFacOrig.rows.length > 0) {
+                            payloadFacturacion.factura_asociada_id = resFacOrig.rows[0].id;
+                        }
+                    }
+                }
             }
+        }
+        payloadFacturacion.es_nota_credito = true;
+        if (!payloadFacturacion.cliente && cliente_id) {
+            payloadFacturacion.cliente = { cliente_id };
         }
         if (descuentoDecimal === 0 && payloadFacturacion.factura_asociada_id) {
             const resFa = await client.query(`
@@ -1056,7 +1152,7 @@ async function emitirNotaCreditoBorrador(req, res) {
             const resArt = await client.query(`
                 SELECT a.numero, a.codigo_barras, COALESCE(ba.descripcion_generada, a.nombre) AS descripcion_oficial
                 FROM public.articulos a
-                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id::text = a.numero OR (a.codigo_barras IS NOT NULL AND ba.codigo_barras::text = a.codigo_barras))
                 WHERE a.numero = $1 OR a.codigo_barras = $1
                 LIMIT 1
             `, [articulo]);
@@ -1191,28 +1287,54 @@ async function emitirNotaCreditoBorrador(req, res) {
             await client.query(insertMov, [idPresupuestoOrigen, articuloReal, cantidadEmitida, usuario, obsFinal]);
 
             // 3. ANOTAR EN EL MOVIMIENTO FÍSICO DE ORIGEN LA NC VINCULADA SIN FINALIZAR EL STOCK FÍSICO
-            // El stock físico permanece en Mantenimiento para su posterior destino (Tratamiento / Ventas / Ingredientes)
+            // Soporta tanto IDs numéricos de mantenimiento_movimientos como identificadores virtuales ADMIN-{id}
             if (rawMovId) {
-                await client.query(`
-                    UPDATE public.mantenimiento_movimientos
-                    SET articulo_numero = $3,
-                        observaciones = COALESCE(observaciones, '') || ' [NC Generada ID: ' || $1::text || ']'
-                    WHERE id = $2
-                `, [String(factura_generada_id), parseInt(rawMovId), articuloReal]);
-                console.log(`🔒 [MANTENIMIENTO_ORQ] Movimiento origen #${rawMovId} anotado con NC ID #${factura_generada_id}.`);
+                const rawMovStr = String(rawMovId).trim();
+                const isAdminMov = rawMovStr.toUpperCase().startsWith('ADMIN-');
+                const numericMovId = (!isAdminMov && /^\d+$/.test(rawMovStr)) ? parseInt(rawMovStr, 10) : null;
+                if (numericMovId) {
+                    await client.query(`
+                        UPDATE public.mantenimiento_movimientos
+                        SET articulo_numero = $3,
+                            observaciones = COALESCE(observaciones, '') || ' [NC Generada ID: ' || $1::text || ']'
+                        WHERE id = $2
+                    `, [String(factura_generada_id), numericMovId, articuloReal]);
+                    console.log(`🔒 [MANTENIMIENTO_ORQ] Movimiento origen #${numericMovId} anotado con NC ID #${factura_generada_id}.`);
+                } else if (isAdminMov) {
+                    const adminPresId = parseInt(rawMovStr.replace(/^ADMIN-/i, '').trim(), 10);
+                    if (!isNaN(adminPresId)) {
+                        await client.query(`
+                            UPDATE public.presupuestos
+                            SET estado = 'Conciliado',
+                                factura_id = COALESCE(factura_id, $2)
+                            WHERE id = $1
+                        `, [adminPresId, factura_generada_id]);
+                        console.log(`🔒 [MANTENIMIENTO_ORQ] Presupuesto Administrativo NC #${adminPresId} (${rawMovStr}) marcado como Conciliado con NC ID #${factura_generada_id}.`);
+                    }
+                }
             }
         }
 
-        // Sincronización Inversa: Marcar la Orden de Retiro generada como Conciliada para bloquear UI en Presupuestos
+        // Sincronización Inversa: Marcar la Orden de Retiro / Administrativa NC generada como Conciliada para bloquear UI en Presupuestos
         if (idPresupuestoOrigen) {
+            const idPresupInt = parseInt(String(idPresupuestoOrigen).replace(/^ADMIN-/i, '').trim(), 10) || 0;
             const updatePresupuesto = `
                 UPDATE public.presupuestos
                 SET estado = 'Conciliado'
-                WHERE (origen_numero_factura = $1::text OR id::text = $1::text)
-                  AND tipo_comprobante = 'Orden de Retiro'
+                WHERE (
+                    origen_numero_factura = $1::text
+                    OR id::text = $1::text
+                    OR ($2::int > 0 AND id = $2::int)
+                    OR ($2::int > 0 AND origen_numero_factura IN (
+                        SELECT ff.cbte_nro::text
+                        FROM public.factura_facturas ff
+                        WHERE ff.presupuesto_id = $2::int AND ff.cbte_nro IS NOT NULL
+                    ))
+                )
+                  AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC'))
                   AND (estado IS NULL OR estado != 'Conciliado')
             `;
-            await client.query(updatePresupuesto, [String(idPresupuestoOrigen)]);
+            await client.query(updatePresupuesto, [String(idPresupuestoOrigen), idPresupInt]);
             console.log(`🔒 [MANTENIMIENTO_ORQ] Orden de Retiro vinculada al presupuesto #${idPresupuestoOrigen} bloqueada como Conciliada.`);
         }
 
@@ -1467,6 +1589,60 @@ async function trazarFacturaOriginal(req, res) {
 
         console.log(`🔍 [MANTENIMIENTO] Trazando Factura Original para Art: ${articulo}, Cliente: ${cliente_id}, Mov: ${id_movimiento || 'N/A'}`);
 
+        // Si se especificó un id_movimiento concreto (numérico o ADMIN-{id}), obtener sus datos y vínculo al comprobante padre
+        let specificQty = cantidad ? parseFloat(cantidad) : null;
+        let specificSku = articulo || null;
+        let targetOrigenRef = req.query.id_presupuesto_origen ? String(req.query.id_presupuesto_origen).trim() : '';
+        let targetOrigenFactura = '';
+
+        if (id_movimiento) {
+            const rawMovStr = String(id_movimiento).trim();
+            const isAdminMov = rawMovStr.toUpperCase().startsWith('ADMIN-');
+            if (isAdminMov) {
+                const adminPresId = parseInt(rawMovStr.replace(/^ADMIN-/i, '').trim(), 10);
+                if (!isNaN(adminPresId)) {
+                    const resAdmin = await pool.query(`
+                        SELECT p.id, p.origen_numero_factura, pd.articulo, pd.cantidad
+                        FROM public.presupuestos p
+                        LEFT JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
+                          AND (
+                              pd.articulo = $2
+                              OR COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                                 = COALESCE((SELECT numero FROM public.articulos WHERE numero = $2 OR codigo_barras = $2 LIMIT 1), $2)
+                          )
+                        WHERE (p.id = $1 OR pd.id = $1)
+                        ORDER BY (p.id = $1) DESC
+                        LIMIT 1
+                    `, [adminPresId, articulo]);
+                    if (resAdmin.rows.length > 0) {
+                        if (resAdmin.rows[0].cantidad !== null && resAdmin.rows[0].cantidad !== undefined) {
+                            specificQty = parseFloat(resAdmin.rows[0].cantidad);
+                        }
+                        specificSku = resAdmin.rows[0].articulo || articulo;
+                        targetOrigenRef = String(resAdmin.rows[0].id);
+                        targetOrigenFactura = String(resAdmin.rows[0].origen_numero_factura || '').trim();
+                    }
+                }
+            } else if (/^\d+$/.test(rawMovStr)) {
+                const resMov = await pool.query(`
+                    SELECT mm.articulo_numero, mm.cantidad, mm.id_presupuesto_origen, p_ret.origen_numero_factura
+                    FROM public.mantenimiento_movimientos mm
+                    LEFT JOIN public.presupuestos p_ret ON mm.id_presupuesto_origen = p_ret.id
+                    WHERE mm.id = $1
+                `, [parseInt(rawMovStr, 10)]);
+                if (resMov.rows.length > 0) {
+                    specificQty = parseFloat(resMov.rows[0].cantidad);
+                    specificSku = resMov.rows[0].articulo_numero || articulo;
+                    if (resMov.rows[0].id_presupuesto_origen) {
+                        targetOrigenRef = String(resMov.rows[0].id_presupuesto_origen);
+                    }
+                    if (resMov.rows[0].origen_numero_factura) {
+                        targetOrigenFactura = String(resMov.rows[0].origen_numero_factura).trim();
+                    }
+                }
+            }
+        }
+
         const query = `
             SELECT 
                 f.id as factura_id,
@@ -1492,26 +1668,21 @@ async function trazarFacturaOriginal(req, res) {
                  )
             WHERE (f.cliente_id::text = $2::text OR LTRIM(f.cliente_id::text, '0') = LTRIM($2::text, '0'))
               AND f.estado = 'APROBADA'
+              AND f.tipo_cbte IN (1, 6, 11)
             ORDER BY 
-              f.fecha_emision DESC
+              (
+                  ($3::text != '' AND (f.presupuesto_id::text = $3::text OR f.cbte_nro::text = $3::text))
+                  OR ($4::text != '' AND (f.presupuesto_id::text = $4::text OR f.cbte_nro::text = $4::text))
+              ) DESC,
+              f.fecha_emision DESC,
+              f.id DESC
             LIMIT 15
         `;
 
-        const result = await pool.query(query, [articulo, cliente_id]);
+        const result = await pool.query(query, [articulo, cliente_id, targetOrigenFactura, targetOrigenRef]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'No hay factura original aprobada trazable vinculada a este ingreso.' });
-        }
-
-        // Si se especificó un id_movimiento concreto, obtener sus datos específicos
-        let specificQty = null;
-        let specificSku = null;
-        if (id_movimiento) {
-            const resMov = await pool.query('SELECT articulo_numero, cantidad FROM public.mantenimiento_movimientos WHERE id = $1', [parseInt(id_movimiento)]);
-            if (resMov.rows.length > 0) {
-                specificQty = parseFloat(resMov.rows[0].cantidad);
-                specificSku = resMov.rows[0].articulo_numero;
-            }
         }
 
         const candidates = [];
@@ -1534,7 +1705,7 @@ async function trazarFacturaOriginal(req, res) {
                 FROM public.presupuestos_detalles pd
                 JOIN public.presupuestos p ON p.id = pd.id_presupuesto
                 LEFT JOIN public.articulos a ON (a.numero = $2 OR a.codigo_barras = $2)
-                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id::text = a.numero OR (a.codigo_barras IS NOT NULL AND ba.codigo_barras::text = a.codigo_barras))
                 WHERE pd.id_presupuesto = $1
                   AND (
                       COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
@@ -1602,7 +1773,7 @@ async function trazarFacturaOriginal(req, res) {
                   )
                 JOIN public.presupuestos p ON p.id = pd.id_presupuesto
                 LEFT JOIN public.articulos a ON (a.numero = qs.articulo_numero OR a.codigo_barras = qs.articulo_numero)
-                LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id::text = a.numero OR (a.codigo_barras IS NOT NULL AND ba.codigo_barras::text = a.codigo_barras))
                 ORDER BY qs.articulo_numero ASC
             `;
         }
@@ -1616,7 +1787,7 @@ async function trazarFacturaOriginal(req, res) {
                 pd.camp2 as iva_alicuota
             FROM public.presupuestos_detalles pd
             LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
-            LEFT JOIN public.bunker_articulos ba ON ba.codigo_articulo = a.numero
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id::text = a.numero OR (a.codigo_barras IS NOT NULL AND ba.codigo_barras::text = a.codigo_barras))
             WHERE pd.id_presupuesto = $1
             ORDER BY pd.articulo ASC
         `;
@@ -1642,7 +1813,7 @@ async function trazarFacturaOriginal(req, res) {
 
                 const descGlobal = parseFloat(factura.descuento || item.descuento_global || 0);
                 return {
-                    id_movimiento: id_movimiento ? parseInt(id_movimiento) : null,
+                    id_movimiento: id_movimiento ? (String(id_movimiento).toUpperCase().startsWith('ADMIN-') ? String(id_movimiento).trim() : parseInt(id_movimiento, 10)) : null,
                     articulo_numero: item.articulo_numero,
                     codigo_barras: item.codigo_barras || null,
                     descripcion: item.descripcion,
@@ -1960,11 +2131,11 @@ async function recibirRetiroLocal(req, res) {
 
         const itemsQuery = `
             SELECT 
-                pd.articulo as codigo_barras,
+                COALESCE(a.codigo_barras, ba.codigo_barras::text, pd.articulo) as codigo_barras,
                 pd.cantidad,
                 COALESCE(
-                    ba.articulo_id::text,
                     a.numero::text,
+                    ba.articulo_id::text,
                     pd.articulo
                 ) as articulo_numero,
                 COALESCE(
@@ -2010,13 +2181,17 @@ async function recibirRetiroLocal(req, res) {
             ]);
 
             if (item.articulo_numero) {
-                const stockCheck = await client.query('SELECT 1 FROM stock_real_consolidado WHERE articulo_numero = $1', [item.articulo_numero]);
+                const stockCheck = await client.query(
+                    'SELECT articulo_numero FROM stock_real_consolidado WHERE articulo_numero = $1 OR ($2::text != \'\' AND codigo_barras = $2) LIMIT 1',
+                    [item.articulo_numero, item.codigo_barras || '']
+                );
                 if (stockCheck.rowCount > 0) {
+                    const targetArtNumero = stockCheck.rows[0].articulo_numero;
                     await client.query(`
                         UPDATE stock_real_consolidado
                         SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW()
                         WHERE articulo_numero = $2
-                    `, [item.cantidad, item.articulo_numero]);
+                    `, [item.cantidad, targetArtNumero]);
                 } else {
                     await client.query(`
                         INSERT INTO stock_real_consolidado 
@@ -3189,15 +3364,21 @@ const desasignarArticuloOficial = async (req, res) => {
             throw new Error('No se puede desvincular el artículo porque ya posee una Nota de Crédito en trámite o emitida.');
         }
 
-        // 3. Si tenía presupuesto vinculado, revertir Orden de Retiro
+        // 3. Si tenía presupuesto vinculado, revertir Orden de Retiro (trazabilidad dual por id o cbte_nro)
         if (mov.id_presupuesto_origen) {
             const presRes = await client.query(`
                 SELECT id FROM public.presupuestos 
-                WHERE origen_numero_factura = $1::text 
+                WHERE (
+                    origen_numero_factura = $1::text
+                    OR origen_numero_factura IN (
+                        SELECT ff.cbte_nro::text FROM public.factura_facturas ff
+                        WHERE ff.presupuesto_id = $2 AND ff.cbte_nro IS NOT NULL
+                    )
+                )
                   AND tipo_comprobante = 'Orden de Retiro' 
                   AND estado = 'Recibido'
                 ORDER BY fecha DESC LIMIT 1
-            `, [String(mov.id_presupuesto_origen)]);
+            `, [String(mov.id_presupuesto_origen), parseInt(mov.id_presupuesto_origen, 10) || 0]);
 
             if (presRes.rows.length > 0) {
                 const idOrdenRetiro = presRes.rows[0].id;
@@ -3269,12 +3450,22 @@ const getPresupuestosEntregados = async (req, res) => {
         }
 
         const query = `
-            SELECT p.id, p.fecha, p.numero, p.estado, p.origen_facturacion, p.importe_total
+            SELECT
+                p.id,
+                p.fecha,
+                p.id_presupuesto_ext AS numero,
+                p.estado,
+                p.origen_facturacion,
+                COALESCE((SELECT SUM(pd_sum.cantidad * pd_sum.precio1) FROM public.presupuestos_detalles pd_sum WHERE pd_sum.id_presupuesto = p.id), 0) AS importe_total
             FROM public.presupuestos p
             JOIN public.presupuestos_detalles pd ON p.id = pd.id_presupuesto
-            WHERE p.id_cliente = $1
-              AND pd.articulo = $2
-              AND p.estado IN ('Entregado', 'Entregados')
+            WHERE p.id_cliente::text = $1::text
+              AND (
+                  pd.articulo = $2
+                  OR COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                     = COALESCE((SELECT numero FROM public.articulos WHERE numero = $2 OR codigo_barras = $2 LIMIT 1), $2)
+              )
+              AND p.estado IN ('Entregado', 'Entregados', 'Facturado')
             ORDER BY p.fecha DESC
         `;
         const result = await pool.query(query, [cliente_id, articulo_numero]);
@@ -3420,14 +3611,20 @@ const desvincularPresupuesto = async (req, res) => {
         const id_presupuesto_origen = movRes.rows[0].id_presupuesto_origen;
         if (!id_presupuesto_origen) throw new Error('El movimiento no posee un presupuesto vinculado.');
 
-        // 2. Buscar y eliminar la "Orden de Retiro" generada
+        // 2. Buscar y eliminar la "Orden de Retiro" generada (trazabilidad dual por id o cbte_nro)
         const presRes = await client.query(`
             SELECT id FROM public.presupuestos 
-            WHERE origen_numero_factura = $1::text 
+            WHERE (
+                origen_numero_factura = $1::text
+                OR origen_numero_factura IN (
+                    SELECT ff.cbte_nro::text FROM public.factura_facturas ff
+                    WHERE ff.presupuesto_id = $2 AND ff.cbte_nro IS NOT NULL
+                )
+            )
             AND tipo_comprobante = 'Orden de Retiro' 
             AND estado = 'Recibido'
             ORDER BY fecha DESC LIMIT 1
-        `, [String(id_presupuesto_origen)]);
+        `, [String(id_presupuesto_origen), parseInt(id_presupuesto_origen, 10) || 0]);
 
         if (presRes.rows.length > 0) {
             const idOrdenRetiro = presRes.rows[0].id;
@@ -3463,44 +3660,73 @@ const desvincularPresupuesto = async (req, res) => {
 const buscarOrdenRetiro = async (req, res) => {
     try {
         const { idFactura, articulo } = req.params;
+        const idFactStr = String(idFactura).replace(/^ADMIN-/i, '').trim();
+        const isNumericFact = /^\d+$/.test(idFactStr);
 
-        // [TICKET 028] Bugfix: Si el idFactura YA ES una Orden de Retiro, devolverlo directamente
-        const checkSelf = await pool.query(`
-            SELECT id as id_orden_retiro
-            FROM public.presupuestos
-            WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
-            LIMIT 1
-        `, [idFactura]);
+        // [TICKET 028] Bugfix: Si el idFactura YA ES una Orden de Retiro / Administrativa NC, devolverlo directamente
+        if (isNumericFact) {
+            const checkSelf = await pool.query(`
+                SELECT id as id_orden_retiro
+                FROM public.presupuestos
+                WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC'))
+                LIMIT 1
+            `, [parseInt(idFactStr, 10)]);
 
-        if (checkSelf.rows.length > 0) {
-            return res.json({ success: true, id_orden_retiro: checkSelf.rows[0].id_orden_retiro });
+            if (checkSelf.rows.length > 0) {
+                return res.json({ success: true, id_orden_retiro: checkSelf.rows[0].id_orden_retiro });
+            }
         }
 
-        
         const result = await pool.query(`
             SELECT p.id as id_orden_retiro
             FROM public.presupuestos p
             JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
-            WHERE p.origen_numero_factura = $1
-              AND p.tipo_comprobante = 'Orden de Retiro'
-              AND pd.articulo = $2
+            WHERE (
+                p.origen_numero_factura = $1::text
+                OR (
+                    $1::text ~ '^[0-9]+$'
+                    AND p.origen_numero_factura IN (
+                        SELECT ff.cbte_nro::text
+                        FROM public.factura_facturas ff
+                        WHERE (ff.presupuesto_id = $1::int OR ff.id = $1::int)
+                          AND ff.cbte_nro IS NOT NULL
+                    )
+                )
+            )
+              AND (p.tipo_comprobante = 'Orden de Retiro' OR p.estado IN ('Orden de Retiro', 'Administrativa NC'))
+              AND (
+                  pd.articulo = $2
+                  OR COALESCE((SELECT numero FROM public.articulos WHERE numero = pd.articulo OR codigo_barras = pd.articulo LIMIT 1), pd.articulo)
+                     = COALESCE((SELECT numero FROM public.articulos WHERE numero = $2 OR codigo_barras = $2 LIMIT 1), $2)
+              )
             ORDER BY p.id DESC
             LIMIT 1
-        `, [String(idFactura), articulo]);
+        `, [idFactStr, articulo]);
 
         if (result.rows.length > 0) {
             return res.json({ success: true, id_orden_retiro: result.rows[0].id_orden_retiro });
         }
 
-        // Fallback: buscar solo por ID sin restringir el artículo si no coincide
+        // Fallback: buscar solo por ID/cbte_nro sin restringir el artículo si no coincide
         const fallback = await pool.query(`
             SELECT id as id_orden_retiro
             FROM public.presupuestos
-            WHERE origen_numero_factura = $1
-              AND tipo_comprobante = 'Orden de Retiro'
+            WHERE (
+                origen_numero_factura = $1::text
+                OR (
+                    $1::text ~ '^[0-9]+$'
+                    AND origen_numero_factura IN (
+                        SELECT ff.cbte_nro::text
+                        FROM public.factura_facturas ff
+                        WHERE (ff.presupuesto_id = $1::int OR ff.id = $1::int)
+                          AND ff.cbte_nro IS NOT NULL
+                    )
+                )
+            )
+              AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC'))
             ORDER BY id DESC
             LIMIT 1
-        `, [String(idFactura)]);
+        `, [idFactStr]);
 
         if (fallback.rows.length > 0) {
             return res.json({ success: true, id_orden_retiro: fallback.rows[0].id_orden_retiro });

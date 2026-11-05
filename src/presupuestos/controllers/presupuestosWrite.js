@@ -322,19 +322,25 @@ const crearPresupuesto = async (req, res) => {
             }
 
             let resolvedOrigenFacturacion = origen_facturacion || 'PENDIENTE';
-            if (isRetiro && pVentaStr && nFacturaStr && resolvedOrigenFacturacion === 'PENDIENTE') {
-                const pVentaInt = parseInt(pVentaStr, 10);
+            if (isRetiro && nFacturaStr && resolvedOrigenFacturacion === 'PENDIENTE') {
+                const pVentaInt = (pVentaStr && /^\d+$/.test(String(pVentaStr).trim())) ? parseInt(pVentaStr, 10) : null;
                 const nFacturaInt = parseInt(nFacturaStr, 10);
-                if (!isNaN(pVentaInt) && !isNaN(nFacturaInt)) {
+                if (!isNaN(nFacturaInt)) {
                     const checkFacturadorQuery = `
-                        SELECT 1 
-                        FROM factura_facturas 
-                        WHERE pto_vta = $1 AND cbte_nro = $2 AND estado != 'BORRADOR'
+                        SELECT 1
+                        FROM public.factura_facturas f
+                        WHERE ((($1::int IS NULL OR f.pto_vta = $1::int) AND f.cbte_nro = $2) OR f.presupuesto_id = $2)
+                          AND f.estado != 'BORRADOR'
+                        UNION ALL
+                        SELECT 1
+                        FROM public.presupuestos p_orig
+                        WHERE p_orig.id = $2
+                          AND (p_orig.factura_id IS NOT NULL OR p_orig.origen_facturacion IN ('LAMDA', 'AFIP/ARCA', 'LAMDA INTERNO', 'DIFERIDO'))
                         LIMIT 1
                     `;
                     const checkFactResult = await client.query(checkFacturadorQuery, [pVentaInt, nFacturaInt]);
                     resolvedOrigenFacturacion = checkFactResult.rows.length > 0 ? 'LAMDA' : 'LOMASOFT';
-                    console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en CREATE: ${resolvedOrigenFacturacion} para PV-${pVentaStr} Fact-${nFacturaStr}`);
+                    console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en CREATE (Trazabilidad Dual): ${resolvedOrigenFacturacion} para PV-${pVentaStr || 'N/A'} Fact/ID-${nFacturaStr}`);
                 }
             }
 
@@ -934,19 +940,25 @@ const editarPresupuesto = async (req, res) => {
                 const finalNumeroFactura = origen_numero_factura !== undefined ? origen_numero_factura : presupuesto.origen_numero_factura;
                 const isRetiroEdit = (tipo_comprobante === 'Orden de Retiro' || estado === 'Orden de Retiro' || estado === 'Administrativa NC') || (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC');
                 
-                if (isRetiroEdit && finalPuntoVenta && finalNumeroFactura && (origen_facturacion === 'PENDIENTE' || !origen_facturacion)) {
-                    const pVentaInt = parseInt(finalPuntoVenta, 10);
+                if (isRetiroEdit && finalNumeroFactura && (origen_facturacion === 'PENDIENTE' || !origen_facturacion)) {
+                    const pVentaInt = (finalPuntoVenta && /^\d+$/.test(String(finalPuntoVenta).trim())) ? parseInt(finalPuntoVenta, 10) : null;
                     const nFacturaInt = parseInt(finalNumeroFactura, 10);
-                    if (!isNaN(pVentaInt) && !isNaN(nFacturaInt)) {
+                    if (!isNaN(nFacturaInt)) {
                         const checkFacturadorQuery = `
-                            SELECT 1 
-                            FROM factura_facturas 
-                            WHERE pto_vta = $1 AND cbte_nro = $2 AND estado != 'BORRADOR'
+                            SELECT 1
+                            FROM public.factura_facturas f
+                            WHERE ((($1::int IS NULL OR f.pto_vta = $1::int) AND f.cbte_nro = $2) OR f.presupuesto_id = $2)
+                              AND f.estado != 'BORRADOR'
+                            UNION ALL
+                            SELECT 1
+                            FROM public.presupuestos p_orig
+                            WHERE p_orig.id = $2
+                              AND (p_orig.factura_id IS NOT NULL OR p_orig.origen_facturacion IN ('LAMDA', 'AFIP/ARCA', 'LAMDA INTERNO', 'DIFERIDO'))
                             LIMIT 1
                         `;
                         const checkFactResult = await client.query(checkFacturadorQuery, [pVentaInt, nFacturaInt]);
                         resolvedOrigenEdit = checkFactResult.rows.length > 0 ? 'LAMDA' : 'LOMASOFT';
-                        console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en EDIT: ${resolvedOrigenEdit} para PV-${pVentaInt} Fact-${nFacturaInt}`);
+                        console.log(`[HERENCIA-VENTAS] Resuelto Origen Facturador en EDIT (Trazabilidad Dual): ${resolvedOrigenEdit} para PV-${pVentaInt ?? 'N/A'} Fact/ID-${nFacturaInt}`);
                     }
                 }
                 

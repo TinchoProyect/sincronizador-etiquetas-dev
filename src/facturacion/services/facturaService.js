@@ -146,9 +146,17 @@ const crearBorrador = async (datos) => {
                         const nuevosItems = procesarItemsSegunPrecioModo(datos.items, datos.precio_modo, descDecimal);
                         await enriquecerItemsConFotoCostos(client, nuevosItems, facturaExistente.cliente_id || datos.cliente?.cliente_id);
 
-                        if (datos.stock_descontado === true || datos.mover_stock === false || datos.origen_comprobante === 'MANTENIMIENTO') {
+                        let esRetiroConsolidado = datos.stock_descontado === true || datos.mover_stock === false || datos.origen_comprobante === 'MANTENIMIENTO' || datos.origen_comprobante === 'ADMINISTRATIVA_NC';
+                        if (!esRetiroConsolidado && (datos.presupuesto_id || facturaExistente.presupuesto_id)) {
+                            const resPresRet = await client.query(
+                                `SELECT 1 FROM public.presupuestos WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC')) LIMIT 1`,
+                                [datos.presupuesto_id || facturaExistente.presupuesto_id]
+                            );
+                            if (resPresRet.rows.length > 0) esRetiroConsolidado = true;
+                        }
+                        if (esRetiroConsolidado) {
                             await client.query('UPDATE factura_facturas SET stock_descontado = TRUE WHERE id = $1', [facturaExistente.id]);
-                            console.log(`🛡️ [FACTURACION-SERVICE] Borrador NC existente marcado con stock_descontado = TRUE (Mantenimiento / Sin movimiento de stock).`);
+                            console.log(`🛡️ [FACTURACION-SERVICE] Borrador NC existente marcado con stock_descontado = TRUE (Mantenimiento / Retiro / Administrativa NC).`);
                         }
 
                         const resOrden = await client.query('SELECT COALESCE(MAX(orden), 0) as max_orden FROM factura_factura_items WHERE factura_id = $1', [facturaExistente.id]);
@@ -339,7 +347,17 @@ const crearBorrador = async (datos) => {
                 console.log(`🔢 [FACTURACION-SERVICE] Pre-asignando número secuencial borrador: ${cbteNro}`);
             }
 
-            const stockDescontado = datos.stock_descontado === true || datos.mover_stock === false || datos.origen_comprobante === 'MANTENIMIENTO';
+            let stockDescontado = datos.stock_descontado === true || datos.mover_stock === false || datos.origen_comprobante === 'MANTENIMIENTO' || datos.origen_comprobante === 'ADMINISTRATIVA_NC';
+            if (!stockDescontado && datos.presupuesto_id) {
+                const resPresRetiro = await client.query(
+                    `SELECT 1 FROM public.presupuestos WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC')) LIMIT 1`,
+                    [datos.presupuesto_id]
+                );
+                if (resPresRetiro.rows.length > 0) {
+                    stockDescontado = true;
+                    console.log(`🛡️ [FACTURACION-SERVICE] Presupuesto #${datos.presupuesto_id} es Orden de Retiro / Administrativa NC -> forzando stock_descontado = TRUE.`);
+                }
+            }
 
             // Insertar cabecera (incluyendo descuento decimal y foto contable completa)
             const queryCabecera = `
@@ -599,6 +617,15 @@ const emitirAfip = async (factura) => {
                         [resultado.rows[0].presupuesto_id, String(cbteNroOficial)]
                     );
                     console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} actualizado a 'Facturado' con comprobante #${cbteNroOficial}`);
+                } else if (resultado.rows[0].presupuesto_id && esNC) {
+                    await client.query(
+                        `UPDATE public.presupuestos 
+                         SET estado = 'Conciliado'
+                         WHERE id = $1
+                           AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC', 'Enviado a Facturación'))`,
+                        [resultado.rows[0].presupuesto_id]
+                    );
+                    console.log(`🔗 [FACTURACION-SERVICE] Orden de Retiro / Administrativa NC #${resultado.rows[0].presupuesto_id} marcada como 'Conciliado' (Emisión AFIP sin pisar origen_numero_factura)`);
                 }
             }
 
@@ -663,8 +690,9 @@ const emitirInterna = async (factura) => {
                 await client.query(`UPDATE factura_facturas SET stock_descontado = TRUE WHERE id = $1`, [factura.id]);
             }
 
-            if (resultado.rows[0].presupuesto_id) {
-                // Actualizar estado de presupuesto de origen a 'Facturado'
+            const esNCInterna = [3, 8, 13, 99].includes(parseInt(resultado.rows[0].tipo_cbte));
+            if (resultado.rows[0].presupuesto_id && !esNCInterna) {
+                // Actualizar estado de presupuesto de origen a 'Facturado' (Solo si NO es Nota de Crédito)
                 await client.query(
                     `UPDATE public.presupuestos 
                      SET estado = 'Facturado',
@@ -674,6 +702,15 @@ const emitirInterna = async (factura) => {
                     [resultado.rows[0].presupuesto_id, `${serie}-${nroInterno}`]
                 );
                 console.log(`🔗 [FACTURACION-SERVICE] Presupuesto ${resultado.rows[0].presupuesto_id} actualizado a 'Facturado' (Emisión Interna)`);
+            } else if (resultado.rows[0].presupuesto_id && esNCInterna) {
+                await client.query(
+                    `UPDATE public.presupuestos 
+                     SET estado = 'Conciliado'
+                     WHERE id = $1
+                       AND (tipo_comprobante = 'Orden de Retiro' OR estado IN ('Orden de Retiro', 'Administrativa NC', 'Enviado a Facturación'))`,
+                    [resultado.rows[0].presupuesto_id]
+                );
+                console.log(`🔗 [FACTURACION-SERVICE] Orden de Retiro / Administrativa NC #${resultado.rows[0].presupuesto_id} marcada como 'Conciliado' (Emisión Interna sin pisar origen_numero_factura)`);
             }
 
             return resultado.rows[0];
@@ -1009,6 +1046,30 @@ const registrarMovimientosStockFactura = async (factura, client) => {
     if (factura.stock_descontado) {
         console.log(`ℹ️ [FACTURACION-SERVICE] Comprobante ID ${factura.id} tiene stock_descontado = TRUE (Mantenimiento / Sin movimiento de depósito). Se omite movimiento automático de stock.`);
         return;
+    }
+
+    // Blindaje Micro-Etapa 4: Si es Nota de Crédito asociada a una Orden de Retiro o Administrativa NC (o Mantenimiento),
+    // jamás debe sumar stock físico a stock_real_consolidado (Variante B no mueve mercadería y Variante A ingresa a stock_mantenimiento).
+    if (esNotaCredito && factura.presupuesto_id) {
+        const resPresCheck = await client.query(
+            `SELECT tipo_comprobante, estado, estado_logistico,
+                    EXISTS(SELECT 1 FROM public.mantenimiento_movimientos mm WHERE mm.id_presupuesto_origen = p.id) AS tiene_mov_mantenimiento
+             FROM public.presupuestos p
+             WHERE p.id = $1
+             LIMIT 1`,
+            [factura.presupuesto_id]
+        );
+        if (resPresCheck.rows.length > 0) {
+            const pRow = resPresCheck.rows[0];
+            const esOrdenRetiroOAdmin = pRow.tipo_comprobante === 'Orden de Retiro'
+                || ['Orden de Retiro', 'Administrativa NC', 'Recibido', 'Conciliado', 'Retirado'].includes(pRow.estado)
+                || pRow.estado_logistico === 'OMITIDO'
+                || pRow.tiene_mov_mantenimiento === true;
+            if (esOrdenRetiroOAdmin) {
+                console.log(`🛡️ [FACTURACION-SERVICE] Nota de Crédito ID ${factura.id} proviene de Orden de Retiro / Administrativa NC (#${factura.presupuesto_id}). Se bloquea suma de stock en depósito.`);
+                return;
+            }
+        }
     }
 
     // Si es Nota de Crédito y no tiene presupuesto_id ni factura_asociada_id (Mantenimiento puro), omitimos el movimiento automático de stock

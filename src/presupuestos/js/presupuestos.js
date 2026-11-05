@@ -3633,6 +3633,11 @@ window.enviarAFacturador = async function (presupuestoId) {
 
         const payload = {
             es_nota_credito: true,
+            mover_stock: false,
+            stock_descontado: true,
+            origen_comprobante: 'ADMINISTRATIVA_NC',
+            concepto: 1,
+            pto_vta: 32,
             cliente: {
                 cliente_id: currentClientId
             },

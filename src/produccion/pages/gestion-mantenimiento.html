@@ -2631,7 +2631,7 @@
                             } else {
                                 let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
                                 innerActions += `
-                                 <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', ${item.id})" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
+                                 <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
                                      🧾 Emitir NC ARCA
                                  </button>`;
                                 statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
@@ -2776,7 +2776,7 @@
                             let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
                             let opacity = btnDisabled ? '0.5' : '1';
                             ncActionHtml = `
-                        <button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${opacity}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}')" ${arcaBtnDisabled}>🧾 Emitir NC ARCA</button>`;
+                        <button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${opacity}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" ${arcaBtnDisabled}>🧾 Emitir NC ARCA</button>`;
                         }
                     }
 
@@ -4408,7 +4408,8 @@
                 const precio = parseFloat(chk.dataset.precio) || 0;
                 const devuelto = parseFloat(chk.dataset.qty) || 0;
                 const limiteFacturado = parseFloat(chk.dataset.limite) || 0;
-                const movId = chk.dataset.idMovimiento ? parseInt(chk.dataset.idMovimiento) : (idMovimiento ? parseInt(idMovimiento) : null);
+                const rawChkMovId = chk.dataset.idMovimiento || idMovimiento || null;
+                const movId = rawChkMovId ? (String(rawChkMovId).toUpperCase().startsWith('ADMIN-') ? String(rawChkMovId).trim() : parseInt(rawChkMovId, 10)) : null;
 
                 // Validación Visual Límite Físico (Riesgo #5)
                 if (devuelto > limiteFacturado && limiteFacturado > 0) {
@@ -4458,8 +4459,8 @@
                     cliente: {
                         cliente_id: parseInt(clienteId)
                     },
-                    id_presupuesto_origen: idPresupuestoOrigen ? parseInt(idPresupuestoOrigen) : null,
-                    id_movimiento: idMovimiento ? parseInt(idMovimiento) : null,
+                    id_presupuesto_origen: idPresupuestoOrigen ? (parseInt(String(idPresupuestoOrigen).replace(/^ADMIN-/i, '').trim(), 10) || null) : null,
+                    id_movimiento: idMovimiento ? (String(idMovimiento).toUpperCase().startsWith('ADMIN-') ? String(idMovimiento).trim() : parseInt(idMovimiento, 10)) : null,
                     concepto: 1, // 1 = Productos
                     precio_modo: 'NETO', // Precios históricos (pd.valor1) están en neto
                     tipo_cbte: tipoCbte,

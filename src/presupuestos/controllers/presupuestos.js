@@ -195,8 +195,25 @@ const obtenerPresupuestos = async (req, res) => {
                 p.modificado_portal,
                 (
                     SELECT f.id FROM public.factura_facturas f
-                    WHERE (f.presupuesto_id = p.id OR f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END))
-                      AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    WHERE f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                      AND f.tipo_cbte IN (1, 6, 11)
+                      AND (
+                          f.presupuesto_id = p.id
+                          OR (
+                              p.origen_numero_factura ~ '^[0-9]+$'
+                              AND (
+                                  f.presupuesto_id = CAST(p.origen_numero_factura AS INTEGER)
+                                  OR (
+                                      f.cbte_nro = CAST(p.origen_numero_factura AS INTEGER)
+                                      AND (
+                                          (p.origen_punto_venta ~ '^[0-9]+$' AND f.pto_vta = CAST(p.origen_punto_venta AS INTEGER))
+                                          OR (p.id_cliente ~ '^[0-9]+$' AND f.cliente_id = CAST(p.id_cliente AS INTEGER))
+                                      )
+                                  )
+                              )
+                          )
+                      )
+                    ORDER BY (f.presupuesto_id = p.id) DESC, f.id DESC
                     LIMIT 1
                 ) AS factura_asociada_id
             FROM public.presupuestos p
@@ -2183,8 +2200,25 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 ) as origen_factura_canal,
                 (
                     SELECT f.id FROM public.factura_facturas f
-                    WHERE (f.presupuesto_id = p.id OR f.presupuesto_id = (CASE WHEN p.origen_numero_factura ~ '^[0-9]+$' THEN CAST(p.origen_numero_factura AS INTEGER) ELSE NULL END))
-                      AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                    WHERE f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                      AND f.tipo_cbte IN (1, 6, 11)
+                      AND (
+                          f.presupuesto_id = p.id
+                          OR (
+                              p.origen_numero_factura ~ '^[0-9]+$'
+                              AND (
+                                  f.presupuesto_id = CAST(p.origen_numero_factura AS INTEGER)
+                                  OR (
+                                      f.cbte_nro = CAST(p.origen_numero_factura AS INTEGER)
+                                      AND (
+                                          (p.origen_punto_venta ~ '^[0-9]+$' AND f.pto_vta = CAST(p.origen_punto_venta AS INTEGER))
+                                          OR (p.id_cliente ~ '^[0-9]+$' AND f.cliente_id = CAST(p.id_cliente AS INTEGER))
+                                      )
+                                  )
+                              )
+                          )
+                      )
+                    ORDER BY (f.presupuesto_id = p.id) DESC, f.id DESC
                     LIMIT 1
                 ) AS factura_asociada_id,
                 bc.id AS bunker_cliente_id,

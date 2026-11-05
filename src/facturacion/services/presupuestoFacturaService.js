@@ -581,28 +581,42 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
 
         console.log(`💰 [PRESUPUESTO-FACTURA] Totales validados - Total: $${totales.imp_total.toFixed(2)}`);
 
-        // 8. Trazabilidad: Buscar Factura Asociada si es una Orden de Retiro
+        // 8. Trazabilidad Dual: Buscar Factura Asociada si es una Orden de Retiro / Administrativa NC
         let facturaAsociadaId = null;
-        const esRetiro = presupuesto && (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC');
+        const esRetiro = Boolean(presupuesto && (presupuesto.tipo_comprobante === 'Orden de Retiro' || presupuesto.estado === 'Orden de Retiro' || presupuesto.estado === 'Administrativa NC'));
         if (esRetiro && presupuesto.origen_numero_factura) {
             const origVal = presupuesto.origen_numero_factura.trim();
+            const origPtoVta = (presupuesto.origen_punto_venta && /^\d+$/.test(String(presupuesto.origen_punto_venta).trim()))
+                ? parseInt(String(presupuesto.origen_punto_venta).trim(), 10)
+                : null;
             if (/^\d+$/.test(origVal)) {
-                const origBudgetId = parseInt(origVal);
+                const origBudgetOrCbte = parseInt(origVal, 10);
                 const origFactRes = await client.query(
-                    `SELECT id FROM factura_facturas WHERE (presupuesto_id = $1 OR cbte_nro = $2) AND estado = 'APROBADA' LIMIT 1`,
-                    [origBudgetId, origBudgetId]
+                    `SELECT id FROM factura_facturas
+                     WHERE estado IN ('APROBADA', 'APROBADA_LOCAL')
+                       AND tipo_cbte IN (1, 6, 11)
+                       AND (
+                           presupuesto_id = $1
+                           OR (
+                               cbte_nro = $1
+                               AND (($2::int IS NOT NULL AND pto_vta = $2) OR ($3::int IS NOT NULL AND cliente_id = $3))
+                           )
+                       )
+                     ORDER BY (presupuesto_id = $1) DESC, id DESC
+                     LIMIT 1`,
+                    [origBudgetOrCbte, origPtoVta, cabecera.cliente_id || null]
                 );
                 if (origFactRes.rows.length > 0) {
                     facturaAsociadaId = origFactRes.rows[0].id;
-                    console.log(`📋 [PRESUPUESTO-FACTURA] Factura asociada encontrada por ID/Nro: ${facturaAsociadaId}`);
+                    console.log(`📋 [PRESUPUESTO-FACTURA] Factura asociada encontrada por ID/Nro (Dual): ${facturaAsociadaId}`);
                 }
             } else if (origVal.includes('-')) {
                 const parts = origVal.split('-');
-                const ptoVta = parseInt(parts[0]);
-                const cbteNro = parseInt(parts[1]);
+                const ptoVta = parseInt(parts[0], 10);
+                const cbteNro = parseInt(parts[1], 10);
                 if (!isNaN(ptoVta) && !isNaN(cbteNro)) {
                     const origFactRes = await client.query(
-                        `SELECT id FROM factura_facturas WHERE pto_vta = $1 AND cbte_nro = $2 AND estado = 'APROBADA' LIMIT 1`,
+                        `SELECT id FROM factura_facturas WHERE pto_vta = $1 AND cbte_nro = $2 AND estado IN ('APROBADA', 'APROBADA_LOCAL') AND tipo_cbte IN (1, 6, 11) ORDER BY id DESC LIMIT 1`,
                         [ptoVta, cbteNro]
                     );
                     if (origFactRes.rows.length > 0) {
@@ -614,7 +628,9 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
         }
 
         // 8.5. Insertar factura lista para CAE (SIN número todavía)
-        console.log(`📝 [PRESUPUESTO-FACTURA] Creando factura BORRADOR...`);
+        // Blindaje Micro-Etapa 4: Si esRetiro (Orden de Retiro o Administrativa NC), nace con stock_descontado = true
+        // para no sumar stock físico fantasma al emitir la Nota de Crédito.
+        console.log(`📝 [PRESUPUESTO-FACTURA] Creando factura BORRADOR (stock_descontado: ${esRetiro})...`);
 
         const insertFacturaQuery = `
             INSERT INTO factura_facturas (
@@ -626,6 +642,7 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
                 descuento, factura_asociada_id, costo_estimado_total,
                 alicuota_iibb, imp_iibb, imp_dif_iva, costo_mercaderia_total, costo_mano_obra_total,
                 costo_insumos_total, ganancia_sin_iibb_total, ganancia_real_total, foto_capturada,
+                stock_descontado,
                 created_at, updated_at
             ) VALUES (
                 $1, $2, $3, $4, $5,
@@ -636,6 +653,7 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
                 $22, $23,
                 $24, $25, $26, $27, $28,
                 $29, $30, $31, $32,
+                $33,
                 NOW(), NOW()
             ) RETURNING id
         `;
@@ -672,7 +690,8 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
             totales.costo_insumos_total,    // $29
             totales.ganancia_sin_iibb_total,// $30
             totales.ganancia_real_total,    // $31
-            true                       // $32 (foto_capturada)
+            true,                      // $32 (foto_capturada)
+            esRetiro                   // $33 (stock_descontado)
         ]);
 
         const facturaId = facturaResult.rows[0].id;

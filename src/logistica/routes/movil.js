@@ -1074,7 +1074,14 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                                     'Logística Móvil (Chofer QR)',
                                     `Retorno por entrega parcial: ${cantDevuelta} u. de ${orig.articulo_nombre} (Cliente ${p.id_cliente})`
                                 ]);
-                                console.log(`[MOVIL-SCAN] 📦 Inyectada devolución a Mantenimiento: ${cantDevuelta} u. de ${orig.articulo_nombre} (Presupuesto #${p.id})`);
+                                if (orig.articulo_numero) {
+                                    await client.query(`
+                                        UPDATE public.stock_real_consolidado
+                                        SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW()
+                                        WHERE articulo_numero = $2
+                                    `, [cantDevuelta, orig.articulo_numero]);
+                                }
+                                console.log(`[MOVIL-SCAN] 📦 Inyectada devolución a Mantenimiento y sumado stock_mantenimiento: ${cantDevuelta} u. de ${orig.articulo_nombre} (Presupuesto #${p.id})`);
                             }
                         }
                     }
@@ -2003,14 +2010,31 @@ router.post('/rutas/finalizar', async (req, res) => {
 
             if (updatedRetiros.rows.length > 0) {
                 const presupuestosIds = updatedRetiros.rows.map(r => r.id);
-                // Extraer detalles e inyectarlos
+                // Extraer detalles e inyectarlos con resolución dual (articulos + bunker_articulos) y suma en stock_mantenimiento
                 const retirosDetalles = await client.query(`
                     SELECT 
                         pd.id_presupuesto, 
                         pd.cantidad, 
-                        COALESCE(a.numero, pd.articulo) as articulo_numero 
+                        COALESCE(a.numero::text, ba.articulo_id::text, pd.articulo) as articulo_numero,
+                        COALESCE(a.codigo_barras, ba.codigo_barras::text, pd.articulo) as codigo_barras,
+                        COALESCE(NULLIF(TRIM(ba.descripcion_generada), ''), NULLIF(TRIM(ba.descripcion), ''), NULLIF(TRIM(a.nombre), ''), pd.articulo) as articulo_nombre
                     FROM presupuestos_detalles pd
-                    LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                    LEFT JOIN LATERAL (
+                        SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                        FROM public.articulos a_inner
+                        WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                        ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                        LIMIT 1
+                    ) a ON true
+                    LEFT JOIN LATERAL (
+                        SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                        FROM public.bunker_articulos ba_inner
+                        WHERE ba_inner.articulo_id::text = pd.articulo
+                           OR ba_inner.codigo_barras::text = pd.articulo
+                           OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                        ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                        LIMIT 1
+                    ) ba ON true
                     WHERE pd.id_presupuesto = ANY($1::int[]) AND pd.articulo IS NOT NULL
                 `, [presupuestosIds]);
 
@@ -2026,6 +2050,27 @@ router.post('/rutas/finalizar', async (req, res) => {
                         'Logística Movil (Chofer)',
                         'Ingreso por Hoja de Ruta - Chofer'
                     ]);
+
+                    if (det.articulo_numero) {
+                        const stockCheck = await client.query(
+                            'SELECT articulo_numero FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR ($2::text != \'\' AND codigo_barras = $2) LIMIT 1',
+                            [det.articulo_numero, det.codigo_barras || '']
+                        );
+                        if (stockCheck.rowCount > 0) {
+                            const targetArtNumero = stockCheck.rows[0].articulo_numero;
+                            await client.query(`
+                                UPDATE public.stock_real_consolidado
+                                SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW()
+                                WHERE articulo_numero = $2
+                            `, [parseFloat(det.cantidad) || 0, targetArtNumero]);
+                        } else {
+                            await client.query(`
+                                INSERT INTO public.stock_real_consolidado
+                                (articulo_numero, descripcion, codigo_barras, stock_consolidado, stock_mantenimiento, ultima_actualizacion, no_producido_por_lambda, solo_produccion_externa)
+                                VALUES ($1, $2, $3, 0, $4, NOW(), false, false)
+                            `, [det.articulo_numero, det.articulo_nombre, det.codigo_barras, parseFloat(det.cantidad) || 0]);
+                        }
+                    }
                 }
             }
 
@@ -2034,13 +2079,29 @@ router.post('/rutas/finalizar', async (req, res) => {
                 SELECT 
                     pd.id_presupuesto,
                     pd.articulo,
-                    COALESCE(a.numero, pd.articulo) as articulo_numero,
-                    COALESCE(a.nombre, pd.articulo) as articulo_nombre,
+                    COALESCE(a.numero::text, ba.articulo_id::text, pd.articulo) as articulo_numero,
+                    COALESCE(a.codigo_barras, ba.codigo_barras::text, pd.articulo) as codigo_barras,
+                    COALESCE(NULLIF(TRIM(ba.descripcion_generada), ''), NULLIF(TRIM(ba.descripcion), ''), NULLIF(TRIM(a.nombre), ''), pd.articulo) as articulo_nombre,
                     (pd.cantidad_original - pd.cantidad) as cantidad_no_entregada,
                     p.id_cliente
                 FROM presupuestos_detalles pd
                 JOIN presupuestos p ON p.id = pd.id_presupuesto
-                LEFT JOIN articulos a ON a.codigo_barras = pd.articulo OR a.numero = pd.articulo
+                LEFT JOIN LATERAL (
+                    SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                    FROM public.articulos a_inner
+                    WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                    ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                    LIMIT 1
+                ) a ON true
+                LEFT JOIN LATERAL (
+                    SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                    FROM public.bunker_articulos ba_inner
+                    WHERE ba_inner.articulo_id::text = pd.articulo
+                       OR ba_inner.codigo_barras::text = pd.articulo
+                       OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                    ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                    LIMIT 1
+                ) ba ON true
                 WHERE p.id_ruta = $1
                   AND pd.cantidad_original IS NOT NULL
                   AND pd.cantidad_original > pd.cantidad
@@ -2055,18 +2116,26 @@ router.post('/rutas/finalizar', async (req, res) => {
                     `, [item.id_presupuesto, item.articulo_numero]);
 
                     if (checkDup.rowCount === 0) {
+                        const cantNoEntregada = parseFloat(item.cantidad_no_entregada) || 0;
                         await client.query(`
                             INSERT INTO mantenimiento_movimientos
                             (articulo_numero, cantidad, id_presupuesto_origen, usuario, tipo_movimiento, estado, observaciones)
                             VALUES ($1, $2, $3, $4, 'INGRESO', 'PENDIENTE', $5)
                         `, [
                             item.articulo_numero,
-                            parseFloat(item.cantidad_no_entregada),
+                            cantNoEntregada,
                             item.id_presupuesto,
                             'Logística Móvil (Chofer)',
-                            `Retorno automático por entrega parcial / rechazo: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Cliente ${item.id_cliente})`
+                            `Retorno automático por entrega parcial / rechazo: ${cantNoEntregada} u. de ${item.articulo_nombre} (Cliente ${item.id_cliente})`
                         ]);
-                        console.log(`[MOVIL] ✅ Inyectado a Mantenimiento: ${parseFloat(item.cantidad_no_entregada)} u. de ${item.articulo_nombre} (Presupuesto #${item.id_presupuesto})`);
+                        if (item.articulo_numero && cantNoEntregada > 0) {
+                            await client.query(`
+                                UPDATE public.stock_real_consolidado
+                                SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1, ultima_actualizacion = NOW()
+                                WHERE articulo_numero = $2 OR ($3::text != '' AND codigo_barras = $3)
+                            `, [cantNoEntregada, item.articulo_numero, item.codigo_barras || '']);
+                        }
+                        console.log(`[MOVIL] ✅ Inyectado a Mantenimiento y sumado stock_mantenimiento: ${cantNoEntregada} u. de ${item.articulo_nombre} (Presupuesto #${item.id_presupuesto})`);
                     }
                 }
             }
