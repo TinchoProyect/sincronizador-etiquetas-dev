@@ -328,7 +328,44 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     app.get('/lamda-cloud-runtime.js', (req, res) => {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.send(CLIENT_RUNTIME_SCRIPT);
+        const isLab = esModoLaboratorio();
+        let preamble = '';
+        if (isLab) {
+            let adminJwt = '';
+            try {
+                const jwt = require('jsonwebtoken');
+                adminJwt = jwt.sign({ id: 2, usuario: 'Tincho', rol_id: 1 }, 'LAMDA_super_secreta', { expiresIn: '365d' });
+            } catch (_) {}
+            const mobileToken = Buffer.from(`2:${Date.now()}`).toString('base64');
+            preamble = `(function(){
+    window.__LAMDA_IS_LABORATORIO__ = true;
+    try {
+        var rawSes = localStorage.getItem('sesion_chofer') || sessionStorage.getItem('sesion_chofer');
+        var sesObj = rawSes ? JSON.parse(rawSes) : null;
+        if (!sesObj || !sesObj.token || !sesObj.id) {
+            var defaultSes = JSON.stringify({ id: 2, usuario: 'Tincho', nombre: 'Martin Ignacio Serrano', rol_id: 1, token: '${mobileToken}' });
+            localStorage.setItem('sesion_chofer', defaultSes);
+            sessionStorage.setItem('sesion_chofer', defaultSes);
+        }
+        var p = (window.location && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
+        if (p === '/mobile' || p === '/mobile/' || p === '/mobile/index.html' || p === '/public/mobile/index.html') {
+            window.location.replace('/mobile/home.html');
+            return;
+        }
+        if ('${adminJwt}') {
+            localStorage.setItem('token', '${adminJwt}');
+        }
+        if (!localStorage.getItem('colaboradorActivo')) {
+            localStorage.setItem('colaboradorActivo', JSON.stringify({ id: 2, nombre: 'Martin Ignacio Serrano', usuario: 'Tincho', rol_id: 1, timestamp: new Date().toISOString() }));
+        }
+        if (!sessionStorage.getItem('usuarioInventario')) {
+            sessionStorage.setItem('usuarioInventario', JSON.stringify({ id: 2, nombre: 'Martin Ignacio Serrano', usuario: 'Tincho' }));
+            sessionStorage.setItem('inventario_usuario_id', '2');
+        }
+    } catch (e) {}
+})();\n`;
+        }
+        res.send(preamble + CLIENT_RUNTIME_SCRIPT);
     });
 
     // 2. Endpoint de estado de entorno (Modo Laboratorio + Cola Zebra Retenida)

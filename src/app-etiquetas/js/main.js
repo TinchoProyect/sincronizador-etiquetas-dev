@@ -2687,6 +2687,10 @@ let loginManualMode = false;
 
 // Funciones para el modal de login
 async function abrirModalLogin() {
+  if (window.__LAMDA_IS_LABORATORIO__ === true || (window.__LAMDA_ENV_STATUS__ && window.__LAMDA_ENV_STATUS__.isLaboratorio)) {
+    window.location.href = 'pages/usuarios.html';
+    return;
+  }
   document.getElementById('modal-login').classList.add('active');
   
   // Resetear al modo dropdown por defecto al abrir

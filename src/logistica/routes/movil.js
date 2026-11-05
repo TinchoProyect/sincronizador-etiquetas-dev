@@ -81,6 +81,15 @@ async function enviarAvisoWhatsAppSobreRetirado(dbPool, sobre) {
 
 console.log('🔍 [MOVIL] Configurando rutas del módulo móvil...');
 
+// 🛠️ MODO LABORATORIO: Auto-inyección de token de Administrador (Martin Ignacio Serrano, id: 2) si no viene en headers
+router.use((req, res, next) => {
+    const isLab = String(process.env.MODO_LABORATORIO).toLowerCase() === 'true' || process.env.DB_NAME === 'etiquetas_pruebas';
+    if (isLab && (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer '))) {
+        req.headers.authorization = 'Bearer ' + Buffer.from(`2:${Date.now()}`).toString('base64');
+    }
+    next();
+});
+
 /**
  * @route GET /api/logistica/public-qr-resolve/:token
  * @desc Resolver cualquier token de QR (UUID, token corto msf... o ID local entero) a su UUID de Supabase B2B.
@@ -150,6 +159,21 @@ router.post('/login', async (req, res) => {
     try {
         // Extraer credenciales del body
         const { usuario, password } = req.body;
+        const isLab = String(process.env.MODO_LABORATORIO).toLowerCase() === 'true' || process.env.DB_NAME === 'etiquetas_pruebas';
+        if (isLab && (!usuario || !password)) {
+            const tokenLab = Buffer.from(`2:${Date.now()}`).toString('base64');
+            return res.status(200).json({
+                success: true,
+                message: 'Auto-login en Modo Laboratorio',
+                data: {
+                    id: 2,
+                    usuario: 'Tincho',
+                    nombre_completo: 'Martin Ignacio Serrano',
+                    rol_id: 1,
+                    token: tokenLab
+                }
+            });
+        }
 
         console.log('[LOGIN] Usuario recibido:', usuario || '(vacío)');
         console.log('[LOGIN] Password recibido:', password ? '***' : '(vacío)');
