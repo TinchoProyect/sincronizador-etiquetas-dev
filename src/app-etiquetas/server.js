@@ -678,26 +678,58 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
       ),
       pedidos_listos_reservados AS (
         SELECT 
-          pd_listo.articulo,
+          COALESCE(a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd_listo.articulo) as articulo,
           SUM(COALESCE(pd_listo.cantidad, 0)) as stock_reservado
         FROM public.presupuestos p_listo
-        JOIN public.presupuestos_detalles pd_listo ON (pd_listo.id_presupuesto_ext = p_listo.id_presupuesto_ext OR pd_listo.id_presupuesto = p_listo.id)
+        JOIN public.presupuestos_detalles pd_listo ON pd_listo.id_presupuesto = p_listo.id
+        LEFT JOIN LATERAL (
+          SELECT a_inner.numero FROM public.articulos a_inner
+          WHERE a_inner.codigo_barras = pd_listo.articulo OR a_inner.numero = pd_listo.articulo
+          ORDER BY (a_inner.codigo_barras = pd_listo.articulo) DESC LIMIT 1
+        ) a_plr ON true
+        LEFT JOIN LATERAL (
+          SELECT ba_inner.articulo_id FROM public.bunker_articulos ba_inner
+          WHERE ba_inner.articulo_id::text = pd_listo.articulo OR ba_inner.codigo_barras::text = pd_listo.articulo
+             OR (a_plr.numero IS NOT NULL AND ba_inner.articulo_id::text = a_plr.numero)
+          ORDER BY (ba_inner.articulo_id::text = pd_listo.articulo) DESC LIMIT 1
+        ) ba_plr ON true
+        LEFT JOIN LATERAL (
+          SELECT src_inner.articulo_numero FROM public.stock_real_consolidado src_inner
+          WHERE src_inner.codigo_barras = pd_listo.articulo OR src_inner.articulo_numero = pd_listo.articulo
+          ORDER BY (src_inner.codigo_barras = pd_listo.articulo) DESC LIMIT 1
+        ) src_plr ON true
         WHERE p_listo.activo = true
           AND p_listo.estado = 'Presupuesto/Orden'
           AND p_listo.secuencia IN ('Pedido_Listo', 'Retira_Deposito')
           AND COALESCE(pd_listo.es_saldo_ingrediente, false) = false
           AND p_listo.fecha_actualizacion >= NOW() - INTERVAL '24 hours'
-        GROUP BY pd_listo.articulo
+        GROUP BY COALESCE(a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd_listo.articulo)
       ),
       demanda_global_activa AS (
         SELECT 
-          pd_act.articulo,
+          COALESCE(a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd_act.articulo) as articulo,
           SUM(COALESCE(pd_act.cantidad, 0)) as demanda_total,
           COUNT(DISTINCT tpa.id) as pedidos_count
         FROM todos_presupuestos_activos tpa
-        JOIN public.presupuestos_detalles pd_act ON (pd_act.id_presupuesto_ext = tpa.id_presupuesto_ext OR pd_act.id_presupuesto = tpa.id)
+        JOIN public.presupuestos_detalles pd_act ON pd_act.id_presupuesto = tpa.id
+        LEFT JOIN LATERAL (
+          SELECT a_inner.numero FROM public.articulos a_inner
+          WHERE a_inner.codigo_barras = pd_act.articulo OR a_inner.numero = pd_act.articulo
+          ORDER BY (a_inner.codigo_barras = pd_act.articulo) DESC LIMIT 1
+        ) a_dga ON true
+        LEFT JOIN LATERAL (
+          SELECT ba_inner.articulo_id FROM public.bunker_articulos ba_inner
+          WHERE ba_inner.articulo_id::text = pd_act.articulo OR ba_inner.codigo_barras::text = pd_act.articulo
+             OR (a_dga.numero IS NOT NULL AND ba_inner.articulo_id::text = a_dga.numero)
+          ORDER BY (ba_inner.articulo_id::text = pd_act.articulo) DESC LIMIT 1
+        ) ba_dga ON true
+        LEFT JOIN LATERAL (
+          SELECT src_inner.articulo_numero FROM public.stock_real_consolidado src_inner
+          WHERE src_inner.codigo_barras = pd_act.articulo OR src_inner.articulo_numero = pd_act.articulo
+          ORDER BY (src_inner.codigo_barras = pd_act.articulo) DESC LIMIT 1
+        ) src_dga ON true
         WHERE COALESCE(pd_act.es_saldo_ingrediente, false) = false
-        GROUP BY pd_act.articulo
+        GROUP BY COALESCE(a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd_act.articulo)
       )
       SELECT 
         p.id,
@@ -808,12 +840,36 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
               )
             )
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
-            LEFT JOIN public.stock_real_consolidado hijo ON (hijo.codigo_barras = src.pack_hijo_codigo OR hijo.articulo_numero = src.pack_hijo_codigo)
-            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = src.articulo_numero)
-            LEFT JOIN pedidos_listos_reservados plr ON plr.articulo = pd.articulo
-            LEFT JOIN demanda_global_activa dga ON dga.articulo = pd.articulo
-            WHERE (pd.id_presupuesto_ext = p.id_presupuesto_ext OR pd.id_presupuesto = p.id)
+            LEFT JOIN LATERAL (
+              SELECT a_inner.numero, a_inner.nombre FROM public.articulos a_inner
+              WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+              ORDER BY (a_inner.codigo_barras = pd.articulo) DESC LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+              SELECT ba_inner.articulo_id, ba_inner.descripcion_generada, ba_inner.descripcion
+              FROM public.bunker_articulos ba_inner
+              WHERE ba_inner.articulo_id::text = pd.articulo OR ba_inner.codigo_barras::text = pd.articulo
+                 OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+              ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+              SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion, src_inner.stock_consolidado, src_inner.es_pack, src_inner.pack_hijo_codigo, src_inner.pack_unidades
+              FROM public.stock_real_consolidado src_inner
+              WHERE src_inner.articulo_numero = pd.articulo OR src_inner.codigo_barras = pd.articulo
+                 OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                 OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+              ORDER BY (src_inner.codigo_barras = pd.articulo) DESC LIMIT 1
+            ) src ON true
+            LEFT JOIN LATERAL (
+              SELECT hijo_inner.stock_consolidado
+              FROM public.stock_real_consolidado hijo_inner
+              WHERE src.pack_hijo_codigo IS NOT NULL
+                AND (hijo_inner.codigo_barras = src.pack_hijo_codigo OR hijo_inner.articulo_numero = src.pack_hijo_codigo)
+              LIMIT 1
+            ) hijo ON true
+            LEFT JOIN pedidos_listos_reservados plr ON plr.articulo = COALESCE(a.numero, ba.articulo_id::text, src.articulo_numero, pd.articulo)
+            LEFT JOIN demanda_global_activa dga ON dga.articulo = COALESCE(a.numero, ba.articulo_id::text, src.articulo_numero, pd.articulo)
+            WHERE pd.id_presupuesto = p.id
           ),
           '[]'::json
         ) as articulos

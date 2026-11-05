@@ -377,6 +377,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
                                         'articulo_numero', pd.articulo,
+                                        'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                        'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                         'descripcion', CASE
                                             WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
                                                 COALESCE(
@@ -576,17 +578,58 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         SELECT DISTINCT 
                             fpc.articulo_numero,
                             fpc.codigo_barras,
-                            COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real
+                            a.numero AS art_sku,
+                            a.codigo_barras AS art_barcode,
+                            ba.articulo_id::text AS ba_sku,
+                            ba.codigo_barras::text AS ba_barcode,
+                            src.articulo_numero AS src_sku,
+                            src.codigo_barras AS src_barcode,
+                            COALESCE(a.codigo_barras, ba.codigo_barras::text, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real
                         FROM faltantes_pendientes_compra fpc
-                        LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
-                        LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
+                        LEFT JOIN LATERAL (
+                            SELECT a_inner.numero, a_inner.codigo_barras
+                            FROM public.articulos a_inner
+                            WHERE a_inner.numero = fpc.articulo_numero
+                               OR a_inner.codigo_barras = fpc.articulo_numero
+                               OR (fpc.codigo_barras IS NOT NULL AND (a_inner.codigo_barras = fpc.codigo_barras OR a_inner.numero = fpc.codigo_barras))
+                            ORDER BY (a_inner.numero = fpc.articulo_numero) DESC
+                            LIMIT 1
+                        ) a ON true
+                        LEFT JOIN LATERAL (
+                            SELECT ba_inner.articulo_id, ba_inner.codigo_barras
+                            FROM public.bunker_articulos ba_inner
+                            WHERE ba_inner.articulo_id::text = fpc.articulo_numero
+                               OR ba_inner.codigo_barras::text = fpc.articulo_numero
+                               OR (fpc.codigo_barras IS NOT NULL AND (ba_inner.codigo_barras::text = fpc.codigo_barras OR ba_inner.articulo_id::text = fpc.codigo_barras))
+                               OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                            ORDER BY (ba_inner.articulo_id::text = fpc.articulo_numero) DESC
+                            LIMIT 1
+                        ) ba ON true
+                        LEFT JOIN LATERAL (
+                            SELECT src_inner.articulo_numero, src_inner.codigo_barras
+                            FROM public.stock_real_consolidado src_inner
+                            WHERE src_inner.articulo_numero = fpc.articulo_numero
+                               OR src_inner.codigo_barras = fpc.articulo_numero
+                               OR (fpc.codigo_barras IS NOT NULL AND (src_inner.codigo_barras = fpc.codigo_barras OR src_inner.articulo_numero = fpc.codigo_barras))
+                               OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                            ORDER BY (src_inner.articulo_numero = fpc.articulo_numero) DESC
+                            LIMIT 1
+                        ) src ON true
                         WHERE (fpc.id_presupuesto_ext = $1 OR fpc.id_presupuesto_local::text = $1)
                           AND fpc.estado = 'En espera'
                     `;
                     const faltantesResult = await pool.query(faltantesQuery, [presupuesto_id]);
-                    // Usar codigo_barras_real que es el que coincide con articulo_numero en presupuestos_detalles
-                    articulosEnFalta = faltantesResult.rows.map(r => r.codigo_barras_real);
-                    console.log('🛒 [REMITO-R] Artículos en falta encontrados (codigo_barras_real):', articulosEnFalta);
+                    // Incluir tanto SKU como codigo_barras para soportar pedidos Web, Movil y B2B
+                    const setFaltantes = new Set();
+                    faltantesResult.rows.forEach(r => {
+                        [r.articulo_numero, r.codigo_barras, r.art_sku, r.art_barcode, r.ba_sku, r.ba_barcode, r.src_sku, r.src_barcode, r.codigo_barras_real]
+                            .filter(Boolean)
+                            .map(v => String(v).trim())
+                            .filter(Boolean)
+                            .forEach(v => setFaltantes.add(v));
+                    });
+                    articulosEnFalta = Array.from(setFaltantes);
+                    console.log('🛒 [REMITO-R] Artículos en falta encontrados (dual SKU + barcode):', articulosEnFalta);
                 } catch (error) {
                     console.error('❌ [REMITO-R] Error al obtener artículos en falta:', error.message);
                     // Continuar sin artículos en falta si hay error
@@ -646,6 +689,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
+                                                    'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                                    'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                                     'descripcion', CASE
                                                         WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
                                                             COALESCE(
@@ -866,6 +911,8 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
+                                                    'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                                    'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                                     'descripcion', CASE
                                                         WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
                                                             COALESCE(
@@ -1608,10 +1655,16 @@ function generarHTMLPresupuestoUnico({
     if (presupuesto.articulos && presupuesto.articulos.length > 0) {
         const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
         
-        // Si es pendiente de compra, separar artículos en falta
+        // Si es pendiente de compra, separar artículos en falta (comparación dual SKU + codigo_barras)
         if (esPendienteCompra && articulosEnFalta.length > 0) {
-            const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
-            const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
+            const estaEnFalta = (a) => {
+                const candidatos = [a.articulo_numero, a.codigo_barras, a.sku_canonico, a.articulo]
+                    .filter(Boolean)
+                    .map(v => String(v).trim());
+                return candidatos.some(c => articulosEnFalta.includes(c));
+            };
+            const articulosConStock = articulosSorted.filter(a => !estaEnFalta(a));
+            const articulosSinStock = articulosSorted.filter(a => estaEnFalta(a));
             
             console.log(`🛒 [REMITO-R-HTML] Artículos CON stock:`, articulosConStock.length);
             console.log(`🛒 [REMITO-R-HTML] Artículos SIN stock:`, articulosSinStock.length);
@@ -1996,10 +2049,16 @@ function renderizarPDFPresupuestoUnico(doc, {
     if (presupuesto.articulos && presupuesto.articulos.length > 0) {
         const articulosSorted = presupuesto.articulos.sort((a, b) => a.articulo_numero.localeCompare(b.articulo_numero));
         
-        // Si es pendiente de compra, separar artículos
+        // Si es pendiente de compra, separar artículos (comparación dual SKU + codigo_barras)
         if (esPendienteCompra && articulosEnFalta.length > 0) {
-            const articulosConStock = articulosSorted.filter(a => !articulosEnFalta.includes(a.articulo_numero));
-            const articulosSinStock = articulosSorted.filter(a => articulosEnFalta.includes(a.articulo_numero));
+            const estaEnFalta = (a) => {
+                const candidatos = [a.articulo_numero, a.codigo_barras, a.sku_canonico, a.articulo]
+                    .filter(Boolean)
+                    .map(v => String(v).trim());
+                return candidatos.some(c => articulosEnFalta.includes(c));
+            };
+            const articulosConStock = articulosSorted.filter(a => !estaEnFalta(a));
+            const articulosSinStock = articulosSorted.filter(a => estaEnFalta(a));
             
             // Artículos CON stock
             if (articulosConStock.length > 0) {

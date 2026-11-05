@@ -993,10 +993,11 @@ const editarPresupuesto = async (req, res) => {
                     params.push('Standby');
                     console.log(`[PRESUPUESTO] Estado es Sin Confirmar: Forzando secuencia='Standby' para ID: ${id}`);
                 } else if (targetEstado !== 'Orden de Retiro') {
+                    const secuenciaDefault = presupuesto.secuencia === 'Imprimir_Modificado' ? 'Imprimir_Modificado' : 'Imprimir';
                     paramCount++;
                     updates.push(`secuencia = $${paramCount}`);
-                    params.push('Imprimir');
-                    console.log(`[PRESUPUESTO] Default legacy: Forzando secuencia='Imprimir' para ID: ${id}`);
+                    params.push(secuenciaDefault);
+                    console.log(`[PRESUPUESTO] Default legacy: Forzando secuencia='${secuenciaDefault}' para ID: ${id}`);
                 }
             }
 
@@ -1220,6 +1221,7 @@ const editarPresupuesto = async (req, res) => {
                 console.log(`📸 [SNAPSHOT-MOD] Resultado:`, JSON.stringify(resultadoSnapshot, null, 2));
 
                 if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && resultadoSnapshot.hasDifferences) {
+                    if (presupuestoActualizado) presupuestoActualizado.secuencia = 'Imprimir_Modificado';
                     console.log(`✅ [SNAPSHOT-MOD] Snapshot actualizado para presupuesto id=${presupuesto.id}`);
                     console.log(`✅ [SNAPSHOT-MOD] Diferencias: ${resultadoSnapshot.diferencias_count}, Número impresión: ${resultadoSnapshot.numero_impresion}`);
                 } else if (resultadoSnapshot.success && resultadoSnapshot.hasSnapshot && !resultadoSnapshot.hasDifferences) {

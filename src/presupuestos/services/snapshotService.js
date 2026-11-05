@@ -277,7 +277,12 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
         }
         
         // 5. Actualizar snapshot con diferencias (incluyendo secuencia_en_snapshot)
-        const nuevoNumeroImpresion = (snapshot.numero_impresion || 0) + 1;
+        // Micro-Etapa 3: NO sobrescribir snapshot_detalles para preservar la foto base del último remito impreso
+        // en 2ª o 3ª ediciones consecutivas (ej. editar nota o ajustar otro renglón antes de reimprimir).
+        const yaEstabaModificado = snapshot.secuencia_en_snapshot === 'Imprimir_Modificado' && snapshot.motivo === 'modificado';
+        const nuevoNumeroImpresion = yaEstabaModificado
+            ? Math.max(2, snapshot.numero_impresion || 2)
+            : (snapshot.numero_impresion || 1) + 1;
         
         const updateSnapshotQuery = `
             UPDATE presupuestos_snapshots
@@ -286,9 +291,8 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
                 numero_impresion = $2,
                 motivo = $3,
                 secuencia_en_snapshot = $4,
-                snapshot_detalles = $5, -- ACTUALIZAR BASELINE PARA FUTUROS CAMBIOS
                 fecha_snapshot = NOW()
-            WHERE id = $6
+            WHERE id = $5
             RETURNING id, numero_impresion, motivo, secuencia_en_snapshot
         `;
         
@@ -297,7 +301,6 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
             nuevoNumeroImpresion,
             'modificado',
             'Imprimir_Modificado',
-            JSON.stringify(detallesActuales), // Nuevo parámetro para el baseline
             snapshot.id
         ]);
         

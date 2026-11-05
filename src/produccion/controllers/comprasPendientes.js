@@ -70,8 +70,14 @@ const obtenerPendientesCompra = async (req, res) => {
                 fpc.id,
                 fpc.articulo_numero,
                 fpc.codigo_barras,
-                COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
-                COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(src.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    fpc.articulo_numero
+                ) as descripcion,
+                COALESCE(a.codigo_barras, ba.codigo_barras::text, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
                 fpc.id_presupuesto_local,
                 fpc.id_presupuesto_ext,
                 fpc.cantidad_faltante,
@@ -82,8 +88,35 @@ const obtenerPendientesCompra = async (req, res) => {
                 COALESCE(p.secuencia, 'Imprimir') as presupuesto_secuencia
             FROM public.faltantes_pendientes_compra fpc
             INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
-            LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.numero = fpc.articulo_numero
+                   OR a_inner.codigo_barras = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (a_inner.codigo_barras = fpc.codigo_barras OR a_inner.numero = fpc.codigo_barras))
+                ORDER BY (a_inner.numero = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = fpc.articulo_numero
+                   OR ba_inner.codigo_barras::text = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (ba_inner.codigo_barras::text = fpc.codigo_barras OR ba_inner.articulo_id::text = fpc.codigo_barras))
+                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                ORDER BY (ba_inner.articulo_id::text = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion
+                FROM public.stock_real_consolidado src_inner
+                WHERE src_inner.articulo_numero = fpc.articulo_numero
+                   OR src_inner.codigo_barras = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (src_inner.codigo_barras = fpc.codigo_barras OR src_inner.articulo_numero = fpc.codigo_barras))
+                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                ORDER BY (src_inner.articulo_numero = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) src ON true
             WHERE fpc.estado = 'En espera'
                 AND p.estado = 'Presupuesto/Orden'
                 AND COALESCE(p.secuencia, 'Imprimir') = 'Imprimir'
@@ -266,8 +299,14 @@ const obtenerPendientesAgrupados = async (req, res) => {
                 fpc.id,
                 fpc.articulo_numero,
                 fpc.codigo_barras,
-                COALESCE(src.descripcion, a.nombre, fpc.articulo_numero) as descripcion,
-                COALESCE(a.codigo_barras, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(src.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    fpc.articulo_numero
+                ) as descripcion,
+                COALESCE(a.codigo_barras, ba.codigo_barras::text, src.codigo_barras, fpc.codigo_barras, fpc.articulo_numero) as codigo_barras_real,
                 fpc.id_presupuesto_local,
                 fpc.id_presupuesto_ext,
                 fpc.cantidad_faltante,
@@ -278,8 +317,35 @@ const obtenerPendientesAgrupados = async (req, res) => {
                 COALESCE(p.secuencia, 'Imprimir') as presupuesto_secuencia
             FROM public.faltantes_pendientes_compra fpc
             INNER JOIN public.presupuestos p ON p.id = fpc.id_presupuesto_local
-            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
-            LEFT JOIN public.articulos a ON (a.numero = fpc.articulo_numero OR a.codigo_barras = fpc.articulo_numero)
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.numero = fpc.articulo_numero
+                   OR a_inner.codigo_barras = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (a_inner.codigo_barras = fpc.codigo_barras OR a_inner.numero = fpc.codigo_barras))
+                ORDER BY (a_inner.numero = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = fpc.articulo_numero
+                   OR ba_inner.codigo_barras::text = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (ba_inner.codigo_barras::text = fpc.codigo_barras OR ba_inner.articulo_id::text = fpc.codigo_barras))
+                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                ORDER BY (ba_inner.articulo_id::text = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion
+                FROM public.stock_real_consolidado src_inner
+                WHERE src_inner.articulo_numero = fpc.articulo_numero
+                   OR src_inner.codigo_barras = fpc.articulo_numero
+                   OR (fpc.codigo_barras IS NOT NULL AND (src_inner.codigo_barras = fpc.codigo_barras OR src_inner.articulo_numero = fpc.codigo_barras))
+                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                ORDER BY (src_inner.articulo_numero = fpc.articulo_numero) DESC
+                LIMIT 1
+            ) src ON true
             WHERE fpc.estado = 'En espera'
                 AND p.estado = 'Presupuesto/Orden'
                 AND p.activo = true
@@ -569,25 +635,73 @@ const dividirPresupuesto = async (req, res) => {
         const newId = newHeaderRes.rows[0].id;
         console.log(`✂️ [DIVIDIR] Nuevo presupuesto creado ID numérico: ${newId}`);
 
-        // 3. Mover Detalles (UPDATE)
-        // Usamos UPDATE para preservar precios exáctos (sin insert/delete)
+        // 3. Mover Detalles (UPDATE con resolución dual SKU <-> codigo_barras)
+        // Usamos UPDATE para preservar precios exactos (sin insert/delete)
         const updateDetalles = `
-            UPDATE presupuestos_detalles
+            WITH codigos_equivalentes AS (
+                SELECT DISTINCT TRIM(c) AS codigo
+                FROM (
+                    SELECT unnest($4::text[]) AS c
+                    UNION
+                    SELECT a.numero FROM public.articulos a WHERE a.numero = ANY($4::text[]) OR a.codigo_barras = ANY($4::text[])
+                    UNION
+                    SELECT a.codigo_barras FROM public.articulos a WHERE a.numero = ANY($4::text[]) OR a.codigo_barras = ANY($4::text[])
+                    UNION
+                    SELECT ba.articulo_id::text FROM public.bunker_articulos ba WHERE ba.articulo_id::text = ANY($4::text[]) OR ba.codigo_barras::text = ANY($4::text[])
+                    UNION
+                    SELECT ba.codigo_barras::text FROM public.bunker_articulos ba WHERE ba.articulo_id::text = ANY($4::text[]) OR ba.codigo_barras::text = ANY($4::text[])
+                    UNION
+                    SELECT src.articulo_numero FROM public.stock_real_consolidado src WHERE src.articulo_numero = ANY($4::text[]) OR src.codigo_barras = ANY($4::text[])
+                    UNION
+                    SELECT src.codigo_barras FROM public.stock_real_consolidado src WHERE src.articulo_numero = ANY($4::text[]) OR src.codigo_barras = ANY($4::text[])
+                    UNION
+                    SELECT fpc.articulo_numero FROM public.faltantes_pendientes_compra fpc WHERE fpc.id_presupuesto_local = $3 AND (fpc.articulo_numero = ANY($4::text[]) OR fpc.codigo_barras = ANY($4::text[]))
+                    UNION
+                    SELECT fpc.codigo_barras FROM public.faltantes_pendientes_compra fpc WHERE fpc.id_presupuesto_local = $3 AND (fpc.articulo_numero = ANY($4::text[]) OR fpc.codigo_barras = ANY($4::text[]))
+                ) sub
+                WHERE c IS NOT NULL AND TRIM(c) != ''
+            )
+            UPDATE presupuestos_detalles pd
             SET id_presupuesto = $1,
                 id_presupuesto_ext = $2,
                 fecha_actualizacion = NOW()
-            WHERE id_presupuesto = $3
-              AND articulo = ANY($4)
+            WHERE pd.id_presupuesto = $3
+              AND TRIM(pd.articulo) IN (SELECT codigo FROM codigos_equivalentes)
         `;
 
         const updateRes = await client.query(updateDetalles, [newId, newExtId, id_presupuesto_origen, articulos_seleccionados]);
         console.log(`✂️ [DIVIDIR] Detalles movidos: ${updateRes.rowCount}`);
+        if (updateRes.rowCount === 0) {
+            throw new Error('No se encontraron renglones coincidentes en el presupuesto origen para mover al presupuesto -P');
+        }
 
-        // 4. Limpiar Pendientes
+        // 4. Limpiar Pendientes (resolución dual SKU <-> codigo_barras)
         const deletePendientes = `
-            DELETE FROM faltantes_pendientes_compra
-            WHERE id_presupuesto_local = $1
-              AND articulo_numero = ANY($2)
+            WITH codigos_equivalentes AS (
+                SELECT DISTINCT TRIM(c) AS codigo
+                FROM (
+                    SELECT unnest($2::text[]) AS c
+                    UNION
+                    SELECT a.numero FROM public.articulos a WHERE a.numero = ANY($2::text[]) OR a.codigo_barras = ANY($2::text[])
+                    UNION
+                    SELECT a.codigo_barras FROM public.articulos a WHERE a.numero = ANY($2::text[]) OR a.codigo_barras = ANY($2::text[])
+                    UNION
+                    SELECT ba.articulo_id::text FROM public.bunker_articulos ba WHERE ba.articulo_id::text = ANY($2::text[]) OR ba.codigo_barras::text = ANY($2::text[])
+                    UNION
+                    SELECT ba.codigo_barras::text FROM public.bunker_articulos ba WHERE ba.articulo_id::text = ANY($2::text[]) OR ba.codigo_barras::text = ANY($2::text[])
+                    UNION
+                    SELECT src.articulo_numero FROM public.stock_real_consolidado src WHERE src.articulo_numero = ANY($2::text[]) OR src.codigo_barras = ANY($2::text[])
+                    UNION
+                    SELECT src.codigo_barras FROM public.stock_real_consolidado src WHERE src.articulo_numero = ANY($2::text[]) OR src.codigo_barras = ANY($2::text[])
+                ) sub
+                WHERE c IS NOT NULL AND TRIM(c) != ''
+            )
+            DELETE FROM faltantes_pendientes_compra fpc
+            WHERE fpc.id_presupuesto_local = $1
+              AND (
+                  TRIM(fpc.articulo_numero) IN (SELECT codigo FROM codigos_equivalentes)
+                  OR (fpc.codigo_barras IS NOT NULL AND TRIM(fpc.codigo_barras) IN (SELECT codigo FROM codigos_equivalentes))
+              )
         `;
         const deleteRes = await client.query(deletePendientes, [id_presupuesto_origen, articulos_seleccionados]);
         console.log(`✂️ [DIVIDIR] Pendientes eliminados: ${deleteRes.rowCount}`);

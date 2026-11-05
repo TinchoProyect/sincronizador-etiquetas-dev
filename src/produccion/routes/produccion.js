@@ -3940,22 +3940,22 @@ router.get('/validar-impresion', async (req, res) => {
 
         if (presupuestos_ext_ids) {
             const idsList = presupuestos_ext_ids.split(',').map(id => id.trim()).filter(Boolean);
-            const placeholders = idsList.map((_, i) => `${params.length + i + 1}`).join(',');
+            const placeholders = idsList.map((_, i) => `$${params.length + i + 1}`).join(',');
             whereConditions.push(`(p.id_presupuesto_ext IN (${placeholders}) OR p.id::text IN (${placeholders}))`);
             params.push(...idsList);
         } else if (cliente_id) {
-            whereConditions.push(`CAST(p.id_cliente AS integer) = ${params.length + 1}`);
+            whereConditions.push(`CAST(p.id_cliente AS integer) = $${params.length + 1}`);
             params.push(parseInt(cliente_id));
             if (presupuesto_id) {
-                whereConditions.push(`(p.id_presupuesto_ext = ${params.length + 1} OR p.id::text = ${params.length + 1})`);
+                whereConditions.push(`(p.id_presupuesto_ext = $${params.length + 1} OR p.id::text = $${params.length + 1})`);
                 params.push(presupuesto_id);
             }
             if (fecha) {
-                whereConditions.push(`p.fecha <= ${params.length + 1}`);
+                whereConditions.push(`p.fecha <= $${params.length + 1}`);
                 params.push(fecha);
             }
         } else if (fecha) {
-            whereConditions.push(`p.fecha::date <= ${params.length + 1}`);
+            whereConditions.push(`p.fecha::date <= $${params.length + 1}`);
             params.push(fecha);
         } else {
             return res.json({ success: true, requireKilos: false });
@@ -5106,12 +5106,13 @@ router.get('/simulacion/inicializar', async (req, res) => {
             db.query(`
                 WITH reservas_crudas AS (
                   SELECT
-                    COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo) AS articulo_numero,
+                    COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo) AS articulo_numero,
                     SUM(pd.cantidad) AS cantidad_reservada
                   FROM public.presupuestos_detalles pd
                   JOIN public.presupuestos p ON p.id = pd.id_presupuesto
                   LEFT JOIN public.stock_real_consolidado src_res ON (src_res.articulo_numero = pd.articulo OR src_res.codigo_barras = pd.articulo)
-                  LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo)
+                  LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo OR ba_res.codigo_barras = pd.articulo)
+                  LEFT JOIN public.articulos a_res ON (a_res.numero = pd.articulo OR a_res.codigo_barras = pd.articulo)
                   WHERE p.activo = true
                     AND COALESCE(p.archivado, false) = false
                     AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
@@ -5121,7 +5122,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                     AND p.factura_id IS NULL
                     AND p.id_factura_lomasoft IS NULL
                     AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
-                  GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo)
+                  GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo)
                 )
                 SELECT 
                     ba.articulo_id, 

@@ -19,7 +19,11 @@ async function reconciliarFaltantesConStock(pool) {
               AND fpc.estado = 'En espera'
               AND p.activo = true
               AND p.estado = 'Presupuesto/Orden'
-              AND (src.articulo_numero = fpc.articulo_numero OR src.codigo_barras = fpc.codigo_barras)
+              AND (
+                  src.articulo_numero = fpc.articulo_numero
+                  OR src.codigo_barras = fpc.articulo_numero
+                  OR (fpc.codigo_barras IS NOT NULL AND (src.codigo_barras = fpc.codigo_barras OR src.articulo_numero = fpc.codigo_barras))
+              )
               AND src.stock_consolidado::numeric >= fpc.cantidad_faltante::numeric
             RETURNING fpc.id, fpc.articulo_numero, fpc.cantidad_faltante, fpc.id_presupuesto_local, src.stock_consolidado;
         `;
