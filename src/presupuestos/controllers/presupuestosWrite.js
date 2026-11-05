@@ -392,16 +392,56 @@ const crearPresupuesto = async (req, res) => {
 
             // Helpers numéricos locales para cálculos
 
-            // Busca el costo unitario por código de barras (detalle.articulo)
+            // Busca el costo unitario por código de barras, SKU/numero, artículo Búnker o ingrediente (Micro-Etapa 1: Lectura Dual)
             async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
                 const cb = (codigoBarras ?? '').toString().trim();
                 if (!cb) return 0;
                 const sql = `
-        SELECT pa.costo
-        FROM articulos a
-        JOIN precios_articulos pa ON pa.articulo = a.numero
-        WHERE TRIM(a.codigo_barras):: text = $1
-        LIMIT 1
+        SELECT COALESCE(
+            NULLIF(pa.costo, 0),
+            NULLIF(ba.costo_base, 0),
+            NULLIF(ing.costo_patron, 0),
+            pa.costo,
+            ba.costo_base,
+            ing.costo_patron,
+            0
+        ) AS costo
+        FROM (SELECT $1::text AS codigo_buscado) q
+        LEFT JOIN LATERAL (
+            SELECT a_inner.numero, a_inner.codigo_barras
+            FROM public.articulos a_inner
+            WHERE TRIM(a_inner.codigo_barras)::text = q.codigo_buscado
+               OR TRIM(a_inner.numero)::text = q.codigo_buscado
+            ORDER BY (TRIM(a_inner.codigo_barras)::text = q.codigo_buscado) DESC
+            LIMIT 1
+        ) a ON true
+        LEFT JOIN LATERAL (
+            SELECT ba_inner.articulo_id, ba_inner.costo_base
+            FROM public.bunker_articulos ba_inner
+            WHERE TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado
+               OR TRIM(ba_inner.articulo_id::text) = q.codigo_buscado
+               OR (a.numero IS NOT NULL AND TRIM(ba_inner.articulo_id::text) = TRIM(a.numero))
+            ORDER BY
+               (TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado) DESC,
+               (TRIM(ba_inner.articulo_id::text) = q.codigo_buscado) DESC
+            LIMIT 1
+        ) ba ON true
+        LEFT JOIN LATERAL (
+            SELECT pa_inner.costo
+            FROM public.precios_articulos pa_inner
+            WHERE TRIM(pa_inner.articulo)::text = q.codigo_buscado
+               OR (a.numero IS NOT NULL AND TRIM(pa_inner.articulo)::text = TRIM(a.numero))
+               OR (ba.articulo_id IS NOT NULL AND TRIM(pa_inner.articulo)::text = TRIM(ba.articulo_id::text))
+            LIMIT 1
+        ) pa ON true
+        LEFT JOIN LATERAL (
+            SELECT ing_inner.costo_patron
+            FROM public.ingredientes ing_inner
+            WHERE a.numero IS NULL
+              AND ba.articulo_id IS NULL
+              AND (ing_inner.id::text = q.codigo_buscado OR TRIM(ing_inner.codigo::text) = q.codigo_buscado)
+            LIMIT 1
+        ) ing ON true
     `;
                 try {
                     const r = await pgClient.query(sql, [cb]);
@@ -671,16 +711,56 @@ const editarPresupuesto = async (req, res) => {
             return v > 1 ? v / 100 : v;
         }
 
-        // Busca el costo unitario por código de barras (copiado del POST)
+        // Busca el costo unitario por código de barras, SKU/numero, artículo Búnker o ingrediente (Micro-Etapa 1: Lectura Dual)
         async function obtenerCostoUnitarioPorBarcode(pgClient, codigoBarras) {
             const cb = (codigoBarras ?? '').toString().trim();
             if (!cb) return 0;
             const sql = `
-                SELECT pa.costo
-                FROM articulos a
-                JOIN precios_articulos pa ON pa.articulo = a.numero
-                WHERE TRIM(a.codigo_barras)::text = $1
-                LIMIT 1
+                SELECT COALESCE(
+                    NULLIF(pa.costo, 0),
+                    NULLIF(ba.costo_base, 0),
+                    NULLIF(ing.costo_patron, 0),
+                    pa.costo,
+                    ba.costo_base,
+                    ing.costo_patron,
+                    0
+                ) AS costo
+                FROM (SELECT $1::text AS codigo_buscado) q
+                LEFT JOIN LATERAL (
+                    SELECT a_inner.numero, a_inner.codigo_barras
+                    FROM public.articulos a_inner
+                    WHERE TRIM(a_inner.codigo_barras)::text = q.codigo_buscado
+                       OR TRIM(a_inner.numero)::text = q.codigo_buscado
+                    ORDER BY (TRIM(a_inner.codigo_barras)::text = q.codigo_buscado) DESC
+                    LIMIT 1
+                ) a ON true
+                LEFT JOIN LATERAL (
+                    SELECT ba_inner.articulo_id, ba_inner.costo_base
+                    FROM public.bunker_articulos ba_inner
+                    WHERE TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado
+                       OR TRIM(ba_inner.articulo_id::text) = q.codigo_buscado
+                       OR (a.numero IS NOT NULL AND TRIM(ba_inner.articulo_id::text) = TRIM(a.numero))
+                    ORDER BY
+                       (TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado) DESC,
+                       (TRIM(ba_inner.articulo_id::text) = q.codigo_buscado) DESC
+                    LIMIT 1
+                ) ba ON true
+                LEFT JOIN LATERAL (
+                    SELECT pa_inner.costo
+                    FROM public.precios_articulos pa_inner
+                    WHERE TRIM(pa_inner.articulo)::text = q.codigo_buscado
+                       OR (a.numero IS NOT NULL AND TRIM(pa_inner.articulo)::text = TRIM(a.numero))
+                       OR (ba.articulo_id IS NOT NULL AND TRIM(pa_inner.articulo)::text = TRIM(ba.articulo_id::text))
+                    LIMIT 1
+                ) pa ON true
+                LEFT JOIN LATERAL (
+                    SELECT ing_inner.costo_patron
+                    FROM public.ingredientes ing_inner
+                    WHERE a.numero IS NULL
+                      AND ba.articulo_id IS NULL
+                      AND (ing_inner.id::text = q.codigo_buscado OR TRIM(ing_inner.codigo::text) = q.codigo_buscado)
+                    LIMIT 1
+                ) ing ON true
             `;
             try {
                 const r = await pgClient.query(sql, [cb]);

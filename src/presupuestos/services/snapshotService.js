@@ -70,22 +70,172 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
         
         const presupuesto = presupuestoResult.rows[0];
         
-        // 3. Obtener detalles actuales del presupuesto
+        // 3. Obtener detalles actuales del presupuesto con Lectura Dual (Micro-Etapa 1: codigo_barras OR numero SKU + bunker_articulos + ingredientes)
         const detallesQuery = `
             SELECT 
                 pd.articulo,
+                COALESCE(
+                    ba.articulo_id::text,
+                    a.numero::text,
+                    src.articulo_numero::text,
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                    pd.articulo
+                ) as articulo_numero,
+                COALESCE(
+                    NULLIF(TRIM(a.codigo_barras), ''),
+                    NULLIF(TRIM(ba.codigo_barras::text), ''),
+                    NULLIF(TRIM(src.codigo_barras), ''),
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                    pd.articulo
+                ) as codigo_barras,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
-                COALESCE(NULLIF(TRIM(a.nombre), ''), pd.articulo) as descripcion
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    NULLIF(TRIM(src.descripcion), ''),
+                    NULLIF(TRIM(ing.nombre), ''),
+                    pd.articulo
+                ) as descripcion
             FROM presupuestos_detalles pd
-            LEFT JOIN articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = pd.articulo
+                   OR ba_inner.codigo_barras::text = pd.articulo
+                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                ORDER BY
+                   (ba_inner.articulo_id::text = pd.articulo) DESC,
+                   (ba_inner.codigo_barras::text = pd.articulo) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion
+                FROM public.stock_real_consolidado src_inner
+                WHERE src_inner.codigo_barras = pd.articulo
+                   OR src_inner.articulo_numero = pd.articulo
+                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                   OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
+                LIMIT 1
+            ) src ON true
+            LEFT JOIN LATERAL (
+                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                FROM public.ingredientes ing_inner
+                WHERE a.numero IS NULL
+                  AND ba.articulo_id IS NULL
+                  AND src.articulo_numero IS NULL
+                  AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                ORDER BY (ing_inner.id::text = pd.articulo) DESC
+                LIMIT 1
+            ) ing ON true
             WHERE pd.id_presupuesto = $1
             ORDER BY pd.articulo
         `;
         
         const detallesResult = await db.query(detallesQuery, [id_presupuesto]);
         const detallesActuales = detallesResult.rows;
+
+        // 3b. Enriquecer también snapshot.snapshot_detalles con equivalencias duales (SKU <-> codigo_barras)
+        if (Array.isArray(snapshot.snapshot_detalles) && snapshot.snapshot_detalles.length > 0) {
+            const snapCodes = Array.from(new Set(
+                snapshot.snapshot_detalles
+                    .map(it => String(it?.articulo || it?.articulo_numero || it?.codigo_barras || '').trim())
+                    .filter(Boolean)
+            ));
+            if (snapCodes.length > 0) {
+                const snapResolveQuery = `
+                    SELECT
+                        q.codigo_buscado,
+                        COALESCE(
+                            ba.articulo_id::text,
+                            a.numero::text,
+                            src.articulo_numero::text,
+                            CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                            q.codigo_buscado
+                        ) AS articulo_numero,
+                        COALESCE(
+                            NULLIF(TRIM(a.codigo_barras), ''),
+                            NULLIF(TRIM(ba.codigo_barras::text), ''),
+                            NULLIF(TRIM(src.codigo_barras), ''),
+                            CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                            q.codigo_buscado
+                        ) AS codigo_barras,
+                        COALESCE(
+                            NULLIF(TRIM(ba.descripcion_generada), ''),
+                            NULLIF(TRIM(ba.descripcion), ''),
+                            NULLIF(TRIM(a.nombre), ''),
+                            NULLIF(TRIM(src.descripcion), ''),
+                            NULLIF(TRIM(ing.nombre), ''),
+                            q.codigo_buscado
+                        ) AS descripcion
+                    FROM UNNEST($1::text[]) AS q(codigo_buscado)
+                    LEFT JOIN LATERAL (
+                        SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                        FROM public.articulos a_inner
+                        WHERE a_inner.codigo_barras = q.codigo_buscado OR a_inner.numero = q.codigo_buscado
+                        ORDER BY (a_inner.codigo_barras = q.codigo_buscado) DESC
+                        LIMIT 1
+                    ) a ON true
+                    LEFT JOIN LATERAL (
+                        SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                        FROM public.bunker_articulos ba_inner
+                        WHERE ba_inner.articulo_id::text = q.codigo_buscado
+                           OR ba_inner.codigo_barras::text = q.codigo_buscado
+                           OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                        ORDER BY
+                           (ba_inner.articulo_id::text = q.codigo_buscado) DESC,
+                           (ba_inner.codigo_barras::text = q.codigo_buscado) DESC
+                        LIMIT 1
+                    ) ba ON true
+                    LEFT JOIN LATERAL (
+                        SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion
+                        FROM public.stock_real_consolidado src_inner
+                        WHERE src_inner.codigo_barras = q.codigo_buscado
+                           OR src_inner.articulo_numero = q.codigo_buscado
+                           OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                           OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                        ORDER BY (src_inner.codigo_barras = q.codigo_buscado) DESC
+                        LIMIT 1
+                    ) src ON true
+                    LEFT JOIN LATERAL (
+                        SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                        FROM public.ingredientes ing_inner
+                        WHERE a.numero IS NULL
+                          AND ba.articulo_id IS NULL
+                          AND src.articulo_numero IS NULL
+                          AND (ing_inner.id::text = q.codigo_buscado OR ing_inner.codigo::text = q.codigo_buscado)
+                        ORDER BY (ing_inner.id::text = q.codigo_buscado) DESC
+                        LIMIT 1
+                    ) ing ON true
+                `;
+                const snapRes = await db.query(snapResolveQuery, [snapCodes]);
+                const resolvedByCode = new Map();
+                for (const row of snapRes.rows) {
+                    resolvedByCode.set(row.codigo_buscado, row);
+                }
+                snapshot.snapshot_detalles = snapshot.snapshot_detalles.map(it => {
+                    const rawKey = String(it?.articulo || it?.articulo_numero || it?.codigo_barras || '').trim();
+                    const info = resolvedByCode.get(rawKey);
+                    if (!info) return it;
+                    return {
+                        ...it,
+                        articulo_numero: it.articulo_numero || info.articulo_numero,
+                        codigo_barras: it.codigo_barras || info.codigo_barras,
+                        descripcion: (it.descripcion && it.descripcion !== rawKey) ? it.descripcion : (info.descripcion || it.descripcion || rawKey)
+                    };
+                });
+            }
+        }
         
         console.log(`📸 [SNAPSHOT-MOD] Recalculando diferencias (id_presupuesto=${id_presupuesto}, numero_impresion=${snapshot.numero_impresion})`);
         console.log(`📸 [SNAPSHOT-MOD] Detalles snapshot (foto impresa): ${snapshot.snapshot_detalles.length} items`);
@@ -204,43 +354,73 @@ async function actualizarSnapshotConDiferencias(id_presupuesto, id_presupuesto_e
  * @param {Array} detallesActuales - Detalles actuales del presupuesto
  * @returns {Array} - Array de diferencias
  */
+function obtenerClavesDualesItem(item) {
+    if (!item) return [];
+    const candidates = [
+        item.articulo,
+        item.articulo_numero,
+        item.codigo_barras
+    ];
+    return Array.from(new Set(
+        candidates
+            .map(v => String(v ?? '').trim())
+            .filter(Boolean)
+    ));
+}
+
 function calcularDiferencias(snapshotDetalles, detallesActuales) {
     const diferencias = [];
     
-    console.log(`📸 [CALC-DIF] Iniciando cálculo de diferencias`);
+    console.log(`📸 [CALC-DIF] Iniciando cálculo de diferencias (Modo Lectura Dual)`);
     console.log(`📸 [CALC-DIF] Snapshot tiene ${snapshotDetalles.length} items`);
     console.log(`📸 [CALC-DIF] Actuales tiene ${detallesActuales.length} items`);
     
-    // Crear mapas para comparación rápida
+    // Crear mapas multi-clave (articulo, articulo_numero SKU y codigo_barras) para comparación rápida y dual
     const snapshotMap = new Map();
     snapshotDetalles.forEach(item => {
-        snapshotMap.set(item.articulo, item);
+        obtenerClavesDualesItem(item).forEach(k => {
+            if (!snapshotMap.has(k)) snapshotMap.set(k, item);
+        });
     });
     
     const actualesMap = new Map();
     detallesActuales.forEach(item => {
-        actualesMap.set(item.articulo, item);
+        obtenerClavesDualesItem(item).forEach(k => {
+            if (!actualesMap.has(k)) actualesMap.set(k, item);
+        });
     });
     
-    console.log(`📸 [CALC-DIF] Artículos en snapshot: [${Array.from(snapshotMap.keys()).join(', ')}]`);
-    console.log(`📸 [CALC-DIF] Artículos en actuales: [${Array.from(actualesMap.keys()).join(', ')}]`);
+    console.log(`📸 [CALC-DIF] Claves en snapshot: [${Array.from(snapshotMap.keys()).join(', ')}]`);
+    console.log(`📸 [CALC-DIF] Claves en actuales: [${Array.from(actualesMap.keys()).join(', ')}]`);
     
+    const actualesEmparejados = new Set();
+
     // 1. Detectar modificados y eliminados (iterar sobre snapshot)
     snapshotDetalles.forEach(itemSnapshot => {
         const articulo = itemSnapshot.articulo;
-        const itemActual = actualesMap.get(articulo);
+        const clavesSnap = obtenerClavesDualesItem(itemSnapshot);
+        let itemActual = null;
+        for (const k of clavesSnap) {
+            if (actualesMap.has(k)) {
+                itemActual = actualesMap.get(k);
+                break;
+            }
+        }
         
         if (!itemActual) {
             // Artículo eliminado
             console.log(`📸 [CALC-DIF] ELIMINADO detectado: ${articulo} (${itemSnapshot.descripcion})`);
             diferencias.push({
                 articulo: articulo,
+                articulo_numero: itemSnapshot.articulo_numero || articulo,
+                codigo_barras: itemSnapshot.codigo_barras || articulo,
                 descripcion: itemSnapshot.descripcion || '',
                 tipo_cambio: 'eliminado',
                 cantidad_antes: itemSnapshot.cantidad || 0,
                 cantidad_despues: 0
             });
         } else {
+            actualesEmparejados.add(itemActual);
             // Verificar SOLO si hubo cambios de CANTIDAD (ignorar precio)
             const cantidadAntes = parseFloat(itemSnapshot.cantidad || 0);
             const cantidadDespues = parseFloat(itemActual.cantidad || 0);
@@ -249,7 +429,9 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
             if (cantidadCambio) {
                 // Artículo modificado (solo si cambió cantidad)
                 diferencias.push({
-                    articulo: articulo,
+                    articulo: itemActual.articulo || articulo,
+                    articulo_numero: itemActual.articulo_numero || itemSnapshot.articulo_numero || articulo,
+                    codigo_barras: itemActual.codigo_barras || itemSnapshot.codigo_barras || articulo,
                     descripcion: itemActual.descripcion || itemSnapshot.descripcion || '',
                     tipo_cambio: 'modificado',
                     cantidad_antes: cantidadAntes,
@@ -261,14 +443,24 @@ function calcularDiferencias(snapshotDetalles, detallesActuales) {
     
     // 2. Detectar agregados (iterar sobre actuales)
     detallesActuales.forEach(itemActual => {
+        if (actualesEmparejados.has(itemActual)) return;
         const articulo = itemActual.articulo;
-        const itemSnapshot = snapshotMap.get(articulo);
+        const clavesAct = obtenerClavesDualesItem(itemActual);
+        let itemSnapshot = null;
+        for (const k of clavesAct) {
+            if (snapshotMap.has(k)) {
+                itemSnapshot = snapshotMap.get(k);
+                break;
+            }
+        }
         
         if (!itemSnapshot) {
             // Artículo agregado
             console.log(`📸 [CALC-DIF] AGREGADO detectado: ${articulo} (${itemActual.descripcion})`);
             diferencias.push({
                 articulo: articulo,
+                articulo_numero: itemActual.articulo_numero || articulo,
+                codigo_barras: itemActual.codigo_barras || articulo,
                 descripcion: itemActual.descripcion || '',
                 tipo_cambio: 'agregado',
                 cantidad_antes: 0,

@@ -305,14 +305,62 @@ async function generarFacturaHeredadaPdfBuffer(presupuestoId, numeroComprobante)
   }
   const budget = headerRes.rows[0];
 
+  // Micro-Etapa 1: Lectura Dual (codigo_barras OR numero SKU + bunker_articulos + ingredientes)
   const detailsQuery = `
     SELECT 
-      d.articulo as codigo_barras, d.cantidad, d.valor1 as precio_neto, d.precio1 as precio_total, d.iva1 as monto_iva,
-      COALESCE(art.numero, '') as articulo_numero,
-      COALESCE(art.nombre, 'Artículo ' || d.articulo) as articulo_nombre
+      COALESCE(
+        NULLIF(TRIM(art.codigo_barras), ''),
+        NULLIF(TRIM(ba.codigo_barras::text), ''),
+        d.articulo
+      ) as codigo_barras,
+      d.cantidad,
+      d.valor1 as precio_neto,
+      d.precio1 as precio_total,
+      d.iva1 as monto_iva,
+      COALESCE(
+        ba.articulo_id::text,
+        art.numero::text,
+        CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+        d.articulo,
+        ''
+      ) as articulo_numero,
+      COALESCE(
+        NULLIF(TRIM(ba.descripcion_generada), ''),
+        NULLIF(TRIM(ba.descripcion), ''),
+        NULLIF(TRIM(art.nombre), ''),
+        NULLIF(TRIM(ing.nombre), ''),
+        'Artículo ' || d.articulo
+      ) as articulo_nombre
     FROM public.presupuestos_detalles d
-    LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+    LEFT JOIN LATERAL (
+      SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+      FROM public.articulos a_inner
+      WHERE a_inner.codigo_barras = d.articulo OR a_inner.numero = d.articulo
+      ORDER BY (a_inner.codigo_barras = d.articulo) DESC
+      LIMIT 1
+    ) art ON true
+    LEFT JOIN LATERAL (
+      SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+      FROM public.bunker_articulos ba_inner
+      WHERE ba_inner.articulo_id::text = d.articulo
+         OR ba_inner.codigo_barras::text = d.articulo
+         OR (art.numero IS NOT NULL AND ba_inner.articulo_id::text = art.numero)
+      ORDER BY
+         (ba_inner.articulo_id::text = d.articulo) DESC,
+         (ba_inner.codigo_barras::text = d.articulo) DESC
+      LIMIT 1
+    ) ba ON true
+    LEFT JOIN LATERAL (
+      SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+      FROM public.ingredientes ing_inner
+      WHERE art.numero IS NULL
+        AND ba.articulo_id IS NULL
+        AND (ing_inner.id::text = d.articulo OR ing_inner.codigo::text = d.articulo)
+      ORDER BY (ing_inner.id::text = d.articulo) DESC
+      LIMIT 1
+    ) ing ON true
     WHERE d.id_presupuesto = $1
+    ORDER BY d.id ASC
   `;
   const detailsRes = await localPool.query(detailsQuery, [pId]);
   const items = detailsRes.rows;

@@ -966,20 +966,63 @@ const obtenerFacturaHeredada = async (req, res) => {
         }
         const budget = resHeader.rows[0];
 
-        // 2. Obtener items
+        // 2. Obtener items (Micro-Etapa 1: Lectura Dual codigo_barras OR numero SKU + bunker_articulos + ingredientes)
         const queryItems = `
             SELECT 
                 d.id,
-                d.articulo as codigo_barras,
+                COALESCE(
+                    NULLIF(TRIM(art.codigo_barras), ''),
+                    NULLIF(TRIM(ba.codigo_barras::text), ''),
+                    d.articulo
+                ) as codigo_barras,
+                COALESCE(
+                    ba.articulo_id::text,
+                    art.numero::text,
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                    d.articulo
+                ) as articulo_numero,
                 d.cantidad as qty,
                 d.valor1 as imp_neto,
                 d.precio1 as imp_total,
                 d.iva1 as imp_iva,
                 d.camp2 as tasa_iva,
-                COALESCE(art.nombre, 'Artículo ' || d.articulo) as descripcion
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(art.nombre), ''),
+                    NULLIF(TRIM(ing.nombre), ''),
+                    'Artículo ' || d.articulo
+                ) as descripcion
             FROM public.presupuestos_detalles d
-            LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.codigo_barras = d.articulo OR a_inner.numero = d.articulo
+                ORDER BY (a_inner.codigo_barras = d.articulo) DESC
+                LIMIT 1
+            ) art ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = d.articulo
+                   OR ba_inner.codigo_barras::text = d.articulo
+                   OR (art.numero IS NOT NULL AND ba_inner.articulo_id::text = art.numero)
+                ORDER BY
+                   (ba_inner.articulo_id::text = d.articulo) DESC,
+                   (ba_inner.codigo_barras::text = d.articulo) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                FROM public.ingredientes ing_inner
+                WHERE art.numero IS NULL
+                  AND ba.articulo_id IS NULL
+                  AND (ing_inner.id::text = d.articulo OR ing_inner.codigo::text = d.articulo)
+                ORDER BY (ing_inner.id::text = d.articulo) DESC
+                LIMIT 1
+            ) ing ON true
             WHERE d.id_presupuesto = $1
+            ORDER BY d.id ASC
         `;
         const resItems = await pool.query(queryItems, [pId]);
         const items = resItems.rows;
@@ -1082,18 +1125,61 @@ const generarPDFHeredada = async (req, res) => {
         }
         const budget = resHeader.rows[0];
 
-        // 2. Obtener items
+        // 2. Obtener items (Micro-Etapa 1: Lectura Dual codigo_barras OR numero SKU + bunker_articulos + ingredientes)
         const queryItems = `
             SELECT 
-                d.articulo as codigo_barras,
+                COALESCE(
+                    NULLIF(TRIM(art.codigo_barras), ''),
+                    NULLIF(TRIM(ba.codigo_barras::text), ''),
+                    d.articulo
+                ) as codigo_barras,
+                COALESCE(
+                    ba.articulo_id::text,
+                    art.numero::text,
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                    d.articulo
+                ) as articulo_numero,
                 d.cantidad,
                 d.valor1 as precio_neto,
                 d.precio1 as precio_total,
                 d.iva1 as monto_iva,
-                COALESCE(art.nombre, 'Artículo ' || d.articulo) as articulo_nombre
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(art.nombre), ''),
+                    NULLIF(TRIM(ing.nombre), ''),
+                    'Artículo ' || d.articulo
+                ) as articulo_nombre
             FROM public.presupuestos_detalles d
-            LEFT JOIN public.articulos art ON art.codigo_barras = d.articulo
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.codigo_barras = d.articulo OR a_inner.numero = d.articulo
+                ORDER BY (a_inner.codigo_barras = d.articulo) DESC
+                LIMIT 1
+            ) art ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = d.articulo
+                   OR ba_inner.codigo_barras::text = d.articulo
+                   OR (art.numero IS NOT NULL AND ba_inner.articulo_id::text = art.numero)
+                ORDER BY
+                   (ba_inner.articulo_id::text = d.articulo) DESC,
+                   (ba_inner.codigo_barras::text = d.articulo) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                FROM public.ingredientes ing_inner
+                WHERE art.numero IS NULL
+                  AND ba.articulo_id IS NULL
+                  AND (ing_inner.id::text = d.articulo OR ing_inner.codigo::text = d.articulo)
+                ORDER BY (ing_inner.id::text = d.articulo) DESC
+                LIMIT 1
+            ) ing ON true
             WHERE d.id_presupuesto = $1
+            ORDER BY d.id ASC
         `;
         const resItems = await pool.query(queryItems, [pId]);
         const items = resItems.rows;
