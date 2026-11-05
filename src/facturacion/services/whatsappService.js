@@ -121,6 +121,13 @@ const killZombieChrome = () => {
  * Inicializar cliente de WhatsApp
  */
 async function inicializarWhatsApp(force = false, isFallback = false) {
+    if (esModoLaboratorioWa()) {
+        console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO: Omitiendo inicio de Chromium/WhatsApp Web real (envíos simulados localmente).');
+        connectionStatus = 'CONECTADO';
+        connectionStep = 4;
+        connectionStepText = 'Modo Laboratorio (Simulado sin Chromium)';
+        return { success: true, status: 'CONECTADO', simulated: true, message: 'Modo Laboratorio (Simulado)' };
+    }
     if (connectionStatus === 'CONECTANDO' || connectionStatus === 'CONECTADO' || connectionStatus === 'ESPERANDO_QR') {
         if (!force && !isFallback) {
             console.log(`🔌 [WHATSAPP-SERVICE] El servicio ya está en estado ${connectionStatus}. Omitiendo inicialización.`);
