@@ -100,7 +100,7 @@ class AuditoriasModel {
                 `;
                 await client.query(tramoQuery, [
                     id_auditoria,
-                    tramo.id_presupuesto || null,
+                    (/^\d+$/.test(String(tramo.id_presupuesto ?? '').trim()) ? parseInt(String(tramo.id_presupuesto).trim(), 10) : null),
                     tramo.tipo_tramo,
                     tramo.tiempo_duracion_minutos || 0,
                     tramo.coordenada_real_lat || null,

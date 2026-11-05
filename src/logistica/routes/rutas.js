@@ -478,7 +478,7 @@ router.get('/:id/manifiesto', async (req, res) => {
                     COALESCE(
                         (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)), 2)
                          FROM public.presupuestos_detalles pd
-                         WHERE pd.id_presupuesto_ext = p.id_presupuesto_ext),
+                         WHERE pd.id_presupuesto = p.id),
                         0
                     ) as total
                 FROM public.presupuestos p

@@ -904,10 +904,10 @@ async function sincronizarEstados() {
             continue;
           }
 
-          // Si ya estaba anulado pero NO archivado, le ponemos el flag archivado = true
+          // Si ya estaba anulado pero NO archivado, le ponemos el flag archivado = true (Micro-Etapa 2: usar PK numérica row.id)
           if (row.activo === false || localEstado === 'ANULADO' || localEstado === 'ANULADO POR EL CLIENTE') {
             console.log(`🗂️ Archivando silenciosamente presupuesto local ya anulado correspondiente al pedido B2B ${pedido.id.slice(0, 8)}...`);
-            const localId = resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null;
+            const localId = (resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null) || row.id;
             if (localId) {
               await localClient.query(
                 `UPDATE public.presupuestos SET archivado = true WHERE id = $1`,
@@ -924,7 +924,7 @@ async function sincronizarEstados() {
           
           console.log(`🛑 El cliente canceló el pedido B2B ${pedido.id.slice(0, 8)} desde el portal .com.`);
           console.log(`🔄 Anulando y archivando presupuesto local correspondiente...`);
-          const localId = resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null;
+          const localId = (resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null) || row.id;
           if (localId) {
             await localClient.query(
               `UPDATE public.presupuestos SET activo = true, estado = 'Anulado por el Cliente', archivado = true WHERE id = $1`,

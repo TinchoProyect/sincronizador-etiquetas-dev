@@ -1748,12 +1748,49 @@ async function getRetirosLocal(req, res) {
 
         for (let row of result.rows) {
             const detQuery = `
-                SELECT pd.articulo, pd.cantidad, COALESCE(a.nombre, pd.articulo) as descripcion, a.numero as articulo_numero
+                SELECT 
+                    pd.articulo,
+                    pd.cantidad,
+                    COALESCE(
+                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                        NULLIF(TRIM(ba.descripcion), ''),
+                        NULLIF(TRIM(a.nombre), ''),
+                        NULLIF(TRIM(ing.nombre), ''),
+                        pd.articulo
+                    ) as descripcion,
+                    COALESCE(
+                        ba.articulo_id::text,
+                        a.numero::text,
+                        CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                        pd.articulo
+                    ) as articulo_numero
                 FROM public.presupuestos_detalles pd
-                LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
-                WHERE pd.id_presupuesto_ext = $1
+                LEFT JOIN LATERAL (
+                    SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                    FROM public.articulos a_inner
+                    WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                    ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                    LIMIT 1
+                ) a ON true
+                LEFT JOIN LATERAL (
+                    SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                    FROM public.bunker_articulos ba_inner
+                    WHERE ba_inner.articulo_id::text = pd.articulo
+                       OR ba_inner.codigo_barras::text = pd.articulo
+                       OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                    ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                    LIMIT 1
+                ) ba ON true
+                LEFT JOIN LATERAL (
+                    SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                    FROM public.ingredientes ing_inner
+                    WHERE a.numero IS NULL AND ba.articulo_id IS NULL
+                      AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                    LIMIT 1
+                ) ing ON true
+                WHERE pd.id_presupuesto = $1
             `;
-            const detResult = await pool.query(detQuery, [row.id_presupuesto_ext]);
+            const detResult = await pool.query(detQuery, [row.id]);
             row.items = detResult.rows;
         }
 
@@ -1792,12 +1829,49 @@ async function getRetirosRuta(req, res) {
 
         for (let row of result.rows) {
             const detQuery = `
-                SELECT pd.articulo, pd.cantidad, COALESCE(a.nombre, pd.articulo) as descripcion, a.numero as articulo_numero
+                SELECT 
+                    pd.articulo,
+                    pd.cantidad,
+                    COALESCE(
+                        NULLIF(TRIM(ba.descripcion_generada), ''),
+                        NULLIF(TRIM(ba.descripcion), ''),
+                        NULLIF(TRIM(a.nombre), ''),
+                        NULLIF(TRIM(ing.nombre), ''),
+                        pd.articulo
+                    ) as descripcion,
+                    COALESCE(
+                        ba.articulo_id::text,
+                        a.numero::text,
+                        CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                        pd.articulo
+                    ) as articulo_numero
                 FROM public.presupuestos_detalles pd
-                LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
-                WHERE pd.id_presupuesto_ext = $1
+                LEFT JOIN LATERAL (
+                    SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                    FROM public.articulos a_inner
+                    WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                    ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                    LIMIT 1
+                ) a ON true
+                LEFT JOIN LATERAL (
+                    SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                    FROM public.bunker_articulos ba_inner
+                    WHERE ba_inner.articulo_id::text = pd.articulo
+                       OR ba_inner.codigo_barras::text = pd.articulo
+                       OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                    ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                    LIMIT 1
+                ) ba ON true
+                LEFT JOIN LATERAL (
+                    SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                    FROM public.ingredientes ing_inner
+                    WHERE a.numero IS NULL AND ba.articulo_id IS NULL
+                      AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                    LIMIT 1
+                ) ing ON true
+                WHERE pd.id_presupuesto = $1
             `;
-            const detResult = await pool.query(detQuery, [row.id_presupuesto_ext]);
+            const detResult = await pool.query(detQuery, [row.id]);
             row.items = detResult.rows;
             row.es_tratamiento = false;
         }
@@ -1861,13 +1935,19 @@ async function recibirRetiroLocal(req, res) {
 
         await client.query('BEGIN');
 
+        const idParamStr = String(id).trim();
+        const isNumericId = /^\d+$/.test(idParamStr);
         const orderQuery = `
             SELECT id, id_presupuesto_ext, estado_logistico 
             FROM public.presupuestos 
-            WHERE id = $1 AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
+            WHERE (${isNumericId ? 'id = $1 OR id_presupuesto_ext = $2' : 'id_presupuesto_ext = $1'})
+              AND (tipo_comprobante = 'Orden de Retiro' OR estado = 'Orden de Retiro')
             FOR UPDATE
         `;
-        const orderResult = await client.query(orderQuery, [id]);
+        const orderResult = await client.query(
+            orderQuery,
+            isNumericId ? [parseInt(idParamStr, 10), idParamStr] : [idParamStr]
+        );
 
         if (orderResult.rows.length === 0) {
             throw new Error('Orden de Retiro no encontrada.');
@@ -1879,12 +1959,40 @@ async function recibirRetiroLocal(req, res) {
         }
 
         const itemsQuery = `
-            SELECT pd.articulo as codigo_barras, pd.cantidad, a.numero as articulo_numero, a.nombre
+            SELECT 
+                pd.articulo as codigo_barras,
+                pd.cantidad,
+                COALESCE(
+                    ba.articulo_id::text,
+                    a.numero::text,
+                    pd.articulo
+                ) as articulo_numero,
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    pd.articulo
+                ) as nombre
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.articulos a ON pd.articulo = a.codigo_barras
-            WHERE pd.id_presupuesto_ext = $1
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = pd.articulo
+                   OR ba_inner.codigo_barras::text = pd.articulo
+                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                LIMIT 1
+            ) ba ON true
+            WHERE pd.id_presupuesto = $1
         `;
-        const itemsResult = await client.query(itemsQuery, [orden.id_presupuesto_ext]);
+        const itemsResult = await client.query(itemsQuery, [orden.id]);
 
         for (let item of itemsResult.rows) {
             const artAudit = item.articulo_numero || item.codigo_barras || 'UNKNOWN';

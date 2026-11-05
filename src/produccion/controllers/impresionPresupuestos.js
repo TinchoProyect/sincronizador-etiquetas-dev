@@ -356,7 +356,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                       AND p.estado NOT IN ('Sin Confirmar', 'Standby', 'Muestra de Fraccionados')
                       AND COALESCE(p.secuencia, '') NOT IN ('Standby')
                       AND ($2::text IS NOT NULL OR REPLACE(LOWER(TRIM(p.estado)), ' ', '') = 'presupuesto/orden' OR LOWER(p.estado) = 'facturado')
-                      AND ($2::text IS NULL OR LOWER(p.id_presupuesto_ext) = LOWER($2))
+                      AND ($2::text IS NULL OR LOWER(p.id_presupuesto_ext) = LOWER($2) OR p.id::text = $2)
                       AND ($3::date IS NULL OR p.fecha <= $3)
                 )
                 SELECT 
@@ -369,6 +369,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     COALESCE(cpi.perfil_id, 'DEFAULT') as perfil_id,
                     JSON_AGG(
                         JSON_BUILD_OBJECT(
+                            'id', pf.id,
                             'id_presupuesto_ext', pf.id_presupuesto_ext,
                             'fecha', pf.fecha,
                             'descuento', pf.descuento,
@@ -406,11 +407,40 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                     ) ORDER BY pd.articulo
                                 )
                                 FROM public.presupuestos_detalles pd
-                                LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
-                                LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
-                                LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
-                                LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
-                                WHERE pd.id_presupuesto_ext = pf.id_presupuesto_ext
+                                LEFT JOIN LATERAL (
+                                    SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                                    FROM public.articulos a_inner
+                                    WHERE a_inner.numero = pd.articulo OR a_inner.codigo_barras = pd.articulo
+                                    ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                                    LIMIT 1
+                                ) a ON true
+                                LEFT JOIN LATERAL (
+                                    SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                                    FROM public.bunker_articulos ba_inner
+                                    WHERE ba_inner.articulo_id::text = pd.articulo
+                                       OR ba_inner.codigo_barras::text = pd.articulo
+                                       OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                                    ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                                    LIMIT 1
+                                ) ba ON true
+                                LEFT JOIN LATERAL (
+                                    SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.kilos_unidad, src_inner.es_pack, src_inner.pack_unidades
+                                    FROM public.stock_real_consolidado src_inner
+                                    WHERE src_inner.articulo_numero = pd.articulo
+                                       OR src_inner.codigo_barras = pd.articulo
+                                       OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                                       OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                                    ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
+                                    LIMIT 1
+                                ) src ON true
+                                LEFT JOIN LATERAL (
+                                    SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                                    FROM public.ingredientes ing_inner
+                                    WHERE a.numero IS NULL AND ba.articulo_id IS NULL
+                                      AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                                    LIMIT 1
+                                ) ing ON true
+                                WHERE pd.id_presupuesto = pf.id
                             )
                         ) ORDER BY pf.fecha DESC
                     ) as presupuestos
@@ -453,10 +483,11 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     const presupuestoQuery = `
                         SELECT id, secuencia 
                         FROM public.presupuestos 
-                        WHERE id_presupuesto_ext = $1 AND activo = true
+                        WHERE (id = $1 OR id_presupuesto_ext = $2) AND activo = true
+                        ORDER BY (id = $1) DESC
                         LIMIT 1
                     `;
-                    const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                    const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id || 0, presupuesto.id_presupuesto_ext]);
                     
                     if (presupuestoResult.rows.length > 0) {
                         const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
@@ -549,7 +580,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         FROM faltantes_pendientes_compra fpc
                         LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = fpc.articulo_numero
                         LEFT JOIN public.articulos a ON a.codigo_barras = fpc.articulo_numero
-                        WHERE fpc.id_presupuesto_ext = $1
+                        WHERE (fpc.id_presupuesto_ext = $1 OR fpc.id_presupuesto_local::text = $1)
                           AND fpc.estado = 'En espera'
                     `;
                     const faltantesResult = await pool.query(faltantesQuery, [presupuesto_id]);
@@ -590,6 +621,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     WHERE p.activo = true 
                       AND (
                         LOWER(p.id_presupuesto_ext) = ANY($1::text[])
+                        OR p.id::text = ANY($1::text[])
                         OR REPLACE(LOWER(p.id_presupuesto_ext), 'b', 'v') = ANY(SELECT REPLACE(x, 'b', 'v') FROM UNNEST($1::text[]) x)
                       )
                 )
@@ -606,6 +638,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                             'presupuestos', (
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
+                                        'id', pf2.id,
                                         'id_presupuesto_ext', pf2.id_presupuesto_ext,
                                         'fecha', pf2.fecha,
                                         'descuento', pf2.descuento,
@@ -643,11 +676,40 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
-                                            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
-                                            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
-                                            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
-                                            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
-                                            WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
+                                            LEFT JOIN LATERAL (
+                                                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                                                FROM public.articulos a_inner
+                                                WHERE a_inner.numero = pd.articulo OR a_inner.codigo_barras = pd.articulo
+                                                ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) a ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                                                FROM public.bunker_articulos ba_inner
+                                                WHERE ba_inner.articulo_id::text = pd.articulo
+                                                   OR ba_inner.codigo_barras::text = pd.articulo
+                                                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                                                ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) ba ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.kilos_unidad, src_inner.es_pack, src_inner.pack_unidades
+                                                FROM public.stock_real_consolidado src_inner
+                                                WHERE src_inner.articulo_numero = pd.articulo
+                                                   OR src_inner.codigo_barras = pd.articulo
+                                                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                                                   OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                                                ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) src ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                                                FROM public.ingredientes ing_inner
+                                                WHERE a.numero IS NULL AND ba.articulo_id IS NULL
+                                                  AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                                                LIMIT 1
+                                            ) ing ON true
+                                            WHERE pd.id_presupuesto = pf2.id
                                         )
                                     ) ORDER BY pf2.fecha DESC
                                 )
@@ -692,10 +754,11 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         const presupuestoQuery = `
                             SELECT id, secuencia 
                             FROM public.presupuestos 
-                            WHERE id_presupuesto_ext = $1 AND activo = true
+                            WHERE (id = $1 OR id_presupuesto_ext = $2) AND activo = true
+                            ORDER BY (id = $1) DESC
                             LIMIT 1
                         `;
-                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id || 0, presupuesto.id_presupuesto_ext]);
                         
                         if (presupuestoResult.rows.length > 0) {
                             const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];
@@ -795,6 +858,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                             'presupuestos', (
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
+                                        'id', pf2.id,
                                         'id_presupuesto_ext', pf2.id_presupuesto_ext,
                                         'fecha', pf2.fecha,
                                         'descuento', pf2.descuento,
@@ -832,11 +896,40 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                                 ) ORDER BY pd.articulo
                                             )
                                             FROM public.presupuestos_detalles pd
-                                            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo OR ing.codigo::text = pd.articulo)
-                                            LEFT JOIN public.articulos a ON (a.numero = pd.articulo OR a.codigo_barras = pd.articulo)
-                                            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
-                                            LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = pd.articulo OR src.codigo_barras = pd.articulo)
-                                            WHERE pd.id_presupuesto_ext = pf2.id_presupuesto_ext
+                                            LEFT JOIN LATERAL (
+                                                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                                                FROM public.articulos a_inner
+                                                WHERE a_inner.numero = pd.articulo OR a_inner.codigo_barras = pd.articulo
+                                                ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) a ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                                                FROM public.bunker_articulos ba_inner
+                                                WHERE ba_inner.articulo_id::text = pd.articulo
+                                                   OR ba_inner.codigo_barras::text = pd.articulo
+                                                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                                                ORDER BY (ba_inner.articulo_id::text = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) ba ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.kilos_unidad, src_inner.es_pack, src_inner.pack_unidades
+                                                FROM public.stock_real_consolidado src_inner
+                                                WHERE src_inner.articulo_numero = pd.articulo
+                                                   OR src_inner.codigo_barras = pd.articulo
+                                                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                                                   OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                                                ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
+                                                LIMIT 1
+                                            ) src ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                                                FROM public.ingredientes ing_inner
+                                                WHERE a.numero IS NULL AND ba.articulo_id IS NULL
+                                                  AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                                                LIMIT 1
+                                            ) ing ON true
+                                            WHERE pd.id_presupuesto = pf2.id
                                         )
                                     ) ORDER BY pf2.fecha DESC
                                 )
@@ -880,10 +973,11 @@ const imprimirPresupuestoCliente = async (req, res) => {
                         const presupuestoQuery = `
                             SELECT id, secuencia 
                             FROM public.presupuestos 
-                            WHERE id_presupuesto_ext = $1 AND activo = true
+                            WHERE (id = $1 OR id_presupuesto_ext = $2) AND activo = true
+                            ORDER BY (id = $1) DESC
                             LIMIT 1
                         `;
-                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id_presupuesto_ext]);
+                        const presupuestoResult = await pool.query(presupuestoQuery, [presupuesto.id || 0, presupuesto.id_presupuesto_ext]);
                         
                         if (presupuestoResult.rows.length > 0) {
                             const { id: id_presupuesto, secuencia } = presupuestoResult.rows[0];

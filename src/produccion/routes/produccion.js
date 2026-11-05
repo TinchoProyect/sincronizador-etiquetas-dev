@@ -3940,34 +3940,42 @@ router.get('/validar-impresion', async (req, res) => {
 
         if (presupuestos_ext_ids) {
             const idsList = presupuestos_ext_ids.split(',').map(id => id.trim()).filter(Boolean);
-            const placeholders = idsList.map((_, i) => `$${params.length + i + 1}`).join(',');
-            whereConditions.push(`p.id_presupuesto_ext IN (${placeholders})`);
+            const placeholders = idsList.map((_, i) => `${params.length + i + 1}`).join(',');
+            whereConditions.push(`(p.id_presupuesto_ext IN (${placeholders}) OR p.id::text IN (${placeholders}))`);
             params.push(...idsList);
         } else if (cliente_id) {
-            whereConditions.push(`CAST(p.id_cliente AS integer) = $${params.length + 1}`);
+            whereConditions.push(`CAST(p.id_cliente AS integer) = ${params.length + 1}`);
             params.push(parseInt(cliente_id));
             if (presupuesto_id) {
-                whereConditions.push(`p.id_presupuesto_ext = $${params.length + 1}`);
+                whereConditions.push(`(p.id_presupuesto_ext = ${params.length + 1} OR p.id::text = ${params.length + 1})`);
                 params.push(presupuesto_id);
             }
             if (fecha) {
-                whereConditions.push(`p.fecha <= $${params.length + 1}`);
+                whereConditions.push(`p.fecha <= ${params.length + 1}`);
                 params.push(fecha);
             }
         } else if (fecha) {
-            whereConditions.push(`p.fecha::date <= $${params.length + 1}`);
+            whereConditions.push(`p.fecha::date <= ${params.length + 1}`);
             params.push(fecha);
         } else {
             return res.json({ success: true, requireKilos: false });
         }
 
         const query = `
-            SELECT DISTINCT pd.articulo, COALESCE(NULLIF(TRIM(a.nombre), ''), pd.articulo) as descripcion
+            SELECT DISTINCT 
+                pd.articulo,
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    pd.articulo
+                ) as descripcion
             FROM public.presupuestos p
-            JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
+            JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
             JOIN public.clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = CAST(p.id_cliente AS text)
-            LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = pd.articulo OR src.articulo_numero = pd.articulo)
-            LEFT JOIN public.articulos a ON a.codigo_barras = pd.articulo
+            LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
+            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id::text = pd.articulo OR ba.codigo_barras::text = pd.articulo OR (a.numero IS NOT NULL AND ba.articulo_id::text = a.numero))
+            LEFT JOIN public.stock_real_consolidado src ON (src.codigo_barras = pd.articulo OR src.articulo_numero = pd.articulo OR (a.numero IS NOT NULL AND src.articulo_numero = a.numero))
             WHERE ${whereConditions.join(' AND ')}
               AND TRIM(cpi.perfil_id) = 'PERFIL_PRECIO_KILO'
               AND (src.kilos_unidad IS NULL OR src.kilos_unidad <= 0)

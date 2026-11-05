@@ -20,13 +20,13 @@ async function detectarModoJoin(pool) {
         const existeExt = columnas.includes('id_presupuesto_ext');
         const existeId = columnas.includes('id_presupuesto');
         
-        // Priorizar id_presupuesto_ext si existe
-        const modo = existeExt ? 'ext' : (existeId ? 'id' : null);
+        // Micro-Etapa 2: Priorizar siempre id_presupuesto (FK entera) sobre id_presupuesto_ext
+        const modo = existeId ? 'id' : (existeExt ? 'ext' : null);
         
         return { modo, existeExt, existeId };
     } catch (error) {
         console.error('[PROD_PED] Error detectando modo JOIN:', error);
-        return { modo: 'ext', existeExt: true, existeId: false }; // Fallback
+        return { modo: 'id', existeExt: true, existeId: true }; // Fallback por FK entera
     }
 }
 
@@ -85,11 +85,13 @@ const obtenerPedidosPorCliente = async (req, res) => {
         
         if (joinInfo.modo === 'ext') {
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = pc.id_presupuesto_ext';
-            presupuestoIdFieldMain = 'pc.id_presupuesto_ext';
-            presupuestoIdFieldCount = 'pc2.id_presupuesto_ext';
+            presupuestoIdFieldMain = "COALESCE(NULLIF(TRIM(pc.id_presupuesto_ext), ''), pc.id::text)";
+            presupuestoIdFieldCount = "COALESCE(NULLIF(TRIM(pc2.id_presupuesto_ext), ''), pc2.id::text)";
         } else {
+            // Micro-Etapa 2: El JOIN relacional es 100% por clave entera (pd.id_presupuesto = pc.id),
+            // manteniendo presupuesto_id compatible con el identificador esperado por la UI y exponiendo ambos IDs.
             joinClause = 'JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = pc.id';
-            presupuestoIdFieldMain = 'pc.id';
+            presupuestoIdFieldMain = "COALESCE(NULLIF(TRIM(pc.id_presupuesto_ext), ''), pc.id::text)";
             presupuestoIdFieldCount = 'pc2.id';
         }
         
@@ -192,6 +194,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.cliente_id_int,
                     ${presupuestoIdFieldMain} as presupuesto_id,
                     pc.id as presupuesto_id_local,
+                    pc.id_presupuesto_ext,
                     pc.fecha as presupuesto_fecha,
                     pc.secuencia,
                     pc.estado as presupuesto_estado,
@@ -204,7 +207,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 FROM presupuestos_confirmados pc
                 ${joinClause}
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.fecha, pc.secuencia, pc.estado, pc.esta_facturado, pc.origen_factura_canal, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.id_presupuesto_ext, pc.fecha, pc.secuencia, pc.estado, pc.esta_facturado, pc.origen_factura_canal, pd.articulo
             )
             SELECT 
                 app.cliente_id_int as cliente_id,
@@ -220,6 +223,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     JSON_BUILD_OBJECT(
                         'presupuesto_id', app.presupuesto_id,
                         'id_presupuesto_local', app.presupuesto_id_local,
+                        'id_presupuesto_ext', app.id_presupuesto_ext,
                         'presupuesto_fecha', app.presupuesto_fecha,
                         'secuencia', app.secuencia,
                         'presupuesto_estado', app.presupuesto_estado,
@@ -1224,9 +1228,9 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
                     estado = $2,
                     estado_logistico = $3,
                     fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
-                WHERE id_presupuesto_ext = ANY($4::text[])
+                WHERE (id_presupuesto_ext = ANY($4::text[]) OR id::text = ANY($4::text[]))
                   AND activo = true
-                RETURNING id_presupuesto_ext, secuencia, estado, estado_logistico
+                RETURNING id, id_presupuesto_ext, secuencia, estado, estado_logistico
             `;
             
             queryParams = [
@@ -1246,9 +1250,9 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
                     estado = $2,
                     estado_logistico = $3,
                     fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
-                WHERE id_presupuesto_ext = ANY($4::text[])
+                WHERE (id_presupuesto_ext = ANY($4::text[]) OR id::text = ANY($4::text[]))
                   AND activo = true
-                RETURNING id_presupuesto_ext, secuencia, estado, estado_logistico
+                RETURNING id, id_presupuesto_ext, secuencia, estado, estado_logistico
             `;
             
             queryParams = [
@@ -1263,9 +1267,9 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
                 UPDATE public.presupuestos
                 SET secuencia = $1,
                     fecha_actualizacion = CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires'
-                WHERE id_presupuesto_ext = ANY($2::text[])
+                WHERE (id_presupuesto_ext = ANY($2::text[]) OR id::text = ANY($2::text[]))
                   AND activo = true
-                RETURNING id_presupuesto_ext, secuencia
+                RETURNING id, id_presupuesto_ext, secuencia
             `;
             
             queryParams = [nueva_secuencia, presupuestos_ids];

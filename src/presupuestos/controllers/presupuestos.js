@@ -324,7 +324,7 @@ const obtenerPresupuestos = async (req, res) => {
                 query += ` AND EXISTS (
                     SELECT 1 
                     FROM public.v_presupuestos_detalles_resueltos vpd
-                    WHERE (vpd.id_presupuesto = p.id OR vpd.id_presupuesto_ext = p.id_presupuesto_ext)
+                    WHERE vpd.id_presupuesto = p.id
                       AND ${subCondiciones.join(' AND ')}
                 )`;
             }
@@ -669,7 +669,7 @@ const obtenerPresupuestos = async (req, res) => {
                 countQuery += ` AND EXISTS (
                     SELECT 1 
                     FROM public.v_presupuestos_detalles_resueltos vpd
-                    WHERE (vpd.id_presupuesto = p.id OR vpd.id_presupuesto_ext = p.id_presupuesto_ext)
+                    WHERE vpd.id_presupuesto = p.id
                       AND ${subCondiciones.join(' AND ')}
                 )`;
             }
@@ -2686,7 +2686,9 @@ const obtenerDetallesPresupuesto = async (req, res) => {
             });
         }
 
-        // Verificar que el presupuesto existe y obtener id_presupuesto_ext
+        // Verificar que el presupuesto existe (soporta ID numérico o id_presupuesto_ext enviado desde el frontend)
+        const idStr = String(id).trim();
+        const isNumericId = /^\d+$/.test(idStr);
         const presupuestoQuery = `
             SELECT 
                 p.id, 
@@ -2707,10 +2709,16 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 FROM public.factura_facturas 
                 WHERE estado IN ('APROBADA', 'APROBADA_LOCAL')
             ) f ON f.presupuesto_id = p.id AND f.rn = 1
-            WHERE p.id = $1 AND p.activo = true
+            WHERE (${isNumericId ? 'p.id = $1 OR p.id_presupuesto_ext = $2' : 'p.id_presupuesto_ext = $1'})
+              AND p.activo = true
+            ORDER BY p.id DESC
+            LIMIT 1
         `;
 
-        const presupuestoResult = await req.db.query(presupuestoQuery, [parseInt(id)]);
+        const presupuestoResult = await req.db.query(
+            presupuestoQuery,
+            isNumericId ? [parseInt(idStr, 10), idStr] : [idStr]
+        );
 
         if (presupuestoResult.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] Presupuesto no encontrado: ID ${id}`);
@@ -2723,14 +2731,29 @@ const obtenerDetallesPresupuesto = async (req, res) => {
 
         const presupuesto = presupuestoResult.rows[0];
 
-        // Obtener detalles de artículos usando id_presupuesto_ext con JOIN a stock para descripción - Ajuste según relaciones confirmadas - 2024-12-19
-        // CORRECCIÓN DE CÁLCULOS NETO/IVA/TOTAL según reglas de negocio - 2024-12-19
-        // MAPEO CORREGIDO: K=camp2, L=camp3, M=camp4, N=camp5
+        // Micro-Etapa 2: Vínculo interno por clave entera (pd.id_presupuesto = $1) + Lectura Dual de artículos
         const detallesQuery = `
             SELECT 
                 pd.id,
                 pd.articulo,
-                COALESCE(ba.descripcion_generada, ba.descripcion, a.nombre, ing.nombre, pd.articulo) as descripcion_articulo,
+                COALESCE(
+                    NULLIF(TRIM(a.codigo_barras), ''),
+                    NULLIF(TRIM(ba.codigo_barras::text), ''),
+                    pd.articulo
+                ) as codigo_barras_resuelto,
+                COALESCE(
+                    ba.articulo_id::text,
+                    a.numero::text,
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
+                    pd.articulo
+                ) as articulo_numero_resuelto,
+                COALESCE(
+                    NULLIF(TRIM(ba.descripcion_generada), ''),
+                    NULLIF(TRIM(ba.descripcion), ''),
+                    NULLIF(TRIM(a.nombre), ''),
+                    NULLIF(TRIM(ing.nombre), ''),
+                    pd.articulo
+                ) as descripcion_articulo,
                 pd.cantidad,
                 pd.valor1,
                 pd.precio1,
@@ -2741,7 +2764,6 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 pd.ingrediente_id_saldo,
                 pd.kilos_saldo,
                 ing_saldo.nombre as ingrediente_saldo_nombre,
-                -- Cálculos FINALMENTE CORREGIDOS según análisis de datos reales
                 -- NETO = cantidad * valor1 (neto unitario)
                 ROUND(pd.cantidad * COALESCE(pd.valor1, 0), 2) as neto_linea,
                 -- IVA = cantidad * iva1 (IVA unitario directo de BD)
@@ -2749,17 +2771,41 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 -- TOTAL = cantidad * precio1 (total unitario con IVA incluido)
                 ROUND(pd.cantidad * COALESCE(pd.precio1, 0), 2) as total_linea
             FROM public.presupuestos_detalles pd
-            LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
-            LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
-            LEFT JOIN public.ingredientes ing ON (ing.id::text = pd.articulo)
+            LEFT JOIN LATERAL (
+                SELECT a_inner.numero, a_inner.codigo_barras, a_inner.nombre
+                FROM public.articulos a_inner
+                WHERE a_inner.codigo_barras = pd.articulo OR a_inner.numero = pd.articulo
+                ORDER BY (a_inner.codigo_barras = pd.articulo) DESC
+                LIMIT 1
+            ) a ON true
+            LEFT JOIN LATERAL (
+                SELECT ba_inner.articulo_id, ba_inner.codigo_barras, ba_inner.descripcion_generada, ba_inner.descripcion
+                FROM public.bunker_articulos ba_inner
+                WHERE ba_inner.articulo_id::text = pd.articulo
+                   OR ba_inner.codigo_barras::text = pd.articulo
+                   OR (a.numero IS NOT NULL AND ba_inner.articulo_id::text = a.numero)
+                ORDER BY
+                   (ba_inner.articulo_id::text = pd.articulo) DESC,
+                   (ba_inner.codigo_barras::text = pd.articulo) DESC
+                LIMIT 1
+            ) ba ON true
+            LEFT JOIN LATERAL (
+                SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
+                FROM public.ingredientes ing_inner
+                WHERE a.numero IS NULL
+                  AND ba.articulo_id IS NULL
+                  AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
+                ORDER BY (ing_inner.id::text = pd.articulo) DESC
+                LIMIT 1
+            ) ing ON true
             LEFT JOIN public.ingredientes ing_saldo ON (ing_saldo.id = pd.ingrediente_id_saldo)
-            WHERE pd.id_presupuesto_ext = $1
+            WHERE pd.id_presupuesto = $1
             ORDER BY pd.id
         `;
 
-        const detallesResult = await req.db.query(detallesQuery, [presupuesto.id_presupuesto_ext]);
+        const detallesResult = await req.db.query(detallesQuery, [presupuesto.id]);
 
-        console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ${presupuesto.id_presupuesto_ext}`);
+        console.log(`✅ [PRESUPUESTOS] Detalles encontrados: ${detallesResult.rows.length} artículos para presupuesto ID ${presupuesto.id} (${presupuesto.id_presupuesto_ext})`);
 
         // Mapear resultados - CORRECCIÓN: Devolver valores UNITARIOS + TOTALES
         // El frontend de edición espera valores UNITARIOS en valor1/precio1/iva1
@@ -3270,7 +3316,7 @@ const obtenerHistorialEntregasCliente = async (req, res) => {
                 ) as es_producible
                 
             FROM public.presupuestos p
-            INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto_ext = p.id_presupuesto_ext
+            INNER JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
             LEFT JOIN public.articulos a ON (a.codigo_barras = pd.articulo OR a.numero = pd.articulo)
             LEFT JOIN public.bunker_articulos ba ON (ba.articulo_id = pd.articulo OR ba.articulo_id = a.numero)
             LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)

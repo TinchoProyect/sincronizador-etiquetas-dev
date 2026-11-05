@@ -281,7 +281,8 @@ class AuditoriasController {
                         tramosExtraidos.push({
                             tipo_tramo: 'GESTION_CLIENTE',
                             nombre_ref: cliente.cliente_nombre,
-                            id_presupuesto: cliente.id,
+                            // Micro-Etapa 2: Filtrar IDs compuestos sintéticos (RT-, SOB-, PR-) para que id_presupuesto sea siempre entero o null
+                            id_presupuesto: /^\d+$/.test(String(cliente.id ?? '').trim()) ? parseInt(String(cliente.id).trim(), 10) : null,
                             tiempo_duracion_minutos: Math.max(1, Math.round((clienteEvt.fin - clienteEvt.inicio) / 60000)),
                             coordenada_real_lat: clienteEvt.lat,
                             coordenada_real_lng: clienteEvt.lng,
@@ -450,7 +451,8 @@ class AuditoriasController {
                         tramosExtraidos.push({
                             tipo_tramo: 'GESTION_CLIENTE',
                             nombre_ref: cliente.cliente_nombre,
-                            id_presupuesto: cliente.id,
+                            // Micro-Etapa 2: Filtrar IDs compuestos sintéticos (RT-, SOB-, PR-) para que id_presupuesto sea siempre entero o null
+                            id_presupuesto: /^\d+$/.test(String(cliente.id ?? '').trim()) ? parseInt(String(cliente.id).trim(), 10) : null,
                             tiempo_duracion_minutos: permanencia,
                             coordenada_real_lat: entradaCliente.lat,
                             coordenada_real_lng: entradaCliente.lng,

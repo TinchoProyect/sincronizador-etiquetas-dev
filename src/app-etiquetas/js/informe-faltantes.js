@@ -135,7 +135,7 @@ function aplicarFiltrosYRenderizar() {
         // Filtrar por texto de búsqueda acumulativo (AND)
         if (terminos.length > 0) {
             detallesValidos = detallesValidos.filter(d => {
-                const bolsaTexto = `${grupo.articulo} ${grupo.descripcion} ${d.cliente_nombre} ${d.presupuesto_ext || ''}`.toLowerCase();
+                const bolsaTexto = `${grupo.articulo} ${grupo.descripcion} ${d.cliente_nombre} ${d.id_presupuesto || d.presupuesto_id || d.presupuesto_ext || ''}`.toLowerCase();
                 return terminos.every(term => bolsaTexto.includes(term));
             });
         }
@@ -251,7 +251,7 @@ function renderDashboard(datos) {
                 <tr id="fila-detalle-${detalle.id}">
                     <td>
                         <strong>${detalle.cliente_nombre}</strong><br>
-                        <span style="font-size:0.82em; color:#6b7280;">Presupuesto: #${detalle.presupuesto_ext || 'N/A'}</span>
+                        <span style="font-size:0.82em; color:#6b7280;">Presupuesto: #${detalle.id_presupuesto || detalle.presupuesto_id || detalle.presupuesto_ext || 'N/A'}</span>
                     </td>
                     <td style="color:#e74c3c; font-weight:700; font-size: 1em;">${detalle.cantidad}</td>
                     <td>${estadoBadge}</td>

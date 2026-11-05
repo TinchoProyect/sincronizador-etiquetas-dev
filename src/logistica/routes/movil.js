@@ -535,7 +535,7 @@ router.get('/ruta-activa', async (req, res) => {
                 COALESCE(
                     (SELECT ROUND(SUM(pd.cantidad * COALESCE(pd.precio1, 0)) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)), 2)
                      FROM presupuestos_detalles pd
-                     WHERE pd.id_presupuesto_ext = p.id_presupuesto_ext),
+                     WHERE pd.id_presupuesto = p.id),
                     0
                 ) as total,
                 (SELECT f.estado FROM public.factura_facturas f WHERE f.presupuesto_id = p.id ORDER BY f.id DESC LIMIT 1) as factura_estado,
@@ -874,20 +874,21 @@ router.get('/pedidos/:id/detalles', async (req, res) => {
         const localPresupuestoId = presupuestoResult.rows[0].id;
         const idPresupuestoExt = presupuestoResult.rows[0].id_presupuesto_ext;
 
-        // Obtener detalles de artículos con resolución determinista Búnker/Legacy
+        // Obtener detalles de artículos por clave foránea entera (Micro-Etapa 2)
         const detallesQuery = `
             SELECT 
-                articulo as codigo_barras,
+                codigo_barras,
+                articulo,
+                articulo_numero,
                 cantidad,
                 descripcion,
                 descripcion_bunker
             FROM public.v_presupuestos_detalles_resueltos
-            WHERE id_presupuesto_ext = $1
-               OR id_presupuesto = $2
+            WHERE id_presupuesto = $1
             ORDER BY id ASC
         `;
 
-        const detallesResult = await req.db.query(detallesQuery, [idPresupuestoExt, localPresupuestoId]);
+        const detallesResult = await req.db.query(detallesQuery, [localPresupuestoId]);
 
         console.log('[MOVIL] ✅ Detalles encontrados:', detallesResult.rows.length, 'artículos');
 
@@ -1033,7 +1034,7 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                     const { codigo_barras, cantidad: nuevaCantidad } = itemMod;
                     const qtyVal = parseFloat(nuevaCantidad);
 
-                    // Buscar detalle original para calcular la diferencia no entregada SIN mutar el presupuesto original
+                    // Buscar detalle original por FK entera (id_presupuesto) y lectura dual de código (Micro-Etapa 2)
                     const origItemRes = await client.query(
                         `SELECT 
                             id_presupuesto,
@@ -1041,9 +1042,10 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                             articulo_numero,
                             descripcion as articulo_nombre
                          FROM public.v_presupuestos_detalles_resueltos
-                         WHERE id_presupuesto_ext = $1 AND articulo = $2
+                         WHERE id_presupuesto = $1
+                           AND (articulo = $2 OR codigo_barras = $2 OR articulo_numero = $2)
                          LIMIT 1`,
-                        [p.id_presupuesto_ext, codigo_barras]
+                        [p.id, codigo_barras]
                     );
 
                     if (origItemRes.rows.length > 0) {
@@ -1242,7 +1244,7 @@ router.post('/entregas/escanear-qr', async (req, res) => {
             const clienteUnificado = await obtenerClienteUnificado(client, p.id_cliente);
             const contactInfo = clienteUnificado || {};
 
-            // 7. Obtener detalles de artículos para el desglose con resolución determinista Búnker
+            // 7. Obtener detalles de artículos por FK entera (id_presupuesto) con resolución determinista Búnker (Micro-Etapa 2)
             const itemsRes = await client.query(
                 `SELECT 
                      codigo_barras,
@@ -1252,9 +1254,9 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                      descripcion,
                      descripcion_bunker
                  FROM public.v_presupuestos_detalles_resueltos
-                 WHERE id_presupuesto_ext = $1
+                 WHERE id_presupuesto = $1
                  ORDER BY id ASC`,
-                [p.id_presupuesto_ext]
+                [p.id]
             );
 
             await client.query('COMMIT');
