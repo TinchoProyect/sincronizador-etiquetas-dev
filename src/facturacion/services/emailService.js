@@ -25,6 +25,18 @@ const getTransporter = () => {
  * @param {Array} [params.attachments] - Adjuntos de nodemailer (ej. [{ filename, content }])
  * @returns {Promise<Object>} Resultado del envío
  */
+function esModoLaboratorioEmail() {
+    const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+    const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+    return dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+}
+
+function esModoPruebaNubeEmail() {
+    const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+    const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+    return flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
+}
+
 const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {
     console.log(`✉️ [EMAIL-SERVICE] Intentando enviar correo a: ${to} | Asunto: "${subject}"`);
     
@@ -39,6 +51,37 @@ const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {
 
     if (recipients.length === 0) {
         throw new Error('Ninguna de las direcciones de correo electrónico provistas es válida.');
+    }
+
+    // 🔒 1) MODO LABORATORIO LOCAL (sin prueba de envío en nube): simular sin disparar SMTP externo
+    if (esModoLaboratorioEmail() && !esModoPruebaNubeEmail()) {
+        console.log(`🔒 [EMAIL-GUARD] Envío de correo SIMULADO en Modo Laboratorio (No enviado por SMTP). Destinatarios originales: [${recipients.join(', ')}]`);
+        return {
+            success: true,
+            simulated: true,
+            messageId: `sim-lab-${Date.now()}`,
+            recipients
+        };
+    }
+
+    // 🧪 2) MODO PRUEBA EN NUBE (SAFE_DELIVERY_REDIRECT): redirigir todos los correos al mail de Martín
+    let finalRecipients = recipients;
+    let finalSubject = subject;
+    let finalHtmlBody = htmlBody;
+    if (esModoPruebaNubeEmail()) {
+        const safeEmailTo = (process.env.SAFE_REDIRECT_EMAIL_TO || 'miserrano75@gmail.com').trim();
+        const originalDestStr = recipients.join(', ');
+        finalRecipients = [safeEmailTo];
+        finalSubject = `[PRUEBA NUBE - Destino original: ${originalDestStr}] ${subject}`;
+        const bannerRedirectHtml = `
+            <div style="background:#0f172a;color:#38bdf8;border:2px solid #0284c7;padding:14px 18px;font-family:Segoe UI,sans-serif;font-size:13px;margin-bottom:16px;border-radius:8px;">
+                <strong>🧪 [MODO PRUEBA EN NUBE LAMDA — REDIRECCIÓN SEGURA ACTIVA]</strong><br>
+                Este correo fue interceptado automáticamente para no molestar al cliente real.<br>
+                📌 <strong>Destinatario(s) original(es) bloqueado(s):</strong> <span style="color:#fde68a;">${originalDestStr}</span>
+            </div>
+        `;
+        finalHtmlBody = bannerRedirectHtml + (htmlBody || '');
+        console.log(`🧪 [EMAIL-SAFE-REDIRECT] Correo redirigido de [${originalDestStr}] -> [${safeEmailTo}]`);
     }
 
     // Inyectar el logotipo corporativo como adjunto CID de forma automática si no está ya
@@ -58,9 +101,9 @@ const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {
 
     const mailOptions = {
         from: `"Sistema LAMDA" <${fromUser}>`,
-        to: recipients.join(', '),
-        subject,
-        html: htmlBody,
+        to: finalRecipients.join(', '),
+        subject: finalSubject,
+        html: finalHtmlBody,
         attachments
     };
 

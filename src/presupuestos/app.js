@@ -212,28 +212,8 @@ const inicializarServidor = async () => {
             console.log(`[PRESUPUESTOS-BACK] 📊 BD: ${dbResult.total_presupuestos} presupuestos existentes`);
             console.log('[PRESUPUESTOS-BACK] 🎉 ================================');
             
-            // INICIAR SCHEDULER DE SINCRONIZACIÓN AUTOMÁTICA
-            // NOTA: El scheduler siempre se inicia, pero solo ejecutará sincronizaciones
-            //       si auto_sync_enabled = true en la tabla presupuestos_config
-            try {
-                console.log('[PRESUPUESTOS-BACK] 🔄 Iniciando scheduler de sincronización automática...');
-                
-                // Usar la misma instancia de base de datos que el resto del módulo
-                const { pool } = require('./config/database');
-                
-                // Iniciar scheduler con la instancia compartida de BD
-                startAutoSync(pool);
-                
-                console.log('[PRESUPUESTOS-BACK] ✅ Scheduler de sincronización automática iniciado');
-                console.log('[PRESUPUESTOS-BACK] ⏰ Intervalo de verificación: 60 segundos');
-                console.log('[PRESUPUESTOS-BACK] 📊 Estado: INACTIVO por defecto (auto_sync_enabled = false en BD)');
-                console.log('[PRESUPUESTOS-BACK] 🔧 Para activar: usar modal de configuración en el frontend');
-                console.log('[PRESUPUESTOS-BACK] 🔗 Usando instancia compartida de base de datos');
-                
-            } catch (schedulerError) {
-                console.error('[PRESUPUESTOS-BACK] ❌ Error al iniciar scheduler:', schedulerError);
-                console.error('[PRESUPUESTOS-BACK] ⚠️ El servidor continuará sin sincronización automática');
-            }
+            // SINCRONIZADOR LEGACY GOOGLE SHEETS / APPSHEET RETIRADO PERMANENTEMENTE
+            console.log('[PRESUPUESTOS-BACK] 🛑 Sincronizador legacy Google Sheets (AppSheet) desactivado permanentemente.');
         });
         
         return server;

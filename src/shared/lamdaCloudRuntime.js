@@ -119,11 +119,44 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
 
     function renderLabBanner(status) {
-        if (!status || !status.isLaboratorio) {
+        if (!status || (!status.isLaboratorio && !status.isPruebaNube)) {
             if (labBannerEl) {
                 labBannerEl.remove();
                 labBannerEl = null;
             }
+            return;
+        }
+        if (status.isPruebaNube && !status.isLaboratorio) {
+            if (document.title && document.title.indexOf('[NUBE PRUEBA]') === -1) {
+                document.title = '[NUBE PRUEBA] ' + document.title;
+            }
+            var containerNube = ensureTopContainer();
+            if (!containerNube) return;
+            if (!labBannerEl) {
+                labBannerEl = document.createElement('div');
+                labBannerEl.id = 'lamda-lab-mode-banner';
+                containerNube.appendChild(labBannerEl);
+            }
+            labBannerEl.style.cssText = [
+                'background: linear-gradient(90deg, #0369a1, #0f172a, #0369a1);',
+                'color: #f0f9ff;',
+                'padding: 8px 16px;',
+                'font-size: 13px;',
+                'font-weight: 800;',
+                'letter-spacing: 0.3px;',
+                'text-align: center;',
+                'border-bottom: 2px solid #38bdf8;',
+                'box-shadow: 0 3px 10px rgba(0,0,0,0.35);',
+                'display: flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'gap: 12px;',
+                'flex-wrap: wrap;'
+            ].join('');
+            labBannerEl.innerHTML =
+                '<span style="background:#38bdf8;color:#0f172a;padding:2px 8px;border-radius:4px;font-weight:900;">☁️ MODO PRUEBA EN NUBE (PARALELO)</span>' +
+                '<span>ENTORNO PARALELO DE ENSAYO — <strong style="color:#fde68a;">PcAlmacen SIGUE COMO TITULAR EN EL DEPÓSITO</strong></span>' +
+                '<span style="font-size:11px;background:rgba(0,0,0,0.45);padding:2px 8px;border-radius:4px;">🧪 WhatsApp redirigido a ' + (status.safeRedirectWhatsapp || '221-6615746') + ' · Emails redirigidos a ' + (status.safeRedirectEmail || 'miserrano75@gmail.com') + ' · Supabase Sandbox</span>';
             return;
         }
         if (document.title && document.title.indexOf('[PRUEBAS]') === -1) {
@@ -371,14 +404,20 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     // 2. Endpoint de estado de entorno (Modo Laboratorio + Cola Zebra Retenida)
     app.get('/api/system/env-status', async (req, res) => {
         const isLaboratorio = esModoLaboratorio();
+        const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+        const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+        const isPruebaNube = flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
         const zebraQueue = await obtenerResumenColaRetenida();
         res.json({
             ok: true,
             servicePort,
             isLaboratorio,
+            isPruebaNube,
+            safeRedirectWhatsapp: process.env.SAFE_REDIRECT_WHATSAPP_TO || '5492216615746',
+            safeRedirectEmail: process.env.SAFE_REDIRECT_EMAIL_TO || 'miserrano75@gmail.com',
             isCloudMode: esModoCloudOLinux(),
             dbName: process.env.DB_NAME || 'etiquetas',
-            afipEnv: isLaboratorio ? 'HOMO' : (process.env.AFIP_ENV || 'PROD'),
+            afipEnv: (isLaboratorio || isPruebaNube) ? 'HOMO' : (process.env.AFIP_ENV || 'PROD'),
             whatsappModoEspejo: String(process.env.WHATSAPP_MODO_ESPEJO || '').toLowerCase() === 'true',
             zebraQueue
         });

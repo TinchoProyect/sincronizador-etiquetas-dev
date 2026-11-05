@@ -55,6 +55,8 @@ function normalizeNumber(numberInput) {
  * Se ejecuta en segundo plano después del COMMIT exitoso
  */
 async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId, db) {
+    // 🛑 [LEGACY RETIRADO] El puente de transición hacia Google Sheets / AppSheet ya no se utiliza.
+    return;
     try {
         console.log(`🚀 [SYNC-UP] ${requestId} - Iniciando push automático a Sheets: ${presupuestoId} (${detallesCount} detalles)`);
 

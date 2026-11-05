@@ -310,62 +310,10 @@ async function schedulerTick() {
  * Iniciar el scheduler con intervalo dinámico
  */
 async function start(db) {
-    console.log('[AUTO_SYNC] 🚀 Iniciando scheduler de sincronización automática...');
-    
-    if (schedulerState.intervalId) {
-        console.log('[AUTO_SYNC] ⚠️ Scheduler ya está ejecutándose');
-        return;
-    }
-    
-    if (!db) {
-        console.error('[AUTO_SYNC] ❌ Base de datos requerida para iniciar scheduler');
-        return;
-    }
-    
-    // Guardar referencia a la base de datos
-    schedulerState.db = db;
-    
-    try {
-        // RESET AUTOMÁTICO: Forzar auto_sync_enabled a false en cada arranque
-        console.log('[AUTO_SYNC] 🔄 Reseteando auto_sync_enabled a false en arranque...');
-        await db.query(`
-            UPDATE presupuestos_config 
-            SET auto_sync_enabled = false
-            WHERE activo = true
-        `);
-        console.log('[AUTO_SYNC] ✅ auto_sync_enabled reseteado a false');
-        
-        // Obtener configuración para determinar intervalo
-        const config = await getActiveConfig(db);
-        const intervalMinutes = config?.sync_interval_minutes || 1;
-        
-        // Guardar intervalo actual
-        schedulerState.currentIntervalMinutes = intervalMinutes;
-        
-        // Iniciar intervalo dinámico basado en configuración
-        const intervalMs = intervalMinutes * 60 * 1000;
-        schedulerState.intervalId = setInterval(schedulerTick, intervalMs);
-        schedulerState.isSchedulerActive = true;
-        
-        console.log(`[AUTO_SYNC] ✅ Scheduler iniciado con intervalo de ${intervalMinutes} minuto(s)`);
-        console.log('[AUTO_SYNC] 📊 Estado inicial: INACTIVO (reseteado en arranque)');
-        console.log('[AUTO_SYNC] ℹ️ Para habilitar: activar desde modal de configuración');
-        
-        // Ejecutar primer tick después de 5 segundos
-        setTimeout(schedulerTick, 5000);
-        
-    } catch (error) {
-        console.error('[AUTO_SYNC] ❌ Error al obtener configuración inicial:', error);
-        
-        // Fallback: usar intervalo de 1 minuto
-        schedulerState.currentIntervalMinutes = 1;
-        schedulerState.intervalId = setInterval(schedulerTick, 60 * 1000);
-        schedulerState.isSchedulerActive = true;
-        
-        console.log('[AUTO_SYNC] ⚠️ Usando intervalo por defecto de 1 minuto');
-        console.log('[AUTO_SYNC] ℹ️ El scheduler está corriendo pero NO ejecutará sincronizaciones hasta configurar');
-        setTimeout(schedulerTick, 5000);
-    }
+    console.log('[AUTO_SYNC] 🛑 Sincronizador legacy Google Sheets (AppSheet) retirado permanentemente. No se inicia polling.');
+    schedulerState.isSchedulerActive = false;
+    schedulerState.isSyncRunning = false;
+    return;
 }
 
 /**

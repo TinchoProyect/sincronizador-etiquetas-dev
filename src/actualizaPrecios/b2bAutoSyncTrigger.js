@@ -25,13 +25,15 @@ const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
 function esModoLaboratorioOSinCredencialesB2B() {
   const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
   const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+  const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
   const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+  const isPruebaNube = flagNube === 'true' || flagNube === '1';
   const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
   const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
   const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';
 
-  // CANDADO INQUEBRANTABLE: Jamás permitir que Modo Laboratorio toque el Supabase de Producción
-  if (isLab && supaUrl.includes(PROD_SUPABASE_ID)) {
+  // CANDADO INQUEBRANTABLE: Jamás permitir que Modo Laboratorio ni Modo Prueba Nube toquen el Supabase de Producción
+  if ((isLab || isPruebaNube) && supaUrl.includes(PROD_SUPABASE_ID)) {
     return true;
   }
   const sandboxHabilitado = String(process.env.LAMDA_B2B_SANDBOX_ENABLED || '').trim().toLowerCase() === 'true';

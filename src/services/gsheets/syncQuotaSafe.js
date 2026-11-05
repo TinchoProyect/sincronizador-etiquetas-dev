@@ -196,6 +196,10 @@ function hasPresupuestoChanged(local, remote, headers) {
  * @returns {Promise<Object>} Resumen de la sincronización
  */
 async function ejecutarSincronizacionBidireccionalQuotaSafe(config, db, onProgress = null) {
+    console.warn('🛑 [SYNC-QUOTA-SAFE] Sincronizador legacy Google Sheets (AppSheet) retirado permanentemente. Operación omitida.');
+    const stateRetired = new SyncState();
+    stateRetired.startOperation('Sincronización Bidireccional (Retirada)', 'Desactivada');
+    return stateRetired.completeOperation(true);
     console.log('[SYNC-QUOTA-SAFE] 🚀 Iniciando sincronización bidireccional tolerante a cuotas...');
     
     const state = new SyncState();

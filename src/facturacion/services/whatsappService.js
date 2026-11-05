@@ -29,7 +29,48 @@ function esModoEspejoWa() {
     return flagEspejo === 'true' || flagEspejo === '1';
 }
 
+function esModoPruebaNubeWa() {
+    const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+    const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+    return flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
+}
+
+function obtenerNumeroRedireccionSeguraWa() {
+    const raw = String(process.env.SAFE_REDIRECT_WHATSAPP_TO || '5492216615746').replace(/[^0-9]/g, '').trim();
+    return raw || '5492216615746';
+}
+
+function esNumeroPropioPruebaWa(telefonoOChatId) {
+    const digits = String(telefonoOChatId || '').split('@')[0].replace(/[^0-9]/g, '');
+    const safeDigits = obtenerNumeroRedireccionSeguraWa();
+    if (!digits || !safeDigits) return false;
+    return digits === safeDigits || digits.endsWith(safeDigits.slice(-10));
+}
+
+function aplicarRedireccionSeguraWhatsApp(listaNumeros, textoMensaje, tipoEnvio = 'MENSAJE') {
+    if (!esModoPruebaNubeWa()) {
+        return { listaFinal: listaNumeros, textoFinal: textoMensaje, redirigido: false };
+    }
+    const destinoSeguro = obtenerNumeroRedireccionSeguraWa();
+    const originalesStr = (listaNumeros || []).map(n => '+' + n).join(', ');
+    const prefijo =
+        `🧪 *[PRUEBA NUBE LAMDA — REDIRECCIÓN SEGURA]*\n` +
+        `📌 *Tipo:* ${tipoEnvio}\n` +
+        `🔒 *Destinatario(s) original(es) bloqueado(s):* ${originalesStr || 'N/A'}\n` +
+        `───────────────────\n`;
+    console.log(`🧪 [WHATSAPP-SAFE-REDIRECT] Redirigiendo ${tipoEnvio} de [${originalesStr}] -> [+${destinoSeguro}]`);
+    return {
+        listaFinal: [destinoSeguro],
+        textoFinal: prefijo + (textoMensaje || ''),
+        redirigido: true,
+        originales: listaNumeros
+    };
+}
+
 function interceptarEnvioEnModoSeguro(numeros, tipoEnvio, detalle = '') {
+    // Si estamos en Modo Prueba Nube (SAFE_DELIVERY_REDIRECT), NO simulamos en vacío:
+    // permitimos que continúe hacia aplicarRedireccionSeguraWhatsApp() para que llegue al WhatsApp de Martín.
+    if (esModoPruebaNubeWa()) return null;
     if (!esModoLaboratorioWa() && !esModoEspejoWa()) return null;
     const modo = esModoLaboratorioWa() ? 'MODO_LABORATORIO (etiquetas_pruebas)' : 'WHATSAPP_MODO_ESPEJO (Fase 3)';
     const lista = String(numeros || '')
@@ -121,7 +162,7 @@ const killZombieChrome = () => {
  * Inicializar cliente de WhatsApp
  */
 async function inicializarWhatsApp(force = false, isFallback = false) {
-    if (esModoLaboratorioWa()) {
+    if (esModoLaboratorioWa() && !esModoPruebaNubeWa()) {
         console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO: Omitiendo inicio de Chromium/WhatsApp Web real (envíos simulados localmente).');
         connectionStatus = 'CONECTADO';
         connectionStep = 4;
@@ -236,7 +277,7 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             connectionStepText = '¡Listo! Dispositivo conectado.';
             qrCodeDataUrl = null;
 
-            if (esModoEspejoWa() || esModoLaboratorioWa()) {
+            if (esModoEspejoWa() || esModoLaboratorioWa() || esModoPruebaNubeWa()) {
                 console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Laboratorio activo: se omite sincronización CRM en segundo plano para evitar colisiones.");
                 return;
             }
@@ -283,6 +324,14 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
                             if (!pushnameWa && resolved.name) pushnameWa = resolved.name;
                         }
                     } catch (eLid) {}
+                }
+
+                // 🛡️ PROTECCIÓN DE MENSAJES ENTRANTES EN PRUEBA PARALELA DE NUBE:
+                // Mientras PcAlmacen sigue siendo el servidor titular del depósito, el servidor de prueba en la nube
+                // ignora por completo los mensajes y audios entrantes de clientes reales (!msg.fromMe), evitando
+                // transcripciones duplicadas de audios o respuestas cruzadas.
+                if ((esModoPruebaNubeWa() || esModoEspejoWa()) && !msg.fromMe && !esNumeroPropioPruebaWa(chatId)) {
+                    return;
                 }
 
                 const timestampMs = msg.timestamp ? msg.timestamp * 1000 : Date.now();
@@ -579,9 +628,13 @@ const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = 
         }
     }
 
+    const redirFactura = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, `FACTURA PDF (${filename})`);
+    const listaEnvioFactura = redirFactura.listaFinal;
+    mensajeTexto = redirFactura.textoFinal;
+
     const resultados = [];
 
-    for (let numero of listaNumeros) {
+    for (let numero of listaEnvioFactura) {
         try {
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje con adjunto a: ${targetChatId}`);
@@ -644,10 +697,13 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
     console.log(`📱 [WHATSAPP-SERVICE] Enviando PDF genérico "${filename}" a ${listaNumeros.length} destinatarios.`);
 
     const media = new MessageMedia('application/pdf', pdfBuffer.toString('base64'), filename);
+    const redirDoc = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, `DOCUMENTO PDF (${filename})`);
+    const listaEnvioDoc = redirDoc.listaFinal;
+    mensajeTexto = redirDoc.textoFinal;
 
     const resultados = [];
 
-    for (let numero of listaNumeros) {
+    for (let numero of listaEnvioDoc) {
         try {
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando documento con adjunto a: ${targetChatId}`);
@@ -708,11 +764,15 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
         throw new Error('Ninguno de los números telefónicos provistos es válido.');
     }
 
-    console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje de texto plano a ${listaNumeros.length} destinatarios.`);
+    const redirTxt = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, 'MENSAJE DE TEXTO / AVISO RUTA');
+    const listaEnvioTxt = redirTxt.listaFinal;
+    mensajeTexto = redirTxt.textoFinal;
+
+    console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje de texto plano a ${listaEnvioTxt.length} destinatario(s).`);
 
     const resultados = [];
 
-    for (let numero of listaNumeros) {
+    for (let numero of listaEnvioTxt) {
         try {
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje de texto a: ${targetChatId}`);
@@ -777,9 +837,12 @@ const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensa
     console.log(`📱 [WHATSAPP-SERVICE] Enviando imagen "${filename}" a ${listaNumeros.length} destinatarios.`);
 
     const media = new MessageMedia(mimeType, base64Data, filename);
+    const redirImg = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, `IMAGEN (${filename})`);
+    const listaEnvioImg = redirImg.listaFinal;
+    mensajeTexto = redirImg.textoFinal;
     const resultados = [];
 
-    for (let numero of listaNumeros) {
+    for (let numero of listaEnvioImg) {
         try {
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando imagen a: ${targetChatId}`);
@@ -818,6 +881,7 @@ let monitorNoLeidosInterval = null;
 let sincronizandoNoLeidos = false;
 
 const sincronizarNoLeidosRapido = async () => {
+    if (esModoPruebaNubeWa() || esModoEspejoWa()) return;
     if (sincronizandoNoLeidos || connectionStatus !== 'CONECTADO' || !client || !client.pupPage) {
         return;
     }
@@ -923,6 +987,9 @@ let sincronizandoChatsRecientesEnCurso = false;
  * Sincronizar las conversaciones recientes de WhatsApp con la base de datos local CRM
  */
 const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 15, marcarVistoChatId = null } = {}) => {
+    if (esModoPruebaNubeWa() || esModoEspejoWa()) {
+        return { success: true, skippedByCloudTestGuard: true, message: 'Sincronización entrante de clientes silenciada en Modo Prueba Nube para no competir con PcAlmacen.' };
+    }
     if (connectionStatus !== 'CONECTADO' || !client || !client.pupPage) {
         return {
             success: false,

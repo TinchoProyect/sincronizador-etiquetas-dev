@@ -33,7 +33,9 @@
     "facturacion": "node src/facturacion/app.js",
     "logistica": "node src/logistica/app.js",
     "db:check": "node -e \"require('dotenv').config(); console.log('📊 Base de datos actual:', process.env.DB_NAME || 'etiquetas'); console.log('🌍 Entorno:', process.env.NODE_ENV || 'production');\"",
-    "kill-ports": "npx kill-port 3000 3002 3003 3004 3005 5173"
+    "kill-ports": "npx kill-port 3000 3002 3003 3004 3005 5173",
+    "b2b:clonar-sandbox": "node scripts/clonarSupabaseB2BSandbox.js",
+    "b2b:generar-sql-sandbox": "node scripts/clonarSupabaseB2BSandbox.js --solo-sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
