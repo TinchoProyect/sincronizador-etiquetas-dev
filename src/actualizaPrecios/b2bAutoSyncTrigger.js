@@ -1,6 +1,7 @@
 // filepath: src/actualizaPrecios/b2bAutoSyncTrigger.js
 'use strict';
 
+require('dotenv').config();
 const { fork } = require('child_process');
 const path = require('path');
 
@@ -19,15 +20,43 @@ const timers = new Map();
 const running = new Set();
 const pendingReRun = new Map();
 
+const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
+
+function esModoLaboratorioOSinCredencialesB2B() {
+  const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+  const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+  const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
+  const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+  const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';
+
+  // CANDADO INQUEBRANTABLE: Jamás permitir que Modo Laboratorio toque el Supabase de Producción
+  if (isLab && supaUrl.includes(PROD_SUPABASE_ID)) {
+    return true;
+  }
+  const sandboxHabilitado = String(process.env.LAMDA_B2B_SANDBOX_ENABLED || '').trim().toLowerCase() === 'true';
+  if (isLab && !sandboxHabilitado) {
+    return true;
+  }
+  return sinSupaValido;
+}
+
 /**
  * Dispara en segundo plano (no bloqueante, con debounce y cola de re-ejecución)
  * la sincronización hacia Supabase Cloud cuando ocurre un cambio relevante en local.
+ *
+ * En Modo Laboratorio (o cuando las credenciales B2B están desconectadas),
+ * bloquea el disparo para jamás contaminar el Supabase B2B real de Producción.
  *
  * @param {'precios'|'listas'|'cuentas'|'politicas'|'ofertas'|'estados'|'pedidos'} tipo
  * @param {string} [motivo='Cambio local'] - Descripción breve para trazabilidad en consola
  * @param {number} [debounceMs=2500] - Ventana de amortiguación en milisegundos
  */
 function triggerB2BSync(tipo, motivo = 'Cambio local', debounceMs = 2500) {
+  if (esModoLaboratorioOSinCredencialesB2B()) {
+    return;
+  }
+
   const scriptInfo = SCRIPTS[tipo];
   if (!scriptInfo) {
     console.warn(`⚠️ [B2B-AUTO-SYNC] Tipo de sincronización desconocido: "${tipo}"`);
@@ -48,6 +77,10 @@ function triggerB2BSync(tipo, motivo = 'Cambio local', debounceMs = 2500) {
 }
 
 function ejecutarSyncEnBackground(tipo, motivo) {
+  if (esModoLaboratorioOSinCredencialesB2B()) {
+    return;
+  }
+
   const scriptInfo = SCRIPTS[tipo];
   if (!scriptInfo) return;
 
@@ -102,6 +135,10 @@ function ejecutarSyncEnBackground(tipo, motivo) {
  */
 function createB2BAutoSyncMiddleware(moduleName = 'app') {
   return function b2bAutoSyncMiddleware(req, res, next) {
+    if (esModoLaboratorioOSinCredencialesB2B()) {
+      return next();
+    }
+
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
       res.on('finish', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {

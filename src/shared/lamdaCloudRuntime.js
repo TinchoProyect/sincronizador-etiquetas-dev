@@ -155,7 +155,7 @@ const CLIENT_RUNTIME_SCRIPT = `
         labBannerEl.innerHTML =
             '<span style="background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:4px;font-weight:900;">🛠️ MODO LABORATORIO / PRUEBAS</span>' +
             '<span>BASE DE DATOS: <strong style="color:#fde68a;text-decoration:underline;">' + (status.dbName || 'etiquetas_pruebas') + '</strong> — NO USAR PARA OPERACIÓN REAL</span>' +
-            '<span style="font-size:11px;background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:4px;">🔒 WhatsApp Saliente Bloqueado · ARCA Homologación · Zebra Física Simulada</span>';
+            '<span style="font-size:11px;background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:4px;">🔒 Supabase B2B Desconectado · WhatsApp Saliente Bloqueado · ARCA Homologación · Zebra Física Simulada</span>';
     }
 
     function openZebraModal() {

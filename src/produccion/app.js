@@ -1,3 +1,4 @@
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');

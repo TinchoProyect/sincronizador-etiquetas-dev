@@ -10,7 +10,8 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432
 });
 
-const supaUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_B2B_URL || 'https://zysyxtbcvgswancxtpib.supabase.co';
+const isModoLaboratorio = String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' || String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
+const supaUrl = isModoLaboratorio ? 'http://127.0.0.1:59999' : (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_B2B_URL || 'https://zysyxtbcvgswancxtpib.supabase.co');
 const supaAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_auFX1kW7JonsV5TvUYnsnQ_LekKj2si';
 const supaServiceKey = process.env.SUPABASE_B2B_SERVICE_KEY || supaAnonKey;
 const supabaseCloud = createClient(supaUrl, supaServiceKey);
@@ -718,7 +719,8 @@ async function registrarAccesoServidorSitio(req, recurso) {
  * mientras la PC local del taller estuvo apagada o desconectada.
  */
 async function sincronizarEventosDesdeNubeSupabase() {
-  const supabaseUrl = process.env.SUPABASE_B2B_URL || 'https://zysyxtbcvgswancxtpib.supabase.co';
+  if (isModoLaboratorio) return;
+  const supabaseUrl = process.env.SUPABASE_B2B_URL;
   const supabaseKey = process.env.SUPABASE_B2B_SERVICE_KEY;
   if (!supabaseKey) return;
 

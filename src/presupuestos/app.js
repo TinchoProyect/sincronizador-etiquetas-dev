@@ -1,3 +1,4 @@
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const express = require('express');
 const cors = require('cors');
 const path = require('path');

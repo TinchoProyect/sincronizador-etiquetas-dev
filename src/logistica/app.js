@@ -1,3 +1,4 @@
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const express = require('express');

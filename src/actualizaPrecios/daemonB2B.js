@@ -1,6 +1,7 @@
 // filepath: src/actualizaPrecios/daemonB2B.js
 'use strict';
 
+require('dotenv').config();
 const { fork } = require('child_process');
 const path = require('path');
 
@@ -23,6 +24,26 @@ const PATHS = {
   politicas: path.join(__dirname, 'syncB2BPoliticas.js'),
   ofertas: path.join(__dirname, 'syncB2BOfertas.js'),
 };
+
+const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
+
+function esModoLaboratorioB2B() {
+  const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+  const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+  const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
+  const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+  const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';
+
+  if (isLab && supaUrl.includes(PROD_SUPABASE_ID)) {
+    return true;
+  }
+  const sandboxHabilitado = String(process.env.LAMDA_B2B_SANDBOX_ENABLED || '').trim().toLowerCase() === 'true';
+  if (isLab && !sandboxHabilitado) {
+    return true;
+  }
+  return sinSupaValido;
+}
 
 // Helper para correr un script como fork child process (No bloqueante, tolerante a fallos)
 function runScript(scriptName, scriptPath) {
@@ -88,6 +109,12 @@ async function executeCatalogJob() {
 
 // Ejecución Inicial al arrancar el Daemon
 async function runInitialSync() {
+  if (esModoLaboratorioB2B()) {
+    console.log(`🔒 [B2B-DAEMON] MODO LABORATORIO ACTIVO (BD: ${process.env.DB_NAME || 'etiquetas_pruebas'}): Sincronización automática con Supabase B2B real PAUSADA preventivamente para no contaminar Producción.`);
+    setInterval(() => {}, 60 * 60 * 1000);
+    return;
+  }
+
   console.log('⚡ [B2B-DAEMON] Ejecutando sincronización de arranque inicial...');
   await executeCatalogJob();
   await executePedidosJob();
