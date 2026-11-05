@@ -122,6 +122,26 @@ app.use('/pages', express.static(path.join(staticPath, 'pages')));
 app.use('/js', express.static(path.join(staticPath, 'js')));
 app.use('/css', express.static(path.join(staticPath, 'css')));
 app.use('/img', express.static(path.join(staticPath, 'img')));
+app.get('/mobile/manifest.json', (req, res, next) => {
+    const isLab = String(process.env.MODO_LABORATORIO).toLowerCase() === 'true' || process.env.DB_NAME === 'etiquetas_pruebas';
+    if (!isLab) return next();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.json({
+        name: '🛠️ [LAB] LAMDA Móvil (Pruebas)',
+        short_name: 'LAMDA LAB',
+        description: 'Entorno de Pruebas Local (Modo Laboratorio) - Sin impacto en Producción',
+        start_url: '/mobile/index.html',
+        scope: '/mobile/',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#78350f',
+        theme_color: '#b45309',
+        icons: [
+            { src: '/mobile/img/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+            { src: '/mobile/img/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ]
+    });
+});
 app.use('/mobile', express.static(path.join(staticPath, 'public/mobile'), {
     etag: false,
     lastModified: false,
