@@ -34,6 +34,9 @@ namespace LamdaControlCenter
         private string rootDir;
         private string nodeExePath;
         private string gitExePath;
+        private string browserExePath;
+        private string browserProfileDir;
+        private Process labBrowserProcess;
         private List<ServiceEntry> services = new List<ServiceEntry>();
         private System.Windows.Forms.Timer uiTimer;
         private bool isStartingSequence = false;
@@ -95,6 +98,24 @@ namespace LamdaControlCenter
 
             gitExePath = @"C:\Program Files\Git\cmd\git.exe";
             if (!File.Exists(gitExePath)) gitExePath = "git";
+
+            browserProfileDir = Path.Combine(Path.GetTempPath(), "LamdaLaboratorioBrowserProfile");
+            string[] candidates = new string[]
+            {
+                @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                @"C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+            };
+            browserExePath = null;
+            foreach (string c in candidates)
+            {
+                if (File.Exists(c))
+                {
+                    browserExePath = c;
+                    break;
+                }
+            }
         }
 
         private void InitializeServicesList()
@@ -693,12 +714,13 @@ namespace LamdaControlCenter
 
         private void StopAllServices(bool silent)
         {
-            if (!silent) AppendLog("⏹ Deteniendo todos los servicios de LAMDA (puertos 3000 a 3005)...");
+            if (!silent) AppendLog("⏹ Deteniendo todos los servicios de LAMDA y cerrando ventana del navegador...");
             isStartingSequence = false;
             isStoppingSequence = true;
 
             Task.Factory.StartNew(() =>
             {
+                CloseLamdaBrowserWindows();
                 StopAllServicesSync();
                 isStoppingSequence = false;
                 CountListeningPortsSync();
@@ -707,7 +729,7 @@ namespace LamdaControlCenter
                     this.BeginInvoke(new Action(() =>
                     {
                         UpdateVisualState();
-                        if (!silent) AppendLog("✅ Todos los servicios fueron apagados. La Notebook quedó 100% libre.");
+                        if (!silent) AppendLog("✅ Todos los servicios y la ventana del navegador fueron cerrados. Notebook 100% libre.");
                     }));
                 }
             });
@@ -793,6 +815,129 @@ namespace LamdaControlCenter
             }
         }
 
+        private IntPtr FindExistingLamdaBrowserWindow()
+        {
+            try
+            {
+                if (labBrowserProcess != null && !labBrowserProcess.HasExited)
+                {
+                    labBrowserProcess.Refresh();
+                    if (labBrowserProcess.MainWindowHandle != IntPtr.Zero && IsWindowVisible(labBrowserProcess.MainWindowHandle))
+                    {
+                        return labBrowserProcess.MainWindowHandle;
+                    }
+                }
+            }
+            catch { }
+
+            IntPtr found = IntPtr.Zero;
+            IntPtr myHandle = IntPtr.Zero;
+            try { if (this.IsHandleCreated) myHandle = this.Handle; } catch { }
+
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (hWnd == myHandle || !IsWindowVisible(hWnd)) return true;
+                StringBuilder sb = new StringBuilder(512);
+                GetWindowText(hWnd, sb, 512);
+                string title = sb.ToString();
+                if (string.IsNullOrWhiteSpace(title)) return true;
+                if (title.Contains("Panel de Control (Modo Laboratorio)") || title.Contains("CENTRO DE CONTROL")) return true;
+
+                if (title.Contains("[PRUEBAS]") ||
+                    title.Contains("Gestiones LAMDA") ||
+                    title.Contains("Sistema de Etiquetas") ||
+                    title.Contains("LAMDA Móvil") ||
+                    title.Contains("localhost:3000") ||
+                    title.Contains("localhost:3005"))
+                {
+                    found = hWnd;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            return found;
+        }
+
+        private void LaunchInIsolatedBrowser(string url, bool newWindow)
+        {
+            if (!string.IsNullOrEmpty(browserExePath) && File.Exists(browserExePath))
+            {
+                try { Directory.CreateDirectory(browserProfileDir); } catch { }
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = browserExePath;
+                string winFlag = newWindow ? "--new-window " : "";
+                psi.Arguments = string.Format("--user-data-dir=\"{0}\" --no-first-run --no-default-browser-check --disable-session-crashed-bubble {1}\"{2}\"", browserProfileDir, winFlag, url);
+                psi.UseShellExecute = false;
+                labBrowserProcess = Process.Start(psi);
+            }
+            else
+            {
+                labBrowserProcess = Process.Start(url);
+            }
+        }
+
+        private void CloseLamdaBrowserWindows()
+        {
+            try
+            {
+                IntPtr myHandle = IntPtr.Zero;
+                try { if (this.IsHandleCreated) myHandle = this.Handle; } catch { }
+
+                EnumWindows((hWnd, lParam) =>
+                {
+                    if (hWnd == myHandle || !IsWindowVisible(hWnd)) return true;
+                    StringBuilder sb = new StringBuilder(512);
+                    GetWindowText(hWnd, sb, 512);
+                    string title = sb.ToString();
+                    if (string.IsNullOrWhiteSpace(title)) return true;
+                    if (title.Contains("Panel de Control (Modo Laboratorio)") || title.Contains("CENTRO DE CONTROL")) return true;
+
+                    if (title.Contains("[PRUEBAS]") ||
+                        title.Contains("Gestiones LAMDA") ||
+                        title.Contains("Sistema de Etiquetas") ||
+                        title.Contains("LAMDA Móvil") ||
+                        title.Contains("localhost:3000") ||
+                        title.Contains("localhost:3005"))
+                    {
+                        PostMessage(hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+
+            try
+            {
+                if (labBrowserProcess != null && !labBrowserProcess.HasExited)
+                {
+                    try { labBrowserProcess.CloseMainWindow(); } catch { }
+                    Thread.Sleep(200);
+                    if (!labBrowserProcess.HasExited)
+                    {
+                        try { labBrowserProcess.Kill(); } catch { }
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                labBrowserProcess = null;
+            }
+
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", "-NoProfile -WindowStyle Hidden -Command \"Get-CimInstance Win32_Process -Filter \\\"Name = 'chrome.exe' OR Name = 'msedge.exe'\\\" | Where-Object { $_.CommandLine -like '*LamdaLaboratorioBrowserProfile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\"");
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                using (Process p = Process.Start(psi))
+                {
+                    p.WaitForExit(2000);
+                }
+            }
+            catch { }
+        }
+
         private void OpenMainBrowserTab()
         {
             bool port3000Up = CheckPortOpen("127.0.0.1", 3000, 250);
@@ -804,10 +949,23 @@ namespace LamdaControlCenter
                 return;
             }
 
-            AppendLog("🌐 Abriendo navegador en http://localhost:3000 (1 sola pestaña)...");
+            IntPtr existingWindow = FindExistingLamdaBrowserWindow();
+            if (existingWindow != IntPtr.Zero)
+            {
+                AppendLog("🌐 La ventana de LAMDA ya está abierta. Activándola al frente sin abrir duplicados...");
+                try
+                {
+                    if (IsIconic(existingWindow)) ShowWindow(existingWindow, 9);
+                    SetForegroundWindow(existingWindow);
+                }
+                catch { }
+                return;
+            }
+
+            AppendLog("🌐 Abriendo ventana única del sistema en http://localhost:3000...");
             try
             {
-                Process.Start("http://localhost:3000");
+                LaunchInIsolatedBrowser("http://localhost:3000", true);
             }
             catch (Exception ex)
             {
@@ -826,7 +984,7 @@ namespace LamdaControlCenter
             AppendLog("📱 Abriendo App Móvil Operativa en http://localhost:3005/mobile/home.html...");
             try
             {
-                Process.Start("http://localhost:3005/mobile/home.html");
+                LaunchInIsolatedBrowser("http://localhost:3005/mobile/home.html", false);
             }
             catch (Exception ex)
             {
@@ -921,6 +1079,24 @@ namespace LamdaControlCenter
             }
         }
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        private const uint WM_CLOSE = 0x0010;
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -930,6 +1106,7 @@ namespace LamdaControlCenter
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             try { uiTimer.Stop(); } catch { }
+            try { CloseLamdaBrowserWindows(); } catch { }
             try { StopAllServicesSync(); } catch { }
             Environment.Exit(0);
         }
