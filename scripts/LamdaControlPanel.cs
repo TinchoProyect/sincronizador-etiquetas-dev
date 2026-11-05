@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -920,28 +921,46 @@ namespace LamdaControlCenter
             }
         }
 
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            uiTimer.Stop();
-            StopAllServicesSync();
+            try { uiTimer.Stop(); } catch { }
+            try { StopAllServicesSync(); } catch { }
+            Environment.Exit(0);
         }
 
         [STAThread]
         public static void Main()
         {
-            bool createdNew;
-            using (Mutex mutex = new Mutex(true, "Global\\LamdaModoLaboratorioControlPanelMutex", out createdNew))
+            try
             {
-                if (!createdNew)
+                int currentId = Process.GetCurrentProcess().Id;
+                Process[] existing = Process.GetProcessesByName("LamdaControlPanel");
+                foreach (Process p in existing)
                 {
-                    MessageBox.Show("El Panel de Control de LAMDA (Modo Laboratorio) ya se encuentra abierto en tu barra de tareas.", "LAMDA Modo Laboratorio", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
+                    if (p.Id == currentId) continue;
+                    if (p.MainWindowHandle != IntPtr.Zero)
+                    {
+                        ShowWindow(p.MainWindowHandle, 9);
+                        SetForegroundWindow(p.MainWindowHandle);
+                        return;
+                    }
+                    else
+                    {
+                        try { p.Kill(); } catch { }
+                    }
                 }
-
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new MainForm());
             }
+            catch { }
+
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MainForm());
         }
     }
 }
