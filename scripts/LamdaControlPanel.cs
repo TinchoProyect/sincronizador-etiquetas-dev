@@ -55,7 +55,10 @@ namespace LamdaControlCenter
         private Button btnStop;
         private Button btnOpenBrowser;
         private CheckBox chkAutoOpenBrowser;
-        private Button btnGitSync;
+        private Button btnGitPull;
+        private Button btnGitPush;
+        private Label lblGitCommit;
+        private ToolTip mainToolTip;
         private Button btnRestoreDb;
         private Button btnOpenMobile;
         private RichTextBox logBox;
@@ -165,12 +168,18 @@ namespace LamdaControlCenter
         private void BuildUserInterface()
         {
             this.Text = "LAMDA — Panel de Control (Modo Laboratorio)";
-            this.Size = new Size(760, 720);
-            this.MinimumSize = new Size(740, 680);
+            this.Size = new Size(760, 760);
+            this.MinimumSize = new Size(740, 710);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = Color.FromArgb(15, 23, 42); // #0f172a
             this.ForeColor = Color.FromArgb(248, 250, 252);
             this.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+
+            mainToolTip = new ToolTip();
+            mainToolTip.AutoPopDelay = 12000;
+            mainToolTip.InitialDelay = 300;
+            mainToolTip.ReshowDelay = 200;
+            mainToolTip.ShowAlways = true;
 
             string icoFile = Path.Combine(rootDir, @"scripts\lamda-lab.ico");
             if (File.Exists(icoFile))
@@ -351,39 +360,71 @@ namespace LamdaControlCenter
 
             y += 4;
 
-            // 5. Quick Lab Tools Row (Git Sync, DB Restore, Mobile App)
+            // 5. Git Actions Row (Explicit & Separate: Pull to Notebook vs Push from Notebook)
+            Panel gitRow = new Panel();
+            gitRow.Location = new Point(18, y);
+            gitRow.Size = new Size(706, 36);
+            gitRow.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+            Label gitLabel = new Label();
+            gitLabel.Text = "GitHub (desarrollo):";
+            gitLabel.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            gitLabel.ForeColor = Color.FromArgb(148, 163, 184);
+            gitLabel.Location = new Point(0, 8);
+            gitLabel.AutoSize = true;
+            gitRow.Controls.Add(gitLabel);
+
+            btnGitPull = CreateSmallToolButton("⬇️  Traer actualizaciones a la Notebook", 136, 2, 280);
+            btnGitPull.BackColor = Color.FromArgb(3, 105, 161); // Sky Blue #0369a1
+            btnGitPull.ForeColor = Color.White;
+            btnGitPull.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
+            btnGitPull.Click += (s, e) => RunGitPullToNotebookAsync();
+            mainToolTip.SetToolTip(btnGitPull, "Descarga únicamente los cambios nuevos subidos a la rama 'desarrollo' en GitHub hacia esta Notebook, informa qué trajo y reinicia los 5 servicios. (Nunca sube cambios).");
+            gitRow.Controls.Add(btnGitPull);
+
+            btnGitPush = CreateSmallToolButton("⬆️  Subir avances desde la Notebook", 426, 2, 280);
+            btnGitPush.BackColor = Color.FromArgb(49, 46, 129); // Indigo #312e81
+            btnGitPush.ForeColor = Color.FromArgb(224, 231, 255);
+            btnGitPush.FlatAppearance.BorderColor = Color.FromArgb(129, 140, 248);
+            btnGitPush.Click += (s, e) => RunGitPushFromNotebookAsync();
+            mainToolTip.SetToolTip(btnGitPush, "Verifica si tenés commits o avances locales en esta Notebook y te pide confirmación explícita antes de subirlos a 'origin/desarrollo'. (Nunca mezcla con descarga).");
+            gitRow.Controls.Add(btnGitPush);
+
+            contentPanel.Controls.Add(gitRow);
+            y += 38;
+
+            // 6. Commit Status + Local Lab Utilities Row (DB Restore, Mobile App)
             Panel toolsRow = new Panel();
             toolsRow.Location = new Point(18, y);
             toolsRow.Size = new Size(706, 36);
             toolsRow.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
-            Label toolsLabel = new Label();
-            toolsLabel.Text = "Herramientas de Laboratorio:";
-            toolsLabel.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
-            toolsLabel.ForeColor = Color.FromArgb(148, 163, 184);
-            toolsLabel.Location = new Point(0, 8);
-            toolsLabel.AutoSize = true;
-            toolsRow.Controls.Add(toolsLabel);
+            lblGitCommit = new Label();
+            lblGitCommit.Text = "📌 Commit en Notebook: verificando...";
+            lblGitCommit.Font = new Font("Consolas", 8.5f, FontStyle.Bold);
+            lblGitCommit.ForeColor = Color.FromArgb(125, 211, 252);
+            lblGitCommit.Location = new Point(0, 9);
+            lblGitCommit.Size = new Size(384, 20);
+            lblGitCommit.AutoEllipsis = true;
+            toolsRow.Controls.Add(lblGitCommit);
 
-            btnGitSync = CreateSmallToolButton("☁️ Sincronizar Git (desarrollo)", 182, 0, 205);
-            btnGitSync.Click += (s, e) => RunGitSyncAsync();
-            toolsRow.Controls.Add(btnGitSync);
-
-            btnRestoreDb = CreateSmallToolButton("🗄️ Restaurar Base de Pruebas", 395, 0, 190);
+            btnRestoreDb = CreateSmallToolButton("🗄️ Restaurar Base de Pruebas", 392, 2, 192);
             btnRestoreDb.Click += (s, e) => RunRestoreDatabaseAsync();
+            mainToolTip.SetToolTip(btnRestoreDb, "Restaura la base PostgreSQL local 'etiquetas_pruebas' desde el último snapshot local.");
             toolsRow.Controls.Add(btnRestoreDb);
 
-            btnOpenMobile = CreateSmallToolButton("📱 Abrir /mobile", 593, 0, 113);
+            btnOpenMobile = CreateSmallToolButton("📱 Abrir /mobile", 592, 2, 114);
             btnOpenMobile.Click += (s, e) => OpenMobileTab();
+            mainToolTip.SetToolTip(btnOpenMobile, "Abre la App Móvil Operativa en http://localhost:3005/mobile/home.html");
             toolsRow.Controls.Add(btnOpenMobile);
 
             contentPanel.Controls.Add(toolsRow);
-            y += 42;
+            y += 40;
 
-            // 6. Live Log Viewer
+            // 7. Live Log Viewer
             logBox = new RichTextBox();
             logBox.Location = new Point(18, y);
-            logBox.Size = new Size(706, 122);
+            logBox.Size = new Size(706, 124);
             logBox.BackColor = Color.FromArgb(9, 13, 24);
             logBox.ForeColor = Color.FromArgb(203, 213, 225);
             logBox.Font = new Font("Consolas", 8.75f, FontStyle.Regular);
@@ -445,6 +486,7 @@ namespace LamdaControlCenter
         {
             AppendLog("Panel de Control LAMDA (Modo Laboratorio) iniciado.");
             AppendLog("Carpeta de trabajo: " + rootDir);
+            UpdateGitCommitBadgeAsync();
 
             // Verificar estado inicial y si están apagados, encender automáticamente al abrir el panel
             Task.Factory.StartNew(() =>
@@ -992,30 +1034,288 @@ namespace LamdaControlCenter
             }
         }
 
-        private void RunGitSyncAsync()
+        private void SetGitButtonsEnabled(bool enabled)
         {
-            btnGitSync.Enabled = false;
-            AppendLog("☁️ Sincronizando rama 'desarrollo' con GitHub...");
+            if (this.IsDisposed) return;
+            if (this.InvokeRequired)
+            {
+                try { this.BeginInvoke(new Action<bool>(SetGitButtonsEnabled), enabled); } catch { }
+                return;
+            }
+            btnGitPull.Enabled = enabled;
+            btnGitPush.Enabled = enabled;
+        }
+
+        private void CleanRuntimeNoiseFiles()
+        {
+            try
+            {
+                int code;
+                RunCliCommand(gitExePath, "checkout -- data/ia_credito_ledger.json", out code);
+            }
+            catch { }
+        }
+
+        private void UpdateGitCommitBadgeAsync()
+        {
             Task.Factory.StartNew(() =>
             {
                 try
                 {
-                    string pullOut = RunCliCommand(gitExePath, "pull --rebase origin desarrollo");
+                    int code;
+                    string shortInfo = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out code).Trim();
+                    string fullInfo = RunCliCommand(gitExePath, "log -1 --format=\"Commit %h (%ci): %s\"", out code).Trim();
+                    if (string.IsNullOrWhiteSpace(shortInfo)) shortInfo = "desconocido";
+                    if (!this.IsDisposed)
+                    {
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            lblGitCommit.Text = "📌 Commit en Notebook: " + shortInfo;
+                            mainToolTip.SetToolTip(lblGitCommit, fullInfo);
+                        }));
+                    }
+                }
+                catch { }
+            });
+        }
+
+        private void RunGitPullToNotebookAsync()
+        {
+            SetGitButtonsEnabled(false);
+            AppendLog("⬇️ [TRAER ACTUALIZACIONES] Consultando rama 'origin/desarrollo' en GitHub...");
+            Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    CleanRuntimeNoiseFiles();
+
+                    int fetchCode;
+                    string fetchOut = RunCliCommand(gitExePath, "fetch origin desarrollo", out fetchCode);
+                    if (fetchCode != 0)
+                    {
+                        AppendLog("[ERROR GIT FETCH] " + fetchOut.Trim());
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "No se pudo consultar GitHub ('origin/desarrollo'). Revisá tu conexión a Internet.\n\nDetalle:\n" + fetchOut.Trim(),
+                                "Error al Consultar GitHub",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error
+                            );
+                        }));
+                        return;
+                    }
+
+                    int logCode;
+                    string incomingCommits = RunCliCommand(gitExePath, "log HEAD..origin/desarrollo --oneline", out logCode).Trim();
+
+                    if (string.IsNullOrWhiteSpace(incomingCommits))
+                    {
+                        int curCode;
+                        string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out curCode).Trim();
+                        AppendLog("✅ La Notebook ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
+                        UpdateGitCommitBadgeAsync();
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "✅ Tu Notebook ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar.\n\n📌 Último commit activo en esta Notebook:\n" + currentCommit,
+                                "Notebook al Día (Sin Cambios Nuevos)",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information
+                            );
+                        }));
+                        return;
+                    }
+
+                    int statCode;
+                    string incomingStat = RunCliCommand(gitExePath, "diff --stat HEAD..origin/desarrollo", out statCode).Trim();
+
+                    // Si hubiera algún archivo rastreado modificado localmente, guardarlo en stash preventivo antes de bajar
+                    int statusCode;
+                    string dirtyTracked = RunCliCommand(gitExePath, "status --porcelain --untracked-files=no", out statusCode).Trim();
+                    bool stashedLocal = false;
+                    if (!string.IsNullOrWhiteSpace(dirtyTracked))
+                    {
+                        AppendLog("ℹ️ Resguardando modificaciones locales temporalmente (git stash) antes de actualizar...");
+                        int stashCode;
+                        RunCliCommand(gitExePath, "stash push -m \"auto-stash-panel-laboratorio\"", out stashCode);
+                        stashedLocal = (stashCode == 0);
+                    }
+
+                    AppendLog("📥 Descargando commits nuevos hacia la Notebook:\r\n" + incomingCommits);
+                    int pullCode;
+                    string pullOut = RunCliCommand(gitExePath, "pull --rebase origin desarrollo", out pullCode);
                     AppendLog("[GIT PULL] " + pullOut.Trim());
-                    string pushOut = RunCliCommand(gitExePath, "push origin desarrollo");
-                    AppendLog("[GIT PUSH] " + pushOut.Trim());
+
+                    if (stashedLocal)
+                    {
+                        int popCode;
+                        RunCliCommand(gitExePath, "stash pop", out popCode);
+                    }
+
+                    if (pullCode != 0)
+                    {
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "Ocurrió un conflicto o error al intentar aplicar los cambios en la Notebook:\n\n" + pullOut.Trim(),
+                                "Error al Traer Actualizaciones",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error
+                            );
+                        }));
+                        return;
+                    }
+
+                    UpdateGitCommitBadgeAsync();
+                    AppendLog("✅ Actualizaciones aplicadas en la Notebook. Reiniciando los 5 servicios automáticamente...");
+
                     this.BeginInvoke(new Action(() =>
                     {
-                        btnGitSync.Enabled = true;
-                        MessageBox.Show("Sincronización con la rama 'desarrollo' en GitHub completada correctamente.", "Git Sincronizado", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        SetGitButtonsEnabled(true);
+                        RestartAllServices();
+                        MessageBox.Show(
+                            "✅ Se descargaron y aplicaron las actualizaciones de 'origin/desarrollo' en esta Notebook.\n\n" +
+                            "📥 Commits traídos:\n" + incomingCommits + "\n\n" +
+                            "📂 Resumen de archivos actualizados:\n" + incomingStat + "\n\n" +
+                            "🔄 Los 5 servicios del Modo Laboratorio se están reiniciando automáticamente con el código nuevo.",
+                            "Actualizaciones Traídas a la Notebook",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information
+                        );
                     }));
                 }
                 catch (Exception ex)
                 {
                     this.BeginInvoke(new Action(() =>
                     {
-                        btnGitSync.Enabled = true;
-                        AppendLog("ERROR Git: " + ex.Message);
+                        SetGitButtonsEnabled(true);
+                        AppendLog("ERROR al traer actualizaciones: " + ex.Message);
+                    }));
+                }
+            });
+        }
+
+        private void RunGitPushFromNotebookAsync()
+        {
+            SetGitButtonsEnabled(false);
+            AppendLog("⬆️ [SUBIR AVANCES] Verificando si hay commits o cambios locales en la Notebook para subir...");
+            Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    CleanRuntimeNoiseFiles();
+
+                    int fetchCode;
+                    RunCliCommand(gitExePath, "fetch origin desarrollo", out fetchCode);
+
+                    int aheadCode;
+                    string unpushedCommits = RunCliCommand(gitExePath, "log origin/desarrollo..HEAD --oneline", out aheadCode).Trim();
+
+                    int statusCode;
+                    string dirtyTracked = RunCliCommand(gitExePath, "status --porcelain --untracked-files=no", out statusCode).Trim();
+
+                    if (string.IsNullOrWhiteSpace(unpushedCommits) && string.IsNullOrWhiteSpace(dirtyTracked))
+                    {
+                        int curCode;
+                        string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out curCode).Trim();
+                        AppendLog("ℹ️ No hay avances ni commits locales pendientes de subir desde la Notebook.");
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "ℹ️ No hay commits ni avances locales pendientes de subir desde esta Notebook.\n\n" +
+                                "Todo lo que está en tu Notebook ya figura publicado en la rama 'desarrollo' de GitHub.\n\n" +
+                                "📌 Commit actual: " + currentCommit,
+                                "Sin Avances Pendientes para Subir",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information
+                            );
+                        }));
+                        return;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(unpushedCommits) && !string.IsNullOrWhiteSpace(dirtyTracked))
+                    {
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "Tenés archivos modificados localmente aún sin confirmar (sin commit):\n\n" + dirtyTracked + "\n\n" +
+                                "Pedile a Antigravity que revise y confirme el commit antes de subirlo a la rama 'desarrollo'.",
+                                "Cambios Locales sin Commit",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning
+                            );
+                        }));
+                        return;
+                    }
+
+                    int statCode;
+                    string pushStat = RunCliCommand(gitExePath, "diff --stat origin/desarrollo..HEAD", out statCode).Trim();
+
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        DialogResult confirm = MessageBox.Show(
+                            "¿Confirmás subir los siguientes avances desde esta Notebook hacia la rama 'desarrollo' en GitHub?\n\n" +
+                            "📤 Commits listos para subir:\n" + unpushedCommits + "\n\n" +
+                            "📂 Archivos incluidos:\n" + pushStat,
+                            "Confirmar Subida de Avances desde la Notebook",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question
+                        );
+
+                        if (confirm != DialogResult.Yes)
+                        {
+                            AppendLog("⏹ Subida a GitHub cancelada por el operador.");
+                            SetGitButtonsEnabled(true);
+                            return;
+                        }
+
+                        AppendLog("⬆️ Subiendo commits locales hacia 'origin/desarrollo'...");
+                        Task.Factory.StartNew(() =>
+                        {
+                            int pushCode;
+                            string pushOut = RunCliCommand(gitExePath, "push origin desarrollo", out pushCode);
+                            AppendLog("[GIT PUSH] " + pushOut.Trim());
+                            UpdateGitCommitBadgeAsync();
+
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                SetGitButtonsEnabled(true);
+                                if (pushCode == 0)
+                                {
+                                    MessageBox.Show(
+                                        "✅ Los avances de la Notebook se subieron exitosamente a la rama 'desarrollo' en GitHub.\n\n" +
+                                        "📤 Commits publicados:\n" + unpushedCommits,
+                                        "Avances Subidos a GitHub",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Information
+                                    );
+                                }
+                                else
+                                {
+                                    MessageBox.Show(
+                                        "No se pudo completar el push hacia 'origin/desarrollo'.\n\n" +
+                                        "Si hay cambios nuevos en GitHub, tocá primero '⬇️ Traer actualizaciones a la Notebook'.\n\nDetalle:\n" + pushOut.Trim(),
+                                        "Error al Subir Avances",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Error
+                                    );
+                                }
+                            }));
+                        });
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        SetGitButtonsEnabled(true);
+                        AppendLog("ERROR al subir avances: " + ex.Message);
                     }));
                 }
             });
@@ -1061,6 +1361,12 @@ namespace LamdaControlCenter
 
         private string RunCliCommand(string exe, string args)
         {
+            int code;
+            return RunCliCommand(exe, args, out code);
+        }
+
+        private string RunCliCommand(string exe, string args, out int exitCode)
+        {
             ProcessStartInfo psi = new ProcessStartInfo(exe, args);
             psi.WorkingDirectory = rootDir;
             psi.UseShellExecute = false;
@@ -1075,6 +1381,7 @@ namespace LamdaControlCenter
                 string stdout = p.StandardOutput.ReadToEnd();
                 string stderr = p.StandardError.ReadToEnd();
                 p.WaitForExit();
+                exitCode = p.ExitCode;
                 return stdout + (string.IsNullOrWhiteSpace(stderr) ? "" : ("\r\n" + stderr));
             }
         }
