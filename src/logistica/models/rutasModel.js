@@ -33,7 +33,7 @@ class RutasModel {
                 r.tiempo_pausado_minutos,
                 r.duracion_neta_minutos,
                 EXISTS (SELECT 1 FROM rutas_auditorias a WHERE a.id_ruta = r.id) as auditada,
-                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id) + 
+                (SELECT COUNT(*) FROM presupuestos p WHERE p.id_ruta = r.id AND p.activo = true AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO')) + 
                 (SELECT COUNT(*) FROM ordenes_tratamiento t WHERE t.id_ruta = r.id) +
                 (SELECT COUNT(*) FROM public.factura_pagos_efectivo s WHERE s.id_ruta = r.id) +
                 (SELECT COUNT(*) FROM public.bunker_prospectos pr WHERE pr.id_ruta = r.id AND pr.activo = true) as cantidad_presupuestos,
@@ -174,6 +174,8 @@ class RutasModel {
             INNER JOIN clientes c ON ltrim(p.id_cliente, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
             WHERE p.id_ruta = $1
+              AND p.activo = true
+              AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO')
             ORDER BY p.orden_entrega ASC NULLS LAST, p.id ASC
         `;
 

@@ -1237,8 +1237,8 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         WHERE p.activo = true
           AND COALESCE(p.archivado, false) = false
           AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-          AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
-          AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Entregado', 'Finalizado', 'Cancelado')
+          AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Sin Confirmar', 'Standby', 'STANDBY', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
+          AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Standby', 'STANDBY', 'Entregado', 'Finalizado', 'Cancelado')
           AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO')
           AND p.factura_id IS NULL
           AND p.id_factura_lomasoft IS NULL
@@ -2510,16 +2510,24 @@ const eliminarPresupuesto = async (req, res) => {
 
         const presupuesto = existsResult.rows[0];
 
-        // Soft delete
-        const deleteQuery = `
-            UPDATE public.presupuestos 
-            SET activo = false
-            WHERE id = $1
-            RETURNING id, 'Presupuesto eliminado' as concepto
-        `;
-
-        const deleteResult = await req.db.query(deleteQuery, [parseInt(id)]);
-        const presupuestoEliminado = deleteResult.rows[0];
+        // Soft delete unificado (Micro-Etapa 5: activo = false, estado = 'Anulado', id_ruta = NULL + reversión de saldos y faltantes)
+        const { anularPresupuestoIntegral } = require('./presupuestosWrite');
+        const client = await req.db.connect();
+        let presupuestoEliminado;
+        try {
+            await client.query('BEGIN');
+            const anuladoRow = await anularPresupuestoIntegral(client, parseInt(id), 'Eliminación / Baja lógica', 'Anulado');
+            await client.query('COMMIT');
+            presupuestoEliminado = {
+                id: anuladoRow ? anuladoRow.id : parseInt(id),
+                concepto: 'Presupuesto eliminado'
+            };
+        } catch (txErr) {
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            throw txErr;
+        } finally {
+            client.release();
+        }
 
         console.log(`✅ [PRESUPUESTOS] Presupuesto eliminado (soft delete): ${presupuestoEliminado.concepto}`);
 
@@ -3056,6 +3064,35 @@ const actualizarEstadoPresupuesto = async (req, res) => {
 
         const registroActual = existsResult.rows[0];
         const nuevoEstado = estado.trim();
+
+        // Micro-Etapa 5 (Flujo 3B): Si el cambio de estado es a 'Anulado', ejecutar baja lógica unificada e integral
+        if (['ANULADO', 'ANULADO POR EL CLIENTE', 'CANCELADO'].includes(nuevoEstado.toUpperCase())) {
+            const { anularPresupuestoIntegral } = require('./presupuestosWrite');
+            const client = await req.db.connect();
+            try {
+                await client.query('BEGIN');
+                const presupuestoAnulado = await anularPresupuestoIntegral(
+                    client,
+                    parseInt(id),
+                    'Cambio de estado a Anulado',
+                    nuevoEstado === 'Anulado por el Cliente' ? 'Anulado por el Cliente' : 'Anulado'
+                );
+                await client.query('COMMIT');
+                console.log(`✅ [PRESUPUESTOS] Presupuesto #${id} anulado integralmente (activo=false, estado=${presupuestoAnulado?.estado}, id_ruta=NULL)`);
+                return res.json({
+                    success: true,
+                    data: presupuestoAnulado,
+                    message: 'Presupuesto anulado exitosamente',
+                    timestamp: new Date().toISOString()
+                });
+            } catch (txErr) {
+                try { await client.query('ROLLBACK'); } catch (_) {}
+                throw txErr;
+            } finally {
+                client.release();
+            }
+        }
+
         let nuevaSecuencia = (req.body.secuencia !== undefined && req.body.secuencia !== null && req.body.secuencia !== '') 
             ? req.body.secuencia 
             : null;

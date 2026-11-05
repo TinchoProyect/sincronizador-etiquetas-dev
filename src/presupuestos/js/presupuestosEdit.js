@@ -602,9 +602,10 @@
             }
         }
 
-        // Secuencia - SIEMPRE forzar "Imprimir" (campo no editable)
-        document.getElementById('secuencia').value = 'Imprimir';
-        console.log('[PRESUPUESTO-EDIT] Campo secuencia fijado en "Imprimir" (no editable por usuario)');
+        // Secuencia - Preservar "Standby" si el presupuesto está en Standby / Sin Confirmar
+        const esStandbyActual = (presupuestoData.secuencia === 'Standby' || presupuestoData.estado === 'Sin Confirmar' || presupuestoData.estado === 'Standby');
+        document.getElementById('secuencia').value = esStandbyActual ? 'Standby' : 'Imprimir';
+        console.log(`[PRESUPUESTO-EDIT] Campo secuencia fijado en "${document.getElementById('secuencia').value}"`);
 
         // Fecha de entrega (convertir formato si es necesario)
         if (presupuestoData.fecha_entrega) {
@@ -1550,7 +1551,7 @@
                 fecha: data.fecha,
                 secuencia: (data.estado === 'Orden de Retiro' || new URLSearchParams(window.location.search).get('modo') === 'retiro')
                     ? 'Pedido_Listo'
-                    : (data.estado === 'Sin Confirmar' ? 'Standby' : 'Imprimir'),
+                    : ((data.estado === 'Sin Confirmar' || data.estado === 'Standby' || document.getElementById('secuencia')?.value === 'Standby') ? 'Standby' : 'Imprimir'),
                 usar_precios_bunker: document.getElementById('usar_precios_bunker')?.checked || false,
 
                 // Detalles

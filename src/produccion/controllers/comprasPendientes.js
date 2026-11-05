@@ -118,6 +118,7 @@ const obtenerPendientesCompra = async (req, res) => {
                 LIMIT 1
             ) src ON true
             WHERE fpc.estado = 'En espera'
+                AND p.activo = true
                 AND p.estado = 'Presupuesto/Orden'
                 AND COALESCE(p.secuencia, 'Imprimir') = 'Imprimir'
             ORDER BY fpc.creado_en DESC
@@ -394,9 +395,11 @@ const obtenerPendientesAgrupados = async (req, res) => {
               AND p.estado = 'Presupuesto/Orden'
               AND p.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
               AND p.id NOT IN (
-                  SELECT id_presupuesto_local 
-                  FROM public.faltantes_pendientes_compra 
-                  WHERE estado = 'En espera'
+                  SELECT fpc_sub.id_presupuesto_local 
+                  FROM public.faltantes_pendientes_compra fpc_sub
+                  JOIN public.presupuestos p_sub ON p_sub.id = fpc_sub.id_presupuesto_local
+                  WHERE fpc_sub.estado = 'En espera'
+                    AND p_sub.activo = true
               )
             ORDER BY p.fecha DESC
         `;

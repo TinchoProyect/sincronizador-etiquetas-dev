@@ -66,6 +66,11 @@ function mapLocalStatusToSupabase(row) {
   const informeGenerado = (row.informe_generado || '').toLowerCase().trim();
   const estadoComprobante = (row.estado || '').toUpperCase().trim();
 
+  // Estado Anulado / Baja lógica
+  if (row.activo === false || ['ANULADO', 'ANULADO POR EL CLIENTE', 'CANCELADO'].includes(estadoComprobante)) {
+    return 'Cancelado';
+  }
+
   // Estado 5: Entregado
   if (
     estadoLogistico === 'ENTREGADO' || 
@@ -96,6 +101,11 @@ function mapLocalStatusToSupabase(row) {
   // Estado 2: En Proceso / Producción (Impreso o en Armado)
   if (secuencia === 'armar_pedido' || informeGenerado === 'generado' || secuencia === 'imprimir_modificado') {
     return 'En Proceso';
+  }
+
+  // Estado Standby: Sin Confirmar / En espera de confirmación
+  if (secuencia === 'standby' || estadoComprobante === 'SIN CONFIRMAR' || estadoComprobante === 'STANDBY') {
+    return 'Standby';
   }
 
   // Estado 1: Ingresado
@@ -923,23 +933,25 @@ async function sincronizarEstados() {
           }
           
           console.log(`🛑 El cliente canceló el pedido B2B ${pedido.id.slice(0, 8)} desde el portal .com.`);
-          console.log(`🔄 Anulando y archivando presupuesto local correspondiente...`);
+          console.log(`🔄 Anulando integralmente y archivando presupuesto local correspondiente...`);
           const localId = (resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null) || row.id;
           if (localId) {
+            const { anularPresupuestoIntegral } = require('../presupuestos/controllers/presupuestosWrite');
+            await anularPresupuestoIntegral(localClient, localId, 'Cancelado por el cliente en Portal B2B', 'Anulado por el Cliente');
             await localClient.query(
-              `UPDATE public.presupuestos SET activo = true, estado = 'Anulado por el Cliente', archivado = true WHERE id = $1`,
+              `UPDATE public.presupuestos SET archivado = true WHERE id = $1`,
               [localId]
             );
           } else {
             await localClient.query(
-              `UPDATE public.presupuestos SET activo = true, estado = 'Anulado por el Cliente', archivado = true WHERE id_presupuesto_ext = $1`,
+              `UPDATE public.presupuestos SET activo = false, estado = 'Anulado por el Cliente', id_ruta = NULL, archivado = true WHERE id_presupuesto_ext = $1`,
               [pedido.id]
             );
           }
           continue;
         }
 
-        if (row.activo === false || localEstado === 'ANULADO') {
+        if (row.activo === false || localEstado === 'ANULADO' || localEstado === 'ANULADO POR EL CLIENTE') {
           console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} está inactivo o anulado localmente.`);
           if (pedido.estado !== 'Cancelado') {
             console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
@@ -1005,6 +1017,7 @@ if (require.main === module) {
     subirPedidoEspecifico,
     asegurarClienteSombra,
     sincronizarEstados,
+    mapLocalStatusToSupabase,
     localPool
   };
 }

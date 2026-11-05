@@ -1094,6 +1094,13 @@ const registrarMovimientosStockFactura = async (factura, client) => {
 
     const { recalcularStockConsolidado } = require('../../produccion/utils/recalcularStock');
 
+    let letra = 'A';
+    if ([6, 7, 8].includes(parseInt(factura.tipo_cbte))) letra = 'B';
+    if ([11, 12, 13].includes(parseInt(factura.tipo_cbte))) letra = 'C';
+    const nroComprobante = factura.cbte_nro || factura.nro_interno || '';
+    const esInterna = !factura.requiere_afip;
+    let proveedorCliente = null;
+
     for (const item of items) {
         if (item.es_saldo_ingrediente === true) {
             console.log(`⚖️ [STOCK-FACTURA] Ítem "${item.descripcion}" proviene de Saldo de Ingrediente (${item.kilos_saldo || 0} kg ya descontados en presupuesto). Se omite descuento de stock de artículo terminado.`);
@@ -1177,8 +1184,17 @@ const registrarMovimientosStockFactura = async (factura, client) => {
             }
         }
 
-        // 3. Coincidencia parcial por ILIKE en nombre
-        if (!resolvedArt) {
+        const codigoItemCand = item.articulo_id ? String(item.articulo_id).trim() : '';
+        const esItemInsumoKit = ['135', '136'].includes(codigoItemCand)
+            || /\(Stock Cliente\)|\(Insumo Receta\)/i.test(String(item.descripcion || ''));
+
+        // Si fue resuelto por error como artículo general pero es explícitamente un insumo de kit (135/136 o Stock Cliente), forzar flujo de ingrediente satélite
+        if (esItemInsumoKit) {
+            resolvedArt = null;
+        }
+
+        // 3. Coincidencia parcial por ILIKE en nombre (solo si no es insumo de kit)
+        if (!resolvedArt && !esItemInsumoKit && item.descripcion) {
             const artByNameLike = await client.query(`
                 SELECT numero, nombre, codigo_barras 
                 FROM public.articulos 
@@ -1193,15 +1209,21 @@ const registrarMovimientosStockFactura = async (factura, client) => {
         }
 
         if (!resolvedArt) {
-            // Intentar resolver como ingrediente para stock satélite del colaborador
+            // Intentar resolver como ingrediente para stock satélite del colaborador (soportando articulo_id 135/136 y prefijos '↳ (Stock Cliente) ' / '🟣 (Stock Cliente) ')
+            const descIngLimpia = String(item.descripcion || '')
+                .replace(/^[↳🟣\s]*\(Stock Cliente\)\s*/i, '')
+                .replace(/^[↳🟣\s]*\(Insumo Receta\)\s*/i, '')
+                .replace(/\s*\(Desc\.\s*esp\.\s*[\d.,]+%\)\s*$/i, '')
+                .trim();
+
             const ingRes = await client.query(`
                 SELECT i.id, i.nombre 
                 FROM public.ingredientes i
-                WHERE UPPER(TRIM(i.nombre)) = UPPER(TRIM($1))
-                   OR i.id::text = $1
-                   OR i.codigo::text = $1
+                WHERE ($1 <> '' AND (i.id::text = $1 OR TRIM(i.codigo::text) = $1))
+                   OR ($2 <> '' AND (UPPER(TRIM(i.nombre)) = UPPER(TRIM($2)) OR i.id::text = $2 OR TRIM(i.codigo::text) = $2))
+                ORDER BY ($1 <> '' AND i.id::text = $1) DESC
                 LIMIT 1
-            `, [item.descripcion]);
+            `, [codigoItemCand, descIngLimpia]);
 
             if (ingRes.rows.length > 0) {
                 const ingrediente = ingRes.rows[0];
@@ -1212,10 +1234,18 @@ const registrarMovimientosStockFactura = async (factura, client) => {
                     const userRes = await client.query(`
                         SELECT bc.usuario_id 
                         FROM public.bunker_clientes bc
-                        JOIN public.presupuestos p ON TRIM(bc.lomas_soft_id) = TRIM(p.id_cliente)
-                        WHERE p.id = $1 AND bc.usuario_id IS NOT NULL
+                        LEFT JOIN public.presupuestos p ON p.id = $1
+                        WHERE bc.usuario_id IS NOT NULL
+                          AND (
+                              (p.id IS NOT NULL AND COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM(p.id_cliente::text), '0'), ''), '0'))
+                              OR ($2::text IS NOT NULL AND $2::text <> '' AND COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM($2::text), '0'), ''), '0'))
+                          )
+                        ORDER BY (p.id IS NOT NULL) DESC
                         LIMIT 1
-                    `, [factura.presupuesto_id || factura.id]);
+                    `, [
+                        factura.presupuesto_id || null,
+                        factura.cliente_id ? String(factura.cliente_id) : null
+                    ]);
 
                     if (userRes.rows.length > 0) {
                         usuarioId = userRes.rows[0].usuario_id;
@@ -1226,21 +1256,35 @@ const registrarMovimientosStockFactura = async (factura, client) => {
                     const cantIng = parseFloat(item.qty || 1);
                     const deltaIng = esNotaCredito ? cantIng : -cantIng;
                     const tipoMovSat = esNotaCredito ? 'devolucion_venta' : 'egreso_venta';
+                    const obsSat = `${esNotaCredito ? 'Devolución' : 'Egreso'} automático por facturación de comprobante #${factura.pto_vta}-${nroComprobante}`;
 
-                    await client.query(`
-                        INSERT INTO public.colaborador_stock_satelite_movimientos (
-                            usuario_id, ingrediente_id, kilos, tipo, presupuesto_id, observaciones
-                        ) VALUES ($1, $2, $3, $4, $5, $6)
-                    `, [
-                        usuarioId,
-                        ingrediente.id,
-                        deltaIng,
-                        tipoMovSat,
-                        factura.presupuesto_id || null,
-                        `Egreso automático por facturación de comprobante #${factura.pto_vta}-${nroComprobante}`
-                    ]);
+                    // Evitar doble descuento para el mismo comprobante e ingrediente
+                    const dupSatCheck = await client.query(`
+                        SELECT id FROM public.colaborador_stock_satelite_movimientos
+                        WHERE usuario_id = $1
+                          AND ingrediente_id = $2
+                          AND tipo = $3
+                          AND (($4::int IS NOT NULL AND presupuesto_id = $4::int AND observaciones = $5) OR observaciones = $5)
+                        LIMIT 1
+                    `, [usuarioId, ingrediente.id, tipoMovSat, factura.presupuesto_id || null, obsSat]);
 
-                    console.log(`   ✅ [FACTURACION-SERVICE] Movimiento de stock satélite registrado para ingrediente ${ingrediente.nombre} (Cliente Usuario ${usuarioId}): ${deltaIng} kg`);
+                    if (dupSatCheck.rowCount === 0) {
+                        await client.query(`
+                            INSERT INTO public.colaborador_stock_satelite_movimientos (
+                                usuario_id, ingrediente_id, kilos, tipo, presupuesto_id, observaciones
+                            ) VALUES ($1, $2, $3, $4, $5, $6)
+                        `, [
+                            usuarioId,
+                            ingrediente.id,
+                            deltaIng,
+                            tipoMovSat,
+                            factura.presupuesto_id || null,
+                            obsSat
+                        ]);
+                        console.log(`   ✅ [FACTURACION-SERVICE] Movimiento de stock satélite registrado para ingrediente ${ingrediente.nombre} (Cliente Usuario ${usuarioId}): ${deltaIng} kg`);
+                    } else {
+                        console.log(`   ℹ️ [FACTURACION-SERVICE] Movimiento satélite ya existente para ingrediente ${ingrediente.nombre} en comprobante #${factura.pto_vta}-${nroComprobante}, se omite duplicado.`);
+                    }
                 } else {
                     console.warn(`⚠️ [FACTURACION-SERVICE] No se encontró usuario colaborador asociado para el ingrediente "${ingrediente.nombre}".`);
                 }
@@ -1254,14 +1298,6 @@ const registrarMovimientosStockFactura = async (factura, client) => {
         const articuloNumero = resolvedArt.numero || resolvedArt.articulo_numero;
         const codigoBarras = resolvedArt.codigo_barras || null;
         const qty = parseFloat(item.qty);
-
-        // Formatear observaciones descriptivas
-        let letra = 'A';
-        if ([6, 7, 8].includes(parseInt(factura.tipo_cbte))) letra = 'B';
-        if ([11, 12, 13].includes(parseInt(factura.tipo_cbte))) letra = 'C';
-
-        const nroComprobante = factura.cbte_nro || factura.nro_interno || '';
-        const esInterna = !factura.requiere_afip;
         
         let docDesc = '';
         if (esNotaCredito) {

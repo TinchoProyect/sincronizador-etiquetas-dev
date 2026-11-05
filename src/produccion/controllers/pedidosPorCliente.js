@@ -98,9 +98,11 @@ const obtenerPedidosPorCliente = async (req, res) => {
         // Query consolidada con estado normalizado y fecha robusta
         const query = `
             WITH presupuestos_con_derivados AS (
-                SELECT DISTINCT id_presupuesto_local
-                FROM public.faltantes_pendientes_compra
-                WHERE estado = 'En espera'
+                SELECT DISTINCT fpc.id_presupuesto_local
+                FROM public.faltantes_pendientes_compra fpc
+                JOIN public.presupuestos p_fpc ON p_fpc.id = fpc.id_presupuesto_local
+                WHERE fpc.estado = 'En espera'
+                  AND p_fpc.activo = true
             ),
             presupuestos_confirmados AS (
                 SELECT 
@@ -724,7 +726,9 @@ const obtenerPedidosArticulos = async (req, res) => {
                     fpc.articulo_numero as articulo_numero_derivado,
                     fpc.id_presupuesto_local
                 FROM public.faltantes_pendientes_compra fpc
+                JOIN public.presupuestos p_fpc ON p_fpc.id = fpc.id_presupuesto_local
                 WHERE fpc.estado = 'En espera'
+                  AND p_fpc.activo = true
             ),
             presupuestos_confirmados AS (
                 SELECT 

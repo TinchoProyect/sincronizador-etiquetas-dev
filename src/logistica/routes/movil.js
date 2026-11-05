@@ -545,6 +545,8 @@ router.get('/ruta-activa', async (req, res) => {
             INNER JOIN clientes c ON ltrim(p.id_cliente::text, '0') = c.cliente_id::text
             LEFT JOIN clientes_domicilios cd ON p.id_domicilio_entrega = cd.id
             WHERE p.id_ruta = $1
+              AND p.activo = true
+              AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO')
             ORDER BY COALESCE(p.orden_entrega, 999) ASC
         `;
 
@@ -1510,6 +1512,32 @@ router.post('/entregas/incidencia', async (req, res) => {
         );
         console.log(`[MOVIL-INCIDENCIA] ✅ Evento de incidencia registrado para pedido #${p.id}: ${motivo}`);
 
+        // 2b. Si existían movimientos PENDIENTE en mantenimiento_movimientos por rechazo/devolución previa de este presupuesto, revertirlos de stock_mantenimiento
+        const movsPendInc = await client.query(`
+            DELETE FROM public.mantenimiento_movimientos
+            WHERE id_presupuesto_origen = $1
+              AND estado = 'PENDIENTE'
+              AND tipo_movimiento = 'INGRESO'
+            RETURNING articulo_numero, cantidad
+        `, [p.id]);
+        for (const mov of movsPendInc.rows) {
+            const cantRev = parseFloat(mov.cantidad) || 0;
+            if (mov.articulo_numero && cantRev > 0) {
+                await client.query(`
+                    UPDATE public.stock_real_consolidado
+                    SET stock_mantenimiento = GREATEST(0, COALESCE(stock_mantenimiento, 0) - $1),
+                        ultima_actualizacion = NOW()
+                    WHERE articulo_numero = $2 OR codigo_barras = $2
+                `, [cantRev, mov.articulo_numero]);
+            }
+        }
+        await client.query(`
+            UPDATE public.presupuestos_detalles
+            SET cantidad = COALESCE(cantidad_original, cantidad),
+                cantidad_original = NULL
+            WHERE id_presupuesto = $1 AND cantidad_original IS NOT NULL
+        `, [p.id]);
+
         // 3. Devolver presupuesto al pool de pendientes
         await client.query(
             `UPDATE public.presupuestos 
@@ -1648,19 +1676,21 @@ router.post('/entregas/confirmar', async (req, res) => {
 
             // Determinar estado final (Default: ENTREGADO)
             const estadoFinal = nuevo_estado || 'ENTREGADO';
-            const estadoComercial = estadoFinal === 'RETIRADO' ? 'Retirado' : 'Entregado';
+            const esRechazo = estadoFinal === 'RECHAZADO';
+            const secuenciaFinal = esRechazo ? 'Rechazado' : (estadoFinal === 'RETIRADO' ? 'Retirado' : 'Entregado');
+            const estadoComercial = esRechazo ? 'Presupuesto/Orden' : (estadoFinal === 'RETIRADO' ? 'Retirado' : 'Entregado');
 
             // 1. Actualizar presupuesto
-            // IMPORTANTE: Actualizar también 'estado' y 'fecha_actualizacion'
+            // IMPORTANTE: Si es RECHAZADO no marcar como Entregado ni sumar a stock_mantenimiento (volverá a Pedido_Listo al cerrar ruta)
             await client.query(
                 `UPDATE presupuestos 
                  SET secuencia = $2,
                      estado = $3,
                      estado_logistico = $4,
-                     fecha_entrega_real = NOW(),
+                     fecha_entrega_real = CASE WHEN $5 = true THEN fecha_entrega_real ELSE NOW() END,
                      fecha_actualizacion = NOW()
                  WHERE id = $1`,
-                [id_presupuesto, estadoComercial, estadoComercial, estadoFinal]
+                [id_presupuesto, secuenciaFinal, estadoComercial, estadoFinal, esRechazo]
             );
 
             console.log(`[MOVIL] ✅ Presupuesto actualizado a ${estadoFinal}`);
@@ -2103,12 +2133,14 @@ router.post('/rutas/finalizar', async (req, res) => {
                     LIMIT 1
                 ) ba ON true
                 WHERE p.id_ruta = $1
+                  AND p.activo = true
+                  AND p.estado_logistico = 'ENTREGADO'
                   AND pd.cantidad_original IS NOT NULL
                   AND pd.cantidad_original > pd.cantidad
             `;
             const resPartialItems = await client.query(partialItemsQuery, [ruta.id]);
             if (resPartialItems.rows.length > 0) {
-                console.log(`[MOVIL] 📦 Procesando ${resPartialItems.rows.length} artículos no entregados por entregas parciales/rechazos...`);
+                console.log(`[MOVIL] 📦 Procesando ${resPartialItems.rows.length} artículos no entregados por entregas parciales...`);
                 for (const item of resPartialItems.rows) {
                     const checkDup = await client.query(`
                         SELECT id FROM mantenimiento_movimientos
@@ -2138,6 +2170,62 @@ router.post('/rutas/finalizar', async (req, res) => {
                         console.log(`[MOVIL] ✅ Inyectado a Mantenimiento y sumado stock_mantenimiento: ${cantNoEntregada} u. de ${item.articulo_nombre} (Presupuesto #${item.id_presupuesto})`);
                     }
                 }
+            }
+
+            // [MICRO-ETAPA 5 - FLUJO 5] 2d-bis. Pedidos con Rechazo Total ('RECHAZADO') o no entregados que retornan a Pedido_Listo para re-entrega:
+            // Revertir cualquier ingreso provisorio PENDIENTE en mantenimiento_movimientos / stock_mantenimiento para evitar stock fantasma o duplicado.
+            const rechazadosRes = await client.query(`
+                SELECT id
+                FROM public.presupuestos
+                WHERE id_ruta = $1
+                  AND activo = true
+                  AND COALESCE(tipo_comprobante, '') != 'Orden de Retiro'
+                  AND COALESCE(estado, '') NOT IN ('Orden de Retiro', 'Administrativa NC', 'Anulado', 'Anulado por el Cliente', 'ANULADO')
+                  AND COALESCE(estado_logistico, '') NOT IN ('ENTREGADO', 'RETIRADO', 'INGRESADO_LOCAL')
+            `, [ruta.id]);
+
+            if (rechazadosRes.rows.length > 0) {
+                const rechazadosIds = rechazadosRes.rows.map(r => r.id);
+                const movsRevertir = await client.query(`
+                    DELETE FROM public.mantenimiento_movimientos
+                    WHERE id_presupuesto_origen = ANY($1::int[])
+                      AND estado = 'PENDIENTE'
+                      AND tipo_movimiento = 'INGRESO'
+                    RETURNING id_presupuesto_origen, articulo_numero, cantidad
+                `, [rechazadosIds]);
+
+                for (const mov of movsRevertir.rows) {
+                    const cantRev = parseFloat(mov.cantidad) || 0;
+                    if (mov.articulo_numero && cantRev > 0) {
+                        await client.query(`
+                            UPDATE public.stock_real_consolidado
+                            SET stock_mantenimiento = GREATEST(0, COALESCE(stock_mantenimiento, 0) - $1),
+                                ultima_actualizacion = NOW()
+                            WHERE articulo_numero = $2 OR codigo_barras = $2
+                        `, [cantRev, mov.articulo_numero]);
+                    }
+                }
+
+                await client.query(`
+                    UPDATE public.presupuestos_detalles
+                    SET cantidad = COALESCE(cantidad_original, cantidad),
+                        cantidad_original = NULL
+                    WHERE id_presupuesto = ANY($1::int[])
+                      AND cantidad_original IS NOT NULL
+                `, [rechazadosIds]);
+
+                await client.query(`
+                    UPDATE public.presupuestos
+                    SET estado = 'Presupuesto/Orden',
+                        secuencia = 'Pedido_Listo',
+                        estado_logistico = 'PENDIENTE',
+                        id_ruta = NULL,
+                        orden_entrega = NULL,
+                        fecha_asignacion_ruta = NULL,
+                        fecha_actualizacion = NOW()
+                    WHERE id = ANY($1::int[])
+                `, [rechazadosIds]);
+                console.log(`[MOVIL] ♻️ ${rechazadosIds.length} pedido(s) rechazado(s)/no entregado(s) retornados a Pedido_Listo sin stock fantasma en Mantenimiento.`);
             }
 
             // 2e. Visitas de Contacto / Cliente Activo en la ruta:

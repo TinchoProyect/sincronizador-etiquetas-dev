@@ -156,6 +156,85 @@ async function revertirMovimientosSaldoIngrediente(client, presupuestoId) {
 }
 
 /**
+ * Revierte de forma idempotente cualquier saldo neto negativo en colaborador_stock_satelite_movimientos
+ * asociado a un presupuesto cuando éste se anula o da de baja lógica.
+ * Nota: El INSERT en public.colaborador_stock_satelite_movimientos dispara trigger_actualizar_stock_satelite (BEFORE INSERT),
+ * sumando automáticamente los kilos a public.colaborador_stock_satelite.stock_actual (sin UPDATE manual duplicado).
+ */
+async function revertirStockSatelitePorPresupuesto(client, presupuestoId, motivo = 'Anulación de presupuesto') {
+    const netosRes = await client.query(`
+        SELECT usuario_id, ingrediente_id, SUM(kilos) AS saldo_neto
+        FROM public.colaborador_stock_satelite_movimientos
+        WHERE presupuesto_id = $1
+        GROUP BY usuario_id, ingrediente_id
+        HAVING SUM(kilos) < -0.0001
+    `, [presupuestoId]);
+
+    for (const row of netosRes.rows) {
+        const kilosDevolver = Math.abs(parseFloat(row.saldo_neto));
+        await client.query(`
+            INSERT INTO public.colaborador_stock_satelite_movimientos
+                (usuario_id, ingrediente_id, kilos, tipo, presupuesto_id, observaciones)
+            VALUES ($1, $2, $3, 'devolucion_venta', $4, $5)
+        `, [
+            row.usuario_id,
+            row.ingrediente_id,
+            kilosDevolver,
+            presupuestoId,
+            `Reversión automática (${motivo}) Presupuesto #${presupuestoId}`
+        ]);
+        console.log(`♻️ [STOCK-SATELITE] Revertidos ${kilosDevolver} kg de ingrediente ID ${row.ingrediente_id} (Usuario ${row.usuario_id}) por ${motivo} #${presupuestoId}`);
+    }
+}
+
+/**
+ * Cancela/limpia los registros 'En espera' en public.faltantes_pendientes_compra asociados a un presupuesto anulado.
+ */
+async function cancelarFaltantesPendientesPorPresupuesto(client, presupuestoId, motivo = 'Anulación de presupuesto') {
+    const resFpc = await client.query(`
+        UPDATE public.faltantes_pendientes_compra
+        SET estado = 'Cancelado',
+            nota = COALESCE(NULLIF(TRIM(nota), '') || ' | ', '') || $2
+        WHERE id_presupuesto_local = $1
+          AND estado = 'En espera'
+    `, [presupuestoId, `Cancelado automáticamente (${motivo})`]);
+
+    if (resFpc.rowCount > 0) {
+        console.log(`🧹 [FALTANTES-COMPRA] Cancelados ${resFpc.rowCount} faltantes pendientes para presupuesto #${presupuestoId}`);
+    }
+}
+
+/**
+ * Unificación de Baja Lógica / Presupuesto Anulado (Micro-Etapa 5 - Flujo 3B):
+ * 1. Pone activo = false, estado = 'Anulado' (o 'Anulado por el Cliente') e id_ruta = NULL.
+ * 2. Revierte movimientos de saldo de ingrediente y stock satélite de colaborador.
+ * 3. Cancela registros 'En espera' en faltantes_pendientes_compra.
+ */
+async function anularPresupuestoIntegral(client, presupuestoId, motivo = 'Anulación de presupuesto', estadoAnulado = 'Anulado') {
+    const estadoFinal = (estadoAnulado && String(estadoAnulado).trim() === 'Anulado por el Cliente')
+        ? 'Anulado por el Cliente'
+        : 'Anulado';
+
+    const updRes = await client.query(`
+        UPDATE public.presupuestos
+        SET activo = false,
+            estado = $2,
+            id_ruta = NULL,
+            orden_entrega = NULL,
+            fecha_asignacion_ruta = NULL,
+            fecha_actualizacion = NOW()
+        WHERE id = $1
+        RETURNING *
+    `, [presupuestoId, estadoFinal]);
+
+    await revertirMovimientosSaldoIngrediente(client, presupuestoId);
+    await revertirStockSatelitePorPresupuesto(client, presupuestoId, motivo);
+    await cancelarFaltantesPendientesPorPresupuesto(client, presupuestoId, motivo);
+
+    return updRes.rows[0] || null;
+}
+
+/**
  * Registra el descuento inmediato de stock de ingredientes para los renglones marcados
  * como es_saldo_ingrediente = true.
  * Nota: El INSERT en public.ingredientes_movimientos dispara trigger_actualizar_stock (ON INSERT),
@@ -903,10 +982,21 @@ const editarPresupuesto = async (req, res) => {
                 params.push(tipo_comprobante);
             }
 
+            const esEstadoAnuladoEdit = estado !== undefined && ['ANULADO', 'ANULADO POR EL CLIENTE', 'CANCELADO'].includes(String(estado).trim().toUpperCase());
             if (estado !== undefined) {
+                const estadoNormEdit = esEstadoAnuladoEdit
+                    ? (String(estado).trim() === 'Anulado por el Cliente' ? 'Anulado por el Cliente' : 'Anulado')
+                    : estado;
                 paramCount++;
-                updates.push(`estado = $${paramCount}`);
-                params.push(estado);
+                updates.push(`estado = ${paramCount}`);
+                params.push(estadoNormEdit);
+
+                if (esEstadoAnuladoEdit) {
+                    updates.push('activo = false');
+                    updates.push('id_ruta = NULL');
+                    updates.push('orden_entrega = NULL');
+                    updates.push('fecha_asignacion_ruta = NULL');
+                }
             }
 
             if (id_cliente !== undefined) {
@@ -991,53 +1081,31 @@ const editarPresupuesto = async (req, res) => {
                 params.push(usar_precios_bunker === true || usar_precios_bunker === 'true');
             }
 
-            // CORRECCIÓN: Respetar secuencia si viene en el payload (no forzar Imprimir ciegamente)
+            // CORRECCIÓN: Respetar secuencia si viene en el payload y preservar 'Standby' si el presupuesto está en Standby / Sin Confirmar
             if (secuencia !== undefined) {
                 paramCount++;
-                updates.push(`secuencia = $${paramCount}`);
+                updates.push(`secuencia = ${paramCount}`);
                 params.push(secuencia);
                 console.log(`[PRESUPUESTO] Actualizando secuencia a: '${secuencia}' para ID: ${id}`);
             } else {
                 const targetEstado = estado !== undefined ? estado : presupuesto.estado;
-                if (targetEstado === 'Sin Confirmar') {
+                if (targetEstado === 'Sin Confirmar' || targetEstado === 'Standby' || (presupuesto.secuencia === 'Standby' && estado === undefined)) {
                     paramCount++;
-                    updates.push(`secuencia = $${paramCount}`);
+                    updates.push(`secuencia = ${paramCount}`);
                     params.push('Standby');
-                    console.log(`[PRESUPUESTO] Estado es Sin Confirmar: Forzando secuencia='Standby' para ID: ${id}`);
+                    console.log(`[PRESUPUESTO] Estado/Secuencia en Standby: Preservando secuencia='Standby' para ID: ${id}`);
                 } else if (targetEstado !== 'Orden de Retiro') {
                     const secuenciaDefault = presupuesto.secuencia === 'Imprimir_Modificado' ? 'Imprimir_Modificado' : 'Imprimir';
                     paramCount++;
-                    updates.push(`secuencia = $${paramCount}`);
+                    updates.push(`secuencia = ${paramCount}`);
                     params.push(secuenciaDefault);
                     console.log(`[PRESUPUESTO] Default legacy: Forzando secuencia='${secuenciaDefault}' para ID: ${id}`);
                 }
             }
 
-            // Actualizar cabecera si hay campos
-            let presupuestoActualizado = presupuesto;
-            if (updates.length > 0) {
-                // CRÍTICO: Agregar fecha_actualizacion para que la sincronización detecte el cambio
-                paramCount++;
-                updates.push(`fecha_actualizacion = $${paramCount}`);
-                params.push(new Date().toISOString());
-
-                paramCount++;
-                params.push(presupuesto.id);
-
-                const updateQuery = `
-                    UPDATE presupuestos 
-                    SET ${updates.join(', ')}
-                    WHERE id = $${paramCount}
-                    RETURNING *
-                `;
-
-                const updateResult = await client.query(updateQuery, params);
-                presupuestoActualizado = updateResult.rows[0];
-                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
-                console.log(`✅ [PRESUPUESTO] Guardando presupuesto editado, forzando secuencia = 'Imprimir', id_presupuesto: ${presupuesto.id_presupuesto_ext || presupuesto.id}`);
-            }
-
-            // Determinar si actualizar detalles
+            // Si se van a reemplazar los detalles, validar y ejecutar DELETE ANTES de actualizar id_cliente/estado en presupuestos
+            // para que el trigger ON DELETE (trg_actualizar_stock_satelite_por_venta) revierta sobre el cliente original.
+            let detallesEliminados = 0;
             if (Array.isArray(detalles) && !hasFiscalLock) {
                 console.log(`[PUT-DET] ===== INICIO PROCESAMIENTO DETALLES =====`);
                 console.log(`[PUT-DET] detalles recibidos:`, JSON.stringify(detalles, null, 2));
@@ -1045,7 +1113,6 @@ const editarPresupuesto = async (req, res) => {
                 console.log(`[PUT-DET] primer detalle:`, detalles[0]);
                 console.log(`[PUT-DET] reemplazando detalles → count=${detalles.length}`);
 
-                // Validar detalles antes de procesar
                 for (const det of detalles) {
                     const barcode = (det.articulo || '').toString().trim();
                     console.log(`[PUT-DET] Validando detalle: articulo="${barcode}", cantidad=${det.cantidad}, valor1=${det.valor1}`);
@@ -1059,15 +1126,42 @@ const editarPresupuesto = async (req, res) => {
                 // 0. Revertir cualquier movimiento de saldo de ingrediente previo de este presupuesto
                 await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
 
-                // 1. Eliminar detalles existentes
+                // 1. Eliminar detalles existentes antes de mutar id_cliente en cabecera
                 console.log(`[PUT-DET] Ejecutando DELETE de detalles existentes para id_presupuesto=${presupuesto.id}`);
                 const deleteDetallesQuery = `
                     DELETE FROM presupuestos_detalles
                     WHERE id_presupuesto = $1
                 `;
                 const deleteResult = await client.query(deleteDetallesQuery, [presupuesto.id]);
-                const detallesEliminados = deleteResult.rowCount;
+                detallesEliminados = deleteResult.rowCount;
                 console.log(`[PUT-DET] ✅ DELETE ejecutado: ${detallesEliminados} detalles eliminados`);
+            }
+
+            // Actualizar cabecera si hay campos
+            let presupuestoActualizado = presupuesto;
+            if (updates.length > 0) {
+                // CRÍTICO: Agregar fecha_actualizacion para que la sincronización detecte el cambio
+                paramCount++;
+                updates.push(`fecha_actualizacion = ${paramCount}`);
+                params.push(new Date().toISOString());
+
+                paramCount++;
+                params.push(presupuesto.id);
+
+                const updateQuery = `
+                    UPDATE presupuestos 
+                    SET ${updates.join(', ')}
+                    WHERE id = ${paramCount}
+                    RETURNING *
+                `;
+
+                const updateResult = await client.query(updateQuery, params);
+                presupuestoActualizado = updateResult.rows[0];
+                console.log(`✅ [PRESUPUESTOS-WRITE] ${requestId} - Cabecera actualizada con timestamp`);
+            }
+
+            // Determinar si insertar los nuevos detalles
+            if (Array.isArray(detalles) && !hasFiscalLock) {
 
                 // 2. Construir detalles normalizados (USAR MISMO CÁLCULO QUE EN CREACIÓN)
                 console.log(`[PUT-DET] Construyendo detalles normalizados...`);
@@ -1164,8 +1258,11 @@ const editarPresupuesto = async (req, res) => {
 
                 // Aplicar nuevos descuentos de saldo de ingrediente si el presupuesto no está anulado
                 const estadoEfectivo = (estado !== undefined ? estado : presupuesto.estado) || '';
-                if (!['Anulado', 'ANULADO', 'Cancelado'].includes(estadoEfectivo)) {
+                if (!['Anulado', 'ANULADO', 'Anulado por el Cliente', 'Cancelado'].includes(String(estadoEfectivo).trim())) {
                     await registrarMovimientosSaldoIngrediente(client, presupuesto.id, detallesNormalizados);
+                } else {
+                    await revertirStockSatelitePorPresupuesto(client, presupuesto.id, 'Edición a estado Anulado');
+                    await cancelarFaltantesPendientesPorPresupuesto(client, presupuesto.id, 'Edición a estado Anulado');
                 }
 
                 console.log(`[PUT-DET] ===== RESUMEN FINAL =====`);
@@ -1204,9 +1301,13 @@ const editarPresupuesto = async (req, res) => {
 
             } else if (hasFiscalLock) {
                 console.log(`🔒 [FISCAL-LOCK] Se omitió el DELETE e INSERT de presupuestos_detalles para proteger la factura.`);
-            } else if (estado && ['Anulado', 'ANULADO', 'Cancelado'].includes(estado)) {
-                // Si se anuló por cambio de cabecera sin reenviar detalles, devolver saldos de ingrediente
+            }
+
+            if (esEstadoAnuladoEdit && (!Array.isArray(detalles) || hasFiscalLock)) {
+                // Si se anuló por cambio de cabecera sin reenviar detalles, devolver saldos de ingrediente, stock satélite y cancelar faltantes
                 await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
+                await revertirStockSatelitePorPresupuesto(client, presupuesto.id, 'Edición a estado Anulado');
+                await cancelarFaltantesPendientesPorPresupuesto(client, presupuesto.id, 'Edición a estado Anulado');
             }
 
             await client.query('COMMIT');
@@ -1419,16 +1520,8 @@ const eliminarPresupuesto = async (req, res) => {
             await client.query("SET LOCAL lock_timeout TO '5s'");
             await client.query("SET LOCAL statement_timeout TO '15s'");
 
-            // SOFT-DELETE (solo encabezado, sin tocar detalles)
-            await client.query(`
-                UPDATE presupuestos
-                    SET activo = false,
-                        estado = CASE WHEN COALESCE(estado,'')='' THEN 'Anulado' ELSE estado END
-                WHERE id = $1 AND activo = true
-                `, [presupuesto.id]);
-
-            // Revertir cualquier descuento de saldo de ingrediente asociado al presupuesto anulado
-            await revertirMovimientosSaldoIngrediente(client, presupuesto.id);
+            // SOFT-DELETE UNIFICADO (Micro-Etapa 5: activo = false, estado = 'Anulado', id_ruta = NULL + reversión integral)
+            await anularPresupuestoIntegral(client, presupuesto.id, 'Eliminación / Baja lógica', 'Anulado');
 
             await client.query('COMMIT');
 
@@ -1779,5 +1872,9 @@ module.exports = {
     reintentarPresupuesto,
     obtenerEstadoPresupuesto,
     actualizarFormatoImpresion,
-    pushToSheetsFireAndForget
+    pushToSheetsFireAndForget,
+    revertirMovimientosSaldoIngrediente,
+    revertirStockSatelitePorPresupuesto,
+    cancelarFaltantesPendientesPorPresupuesto,
+    anularPresupuestoIntegral
 };

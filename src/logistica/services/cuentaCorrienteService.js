@@ -499,16 +499,27 @@ class CuentaCorrienteService {
             SELECT 
                 p.id, p.fecha, p.comprobante_lomasoft, p.tipo_comprobante,
                 COALESCE(
-                    (SELECT SUM(cantidad * precio1) FROM public.presupuestos_detalles WHERE id_presupuesto = p.id) * 
-                    CASE 
-                        WHEN p.descuento IS NULL OR p.descuento = 0 THEN 1
-                        WHEN p.descuento >= 1 THEN (1 - p.descuento / 100)
-                        ELSE (1 - p.descuento)
-                    END,
+                    (
+                        SELECT ROUND(SUM(
+                            (pd.cantidad * pd.precio1) * (
+                                1.0 - LEAST(
+                                    1.0,
+                                    (CASE
+                                        WHEN p.descuento IS NULL OR p.descuento = 0 THEN 0
+                                        WHEN p.descuento >= 1 THEN (p.descuento / 100.0)
+                                        ELSE p.descuento
+                                    END) + (COALESCE(pd.descuento_adicional, 0) / 100.0)
+                                )
+                            )
+                        ), 2)
+                        FROM public.presupuestos_detalles pd
+                        WHERE pd.id_presupuesto = p.id
+                    ),
                     0
                 ) as total
             FROM public.presupuestos p
-            WHERE p.id_cliente::integer = (
+            WHERE p.activo = true
+            AND p.id_cliente::integer = (
                 SELECT lomas_soft_id::integer 
                 FROM public.bunker_clientes 
                 WHERE codigo_bunker_cliente = $1
@@ -565,12 +576,22 @@ class CuentaCorrienteService {
             const tRes = await client.query(
                 `SELECT 
                     COALESCE(
-                        (SELECT SUM(cantidad * precio1) FROM public.presupuestos_detalles WHERE id_presupuesto = p.id) * 
-                        CASE 
-                            WHEN p.descuento IS NULL OR p.descuento = 0 THEN 1
-                            WHEN p.descuento >= 1 THEN (1 - p.descuento / 100)
-                            ELSE (1 - p.descuento)
-                        END,
+                        (
+                            SELECT ROUND(SUM(
+                                (pd.cantidad * pd.precio1) * (
+                                    1.0 - LEAST(
+                                        1.0,
+                                        (CASE
+                                            WHEN p.descuento IS NULL OR p.descuento = 0 THEN 0
+                                            WHEN p.descuento >= 1 THEN (p.descuento / 100.0)
+                                            ELSE p.descuento
+                                        END) + (COALESCE(pd.descuento_adicional, 0) / 100.0)
+                                    )
+                                )
+                            ), 2)
+                            FROM public.presupuestos_detalles pd
+                            WHERE pd.id_presupuesto = p.id
+                        ),
                         0
                     ) as total
                  FROM public.presupuestos p
