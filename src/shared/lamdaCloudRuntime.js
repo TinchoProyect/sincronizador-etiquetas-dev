@@ -302,6 +302,28 @@ function injectScriptTagInHtml(htmlContent) {
 }
 
 function attachLamdaCloudRuntime(app, servicePort = 3000) {
+    // 0. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
+    app.get('/mobile/manifest.json', (req, res, next) => {
+        if (!esModoLaboratorio()) return next();
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.json({
+            name: '🛠️ [LAB] LAMDA Móvil (Pruebas)',
+            short_name: 'LAMDA LAB',
+            description: 'Entorno de Laboratorio y Pruebas - LAMDA Móvil (BD: etiquetas_pruebas)',
+            start_url: './home.html',
+            scope: './',
+            display: 'standalone',
+            background_color: '#78350f',
+            theme_color: '#b45309',
+            orientation: 'portrait',
+            icons: [
+                { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
+            ]
+        });
+    });
     // 1. Servir el script de cliente unificado
     app.get('/lamda-cloud-runtime.js', (req, res) => {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');

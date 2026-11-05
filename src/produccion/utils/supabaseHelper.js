@@ -46,6 +46,11 @@ const ResponseClass = typeof globalThis.Response !== 'undefined' ? globalThis.Re
  * @returns {Promise<Response>} Retorna una respuesta compatible o lanza error
  */
 async function supabaseFetch(url, options = {}, retries = 3, delay = 500, timeoutMs = 8000) {
+    const method = String(options.method || 'GET').toUpperCase();
+    const isLab = String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' || String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
+    if (isLab && method !== 'GET' && method !== 'HEAD') {
+        throw new Error(`🔒 [SUPABASE-COSTOS-GUARD] Operación de escritura (${method}) hacia Supabase Costos/Lotes bloqueada en Modo Laboratorio.`);
+    }
     const cachePath = getCachePath(url);
     
     for (let attempt = 0; attempt <= retries; attempt++) {

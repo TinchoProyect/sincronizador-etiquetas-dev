@@ -74,7 +74,7 @@ const allowedOrigins = [
 const corsOptions = {
     origin: function (origin, callback) {
         // Permitir requests sin origin (ej. apps móviles nativas, Postman, curl)
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin) || /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|100\.\d+\.\d+\.\d+)(:\d+)?$/i.test(origin)) {
             callback(null, true);
         } else {
             console.warn(`[CORS] Origen denegado: ${origin}`);

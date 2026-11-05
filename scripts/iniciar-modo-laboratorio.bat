@@ -11,13 +11,14 @@ echo ===========================================================================
 echo   Carpeta : %CD%
 echo   Base BD : etiquetas_pruebas (Aislada 100%% de Produccion)
 echo   Modulos : Gestiones (3000), Produccion (3002), Presupuestos (3003),
-echo             Facturacion (3004) y Logistica/Bunker (3005)
-echo   Candados: Supabase B2B DESCONECTADO ^| WhatsApp Espejo ^| ARCA HOMO ^| Zebra Simulada
+echo             Facturacion (3004), Logistica (3005) y App Movil (/mobile)
+echo   Candados: Supabase B2B DESCONECTADO ^| Supabase Costos SOLO LECTURA
+echo             WhatsApp Espejo ^| ARCA HOMO ^| Zebra Simulada
 echo ============================================================================
 echo.
 
-REM Lanzar navegador automaticamente en Gestiones (3000) y Logistica (3005) cuando respondan
-start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for ($i=0; $i -lt 30; $i++) { Start-Sleep -Seconds 2; try { $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', 3000); if ($c.Connected) { $c.Close(); Start-Process 'http://localhost:3000'; Start-Process 'http://localhost:3005'; exit } } catch {} }"
+REM Lanzar navegador automaticamente en Gestiones (3000), Logistica (3005) y App Movil (3005/mobile)
+start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for ($i=0; $i -lt 30; $i++) { Start-Sleep -Seconds 2; try { $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', 3000); if ($c.Connected) { $c.Close(); Start-Process 'http://localhost:3000'; Start-Process 'http://localhost:3005'; Start-Process 'http://localhost:3005/mobile'; exit } } catch {} }"
 
 call npm run start:laboratorio
 pause

@@ -1,4 +1,5 @@
 require('dotenv').config();
+if (process.env.DB_NAME === 'etiquetas_pruebas' || process.env.LAMDA_MODO_LABORATORIO === 'true') { console.error('🔒 [MODO LABORATORIO] Bloqueado.'); process.exit(1); }
 const { createClient } = require('@supabase/supabase-js');
 
 // Configuración de Supabase
