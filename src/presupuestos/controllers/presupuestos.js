@@ -2774,7 +2774,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
 
         const presupuesto = presupuestoResult.rows[0];
 
-        // Micro-Etapa 2: Vínculo interno por clave entera (pd.id_presupuesto = $1) + Lectura Dual de artículos
+        // Micro-Etapa 2 + Micro-Etapa 6: Vínculo interno por clave entera (pd.id_presupuesto = $1) + Lectura Dual de artículos con fallback a stock_real_consolidado
         const detallesQuery = `
             SELECT 
                 pd.id,
@@ -2782,11 +2782,14 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 COALESCE(
                     NULLIF(TRIM(a.codigo_barras), ''),
                     NULLIF(TRIM(ba.codigo_barras::text), ''),
+                    NULLIF(TRIM(src.codigo_barras), ''),
+                    CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
                     pd.articulo
                 ) as codigo_barras_resuelto,
                 COALESCE(
                     ba.articulo_id::text,
                     a.numero::text,
+                    src.articulo_numero::text,
                     CASE WHEN ing.id IS NOT NULL THEN ing.id::text ELSE NULL END,
                     pd.articulo
                 ) as articulo_numero_resuelto,
@@ -2794,6 +2797,7 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                     NULLIF(TRIM(ba.descripcion_generada), ''),
                     NULLIF(TRIM(ba.descripcion), ''),
                     NULLIF(TRIM(a.nombre), ''),
+                    NULLIF(TRIM(src.descripcion), ''),
                     NULLIF(TRIM(ing.nombre), ''),
                     pd.articulo
                 ) as descripcion_articulo,
@@ -2833,10 +2837,21 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 LIMIT 1
             ) ba ON true
             LEFT JOIN LATERAL (
+                SELECT src_inner.articulo_numero, src_inner.codigo_barras, src_inner.descripcion
+                FROM public.stock_real_consolidado src_inner
+                WHERE src_inner.codigo_barras = pd.articulo
+                   OR src_inner.articulo_numero = pd.articulo
+                   OR (a.numero IS NOT NULL AND src_inner.articulo_numero = a.numero)
+                   OR (ba.articulo_id IS NOT NULL AND src_inner.articulo_numero = ba.articulo_id::text)
+                ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
+                LIMIT 1
+            ) src ON true
+            LEFT JOIN LATERAL (
                 SELECT ing_inner.id, ing_inner.codigo, ing_inner.nombre
                 FROM public.ingredientes ing_inner
                 WHERE a.numero IS NULL
                   AND ba.articulo_id IS NULL
+                  AND src.articulo_numero IS NULL
                   AND (ing_inner.id::text = pd.articulo OR ing_inner.codigo::text = pd.articulo)
                 ORDER BY (ing_inner.id::text = pd.articulo) DESC
                 LIMIT 1
@@ -2855,9 +2870,9 @@ const obtenerDetallesPresupuesto = async (req, res) => {
         // Los totales (neto/iva/total) son para el resumen
         const detallesConCalculos = detallesResult.rows.map(item => ({
             id: item.id,
-            codigo_barras: item.articulo,
+            codigo_barras: item.codigo_barras_resuelto || item.articulo,
             articulo: item.articulo,
-            articulo_numero: item.articulo,
+            articulo_numero: item.articulo_numero_resuelto || item.articulo,
             descripcion_articulo: item.descripcion_articulo,  // ✅ Agregar campo faltante
             detalle: item.descripcion_articulo,
             descripcion: item.descripcion_articulo,
