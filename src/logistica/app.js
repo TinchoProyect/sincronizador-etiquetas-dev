@@ -205,6 +205,8 @@ app.use((req, res, next) => {
         reqPath.startsWith('/api/tiempos') ||
         reqPath.startsWith('/api/facturacion') ||
         reqPath === '/lamda-cloud-runtime.js' ||
+        reqPath === '/lamda-prueba-manifest.json' ||
+        reqPath === '/lamda-prueba-sw.js' ||
         reqPath === '/env-config.js' ||
         reqPath === '/login' ||
         reqPath === '/logout' ||

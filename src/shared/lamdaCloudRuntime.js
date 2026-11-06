@@ -91,7 +91,7 @@ const CLIENT_RUNTIME_SCRIPT = `
         var locPath = (window.location && window.location.pathname) ? window.location.pathname : '';
         var gwMatch = /^\\/gw\\/(300[0234])(\\/|$)/i.exec(locPath);
         if (gwMatch && resolved.charAt(0) === '/' && resolved.charAt(1) !== '/') {
-            var isLogisticaPage = /^\/pages\/(auditoria-rutas|bunker|config-puntos|configuracion-jerarquia-b2b|cuenta-corriente|dashboard|diccionario-bunker|historial-auditorias|ingesta-satelital|listado-bunker|listado-clientes|prospectos|recepcion-efectivo|tratamiento-checkin)\.html([?#]|$)/i.test(resolved);
+            var isLogisticaPage = /^\\/pages\\/(auditoria-rutas|bunker|config-puntos|configuracion-jerarquia-b2b|cuenta-corriente|dashboard|diccionario-bunker|historial-auditorias|ingesta-satelital|listado-bunker|listado-clientes|prospectos|recepcion-efectivo|tratamiento-checkin)\\.html([?#]|$)/i.test(resolved);
             var isRootGatewayRoute =
                 isLogisticaPage ||
                 resolved.indexOf('/gw/300') === 0 ||
@@ -100,6 +100,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                 resolved.indexOf('/api/b2b') === 0 ||
                 resolved.indexOf('/api/system') === 0 ||
                 resolved.indexOf('/lamda-cloud-runtime.js') === 0 ||
+                resolved.indexOf('/lamda-prueba-') === 0 ||
                 resolved.indexOf('/env-config.js') === 0 ||
                 resolved.indexOf('/login') === 0 ||
                 resolved.indexOf('/logout') === 0 ||
@@ -257,18 +258,63 @@ const CLIENT_RUNTIME_SCRIPT = `
         };
     }
 
-    // 4. Interceptar clics en enlaces <a href="http://localhost:300X..."> o "/presupuestos"
-    document.addEventListener('click', function(e) {
+    // 4. Reescritura proactiva de enlaces DOM + Intercepción de clics/touch en <a href="...">
+    function shouldRewriteHref(href) {
+        if (!href || typeof href !== 'string') return false;
+        if (href.indexOf('javascript:') === 0 || href.charAt(0) === '#' || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) {
+            return false;
+        }
+        return (
+            /^https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5]/i.test(href) ||
+            /^\\/presupuestos(\\/|$)/i.test(href) ||
+            /^\\/(pages|documentos)\\//i.test(href)
+        );
+    }
+
+    function rewriteAllDomLinks(rootNode) {
+        if (!isCloudSinglePortOrigin()) return;
+        try {
+            var scope = (rootNode && rootNode.querySelectorAll) ? rootNode : document;
+            var anchors = scope.querySelectorAll('a[href]');
+            for (var i = 0; i < anchors.length; i++) {
+                var a = anchors[i];
+                var href = a.getAttribute('href');
+                if (shouldRewriteHref(href)) {
+                    var resolved = window.LAMDA_RESOLVE_URL(href);
+                    if (resolved && resolved !== href) {
+                        a.setAttribute('href', resolved);
+                    }
+                }
+            }
+            var clickEls = scope.querySelectorAll('[onclick*="localhost:300"], [onclick*="127.0.0.1:300"]');
+            for (var j = 0; j < clickEls.length; j++) {
+                var el = clickEls[j];
+                var rawOnclick = el.getAttribute('onclick') || '';
+                var updatedOnclick = rawOnclick.replace(/https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5][^'"\\s)]*/gi, function(m) {
+                    return window.LAMDA_RESOLVE_URL(m);
+                });
+                if (updatedOnclick !== rawOnclick) {
+                    el.setAttribute('onclick', updatedOnclick);
+                }
+            }
+        } catch (e) {}
+    }
+
+    function handleAnchorInteraction(e) {
         var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
         if (!anchor) return;
         var href = anchor.getAttribute('href');
-        if (href && (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5]/i.test(href) || /^\\/presupuestos(\\/|$)/i.test(href))) {
+        if (shouldRewriteHref(href)) {
             var resolved = window.LAMDA_RESOLVE_URL(href);
-            if (resolved !== href) {
+            if (resolved && resolved !== href) {
                 anchor.setAttribute('href', resolved);
             }
         }
-    }, true);
+    }
+
+    document.addEventListener('click', handleAnchorInteraction, true);
+    document.addEventListener('auxclick', handleAnchorInteraction, true);
+    document.addEventListener('touchstart', handleAnchorInteraction, { capture: true, passive: true });
 
     // 4B. Sincronizar token localStorage -> Cookie HttpOnly (lamda_cloud_jwt)
     function syncAuthCookieIfPresent() {
@@ -541,14 +587,144 @@ const CLIENT_RUNTIME_SCRIPT = `
             .catch(function() {});
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            pollSystemStatus();
-            setInterval(pollSystemStatus, 12000);
-        });
-    } else {
+    // 6. Instalador de Acceso Directo ("LAMDA Prueba") para Celular y Notebook
+    window.__LAMDA_DEFERRED_PWA_PROMPT__ = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__LAMDA_DEFERRED_PWA_PROMPT__ = e;
+    });
+
+    function setupPwaManifestAndButtons() {
+        if (!isCloudSinglePortOrigin()) return;
+        try {
+            var pathLower = (window.location && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
+            if (pathLower.indexOf('/mobile/') !== 0 && document.head) {
+                if (!document.querySelector('link[rel="manifest"]')) {
+                    var linkManifest = document.createElement('link');
+                    linkManifest.rel = 'manifest';
+                    linkManifest.href = '/lamda-prueba-manifest.json';
+                    document.head.appendChild(linkManifest);
+                }
+                if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+                    var linkApple = document.createElement('link');
+                    linkApple.rel = 'apple-touch-icon';
+                    linkApple.href = '/mobile/apple-touch-icon.png';
+                    document.head.appendChild(linkApple);
+                }
+                if (!document.querySelector('meta[name="apple-mobile-web-app-title"]')) {
+                    var metaTitle = document.createElement('meta');
+                    metaTitle.name = 'apple-mobile-web-app-title';
+                    metaTitle.content = 'LAMDA Prueba';
+                    document.head.appendChild(metaTitle);
+                }
+            }
+            if ('serviceWorker' in navigator && pathLower.indexOf('/mobile/') !== 0) {
+                navigator.serviceWorker.register('/lamda-prueba-sw.js', { scope: '/' }).catch(function() {});
+            }
+
+            // Inyectar botón "📲 LAMDA Prueba" en la barra superior de la Pantalla Principal y en el Menú Lateral
+            var navBar = document.querySelector('.header-nav-bar');
+            if (navBar && !document.getElementById('btn-header-install-lamda-prueba')) {
+                var btnHeader = document.createElement('button');
+                btnHeader.type = 'button';
+                btnHeader.id = 'btn-header-install-lamda-prueba';
+                btnHeader.className = 'nav-btn';
+                btnHeader.title = 'Instalar acceso directo LAMDA Prueba en este dispositivo (Celular o Notebook)';
+                btnHeader.style.cssText = 'background:#eff6ff;color:#1d4ed8;border:1px solid #60a5fa;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;';
+                btnHeader.innerHTML = '<img src="/mobile/icon-192.png" alt="LAMDA" style="width:16px;height:16px;border-radius:4px;"><span>📲 Instalar "LAMDA Prueba"</span>';
+                btnHeader.onclick = function() { window.instalarAccesoDirectoLamdaPrueba(); };
+                navBar.appendChild(btnHeader);
+            }
+
+            var navTree = document.querySelector('.nav-tree');
+            if (navTree && !document.getElementById('tree-item-install-lamda-prueba')) {
+                var liInstall = document.createElement('li');
+                liInstall.id = 'tree-item-install-lamda-prueba';
+                liInstall.className = 'tree-item';
+                liInstall.innerHTML = '<a href="javascript:void(0)" class="tree-link" style="background:#eff6ff;border-left:4px solid #0284c7;color:#0369a1;font-weight:800;display:flex;align-items:center;gap:8px;"><img src="/mobile/icon-192.png" alt="LAMDA" style="width:18px;height:18px;border-radius:4px;"><span>📲 Instalar Acceso "LAMDA Prueba"</span></a>';
+                liInstall.onclick = function() {
+                    if (typeof window.closeSidebar === 'function') window.closeSidebar();
+                    window.instalarAccesoDirectoLamdaPrueba();
+                };
+                navTree.insertBefore(liInstall, navTree.firstChild);
+            }
+        } catch (e) {}
+    }
+
+    window.instalarAccesoDirectoLamdaPrueba = function() {
+        if (window.__LAMDA_DEFERRED_PWA_PROMPT__) {
+            var promptEvent = window.__LAMDA_DEFERRED_PWA_PROMPT__;
+            window.__LAMDA_DEFERRED_PWA_PROMPT__ = null;
+            promptEvent.prompt();
+            return;
+        }
+        var existing = document.getElementById('lamda-pwa-install-modal');
+        if (existing) existing.remove();
+
+        var isMob = isMobileBrowser();
+        var overlay = document.createElement('div');
+        overlay.id = 'lamda-pwa-install-modal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.78);z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;';
+        overlay.innerHTML =
+            '<div style="background:#1e293b;color:#f8fafc;border:1px solid #38bdf8;border-top:4px solid #38bdf8;border-radius:14px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.65);">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">' +
+                    '<div style="display:flex;align-items:center;gap:10px;">' +
+                        '<img src="/mobile/icon-192.png" alt="LAMDA Prueba" style="width:42px;height:42px;border-radius:10px;border:1px solid #475569;">' +
+                        '<div>' +
+                            '<div style="font-size:1.05rem;font-weight:800;color:#f8fafc;">LAMDA Prueba</div>' +
+                            '<div style="font-size:0.78rem;color:#94a3b8;">Acceso directo con logo oficial LAMDA</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button id="lamda-pwa-modal-close" style="background:transparent;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;">&times;</button>' +
+                '</div>' +
+                (isMob
+                    ? '<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:14px;font-size:0.88rem;line-height:1.5;color:#e2e8f0;margin-bottom:14px;">' +
+                        '<div style="font-weight:800;color:#38bdf8;margin-bottom:6px;">📱 Cómo agregarlo a la pantalla de inicio del celular:</div>' +
+                        '<ol style="padding-left:18px;margin:0;">' +
+                            '<li style="margin-bottom:6px;">En <strong>Chrome (Android)</strong>: tocá el menú <strong>⋮</strong> (arriba a la derecha) y elegí <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</li>' +
+                            '<li>En <strong>Safari (iPhone)</strong>: tocá el botón <strong>Compartir (⬆️)</strong> abajo y elegí <strong>«Agregar a inicio»</strong>.</li>' +
+                        '</ol>' +
+                        '<div style="margin-top:8px;font-size:0.78rem;color:#94a3b8;">El acceso quedará guardado con el logo de LAMDA y el nombre <strong>LAMDA Prueba</strong>.</div>' +
+                      '</div>'
+                    : '<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:14px;font-size:0.88rem;line-height:1.5;color:#e2e8f0;margin-bottom:14px;">' +
+                        '<div style="font-weight:800;color:#38bdf8;margin-bottom:8px;">💻 Cómo crear el acceso directo en la Notebook:</div>' +
+                        '<div style="margin-bottom:10px;"><strong>Opción 1 (App con logo LAMDA en Escritorio / Barra de tareas):</strong> En la barra de direcciones de Chrome/Edge (arriba a la derecha), hacé clic en el ícono de computadora con flecha <strong>«Instalar LAMDA Prueba»</strong> o en el menú <strong>⋮ → Guardar y compartir → Instalar LAMDA Prueba</strong>.</div>' +
+                        '<div><strong>Opción 2 (Descarga directa para Escritorio):</strong> Descargá el acceso directo listo para tu Escritorio:</div>' +
+                        '<a href="/api/system/shortcut-desktop" download="LAMDA Prueba.url" style="margin-top:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 14px;background:linear-gradient(90deg,#0284c7,#2563eb);color:#ffffff;font-weight:800;text-decoration:none;border-radius:8px;font-size:0.88rem;">📥 Descargar Acceso Directo "LAMDA Prueba.url"</a>' +
+                      '</div>'
+                ) +
+                '<div style="text-align:right;">' +
+                    '<button id="lamda-pwa-modal-ok" style="background:#334155;color:#f8fafc;border:none;padding:8px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:0.85rem;">Entendido</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+        document.getElementById('lamda-pwa-modal-close').onclick = function() { overlay.remove(); };
+        document.getElementById('lamda-pwa-modal-ok').onclick = function() { overlay.remove(); };
+        overlay.onclick = function(ev) { if (ev.target === overlay) overlay.remove(); };
+    };
+
+    function initCloudDomEnhancements() {
+        rewriteAllDomLinks(document);
+        setupPwaManifestAndButtons();
         pollSystemStatus();
         setInterval(pollSystemStatus, 12000);
+        if (isCloudSinglePortOrigin() && document.body && typeof MutationObserver !== 'undefined') {
+            var rewriteTimer = null;
+            var obs = new MutationObserver(function() {
+                if (rewriteTimer) return;
+                rewriteTimer = setTimeout(function() {
+                    rewriteTimer = null;
+                    rewriteAllDomLinks(document);
+                }, 120);
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCloudDomEnhancements);
+    } else {
+        initCloudDomEnhancements();
     }
 })();
 `;
@@ -593,7 +769,56 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     // 0B. Contexto de Presencia Física por Loopback (X-Lamda-Physical-Station: PCALMACEN_VERIFIED + HMAC Token)
     app.use(middlewareContextoPresenciaZebra);
 
-    // 0C. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
+    // 0C. Manifest y Service Worker para Acceso Directo "LAMDA Prueba" (Celular y Notebook)
+    app.get('/lamda-prueba-manifest.json', (req, res) => {
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.json({
+            id: '/?app=lamda-prueba',
+            name: 'LAMDA Prueba',
+            short_name: 'LAMDA Prueba',
+            description: 'Sistema LAMDA Cloud 24/7 — Servidor de Prueba',
+            start_url: '/gw/3000/',
+            scope: '/',
+            display: 'standalone',
+            background_color: '#0f172a',
+            theme_color: '#0284c7',
+            icons: [
+                { src: '/mobile/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                { src: '/mobile/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                { src: '/mobile/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
+            ]
+        });
+    });
+
+    app.get('/lamda-prueba-sw.js', (req, res) => {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Service-Worker-Allowed', '/');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.send(
+            "self.addEventListener('install', function() { self.skipWaiting(); });\n" +
+            "self.addEventListener('activate', function(e) { e.waitUntil(self.clients.claim()); });\n" +
+            "self.addEventListener('fetch', function() {});\n"
+        );
+    });
+
+    app.get('/api/system/shortcut-desktop', (req, res) => {
+        const proto = (req.secure || String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https') ? 'https' : 'http';
+        const host = req.headers.host || 'nube-prueba.lamdaser.com';
+        const baseUrl = `${proto}://${host}`;
+        const shortcutContent = [
+            '[InternetShortcut]',
+            `URL=${baseUrl}/gw/3000/`,
+            'IconIndex=0',
+            `IconFile=${baseUrl}/favicon.ico`,
+            ''
+        ].join('\r\n');
+        res.setHeader('Content-Type', 'application/internet-shortcut; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="LAMDA Prueba.url"');
+        return res.send(shortcutContent);
+    });
+
+    // 0D. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
     app.get('/mobile/manifest.json', (req, res, next) => {
         if (!esModoLaboratorio()) return next();
         res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');

@@ -193,11 +193,17 @@ function esRutaPublicaAllowlist(reqOrPath) {
         '/mobile/index.html',
         '/mobile/manifest.json',
         '/mobile/sw.js',
+        '/mobile/icon-192.png',
+        '/mobile/icon-512.png',
+        '/mobile/apple-touch-icon.png',
+        '/lamda-prueba-manifest.json',
+        '/lamda-prueba-sw.js',
         '/lamda-cloud-runtime.js',
         '/env-config.js',
         '/health',
         '/favicon.ico',
         '/api/system/env-status',
+        '/api/system/shortcut-desktop',
         '/api/system/auth/sync-cookie',
         '/api/system/auth/logout',
         '/api/system/print-queue/agent-pull'
@@ -406,8 +412,13 @@ function renderLoginHtmlPage() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acceso Seguro — Sistema LAMDA Cloud 24/7</title>
+    <title>Acceso Seguro — LAMDA Prueba</title>
     <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="manifest" href="/lamda-prueba-manifest.json">
+    <link rel="apple-touch-icon" href="/mobile/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="LAMDA Prueba">
+    <script src="/lamda-cloud-runtime.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -503,6 +514,10 @@ function renderLoginHtmlPage() {
             <label for="password">Contraseña</label>
             <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
             <button type="submit" id="btn-submit">Ingresar al Sistema</button>
+            <button type="button" id="btn-install-pwa" onclick="if (window.instalarAccesoDirectoLamdaPrueba) window.instalarAccesoDirectoLamdaPrueba()" style="margin-top: 10px; background: #0f172a; border: 1px solid #38bdf8; color: #38bdf8; font-weight: 700; font-size: 0.85rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <img src="/mobile/icon-192.png" alt="LAMDA" style="width: 18px; height: 18px; border-radius: 4px;">
+                <span>📲 Instalar Acceso Directo "LAMDA Prueba"</span>
+            </button>
         </form>
     </div>
     <script>
