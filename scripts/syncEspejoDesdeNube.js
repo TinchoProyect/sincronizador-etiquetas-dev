@@ -16,7 +16,7 @@
  *     - `src/facturacion/certs/`
  *     - `src/app-etiquetas/documentos/`
  *     - `src/services/gsheets/`
- *     - `data/ia_credit_ledger.json`
+ *     - `data/ia_credito_ledger.json`
  */
 
 const fs = require('fs');
@@ -35,7 +35,7 @@ const ASSET_PATHS = [
     'src/facturacion/certs',
     'src/app-etiquetas/documentos',
     'src/services/gsheets',
-    'data/ia_credit_ledger.json'
+    'data/ia_credito_ledger.json'
 ];
 
 function detectarBinarioPostgres(binName) {

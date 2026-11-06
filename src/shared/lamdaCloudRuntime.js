@@ -27,6 +27,7 @@ const {
     confirmarImpresionAgente
 } = require('../services/zebraPrintBridgeService');
 const {
+    JWT_SECRET,
     galponBridgeRoleLockMiddleware,
     emitirCookieSesionCloud,
     verificarTokenOExtraerUsuario
@@ -57,15 +58,42 @@ const CLIENT_RUNTIME_SCRIPT = `
         if (rawUrl.indexOf('127.0.0.1:3099') !== -1 || rawUrl.indexOf('localhost:3099') !== -1) {
             return rawUrl;
         }
-        if (!isCloudSinglePortOrigin()) return rawUrl;
 
-        var origin = window.location.origin;
-        return rawUrl
-            .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005(\\/|$)/i, origin + '$2')
-            .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000(\\/|$)/i, origin + '/gw/3000$2')
-            .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002(\\/|$)/i, origin + '/gw/3002$2')
-            .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003(\\/|$)/i, origin + '/gw/3003$2')
-            .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004$2');
+        var resolved = rawUrl;
+        if (isCloudSinglePortOrigin()) {
+            var origin = window.location.origin;
+            resolved = resolved
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005(\\/|$)/i, origin + '$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000(\\/|$)/i, origin + '/gw/3000$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002(\\/|$)/i, origin + '/gw/3002$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003(\\/|$)/i, origin + '/gw/3003$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004$2');
+        }
+
+        // Si el navegador está bajo /gw/(300[0234])/ y la URL es relativa a la raíz (/...),
+        // anteponer automáticamente /gw/300X salvo rutas globales de 3005/sistema
+        var locPath = (window.location && window.location.pathname) ? window.location.pathname : '';
+        var gwMatch = /^\\/gw\\/(300[0234])(\\/|$)/i.exec(locPath);
+        if (gwMatch && resolved.charAt(0) === '/' && resolved.charAt(1) !== '/') {
+            var isRootGatewayRoute =
+                resolved.indexOf('/gw/300') === 0 ||
+                resolved.indexOf('/api/logistica') === 0 ||
+                resolved.indexOf('/api/bunker') === 0 ||
+                resolved.indexOf('/api/b2b') === 0 ||
+                resolved.indexOf('/api/system') === 0 ||
+                resolved.indexOf('/lamda-cloud-runtime.js') === 0 ||
+                resolved.indexOf('/env-config.js') === 0 ||
+                resolved.indexOf('/login') === 0 ||
+                resolved.indexOf('/logout') === 0 ||
+                resolved.indexOf('/mobile') === 0 ||
+                resolved.indexOf('/institucional.html') === 0 ||
+                resolved.indexOf('/catalogo-publico.json') === 0;
+            if (!isRootGatewayRoute) {
+                resolved = '/gw/' + gwMatch[1] + resolved;
+            }
+        }
+
+        return resolved;
     };
 
     function hasActivePhysicalPresence() {
@@ -490,7 +518,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             let adminJwt = '';
             try {
                 const jwt = require('jsonwebtoken');
-                adminJwt = jwt.sign({ id: 2, usuario: 'Tincho', rol_id: 1 }, 'LAMDA_super_secreta', { expiresIn: '365d' });
+                adminJwt = jwt.sign({ id: 2, usuario: 'Tincho', rol_id: 1 }, JWT_SECRET, { expiresIn: '365d' });
             } catch (_) {}
             const mobileToken = Buffer.from(`2:${Date.now()}`).toString('base64');
             preamble = `(function(){

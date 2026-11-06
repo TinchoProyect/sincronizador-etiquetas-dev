@@ -3,7 +3,7 @@
 -- 1. Persistencia Dual del Ticket de Acceso ARCA/AFIP (public.factura_afip_ta)
 --    con soporte para reconstrucción íntegra de archivo TA-*.json (@afipsdk/afip.js)
 -- 2. Auditoría de Presencia Física de Estación Galpón en public.zebra_print_queue
---    y estado del Agente en public.zebra_bridge_status
+--    y estado unificado del Agente en public.zebra_bridge_status
 -- ============================================================================
 
 BEGIN;
@@ -48,17 +48,31 @@ CREATE INDEX IF NOT EXISTS idx_zebra_print_queue_estado
 
 ALTER TABLE public.zebra_print_queue
     ADD COLUMN IF NOT EXISTS estacion_fisica_verificada BOOLEAN DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS dispositivo_origen VARCHAR(120);
+    ADD COLUMN IF NOT EXISTS dispositivo_origen VARCHAR(120) DEFAULT 'DESCONOCIDO';
 
--- 3. Tabla de estado del Agente Local de Impresión Zebra (PcAlmacen)
+-- 3. Tabla de estado del Agente Local de Impresión Zebra (PcAlmacen) — Esquema Unificado
 CREATE TABLE IF NOT EXISTS public.zebra_bridge_status (
     station_id VARCHAR(80) PRIMARY KEY,
-    last_heartbeat_at TIMESTAMPTZ DEFAULT NOW(),
+    last_heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     printer_name VARCHAR(80) DEFAULT 'Zebra',
     printer_online BOOLEAN DEFAULT TRUE,
     hostname VARCHAR(120),
+    ip_origen VARCHAR(80) DEFAULT '127.0.0.1',
+    estado_impresora VARCHAR(40) DEFAULT 'ONLINE',
+    version_agente VARCHAR(32) DEFAULT '2.0.0-loopback',
     local_loopback_port INTEGER DEFAULT 3099,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.zebra_bridge_status
+    ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS printer_name VARCHAR(80) DEFAULT 'Zebra',
+    ADD COLUMN IF NOT EXISTS printer_online BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS hostname VARCHAR(120),
+    ADD COLUMN IF NOT EXISTS ip_origen VARCHAR(80) DEFAULT '127.0.0.1',
+    ADD COLUMN IF NOT EXISTS estado_impresora VARCHAR(40) DEFAULT 'ONLINE',
+    ADD COLUMN IF NOT EXISTS version_agente VARCHAR(32) DEFAULT '2.0.0-loopback',
+    ADD COLUMN IF NOT EXISTS local_loopback_port INTEGER DEFAULT 3099,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 COMMIT;

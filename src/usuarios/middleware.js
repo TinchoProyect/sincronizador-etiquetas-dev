@@ -1,23 +1,36 @@
-const jwt = require('jsonwebtoken');
 const pool = require('./pool');
-const { SECRET_KEY } = require('./login');
+const { verificarTokenOExtraerUsuario } = require('../shared/lamdaCloudAuthGuard');
 
 function autenticarToken(req, res, next) {
-  const isLab = String(process.env.MODO_LABORATORIO).toLowerCase() === 'true' || process.env.DB_NAME === 'etiquetas_pruebas';
+  const isLab =
+    String(process.env.MODO_LABORATORIO || '').toLowerCase() === 'true' ||
+    String(process.env.LAMDA_MODO_LABORATORIO || '').toLowerCase() === 'true' ||
+    process.env.DB_NAME === 'etiquetas_pruebas';
   if (isLab) {
     req.usuario = { id: 2, usuario: 'Tincho', rol_id: 1 };
     return next();
   }
+
   const authHeader = req.headers['authorization'];
-  const token = authHeader?.split(' ')[1];
+  const cookieHeader = req.headers['cookie'];
+  const hasAnyCredential = Boolean(
+    (authHeader && String(authHeader).trim()) ||
+    (cookieHeader && String(cookieHeader).includes('lamda_cloud_jwt=')) ||
+    req.headers['x-access-token'] ||
+    req.headers['x-chofer-token']
+  );
 
-  if (!token) return res.sendStatus(401);
+  if (!hasAnyCredential) {
+    return res.sendStatus(401);
+  }
 
-  jwt.verify(token, SECRET_KEY, (err, user) => {
-    if (err) return res.sendStatus(403);
-    req.usuario = user;
-    next();
-  });
+  const user = verificarTokenOExtraerUsuario(req);
+  if (!user) {
+    return res.sendStatus(403);
+  }
+
+  req.usuario = user;
+  next();
 }
 
 function verificarPermiso(nombrePermiso) {

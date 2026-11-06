@@ -7,7 +7,7 @@
 #     y lo restaura en la base standby `etiquetas_espejo_nube`.
 #  2. Reconstruye en disco `src/facturacion/certs/TA-*.json` desde `public.factura_afip_ta`.
 #  3. Sincroniza las 6 carpetas de activos físicos (`uploads`, `pdfs`, `certs`,
-#     `documentos`, `gsheets`, `data/ia_credit_ledger.json`).
+#     `documentos`, `gsheets`, `data/ia_credito_ledger.json`).
 #  4. Mantiene el candado `default_transaction_read_only = on` sobre `etiquetas`
 #     mientras `LAMDA_ROLE=GALPON_BRIDGE_ONLY`.
 # ==============================================================================

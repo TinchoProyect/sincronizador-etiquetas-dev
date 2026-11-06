@@ -21,6 +21,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { exec } = require('child_process');
@@ -155,12 +156,27 @@ async function asegurarTablaZebraQueue() {
             CREATE INDEX IF NOT EXISTS idx_zebra_print_queue_estado
                 ON public.zebra_print_queue (estado, created_at DESC);
             CREATE TABLE IF NOT EXISTS public.zebra_bridge_status (
-                estacion_id VARCHAR(64) PRIMARY KEY,
-                ultimo_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                ip_origen VARCHAR(80),
+                station_id VARCHAR(80) PRIMARY KEY,
+                last_heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                printer_name VARCHAR(80) DEFAULT 'Zebra',
+                printer_online BOOLEAN DEFAULT TRUE,
+                hostname VARCHAR(120),
+                ip_origen VARCHAR(80) DEFAULT '127.0.0.1',
                 estado_impresora VARCHAR(40) DEFAULT 'ONLINE',
-                version_agente VARCHAR(32) DEFAULT '1.0.0'
+                version_agente VARCHAR(32) DEFAULT '2.0.0-loopback',
+                local_loopback_port INTEGER DEFAULT 3099,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
             );
+            ALTER TABLE public.zebra_bridge_status
+                ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS printer_name VARCHAR(80) DEFAULT 'Zebra',
+                ADD COLUMN IF NOT EXISTS printer_online BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS hostname VARCHAR(120),
+                ADD COLUMN IF NOT EXISTS ip_origen VARCHAR(80) DEFAULT '127.0.0.1',
+                ADD COLUMN IF NOT EXISTS estado_impresora VARCHAR(40) DEFAULT 'ONLINE',
+                ADD COLUMN IF NOT EXISTS version_agente VARCHAR(32) DEFAULT '2.0.0-loopback',
+                ADD COLUMN IF NOT EXISTS local_loopback_port INTEGER DEFAULT 3099,
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
         `);
         tablaInicializada = true;
     } catch (err) {
@@ -170,23 +186,40 @@ async function asegurarTablaZebraQueue() {
 
 async function registrarHeartbeatAgenteZebra({
     estacionId = 'PCALMACEN',
+    stationId = null,
     ipOrigen = '127.0.0.1',
+    printerName = 'Zebra',
     estadoImpresora = 'ONLINE',
-    versionAgente = '2.0.0-loopback'
+    versionAgente = '2.0.0-loopback',
+    localLoopbackPort = 3099
 } = {}) {
     await asegurarTablaZebraQueue();
+    const finalStationId = String(stationId || estacionId || 'PCALMACEN').trim();
+    const isOnline = String(estadoImpresora || 'ONLINE').toUpperCase() === 'ONLINE';
+    const hostName = os.hostname();
     try {
-        await pool.query(
-            `INSERT INTO public.zebra_bridge_status (estacion_id, ultimo_heartbeat, ip_origen, estado_impresora, version_agente)
-             VALUES ($1, NOW(), $2, $3, $4)
-             ON CONFLICT (estacion_id) DO UPDATE SET
-                ultimo_heartbeat = NOW(),
+        const res = await pool.query(
+            `INSERT INTO public.zebra_bridge_status
+                (station_id, last_heartbeat_at, printer_name, printer_online, hostname, ip_origen, estado_impresora, version_agente, local_loopback_port, updated_at)
+             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, NOW())
+             ON CONFLICT (station_id) DO UPDATE SET
+                last_heartbeat_at = NOW(),
+                printer_name = EXCLUDED.printer_name,
+                printer_online = EXCLUDED.printer_online,
+                hostname = EXCLUDED.hostname,
                 ip_origen = EXCLUDED.ip_origen,
                 estado_impresora = EXCLUDED.estado_impresora,
-                version_agente = EXCLUDED.version_agente`,
-            [estacionId, ipOrigen, estadoImpresora, versionAgente]
+                version_agente = EXCLUDED.version_agente,
+                local_loopback_port = EXCLUDED.local_loopback_port,
+                updated_at = NOW()
+             RETURNING *`,
+            [finalStationId, printerName, isOnline, hostName, ipOrigen, estadoImpresora, versionAgente, localLoopbackPort]
         );
-    } catch (_) {}
+        return { ok: true, status: res.rows[0] || null };
+    } catch (err) {
+        console.warn('⚠️ [ZEBRA-BRIDGE] Error registrando heartbeat en zebra_bridge_status:', err.message);
+        return { ok: false, error: err.message };
+    }
 }
 
 function ejecutarCopyWindowsZebra(zplPayload, nombreImpresora = 'Zebra') {

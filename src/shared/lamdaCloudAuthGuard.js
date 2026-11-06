@@ -74,6 +74,9 @@ function emitirCookieSesionCloud(arg1, arg2, arg3) {
         res = arg1;
         payloadOrToken = arg2;
     }
+    if (!req && res && res.req) {
+        req = res.req;
+    }
     let tokenStr = '';
     if (typeof payloadOrToken === 'string' && payloadOrToken.split('.').length === 3) {
         tokenStr = payloadOrToken;
@@ -204,10 +207,17 @@ function esRutaPublicaAllowlist(reqOrPath) {
         return true;
     }
 
-    // 3. Prefijos públicos autorizados
+    // 3. Resolución QR Pública (únicamente GET exacto con un solo segmento :token)
+    const reqMethod = String(reqObj.method || 'GET').toUpperCase();
     if (
-        reqPathLower.startsWith('/api/logistica/public-qr-resolve/') ||
-        reqPathLower.startsWith('/api/logistica/movil/public-qr-resolve/') ||
+        reqMethod === 'GET' &&
+        /^\/api\/logistica\/(movil\/)?public-qr-resolve\/[^/]+$/i.test(reqPathLower)
+    ) {
+        return true;
+    }
+
+    // 3B. Prefijos públicos autorizados de sistema/login
+    if (
         reqPathLower.startsWith('/api/system/print-queue/agent-ack/') ||
         reqPathLower.startsWith('/api/usuarios/con-permiso/') ||
         reqPathLower.startsWith('/gw/3000/api/usuarios/con-permiso/')
@@ -327,7 +337,12 @@ function lamdaCloudAuthGuard(req, res, next) {
     if (validUser) {
         req.lamdaUser = validUser;
         if (!req.headers.authorization && validUser.id) {
-            req.headers.authorization = 'Bearer ' + Buffer.from(validUser.id + ':' + Date.now()).toString('base64');
+            const p = String(req.path || req.url || '');
+            if (p.startsWith('/api/logistica/movil')) {
+                req.headers.authorization = 'Bearer ' + Buffer.from(validUser.id + ':' + Date.now()).toString('base64');
+            } else {
+                req.headers.authorization = 'Bearer ' + firmarJwtSesion(validUser);
+            }
         }
         // Si vino por Header pero aún no tenía la cookie HttpOnly, sincronizarla automáticamente
         if (!userFromCookie && userFromHeader && res && typeof res.setHeader === 'function') {

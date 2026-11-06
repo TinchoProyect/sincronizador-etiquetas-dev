@@ -96,7 +96,7 @@ router.use((req, res, next) => {
  * @desc Resolver cualquier token de QR (UUID, token corto msf... o ID local entero) a su UUID de Supabase B2B.
  * @access Público (Sin autenticación para lectura de QR B2B)
  */
-router.get('/public-qr-resolve/:token', async (req, res) => {
+async function resolverQrPublicoHandler(req, res) {
     try {
         const token = String(req.params.token || '').trim();
         if (!token) {
@@ -136,7 +136,9 @@ router.get('/public-qr-resolve/:token', async (req, res) => {
         console.error('❌ Error en public-qr-resolve:', err.message);
         return res.status(500).json({ success: false, error: err.message });
     }
-});
+}
+router.get('/public-qr-resolve/:token', resolverQrPublicoHandler);
+router.resolverQrPublicoHandler = resolverQrPublicoHandler;
 
 /**
  * @route POST /api/logistica/movil/login

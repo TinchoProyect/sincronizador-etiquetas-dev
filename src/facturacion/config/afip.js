@@ -15,7 +15,10 @@ console.log('🔍 [FACTURACION-AFIP] Cargando configuración de AFIP...');
 
 const IS_MODO_LABORATORIO =
     String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' ||
-    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
+    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
+    String(process.env.MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
+    String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase() === 'true' ||
+    String(process.env.LAMDA_ROLE || '').trim().toUpperCase() === 'GALPON_BRIDGE_ONLY';
 
 // Entorno actual (HOMO o PROD) — En Modo Laboratorio siempre se fuerza HOMO
 const ENTORNO = IS_MODO_LABORATORIO ? 'HOMO' : (process.env.AFIP_ENV || 'HOMO');

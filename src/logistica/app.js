@@ -118,7 +118,7 @@ app.get('/login', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).send(renderLoginHtmlPage(redirectUrl));
 });
-app.post('/login', express.json(), express.urlencoded({ extended: true }), require('../usuarios/login'));
+app.post('/login', express.json(), express.urlencoded({ extended: true }), require('../usuarios/login').login);
 app.all('/logout', (req, res) => {
     limpiarCookieSesionCloud(res);
     if (req.method === 'GET') {
@@ -146,6 +146,58 @@ app.use((req, res, next) => {
 // 🛡️ Escudo Unificado de Autenticación Cloud 24/7 (Cookie HttpOnly lamda_cloud_jwt + Bearer)
 // Protege /pages/*, /gw/3000..3004 y /api/* salvo la lista blanca pública
 app.use(lamdaCloudAuthGuard);
+
+// 🌐 Fallback por Referer para Sub-Rutas Relativas a la Raíz bajo /gw/3000..3004
+// Si una página servida desde /gw/300X/... solicita /js/..., /css/..., /facturacion/... o /api/...
+// sin prefijo /gw/300X, se reescribe hacia el Gateway correspondiente antes de los estáticos de 3005.
+app.use((req, res, next) => {
+    const reqPath = req.path || '/';
+    if (reqPath.startsWith('/gw/300')) return next();
+    const referer = String(req.headers.referer || req.headers.referrer || '');
+    const gwMatch = /\/gw\/(300[0234])(\/|$)/i.exec(referer);
+    if (!gwMatch) return next();
+    const gwPort = gwMatch[1];
+    if (
+        reqPath.startsWith('/api/logistica') ||
+        reqPath.startsWith('/api/bunker') ||
+        reqPath.startsWith('/api/b2b') ||
+        reqPath.startsWith('/api/system') ||
+        reqPath === '/lamda-cloud-runtime.js' ||
+        reqPath === '/env-config.js' ||
+        reqPath === '/login' ||
+        reqPath === '/logout' ||
+        reqPath === '/health' ||
+        reqPath.startsWith('/mobile') ||
+        reqPath === '/institucional.html' ||
+        reqPath === '/catalogo-publico.json'
+    ) {
+        return next();
+    }
+    req.url = `/gw/${gwPort}${req.url}`;
+    req.originalUrl = `/gw/${gwPort}${req.originalUrl || req.url}`;
+    return next();
+});
+
+// 🌐 GATEWAY UNIFICADO CLOUD 24/7 (/gw/3000, /gw/3002, /gw/3003, /gw/3004)
+[
+    { prefix: '/gw/3000', target: 'http://127.0.0.1:3000', name: 'Etiquetas (3000)' },
+    { prefix: '/gw/3002', target: 'http://127.0.0.1:3002', name: 'Producción (3002)' },
+    { prefix: '/gw/3003', target: 'http://127.0.0.1:3003', name: 'Presupuestos (3003)' },
+    { prefix: '/gw/3004', target: 'http://127.0.0.1:3004', name: 'Facturación (3004)' }
+].forEach(({ prefix, target, name }) => {
+    app.use(prefix, createProxyMiddleware({
+        target,
+        changeOrigin: true,
+        ws: true,
+        pathRewrite: (pathUrl) => pathUrl.replace(new RegExp('^' + prefix), '') || '/',
+        onError: (err, req, res) => {
+            console.error(`[LOGISTICA-GW] ❌ Error en Gateway ${name}:`, err.message);
+            if (!res.headersSent) {
+                res.status(503).json({ error: `Módulo ${name} fuera de línea.` });
+            }
+        }
+    }));
+});
 app.use(express.static(staticPath));
 app.use('/pages', express.static(path.join(staticPath, 'pages')));
 app.use('/js', express.static(path.join(staticPath, 'js')));
@@ -277,28 +329,6 @@ app.use('/api/facturacion', createProxyMiddleware({
 // Middleware básico (Parseo de Body para RUTAS NATIVAS de Logística)
 // Se inyecta aquí para no interferir con el parseo en crudo del Proxy.
 
-// 🌐 GATEWAY UNIFICADO CLOUD 24/7 (/gw/3000, /gw/3002, /gw/3003, /gw/3004)
-// Permite que todas las pantallas y endpoints operen bajo un único dominio HTTPS (3005)
-// sin romper el funcionamiento local multi-puerto.
-[
-    { prefix: '/gw/3000', target: 'http://127.0.0.1:3000', name: 'Etiquetas (3000)' },
-    { prefix: '/gw/3002', target: 'http://127.0.0.1:3002', name: 'Producción (3002)' },
-    { prefix: '/gw/3003', target: 'http://127.0.0.1:3003', name: 'Presupuestos (3003)' },
-    { prefix: '/gw/3004', target: 'http://127.0.0.1:3004', name: 'Facturación (3004)' }
-].forEach(({ prefix, target, name }) => {
-    app.use(prefix, createProxyMiddleware({
-        target,
-        changeOrigin: true,
-        ws: true,
-        pathRewrite: (pathUrl) => pathUrl.replace(new RegExp('^' + prefix), '') || '/',
-        onError: (err, req, res) => {
-            console.error(`[LOGISTICA-GW] ❌ Error en Gateway ${name}:`, err.message);
-            if (!res.headersSent) {
-                res.status(503).json({ error: `Módulo ${name} fuera de línea.` });
-            }
-        }
-    }));
-});
 
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ extended: true, limit: '200mb' }));
@@ -378,9 +408,10 @@ console.log('[LOGISTICA] ✅ Rutas de Presupuestos montadas en /api/logistica/pr
 app.use('/api/logistica/usuarios', require('./routes/usuarios'));
 console.log('[LOGISTICA] ✅ Rutas de Usuarios montadas en /api/logistica/usuarios');
 
-// Rutas de Móvil y Resolución QR Pública
-app.use('/api/logistica/movil', require('./routes/movil'));
-app.use('/api/logistica/public-qr-resolve', require('./routes/movil'));
+// Rutas de Móvil y Resolución QR Pública (sin exponer rutas privadas de móvil)
+const movilRouter = require('./routes/movil');
+app.use('/api/logistica/movil', movilRouter);
+app.get('/api/logistica/public-qr-resolve/:token', movilRouter.resolverQrPublicoHandler);
 console.log('[LOGISTICA] ✅ Rutas de Móvil y Resolución QR montadas');
 
 // Rutas de Diagnóstico (desarrollo)
