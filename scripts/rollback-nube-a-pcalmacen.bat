@@ -17,6 +17,12 @@ if exist "C:\Program Files\PostgreSQL\17\bin\psql.exe" (
     set PSQL_BIN="C:\Program Files\PostgreSQL\17\bin\psql.exe"
 ) else if exist "C:\Program Files\PostgreSQL\16\bin\psql.exe" (
     set PSQL_BIN="C:\Program Files\PostgreSQL\16\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\15\bin\psql.exe" (
+    set PSQL_BIN="C:\Program Files\PostgreSQL\15\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\14\bin\psql.exe" (
+    set PSQL_BIN="C:\Program Files\PostgreSQL\14\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\13\bin\psql.exe" (
+    set PSQL_BIN="C:\Program Files\PostgreSQL\13\bin\psql.exe"
 ) else (
     set PSQL_BIN=psql
 )

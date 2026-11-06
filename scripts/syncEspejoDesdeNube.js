@@ -71,6 +71,9 @@ function detectarBinarioPostgres(binName) {
         `C:\\Program Files\\PostgreSQL\\17\\bin\\${binName}.exe`,
         `C:\\Program Files\\PostgreSQL\\16\\bin\\${binName}.exe`,
         `C:\\Program Files\\PostgreSQL\\15\\bin\\${binName}.exe`,
+        `C:\\Program Files\\PostgreSQL\\14\\bin\\${binName}.exe`,
+        `C:\\Program Files\\PostgreSQL\\13\\bin\\${binName}.exe`,
+        `C:\\Program Files\\PostgreSQL\\12\\bin\\${binName}.exe`,
         binName
     ].filter(Boolean);
 
