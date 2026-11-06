@@ -152,8 +152,42 @@ app.use(lamdaCloudAuthGuard);
 // 🌐 Fallback por Referer para Sub-Rutas Relativas a la Raíz bajo /gw/3000..3004
 // Si una página servida desde /gw/300X/... solicita /js/..., /css/..., /facturacion/... o /api/...
 // sin prefijo /gw/300X, se reescribe hacia el Gateway correspondiente antes de los estáticos de 3005.
+function resolvePageCanonicalRoute(reqPath, qs) {
+    const m = /^(?:\/gw\/(300[0234]))?\/pages\/([^/?#]+\.html)$/i.exec(reqPath || '');
+    if (!m) return null;
+    const fileName = m[2];
+    if (fs.existsSync(path.join(staticPath, 'pages', fileName))) {
+        return { owner: '3005', canonicalPath: `/pages/${fileName}`, url: `/pages/${fileName}${qs || ''}` };
+    }
+    const moduleDirs = [
+        { gw: '3000', dir: path.join(__dirname, '../app-etiquetas/pages') },
+        { gw: '3002', dir: path.join(__dirname, '../produccion/pages') },
+        { gw: '3003', dir: path.join(__dirname, '../presupuestos/pages') },
+        { gw: '3004', dir: path.join(__dirname, '../facturacion/pages') }
+    ];
+    for (const mod of moduleDirs) {
+        if (fs.existsSync(path.join(mod.dir, fileName))) {
+            return { owner: mod.gw, canonicalPath: `/gw/${mod.gw}/pages/${fileName}`, url: `/gw/${mod.gw}/pages/${fileName}${qs || ''}` };
+        }
+    }
+    return null;
+}
+
 app.use((req, res, next) => {
     const reqPath = req.path || '/';
+    const qIdx = (req.originalUrl || req.url || '').indexOf('?');
+    const qs = qIdx !== -1 ? (req.originalUrl || req.url).slice(qIdx) : '';
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+        const pageRoute = resolvePageCanonicalRoute(reqPath, qs);
+        if (pageRoute) {
+            if (reqPath !== pageRoute.canonicalPath) {
+                return res.redirect(302, pageRoute.url);
+            }
+            return next();
+        }
+    }
+
     if (reqPath.startsWith('/gw/300')) return next();
     const referer = String(req.headers.referer || req.headers.referrer || '');
     const gwMatch = /\/gw\/(300[0234])(\/|$)/i.exec(referer);
@@ -164,6 +198,11 @@ app.use((req, res, next) => {
         reqPath.startsWith('/api/bunker') ||
         reqPath.startsWith('/api/b2b') ||
         reqPath.startsWith('/api/system') ||
+        reqPath.startsWith('/api/presupuestos') ||
+        reqPath.startsWith('/api/supabase') ||
+        reqPath.startsWith('/api/produccion') ||
+        reqPath.startsWith('/api/tiempos') ||
+        reqPath.startsWith('/api/facturacion') ||
         reqPath === '/lamda-cloud-runtime.js' ||
         reqPath === '/env-config.js' ||
         reqPath === '/login' ||

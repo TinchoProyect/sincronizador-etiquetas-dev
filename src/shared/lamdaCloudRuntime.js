@@ -91,7 +91,9 @@ const CLIENT_RUNTIME_SCRIPT = `
         var locPath = (window.location && window.location.pathname) ? window.location.pathname : '';
         var gwMatch = /^\\/gw\\/(300[0234])(\\/|$)/i.exec(locPath);
         if (gwMatch && resolved.charAt(0) === '/' && resolved.charAt(1) !== '/') {
+            var isLogisticaPage = /^\/pages\/(auditoria-rutas|bunker|config-puntos|configuracion-jerarquia-b2b|cuenta-corriente|dashboard|diccionario-bunker|historial-auditorias|ingesta-satelital|listado-bunker|listado-clientes|prospectos|recepcion-efectivo|tratamiento-checkin)\.html([?#]|$)/i.test(resolved);
             var isRootGatewayRoute =
+                isLogisticaPage ||
                 resolved.indexOf('/gw/300') === 0 ||
                 resolved.indexOf('/api/logistica') === 0 ||
                 resolved.indexOf('/api/bunker') === 0 ||

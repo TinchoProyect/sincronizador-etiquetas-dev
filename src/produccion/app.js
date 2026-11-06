@@ -77,6 +77,10 @@ app.get('/api/supabase/lotes', async (req, res) => {
                        impuesto_iva, fecha_vinculacion, lote_codigo_corto, proveedor_nombre,
                        articulo_descripcion, producto_codigo, numero_remito
                 FROM public.bunker_lotes_vinculos
+                WHERE id::text <> COALESCE(lote_id_supabase::text, '')
+                  AND proveedor_nombre IS NOT NULL
+                  AND TRIM(proveedor_nombre) <> ''
+                  AND COALESCE(cantidad_total_lote, 0) > 0
                 ORDER BY fecha_vinculacion DESC
                 LIMIT 100
             `);
