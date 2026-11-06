@@ -115,7 +115,7 @@ app.use(galponBridgeRoleLockMiddleware);
 
 // 🔐 Rutas Públicas de Autenticación Unificada (/login y /logout en Gateway 3005)
 app.get('/login', (req, res) => {
-    const redirectUrl = req.query.redirect || '/pages/dashboard.html';
+    const redirectUrl = req.query.redirect || '/gw/3000/';
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).send(renderLoginHtmlPage(redirectUrl));
@@ -181,6 +181,36 @@ app.use((req, res, next) => {
     req.url = `/gw/${gwPort}${req.url}`;
     req.originalUrl = `/gw/${gwPort}${req.originalUrl || req.url}`;
     return next();
+});
+
+// 🧭 Normalización de barra final y entradas de módulos bajo Gateway Unificado (/gw/3000..3004 y /presupuestos)
+// Evita que el navegador cargue /gw/3000 sin barra final (lo cual resolvería css/style.css hacia /gw/css/style.css -> 404).
+app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const p = req.path || '';
+    const qIdx = (req.originalUrl || req.url || '').indexOf('?');
+    const qs = qIdx !== -1 ? (req.originalUrl || req.url).slice(qIdx) : '';
+
+    if (/^\/gw\/3000$/i.test(p)) {
+        return res.redirect(302, '/gw/3000/' + qs);
+    }
+    if (/^\/gw\/3002\/?$/i.test(p)) {
+        return res.redirect(302, '/gw/3002/pages/produccion.html' + qs);
+    }
+    if (/^(\/gw\/3003|\/presupuestos)\/?$/i.test(p)) {
+        return res.redirect(302, '/gw/3003/pages/presupuestos.html' + qs);
+    }
+    if (/^\/gw\/3004\/?$/i.test(p)) {
+        return res.redirect(302, '/gw/3004/pages/facturas.html' + qs);
+    }
+    // Resguardo defensivo: si algún recurso relativo se pidió bajo /gw/(css|js|img|pages|documentos)/...,
+    // reescribirlo hacia /gw/3000/...
+    const orphanGwAsset = /^\/gw\/(css|js|img|pages|documentos|favicon\.ico)(\/.*|$)/i.exec(p);
+    if (orphanGwAsset) {
+        req.url = '/gw/3000/' + orphanGwAsset[1] + (orphanGwAsset[2] || '') + qs;
+        req.originalUrl = req.url;
+    }
+    next();
 });
 
 // 🌐 GATEWAY UNIFICADO CLOUD 24/7 (/gw/3000, /gw/3002, /gw/3003, /gw/3004)
@@ -342,10 +372,16 @@ app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
 attachLamdaCloudRuntime(app, PORT);
 
-// Ruta raíz - redirigir al dashboard
+// Ruta raíz - en Dominio Único Cloud lleva a la Página Principal (/gw/3000/); en puerto local 3005 abre el dashboard de Logística
 app.get('/', (req, res) => {
-    console.log('[LOGISTICA] Acceso a ruta raíz - redirigiendo a dashboard');
-    res.redirect('/pages/dashboard.html');
+    const hostHeader = String(req.headers.host || '').toLowerCase();
+    const isLocalDirect3005 = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(hostHeader) && !req.headers['x-forwarded-proto'] && !req.headers['cf-connecting-ip'];
+    if (!isLocalDirect3005) {
+        console.log('[LOGISTICA] Acceso a ruta raíz Cloud - redirigiendo a Página Principal (/gw/3000/)');
+        return res.redirect(302, '/gw/3000/');
+    }
+    console.log('[LOGISTICA] Acceso a ruta raíz local (3005) - redirigiendo a dashboard');
+    return res.redirect('/pages/dashboard.html');
 });
 
 // Solución dinámica para inyección de IP Pública en Frontend

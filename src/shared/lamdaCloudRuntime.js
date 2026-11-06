@@ -63,12 +63,27 @@ const CLIENT_RUNTIME_SCRIPT = `
         var resolved = rawUrl;
         if (isCloudSinglePortOrigin()) {
             var origin = window.location.origin;
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005\\/?$/i.test(resolved)) {
+                return origin + '/pages/dashboard.html';
+            }
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000\\/?$/i.test(resolved)) {
+                return origin + '/gw/3000/';
+            }
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002\\/?$/i.test(resolved)) {
+                return origin + '/gw/3002/pages/produccion.html';
+            }
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003\\/?$/i.test(resolved) || /^\\/presupuestos\\/?$/i.test(resolved)) {
+                return origin + '/gw/3003/pages/presupuestos.html';
+            }
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004\\/?$/i.test(resolved)) {
+                return origin + '/gw/3004/pages/facturas.html';
+            }
             resolved = resolved
                 .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005(\\/|$)/i, origin + '$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000(\\/|$)/i, origin + '/gw/3000$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002(\\/|$)/i, origin + '/gw/3002$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003(\\/|$)/i, origin + '/gw/3003$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004$2');
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000(\\/|$)/i, origin + '/gw/3000/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002(\\/|$)/i, origin + '/gw/3002/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003(\\/|$)/i, origin + '/gw/3003/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004/');
         }
 
         // Si el navegador está bajo /gw/(300[0234])/ y la URL es relativa a la raíz (/...),
@@ -208,12 +223,12 @@ const CLIENT_RUNTIME_SCRIPT = `
         };
     }
 
-    // 4. Interceptar clics en enlaces <a href="http://localhost:300X...">
+    // 4. Interceptar clics en enlaces <a href="http://localhost:300X..."> o "/presupuestos"
     document.addEventListener('click', function(e) {
         var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
         if (!anchor) return;
         var href = anchor.getAttribute('href');
-        if (href && /^https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5]/i.test(href)) {
+        if (href && (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5]/i.test(href) || /^\\/presupuestos(\\/|$)/i.test(href))) {
             var resolved = window.LAMDA_RESOLVE_URL(href);
             if (resolved !== href) {
                 anchor.setAttribute('href', resolved);

@@ -394,7 +394,9 @@ function lamdaCloudAuthGuard(req, res, next) {
         return res.redirect(302, '/mobile/index.html');
     }
 
-    const returnTo = encodeURIComponent(req.originalUrl || req.url || '/');
+    const rawUrl = req.originalUrl || req.url || '/';
+    const targetAfterLogin = (rawUrl === '/' || rawUrl === '/login') ? '/gw/3000/' : rawUrl;
+    const returnTo = encodeURIComponent(targetAfterLogin);
     return res.redirect(302, `/login?redirect=${returnTo}`);
 }
 
@@ -543,7 +545,18 @@ function renderLoginHtmlPage() {
                     sessionStorage.setItem('sesion_chofer', sesChofer);
                 }
                 var params = new URLSearchParams(window.location.search);
-                var redirect = params.get('redirect') || '/pages/dashboard.html';
+                var redirect = params.get('redirect') || '/gw/3000/';
+                if (redirect === '/' || redirect === '/login') {
+                    redirect = '/gw/3000/';
+                } else if (/^\/gw\/3000$/i.test(redirect)) {
+                    redirect = '/gw/3000/';
+                } else if (/^\/gw\/3002\/?$/i.test(redirect)) {
+                    redirect = '/gw/3002/pages/produccion.html';
+                } else if (/^(\/gw\/3003|\/presupuestos)\/?$/i.test(redirect)) {
+                    redirect = '/gw/3003/pages/presupuestos.html';
+                } else if (/^\/gw\/3004\/?$/i.test(redirect)) {
+                    redirect = '/gw/3004/pages/facturas.html';
+                }
                 window.location.replace(redirect);
             } catch (err) {
                 errBox.textContent = err.message || 'Error al iniciar sesión';

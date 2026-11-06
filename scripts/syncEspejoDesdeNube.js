@@ -6,19 +6,17 @@
  *  1. Descarga el dump completo de PostgreSQL (`pg_dump`) hacia `backups/espejo_nube/etiquetas_nube_latest.sql`
  *     (vía túnel SSH comprimido si `CLOUD_SSH_HOST` está definido, ya que el puerto 5432 del VPS está cerrado a internet)
  *     y lo restaura sobre la base local de respaldo (`etiquetas_espejo_nube` o la indicada en `LOCAL_MIRROR_DB_NAME`).
- *  2. Barrera de seguridad innegociable: JAMÁS permite restaurar sobre la base productiva `etiquetas`.
+ *  2. Barrera de seguridad innegociable:
+ *     - JAMÁS permite restaurar sobre la base productiva `etiquetas`.
+ *     - Mientras `PcAlmacen` NO esté en rol `GALPON_BRIDGE_ONLY` (y no se haya definido `MIRROR_ASSETS_ROOT`),
+ *       desvía la descarga de archivos físicos y la reconstrucción del TA de ARCA hacia una carpeta aislada
+ *       (`backups/espejo_nube/assets_mirror`) para no pisar archivos locales de `ROOT_DIR` antes del corte.
  *  3. Si `LAMDA_ROLE=GALPON_BRIDGE_ONLY`, asegura que la base local `etiquetas` mantenga
  *     `default_transaction_read_only = on` (Capa 3 del Triple Candado Anti-Doble Arranque).
- *  4. Reconstruye en disco (`src/facturacion/certs/TA-*.json`) el Ticket de Acceso vigente de ARCA/AFIP
- *     leído desde `public.factura_afip_ta` para que un eventual Rollback (< 3 min) jamás pida un
- *     TA duplicado ni provoque bloqueo de 12 horas en AFIP.
- *  5. Sincroniza por SSH/SCP los 6 activos físicos fuera de BD (`ASSET_PATHS`):
- *     - `src/logistica/public/uploads`
- *     - `src/facturacion/pdfs`
- *     - `src/facturacion/certs`
- *     - `src/app-etiquetas/documentos`
- *     - `src/services/gsheets`
- *     - `data/ia_credito_ledger.json`
+ *  4. Sincroniza por SSH/SCP los 6 activos físicos fuera de BD (`ASSET_PATHS`) y luego reconstruye en disco
+ *     (`src/facturacion/certs/TA-*.json`) el Ticket de Acceso vigente de ARCA/AFIP leído desde `public.factura_afip_ta`,
+ *     comparando siempre las fechas de vencimiento (`expirationtime` vs `expira_en`) para que jamás se pise
+ *     un TA más reciente por uno anterior.
  */
 
 const fs = require('fs');
@@ -40,6 +38,10 @@ const ASSET_PATHS = [
     'data/ia_credito_ledger.json'
 ];
 
+function esRolGalponBridgeOnly() {
+    return String(process.env.LAMDA_ROLE || '').trim().toUpperCase() === 'GALPON_BRIDGE_ONLY';
+}
+
 function obtenerDirectorioEspejo() {
     if (process.env.MIRROR_BACKUP_DIR) {
         return path.resolve(process.env.MIRROR_BACKUP_DIR);
@@ -47,11 +49,19 @@ function obtenerDirectorioEspejo() {
     return path.resolve(ROOT_DIR, 'backups/espejo_nube');
 }
 
+/**
+ * Mientras `PcAlmacen` no esté en `LAMDA_ROLE=GALPON_BRIDGE_ONLY` y no se haya fijado
+ * `MIRROR_ASSETS_ROOT`, desvía activos físicos y tickets TA a `backups/espejo_nube/assets_mirror`
+ * para no pisar archivos vivos de `ROOT_DIR` antes del corte.
+ */
 function obtenerRaizActivos() {
     if (process.env.MIRROR_ASSETS_ROOT) {
         return path.resolve(process.env.MIRROR_ASSETS_ROOT);
     }
-    return ROOT_DIR;
+    if (esRolGalponBridgeOnly()) {
+        return ROOT_DIR;
+    }
+    return path.join(obtenerDirectorioEspejo(), 'assets_mirror');
 }
 
 function detectarClaveSsh() {
@@ -83,6 +93,63 @@ function detectarBinarioPostgres(binName) {
     return binName;
 }
 
+/**
+ * Extrae el timestamp en milisegundos del vencimiento (`expirationtime`) de un objeto o archivo `TA-*.json`.
+ */
+function obtenerExpiracionTaMs(taObjOrRaw) {
+    try {
+        const obj = typeof taObjOrRaw === 'string' ? JSON.parse(taObjOrRaw) : taObjOrRaw;
+        if (!obj || typeof obj !== 'object') return 0;
+        const expHeader =
+            (Array.isArray(obj.header) && obj.header[1] && obj.header[1].expirationtime) ||
+            (obj.header && obj.header.expirationtime) ||
+            (obj.credentials && obj.credentials.expirationtime) ||
+            obj.expira_en ||
+            null;
+        if (!expHeader) return 0;
+        const ms = new Date(expHeader).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    } catch (_) {
+        return 0;
+    }
+}
+
+function capturarSnapshotTasEnDisco(certsDir) {
+    const snapshot = new Map();
+    if (!fs.existsSync(certsDir)) return snapshot;
+    try {
+        for (const name of fs.readdirSync(certsDir)) {
+            if (/^TA-.*\.json$/i.test(name)) {
+                const full = path.join(certsDir, name);
+                const raw = fs.readFileSync(full, 'utf8');
+                snapshot.set(name, {
+                    raw,
+                    expMs: obtenerExpiracionTaMs(raw)
+                });
+            }
+        }
+    } catch (_) {}
+    return snapshot;
+}
+
+function protegerTasMasRecientesTrasExtraccion(certsDir, preExtractSnapshot) {
+    if (!preExtractSnapshot || preExtractSnapshot.size === 0 || !fs.existsSync(certsDir)) return;
+    for (const [name, prev] of preExtractSnapshot.entries()) {
+        if (!prev.expMs) continue;
+        const full = path.join(certsDir, name);
+        let currentExpMs = 0;
+        if (fs.existsSync(full)) {
+            try {
+                currentExpMs = obtenerExpiracionTaMs(fs.readFileSync(full, 'utf8'));
+            } catch (_) {}
+        }
+        if (prev.expMs > currentExpMs) {
+            fs.writeFileSync(full, prev.raw, 'utf8');
+            console.log(`🛡️ [ESPEJO-NUBE] Conservado ${name} previo en disco por tener vencimiento más reciente (${new Date(prev.expMs).toISOString()}).`);
+        }
+    }
+}
+
 async function reconstruirTaAfipDesdeBase(dbConfig, assetsRoot = obtenerRaizActivos()) {
     const certsDir = path.resolve(assetsRoot, 'src/facturacion/certs');
     const client = new Client(dbConfig);
@@ -105,12 +172,30 @@ async function reconstruirTaAfipDesdeBase(dbConfig, assetsRoot = obtenerRaizActi
             const fileName = `TA-${cuit}-${service}${isProd ? '-production' : ''}.json`;
             const targetFile = path.join(certsDir, fileName);
 
+            const dbExpMs = new Date(row.expira_en).getTime();
+            if (!Number.isFinite(dbExpMs) || dbExpMs <= Date.now()) {
+                continue;
+            }
+
+            let diskExpMs = 0;
+            if (fs.existsSync(targetFile)) {
+                try {
+                    diskExpMs = obtenerExpiracionTaMs(fs.readFileSync(targetFile, 'utf8'));
+                } catch (_) {}
+            }
+
+            if (diskExpMs > dbExpMs) {
+                console.log(`🛡️ [ESPEJO-NUBE] El archivo ${fileName} en disco tiene vencimiento más reciente (${new Date(diskExpMs).toISOString()}) que la BD (${new Date(dbExpMs).toISOString()}); no se pisa.`);
+                count++;
+                continue;
+            }
+
             const payload = (row.ta_raw_json && typeof row.ta_raw_json === 'object' && row.ta_raw_json.credentials)
                 ? row.ta_raw_json
                 : {
                     header: [
                         { version: '1.0' },
-                        { expirationtime: new Date(row.expira_en).toISOString() }
+                        { expirationtime: new Date(dbExpMs).toISOString() }
                     ],
                     credentials: {
                         token: row.token,
@@ -130,8 +215,7 @@ async function reconstruirTaAfipDesdeBase(dbConfig, assetsRoot = obtenerRaizActi
 }
 
 async function aplicarCandadoReadOnlySiCorresponde(localPgConfig) {
-    const role = String(process.env.LAMDA_ROLE || '').trim().toUpperCase();
-    if (role !== 'GALPON_BRIDGE_ONLY') return;
+    if (!esRolGalponBridgeOnly()) return;
 
     const client = new Client({ ...localPgConfig, database: 'postgres' });
     try {
@@ -162,6 +246,9 @@ function sincronizarArchivosFisicosSSH(assetsRoot = obtenerRaizActivos(), mirror
         fs.mkdirSync(assetsRoot, { recursive: true });
     }
 
+    const certsDir = path.resolve(assetsRoot, 'src/facturacion/certs');
+    const preExtractTaSnapshot = capturarSnapshotTasEnDisco(certsDir);
+
     const remoteTar = '/tmp/lamda_assets_mirror.tar.gz';
     const localTar = path.join(mirrorDir, 'lamda_assets_mirror.tar.gz');
     const relList = ASSET_PATHS.map(p => `"${p}"`).join(' ');
@@ -179,6 +266,7 @@ function sincronizarArchivosFisicosSSH(assetsRoot = obtenerRaizActivos(), mirror
             `tar -xzf "${localTar}" -C "${assetsRoot}"`,
             { stdio: 'pipe', timeout: 120000 }
         );
+        protegerTasMasRecientesTrasExtraccion(certsDir, preExtractTaSnapshot);
         const sincronizados = ASSET_PATHS.filter(rel => fs.existsSync(path.join(assetsRoot, rel)));
         console.log(`📁 [ESPEJO-NUBE] Activos físicos sincronizados (${sincronizados.length}/${ASSET_PATHS.length}) en ${assetsRoot}: ${sincronizados.join(', ')}`);
         return sincronizados;
@@ -200,6 +288,7 @@ function sincronizarArchivosFisicosSSH(assetsRoot = obtenerRaizActivos(), mirror
                 console.warn(`⚠️ [ESPEJO-NUBE] Aviso sincronizando ${relPath}: ${e2.message}`);
             }
         }
+        protegerTasMasRecientesTrasExtraccion(certsDir, preExtractTaSnapshot);
         return sincronizados;
     }
 }
@@ -211,6 +300,9 @@ async function ejecutarSincronizacionEspejo() {
 
     if (!fs.existsSync(mirrorDir)) {
         fs.mkdirSync(mirrorDir, { recursive: true });
+    }
+    if (!esRolGalponBridgeOnly() && !process.env.MIRROR_ASSETS_ROOT) {
+        console.log(`🛡️ [ESPEJO-NUBE] Modo seguro pre-corte (LAMDA_ROLE != GALPON_BRIDGE_ONLY): activos físicos y TA se guardarán aislados en ${assetsRoot} sin tocar ROOT_DIR.`);
     }
 
     const sshHost = String(process.env.CLOUD_SSH_HOST || '').trim();
@@ -239,7 +331,7 @@ async function ejecutarSincronizacionEspejo() {
     });
 
     if (!cloudHost && !sshHost) {
-        console.log('ℹ️ [ESPEJO-NUBE] CLOUD_DB_HOST / CLOUD_SSH_HOST aún no configurados en .env. Verificando reconstrucción local de TA AFIP...');
+        console.log('ℹ️ [ESPEJO-NUBE] CLOUD_DB_HOST / CLOUD_SSH_HOST aún no configurados en .env. Verificando reconstrucción de TA AFIP en carpeta destino...');
         const tas = await reconstruirTaAfipDesdeBase({
             host: localHost,
             port: localPort,
@@ -247,8 +339,8 @@ async function ejecutarSincronizacionEspejo() {
             password: localPass,
             database: process.env.DB_NAME || 'etiquetas'
         }, assetsRoot);
-        console.log(`✅ [ESPEJO-NUBE] Verificación local completada (${tas} TA(s) vigentes en disco).`);
-        return { ok: true, mode: 'local_check_only', tasReconstruidos: tas };
+        console.log(`✅ [ESPEJO-NUBE] Verificación completada (${tas} TA(s) vigentes en ${assetsRoot}).`);
+        return { ok: true, mode: 'local_check_only', assetsRoot, tasReconstruidos: tas };
     }
 
     const pgDumpBin = detectarBinarioPostgres('pg_dump');
@@ -302,6 +394,10 @@ async function ejecutarSincronizacionEspejo() {
         stdio: 'ignore'
     });
 
+    // Primero sincronizar archivos físicos y luego reconstruir el TA desde BD comparando vencimientos
+    // para que un archivo extraído del tar nunca pise un TA más reciente reconstruido desde PostgreSQL.
+    const activosSincronizados = sincronizarArchivosFisicosSSH(assetsRoot, mirrorDir);
+
     const tas = await reconstruirTaAfipDesdeBase({
         host: localHost,
         port: localPort,
@@ -310,14 +406,14 @@ async function ejecutarSincronizacionEspejo() {
         database: localMirrorDb
     }, assetsRoot);
 
-    const activosSincronizados = sincronizarArchivosFisicosSSH(assetsRoot, mirrorDir);
     const elapsedSeconds = Number(((Date.now() - t0) / 1000).toFixed(2));
 
-    console.log(`✅ [ESPEJO-NUBE] Espejo completado en ${elapsedSeconds}s (${latestPath}) -> BD \`${localMirrorDb}\` + ${tas} TA(s) AFIP + ${activosSincronizados.length} activos físicos.`);
+    console.log(`✅ [ESPEJO-NUBE] Espejo completado en ${elapsedSeconds}s (${latestPath}) -> BD \`${localMirrorDb}\` + ${tas} TA(s) AFIP + ${activosSincronizados.length} activos físicos en ${assetsRoot}.`);
     return {
         ok: true,
         localMirrorDb,
         latestPath,
+        assetsRoot,
         tasReconstruidos: tas,
         activosSincronizados,
         elapsedSeconds
@@ -334,5 +430,9 @@ if (require.main === module) {
 module.exports = {
     ejecutarSincronizacionEspejo,
     reconstruirTaAfipDesdeBase,
+    sincronizarArchivosFisicosSSH,
+    obtenerExpiracionTaMs,
+    obtenerRaizActivos,
+    detectarBinarioPostgres,
     ASSET_PATHS
 };
