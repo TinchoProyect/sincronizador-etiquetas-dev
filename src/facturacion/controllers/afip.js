@@ -3,7 +3,7 @@
  * Maneja las requests HTTP relacionadas con servicios AFIP
  */
 
-const { ultimoAutorizado } = require('../services/wsfeService');
+const { afip, ultimoAutorizado, obtenerRutaArchivoTA } = require('../services/wsfeService');
 const { sincronizarAfip, obtenerEstadoAfip } = require('../services/numeroService');
 const { formatearTimestamp } = require('../config/timezone');
 const { ENTORNO } = require('../config/afip');
@@ -184,17 +184,38 @@ const obtenerNumeracion = async (req, res) => {
  */
 const renovarTAHomo = async (req, res) => {
     console.log('🔄 [FACTURACION-AFIP-CTRL] POST /afip/homo/ta/refresh - Verificar/Renovar TA HOMO');
-
-    // El SDK de afip.js renueva el token tras bambalinas cuando es necesario. 
-    res.json({
-        success: true,
-        entorno: 'HOMO',
-        servicio: 'wsfe',
-        vigente: true,
-        renovado: true,
-        minutos_restantes: 720,
-        mensaje: `Renovación delegada exitosamente al SDK afip.js`
-    });
+    try {
+        const fs = require('fs');
+        await afip.GetServiceTA('wsfe');
+        const taPath = obtenerRutaArchivoTA('wsfe');
+        let expDate = new Date(Date.now() + 11 * 60 * 60 * 1000);
+        if (fs.existsSync(taPath)) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(taPath, 'utf8'));
+                const expStr = raw && raw.header && raw.header[1] && raw.header[1].expirationtime;
+                if (expStr) expDate = new Date(expStr);
+            } catch (_) {}
+        }
+        const minRestantes = Math.max(0, Math.round((expDate.getTime() - Date.now()) / 60000));
+        res.json({
+            success: true,
+            entorno: ENTORNO,
+            servicio: 'wsfe',
+            vigente: minRestantes > 0,
+            renovado: true,
+            expira_en: expDate.toISOString(),
+            expira_en_formatted: expDate.toLocaleString('es-AR'),
+            minutos_restantes: minRestantes,
+            mensaje: `Ticket de Acceso (${ENTORNO}/wsfe) verificado y sincronizado correctamente.`
+        });
+    } catch (error) {
+        console.error('❌ [FACTURACION-AFIP-CTRL] Error renovando TA:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Error al renovar TA de ARCA',
+            message: error.message
+        });
+    }
 };
 
 console.log('✅ [FACTURACION-AFIP-CTRL] Controlador de AFIP cargado');

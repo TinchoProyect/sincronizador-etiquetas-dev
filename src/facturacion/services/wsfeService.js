@@ -624,6 +624,7 @@ const consultarComprobante = async (ptoVta, tipoCbte, cbteNro, entorno = 'HOMO')
 console.log('✅ [FACTURACION-WSFE] Servicio WSFE cargado con afip.js');
 
 module.exports = {
+    afip,
     ultimoAutorizado,
     solicitarCAE,
     consultarComprobante,

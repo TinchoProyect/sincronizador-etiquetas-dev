@@ -586,7 +586,7 @@ exports.eliminar = async (req, res) => {
  */
 exports.consultarArca = async (req, res) => {
     try {
-        const { cuit_cuil } = req.body;
+        const cuit_cuil = (req.body && (req.body.cuit_cuil || req.body.cuit)) || '';
         
         // 1. Validar presencia del CUIT
         if (!cuit_cuil || !cuit_cuil.trim()) {
