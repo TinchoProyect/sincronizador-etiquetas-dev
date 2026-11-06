@@ -10,6 +10,7 @@
  *   node scripts/orquestadorSwitchLocalNube.js status          -> Chequeo completo de salud Pre-Vuelo (Sin cambios)
  *   node scripts/orquestadorSwitchLocalNube.js to-nube         -> Conmuta Producción de Local -> Nube
  *   node scripts/orquestadorSwitchLocalNube.js to-local        -> Conmuta Producción de Nube -> Local (con o sin Nube activa)
+ *   node scripts/orquestadorSwitchLocalNube.js local-json      -> Salida JSON de salud local (usado remotamente por SSH)
  */
 
 const fs = require('fs');
@@ -22,7 +23,7 @@ const { Client } = require('pg');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const ENV_PATH = path.resolve(ROOT_DIR, '.env');
-require('dotenv').config({ path: ENV_PATH });
+require('dotenv').config({ path: ENV_PATH, quiet: true });
 
 const TUNNEL_LOCAL_ID = 'd72f6c10-9fdc-4130-a0fb-ebadefb7006b';
 const TUNNEL_NUBE_ID = 'cf41c278-0a41-417f-9b99-806486fc166b';
@@ -33,10 +34,15 @@ const CLOUD_USER = process.env.CLOUD_SSH_USER || 'lamda_admin';
 const TARGET_DOMAINS = ['logistica.lamdaser.com', 'inventario.lamdaser.com'];
 
 function leerCredencialesCloudflare() {
-    if (!fs.existsSync(CERT_PEM_PATH)) {
-        throw new Error(`No se encontró ${CERT_PEM_PATH}`);
+    const candidates = [
+        CERT_PEM_PATH,
+        '/etc/cloudflared/cert.pem'
+    ];
+    const found = candidates.find(p => fs.existsSync(p));
+    if (!found) {
+        throw new Error(`No se encontró cert.pem en ${CERT_PEM_PATH}`);
     }
-    const pem = fs.readFileSync(CERT_PEM_PATH, 'utf8');
+    const pem = fs.readFileSync(found, 'utf8');
     const m = /-----BEGIN ARGO TUNNEL TOKEN-----\s*([\s\S]*?)\s*-----END ARGO TUNNEL TOKEN-----/.exec(pem);
     if (!m) throw new Error('Token de Cloudflare no válido en cert.pem');
     return JSON.parse(Buffer.from(m[1].replace(/\s+/g, ''), 'base64').toString('utf8'));
@@ -138,7 +144,7 @@ async function verificarSaludLocal() {
     const dbPassword = process.env.DB_PASSWORD || 'postgres';
     const dbName = 'etiquetas';
 
-    let dbInfo = { ok: false, readOnly: 'unknown', articulos: 0, facturas: 0, pedidos: 0, taVigentes: 0 };
+    let dbInfo = { ok: false, readOnly: 'unknown', articulos: 0, facturas: 0, clientes: 0, taVigentes: 0 };
     const client = new Client({ host: dbHost, port: dbPort, user: dbUser, password: dbPassword, database: dbName });
     try {
         await client.connect();
@@ -147,7 +153,7 @@ async function verificarSaludLocal() {
             SELECT
                 (SELECT COUNT(*) FROM public.bunker_articulos)::int AS articulos,
                 (SELECT COUNT(*) FROM public.factura_facturas)::int AS facturas,
-                (SELECT COUNT(*) FROM public.pedidos)::int AS pedidos,
+                (SELECT COUNT(*) FROM public.bunker_clientes)::int AS clientes,
                 (SELECT COUNT(*) FROM public.factura_afip_ta WHERE expira_en > NOW())::int AS ta_vigentes
         `);
         dbInfo = {
@@ -155,7 +161,7 @@ async function verificarSaludLocal() {
             readOnly: rRo.rows[0]?.default_transaction_read_only || 'off',
             articulos: rCounts.rows[0]?.articulos || 0,
             facturas: rCounts.rows[0]?.facturas || 0,
-            pedidos: rCounts.rows[0]?.pedidos || 0,
+            clientes: rCounts.rows[0]?.clientes || 0,
             taVigentes: rCounts.rows[0]?.ta_vigentes || 0
         };
     } catch (e) {
@@ -175,56 +181,32 @@ async function verificarSaludLocal() {
     ]);
 
     let waStatus = 'DESCONOCIDO';
+    let modoPruebaNube = false;
     try {
         const parsedWa = JSON.parse(waRes.body || '{}');
         waStatus = parsedWa?.data?.status || 'DESCONOCIDO';
+        modoPruebaNube = Boolean(parsedWa?.data?.modoPruebaNube);
     } catch (_) {}
 
     return {
+        reachable: true,
         db: dbInfo,
         portsOk: p3000.ok && p3002.ok && p3003.ok && p3004.ok && p3005.ok,
         zebraBridge3099Active: p3099.ok,
-        whatsappStatus: waStatus
+        whatsappStatus: waStatus,
+        modoPruebaNube
     };
 }
 
 function verificarSaludNube() {
     try {
-        const remoteScript = `
-            node -e '
-            const http = require("http");
-            const { Client } = require("pg");
-            require("dotenv").config({ path: "/opt/lamda/sincronizador-etiquetas/.env" });
-            function getH(p, u) {
-                return new Promise(r => {
-                    const req = http.get("http://127.0.0.1:"+p+u, {timeout:2500}, res => {
-                        let b=""; res.on("data",c=>b+=c); res.on("end",()=>r({ok:res.statusCode<500,body:b}));
-                    });
-                    req.on("error",()=>r({ok:false,body:""}));
-                    req.on("timeout",()=>{req.destroy();r({ok:false,body:""});});
-                });
-            }
-            (async()=>{
-                const cl = new Client({host:"localhost",port:5432,user:process.env.DB_USER||"postgres",password:process.env.DB_PASSWORD||"postgres",database:"etiquetas"});
-                let db = {ok:false};
-                try {
-                    await cl.connect();
-                    const rc = await cl.query("SELECT (SELECT COUNT(*) FROM public.bunker_articulos)::int AS articulos, (SELECT COUNT(*) FROM public.factura_facturas)::int AS facturas, (SELECT COUNT(*) FROM public.pedidos)::int AS pedidos, (SELECT COUNT(*) FROM public.factura_afip_ta WHERE expira_en > NOW())::int AS ta_vigentes");
-                    db = {ok:true, ...rc.rows[0]};
-                } catch(e){ db={ok:false,error:e.message}; } finally { try{await cl.end();}catch(_){} }
-                const [p0,p2,p3,p4,p5,wa] = await Promise.all([getH(3000,"/"),getH(3002,"/"),getH(3003,"/"),getH(3004,"/"),getH(3005,"/login"),getH(3004,"/facturacion/whatsapp/status")]);
-                let waSt="DESCONOCIDO", modoPrueba=false;
-                try { const j=JSON.parse(wa.body||"{}"); waSt=j?.data?.status||"DESCONOCIDO"; modoPrueba=Boolean(j?.data?.modoPruebaNube); } catch(_){}
-                console.log(JSON.stringify({reachable:true, db, portsOk: p0.ok&&p2.ok&&p3.ok&&p4.ok&&p5.ok, whatsappStatus: waSt, modoPruebaNube: modoPrueba}));
-            })();
-            '
-        `.trim().replace(/\r?\n/g, ' ');
-
         const out = execSync(
-            `ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "${remoteScript.replace(/"/g, '\\"')}"`,
+            `ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "node /opt/lamda/sincronizador-etiquetas/scripts/orquestadorSwitchLocalNube.js local-json"`,
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 12000 }
         );
-        return JSON.parse(String(out || '').trim());
+        const lines = String(out || '').trim().split(/\r?\n/);
+        const lastJsonLine = lines[lines.length - 1];
+        return JSON.parse(lastJsonLine);
     } catch (err) {
         return { reachable: false, error: err.message };
     }
@@ -253,20 +235,20 @@ async function mostrarDiagnosticoPreVuelo() {
 
     console.log(`\n🏢 2. SALUD DEL NODO LOCAL (PcAlmacen):`);
     console.log(`   • Base PostgreSQL Local   : ${localHealth.db.ok ? '✅ ONLINE' : '❌ ERROR'} (Modo Read-Only: ${localHealth.db.readOnly})`);
-    console.log(`   • Conteo de Registros     : ${localHealth.db.articulos} Artículos | ${localHealth.db.facturas} Facturas | ${localHealth.db.pedidos} Pedidos`);
+    console.log(`   • Conteo de Registros     : ${localHealth.db.articulos} Artículos | ${localHealth.db.clientes} Clientes | ${localHealth.db.facturas} Facturas`);
     console.log(`   • Tickets ARCA Vigentes   : ${localHealth.db.taVigentes}`);
     console.log(`   • 5 Servicios Web Locales : ${localHealth.portsOk ? '✅ 5/5 ONLINE (3000..3005)' : '⚠️ ALGUNOS PUERTOS DETENIDOS'}`);
     console.log(`   • WhatsApp en PcAlmacen   : ${localHealth.whatsappStatus}`);
-    console.log(`   • Puente Zebra (3099)     : ${localHealth.zebraBridge3099Active ? '✅ ACTIVO (Impresión ~1s)' : '⚪ En espera (se activa al pasar a Nube)'}`);
+    console.log(`   • Puente Zebra (3099)     : ${localHealth.zebraBridge3099Active ? '✅ ACTIVO (Impresión ~1s)' : '⚪ En espera (se enciende automático al pasar a Nube)'}`);
 
     console.log(`\n☁️  3. SALUD DEL NODO NUBE (${CLOUD_HOST}):`);
     if (!cloudHealth.reachable) {
         console.log(`   • Conexión con la Nube    : ❌ NUBE INACCESIBLE (${cloudHealth.error || 'Timeout'})`);
         console.log(`   • Resguardo de Emergencia : ✅ Podés ejecutar [Volver a LOCAL] en 1 clic sin depender de la Nube.`);
     } else {
-        console.log(`   • Base PostgreSQL Nube    : ${cloudHealth.db?.ok ? '✅ ONLINE' : '❌ ERROR'}`);
-        console.log(`   • Conteo de Registros     : ${cloudHealth.db?.articulos || 0} Artículos | ${cloudHealth.db?.facturas || 0} Facturas | ${cloudHealth.db?.pedidos || 0} Pedidos`);
-        console.log(`   • Tickets ARCA Vigentes   : ${cloudHealth.db?.ta_vigentes || 0}`);
+        console.log(`   • Base PostgreSQL Nube    : ${cloudHealth.db?.ok ? '✅ ONLINE' : '❌ ERROR'} (Modo Read-Only: ${cloudHealth.db?.readOnly || 'off'})`);
+        console.log(`   • Conteo de Registros     : ${cloudHealth.db?.articulos || 0} Artículos | ${cloudHealth.db?.clientes || 0} Clientes | ${cloudHealth.db?.facturas || 0} Facturas`);
+        console.log(`   • Tickets ARCA Vigentes   : ${cloudHealth.db?.taVigentes || 0}`);
         console.log(`   • 5 Servicios PM2 Nube    : ${cloudHealth.portsOk ? '✅ 5/5 ONLINE (3000..3005)' : '❌ ERROR EN PUERTOS'}`);
         console.log(`   • WhatsApp 4° Cupo Nube   : ${cloudHealth.whatsappStatus} (${cloudHealth.modoPruebaNube ? '🛡️ En Espejo Silencioso / Standby' : '🟢 ACTIVO TITULAR'})`);
     }
@@ -391,6 +373,11 @@ async function ejecutarSwitchHaciaLocal() {
 
 async function main() {
     const action = String(process.argv[2] || 'status').trim().toLowerCase();
+    if (action === 'local-json') {
+        const h = await verificarSaludLocal();
+        console.log(JSON.stringify(h));
+        return;
+    }
     if (action === 'status') {
         await mostrarDiagnosticoPreVuelo();
     } else if (action === 'to-nube') {
