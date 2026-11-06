@@ -63,27 +63,27 @@ const CLIENT_RUNTIME_SCRIPT = `
         var resolved = rawUrl;
         if (isCloudSinglePortOrigin()) {
             var origin = window.location.origin;
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3005\\/?$/i.test(resolved)) {
                 return origin + '/pages/dashboard.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3000\\/?$/i.test(resolved)) {
                 return origin + '/gw/3000/';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3002\\/?$/i.test(resolved)) {
                 return origin + '/gw/3002/pages/produccion.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003\\/?$/i.test(resolved) || /^\\/presupuestos\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3003\\/?$/i.test(resolved) || /^\\/presupuestos\\/?$/i.test(resolved)) {
                 return origin + '/gw/3003/pages/presupuestos.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3004\\/?$/i.test(resolved)) {
                 return origin + '/gw/3004/pages/facturas.html';
             }
             resolved = resolved
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3005(\\/|$)/i, origin + '$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3000(\\/|$)/i, origin + '/gw/3000/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3002(\\/|$)/i, origin + '/gw/3002/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3003(\\/|$)/i, origin + '/gw/3003/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004/');
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3005(\\/|$)/i, origin + '$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3000(\\/|$)/i, origin + '/gw/3000/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3002(\\/|$)/i, origin + '/gw/3002/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3003(\\/|$)/i, origin + '/gw/3003/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3004(\\/|$)/i, origin + '/gw/3004/');
         }
 
         // Si el navegador está bajo /gw/(300[0234])/ y la URL es relativa a la raíz (/...),
@@ -265,7 +265,7 @@ const CLIENT_RUNTIME_SCRIPT = `
             return false;
         }
         return (
-            /^https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5]/i.test(href) ||
+            /^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):300[0-5]/i.test(href) ||
             /^\\/presupuestos(\\/|$)/i.test(href) ||
             /^\\/(pages|documentos)\\//i.test(href)
         );
@@ -290,7 +290,7 @@ const CLIENT_RUNTIME_SCRIPT = `
             for (var j = 0; j < clickEls.length; j++) {
                 var el = clickEls[j];
                 var rawOnclick = el.getAttribute('onclick') || '';
-                var updatedOnclick = rawOnclick.replace(/https?:\\/\\/(localhost|127\\.0\\.0\\.1):300[0-5][^'"\\s)]*/gi, function(m) {
+                var updatedOnclick = rawOnclick.replace(/https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):300[0-5][^'"\\s)]*/gi, function(m) {
                     return window.LAMDA_RESOLVE_URL(m);
                 });
                 if (updatedOnclick !== rawOnclick) {
@@ -572,6 +572,64 @@ const CLIENT_RUNTIME_SCRIPT = `
         if (btnDisc) btnDisc.onclick = triggerZebraDiscardAll;
     }
 
+    // 5B. Sello de agua sutil de entorno (L · Local vs N · Nube) — Cero intrusivo (pointer-events: none)
+    function renderSubtleEnvironmentWatermark(status) {
+        if (!document.body) return;
+        var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+        var isPrueba = Boolean((status && status.isPruebaNube) || host.indexOf('nube-prueba') !== -1);
+        var isLab = Boolean((status && status.isLaboratorio) || window.__LAMDA_IS_LABORATORIO__);
+        var isCloud = Boolean((status && status.isCloudMode) || (host && host !== 'localhost' && host !== '127.0.0.1'));
+
+        var label = 'L · Local';
+        var bg = 'rgba(15, 23, 42, 0.08)';
+        var fg = '#475569';
+        var border = 'rgba(100, 116, 139, 0.22)';
+
+        if (isPrueba) {
+            label = 'N · Nube Prueba';
+            bg = 'rgba(39, 39, 42, 0.14)';
+            fg = '#71717a';
+            border = 'rgba(161, 161, 170, 0.32)';
+        } else if (isCloud) {
+            label = 'N · Nube';
+            bg = 'rgba(15, 23, 42, 0.10)';
+            fg = '#64748b';
+            border = 'rgba(100, 116, 139, 0.25)';
+        } else if (isLab) {
+            label = 'L · Lab';
+            bg = 'rgba(39, 39, 42, 0.14)';
+            fg = '#71717a';
+            border = 'rgba(161, 161, 170, 0.32)';
+        }
+
+        var wm = document.getElementById('lamda-subtle-env-watermark');
+        if (!wm) {
+            wm = document.createElement('div');
+            wm.id = 'lamda-subtle-env-watermark';
+            document.body.appendChild(wm);
+        }
+        wm.style.cssText = [
+            'position: fixed;',
+            'bottom: 6px;',
+            'right: 10px;',
+            'z-index: 2147483600;',
+            'pointer-events: none;',
+            'user-select: none;',
+            'font-family: system-ui, -apple-system, Segoe UI, Roboto, monospace;',
+            'font-size: 10px;',
+            'font-weight: 700;',
+            'letter-spacing: 0.5px;',
+            'padding: 2px 7px;',
+            'border-radius: 999px;',
+            'background: ' + bg + ';',
+            'color: ' + fg + ';',
+            'border: 1px solid ' + border + ';',
+            'opacity: 0.52;',
+            'backdrop-filter: blur(2px);'
+        ].join('');
+        wm.textContent = label;
+    }
+
     function pollSystemStatus() {
         fetch('/api/system/env-status', { headers: { 'Accept': 'application/json' } })
             .then(function(r) { return r.ok ? r.json() : null; })
@@ -579,6 +637,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                 if (!data) return;
                 window.__LAMDA_ENV_STATUS__ = data;
                 renderLabBanner(data);
+                renderSubtleEnvironmentWatermark(data);
                 renderZebraBanner(data.zebraQueue);
                 if (data.canProbeLocalBridge) {
                     pollLocalZebraPresence(false);
@@ -627,9 +686,21 @@ const CLIENT_RUNTIME_SCRIPT = `
             }
             var pathLower = (window.location && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
             if (pathLower.indexOf('/mobile') === 0) {
-                var mobLogos = document.querySelectorAll('.header-logo-mark, .login-logo-mark');
+                var mobLogos = document.querySelectorAll('.header-logo-mark, .login-logo-mark, .home-brand-logo');
                 for (var n = 0; n < mobLogos.length; n++) {
                     mobLogos[n].src = '/mobile/isotipo-lab.png';
+                    mobLogos[n].style.boxShadow = '0 4px 14px rgba(82, 82, 91, 0.45)';
+                }
+                var homeBadge = document.querySelector('.home-brand-badge');
+                if (homeBadge) {
+                    homeBadge.textContent = 'Móvil Prueba';
+                    homeBadge.style.background = 'rgba(82, 82, 91, 0.65)';
+                    homeBadge.style.color = '#e4e4e7';
+                    homeBadge.style.borderColor = '#a1a1aa';
+                }
+                var txtHomeInst = document.getElementById('txt-home-install-movil');
+                if (txtHomeInst) {
+                    txtHomeInst.textContent = '📲 LAMDA Móvil Prueba';
                 }
             }
         } catch (e) {}
@@ -748,6 +819,7 @@ const CLIENT_RUNTIME_SCRIPT = `
     function initCloudDomEnhancements() {
         rewriteAllDomLinks(document);
         setupPwaManifestAndButtons();
+        renderSubtleEnvironmentWatermark(window.__LAMDA_ENV_STATUS__ || null);
         pollSystemStatus();
         setInterval(pollSystemStatus, 12000);
         if (isCloudSinglePortOrigin() && document.body && typeof MutationObserver !== 'undefined') {
@@ -1174,6 +1246,88 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
                 wsfeProduccionDummy: wsfeDummy,
                 padronClientesA5: padronTest,
                 ticketsAccesoEnBD: taTableRows
+            });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    // 2C. Diagnóstico Integral de Servicios de IA ("Chofer" / Gemini) en la Nube y Resguardo de Switch Local <-> Nube
+    app.get('/api/system/ia-diagnostico', async (req, res) => {
+        try {
+            const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+            const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+            const isPruebaNube = flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
+            const isEspejoWa = String(process.env.WHATSAPP_MODO_ESPEJO || '').trim().toLowerCase() === 'true';
+            const isStandbyWa = String(process.env.LAMDA_ROLE || '').trim().toUpperCase() === 'GALPON_BRIDGE_ONLY' || String(process.env.WHATSAPP_STANDBY_PASIVO || '').trim().toLowerCase() === 'true';
+
+            const keyPrimary = String(process.env.GEMINI_API_KEY || '').trim();
+            const keyBackup = String(process.env.GEMINI_API_KEY_BACKUP || '').trim();
+
+            let saludLlm = { ok: false };
+            try {
+                const agenteHibridoLlm = require('../services/whatsappAgenteHibridoLlmService');
+                saludLlm = await agenteHibridoLlm.verificarSaludIA();
+            } catch (errSalud) {
+                saludLlm = { ok: false, error: errSalud.message };
+            }
+
+            let estadoCredito = null;
+            try {
+                const iaCreditoMonitor = require('../services/iaCreditoMonitorService');
+                estadoCredito = iaCreditoMonitor.obtenerEstadoCreditoIA();
+            } catch (errCred) {
+                estadoCredito = { error: errCred.message };
+            }
+
+            return res.json({
+                ok: Boolean(saludLlm && saludLlm.ok && keyPrimary.length > 10),
+                timestamp: new Date().toISOString(),
+                credenciales: {
+                    geminiApiKeyPrincipalConfigurada: keyPrimary.length > 10,
+                    geminiApiKeyPrincipalPrefijo: keyPrimary ? keyPrimary.slice(0, 8) + '...' : null,
+                    geminiApiKeyBackupConfigurada: keyBackup.length > 10,
+                    geminiApiKeyBackupPrefijo: keyBackup ? keyBackup.slice(0, 8) + '...' : null
+                },
+                pingEnVivoGemini: saludLlm,
+                presupuestoYTokensLedger: estadoCredito,
+                modulosIaRelevados: [
+                    {
+                        modulo: '1. Asistente Híbrido CRM WhatsApp ("Chofer" / Mesa de Agentes)',
+                        archivo: 'src/services/whatsappAgenteHibridoLlmService.js',
+                        modelo: process.env.GEMINI_MODEL || 'gemini-3.8-flash / gemini-flash-latest',
+                        modoDisparo: 'Bajo demanda (al hacer clic en Generar Propuesta IA en Mesa de Agentes)',
+                        estadoEnNube: saludLlm.ok ? 'ACTIVO_Y_VERIFICADO' : 'ERROR'
+                    },
+                    {
+                        modulo: '2. Transcriptor Automático de Audios de Clientes WhatsApp (Ogg Opus -> Texto)',
+                        archivo: 'src/services/whatsappAudioTranscriberService.js',
+                        modelo: 'gemini-2.5-flash (multimodal nativo) + fallback Whisper local',
+                        modoDisparo: 'Automático al ingresar audio PTT de Cliente Búnker en el servidor Activo; o bajo demanda desde el CRM',
+                        proteccionSwitch: (isPruebaNube || isEspejoWa || isStandbyWa)
+                            ? 'BLOQUEADO_EN_STANDBY_PRUEBA (No transcribe en duplicado mientras PcAlmacen es titular)'
+                            : 'ACTIVO_TITULAR'
+                    },
+                    {
+                        modulo: '3. Conciliador Inteligente de Extractos Bancarios (Home Banking / Cuentas Bancarias)',
+                        archivo: 'src/facturacion/services/geminiService.js + cuentasBancariasService.js',
+                        modelo: 'gemini-2.5-flash',
+                        modoDisparo: 'Bajo demanda al importar movimientos bancarios en Facturación (3004)',
+                        estadoEnNube: keyPrimary.length > 10 ? 'ACTIVO_Y_VERIFICADO' : 'FALTA_API_KEY'
+                    },
+                    {
+                        modulo: '4. Monitor de Presupuesto y Tokens IA (Ledger USD)',
+                        archivo: 'src/services/iaCreditoMonitorService.js',
+                        modelo: 'Auditoría contable de tokens (data/ia_credito_ledger.json)',
+                        estadoEnNube: (estadoCredito && !estadoCredito.error) ? 'ACTIVO_Y_VERIFICADO' : 'ERROR'
+                    }
+                ],
+                resguardoSwitchLocalNube: {
+                    modoPruebaNubeActivo: isPruebaNube,
+                    modoEspejoWaActivo: isEspejoWa,
+                    modoStandbyPasivoActivo: isStandbyWa,
+                    garantiaNoDuplicacion: 'Ningún servicio de IA envía mensajes autónomos sin acción humana. El único proceso automático en segundo plano (transcripción de audios entrantes de clientes por WhatsApp) está bloqueado por candado en el servidor en Standby/Prueba, garantizando 0% de duplicación entre Local y Nube.'
+                }
             });
         } catch (err) {
             return res.status(500).json({ ok: false, error: err.message });

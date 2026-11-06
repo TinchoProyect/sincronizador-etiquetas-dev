@@ -292,8 +292,8 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             connectionStepText = '¡Listo! Dispositivo conectado.';
             qrCodeDataUrl = null;
 
-            if (esModoEspejoWa() || esModoLaboratorioWa() || esModoPruebaNubeWa()) {
-                console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Laboratorio activo: se omite sincronización CRM en segundo plano para evitar colisiones.");
+            if (esModoEspejoWa() || esModoLaboratorioWa() || esModoPruebaNubeWa() || esModoStandbyPasivoWa()) {
+                console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Prueba Nube/Standby activo: se omite sincronización CRM y monitor de no leídos para evitar colisiones.");
                 return;
             }
             // Sincronizar en segundo plano los chats recientes con clientes Búnker al conectar
@@ -311,8 +311,17 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         client.on('message_create', async (msg) => {
             try {
                 if (!msg) return;
+                if (esModoEspejoWa() || esModoStandbyPasivoWa()) {
+                    return;
+                }
                 let chatId = msg.fromMe ? msg.to : msg.from;
                 if (!chatId || chatId.endsWith('@g.us') || chatId.includes('broadcast') || chatId.endsWith('@newsletter')) {
+                    return;
+                }
+
+                // En Modo Prueba Nube (4° dispositivo en espejo silencioso), si el chatId ya es un número @c.us y no es el número de resguardo,
+                // salir inmediatamente sin tocar pupPage ni activar transcripciones de IA (Chofer/Gemini) duplicadas.
+                if (esModoPruebaNubeWa() && !chatId.endsWith('@lid') && !esNumeroPropioPruebaWa(chatId)) {
                     return;
                 }
 
@@ -341,11 +350,11 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
                     } catch (eLid) {}
                 }
 
-                // 🛡️ PROTECCIÓN DE MENSAJES ENTRANTES EN PRUEBA PARALELA DE NUBE:
+                // 🛡️ PROTECCIÓN TOTAL DE MENSAJES EN PRUEBA PARALELA DE NUBE / STANDBY:
                 // Mientras PcAlmacen sigue siendo el servidor titular del depósito, el servidor de prueba en la nube
-                // ignora por completo los mensajes y audios entrantes de clientes reales (!msg.fromMe), evitando
-                // transcripciones duplicadas de audios o respuestas cruzadas.
-                if ((esModoPruebaNubeWa() || esModoEspejoWa()) && !msg.fromMe && !esNumeroPropioPruebaWa(chatId)) {
+                // ignora por completo los mensajes y audios de clientes reales (tanto entrantes como salientes de otros dispositivos),
+                // evitando transcripciones duplicadas de audios con Gemini o respuestas cruzadas.
+                if ((esModoPruebaNubeWa() || esModoEspejoWa() || esModoStandbyPasivoWa()) && !esNumeroPropioPruebaWa(chatId)) {
                     return;
                 }
 
@@ -398,7 +407,9 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         client.on('message_ack', async (msg, ack) => {
             try {
                 if (!msg || !msg.id?._serialized) return;
+                if (esModoEspejoWa() || esModoStandbyPasivoWa()) return;
                 const chatId = msg.fromMe ? msg.to : msg.from;
+                if (esModoPruebaNubeWa() && !esNumeroPropioPruebaWa(chatId)) return;
                 await crmWhatsappDb.actualizarAckMensaje(msg.id._serialized, chatId, ack);
             } catch (errAck) {
                 console.warn('⚠️ [WHATSAPP-SERVICE] Error procesando message_ack para CRM:', errAck.message);
@@ -509,7 +520,11 @@ const obtenerEstado = () => {
         qr: qrCodeDataUrl,
         step: connectionStep,
         stepText: connectionStepText,
-        error: lastError
+        error: lastError,
+        modoPruebaNube: esModoPruebaNubeWa(),
+        modoEspejo: esModoEspejoWa(),
+        modoStandbyPasivo: esModoStandbyPasivoWa(),
+        safeRedirectTo: obtenerNumeroRedireccionSeguraWa()
     };
 };
 

@@ -896,12 +896,24 @@ window.inicializarSidebarUniversal = () => {
                 <span>Registro de Tratamiento</span>
             </a>
 
-            ${!isStandalone ? `
+            ${(() => {
+                const host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+                const isTest = host.includes('nube-prueba') || host.includes('prueba') || Boolean(window.__LAMDA_IS_LABORATORIO__) || Boolean(window.__LAMDA_ENV_STATUS__ && (window.__LAMDA_ENV_STATUS__.isPruebaNube || window.__LAMDA_ENV_STATUS__.isLaboratorio));
+                if (isTest) {
+                    return `
+            <a href="#" onclick="window.cerrarSidebar(); if (typeof window.instalarAccesoDirecto === 'function') { window.instalarAccesoDirecto(); }" class="sidebar-item" style="background: rgba(244, 244, 245, 0.12); border: 1px solid rgba(161, 161, 170, 0.45); color: #f4f4f5; margin-top: 4px;">
+                <span class="sidebar-icon" style="display:inline-flex;align-items:center;justify-content:center;"><img src="/mobile/icon-lab-192.png" alt="LAMDA Móvil Prueba" style="width:20px;height:20px;border-radius:5px;border:1px solid #a1a1aa;"></span>
+                <span style="font-weight: 800;">Instalar "LAMDA Móvil Prueba"</span>
+                <span class="sidebar-badge" style="border-color: #a1a1aa; color: #e4e4e7; background: rgba(82, 82, 91, 0.65);">Gris</span>
+            </a>`;
+                }
+                return !isStandalone ? `
             <a href="#" onclick="window.cerrarSidebar(); if (typeof window.instalarAccesoDirecto === 'function') { window.instalarAccesoDirecto(); } else { window.location.href = 'home.html'; }" class="sidebar-item" style="color: #38bdf8;">
                 <span class="sidebar-icon">📲</span>
                 <span>Agregar Acceso Directo</span>
                 <span class="sidebar-badge" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8; background: rgba(56, 189, 248, 0.15);">App</span>
-            </a>` : ''}
+            </a>` : '';
+            })()}
         </div>
         <div class="sidebar-footer">
             <button class="sidebar-logout" onclick="cerrarSesion()">
@@ -956,6 +968,89 @@ window.cerrarSidebar = (e) => {
         overlay.style.pointerEvents = '';
     }
     document.body.style.overflow = '';
+};
+
+// Captura global del prompt de instalación PWA en todas las pantallas móviles
+window.__deferredMobilePwaPrompt = window.__deferredMobilePwaPrompt || null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.__deferredMobilePwaPrompt = e;
+});
+
+window.instalarAccesoDirecto = async function() {
+    const promptEv = window.__deferredMobilePwaPrompt || window.__LAMDA_DEFERRED_PWA_PROMPT__ || null;
+    if (promptEv) {
+        window.__deferredMobilePwaPrompt = null;
+        window.__LAMDA_DEFERRED_PWA_PROMPT__ = null;
+        promptEv.prompt();
+        try {
+            await promptEv.userChoice;
+        } catch (_) {}
+        return;
+    }
+
+    const host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+    const isTest = host.includes('nube-prueba') || host.includes('prueba') || Boolean(window.__LAMDA_IS_LABORATORIO__) || Boolean(window.__LAMDA_ENV_STATUS__ && (window.__LAMDA_ENV_STATUS__.isPruebaNube || window.__LAMDA_ENV_STATUS__.isLaboratorio));
+    const appTitle = isTest ? 'LAMDA Móvil Prueba' : 'LAMDA Móvil';
+    const iconUrl = isTest ? '/mobile/icon-lab-192.png' : '/mobile/icon-192.png';
+    const targetUrl = `${window.location.origin}/mobile/home.html`;
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: `📲 Instalar "${appTitle}"`,
+            html: `
+                <div style="text-align: left; font-size: 0.92rem; line-height: 1.55; color: #e2e8f0;">
+                    <div style="display: flex; align-items: center; gap: 12px; background: rgba(15, 23, 42, 0.75); border: 1px solid ${isTest ? '#a1a1aa' : '#38bdf8'}; border-radius: 12px; padding: 10px 12px; margin-bottom: 0.9rem;">
+                        <img src="${iconUrl}" alt="${appTitle}" style="width: 44px; height: 44px; border-radius: 10px; border: 1px solid #71717a; flex-shrink: 0;">
+                        <div>
+                            <div style="font-weight: 800; color: #f8fafc; font-size: 0.98rem;">${appTitle}</div>
+                            <div style="font-size: 0.76rem; color: #cbd5e1;">${isTest ? 'Ícono monocromático en escala de grises (Entorno de Prueba)' : 'Acceso directo oficial para celular'}</div>
+                        </div>
+                    </div>
+                    <p style="margin-bottom: 0.65rem;">Para dejar el <b>ícono ${isTest ? 'gris de prueba' : 'de LAMDA Móvil'}</b> en la pantalla principal de tu celular:</p>
+                    <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 12px; padding: 12px; margin-bottom: 0.9rem;">
+                        <div style="margin-bottom: 0.5rem; display: flex; align-items: flex-start; gap: 0.6rem;">
+                            <span>1️⃣</span>
+                            <span>Si abriste esta pantalla desde otra ventana, tocá <b>"Copiar Enlace Móvil"</b> abajo y pegalo en <b>Google Chrome</b> (Android) o <b>Safari</b> (iPhone).</span>
+                        </div>
+                        <div style="margin-bottom: 0.5rem; display: flex; align-items: flex-start; gap: 0.6rem;">
+                            <span>2️⃣</span>
+                            <span>En Chrome tocá los <b>tres puntitos (⋮)</b> arriba a la derecha y elegí <b>"Instalar aplicación"</b> o <b>"Agregar a la pantalla principal"</b>.</span>
+                        </div>
+                        <div style="display: flex; align-items: flex-start; gap: 0.6rem;">
+                            <span>3️⃣</span>
+                            <span>Confirmá con <b>"Instalar / Agregar"</b> y te quedará el ícono <b>${appTitle}</b> en tu celular.</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.78rem; color: #94a3b8; word-break: break-all;">
+                        🔗 Dirección Móvil: <b style="color: #e4e4e7;">${targetUrl}</b>
+                    </div>
+                </div>
+            `,
+            background: '#1e293b',
+            color: '#f8fafc',
+            showCancelButton: true,
+            confirmButtonText: '📋 Copiar Enlace Móvil',
+            cancelButtonText: 'Entendido',
+            confirmButtonColor: isTest ? '#52525b' : '#0284c7',
+            cancelButtonColor: '#334155'
+        }).then((result) => {
+            if (result.isConfirmed && navigator.clipboard) {
+                navigator.clipboard.writeText(targetUrl).then(() => {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top',
+                        icon: 'success',
+                        title: '¡Enlace móvil copiado!',
+                        showConfirmButton: false,
+                        timer: 2000,
+                        background: '#0f172a',
+                        color: '#fff'
+                    });
+                }).catch(() => {});
+            }
+        });
+    }
 };
 
 // Auto-inicializar cuando el DOM esté listo

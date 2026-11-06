@@ -286,7 +286,7 @@
 
     <!-- HEADER / BIENVENIDA -->
     <header class="home-header animate-in">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; gap: 0.5rem;">
             <div class="home-brand-row" onclick="window.abrirSidebar(event)" style="cursor: pointer; user-select: none; margin-bottom: 0; display: flex; align-items: center; gap: 0.75rem;" title="Tocar para abrir menú de navegación">
                 <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" class="home-brand-logo" style="box-shadow: 0 4px 15px rgba(124, 58, 237, 0.35); cursor: pointer; transition: transform 0.15s ease;">
                 <div>
@@ -296,6 +296,10 @@
                     </div>
                 </div>
             </div>
+            <button type="button" id="btn-home-install-movil" onclick="if (typeof window.instalarAccesoDirecto === 'function') window.instalarAccesoDirecto();" style="background: rgba(244, 244, 245, 0.14); color: #f4f4f5; border: 1px solid rgba(161, 161, 170, 0.55); border-radius: 999px; padding: 6px 11px; font-size: 0.75rem; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                <img src="/mobile/icon-lab-192.png" id="img-home-install-movil" alt="App" style="width: 16px; height: 16px; border-radius: 4px;">
+                <span id="txt-home-install-movil">📲 Instalar App</span>
+            </button>
         </div>
         <p class="home-greeting">Bienvenido al sistema</p>
         <h1 class="home-username" id="home-username">Cargando...</h1>
@@ -365,84 +369,12 @@
     </footer>
 
     <!-- Scripts -->
-    <script src="js/mobile.js?v=58"></script>
+    <script src="js/mobile.js?v=59"></script>
     <script>
         // PWA - Registro de Service Worker para habilitar instalación nativa
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js').catch(err => console.log('[SW] Registro opcional:', err));
         }
-
-        let deferredPrompt = null;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            const desc = document.getElementById('desc-acceso-directo');
-            if (desc) desc.textContent = 'Tocá acá para instalar la app en tu celular con 1 toque';
-        });
-
-        window.instalarAccesoDirecto = async function() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const choiceResult = await deferredPrompt.userChoice;
-                if (choiceResult.outcome === 'accepted') {
-                    console.log('[PWA] Usuario aceptó la instalación');
-                }
-                deferredPrompt = null;
-                return;
-            }
-
-            // Si el navegador ya tiene la app instalada o requiere acción manual (Chrome Android)
-            Swal.fire({
-                title: '📲 Acceso Directo en Celular',
-                html: `
-                    <div style="text-align: left; font-size: 0.93rem; line-height: 1.6; color: #cbd5e1;">
-                        <p style="margin-bottom: 0.75rem;">Para que te quede el <b>ícono de LAMDA</b> en el escritorio de tu celular con la nueva dirección:</p>
-                        <div style="background: rgba(2, 132, 199, 0.15); border: 1px solid rgba(2, 132, 199, 0.35); border-radius: 12px; padding: 12px; margin-bottom: 1rem;">
-                            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.6rem;">
-                                <span style="font-size: 1.25rem;">1️⃣</span>
-                                <span>Tocá los <b>tres puntitos (⋮)</b> arriba a la derecha de Google Chrome.</span>
-                            </div>
-                            <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.6rem;">
-                                <span style="font-size: 1.25rem;">2️⃣</span>
-                                <span>Elegí <b>"Agregar a la pantalla principal"</b> (o <i>"Instalar aplicación"</i>).</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                <span style="font-size: 1.25rem;">3️⃣</span>
-                                <span>Tocá <b>"Agregar"</b> y te aparecerá el acceso directo listo como una app.</span>
-                            </div>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #94a3b8; word-break: break-all;">
-                            🔗 Dirección activa: <b style="color: #38bdf8;">${window.location.origin}/public/mobile/index.html</b>
-                        </div>
-                    </div>
-                `,
-                background: '#1e293b',
-                color: '#f8fafc',
-                showCancelButton: true,
-                confirmButtonText: '📋 Copiar Enlace Directo',
-                cancelButtonText: 'Listo, entendido',
-                confirmButtonColor: '#0284c7',
-                cancelButtonColor: '#475569'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    const urlNueva = `${window.location.origin}/public/mobile/index.html`;
-                    navigator.clipboard.writeText(urlNueva).then(() => {
-                        Swal.fire({
-                            toast: true,
-                            position: 'top',
-                            icon: 'success',
-                            title: '¡Enlace copiado al portapapeles!',
-                            showConfirmButton: false,
-                            timer: 2000,
-                            background: '#0f172a',
-                            color: '#fff'
-                        });
-                    }).catch(() => {
-                        prompt('Copiá este enlace manualmente:', urlNueva);
-                    });
-                }
-            });
-        };
 
         document.addEventListener('DOMContentLoaded', () => {
             if (!verificarSesion()) {
