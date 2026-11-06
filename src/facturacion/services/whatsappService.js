@@ -29,6 +29,12 @@ function esModoEspejoWa() {
     return flagEspejo === 'true' || flagEspejo === '1';
 }
 
+function esModoStandbyPasivoWa() {
+    const role = String(process.env.LAMDA_ROLE || '').trim().toUpperCase();
+    const standby = String(process.env.WHATSAPP_STANDBY_PASIVO || '').trim().toLowerCase();
+    return role === 'GALPON_BRIDGE_ONLY' || standby === 'true' || standby === '1';
+}
+
 function esModoPruebaNubeWa() {
     const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
     const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
@@ -139,7 +145,9 @@ const limpiarLockFiles = (sessionPath) => {
 const killZombieChrome = () => {
     return new Promise((resolve) => {
         if (process.platform !== 'win32') {
-            return resolve();
+            console.log('🧹 [WHATSAPP-SERVICE] Limpiando procesos Chromium huérfanos en Linux (session-lamda-billing)...');
+            exec('pkill -9 -f "session-lamda-billing" || true', () => resolve());
+            return;
         }
         
         console.log('🧹 [WHATSAPP-SERVICE] Buscando procesos de Chrome huérfanos con candados de sesión...');
@@ -162,6 +170,13 @@ const killZombieChrome = () => {
  * Inicializar cliente de WhatsApp
  */
 async function inicializarWhatsApp(force = false, isFallback = false) {
+    if (esModoStandbyPasivoWa()) {
+        console.log('🛑 [WHATSAPP-SERVICE] MODO STANDBY PASIVO (GALPON_BRIDGE_ONLY): No se inicia Chromium local para no competir con la sesión titular del VPS en la nube.');
+        connectionStatus = 'STANDBY_PASIVO_GALPON';
+        connectionStep = 0;
+        connectionStepText = 'Modo Standby Pasivo en PcAlmacen (Titular activo en Nube)';
+        return { success: true, status: 'STANDBY_PASIVO_GALPON', standby: true, message: 'Standby Pasivo en Galpón (Titular en Nube)' };
+    }
     if (esModoLaboratorioWa() && !esModoPruebaNubeWa()) {
         console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO: Omitiendo inicio de Chromium/WhatsApp Web real (envíos simulados localmente).');
         connectionStatus = 'CONECTADO';
@@ -1384,7 +1399,9 @@ const transcribirAudiosDeChat = async ({ chatId, msgIds = [], maxAudios = 4 } = 
  * Apagar cliente de WhatsApp de forma ordenada y limpia
  */
 async function shutdown() {
-    console.log('🔌 [WHATSAPP-SERVICE] Apagando cliente de WhatsApp...');
+    // IMPORTANTE: En apagado/transición a Standby NUNCA se invoca client.logout(),
+    // únicamente client.destroy() para cerrar Chromium preservando las llaves de sesión.
+    console.log('🔌 [WHATSAPP-SERVICE] Apagando cliente de WhatsApp de forma pasiva (sin logout)...');
     if (client) {
         try {
             await client.destroy();

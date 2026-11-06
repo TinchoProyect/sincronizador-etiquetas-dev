@@ -12,6 +12,7 @@ const { crearRuta, asignarPresupuestos, eliminarRuta } = require('../controllers
 const { obtenerClienteUnificado, resolverDestinatariosAlertaEntrega } = require('../services/clienteResolver.js');
 const { obtenerDestinatariosInicioRuta, despacharNotificacionesInicioRuta } = require('../services/notificacionInicioRutaService.js');
 const PagosEfectivoService = require('../services/pagosEfectivoService.js');
+const { emitirCookieSesionCloud } = require('../../shared/lamdaCloudAuthGuard');
 
 /**
  * Helper: envía un aviso corto por WhatsApp al cliente confirmando que su sobre fue retirado por el chofer.
@@ -288,6 +289,14 @@ router.post('/login', async (req, res) => {
 
         // Token simple: base64(id:timestamp)
         const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+        try {
+            emitirCookieSesionCloud(res, {
+                id: user.id,
+                usuario: user.usuario,
+                nombre_completo: user.nombre_completo,
+                rol_id: user.rol_id
+            });
+        } catch (_) {}
 
         console.log('[LOGIN] ✅ Token generado exitosamente');
         console.log('[LOGIN] ✅ ACCESO CONCEDIDO');

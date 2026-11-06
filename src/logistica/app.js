@@ -12,6 +12,12 @@ const PORT = process.env.PORT_LOGISTICA || 3005;
 
 // Importar configuraciones y middleware
 const { dbMiddleware } = require('./config/database');
+const {
+    lamdaCloudAuthGuard,
+    galponBridgeRoleLockMiddleware,
+    renderLoginHtmlPage,
+    limpiarCookieSesionCloud
+} = require('../shared/lamdaCloudAuthGuard');
 
 console.log('[LOGISTICA] Configurando middleware...');
 
@@ -82,7 +88,7 @@ const corsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Lamda-Physical-Station', 'X-Lamda-Physical-Token', 'X-Lamda-Print-Token'],
     credentials: true
 };
 
@@ -102,6 +108,25 @@ app.use((req, res, next) => {
 // Middleware de base de datos
 app.use(dbMiddleware);
 
+// 🔒 Candado Triple Anti-Doble Arranque (LAMDA_ROLE=GALPON_BRIDGE_ONLY -> HTTP 423 / HTTP 302)
+app.use(galponBridgeRoleLockMiddleware);
+
+// 🔐 Rutas Públicas de Autenticación Unificada (/login y /logout en Gateway 3005)
+app.get('/login', (req, res) => {
+    const redirectUrl = req.query.redirect || '/pages/dashboard.html';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.status(200).send(renderLoginHtmlPage(redirectUrl));
+});
+app.post('/login', express.json(), express.urlencoded({ extended: true }), require('../usuarios/login'));
+app.all('/logout', (req, res) => {
+    limpiarCookieSesionCloud(res);
+    if (req.method === 'GET') {
+        return res.redirect(302, '/login');
+    }
+    return res.json({ ok: true, message: 'Sesión cerrada correctamente' });
+});
+
 // Configurar archivos estáticos
 const staticPath = path.join(__dirname);
 const { registrarAccesoServidorSitio } = require('./controllers/cloudflareAnalyticsController');
@@ -117,6 +142,10 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// 🛡️ Escudo Unificado de Autenticación Cloud 24/7 (Cookie HttpOnly lamda_cloud_jwt + Bearer)
+// Protege /pages/*, /gw/3000..3004 y /api/* salvo la lista blanca pública
+app.use(lamdaCloudAuthGuard);
 app.use(express.static(staticPath));
 app.use('/pages', express.static(path.join(staticPath, 'pages')));
 app.use('/js', express.static(path.join(staticPath, 'js')));

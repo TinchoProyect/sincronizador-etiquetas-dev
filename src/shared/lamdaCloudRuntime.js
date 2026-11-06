@@ -1,14 +1,16 @@
 /**
- * LAMDA Cloud Runtime & Laboratory/Zebra Guard (Fase 2 — Rama `desarrollo`)
- * --------------------------------------------------------------------------
+ * LAMDA Cloud Runtime & Laboratory/Zebra Guard (Fase 2 / Micro-Etapa 1 — Rama `desarrollo`)
+ * ------------------------------------------------------------------------------------------
  * Se monta en los 5 servidores Express (3000, 3002, 3003, 3004 y 3005) para proveer:
  *  1. Resolución dinámica de URLs entre entorno Multi-Puerto Local (`localhost:3000..3005`)
  *     y Dominio Único Cloud (`https://nube.lamdaser.com` / `https://logistica.lamdaser.com`).
- *  2. Franja visual inconfundible de `🛠️ MODO LABORATORIO / PRUEBAS` cuando `DB_NAME=etiquetas_pruebas`
- *     o `LAMDA_MODO_LABORATORIO=true`, más prefijo `[PRUEBAS]` en la pestaña del navegador.
- *  3. Bandeja interactiva de Confirmación de Etiquetas Zebra Retenidas (`🖨️ Cola Zebra Retenida`),
- *     garantizando que ninguna etiqueta enviada desde la calle o con la Zebra apagada se imprima
- *     sola sin confirmación explícita en el galpón.
+ *  2. Detección automática de Presencia Física por Loopback (`http://127.0.0.1:3099/zebra-local-presence`)
+ *     e inyección transparente de `X-Lamda-Physical-Station: PCALMACEN_VERIFIED` + `X-Lamda-Physical-Token`
+ *     en `fetch` y `XMLHttpRequest`, logrando que los clics desde `PcAlmacen` impriman en ~1s
+ *     mientras los disparos desde la calle quedan retenidos en `PENDIENTE_CONFIRMACION_GALPON`.
+ *  3. Candado Triple Anti-Doble Arranque (`LAMDA_ROLE=GALPON_BRIDGE_ONLY` -> HTTP 423 / HTTP 302).
+ *  4. Franja visual inconfundible de `🛠️ MODO LABORATORIO / PRUEBAS` y Bandeja interactiva de
+ *     Confirmación de Etiquetas Zebra Retenidas (`🖨️ Cola Zebra Retenida`).
  */
 
 const fs = require('fs');
@@ -16,17 +18,31 @@ const path = require('path');
 const {
     esModoLaboratorio,
     esModoCloudOLinux,
+    middlewareContextoPresenciaZebra,
+    registrarHeartbeatAgenteZebra,
     obtenerResumenColaRetenida,
     liberarEtiquetasRetenidas,
     descartarEtiquetasRetenidas,
     obtenerTrabajosLiberadosParaAgente,
     confirmarImpresionAgente
 } = require('../services/zebraPrintBridgeService');
+const {
+    galponBridgeRoleLockMiddleware,
+    emitirCookieSesionCloud,
+    verificarTokenOExtraerUsuario
+} = require('./lamdaCloudAuthGuard');
 
 const CLIENT_RUNTIME_SCRIPT = `
 (function() {
     if (window.__LAMDA_CLOUD_RUNTIME_LOADED__) return;
     window.__LAMDA_CLOUD_RUNTIME_LOADED__ = true;
+
+    window.__LAMDA_PHYSICAL_PRESENCE__ = {
+        verified: false,
+        station: 'REMOTE_CLIENT',
+        token: '',
+        ts: 0
+    };
 
     function isCloudSinglePortOrigin() {
         var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
@@ -38,6 +54,9 @@ const CLIENT_RUNTIME_SCRIPT = `
 
     window.LAMDA_RESOLVE_URL = function(rawUrl) {
         if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+        if (rawUrl.indexOf('127.0.0.1:3099') !== -1 || rawUrl.indexOf('localhost:3099') !== -1) {
+            return rawUrl;
+        }
         if (!isCloudSinglePortOrigin()) return rawUrl;
 
         var origin = window.location.origin;
@@ -49,18 +68,78 @@ const CLIENT_RUNTIME_SCRIPT = `
             .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1):3004(\\/|$)/i, origin + '/gw/3004$2');
     };
 
-    // 1. Interceptar window.fetch
-    if (typeof window.fetch === 'function') {
-        var originalFetch = window.fetch.bind(window);
+    function hasActivePhysicalPresence() {
+        var p = window.__LAMDA_PHYSICAL_PRESENCE__;
+        return Boolean(p && p.verified && p.token && (Date.now() - p.ts) < 35000);
+    }
+
+    function isLoopbackPresenceUrl(urlStr) {
+        if (!urlStr || typeof urlStr !== 'string') return false;
+        return urlStr.indexOf('127.0.0.1:3099') !== -1 || urlStr.indexOf('localhost:3099') !== -1;
+    }
+
+    var originalFetch = (typeof window.fetch === 'function') ? window.fetch.bind(window) : null;
+
+    // 0. Sonda de Presencia Física por Loopback (127.0.0.1:3099/zebra-local-presence)
+    function pollLocalZebraPresence() {
+        if (!originalFetch) return;
+        originalFetch('http://127.0.0.1:3099/zebra-local-presence', {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store'
+        })
+        .then(function(r) { return r && r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (data && data.ok && data.station === 'PCALMACEN_VERIFIED' && data.token) {
+                window.__LAMDA_PHYSICAL_PRESENCE__ = {
+                    verified: true,
+                    station: 'PCALMACEN_VERIFIED',
+                    token: String(data.token),
+                    ts: Date.now()
+                };
+            } else {
+                window.__LAMDA_PHYSICAL_PRESENCE__.verified = false;
+            }
+        })
+        .catch(function() {
+            window.__LAMDA_PHYSICAL_PRESENCE__.verified = false;
+        });
+    }
+
+    pollLocalZebraPresence();
+    setInterval(pollLocalZebraPresence, 4000);
+
+    // 1. Interceptar window.fetch (Resolución Cloud + Inyección de Presencia Física PcAlmacen)
+    if (originalFetch) {
         window.fetch = function(input, init) {
+            var targetUrl = '';
             if (typeof input === 'string') {
                 input = window.LAMDA_RESOLVE_URL(input);
+                targetUrl = input;
             } else if (input && typeof Request !== 'undefined' && input instanceof Request && input.url) {
                 var resolved = window.LAMDA_RESOLVE_URL(input.url);
+                targetUrl = resolved;
                 if (resolved !== input.url) {
                     input = new Request(resolved, input);
                 }
             }
+
+            if (!isLoopbackPresenceUrl(targetUrl) && hasActivePhysicalPresence()) {
+                init = init ? Object.assign({}, init) : {};
+                var p = window.__LAMDA_PHYSICAL_PRESENCE__;
+                if (typeof Headers !== 'undefined' && init.headers instanceof Headers) {
+                    var clonedHeaders = new Headers(init.headers);
+                    clonedHeaders.set('X-Lamda-Physical-Station', p.station);
+                    clonedHeaders.set('X-Lamda-Physical-Token', p.token);
+                    init.headers = clonedHeaders;
+                } else {
+                    var hdrs = Object.assign({}, init.headers || {});
+                    hdrs['X-Lamda-Physical-Station'] = p.station;
+                    hdrs['X-Lamda-Physical-Token'] = p.token;
+                    init.headers = hdrs;
+                }
+            }
+
             return originalFetch(input, init);
         };
     }
@@ -68,12 +147,24 @@ const CLIENT_RUNTIME_SCRIPT = `
     // 2. Interceptar XMLHttpRequest (usado por Axios y llamadas legacy)
     if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype && XMLHttpRequest.prototype.open) {
         var originalXhrOpen = XMLHttpRequest.prototype.open;
+        var originalXhrSend = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function(method, url) {
             var args = Array.prototype.slice.call(arguments);
             if (typeof url === 'string') {
                 args[1] = window.LAMDA_RESOLVE_URL(url);
+                this.__lamdaTargetUrl = args[1];
             }
             return originalXhrOpen.apply(this, args);
+        };
+        XMLHttpRequest.prototype.send = function() {
+            try {
+                if (!isLoopbackPresenceUrl(this.__lamdaTargetUrl || '') && hasActivePhysicalPresence()) {
+                    var p = window.__LAMDA_PHYSICAL_PRESENCE__;
+                    this.setRequestHeader('X-Lamda-Physical-Station', p.station);
+                    this.setRequestHeader('X-Lamda-Physical-Token', p.token);
+                }
+            } catch (e) {}
+            return originalXhrSend.apply(this, arguments);
         };
     }
 
@@ -100,6 +191,31 @@ const CLIENT_RUNTIME_SCRIPT = `
             }
         }
     }, true);
+
+    // 4B. Sincronizar token localStorage -> Cookie HttpOnly (lamda_cloud_jwt)
+    function syncAuthCookieIfPresent() {
+        try {
+            var tok = localStorage.getItem('token') || '';
+            if (!tok) {
+                var rawChofer = localStorage.getItem('sesion_chofer') || sessionStorage.getItem('sesion_chofer');
+                if (rawChofer) {
+                    var parsed = JSON.parse(rawChofer);
+                    if (parsed && parsed.token) tok = parsed.token;
+                }
+            }
+            if (!tok || sessionStorage.getItem('__lamda_cookie_synced__') === tok) return;
+            if (originalFetch) {
+                originalFetch('/api/system/auth/sync-cookie', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+                    body: JSON.stringify({ token: tok })
+                }).then(function(r) {
+                    if (r && r.ok) sessionStorage.setItem('__lamda_cookie_synced__', tok);
+                }).catch(function() {});
+            }
+        } catch (e) {}
+    }
+    syncAuthCookieIfPresent();
 
     // 5. Franja de MODO LABORATORIO + Bandeja de Cola Zebra Retenida
     var labBannerEl = null;
@@ -335,7 +451,13 @@ function injectScriptTagInHtml(htmlContent) {
 }
 
 function attachLamdaCloudRuntime(app, servicePort = 3000) {
-    // 0. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
+    // 0A. Candado Triple Anti-Doble Arranque (LAMDA_ROLE=GALPON_BRIDGE_ONLY -> HTTP 423 / HTTP 302)
+    app.use(galponBridgeRoleLockMiddleware);
+
+    // 0B. Contexto de Presencia Física por Loopback (X-Lamda-Physical-Station: PCALMACEN_VERIFIED + HMAC Token)
+    app.use(middlewareContextoPresenciaZebra);
+
+    // 0C. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
     app.get('/mobile/manifest.json', (req, res, next) => {
         if (!esModoLaboratorio()) return next();
         res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
@@ -357,6 +479,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             ]
         });
     });
+
     // 1. Servir el script de cliente unificado
     app.get('/lamda-cloud-runtime.js', (req, res) => {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -401,7 +524,17 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         res.send(preamble + CLIENT_RUNTIME_SCRIPT);
     });
 
-    // 2. Endpoint de estado de entorno (Modo Laboratorio + Cola Zebra Retenida)
+    // 1B. Sincronización de Cookie HttpOnly lamda_cloud_jwt desde sesión activa
+    app.post('/api/system/auth/sync-cookie', (req, res) => {
+        const user = verificarTokenOExtraerUsuario(req);
+        if (!user) {
+            return res.status(401).json({ ok: false, error: 'Token no válido para sincronizar cookie' });
+        }
+        emitirCookieSesionCloud(res, user);
+        return res.json({ ok: true, usuario: user.usuario || user.id });
+    });
+
+    // 2. Endpoint de estado de entorno (Modo Laboratorio + Cola Zebra Retenida + Presencia Física)
     app.get('/api/system/env-status', async (req, res) => {
         const isLaboratorio = esModoLaboratorio();
         const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
@@ -413,6 +546,8 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             servicePort,
             isLaboratorio,
             isPruebaNube,
+            lamdaRole: process.env.LAMDA_ROLE || 'PRIMARY',
+            physicalPresence: req.zebraPhysicalPresence || { estacionFisicaVerificada: false },
             safeRedirectWhatsapp: process.env.SAFE_REDIRECT_WHATSAPP_TO || '5492216615746',
             safeRedirectEmail: process.env.SAFE_REDIRECT_EMAIL_TO || 'miserrano75@gmail.com',
             isCloudMode: esModoCloudOLinux(),
@@ -456,6 +591,11 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             if (expectedToken && tokenHeader !== expectedToken) {
                 return res.status(401).json({ ok: false, error: 'Token de Print Bridge inválido.' });
             }
+            await registrarHeartbeatAgenteZebra({
+                estacionId: 'PCALMACEN',
+                ipOrigen: String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '127.0.0.1'),
+                estadoImpresora: 'ONLINE'
+            });
             const jobs = await obtenerTrabajosLiberadosParaAgente(20);
             res.json({ ok: true, jobs });
         } catch (err) {

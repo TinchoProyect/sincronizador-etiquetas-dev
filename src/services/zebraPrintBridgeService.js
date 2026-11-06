@@ -1,14 +1,20 @@
 /**
- * LAMDA Print Bridge Service (Fase 2 — Cloud 24/7 & Seguridad Operativa de Galpón)
- * --------------------------------------------------------------------------------
+ * LAMDA Print Bridge Service (Fase 2 / Micro-Etapa 1 — Cloud 24/7 & Presencia Física Loopback)
+ * --------------------------------------------------------------------------------------------
  * Gestiona el despacho inteligente de etiquetas ZPL hacia la impresora térmica Zebra:
  *  1. En MODO LABORATORIO (DB_NAME=etiquetas_pruebas o LAMDA_MODO_LABORATORIO=true):
  *     Bloquea el disparo físico a la Zebra para no desperdiciar rollo térmico en pruebas,
  *     dejando constancia en `public.zebra_print_queue` con estado `BLOQUEADA_LABORATORIO`.
  *  2. En MODO NUBE / REMOTO (Linux VPS o LAMDA_CLOUD_MODE=true):
- *     Guarda la etiqueta en `public.zebra_print_queue` con estado `PENDIENTE_CONFIRMACION_GALPON`.
- *     NUNCA se dispara sola al encender la PC del depósito: requiere confirmación visual
- *     en la bandeja superior ("🖨️ Cola Zebra Retenida") para pasar a `LIBERADA_PARA_IMPRIMIR`.
+ *     - Si la petición HTTP trae prueba criptográfica de presencia física en `PcAlmacen`
+ *       (`X-Lamda-Physical-Station: PCALMACEN_VERIFIED` + `X-Lamda-Physical-Token` emitido por
+ *       el micro-servidor loopback `127.0.0.1:3099/zebra-local-presence`), encola la etiqueta
+ *       directamente en `LIBERADA_PARA_IMPRIMIR` (`estacion_fisica_verificada = true`) para que
+ *       el agente local de `PcAlmacen` la imprima en ~1 segundo.
+ *     - Si la petición proviene de la calle (celular, tablet o notebook fuera del galpón sin
+ *       loopback `127.0.0.1:3099`), guarda la etiqueta en `PENDIENTE_CONFIRMACION_GALPON`
+ *       (`estacion_fisica_verificada = false`) para que NUNCA se dispare sola sin confirmación
+ *       visual en el galpón.
  *  3. En MODO GALPÓN LOCAL WINDOWS:
  *     Envía `COPY /B ... \\localhost\Zebra`. Si la impresora está apagada o falla el puerto,
  *     retiene automáticamente la etiqueta en `PENDIENTE_CONFIRMACION_GALPON` para no perderla.
@@ -16,9 +22,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { exec } = require('child_process');
+const { AsyncLocalStorage } = require('async_hooks');
 const pool = require('../config/db');
 
+const zebraRequestContext = new AsyncLocalStorage();
 let tablaInicializada = false;
 
 function esModoLaboratorio() {
@@ -33,6 +42,94 @@ function esModoCloudOLinux() {
     return process.platform !== 'win32' || flagCloud === 'true' || flagSoloEncolar === 'true';
 }
 
+function obtenerSecretoPresenciaZebra() {
+    return String(
+        process.env.LAMDA_PRINT_BRIDGE_TOKEN ||
+        process.env.LAMDA_CLOUD_JWT_SECRET ||
+        process.env.JWT_SECRET ||
+        'LAMDA_ZEBRA_PHYSICAL_SECRET_2026'
+    ).trim();
+}
+
+/**
+ * Genera un token HMAC temporal firmado localmente por `127.0.0.1:3099/zebra-local-presence`
+ * en `PcAlmacen`.
+ */
+function generarTokenPresenciaFisicaGalpon(station = 'PCALMACEN_VERIFIED', timestampMs = Date.now()) {
+    const ts = Number(timestampMs) || Date.now();
+    const cleanStation = String(station || 'PCALMACEN_VERIFIED').trim();
+    const payload = `${cleanStation}:${ts}`;
+    const sig = crypto
+        .createHmac('sha256', obtenerSecretoPresenciaZebra())
+        .update(payload)
+        .digest('hex');
+    return `${ts}.${sig}`;
+}
+
+/**
+ * Verifica criptográficamente el token HMAC de presencia física enviado desde el navegador
+ * de `PcAlmacen`.
+ */
+function verificarTokenPresenciaFisicaGalpon(tokenRaw, station = 'PCALMACEN_VERIFIED', maxSkewMs = 120000) {
+    try {
+        const cleanStation = String(station || '').trim();
+        if (cleanStation !== 'PCALMACEN_VERIFIED') {
+            return { verified: false, reason: 'station_mismatch' };
+        }
+        const raw = String(tokenRaw || '').trim();
+        if (!raw || !raw.includes('.')) {
+            return { verified: false, reason: 'missing_or_malformed_token' };
+        }
+        const [tsStr, providedSig] = raw.split('.');
+        const ts = parseInt(tsStr, 10);
+        if (!Number.isFinite(ts) || !providedSig) {
+            return { verified: false, reason: 'invalid_timestamp' };
+        }
+        const skew = Math.abs(Date.now() - ts);
+        if (skew > maxSkewMs) {
+            return { verified: false, reason: 'token_expired', skewMs: skew };
+        }
+        const expectedSig = crypto
+            .createHmac('sha256', obtenerSecretoPresenciaZebra())
+            .update(`${cleanStation}:${ts}`)
+            .digest('hex');
+
+        const bufProvided = Buffer.from(providedSig, 'utf8');
+        const bufExpected = Buffer.from(expectedSig, 'utf8');
+        if (bufProvided.length !== bufExpected.length || !crypto.timingSafeEqual(bufProvided, bufExpected)) {
+            return { verified: false, reason: 'invalid_signature' };
+        }
+        return {
+            verified: true,
+            station: cleanStation,
+            timestamp: ts
+        };
+    } catch (err) {
+        return { verified: false, reason: err.message };
+    }
+}
+
+/**
+ * Middleware Express que propaga en AsyncLocalStorage si la petición HTTP actual proviene
+ * físicamente del navegador de `PcAlmacen` (verificado por loopback `127.0.0.1:3099`).
+ */
+function middlewareContextoPresenciaZebra(req, res, next) {
+    const stationHeader = String(req.headers['x-lamda-physical-station'] || '').trim();
+    const tokenHeader = String(req.headers['x-lamda-physical-token'] || '').trim();
+    const verificacion = verificarTokenPresenciaFisicaGalpon(tokenHeader, stationHeader);
+
+    const store = {
+        estacionFisicaVerificada: verificacion.verified,
+        dispositivoOrigen: verificacion.verified
+            ? 'PCALMACEN_LOOPBACK_3099'
+            : (stationHeader ? `NO_VERIFICADO:${stationHeader}` : 'REMOTO_CALLE_O_MOVIL'),
+        ipOrigen: String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').trim()
+    };
+
+    req.zebraPhysicalPresence = store;
+    return zebraRequestContext.run(store, () => next());
+}
+
 async function asegurarTablaZebraQueue() {
     if (tablaInicializada) return;
     try {
@@ -45,18 +142,51 @@ async function asegurarTablaZebraQueue() {
                 nombre_impresora VARCHAR(80) NOT NULL DEFAULT 'Zebra',
                 estado VARCHAR(50) NOT NULL DEFAULT 'PENDIENTE_CONFIRMACION_GALPON',
                 origen_entorno VARCHAR(80) DEFAULT 'local',
+                estacion_fisica_verificada BOOLEAN DEFAULT FALSE,
+                dispositivo_origen VARCHAR(120) DEFAULT 'DESCONOCIDO',
                 error_detalle TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 printed_at TIMESTAMP
             );
+            ALTER TABLE public.zebra_print_queue
+                ADD COLUMN IF NOT EXISTS estacion_fisica_verificada BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS dispositivo_origen VARCHAR(120) DEFAULT 'DESCONOCIDO';
             CREATE INDEX IF NOT EXISTS idx_zebra_print_queue_estado
                 ON public.zebra_print_queue (estado, created_at DESC);
+            CREATE TABLE IF NOT EXISTS public.zebra_bridge_status (
+                estacion_id VARCHAR(64) PRIMARY KEY,
+                ultimo_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                ip_origen VARCHAR(80),
+                estado_impresora VARCHAR(40) DEFAULT 'ONLINE',
+                version_agente VARCHAR(32) DEFAULT '1.0.0'
+            );
         `);
         tablaInicializada = true;
     } catch (err) {
         console.warn('⚠️ [ZEBRA-BRIDGE] No se pudo verificar tabla zebra_print_queue:', err.message);
     }
+}
+
+async function registrarHeartbeatAgenteZebra({
+    estacionId = 'PCALMACEN',
+    ipOrigen = '127.0.0.1',
+    estadoImpresora = 'ONLINE',
+    versionAgente = '2.0.0-loopback'
+} = {}) {
+    await asegurarTablaZebraQueue();
+    try {
+        await pool.query(
+            `INSERT INTO public.zebra_bridge_status (estacion_id, ultimo_heartbeat, ip_origen, estado_impresora, version_agente)
+             VALUES ($1, NOW(), $2, $3, $4)
+             ON CONFLICT (estacion_id) DO UPDATE SET
+                ultimo_heartbeat = NOW(),
+                ip_origen = EXCLUDED.ip_origen,
+                estado_impresora = EXCLUDED.estado_impresora,
+                version_agente = EXCLUDED.version_agente`,
+            [estacionId, ipOrigen, estadoImpresora, versionAgente]
+        );
+    } catch (_) {}
 }
 
 function ejecutarCopyWindowsZebra(zplPayload, nombreImpresora = 'Zebra') {
@@ -88,7 +218,9 @@ async function despacharZplAZebra({
     tipoEtiqueta = 'ETIQUETA_ZPL',
     descripcion = '',
     nombreImpresora = 'Zebra',
-    forzarEncolado = false
+    forzarEncolado = false,
+    estacionFisicaVerificada = null,
+    dispositivoOrigen = null
 }) {
     await asegurarTablaZebraQueue();
 
@@ -106,35 +238,66 @@ async function despacharZplAZebra({
     }
 
     const descripcionLimpia = String(descripcion || tipoEtiqueta).trim().slice(0, 300);
+    const ctxStore = zebraRequestContext.getStore() || {};
+    const isPhysicalVerified = estacionFisicaVerificada !== null
+        ? Boolean(estacionFisicaVerificada)
+        : Boolean(ctxStore.estacionFisicaVerificada);
+    const origenDispositivo = dispositivoOrigen || ctxStore.dispositivoOrigen || (isPhysicalVerified ? 'PCALMACEN_LOOPBACK_3099' : 'REMOTO_SIN_LOOPBACK');
 
     // 1. MODO LABORATORIO: Nunca imprimir físicamente en pruebas
     if (esModoLaboratorio()) {
         try {
             await pool.query(
                 `INSERT INTO public.zebra_print_queue
-                    (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno)
-                 VALUES ($1, $2, $3, $4, 'BLOQUEADA_LABORATORIO', $5)`,
-                [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, `LAB:${process.env.DB_NAME || 'etiquetas_pruebas'}`]
+                    (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, estacion_fisica_verificada, dispositivo_origen)
+                 VALUES ($1, $2, $3, $4, 'BLOQUEADA_LABORATORIO', $5, $6, $7)`,
+                [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, `LAB:${process.env.DB_NAME || 'etiquetas_pruebas'}`, isPhysicalVerified, origenDispositivo]
             );
         } catch (dbErr) {
             console.warn('⚠️ [ZEBRA-BRIDGE] Error registrando etiqueta en modo laboratorio:', dbErr.message);
         }
         console.log(`🛠️ [ZEBRA-BRIDGE] MODO LABORATORIO ACTIVO: Etiqueta "${descripcionLimpia}" simulada (NO se envió a la Zebra física).`);
-        return { ok: true, mode: 'BLOQUEADA_LABORATORIO', descripcion: descripcionLimpia };
+        return {
+            ok: true,
+            mode: 'BLOQUEADA_LABORATORIO',
+            descripcion: descripcionLimpia,
+            estacionFisicaVerificada: isPhysicalVerified
+        };
     }
 
-    // 2. MODO CLOUD / LINUX O ENCOLADO FORZADO: Retener en bandeja de confirmación del galpón
+    // 2. MODO CLOUD / LINUX O ENCOLADO REMOTO:
+    //    - Si el clic vino físicamente del navegador de PcAlmacen (verificado por loopback 127.0.0.1:3099)
+    //      y no se forzó encolado manual, se libera directamente (`LIBERADA_PARA_IMPRIMIR`) para salir en ~1s.
+    //    - Si vino de un celular/calle/notebook externa, se retiene en `PENDIENTE_CONFIRMACION_GALPON`.
     if (esModoCloudOLinux() || forzarEncolado) {
+        const liberarInmediatoPorPresencia = isPhysicalVerified && !forzarEncolado;
+        const estadoInicial = liberarInmediatoPorPresencia
+            ? 'LIBERADA_PARA_IMPRIMIR'
+            : 'PENDIENTE_CONFIRMACION_GALPON';
+        const entornoOrigen = liberarInmediatoPorPresencia
+            ? 'cloud-pcalmacen-verified-1s'
+            : (process.platform === 'win32' ? 'win32-queued' : 'cloud-remote-retained');
+
         const resInsert = await pool.query(
             `INSERT INTO public.zebra_print_queue
-                (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno)
-             VALUES ($1, $2, $3, $4, 'PENDIENTE_CONFIRMACION_GALPON', $5)
+                (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, estacion_fisica_verificada, dispositivo_origen)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING id`,
-            [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, process.platform === 'win32' ? 'win32-queued' : 'cloud-linux']
+            [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, estadoInicial, entornoOrigen, isPhysicalVerified, origenDispositivo]
         );
         const jobId = resInsert.rows[0]?.id;
-        console.log(`🖨️ [ZEBRA-BRIDGE] Etiqueta #${jobId} ("${descripcionLimpia}") retenida en PENDIENTE_CONFIRMACION_GALPON.`);
-        return { ok: true, mode: 'PENDIENTE_CONFIRMACION_GALPON', jobId, descripcion: descripcionLimpia };
+        if (liberarInmediatoPorPresencia) {
+            console.log(`⚡ [ZEBRA-BRIDGE] Etiqueta #${jobId} ("${descripcionLimpia}") disparada desde PcAlmacen verificada (127.0.0.1:3099) -> LIBERADA_PARA_IMPRIMIR (~1s).`);
+        } else {
+            console.log(`🖨️ [ZEBRA-BRIDGE] Etiqueta #${jobId} ("${descripcionLimpia}") desde origen remoto (${origenDispositivo}) -> retenida en PENDIENTE_CONFIRMACION_GALPON.`);
+        }
+        return {
+            ok: true,
+            mode: estadoInicial,
+            jobId,
+            descripcion: descripcionLimpia,
+            estacionFisicaVerificada: isPhysicalVerified
+        };
     }
 
     // 3. MODO GALPÓN LOCAL WINDOWS: Intentar disparo directo; si falla, retener en bandeja
@@ -143,21 +306,21 @@ async function despacharZplAZebra({
         try {
             await pool.query(
                 `INSERT INTO public.zebra_print_queue
-                    (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, printed_at)
-                 VALUES ($1, $2, $3, $4, 'IMPRESA_OK', 'win32-direct', CURRENT_TIMESTAMP)`,
+                    (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, estacion_fisica_verificada, dispositivo_origen, printed_at)
+                 VALUES ($1, $2, $3, $4, 'IMPRESA_OK', 'win32-direct', TRUE, 'PCALMACEN_WIN32_DIRECT', CURRENT_TIMESTAMP)`,
                 [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora]
             );
         } catch (_) {}
         console.log(`✅ [ZEBRA-BRIDGE] Etiqueta "${descripcionLimpia}" enviada físicamente a \\\\localhost\\${nombreImpresora}.`);
-        return { ok: true, mode: 'IMPRESA_DIRECTA_LOCAL', descripcion: descripcionLimpia };
+        return { ok: true, mode: 'IMPRESA_DIRECTA_LOCAL', descripcion: descripcionLimpia, estacionFisicaVerificada: true };
     } catch (printErr) {
         console.warn(`⚠️ [ZEBRA-BRIDGE] Impresora Zebra no disponible (${printErr.message}). Reteniendo etiqueta en bandeja de confirmación...`);
         const resRetained = await pool.query(
             `INSERT INTO public.zebra_print_queue
-                (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, error_detalle)
-             VALUES ($1, $2, $3, $4, 'PENDIENTE_CONFIRMACION_GALPON', 'win32-fallback', $5)
+                (tipo_etiqueta, descripcion, zpl_payload, nombre_impresora, estado, origen_entorno, estacion_fisica_verificada, dispositivo_origen, error_detalle)
+             VALUES ($1, $2, $3, $4, 'PENDIENTE_CONFIRMACION_GALPON', 'win32-fallback', $5, $6, $7)
              RETURNING id`,
-            [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, printErr.message]
+            [tipoEtiqueta, descripcionLimpia, payload, nombreImpresora, isPhysicalVerified, origenDispositivo, printErr.message]
         );
         return {
             ok: true,
@@ -172,7 +335,8 @@ async function obtenerResumenColaRetenida() {
     await asegurarTablaZebraQueue();
     try {
         const res = await pool.query(`
-            SELECT id, tipo_etiqueta, descripcion, nombre_impresora, estado, origen_entorno, error_detalle, created_at
+            SELECT id, tipo_etiqueta, descripcion, nombre_impresora, estado, origen_entorno,
+                   estacion_fisica_verificada, dispositivo_origen, error_detalle, created_at
             FROM public.zebra_print_queue
             WHERE estado IN ('PENDIENTE_CONFIRMACION_GALPON', 'LIBERADA_PARA_IMPRIMIR')
             ORDER BY created_at DESC
@@ -309,6 +473,11 @@ async function confirmarImpresionAgente(id, exito = true, errorDetalle = null) {
 module.exports = {
     esModoLaboratorio,
     esModoCloudOLinux,
+    obtenerSecretoPresenciaZebra,
+    generarTokenPresenciaFisicaGalpon,
+    verificarTokenPresenciaFisicaGalpon,
+    middlewareContextoPresenciaZebra,
+    registrarHeartbeatAgenteZebra,
     asegurarTablaZebraQueue,
     despacharZplAZebra,
     obtenerResumenColaRetenida,
