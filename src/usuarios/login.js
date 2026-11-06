@@ -5,8 +5,9 @@ const { emitirCookieSesionCloud } = require('../shared/lamdaCloudAuthGuard');
 const SECRET_KEY = process.env.JWT_SECRET || 'LAMDA_super_secreta'; // Podés moverla a un .env más adelante
 
 async function login(req, res) {
-  const contraseña = req.body?.contraseña ?? req.body?.password;
-  const usuario = req.body?.usuario;
+  const rawPass = req.body?.contraseña ?? req.body?.password;
+  const contraseña = typeof rawPass === 'string' ? rawPass : '';
+  const usuario = typeof req.body?.usuario === 'string' ? req.body.usuario.trim() : '';
 
   if (!usuario || !contraseña) {
     return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
@@ -14,13 +15,13 @@ async function login(req, res) {
 
   try {
     const result = await pool.query(
-      'SELECT * FROM usuarios WHERE usuario = $1 AND activo = true',
+      'SELECT * FROM usuarios WHERE LOWER(TRIM(usuario)) = LOWER(TRIM($1)) AND activo = true',
       [usuario]
     );
 
     const user = result.rows[0];
 
-    if (!user || user.contraseña !== contraseña) {
+    if (!user || (user.contraseña !== contraseña && user.contraseña !== contraseña.trim())) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 

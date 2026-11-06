@@ -499,7 +499,7 @@ function renderLoginHtmlPage() {
         <div id="err-box" class="err"></div>
         <form id="cloud-login-form">
             <label for="usuario">Usuario</label>
-            <input type="text" id="usuario" name="usuario" required autocomplete="username" placeholder="Ej: Tincho">
+            <input type="text" id="usuario" name="usuario" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Ej: Tincho">
             <label for="password">Contraseña</label>
             <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
             <button type="submit" id="btn-submit">Ingresar al Sistema</button>
@@ -515,7 +515,7 @@ function renderLoginHtmlPage() {
             btn.textContent = 'Verificando...';
             try {
                 var u = document.getElementById('usuario').value.trim();
-                var p = document.getElementById('password').value;
+                var p = document.getElementById('password').value.trim();
                 var res = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -548,13 +548,13 @@ function renderLoginHtmlPage() {
                 var redirect = params.get('redirect') || '/gw/3000/';
                 if (redirect === '/' || redirect === '/login') {
                     redirect = '/gw/3000/';
-                } else if (/^\/gw\/3000$/i.test(redirect)) {
+                } else if (/^\\/gw\\/3000$/i.test(redirect)) {
                     redirect = '/gw/3000/';
-                } else if (/^\/gw\/3002\/?$/i.test(redirect)) {
+                } else if (/^\\/gw\\/3002\\/?$/i.test(redirect)) {
                     redirect = '/gw/3002/pages/produccion.html';
-                } else if (/^(\/gw\/3003|\/presupuestos)\/?$/i.test(redirect)) {
+                } else if (/^(\\/gw\\/3003|\\/presupuestos)\\/?$/i.test(redirect)) {
                     redirect = '/gw/3003/pages/presupuestos.html';
-                } else if (/^\/gw\/3004\/?$/i.test(redirect)) {
+                } else if (/^\\/gw\\/3004\\/?$/i.test(redirect)) {
                     redirect = '/gw/3004/pages/facturas.html';
                 }
                 window.location.replace(redirect);

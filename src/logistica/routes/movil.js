@@ -161,7 +161,10 @@ router.post('/login', async (req, res) => {
 
     try {
         // Extraer credenciales del body
-        const { usuario, password } = req.body;
+        const rawUsuario = req.body?.usuario;
+        const rawPassword = req.body?.password ?? req.body?.contraseña;
+        const usuario = typeof rawUsuario === 'string' ? rawUsuario.trim() : '';
+        const password = typeof rawPassword === 'string' ? rawPassword : '';
         const isLab = String(process.env.MODO_LABORATORIO).toLowerCase() === 'true' || process.env.DB_NAME === 'etiquetas_pruebas';
         if (isLab && (!usuario || !password)) {
             const tokenLab = Buffer.from(`2:${Date.now()}`).toString('base64');
@@ -222,7 +225,7 @@ router.post('/login', async (req, res) => {
                 activo,
                 rol_id
             FROM public.usuarios
-            WHERE usuario = $1 AND activo = true
+            WHERE LOWER(TRIM(usuario)) = LOWER(TRIM($1)) AND activo = true
         `;
 
         console.log('[LOGIN] Ejecutando query SQL...');
@@ -273,8 +276,8 @@ router.post('/login', async (req, res) => {
         console.log('[LOGIN] Longitud password BD:', dbPassword.length);
         console.log('[LOGIN] Longitud password recibido:', password.length);
 
-        // Comparación directa (texto plano, sin bcrypt)
-        if (dbPassword !== password) {
+        // Comparación directa (texto plano, sin bcrypt) con tolerancia a espacios finales de teclado móvil
+        if (dbPassword !== password && dbPassword !== password.trim()) {
             console.log('[LOGIN] ❌ Contraseña incorrecta');
             console.log('[LOGIN] ========================================\n');
             return res.status(401).json({
