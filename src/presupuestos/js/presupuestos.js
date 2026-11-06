@@ -326,23 +326,11 @@ async function checkModuleHealth() {
 }
 
 /**
- * Verificar estado de autenticación con Google
+ * Verificar estado de autenticación con Google (Retirado en Micro-Etapa 6: 100% Local-First)
  */
 async function checkAuthStatus() {
-    console.log('🔍 [PRESUPUESTOS-JS] Verificando estado de autenticación...');
-
-    try {
-        const response = await fetch(URLS.AUTH_STATUS);
-        const data = await response.json();
-
-        appState.authStatus = data;
-        updateSyncButtonState(data);
-
-        console.log('✅ [PRESUPUESTOS-JS] Estado de autenticación verificado:', data);
-    } catch (error) {
-        console.error('❌ [PRESUPUESTOS-JS] Error al verificar autenticación:', error);
-        updateSyncButtonState({ authenticated: false, error: true });
-    }
+    appState.authStatus = { authenticated: false, legacyRetired: true };
+    updateSyncButtonState({ authenticated: false });
 }
 
 /**
@@ -2494,135 +2482,43 @@ async function anularPresupuesto(presupuestoId) {
  * Iniciar polling de actualizaciones automáticas
  */
 async function startAutoUpdatePolling() {
-    console.log('[AUTO-UPDATE] Iniciando polling de actualizaciones...');
-
-    // Si ya está activo, no hacer nada
-    if (appState.autoUpdatePolling.isActive) {
-        console.log('[AUTO-UPDATE] Polling ya está activo');
-        return;
-    }
-
-    // Verificar si autosync está habilitado
-    const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
-    if (!isAutoSyncEnabled) {
-        console.log('[AUTO-UPDATE] Autosync deshabilitado, no se iniciará polling');
-        return;
-    }
-
-    // Marcar como activo
-    appState.autoUpdatePolling.isActive = true;
-
-    // Configurar intervalo
-    appState.autoUpdatePolling.intervalId = setInterval(async () => {
-        await pollForUpdates();
-    }, appState.autoUpdatePolling.pollIntervalSeconds * 1000);
-
-    console.log(`[AUTO-UPDATE] ✅ Polling iniciado (cada ${appState.autoUpdatePolling.pollIntervalSeconds} segundos)`);
+    // 🛑 [MICRO-ETAPA 6] Polling automático de 20s a Google Sheets retirado (100% Local-First)
+    stopAutoUpdatePolling();
 }
 
 /**
  * Detener polling de actualizaciones automáticas
  */
 function stopAutoUpdatePolling() {
-    console.log('[AUTO-UPDATE] Deteniendo polling de actualizaciones...');
-
-    if (appState.autoUpdatePolling.intervalId) {
+    if (appState.autoUpdatePolling && appState.autoUpdatePolling.intervalId) {
         clearInterval(appState.autoUpdatePolling.intervalId);
         appState.autoUpdatePolling.intervalId = null;
     }
-
-    appState.autoUpdatePolling.isActive = false;
-    console.log('[AUTO-UPDATE] ✅ Polling detenido');
+    if (appState.autoUpdatePolling) {
+        appState.autoUpdatePolling.isActive = false;
+    }
 }
 
 /**
- * Verificar si hay actualizaciones disponibles
+ * Verificar si hay actualizaciones disponibles (no-op: proceso legacy GSheets retirado)
  */
 async function pollForUpdates() {
-    try {
-        // Obtener última sincronización de la BD sin mostrar errores
-        const response = await fetch(URLS.ESTADISTICAS);
-        const data = await response.json();
-
-        if (data.success && data.estadisticas && data.estadisticas.ultima_sincronizacion) {
-            const nuevaFechaSinc = data.estadisticas.ultima_sincronizacion;
-
-            // Si es la primera vez o si cambió, actualizar
-            if (!appState.autoUpdatePolling.lastSyncTimestamp ||
-                appState.autoUpdatePolling.lastSyncTimestamp !== nuevaFechaSinc) {
-
-                console.log('[AUTO-UPDATE] 🔄 Nueva sincronización detectada:', nuevaFechaSinc);
-
-                // Actualizar timestamp guardado
-                appState.autoUpdatePolling.lastSyncTimestamp = nuevaFechaSinc;
-
-                // Actualizar estadísticas silenciosamente (sin mensaje al usuario)
-                await loadEstadisticas();
-
-                console.log('[AUTO-UPDATE] ✅ Estadísticas actualizadas automáticamente');
-            }
-        }
-    } catch (error) {
-        // Silenciar errores del polling para no molestar al usuario
-        console.log('[AUTO-UPDATE] Error en polling (silenciado):', error.message);
-    }
+    return;
 }
 
 /**
- * Verificar si autosync está habilitado
+ * Verificar si autosync está habilitado (deshabilitado permanentemente en Micro-Etapa 6)
  */
 async function checkIfAutoSyncIsEnabled() {
-    try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/sync/config`);
-        const data = await response.json();
-
-        if (data && data.auto_sync_enabled) {
-            console.log('[AUTO-UPDATE] Autosync está HABILITADO');
-            return true;
-        }
-
-        console.log('[AUTO-UPDATE] Autosync está DESHABILITADO');
-        return false;
-    } catch (error) {
-        console.log('[AUTO-UPDATE] Error verificando estado de autosync:', error.message);
-        return false;
-    }
+    return false;
 }
 
 /**
- * Reiniciar polling según estado actual de autosync
- * Se llama desde el modal al cerrar o al cambiar configuración
+ * Reiniciar polling según estado actual de autosync (no-op en Micro-Etapa 6)
  */
 window.refreshAutoUpdatePolling = async function () {
-    console.log('[AUTO-UPDATE] Refrescando estado de polling...');
-
-    // Detener polling actual
     stopAutoUpdatePolling();
-
-    // Verificar si debe iniciarse nuevamente
-    const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
-
-    if (isAutoSyncEnabled) {
-        console.log('[AUTO-UPDATE] Reiniciando polling porque autosync está activo');
-        await startAutoUpdatePolling();
-    } else {
-        console.log('[AUTO-UPDATE] No se inicia polling porque autosync está inactivo');
-    }
 };
-
-// Iniciar polling automáticamente si autosync está habilitado al cargar la página
-document.addEventListener('DOMContentLoaded', async function () {
-    // Esperar un momento para que la aplicación se inicialice completamente
-    setTimeout(async () => {
-        console.log('[AUTO-UPDATE] Verificando si debe iniciar polling al cargar página...');
-        const isAutoSyncEnabled = await checkIfAutoSyncIsEnabled();
-
-        if (isAutoSyncEnabled) {
-            console.log('[AUTO-UPDATE] Autosync habilitado, iniciando polling automático');
-            await startAutoUpdatePolling();
-        }
-    }, 2000);
-});
 
 /**
  * ===== SISTEMA DE PERSISTENCIA DE FILTROS =====

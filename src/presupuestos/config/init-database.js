@@ -64,166 +64,16 @@ const crearTablas = async () => {
         await pool.query(crearTablaDetalles);
         console.log('[PRESUPUESTOS-BACK] ✅ Tabla presupuestos_detalles verificada/creada');
         
-        // Tabla de configuración de Google Sheets
-        const crearTablaConfig = `
-            CREATE TABLE IF NOT EXISTS presupuestos_config (
-                id SERIAL PRIMARY KEY,
-                hoja_url TEXT NOT NULL,
-                hoja_id VARCHAR(255) NOT NULL,
-                hoja_nombre VARCHAR(255),
-                rango VARCHAR(100) DEFAULT 'A:Z',
-                activo BOOLEAN DEFAULT true,
-                usuario_id INTEGER,
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `;
-        
-        await pool.query(crearTablaConfig);
-        console.log('[PRESUPUESTOS-BACK] ✅ Tabla presupuestos_config verificada/creada');
-        
-        // Tabla de log de sincronizaciones
-        const crearTablaSyncLog = `
-            CREATE TABLE IF NOT EXISTS presupuestos_sync_log (
-                id SERIAL PRIMARY KEY,
-                fecha_sync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                exitoso BOOLEAN DEFAULT false,
-                registros_procesados INTEGER DEFAULT 0,
-                registros_nuevos INTEGER DEFAULT 0,
-                registros_actualizados INTEGER DEFAULT 0,
-                errores TEXT,
-                detalles JSONB,
-                usuario_id INTEGER,
-                duracion_ms INTEGER
-            );
-        `;
-        
-        await pool.query(crearTablaSyncLog);
-        console.log('[PRESUPUESTOS-BACK] ✅ Tabla presupuestos_sync_log verificada/creada');
-        
-        // Agregar campos de sincronización automática si no existen
-        console.log('[PRESUPUESTOS-BACK] 🔧 Verificando campos de autosync en presupuestos_config...');
-        
-        const agregarCamposAutosync = `
-            DO $$ 
-            BEGIN
-                -- auto_sync_enabled
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'auto_sync_enabled'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN auto_sync_enabled BOOLEAN DEFAULT false;
-                END IF;
-                
-                -- sync_interval_minutes
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'sync_interval_minutes'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN sync_interval_minutes INTEGER DEFAULT 5;
-                END IF;
-                
-                -- active_hours_start
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'active_hours_start'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN active_hours_start TIME DEFAULT '08:00:00';
-                END IF;
-                
-                -- active_hours_end
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'active_hours_end'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN active_hours_end TIME DEFAULT '20:00:00';
-                END IF;
-                
-                -- timezone
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'timezone'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN timezone VARCHAR(100) DEFAULT 'America/Argentina/Buenos_Aires';
-                END IF;
-                
-                -- cutoff_at (CRÍTICO para sincronización bidireccional)
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos_config' AND column_name = 'cutoff_at'
-                ) THEN
-                    ALTER TABLE presupuestos_config ADD COLUMN cutoff_at TIMESTAMP DEFAULT (NOW() - INTERVAL '30 days');
-                END IF;
+        // 🛑 [MICRO-ETAPA 6] Retirada la recreación e inserción en cada arranque de presupuestos_config y presupuestos_sync_log (100% Local-First)
+        const tieneConfig = false;
 
-                -- usar_precios_bunker (Fase 3 Transición Bunker)
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'presupuestos' AND column_name = 'usar_precios_bunker'
-                ) THEN
-                    ALTER TABLE presupuestos ADD COLUMN usar_precios_bunker BOOLEAN DEFAULT false;
-                END IF;
-            END $$;
+        // Agregar columna 'usar_precios_bunker' a presupuestos si no existe (Fase 3 Transición Bunker)
+        const addUsarPreciosBunkerColumn = `
+            ALTER TABLE public.presupuestos
+            ADD COLUMN IF NOT EXISTS usar_precios_bunker BOOLEAN DEFAULT false;
         `;
-        
-        await pool.query(agregarCamposAutosync);
-        console.log('[PRESUPUESTOS-BACK] ✅ Campos de autosync y usar_precios_bunker verificados/agregados');
-        
-        // Insertar configuración por defecto si no existe
-        const verificarConfig = `
-            SELECT COUNT(*) as total FROM presupuestos_config WHERE activo = true
-        `;
-        
-        const configResult = await pool.query(verificarConfig);
-        const tieneConfig = parseInt(configResult.rows[0].total) > 0;
-        
-        if (!tieneConfig) {
-            console.log('[PRESUPUESTOS-BACK] 🔧 Insertando configuración por defecto...');
-            
-            const insertarConfigDefault = `
-                INSERT INTO presupuestos_config (
-                    hoja_url, 
-                    hoja_id, 
-                    hoja_nombre, 
-                    rango, 
-                    activo, 
-                    usuario_id,
-                    auto_sync_enabled,
-                    sync_interval_minutes,
-                    active_hours_start,
-                    active_hours_end,
-                    timezone,
-                    cutoff_at
-                ) VALUES (
-                    'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
-                    '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
-                    'PresupuestosCopia',
-                    'A:Z',
-                    true,
-                    1,
-                    false,
-                    5,
-                    '08:00:00',
-                    '20:00:00',
-                    'America/Argentina/Buenos_Aires',
-                    NOW() - INTERVAL '30 days'
-                )
-                ON CONFLICT DO NOTHING
-            `;
-            
-            await pool.query(insertarConfigDefault);
-            console.log('[PRESUPUESTOS-BACK] ✅ Configuración por defecto insertada');
-        } else {
-            console.log('[PRESUPUESTOS-BACK] ✅ Configuración existente encontrada');
-            
-            // Actualizar cutoff_at si está NULL
-            const actualizarCutoffNull = `
-                UPDATE presupuestos_config 
-                SET cutoff_at = NOW() - INTERVAL '30 days'
-                WHERE activo = true AND cutoff_at IS NULL
-            `;
-            await pool.query(actualizarCutoffNull);
-            console.log('[PRESUPUESTOS-BACK] ✅ Verificado cutoff_at en configuración existente');
-        }
+        await pool.query(addUsarPreciosBunkerColumn);
+        console.log('[PRESUPUESTOS-BACK] ✅ Columna usar_precios_bunker verificada/creada');
         
         // Agregar columna 'archivado' a presupuestos si no existe
         const addArchivadoColumn = `
@@ -247,10 +97,6 @@ const crearTablas = async () => {
         const totalPresupuestos = parseInt(presupuestosResult.rows[0].total);
         
         console.log(`[PRESUPUESTOS-BACK] 📊 Total presupuestos en BD: ${totalPresupuestos}`);
-        
-        if (totalPresupuestos === 0) {
-            console.log('[PRESUPUESTOS-BACK] ⚠️ No hay datos en la BD. Se requiere sincronización con Google Sheets.');
-        }
         
         console.log('[PRESUPUESTOS-BACK] ✅ Inicialización de base de datos completada');
         

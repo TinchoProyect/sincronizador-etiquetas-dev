@@ -21,12 +21,6 @@ function generatePresupuestoId() {
     return `${timestamp}-${random}`;
 }
 
-function generateDetalleId() {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 3);
-    return `D-${timestamp}-${random}`;
-}
-
 // Normalizadores locales (sin dependencias de Google Sheets)
 function normalizeDate(dateInput) {
     if (!dateInput) return new Date().toISOString().split('T')[0];
@@ -51,86 +45,102 @@ function normalizeNumber(numberInput) {
 }
 
 /**
- * Push automático a Google Sheets (fire-and-forget)
- * Se ejecuta en segundo plano después del COMMIT exitoso
+ * Push automático a Google Sheets (no-op: proceso de transición legacy retirado)
  */
-async function pushToSheetsFireAndForget(presupuestoId, detallesCount, requestId, db) {
+async function pushToSheetsFireAndForget() {
     // 🛑 [LEGACY RETIRADO] El puente de transición hacia Google Sheets / AppSheet ya no se utiliza.
     return;
+}
+
+/**
+ * Normaliza cualquier código de artículo entrante (código de barras o SKU) hacia su SKU canónico
+ * (`COALESCE(ba.articulo_id::text, a.numero, src.articulo_numero, input)`).
+ *
+ * Regla de Oro de Intocabilidad (Micro-Etapa 6):
+ * Si el valor corresponde a un insumo de `public.ingredientes` (como '135' Aceite de Coco o
+ * '136' Miel del Kit de Matías) o `det.es_ingrediente === true`, NO se altera bajo ningún concepto.
+ */
+async function normalizarArticuloASkuCanonico(pgClient, codigoInput, det = {}) {
+    const raw = (codigoInput ?? '').toString().trim();
+    if (!raw) return raw;
+
+    if (det && (det.es_ingrediente === true || det.es_ingrediente === 'true')) {
+        return raw;
+    }
+    if (raw === '135' || raw === '136') {
+        return raw;
+    }
+
+    const sql = `
+        SELECT
+            CASE
+                WHEN ing.id IS NOT NULL AND a_bar.numero IS NULL AND ba_bar.articulo_id IS NULL THEN q.codigo_buscado
+                ELSE COALESCE(
+                    NULLIF(TRIM(ba.articulo_id::text), ''),
+                    NULLIF(TRIM(a.numero::text), ''),
+                    NULLIF(TRIM(src.articulo_numero::text), ''),
+                    q.codigo_buscado
+                )
+            END AS sku_canonico
+        FROM (SELECT $1::text AS codigo_buscado) q
+        LEFT JOIN LATERAL (
+            SELECT ing_inner.id
+            FROM public.ingredientes ing_inner
+            WHERE ing_inner.id::text = q.codigo_buscado
+               OR TRIM(ing_inner.codigo::text) = q.codigo_buscado
+            LIMIT 1
+        ) ing ON true
+        LEFT JOIN LATERAL (
+            SELECT a_b.numero
+            FROM public.articulos a_b
+            WHERE NULLIF(TRIM(a_b.codigo_barras::text), '') = q.codigo_buscado
+            LIMIT 1
+        ) a_bar ON true
+        LEFT JOIN LATERAL (
+            SELECT ba_b.articulo_id
+            FROM public.bunker_articulos ba_b
+            WHERE NULLIF(TRIM(ba_b.codigo_barras::text), '') = q.codigo_buscado
+            LIMIT 1
+        ) ba_bar ON true
+        LEFT JOIN LATERAL (
+            SELECT a_inner.numero, a_inner.codigo_barras
+            FROM public.articulos a_inner
+            WHERE TRIM(a_inner.numero::text) = q.codigo_buscado
+               OR TRIM(a_inner.codigo_barras::text) = q.codigo_buscado
+            ORDER BY
+               (TRIM(a_inner.numero::text) = q.codigo_buscado) DESC,
+               (TRIM(a_inner.codigo_barras::text) = q.codigo_buscado) DESC
+            LIMIT 1
+        ) a ON true
+        LEFT JOIN LATERAL (
+            SELECT ba_inner.articulo_id, ba_inner.codigo_barras
+            FROM public.bunker_articulos ba_inner
+            WHERE TRIM(ba_inner.articulo_id::text) = q.codigo_buscado
+               OR TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado
+               OR (a.numero IS NOT NULL AND TRIM(ba_inner.articulo_id::text) = TRIM(a.numero::text))
+            ORDER BY
+               (TRIM(ba_inner.articulo_id::text) = q.codigo_buscado) DESC,
+               (TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado) DESC
+            LIMIT 1
+        ) ba ON true
+        LEFT JOIN LATERAL (
+            SELECT src_inner.articulo_numero
+            FROM public.stock_real_consolidado src_inner
+            WHERE TRIM(src_inner.articulo_numero::text) = q.codigo_buscado
+               OR TRIM(src_inner.codigo_barras::text) = q.codigo_buscado
+            ORDER BY
+               (TRIM(src_inner.articulo_numero::text) = q.codigo_buscado) DESC,
+               (TRIM(src_inner.codigo_barras::text) = q.codigo_buscado) DESC
+            LIMIT 1
+        ) src ON true
+    `;
     try {
-        console.log(`🚀 [SYNC-UP] ${requestId} - Iniciando push automático a Sheets: ${presupuestoId} (${detallesCount} detalles)`);
-
-        // Obtener configuración de Sheets
-        let config = null;
-        try {
-            const configQuery = `
-                SELECT sheet_url, sheet_id 
-                FROM presupuestos_config 
-                WHERE activo = true 
-                ORDER BY fecha_creacion DESC 
-                LIMIT 1
-            `;
-            const configResult = await db.query(configQuery);
-
-            if (configResult.rows.length > 0) {
-                const configPersistida = configResult.rows[0];
-                config = {
-                    hoja_id: configPersistida.sheet_id,
-                    hoja_url: configPersistida.sheet_url,
-                    hoja_nombre: 'Presupuestos',
-                    usuario_id: null
-                };
-            } else {
-                // Usar configuración por defecto
-                config = {
-                    hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
-                    hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
-                    hoja_nombre: 'Presupuestos',
-                    usuario_id: null
-                };
-            }
-        } catch (configError) {
-            console.warn(`⚠️ [SYNC-UP] ${requestId} - Error obteniendo config, usando por defecto:`, configError.message);
-            config = {
-                hoja_id: '1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8',
-                hoja_url: 'https://docs.google.com/spreadsheets/d/1r7VEnEArREqAGZiDxQCW4A0XIKb8qaxHXD0TlVhfuf8/edit',
-                hoja_nombre: 'Presupuestos',
-                usuario_id: null
-            };
-        }
-
-        if (!config.hoja_id) {
-            console.warn(`⚠️ [SYNC-UP] ${requestId} - No hay configuración válida para push automático`);
-            return;
-        }
-
-        // Importar funciones de push (usando las existentes del servicio)
-        const { pushAltasLocalesASheets, pushDetallesLocalesASheets } = require('../../services/gsheets/sync_fechas_fix');
-        const { readSheetWithHeaders } = require('../../services/gsheets/client_with_logs');
-
-        // Leer datos actuales de Sheets para el push
-        console.log(`🔍 [SYNC-UP] ${requestId} - Leyendo datos actuales de Sheets...`);
-        const presupuestosData = await readSheetWithHeaders(config.hoja_id, 'A:P', 'Presupuestos');
-
-        // Push de cabecera (solo el presupuesto recién creado)
-        console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de cabecera...`);
-        const insertedIds = await pushAltasLocalesASheets(presupuestosData, config, db);
-
-        if (insertedIds && insertedIds.size > 0 && insertedIds.has(presupuestoId)) {
-            console.log(`✅ [SYNC-UP] ${requestId} - Cabecera enviada exitosamente: ${presupuestoId}`);
-
-            // Push de detalles
-            console.log(`📤 [SYNC-UP] ${requestId} - Ejecutando push de detalles...`);
-            await pushDetallesLocalesASheets(insertedIds, config, db);
-            console.log(`✅ [SYNC-UP] ${requestId} - Push automático completado: ${presupuestoId} con ${detallesCount} detalles`);
-        } else {
-            console.log(`ℹ️ [SYNC-UP] ${requestId} - Presupuesto ya existía en Sheets o no se pudo enviar: ${presupuestoId}`);
-        }
-
-    } catch (pushError) {
-        // Error en push NO debe afectar la respuesta al cliente
-        console.error(`❌ [SYNC-UP] ${requestId} - Error en push automático (no crítico):`, pushError.message);
-        console.error(`❌ [SYNC-UP] ${requestId} - Stack:`, pushError.stack);
+        const r = await pgClient.query(sql, [raw]);
+        const resuelto = (r.rows?.[0]?.sku_canonico ?? '').toString().trim();
+        return resuelto || raw;
+    } catch (e) {
+        console.warn('⚠️ [PRESUPUESTOS-WRITE] normalizarArticuloASkuCanonico falló para ' + raw + ': ' + e.message);
+        return raw;
     }
 }
 
@@ -424,28 +434,15 @@ const crearPresupuesto = async (req, res) => {
             }
 
 
-            // Obtener configuración activa para completar campos
-            const configQuery = `
-                SELECT hoja_url
-                FROM presupuestos_config
-                WHERE activo = true
-                ORDER BY id DESC
-                LIMIT 1
-            `;
-            const configResult = await client.query(configQuery);
-
-            let configHojaUrl = process.env.SPREADSHEET_URL || '';
-            if (configResult.rows.length > 0) {
-                configHojaUrl = configResult.rows[0].hoja_url;
-                console.log(`[SINCRO] Config hoja_url para nuevo presupuesto: ${configHojaUrl}`);
-            }
+            // Proceso de transición legacy a Google Sheets retirado (Micro-Etapa 6: sin consulta a presupuestos_config)
+            const configHojaUrl = null;
 
             // Insertar encabezado en BD
             const insertHeaderQuery = `
                 INSERT INTO presupuestos 
                 (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
                 nota, estado, informe_generado, punto_entrega, descuento, secuencia, activo, hoja_nombre, hoja_url, usuario_id, estado_logistico, origen_facturacion, origen_punto_venta, origen_numero_factura, usar_precios_bunker)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, 'Presupuestos', $13, $14, $15, $16, $17, $18, $19)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true, NULL, $13, $14, $15, $16, $17, $18, $19)
                 RETURNING *
             `;
 
@@ -566,17 +563,17 @@ const crearPresupuesto = async (req, res) => {
                 const ivaTotal = round2(cantidad * ivaUnit);                // N
                 const brutoTotal = round2(netoTotal + ivaTotal);              // M
 
-                const barcode = (det.articulo || '').toString().trim();
-                const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+                const barcodeInput = (det.articulo || '').toString().trim();
+                const skuCanonico = await normalizarArticuloASkuCanonico(client, barcodeInput, det);
+                const costoUnit = await obtenerCostoUnitarioPorBarcode(client, skuCanonico); // costo por SKU canónico / barcode
                 const descAdicional = normalizeNumber(det.descuento_adicional || 0);
 
                 // LOG ANTES - Mapeo actual detectado
                 console.log(`🔍[CAMP - MAPPING - ANTES] ${requestId} - CAMP2 <= brutoUnit, CAMP3 <= alicDec, CAMP4 <= netoTotal, CAMP5 <= brutoTotal, CAMP6 <= ivaTotal, descAdic=${descAdicional}`);
 
                 detallesNormalizados.push({
-                    id: generateDetalleId(),
                     id_presupuesto_ext: presupuestoId,
-                    articulo: barcode,
+                    articulo: skuCanonico,
                     cantidad,
                     valor1: netoUnit,                 // E
                     precio1: brutoUnit,               // F (con IVA)
@@ -646,9 +643,10 @@ const crearPresupuesto = async (req, res) => {
                 `;
                 console.log(`[POST - SIN-STOCK] Insertando ${detalles_sin_stock.length} faltantes para el presupuesto ${presupuestoBD.id}`);
                 for (const faltante of detalles_sin_stock) {
+                    const skuFaltante = await normalizarArticuloASkuCanonico(client, faltante.articulo, faltante);
                     await client.query(insertFaltanteQuery, [
                         presupuestoBD.id,
-                        faltante.articulo,
+                        skuFaltante,
                         faltante.descripcion || '',
                         faltante.cantidad || 0,
                         faltante.motivo_falta || 'Sin Stock en mostrador'
@@ -988,7 +986,7 @@ const editarPresupuesto = async (req, res) => {
                     ? (String(estado).trim() === 'Anulado por el Cliente' ? 'Anulado por el Cliente' : 'Anulado')
                     : estado;
                 paramCount++;
-                updates.push(`estado = ${paramCount}`);
+                updates.push(`estado = $${paramCount}`);
                 params.push(estadoNormEdit);
 
                 if (esEstadoAnuladoEdit) {
@@ -1084,20 +1082,20 @@ const editarPresupuesto = async (req, res) => {
             // CORRECCIÓN: Respetar secuencia si viene en el payload y preservar 'Standby' si el presupuesto está en Standby / Sin Confirmar
             if (secuencia !== undefined) {
                 paramCount++;
-                updates.push(`secuencia = ${paramCount}`);
+                updates.push(`secuencia = $${paramCount}`);
                 params.push(secuencia);
                 console.log(`[PRESUPUESTO] Actualizando secuencia a: '${secuencia}' para ID: ${id}`);
             } else {
                 const targetEstado = estado !== undefined ? estado : presupuesto.estado;
                 if (targetEstado === 'Sin Confirmar' || targetEstado === 'Standby' || (presupuesto.secuencia === 'Standby' && estado === undefined)) {
                     paramCount++;
-                    updates.push(`secuencia = ${paramCount}`);
+                    updates.push(`secuencia = $${paramCount}`);
                     params.push('Standby');
                     console.log(`[PRESUPUESTO] Estado/Secuencia en Standby: Preservando secuencia='Standby' para ID: ${id}`);
                 } else if (targetEstado !== 'Orden de Retiro') {
                     const secuenciaDefault = presupuesto.secuencia === 'Imprimir_Modificado' ? 'Imprimir_Modificado' : 'Imprimir';
                     paramCount++;
-                    updates.push(`secuencia = ${paramCount}`);
+                    updates.push(`secuencia = $${paramCount}`);
                     params.push(secuenciaDefault);
                     console.log(`[PRESUPUESTO] Default legacy: Forzando secuencia='${secuenciaDefault}' para ID: ${id}`);
                 }
@@ -1142,7 +1140,7 @@ const editarPresupuesto = async (req, res) => {
             if (updates.length > 0) {
                 // CRÍTICO: Agregar fecha_actualizacion para que la sincronización detecte el cambio
                 paramCount++;
-                updates.push(`fecha_actualizacion = ${paramCount}`);
+                updates.push(`fecha_actualizacion = $${paramCount}`);
                 params.push(new Date().toISOString());
 
                 paramCount++;
@@ -1151,7 +1149,7 @@ const editarPresupuesto = async (req, res) => {
                 const updateQuery = `
                     UPDATE presupuestos 
                     SET ${updates.join(', ')}
-                    WHERE id = ${paramCount}
+                    WHERE id = $${paramCount}
                     RETURNING *
                 `;
 
@@ -1181,17 +1179,17 @@ const editarPresupuesto = async (req, res) => {
                     const ivaTotal = round2(cantidad * ivaUnit);                // N
                     const brutoTotal = round2(netoTotal + ivaTotal);              // M
 
-                    const barcode = (det.articulo || '').toString().trim();
-                    const costoUnit = await obtenerCostoUnitarioPorBarcode(client, barcode); // costo por barcode
+                    const barcodeInput = (det.articulo || '').toString().trim();
+                    const skuCanonico = await normalizarArticuloASkuCanonico(client, barcodeInput, det);
+                    const costoUnit = await obtenerCostoUnitarioPorBarcode(client, skuCanonico); // costo por SKU canónico / barcode
                     const descAdicional = normalizeNumber(det.descuento_adicional || 0);
 
                     // LOG ANTES - Mapeo actual detectado (edición)
                     console.log(`🔍 [CAMP-MAPPING-ANTES-EDIT] ${requestId} - CAMP2<=brutoUnit, CAMP3<=alicDec, CAMP4<=netoTotal, CAMP5<=brutoTotal, CAMP6<=ivaTotal, descAdic=${descAdicional}`);
 
                     detallesNormalizados.push({
-                        id: generateDetalleId(),
                         id_presupuesto_ext: presupuesto.id_presupuesto_ext,
-                        articulo: barcode,
+                        articulo: skuCanonico,
                         cantidad,
                         valor1: netoUnit,                 // E
                         precio1: brutoUnit,               // F (con IVA)
@@ -1282,9 +1280,10 @@ const editarPresupuesto = async (req, res) => {
                     `;
                     console.log(`[PUT-DET] Insertando ${detalles_sin_stock.length} nuevos faltantes de stock`);
                     for (const faltante of detalles_sin_stock) {
+                        const skuFaltante = await normalizarArticuloASkuCanonico(client, faltante.articulo, faltante);
                         await client.query(insertFaltanteQuery, [
                             presupuesto.id,
-                            faltante.articulo,
+                            skuFaltante,
                             faltante.descripcion || '',
                             faltante.cantidad || 0,
                             faltante.motivo_falta || 'Sin Stock en mostrador'
@@ -1873,6 +1872,7 @@ module.exports = {
     obtenerEstadoPresupuesto,
     actualizarFormatoImpresion,
     pushToSheetsFireAndForget,
+    normalizarArticuloASkuCanonico,
     revertirMovimientosSaldoIngrediente,
     revertirStockSatelitePorPresupuesto,
     cancelarFaltantesPendientesPorPresupuesto,

@@ -191,14 +191,35 @@ async function procesarPedidosB2B() {
         for (const item of pedido.clientes_b2b_pedidos_items || []) {
           const trimmedCode = (item.producto_codigo || '').toString().trim();
           
-          // Traducir código de barras al número corto de artículo si es necesario
+          // Traducir código de barras al SKU canónico de artículo (bunker_articulos / articulos)
           let mappedCode = trimmedCode;
           const resTranslation = await localClient.query(
-            `SELECT numero FROM public.articulos WHERE TRIM(codigo_barras) = $1 OR TRIM(numero) = $1 LIMIT 1`,
+            `SELECT COALESCE(
+                NULLIF(TRIM(ba.articulo_id::text), ''),
+                NULLIF(TRIM(a.numero::text), '')
+             ) AS sku_canonico
+             FROM (SELECT $1::text AS codigo_buscado) q
+             LEFT JOIN LATERAL (
+                 SELECT a_inner.numero
+                 FROM public.articulos a_inner
+                 WHERE TRIM(a_inner.numero::text) = q.codigo_buscado
+                    OR TRIM(a_inner.codigo_barras::text) = q.codigo_buscado
+                 ORDER BY (TRIM(a_inner.numero::text) = q.codigo_buscado) DESC
+                 LIMIT 1
+             ) a ON true
+             LEFT JOIN LATERAL (
+                 SELECT ba_inner.articulo_id
+                 FROM public.bunker_articulos ba_inner
+                 WHERE TRIM(ba_inner.articulo_id::text) = q.codigo_buscado
+                    OR TRIM(ba_inner.codigo_barras::text) = q.codigo_buscado
+                    OR (a.numero IS NOT NULL AND TRIM(ba_inner.articulo_id::text) = TRIM(a.numero::text))
+                 ORDER BY (TRIM(ba_inner.articulo_id::text) = q.codigo_buscado) DESC
+                 LIMIT 1
+             ) ba ON true`,
             [trimmedCode]
           );
-          if (resTranslation.rows.length > 0 && resTranslation.rows[0].numero) {
-            mappedCode = resTranslation.rows[0].numero.toString().trim();
+          if (resTranslation.rows.length > 0 && resTranslation.rows[0].sku_canonico) {
+            mappedCode = resTranslation.rows[0].sku_canonico.toString().trim();
           }
 
           console.log(`🔍 Buscando artículo legacy para ${mappedCode} (código original: ${trimmedCode})...`);
@@ -259,6 +280,7 @@ async function procesarPedidosB2B() {
 
           itemsProcesados.push({
             trimmedCode,
+            mappedCode,
             cantidad,
             valor1,
             precio1,
@@ -355,7 +377,7 @@ async function procesarPedidosB2B() {
           await localClient.query(insertItemQuery, [
             localPresupuestoId,
             pedido.id,
-            item.trimmedCode,
+            item.mappedCode || item.trimmedCode,
             item.cantidad,
             item.valor1,
             item.precio1,

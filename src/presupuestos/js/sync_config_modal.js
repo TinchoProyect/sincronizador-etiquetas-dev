@@ -85,65 +85,32 @@ function closeSyncConfigModal() {
 }
 
 /**
- * Cargar configuración actual desde el servidor
+ * Cargar configuración actual (Retirado en Micro-Etapa 6: sin llamada a /api/presupuestos/sync/config)
  */
 async function loadCurrentConfig() {
-    console.log('[SYNC_CONFIG_UI] Cargando configuración actual...');
-    
-    try {
-        const response = await fetch(`${SYNC_CONFIG.API_BASE_URL}/config`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            modalState.currentConfig = data;
-            populateConfigForm(data);
-            console.log('[SYNC_CONFIG_UI] ✅ Configuración cargada:', data);
-        } else {
-            throw new Error(data.message || 'Error al cargar configuración');
-        }
-        
-    } catch (error) {
-        console.error('[SYNC_CONFIG_UI] ❌ Error al cargar configuración:', error);
-        showConfigMessage('Error al cargar configuración actual', 'error');
-        
-        // Cargar valores por defecto
-        populateConfigForm({
-            auto_sync_enabled: false,
-            sync_interval_minutes: 1,
-            active_hours_start: '08:00',
-            active_hours_end: '20:00',
-            timezone: 'America/Argentina/Buenos_Aires'
-        });
-    }
+    const defaultConfig = {
+        auto_sync_enabled: false,
+        sync_interval_minutes: 1,
+        active_hours_start: '08:00',
+        active_hours_end: '20:00',
+        timezone: 'America/Argentina/Buenos_Aires'
+    };
+    modalState.currentConfig = defaultConfig;
+    populateConfigForm(defaultConfig);
 }
 
 /**
- * Cargar estado del scheduler
+ * Cargar estado del scheduler (Retirado en Micro-Etapa 6: sin llamada a /api/presupuestos/sync/health)
  */
 async function loadSchedulerHealth() {
-    console.log('[SYNC_CONFIG_UI] Cargando estado del scheduler...');
-    
-    try {
-        const response = await fetch(`${SYNC_CONFIG.API_BASE_URL}/health`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            modalState.schedulerHealth = data;
-            populateSchedulerStatus(data);
-            console.log('[SYNC_CONFIG_UI] ✅ Estado del scheduler cargado:', data);
-        } else {
-            throw new Error(data.message || 'Error al cargar estado del scheduler');
-        }
-        
-    } catch (error) {
-        console.error('[SYNC_CONFIG_UI] ❌ Error al cargar estado del scheduler:', error);
-        populateSchedulerStatus({
-            isRunning: false,
-            lastRunAt: null,
-            nextRunAt: null,
-            lastResult: { ok: null, processed: 0, error: 'Error de conexión' }
-        });
-    }
+    const inactiveHealth = {
+        isRunning: false,
+        lastRunAt: null,
+        nextRunAt: null,
+        lastResult: { ok: null, processed: 0, error: 'Sincronizador Google Sheets retirado (100% Local-First)' }
+    };
+    modalState.schedulerHealth = inactiveHealth;
+    populateSchedulerStatus(inactiveHealth);
 }
 
 /**
