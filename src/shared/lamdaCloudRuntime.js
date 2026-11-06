@@ -613,6 +613,19 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         res.json({ ok: true, ...resumen });
     });
 
+    app.post('/api/system/print-queue/release/:id', async (req, res) => {
+        try {
+            const jobId = parseInt(req.params.id, 10);
+            if (!Number.isFinite(jobId) || jobId <= 0) {
+                return res.status(400).json({ ok: false, error: 'ID de trabajo inválido.' });
+            }
+            const result = await liberarEtiquetasRetenidas([jobId]);
+            res.json({ ok: true, id: jobId, ...result });
+        } catch (err) {
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
     app.post('/api/system/print-queue/release-all', async (req, res) => {
         try {
             const ids = (req.body && Array.isArray(req.body.ids)) ? req.body.ids : null;

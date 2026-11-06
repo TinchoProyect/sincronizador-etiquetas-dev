@@ -4,30 +4,32 @@
  * -------------------------------------------------------------
  * Mantiene en `PcAlmacen` una réplica local calzada al minuto desde el VPS en la nube:
  *  1. Descarga el dump completo de PostgreSQL (`pg_dump`) hacia `backups/espejo_nube/etiquetas_nube_latest.sql`
- *     y lo restaura sobre la base local de respaldo `etiquetas_espejo_nube`.
- *  2. Si `LAMDA_ROLE=GALPON_BRIDGE_ONLY`, asegura que la base local `etiquetas` mantenga
+ *     (vía túnel SSH comprimido si `CLOUD_SSH_HOST` está definido, ya que el puerto 5432 del VPS está cerrado a internet)
+ *     y lo restaura sobre la base local de respaldo (`etiquetas_espejo_nube` o la indicada en `LOCAL_MIRROR_DB_NAME`).
+ *  2. Barrera de seguridad innegociable: JAMÁS permite restaurar sobre la base productiva `etiquetas`.
+ *  3. Si `LAMDA_ROLE=GALPON_BRIDGE_ONLY`, asegura que la base local `etiquetas` mantenga
  *     `default_transaction_read_only = on` (Capa 3 del Triple Candado Anti-Doble Arranque).
- *  3. Reconstruye en disco (`src/facturacion/certs/TA-*.json`) el Ticket de Acceso vigente de ARCA/AFIP
+ *  4. Reconstruye en disco (`src/facturacion/certs/TA-*.json`) el Ticket de Acceso vigente de ARCA/AFIP
  *     leído desde `public.factura_afip_ta` para que un eventual Rollback (< 3 min) jamás pida un
  *     TA duplicado ni provoque bloqueo de 12 horas en AFIP.
- *  4. Sincroniza por `rsync` / `scp` (si `CLOUD_SSH_HOST` está configurado) los 6 activos físicos fuera de BD:
- *     - `src/logistica/public/uploads/`
- *     - `src/facturacion/pdfs/`
- *     - `src/facturacion/certs/`
- *     - `src/app-etiquetas/documentos/`
- *     - `src/services/gsheets/`
+ *  5. Sincroniza por SSH/SCP los 6 activos físicos fuera de BD (`ASSET_PATHS`):
+ *     - `src/logistica/public/uploads`
+ *     - `src/facturacion/pdfs`
+ *     - `src/facturacion/certs`
+ *     - `src/app-etiquetas/documentos`
+ *     - `src/services/gsheets`
  *     - `data/ia_credito_ledger.json`
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
 const { execSync } = require('child_process');
 const { Client } = require('pg');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const ROOT_DIR = path.resolve(__dirname, '..');
-const MIRROR_DIR = path.resolve(ROOT_DIR, 'backups/espejo_nube');
-const CERTS_DIR = path.resolve(ROOT_DIR, 'src/facturacion/certs');
 
 const ASSET_PATHS = [
     'src/logistica/public/uploads',
@@ -37,6 +39,31 @@ const ASSET_PATHS = [
     'src/services/gsheets',
     'data/ia_credito_ledger.json'
 ];
+
+function obtenerDirectorioEspejo() {
+    if (process.env.MIRROR_BACKUP_DIR) {
+        return path.resolve(process.env.MIRROR_BACKUP_DIR);
+    }
+    return path.resolve(ROOT_DIR, 'backups/espejo_nube');
+}
+
+function obtenerRaizActivos() {
+    if (process.env.MIRROR_ASSETS_ROOT) {
+        return path.resolve(process.env.MIRROR_ASSETS_ROOT);
+    }
+    return ROOT_DIR;
+}
+
+function detectarClaveSsh() {
+    if (process.env.CLOUD_SSH_KEY_PATH && fs.existsSync(process.env.CLOUD_SSH_KEY_PATH)) {
+        return process.env.CLOUD_SSH_KEY_PATH;
+    }
+    const ed25519 = path.join(os.homedir(), '.ssh', 'id_ed25519');
+    if (fs.existsSync(ed25519)) return ed25519;
+    const rsa = path.join(os.homedir(), '.ssh', 'id_rsa');
+    if (fs.existsSync(rsa)) return rsa;
+    return null;
+}
 
 function detectarBinarioPostgres(binName) {
     const candidatos = [
@@ -53,7 +80,8 @@ function detectarBinarioPostgres(binName) {
     return binName;
 }
 
-async function reconstruirTaAfipDesdeBase(dbConfig) {
+async function reconstruirTaAfipDesdeBase(dbConfig, assetsRoot = obtenerRaizActivos()) {
+    const certsDir = path.resolve(assetsRoot, 'src/facturacion/certs');
     const client = new Client(dbConfig);
     try {
         await client.connect();
@@ -63,8 +91,8 @@ async function reconstruirTaAfipDesdeBase(dbConfig) {
             WHERE expira_en > NOW()
             ORDER BY expira_en DESC
         `);
-        if (!fs.existsSync(CERTS_DIR)) {
-            fs.mkdirSync(CERTS_DIR, { recursive: true });
+        if (!fs.existsSync(certsDir)) {
+            fs.mkdirSync(certsDir, { recursive: true });
         }
         let count = 0;
         for (const row of (res.rows || [])) {
@@ -72,7 +100,7 @@ async function reconstruirTaAfipDesdeBase(dbConfig) {
             const cuit = String(row.cuit || '23248921749').trim();
             const service = String(row.servicio || 'wsfe').trim();
             const fileName = `TA-${cuit}-${service}${isProd ? '-production' : ''}.json`;
-            const targetFile = path.join(CERTS_DIR, fileName);
+            const targetFile = path.join(certsDir, fileName);
 
             const payload = (row.ta_raw_json && typeof row.ta_raw_json === 'object' && row.ta_raw_json.credentials)
                 ? row.ta_raw_json
@@ -114,37 +142,77 @@ async function aplicarCandadoReadOnlySiCorresponde(localPgConfig) {
     }
 }
 
-function sincronizarArchivosFisicosSSH() {
+function sincronizarArchivosFisicosSSH(assetsRoot = obtenerRaizActivos(), mirrorDir = obtenerDirectorioEspejo()) {
     const sshHost = String(process.env.CLOUD_SSH_HOST || '').trim();
-    const sshUser = String(process.env.CLOUD_SSH_USER || 'root').trim();
+    const sshUser = String(process.env.CLOUD_SSH_USER || 'lamda_admin').trim();
     const sshRemoteDir = String(process.env.CLOUD_REMOTE_APP_DIR || '/opt/lamda/sincronizador-etiquetas').replace(/\/+$/, '');
     if (!sshHost) {
         console.log('ℹ️ [ESPEJO-NUBE] CLOUD_SSH_HOST no definido; omitiendo rsync/scp de carpetas físicas en esta corrida.');
-        return;
+        return [];
     }
 
-    for (const relPath of ASSET_PATHS) {
-        const localTarget = path.resolve(ROOT_DIR, relPath);
-        const parentDir = path.dirname(localTarget);
-        if (!fs.existsSync(parentDir)) {
-            fs.mkdirSync(parentDir, { recursive: true });
+    const sshKey = detectarClaveSsh();
+    const keyArg = sshKey ? `-i "${sshKey}"` : '';
+    const sshOpts = `${keyArg} -o StrictHostKeyChecking=no -o BatchMode=yes`;
+
+    if (!fs.existsSync(assetsRoot)) {
+        fs.mkdirSync(assetsRoot, { recursive: true });
+    }
+
+    const remoteTar = '/tmp/lamda_assets_mirror.tar.gz';
+    const localTar = path.join(mirrorDir, 'lamda_assets_mirror.tar.gz');
+    const relList = ASSET_PATHS.map(p => `"${p}"`).join(' ');
+
+    try {
+        execSync(
+            `ssh ${sshOpts} ${sshUser}@${sshHost} "cd '${sshRemoteDir}' && tar -czf ${remoteTar} --ignore-failed-read ${relList}"`,
+            { stdio: 'pipe', timeout: 120000 }
+        );
+        execSync(
+            `scp -q ${sshOpts} "${sshUser}@${sshHost}:${remoteTar}" "${localTar}"`,
+            { stdio: 'pipe', timeout: 120000 }
+        );
+        execSync(
+            `tar -xzf "${localTar}" -C "${assetsRoot}"`,
+            { stdio: 'pipe', timeout: 120000 }
+        );
+        const sincronizados = ASSET_PATHS.filter(rel => fs.existsSync(path.join(assetsRoot, rel)));
+        console.log(`📁 [ESPEJO-NUBE] Activos físicos sincronizados (${sincronizados.length}/${ASSET_PATHS.length}) en ${assetsRoot}: ${sincronizados.join(', ')}`);
+        return sincronizados;
+    } catch (err) {
+        console.warn(`⚠️ [ESPEJO-NUBE] Aviso sincronizando activos por tar/scp (${err.message}); intentando copia individual...`);
+        const sincronizados = [];
+        for (const relPath of ASSET_PATHS) {
+            const localTarget = path.resolve(assetsRoot, relPath);
+            const parentDir = path.dirname(localTarget);
+            if (!fs.existsSync(parentDir)) {
+                fs.mkdirSync(parentDir, { recursive: true });
+            }
+            try {
+                const cmd = `scp -r -q ${sshOpts} "${sshUser}@${sshHost}:${sshRemoteDir}/${relPath}" "${parentDir}"`;
+                execSync(cmd, { stdio: 'ignore', timeout: 120000 });
+                sincronizados.push(relPath);
+                console.log(`📁 [ESPEJO-NUBE] Activo físico sincronizado: ${relPath}`);
+            } catch (e2) {
+                console.warn(`⚠️ [ESPEJO-NUBE] Aviso sincronizando ${relPath}: ${e2.message}`);
+            }
         }
-        try {
-            const cmd = `scp -r -q "${sshUser}@${sshHost}:${sshRemoteDir}/${relPath}" "${parentDir}"`;
-            execSync(cmd, { stdio: 'ignore', timeout: 120000 });
-            console.log(`📁 [ESPEJO-NUBE] Activo físico sincronizado: ${relPath}`);
-        } catch (err) {
-            console.warn(`⚠️ [ESPEJO-NUBE] Aviso sincronizando ${relPath}: ${err.message}`);
-        }
+        return sincronizados;
     }
 }
 
 async function ejecutarSincronizacionEspejo() {
-    if (!fs.existsSync(MIRROR_DIR)) {
-        fs.mkdirSync(MIRROR_DIR, { recursive: true });
+    const t0 = Date.now();
+    const mirrorDir = obtenerDirectorioEspejo();
+    const assetsRoot = obtenerRaizActivos();
+
+    if (!fs.existsSync(mirrorDir)) {
+        fs.mkdirSync(mirrorDir, { recursive: true });
     }
 
-    const cloudHost = process.env.CLOUD_DB_HOST || '';
+    const sshHost = String(process.env.CLOUD_SSH_HOST || '').trim();
+    const sshUser = String(process.env.CLOUD_SSH_USER || 'lamda_admin').trim();
+    const cloudHost = String(process.env.CLOUD_DB_HOST || sshHost || '').trim();
     const cloudPort = parseInt(process.env.CLOUD_DB_PORT || '5432', 10);
     const cloudDb = process.env.CLOUD_DB_NAME || 'etiquetas';
     const cloudUser = process.env.CLOUD_DB_USER || 'postgres';
@@ -154,7 +222,11 @@ async function ejecutarSincronizacionEspejo() {
     const localPort = parseInt(process.env.LOCAL_DB_PORT || '5432', 10);
     const localUser = process.env.LOCAL_DB_USER || 'postgres';
     const localPass = process.env.LOCAL_DB_PASSWORD || process.env.DB_PASSWORD || 'postgres';
-    const localMirrorDb = process.env.LOCAL_MIRROR_DB_NAME || 'etiquetas_espejo_nube';
+    const localMirrorDb = String(process.env.LOCAL_MIRROR_DB_NAME || 'etiquetas_espejo_nube').trim();
+
+    if (localMirrorDb.toLowerCase() === 'etiquetas') {
+        throw new Error('BLOQUEO DE SEGURIDAD: LOCAL_MIRROR_DB_NAME no puede ser la base productiva `etiquetas`.');
+    }
 
     await aplicarCandadoReadOnlySiCorresponde({
         host: localHost,
@@ -163,15 +235,15 @@ async function ejecutarSincronizacionEspejo() {
         password: localPass
     });
 
-    if (!cloudHost) {
-        console.log('ℹ️ [ESPEJO-NUBE] CLOUD_DB_HOST aún no configurado en .env. Verificando reconstrucción local de TA AFIP...');
+    if (!cloudHost && !sshHost) {
+        console.log('ℹ️ [ESPEJO-NUBE] CLOUD_DB_HOST / CLOUD_SSH_HOST aún no configurados en .env. Verificando reconstrucción local de TA AFIP...');
         const tas = await reconstruirTaAfipDesdeBase({
             host: localHost,
             port: localPort,
             user: localUser,
             password: localPass,
             database: process.env.DB_NAME || 'etiquetas'
-        });
+        }, assetsRoot);
         console.log(`✅ [ESPEJO-NUBE] Verificación local completada (${tas} TA(s) vigentes en disco).`);
         return { ok: true, mode: 'local_check_only', tasReconstruidos: tas };
     }
@@ -179,18 +251,40 @@ async function ejecutarSincronizacionEspejo() {
     const pgDumpBin = detectarBinarioPostgres('pg_dump');
     const psqlBin = detectarBinarioPostgres('psql');
     const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
-    const dumpPath = path.join(MIRROR_DIR, `etiquetas_nube_${stamp}.sql`);
-    const latestPath = path.join(MIRROR_DIR, 'etiquetas_nube_latest.sql');
+    const dumpPath = path.join(mirrorDir, `etiquetas_nube_${stamp}.sql`);
+    const latestPath = path.join(mirrorDir, 'etiquetas_nube_latest.sql');
 
-    console.log(`☁️ [ESPEJO-NUBE] Descargando snapshot desde ${cloudHost}:${cloudPort}/${cloudDb}...`);
-    execSync(`"${pgDumpBin}" -h ${cloudHost} -p ${cloudPort} -U ${cloudUser} -d ${cloudDb} --clean --if-exists --no-owner --no-privileges -f "${dumpPath}"`, {
-        env: { ...process.env, PGPASSWORD: cloudPass },
-        stdio: 'inherit'
-    });
+    if (sshHost) {
+        const sshKey = detectarClaveSsh();
+        const keyArg = sshKey ? `-i "${sshKey}"` : '';
+        const sshOpts = `${keyArg} -o StrictHostKeyChecking=no -o BatchMode=yes`;
+        const remoteGz = '/tmp/etiquetas_nube_mirror.sql.gz';
+        const localGz = path.join(mirrorDir, 'etiquetas_nube_latest.sql.gz');
 
-    fs.copyFileSync(dumpPath, latestPath);
+        console.log(`☁️ [ESPEJO-NUBE] Generando dump en caliente vía SSH en ${sshUser}@${sshHost} (${cloudDb})...`);
+        execSync(
+            `ssh ${sshOpts} ${sshUser}@${sshHost} "PGPASSWORD='${cloudPass}' pg_dump -h 127.0.0.1 -p ${cloudPort} -U ${cloudUser} -d ${cloudDb} --clean --if-exists --no-owner --no-privileges | gzip -1 > ${remoteGz}"`,
+            { stdio: 'inherit', timeout: 180000 }
+        );
+        console.log(`⬇️ [ESPEJO-NUBE] Descargando snapshot comprimido desde ${sshHost}...`);
+        execSync(
+            `scp -q ${sshOpts} "${sshUser}@${sshHost}:${remoteGz}" "${localGz}"`,
+            { stdio: 'inherit', timeout: 180000 }
+        );
+        const compressedBuf = fs.readFileSync(localGz);
+        const sqlBuf = zlib.gunzipSync(compressedBuf);
+        fs.writeFileSync(dumpPath, sqlBuf);
+        fs.writeFileSync(latestPath, sqlBuf);
+    } else {
+        console.log(`☁️ [ESPEJO-NUBE] Descargando snapshot desde ${cloudHost}:${cloudPort}/${cloudDb}...`);
+        execSync(`"${pgDumpBin}" -h ${cloudHost} -p ${cloudPort} -U ${cloudUser} -d ${cloudDb} --clean --if-exists --no-owner --no-privileges -f "${dumpPath}"`, {
+            env: { ...process.env, PGPASSWORD: cloudPass },
+            stdio: 'inherit'
+        });
+        fs.copyFileSync(dumpPath, latestPath);
+    }
 
-    // Asegurar base local espejo `etiquetas_espejo_nube`
+    // Asegurar base local espejo (`etiquetas_espejo_nube` o `etiquetas_espejo_test`)
     const adminClient = new Client({ host: localHost, port: localPort, user: localUser, password: localPass, database: 'postgres' });
     await adminClient.connect();
     const checkDb = await adminClient.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [localMirrorDb]);
@@ -211,12 +305,20 @@ async function ejecutarSincronizacionEspejo() {
         user: localUser,
         password: localPass,
         database: localMirrorDb
-    });
+    }, assetsRoot);
 
-    sincronizarArchivosFisicosSSH();
+    const activosSincronizados = sincronizarArchivosFisicosSSH(assetsRoot, mirrorDir);
+    const elapsedSeconds = Number(((Date.now() - t0) / 1000).toFixed(2));
 
-    console.log(`✅ [ESPEJO-NUBE] Espejo 15m actualizado (${latestPath}) + ${tas} TA(s) AFIP sincronizados en disco.`);
-    return { ok: true, latestPath, tasReconstruidos: tas };
+    console.log(`✅ [ESPEJO-NUBE] Espejo completado en ${elapsedSeconds}s (${latestPath}) -> BD \`${localMirrorDb}\` + ${tas} TA(s) AFIP + ${activosSincronizados.length} activos físicos.`);
+    return {
+        ok: true,
+        localMirrorDb,
+        latestPath,
+        tasReconstruidos: tas,
+        activosSincronizados,
+        elapsedSeconds
+    };
 }
 
 if (require.main === module) {

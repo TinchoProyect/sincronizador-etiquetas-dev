@@ -433,11 +433,35 @@ async function obtenerResumenColaRetenida() {
         const items = res.rows || [];
         const pendingConfirmationCount = items.filter(i => i.estado === 'PENDIENTE_CONFIRMACION_GALPON').length;
         const releasedWaitingAgentCount = items.filter(i => i.estado === 'LIBERADA_PARA_IMPRIMIR').length;
+        let bridgeStatus = null;
+        let recentCompleted = [];
+        try {
+            const stRes = await pool.query(`
+                SELECT station_id, last_heartbeat_at, printer_name, printer_online, hostname, ip_origen, estado_impresora, version_agente, local_loopback_port, updated_at
+                FROM public.zebra_bridge_status
+                ORDER BY last_heartbeat_at DESC
+                LIMIT 5
+            `);
+            bridgeStatus = (stRes.rows && stRes.rows[0]) ? stRes.rows[0] : null;
+        } catch (_) {}
+        try {
+            const compRes = await pool.query(`
+                SELECT id, tipo_etiqueta, descripcion, nombre_impresora, estado, origen_entorno,
+                       estacion_fisica_verificada, dispositivo_origen, created_at, updated_at, printed_at
+                FROM public.zebra_print_queue
+                WHERE estado IN ('IMPRESA_OK', 'IMPRESA')
+                ORDER BY COALESCE(printed_at, updated_at) DESC
+                LIMIT 10
+            `);
+            recentCompleted = compRes.rows || [];
+        } catch (_) {}
         return {
             pendingPrintCount: items.length,
             pendingConfirmationCount,
             releasedWaitingAgentCount,
-            items
+            bridgeStatus,
+            items,
+            recentCompleted
         };
     } catch (err) {
         return {

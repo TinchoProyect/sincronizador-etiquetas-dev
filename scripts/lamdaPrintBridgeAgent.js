@@ -52,7 +52,7 @@ function iniciarServidorPresenciaLoopback(port = LOCAL_PRESENCE_PORT) {
         }
 
         const urlPath = String(req.url || '').split('?')[0];
-        if (req.method === 'GET' && (urlPath === '/zebra-local-presence' || urlPath === '/status')) {
+        if (req.method === 'GET' && (urlPath === '/local-presence' || urlPath === '/zebra-local-presence' || urlPath === '/status')) {
             const nowTs = Date.now();
             const hmacToken = generarTokenPresenciaFisicaGalpon('PCALMACEN_VERIFIED', nowTs);
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -95,6 +95,11 @@ function imprimirFisicamenteEnWindows(zplPayload, nombreImpresora = 'Zebra') {
             fs.writeFileSync(tempFile, zplPayload, 'utf8');
         } catch (err) {
             return reject(err);
+        }
+        if (String(process.env.ZEBRA_DRY_RUN || '').trim().toLowerCase() === 'true') {
+            fs.unlink(tempFile, () => {});
+            console.log(`🧪 [ZEBRA-AGENT] ZEBRA_DRY_RUN=true: Despacho ZPL verificado hacia cola local (${zplPayload.length} bytes) sin gastar papel térmico.`);
+            return resolve('DRY_RUN_OK');
         }
         const cmd = `COPY /B "${tempFile}" \\\\localhost\\${nombreImpresora}`;
         exec(cmd, (error, stdout, stderr) => {
