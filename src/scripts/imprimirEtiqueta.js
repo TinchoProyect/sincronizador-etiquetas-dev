@@ -178,6 +178,9 @@ async function main() {
         try { await fs.unlink(customJsonPath); } catch (_) {}
       }
     }
+    if (require.main === module) {
+      process.exit(0);
+    }
   } catch (error) {
     console.error('Error en el proceso:', error.message);
     console.error('Stack:', error.stack);

@@ -108,6 +108,9 @@ async function main() {
         if (fsSync.existsSync(nombreArchivo)) fsSync.unlinkSync(nombreArchivo);
       } catch (_) {}
     }
+    if (require.main === module) {
+      process.exit(0);
+    }
   } catch (error) {
     console.error('Error en el proceso de impresión de lote:', error.message);
     process.exit(1);

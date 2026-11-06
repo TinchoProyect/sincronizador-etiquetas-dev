@@ -669,10 +669,22 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         }
     });
 
-    // 4. Inyección transparente de <script src="/lamda-cloud-runtime.js"></script> en respuestas HTML
+    // 4. Inyección transparente de <script src="/lamda-cloud-runtime.js"></script> y reescritura /gw/300X/(js|css)/ en respuestas HTML (incluyendo express.static)
     app.use((req, res, next) => {
+        const reqPathClean = String(req.path || req.url || '').split('?')[0].toLowerCase();
+        const isPotentialHtmlGet = req.method === 'GET' && (reqPathClean === '/' || reqPathClean.endsWith('.html'));
+        if (isPotentialHtmlGet) {
+            delete req.headers['if-none-match'];
+            delete req.headers['if-modified-since'];
+            delete req.headers['accept-encoding'];
+        }
+
         const originalSend = res.send.bind(res);
         const originalSendFile = res.sendFile.bind(res);
+        const originalWrite = res.write.bind(res);
+        const originalEnd = res.end.bind(res);
+        let htmlChunks = [];
+        let bufferingHtmlStream = false;
 
         res.send = function(body) {
             try {
@@ -694,6 +706,39 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             }
             return originalSendFile(filePath, options, fn);
         };
+
+        if (isPotentialHtmlGet) {
+            res.write = function(chunk, encoding, cb) {
+                const ct = String(res.getHeader('Content-Type') || '').toLowerCase();
+                if (ct.includes('text/html') && chunk) {
+                    bufferingHtmlStream = true;
+                    htmlChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), typeof encoding === 'string' ? encoding : 'utf8'));
+                    if (typeof cb === 'function') cb();
+                    return true;
+                }
+                return originalWrite(chunk, encoding, cb);
+            };
+
+            res.end = function(chunk, encoding, cb) {
+                const ct = String(res.getHeader('Content-Type') || '').toLowerCase();
+                if ((bufferingHtmlStream || ct.includes('text/html')) && (htmlChunks.length > 0 || chunk)) {
+                    try {
+                        if (chunk && typeof chunk !== 'function') {
+                            htmlChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), typeof encoding === 'string' ? encoding : 'utf8'));
+                        }
+                        const rawStr = Buffer.concat(htmlChunks).toString('utf8');
+                        const modifiedStr = injectScriptTagInHtml(rawStr, servicePort);
+                        const outBuf = Buffer.from(modifiedStr, 'utf8');
+                        if (!res.headersSent) {
+                            res.setHeader('Content-Length', outBuf.length);
+                            res.removeHeader('ETag');
+                        }
+                        return originalEnd(outBuf, typeof encoding === 'function' ? encoding : cb);
+                    } catch (_) {}
+                }
+                return originalEnd(chunk, encoding, cb);
+            };
+        }
 
         next();
     });

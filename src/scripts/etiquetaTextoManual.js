@@ -209,6 +209,9 @@ async function main() {
     } finally {
       try { await fs.unlink(nombreArchivo); } catch (_) {}
     }
+    if (require.main === module) {
+      process.exit(0);
+    }
   } catch (error) {
     console.error('Error en el proceso:', error.message);
     console.error('Stack:', error.stack);
