@@ -28,13 +28,41 @@ if (fs.existsSync(facturacionEnvPath)) {
     require('dotenv').config({ path: facturacionEnvPath });
 }
 
-// Configuración de rutas y binarios
-const OPENSSL_EXE = process.env.OPENSSL_EXE || 'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe';
-const ENTORNO = process.env.AFIP_ENV || 'HOMO';
+// Configuración de rutas y binarios (Auto-detección multiplataforma Windows / Linux Cloud)
+const rawOpenSsl = process.env.OPENSSL_EXE || process.env.OPENSSL_BIN || '';
+const OPENSSL_EXE = (process.platform !== 'win32' && (!rawOpenSsl || rawOpenSsl.includes(':\\')))
+    ? 'openssl'
+    : (rawOpenSsl || 'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe');
 
-// Rutas de certificados con fallback relacionales portátiles
-const CERT_FILE = process.env.AFIP_HOMO_CERT_PATH || path.resolve(__dirname, '../../facturacion/certs/certificado_homo.crt');
-const KEY_FILE = process.env.AFIP_HOMO_KEY_PATH || path.resolve(__dirname, '../../facturacion/certs/privada_homo.key');
+// El servicio ws_sr_constancia_inscripcion (Padrón A5) es 100% de solo lectura y los CUITs reales
+// existen únicamente en el Padrón de Producción de ARCA (bajo el certificado dedicado CN=lamda_clientes).
+const ENTORNO = process.env.AFIP_PADRON_ENV || 'PROD';
+
+function resolverRutaExistente(candidatos, fallbackPath) {
+    for (const c of candidatos) {
+        if (c && typeof c === 'string' && fs.existsSync(c)) {
+            return c;
+        }
+    }
+    return fallbackPath;
+}
+
+// Rutas de certificados con prioridad para el certificado dedicado de Clientes Búnker (lamda_clientes.crt)
+const CERT_FILE = resolverRutaExistente([
+    process.env.AFIP_PADRON_CERT_PATH,
+    path.resolve(__dirname, '../../facturacion/certs/lamda_clientes.crt'),
+    process.env.AFIP_HOMO_CERT_PATH,
+    path.resolve(__dirname, '../../facturacion/certs/prod-cert.pem'),
+    path.resolve(__dirname, '../../facturacion/certs/certificado_homo.crt')
+], path.resolve(__dirname, '../../facturacion/certs/lamda_clientes.crt'));
+
+const KEY_FILE = resolverRutaExistente([
+    process.env.AFIP_PADRON_KEY_PATH,
+    path.resolve(__dirname, '../../facturacion/certs/lamda_clientes.key'),
+    process.env.AFIP_HOMO_KEY_PATH,
+    path.resolve(__dirname, '../../facturacion/certs/prod-key.pem'),
+    path.resolve(__dirname, '../../facturacion/certs/privada_homo.key')
+], path.resolve(__dirname, '../../facturacion/certs/lamda_clientes.key'));
 
 const WSAA_URL = ENTORNO === 'PROD'
     ? 'https://wsaa.afip.gov.ar/ws/services/LoginCms'

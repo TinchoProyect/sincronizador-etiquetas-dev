@@ -59,7 +59,7 @@ async function asegurarTablaAfipTa() {
             CREATE TABLE IF NOT EXISTS public.factura_afip_ta (
                 id SERIAL PRIMARY KEY,
                 entorno VARCHAR(10) NOT NULL,
-                servicio VARCHAR(20) NOT NULL DEFAULT 'wsfe',
+                servicio VARCHAR(60) NOT NULL DEFAULT 'wsfe',
                 token TEXT NOT NULL,
                 sign TEXT NOT NULL,
                 expira_en TIMESTAMPTZ NOT NULL,

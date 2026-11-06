@@ -261,6 +261,21 @@
                     📋 Ir a Facturas
                 </button>
             </div>
+
+            <!-- Sección: Diagnóstico Integral ARCA Cloud (Etapa B) -->
+            <div class="section">
+                <div class="section-title">🏛️ Diagnóstico Integral ARCA (Facturación + Padrón CUIT Clientes)</div>
+                <p style="font-size: 13px; color: #555; margin-bottom: 14px;">
+                    Verifica en vivo OpenSSL y los certificados X.509 en Linux, conectividad con WSFEv1 Producción (mediante <code>FEDummy</code> pasivo sin tocar el Ticket de Acceso de <code>PcAlmacen</code>) y consulta real al Padrón Alcance 5 (<code>ws_sr_constancia_inscripcion</code>).
+                </p>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px;">
+                    <input type="text" id="inputCuitDiag" value="23248921749" placeholder="CUIT 11 dígitos" style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; width: 170px;">
+                    <button id="btnDiagCloud" class="btn" onclick="ejecutarDiagnosticoArcaCloud()">
+                        🔍 Ejecutar Diagnóstico Integral ARCA
+                    </button>
+                </div>
+                <pre id="arcaDiagOutput" style="display: none; background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px; font-size: 12px; overflow-x: auto; max-height: 360px;"></pre>
+            </div>
         </div>
     </div>
 
@@ -332,6 +347,30 @@
                 btn.disabled = false;
                 btnText.style.display = 'inline';
                 btnSpinner.style.display = 'none';
+            }
+        }
+
+        async function ejecutarDiagnosticoArcaCloud() {
+            const btn = document.getElementById('btnDiagCloud');
+            const out = document.getElementById('arcaDiagOutput');
+            const cuit = (document.getElementById('inputCuitDiag').value || '23248921749').replace(/[^0-9]/g, '');
+            btn.disabled = true;
+            out.style.display = 'block';
+            out.textContent = 'Consultando diagnóstico integral de ARCA...';
+            try {
+                const res = await fetch('/api/system/arca-diagnostico?cuit=' + encodeURIComponent(cuit));
+                const data = await res.json();
+                out.textContent = JSON.stringify(data, null, 2);
+                if (data.ok) {
+                    mostrarAlerta('✅ Diagnóstico Integral ARCA superado al 100% (OpenSSL + WSFE Dummy + Padrón A5)', 'success');
+                } else {
+                    mostrarAlerta('⚠️ Diagnóstico completado con observaciones. Revisá el detalle abajo.', 'info');
+                }
+            } catch (err) {
+                out.textContent = 'Error: ' + err.message;
+                mostrarAlerta('❌ Error ejecutando diagnóstico ARCA: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
             }
         }
 

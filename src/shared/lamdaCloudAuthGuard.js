@@ -196,6 +196,11 @@ function esRutaPublicaAllowlist(reqOrPath) {
         '/mobile/icon-192.png',
         '/mobile/icon-512.png',
         '/mobile/apple-touch-icon.png',
+        '/mobile/isotipo-lab.png',
+        '/mobile/icon-lab-192.png',
+        '/mobile/icon-lab-512.png',
+        '/mobile/apple-touch-icon-lab.png',
+        '/mobile/favicon-lab.ico',
         '/lamda-prueba-manifest.json',
         '/lamda-prueba-sw.js',
         '/lamda-cloud-runtime.js',
@@ -413,9 +418,9 @@ function renderLoginHtmlPage() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Acceso Seguro — LAMDA Prueba</title>
-    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="icon" type="image/x-icon" href="/mobile/favicon-lab.ico">
     <link rel="manifest" href="/lamda-prueba-manifest.json">
-    <link rel="apple-touch-icon" href="/mobile/apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/mobile/apple-touch-icon-lab.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="LAMDA Prueba">
     <script src="/lamda-cloud-runtime.js"></script>
@@ -514,8 +519,8 @@ function renderLoginHtmlPage() {
             <label for="password">Contraseña</label>
             <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
             <button type="submit" id="btn-submit">Ingresar al Sistema</button>
-            <button type="button" id="btn-install-pwa" onclick="if (window.instalarAccesoDirectoLamdaPrueba) window.instalarAccesoDirectoLamdaPrueba()" style="margin-top: 10px; background: #0f172a; border: 1px solid #38bdf8; color: #38bdf8; font-weight: 700; font-size: 0.85rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                <img src="/mobile/icon-192.png" alt="LAMDA" style="width: 18px; height: 18px; border-radius: 4px;">
+            <button type="button" id="btn-install-pwa" onclick="if (window.instalarAccesoDirectoLamdaPrueba) window.instalarAccesoDirectoLamdaPrueba()" style="margin-top: 10px; background: #0f172a; border: 1px solid #94a3b8; color: #e2e8f0; font-weight: 700; font-size: 0.85rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <img src="/mobile/icon-lab-192.png" alt="LAMDA Prueba" style="width: 18px; height: 18px; border-radius: 4px;">
                 <span>📲 Instalar Acceso Directo "LAMDA Prueba"</span>
             </button>
         </form>

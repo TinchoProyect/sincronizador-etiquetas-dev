@@ -594,7 +594,49 @@ const CLIENT_RUNTIME_SCRIPT = `
         window.__LAMDA_DEFERRED_PWA_PROMPT__ = e;
     });
 
+    function isTestOrLabOrigin() {
+        var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+        if (host.indexOf('nube-prueba') !== -1 || host.indexOf('prueba') !== -1) return true;
+        if (window.__LAMDA_IS_LABORATORIO__) return true;
+        if (window.__LAMDA_ENV_STATUS__ && (window.__LAMDA_ENV_STATUS__.isPruebaNube || window.__LAMDA_ENV_STATUS__.isLaboratorio)) return true;
+        return false;
+    }
+
+    function applyTestEnvironmentGrayscaleBranding() {
+        if (!isTestOrLabOrigin()) return;
+        try {
+            if (document.head) {
+                var existingIcons = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+                if (existingIcons && existingIcons.length > 0) {
+                    for (var k = 0; k < existingIcons.length; k++) {
+                        existingIcons[k].href = '/mobile/favicon-lab.ico';
+                    }
+                } else {
+                    var fav = document.createElement('link');
+                    fav.rel = 'icon';
+                    fav.type = 'image/x-icon';
+                    fav.href = '/mobile/favicon-lab.ico';
+                    document.head.appendChild(fav);
+                }
+                var appleIcons = document.querySelectorAll('link[rel="apple-touch-icon"]');
+                if (appleIcons && appleIcons.length > 0) {
+                    for (var m = 0; m < appleIcons.length; m++) {
+                        appleIcons[m].href = '/mobile/apple-touch-icon-lab.png';
+                    }
+                }
+            }
+            var pathLower = (window.location && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
+            if (pathLower.indexOf('/mobile') === 0) {
+                var mobLogos = document.querySelectorAll('.header-logo-mark, .login-logo-mark');
+                for (var n = 0; n < mobLogos.length; n++) {
+                    mobLogos[n].src = '/mobile/isotipo-lab.png';
+                }
+            }
+        } catch (e) {}
+    }
+
     function setupPwaManifestAndButtons() {
+        applyTestEnvironmentGrayscaleBranding();
         if (!isCloudSinglePortOrigin()) return;
         try {
             var pathLower = (window.location && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
@@ -608,7 +650,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                 if (!document.querySelector('link[rel="apple-touch-icon"]')) {
                     var linkApple = document.createElement('link');
                     linkApple.rel = 'apple-touch-icon';
-                    linkApple.href = '/mobile/apple-touch-icon.png';
+                    linkApple.href = '/mobile/apple-touch-icon-lab.png';
                     document.head.appendChild(linkApple);
                 }
                 if (!document.querySelector('meta[name="apple-mobile-web-app-title"]')) {
@@ -630,8 +672,8 @@ const CLIENT_RUNTIME_SCRIPT = `
                 btnHeader.id = 'btn-header-install-lamda-prueba';
                 btnHeader.className = 'nav-btn';
                 btnHeader.title = 'Instalar acceso directo LAMDA Prueba en este dispositivo (Celular o Notebook)';
-                btnHeader.style.cssText = 'background:#eff6ff;color:#1d4ed8;border:1px solid #60a5fa;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;';
-                btnHeader.innerHTML = '<img src="/mobile/icon-192.png" alt="LAMDA" style="width:16px;height:16px;border-radius:4px;"><span>📲 Instalar "LAMDA Prueba"</span>';
+                btnHeader.style.cssText = 'background:#f4f4f5;color:#27272a;border:1px solid #a1a1aa;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;';
+                btnHeader.innerHTML = '<img src="/mobile/icon-lab-192.png" alt="LAMDA Prueba" style="width:16px;height:16px;border-radius:4px;"><span>📲 Instalar "LAMDA Prueba"</span>';
                 btnHeader.onclick = function() { window.instalarAccesoDirectoLamdaPrueba(); };
                 navBar.appendChild(btnHeader);
             }
@@ -641,7 +683,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                 var liInstall = document.createElement('li');
                 liInstall.id = 'tree-item-install-lamda-prueba';
                 liInstall.className = 'tree-item';
-                liInstall.innerHTML = '<a href="javascript:void(0)" class="tree-link" style="background:#eff6ff;border-left:4px solid #0284c7;color:#0369a1;font-weight:800;display:flex;align-items:center;gap:8px;"><img src="/mobile/icon-192.png" alt="LAMDA" style="width:18px;height:18px;border-radius:4px;"><span>📲 Instalar Acceso "LAMDA Prueba"</span></a>';
+                liInstall.innerHTML = '<a href="javascript:void(0)" class="tree-link" style="background:#f4f4f5;border-left:4px solid #52525b;color:#27272a;font-weight:800;display:flex;align-items:center;gap:8px;"><img src="/mobile/icon-lab-192.png" alt="LAMDA Prueba" style="width:18px;height:18px;border-radius:4px;"><span>📲 Instalar Acceso "LAMDA Prueba"</span></a>';
                 liInstall.onclick = function() {
                     if (typeof window.closeSidebar === 'function') window.closeSidebar();
                     window.instalarAccesoDirectoLamdaPrueba();
@@ -666,31 +708,31 @@ const CLIENT_RUNTIME_SCRIPT = `
         overlay.id = 'lamda-pwa-install-modal';
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.78);z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;';
         overlay.innerHTML =
-            '<div style="background:#1e293b;color:#f8fafc;border:1px solid #38bdf8;border-top:4px solid #38bdf8;border-radius:14px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.65);">' +
+            '<div style="background:#1e293b;color:#f8fafc;border:1px solid #a1a1aa;border-top:4px solid #a1a1aa;border-radius:14px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,0.65);">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">' +
                     '<div style="display:flex;align-items:center;gap:10px;">' +
-                        '<img src="/mobile/icon-192.png" alt="LAMDA Prueba" style="width:42px;height:42px;border-radius:10px;border:1px solid #475569;">' +
+                        '<img src="/mobile/icon-lab-192.png" alt="LAMDA Prueba" style="width:42px;height:42px;border-radius:10px;border:1px solid #71717a;">' +
                         '<div>' +
                             '<div style="font-size:1.05rem;font-weight:800;color:#f8fafc;">LAMDA Prueba</div>' +
-                            '<div style="font-size:0.78rem;color:#94a3b8;">Acceso directo con logo oficial LAMDA</div>' +
+                            '<div style="font-size:0.78rem;color:#cbd5e1;">Ícono monocromático en escala de grises (Entorno de Prueba)</div>' +
                         '</div>' +
                     '</div>' +
                     '<button id="lamda-pwa-modal-close" style="background:transparent;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;">&times;</button>' +
                 '</div>' +
                 (isMob
                     ? '<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:14px;font-size:0.88rem;line-height:1.5;color:#e2e8f0;margin-bottom:14px;">' +
-                        '<div style="font-weight:800;color:#38bdf8;margin-bottom:6px;">📱 Cómo agregarlo a la pantalla de inicio del celular:</div>' +
+                        '<div style="font-weight:800;color:#e2e8f0;margin-bottom:6px;">📱 Cómo agregarlo a la pantalla de inicio del celular:</div>' +
                         '<ol style="padding-left:18px;margin:0;">' +
                             '<li style="margin-bottom:6px;">En <strong>Chrome (Android)</strong>: tocá el menú <strong>⋮</strong> (arriba a la derecha) y elegí <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</li>' +
                             '<li>En <strong>Safari (iPhone)</strong>: tocá el botón <strong>Compartir (⬆️)</strong> abajo y elegí <strong>«Agregar a inicio»</strong>.</li>' +
                         '</ol>' +
-                        '<div style="margin-top:8px;font-size:0.78rem;color:#94a3b8;">El acceso quedará guardado con el logo de LAMDA y el nombre <strong>LAMDA Prueba</strong>.</div>' +
+                        '<div style="margin-top:8px;font-size:0.78rem;color:#94a3b8;">El acceso quedará guardado con el logo monocromático en escala de grises y el nombre <strong>LAMDA Prueba</strong>.</div>' +
                       '</div>'
                     : '<div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:14px;font-size:0.88rem;line-height:1.5;color:#e2e8f0;margin-bottom:14px;">' +
-                        '<div style="font-weight:800;color:#38bdf8;margin-bottom:8px;">💻 Cómo crear el acceso directo en la Notebook:</div>' +
-                        '<div style="margin-bottom:10px;"><strong>Opción 1 (App con logo LAMDA en Escritorio / Barra de tareas):</strong> En la barra de direcciones de Chrome/Edge (arriba a la derecha), hacé clic en el ícono de computadora con flecha <strong>«Instalar LAMDA Prueba»</strong> o en el menú <strong>⋮ → Guardar y compartir → Instalar LAMDA Prueba</strong>.</div>' +
+                        '<div style="font-weight:800;color:#e2e8f0;margin-bottom:8px;">💻 Cómo crear el acceso directo en la Notebook:</div>' +
+                        '<div style="margin-bottom:10px;"><strong>Opción 1 (App con ícono gris en Escritorio / Barra de tareas):</strong> En la barra de direcciones de Chrome/Edge (arriba a la derecha), hacé clic en el ícono de computadora con flecha <strong>«Instalar LAMDA Prueba»</strong> o en el menú <strong>⋮ → Guardar y compartir → Instalar LAMDA Prueba</strong>.</div>' +
                         '<div><strong>Opción 2 (Descarga directa para Escritorio):</strong> Descargá el acceso directo listo para tu Escritorio:</div>' +
-                        '<a href="/api/system/shortcut-desktop" download="LAMDA Prueba.url" style="margin-top:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 14px;background:linear-gradient(90deg,#0284c7,#2563eb);color:#ffffff;font-weight:800;text-decoration:none;border-radius:8px;font-size:0.88rem;">📥 Descargar Acceso Directo "LAMDA Prueba.url"</a>' +
+                        '<a href="/api/system/shortcut-desktop" download="LAMDA Prueba.url" style="margin-top:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px 14px;background:linear-gradient(90deg,#3f3f46,#52525b);border:1px solid #a1a1aa;color:#ffffff;font-weight:800;text-decoration:none;border-radius:8px;font-size:0.88rem;">📥 Descargar Acceso Directo "LAMDA Prueba.url"</a>' +
                       '</div>'
                 ) +
                 '<div style="text-align:right;">' +
@@ -769,7 +811,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     // 0B. Contexto de Presencia Física por Loopback (X-Lamda-Physical-Station: PCALMACEN_VERIFIED + HMAC Token)
     app.use(middlewareContextoPresenciaZebra);
 
-    // 0C. Manifest y Service Worker para Acceso Directo "LAMDA Prueba" (Celular y Notebook)
+    // 0C. Manifest y Service Worker para Acceso Directo "LAMDA Prueba" (Celular y Notebook — Íconos Monocromáticos en Escala de Grises)
     app.get('/lamda-prueba-manifest.json', (req, res) => {
         res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -777,16 +819,16 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             id: '/?app=lamda-prueba',
             name: 'LAMDA Prueba',
             short_name: 'LAMDA Prueba',
-            description: 'Sistema LAMDA Cloud 24/7 — Servidor de Prueba',
+            description: 'Sistema LAMDA Cloud 24/7 — Servidor de Prueba (Escala de Grises)',
             start_url: '/gw/3000/',
             scope: '/',
             display: 'standalone',
-            background_color: '#0f172a',
-            theme_color: '#0284c7',
+            background_color: '#e4e4e7',
+            theme_color: '#52525b',
             icons: [
-                { src: '/mobile/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-                { src: '/mobile/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-                { src: '/mobile/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
+                { src: '/mobile/icon-lab-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                { src: '/mobile/icon-lab-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                { src: '/mobile/apple-touch-icon-lab.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
             ]
         });
     });
@@ -810,7 +852,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             '[InternetShortcut]',
             `URL=${baseUrl}/gw/3000/`,
             'IconIndex=0',
-            `IconFile=${baseUrl}/favicon.ico`,
+            `IconFile=${baseUrl}/mobile/favicon-lab.ico`,
             ''
         ].join('\r\n');
         res.setHeader('Content-Type', 'application/internet-shortcut; charset=utf-8');
@@ -818,25 +860,30 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         return res.send(shortcutContent);
     });
 
-    // 0D. En Modo Laboratorio, personalizar el manifest PWA de /mobile para diferenciar el ícono en el celular
+    // 0D. En Modo Laboratorio o Modo Prueba Nube, personalizar el manifest PWA de /mobile con íconos monocromáticos en escala de grises
     app.get('/mobile/manifest.json', (req, res, next) => {
-        if (!esModoLaboratorio()) return next();
+        const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+        const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+        const host = String(req.headers.host || '').toLowerCase();
+        const isPruebaNube = flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1' || host.includes('nube-prueba');
+        if (!esModoLaboratorio() && !isPruebaNube) return next();
         res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         return res.json({
-            name: '🛠️ [LAB] LAMDA Móvil (Pruebas)',
-            short_name: 'LAMDA LAB',
-            description: 'Entorno de Laboratorio y Pruebas - LAMDA Móvil (BD: etiquetas_pruebas)',
+            id: '/mobile/?app=lamda-movil-prueba',
+            name: 'LAMDA Móvil Prueba',
+            short_name: 'LAMDA Móvil Prueba',
+            description: 'Entorno de Prueba y Desarrollo — LAMDA Móvil (Escala de Grises)',
             start_url: './home.html',
             scope: './',
             display: 'standalone',
-            background_color: '#78350f',
-            theme_color: '#b45309',
+            background_color: '#e4e4e7',
+            theme_color: '#52525b',
             orientation: 'portrait',
             icons: [
-                { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-                { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-                { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
+                { src: 'icon-lab-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                { src: 'icon-lab-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                { src: 'apple-touch-icon-lab.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
             ]
         });
     });
@@ -927,6 +974,210 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             whatsappModoEspejo: String(process.env.WHATSAPP_MODO_ESPEJO || '').toLowerCase() === 'true',
             zebraQueue
         });
+    });
+
+    // 2B. Diagnóstico Integral de ARCA en la Nube (Facturación + Padrón CUIT Clientes + Criptografía OpenSSL)
+    // Garantiza 0% de interferencia con el Ticket de Acceso (TA) de Facturación (wsfe) activo en PcAlmacen.
+    app.get('/api/system/arca-diagnostico', async (req, res) => {
+        const os = require('os');
+        const https = require('https');
+        const { execFile } = require('child_process');
+        const { promisify } = require('util');
+        const execFileAsync = promisify(execFile);
+
+        const rawOpenSsl = process.env.OPENSSL_EXE || process.env.OPENSSL_BIN || '';
+        const opensslBin = (process.platform !== 'win32' && (!rawOpenSsl || rawOpenSsl.includes(':\\')))
+            ? 'openssl'
+            : (rawOpenSsl || 'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe');
+
+        const certsDir = path.resolve(__dirname, '../facturacion/certs');
+        const cuitPrueba = String(req.query.cuit || '23248921749').replace(/[^0-9]/g, '');
+
+        async function inspectCertAndTestSign(label, certName, keyName, servicioAsociado) {
+            const certPath = path.join(certsDir, certName);
+            const keyPath = path.join(certsDir, keyName);
+            const info = {
+                label,
+                servicioAsociado,
+                certExists: fs.existsSync(certPath),
+                keyExists: fs.existsSync(keyPath),
+                subject: null,
+                issuer: null,
+                notBefore: null,
+                notAfter: null,
+                cmsSignatureTestOk: false,
+                cmsBytes: 0,
+                error: null
+            };
+            if (!info.certExists || !info.keyExists) {
+                info.error = 'Archivo de certificado o clave privada no encontrado en ' + certsDir;
+                return info;
+            }
+            try {
+                const { stdout } = await execFileAsync(opensslBin, [
+                    'x509', '-in', certPath, '-noout', '-subject', '-issuer', '-dates'
+                ]);
+                const lines = String(stdout || '').split(/\r?\n/);
+                for (const ln of lines) {
+                    if (ln.startsWith('subject=')) info.subject = ln.replace(/^subject=/, '').trim();
+                    if (ln.startsWith('issuer=')) info.issuer = ln.replace(/^issuer=/, '').trim();
+                    if (ln.startsWith('notBefore=')) info.notBefore = ln.replace(/^notBefore=/, '').trim();
+                    if (ln.startsWith('notAfter=')) info.notAfter = ln.replace(/^notAfter=/, '').trim();
+                }
+                const tmpTra = path.join(os.tmpdir(), `diag_tra_${Date.now()}_${Math.random().toString(36).slice(2)}.xml`);
+                const tmpCms = path.join(os.tmpdir(), `diag_cms_${Date.now()}_${Math.random().toString(36).slice(2)}.cms`);
+                try {
+                    fs.writeFileSync(tmpTra, '<loginTicketRequest version="1.0"><service>' + servicioAsociado + '</service></loginTicketRequest>', 'utf8');
+                    await execFileAsync(opensslBin, [
+                        'smime', '-sign', '-in', tmpTra, '-out', tmpCms, '-outform', 'DER',
+                        '-signer', certPath, '-inkey', keyPath, '-nodetach', '-binary'
+                    ]);
+                    if (fs.existsSync(tmpCms)) {
+                        const stat = fs.statSync(tmpCms);
+                        info.cmsBytes = stat.size;
+                        info.cmsSignatureTestOk = stat.size > 500;
+                    }
+                } finally {
+                    try { if (fs.existsSync(tmpTra)) fs.unlinkSync(tmpTra); } catch (_) {}
+                    try { if (fs.existsSync(tmpCms)) fs.unlinkSync(tmpCms); } catch (_) {}
+                }
+            } catch (err) {
+                info.error = err.message;
+            }
+            return info;
+        }
+
+        function callWsfeProdDummy() {
+            return new Promise((resolve) => {
+                const t0 = Date.now();
+                const soapBody =
+                    '<?xml version="1.0" encoding="utf-8"?>' +
+                    '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' +
+                    '<soap:Body><FEDummy xmlns="http://ar.gov.afip.dif.FEV1/" /></soap:Body></soap:Envelope>';
+                const reqHttps = https.request('https://servicios1.afip.gov.ar/wsfev1/service.asmx', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/xml; charset=utf-8',
+                        'SOAPAction': '"http://ar.gov.afip.dif.FEV1/FEDummy"',
+                        'Content-Length': Buffer.byteLength(soapBody)
+                    },
+                    timeout: 12000
+                }, (resp) => {
+                    let data = '';
+                    resp.on('data', (chunk) => { data += chunk; });
+                    resp.on('end', () => {
+                        const appServer = (/<AppServer>([^<]+)<\/AppServer>/i.exec(data) || [])[1] || null;
+                        const dbServer = (/<DbServer>([^<]+)<\/DbServer>/i.exec(data) || [])[1] || null;
+                        const authServer = (/<AuthServer>([^<]+)<\/AuthServer>/i.exec(data) || [])[1] || null;
+                        resolve({
+                            ok: appServer === 'OK' && dbServer === 'OK' && authServer === 'OK',
+                            statusCode: resp.statusCode,
+                            latencyMs: Date.now() - t0,
+                            endpoint: 'https://servicios1.afip.gov.ar/wsfev1/service.asmx',
+                            appServer,
+                            dbServer,
+                            authServer,
+                            notaSeguridad: 'Verificación 100% pasiva (FEDummy): NO consume ni invalida el Ticket de Acceso (TA) de Facturación (wsfe) activo en PcAlmacen.'
+                        });
+                    });
+                });
+                reqHttps.on('error', (err) => {
+                    resolve({ ok: false, error: err.message, latencyMs: Date.now() - t0 });
+                });
+                reqHttps.on('timeout', () => {
+                    reqHttps.destroy();
+                    resolve({ ok: false, error: 'Timeout conectando a servicios1.afip.gov.ar', latencyMs: Date.now() - t0 });
+                });
+                reqHttps.write(soapBody);
+                reqHttps.end();
+            });
+        }
+
+        try {
+            let opensslVersion = null;
+            try {
+                const { stdout } = await execFileAsync(opensslBin, ['version']);
+                opensslVersion = String(stdout || '').trim();
+            } catch (e) {
+                opensslVersion = 'Error: ' + e.message;
+            }
+
+            const [certFactProd, certPadronProd, certHomo, wsfeDummy] = await Promise.all([
+                inspectCertAndTestSign('Facturación Electrónica Producción (CN=LAMDA_FACTURACION)', 'prod-cert.pem', 'prod-key.pem', 'wsfe'),
+                inspectCertAndTestSign('Padrón A5 Clientes Búnker Producción (CN=lamda_clientes)', 'lamda_clientes.crt', 'lamda_clientes.key', 'ws_sr_constancia_inscripcion'),
+                inspectCertAndTestSign('Facturación Homologación (CN=LAMDAHOMO2025M)', 'homo_cert.pem', 'homo_key.pem', 'wsfe'),
+                callWsfeProdDummy()
+            ]);
+
+            let padronTest = { ok: false, cuitConsultado: cuitPrueba };
+            const tPadron0 = Date.now();
+            try {
+                const { consultarPadron } = require('../logistica/services/arcaService');
+                const datosCuit = await consultarPadron(cuitPrueba);
+                padronTest = {
+                    ok: true,
+                    cuitConsultado: cuitPrueba,
+                    latencyMs: Date.now() - tPadron0,
+                    endpoint: 'https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5',
+                    servicio: 'ws_sr_constancia_inscripcion',
+                    datos: datosCuit
+                };
+            } catch (errPadron) {
+                padronTest = {
+                    ok: false,
+                    cuitConsultado: cuitPrueba,
+                    latencyMs: Date.now() - tPadron0,
+                    error: errPadron.message
+                };
+            }
+
+            let taTableRows = [];
+            try {
+                const { pool } = require('../logistica/config/database');
+                const rTa = await pool.query(`
+                    SELECT entorno, servicio, expira_en, creado_en, cuit, origen_host,
+                           (expira_en > NOW()) AS vigente,
+                           ROUND(EXTRACT(EPOCH FROM (expira_en - NOW())) / 60) AS minutos_restantes
+                    FROM public.factura_afip_ta
+                    ORDER BY entorno, servicio
+                `);
+                taTableRows = rTa.rows || [];
+            } catch (_) {}
+
+            const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+            const isPruebaNube = flagNube === 'true' || flagNube === '1';
+
+            return res.json({
+                ok: Boolean(
+                    certFactProd.cmsSignatureTestOk &&
+                    certPadronProd.cmsSignatureTestOk &&
+                    wsfeDummy.ok &&
+                    padronTest.ok
+                ),
+                timestamp: new Date().toISOString(),
+                host: os.hostname(),
+                platform: `${process.platform} (${os.release()})`,
+                openssl: {
+                    binary: opensslBin,
+                    version: opensslVersion
+                },
+                resguardoPcAlmacen: {
+                    modoPruebaNubeActivo: isPruebaNube,
+                    emisionRealWsfeBloqueadaEnNubePrueba: isPruebaNube,
+                    explicacion: 'Mientras PcAlmacen es titular en el depósito, nube-prueba mantiene bloqueado el pedido de TA PROD/wsfe para jamás competir con la facturación local. La aptitud de PROD/wsfe se verifica mediante firma CMS local + FEDummy pasivo.'
+                },
+                certificados: {
+                    facturacionProd: certFactProd,
+                    padronClientesProd: certPadronProd,
+                    facturacionHomo: certHomo
+                },
+                wsfeProduccionDummy: wsfeDummy,
+                padronClientesA5: padronTest,
+                ticketsAccesoEnBD: taTableRows
+            });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message });
+        }
     });
 
     // 3. Endpoints de gestión de Bandeja Zebra (Liberar / Descartar / Agente Local)
