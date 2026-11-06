@@ -152,6 +152,7 @@ app.use(lamdaCloudAuthGuard);
 // 🌐 Fallback por Referer para Sub-Rutas Relativas a la Raíz bajo /gw/3000..3004
 // Si una página servida desde /gw/300X/... solicita /js/..., /css/..., /facturacion/... o /api/...
 // sin prefijo /gw/300X, se reescribe hacia el Gateway correspondiente antes de los estáticos de 3005.
+const fs = require('fs');
 function resolvePageCanonicalRoute(reqPath, qs) {
     const m = /^(?:\/gw\/(300[0234]))?\/pages\/([^/?#]+\.html)$/i.exec(reqPath || '');
     if (!m) return null;
