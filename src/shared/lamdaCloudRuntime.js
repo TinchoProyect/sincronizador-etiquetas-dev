@@ -1264,18 +1264,51 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             const keyPrimary = String(process.env.GEMINI_API_KEY || '').trim();
             const keyBackup = String(process.env.GEMINI_API_KEY_BACKUP || '').trim();
 
-            let saludLlm = { ok: false };
+            let modoCredLlm = null;
             try {
                 const agenteHibridoLlm = require('../services/whatsappAgenteHibridoLlmService');
-                saludLlm = await agenteHibridoLlm.verificarSaludIA();
+                modoCredLlm = agenteHibridoLlm.obtenerModoCredencialGemini();
             } catch (errSalud) {
-                saludLlm = { ok: false, error: errSalud.message };
+                modoCredLlm = { error: errSalud.message };
+            }
+
+            let saludLlm = { ok: false };
+            if (keyPrimary.length > 10) {
+                const https = require('https');
+                const tPing0 = Date.now();
+                saludLlm = await new Promise((resolve) => {
+                    const reqG = https.get(
+                        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash?key=' + encodeURIComponent(keyPrimary),
+                        { timeout: 10000 },
+                        (resp) => {
+                            let body = '';
+                            resp.on('data', (c) => { body += c; });
+                            resp.on('end', () => {
+                                try {
+                                    const parsed = JSON.parse(body);
+                                    resolve({
+                                        ok: resp.statusCode === 200 && Boolean(parsed && parsed.name),
+                                        statusCode: resp.statusCode,
+                                        latencyMs: Date.now() - tPing0,
+                                        modelVerified: parsed.name || 'models/gemini-2.5-flash',
+                                        displayName: parsed.displayName || 'Gemini 2.5 Flash',
+                                        modoCredencialAgente: modoCredLlm ? modoCredLlm.modo : null
+                                    });
+                                } catch (e) {
+                                    resolve({ ok: false, statusCode: resp.statusCode, error: e.message });
+                                }
+                            });
+                        }
+                    );
+                    reqG.on('error', (err) => resolve({ ok: false, error: err.message, latencyMs: Date.now() - tPing0 }));
+                    reqG.on('timeout', () => { reqG.destroy(); resolve({ ok: false, error: 'Timeout Gemini API', latencyMs: Date.now() - tPing0 }); });
+                });
             }
 
             let estadoCredito = null;
             try {
                 const iaCreditoMonitor = require('../services/iaCreditoMonitorService');
-                estadoCredito = iaCreditoMonitor.obtenerEstadoCreditoIA();
+                estadoCredito = iaCreditoMonitor.leerLedgerDisco();
             } catch (errCred) {
                 estadoCredito = { error: errCred.message };
             }
