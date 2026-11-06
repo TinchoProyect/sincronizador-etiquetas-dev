@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { normalizarOfertaProveedor } = require('../utils/unitNormalizer');
+const { supabaseFetch } = require('../utils/supabaseHelper');
 
 // REGEX UNIVERSALES DE CLASIFICACIÓN DE CONFORMACIÓN Y GRADO COMERCIAL (DOMINIO MAYORISTA ALIMENTOS)
 const REGEX_CONFORMACION_INDUSTRIA = /\b(industri[a-z]*|bakery|panader[a-z]*|pastel[a-z]*|partid[oa]s?|ptda|quebrad[oa]s?|trozad[oa]s?|trozos?|granza|pedacer[a-z]*|descarte|segunda|cuart[oa]s?|cuartill[oa]s?|1\/4|octav[oa]s?)\b/i;
@@ -173,7 +174,13 @@ class ConciliacionArticulosService {
 
         while (hasMore && cotizacionesRaw.length < 10000) {
             const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&limit=1000&offset=${offset}`;
-            const response = await fetch(url, { headers });
+            let response;
+            try {
+                response = await supabaseFetch(url, { headers }, 1, 300, 6000);
+            } catch (fetchErr) {
+                console.error(`⚠️ Error Supabase REST en offset ${offset}:`, fetchErr.message);
+                break;
+            }
             if (!response.ok) {
                 console.error(`⚠️ Error Supabase REST (${response.status}):`, await response.text());
                 break;
@@ -392,8 +399,10 @@ class ConciliacionArticulosService {
             });
         }
 
-        this.cacheTablaMaestra = ofertasVigentes;
-        this.cacheTimestamp = Date.now();
+        if (ofertasVigentes.length > 0 || !this.cacheTablaMaestra) {
+            this.cacheTablaMaestra = ofertasVigentes;
+            this.cacheTimestamp = Date.now();
+        }
         console.log(`⚡ [CONCILIACION] Tabla Maestra V4.1 cargada en Memoria RAM: ${ofertasVigentes.length} ofertas vigentes (${duracionFetch}ms).`);
 
         return this.cacheTablaMaestra;

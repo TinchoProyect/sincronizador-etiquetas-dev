@@ -125,8 +125,30 @@ const CLIENT_RUNTIME_SCRIPT = `
     var originalFetch = (typeof window.fetch === 'function') ? window.fetch.bind(window) : null;
 
     // 0. Sonda de Presencia Física por Loopback (127.0.0.1:3099/zebra-local-presence)
-    function pollLocalZebraPresence() {
-        if (!originalFetch) return;
+    // Solo se ejecuta cuando el servidor informa que el agente Zebra local está activo en la misma IP
+    // (o cuando esta estación ya fue verificada como PcAlmacen), evitando errores ERR_CONNECTION_REFUSED en Notebooks/Celulares.
+    var loopbackProbeInFlight = false;
+    var lastLoopbackProbeTs = 0;
+
+    function isMobileBrowser() {
+        try {
+            return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function pollLocalZebraPresence(forceProbe) {
+        if (!originalFetch || isMobileBrowser() || loopbackProbeInFlight) return;
+        try {
+            if (!forceProbe && sessionStorage.getItem('__lamda_loopback_3099_unavailable__') === '1') {
+                return;
+            }
+        } catch (e) {}
+        if (!forceProbe && (Date.now() - lastLoopbackProbeTs) < 10000) return;
+
+        loopbackProbeInFlight = true;
+        lastLoopbackProbeTs = Date.now();
         originalFetch('http://127.0.0.1:3099/zebra-local-presence', {
             method: 'GET',
             mode: 'cors',
@@ -134,6 +156,7 @@ const CLIENT_RUNTIME_SCRIPT = `
         })
         .then(function(r) { return r && r.ok ? r.json() : null; })
         .then(function(data) {
+            loopbackProbeInFlight = false;
             if (data && data.ok && data.station === 'PCALMACEN_VERIFIED' && data.token) {
                 window.__LAMDA_PHYSICAL_PRESENCE__ = {
                     verified: true,
@@ -141,17 +164,26 @@ const CLIENT_RUNTIME_SCRIPT = `
                     token: String(data.token),
                     ts: Date.now()
                 };
+                try {
+                    localStorage.setItem('__lamda_is_pcalmacen_station__', '1');
+                    sessionStorage.removeItem('__lamda_loopback_3099_unavailable__');
+                } catch (e) {}
             } else {
                 window.__LAMDA_PHYSICAL_PRESENCE__.verified = false;
+                try {
+                    sessionStorage.setItem('__lamda_loopback_3099_unavailable__', '1');
+                } catch (e) {}
             }
         })
         .catch(function() {
+            loopbackProbeInFlight = false;
             window.__LAMDA_PHYSICAL_PRESENCE__.verified = false;
+            try {
+                localStorage.removeItem('__lamda_is_pcalmacen_station__');
+                sessionStorage.setItem('__lamda_loopback_3099_unavailable__', '1');
+            } catch (e) {}
         });
     }
-
-    pollLocalZebraPresence();
-    setInterval(pollLocalZebraPresence, 4000);
 
     // 1. Interceptar window.fetch (Resolución Cloud + Inyección de Presencia Física PcAlmacen)
     if (originalFetch) {
@@ -263,6 +295,8 @@ const CLIENT_RUNTIME_SCRIPT = `
 
     // 5. Franja de MODO LABORATORIO + Bandeja de Cola Zebra Retenida
     var labBannerEl = null;
+    var labBannerShownOnce = false;
+    var labBannerDismissTimer = null;
     var zebraBannerEl = null;
     var zebraModalEl = null;
     var lastZebraItems = [];
@@ -272,10 +306,26 @@ const CLIENT_RUNTIME_SCRIPT = `
         if (!container && document.body) {
             container = document.createElement('div');
             container.id = 'lamda-system-top-banners';
-            container.style.cssText = 'position:sticky;top:0;left:0;right:0;z-index:2147483640;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;';
+            container.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483640;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;pointer-events:none;';
             document.body.insertBefore(container, document.body.firstChild);
         }
         return container;
+    }
+
+    function dismissLabBanner() {
+        if (labBannerDismissTimer) {
+            clearTimeout(labBannerDismissTimer);
+            labBannerDismissTimer = null;
+        }
+        if (!labBannerEl) return;
+        labBannerEl.style.opacity = '0';
+        labBannerEl.style.transform = 'translateY(-100%)';
+        setTimeout(function() {
+            if (labBannerEl) {
+                labBannerEl.remove();
+                labBannerEl = null;
+            }
+        }, 350);
     }
 
     function renderLabBanner(status) {
@@ -290,6 +340,8 @@ const CLIENT_RUNTIME_SCRIPT = `
             if (document.title && document.title.indexOf('[NUBE PRUEBA]') === -1) {
                 document.title = '[NUBE PRUEBA] ' + document.title;
             }
+            if (labBannerShownOnce) return;
+            labBannerShownOnce = true;
             var containerNube = ensureTopContainer();
             if (!containerNube) return;
             if (!labBannerEl) {
@@ -298,30 +350,38 @@ const CLIENT_RUNTIME_SCRIPT = `
                 containerNube.appendChild(labBannerEl);
             }
             labBannerEl.style.cssText = [
-                'background: linear-gradient(90deg, #0369a1, #0f172a, #0369a1);',
+                'background: linear-gradient(90deg, rgba(3,105,161,0.95), rgba(15,23,42,0.95), rgba(3,105,161,0.95));',
                 'color: #f0f9ff;',
-                'padding: 8px 16px;',
-                'font-size: 13px;',
+                'padding: 6px 14px;',
+                'font-size: 12px;',
                 'font-weight: 800;',
-                'letter-spacing: 0.3px;',
+                'letter-spacing: 0.2px;',
                 'text-align: center;',
                 'border-bottom: 2px solid #38bdf8;',
                 'box-shadow: 0 3px 10px rgba(0,0,0,0.35);',
                 'display: flex;',
                 'align-items: center;',
                 'justify-content: center;',
-                'gap: 12px;',
-                'flex-wrap: wrap;'
+                'gap: 10px;',
+                'flex-wrap: wrap;',
+                'pointer-events: auto;',
+                'transition: opacity 0.35s ease, transform 0.35s ease;'
             ].join('');
             labBannerEl.innerHTML =
-                '<span style="background:#38bdf8;color:#0f172a;padding:2px 8px;border-radius:4px;font-weight:900;">☁️ MODO PRUEBA EN NUBE (PARALELO)</span>' +
-                '<span>ENTORNO PARALELO DE ENSAYO — <strong style="color:#fde68a;">PcAlmacen SIGUE COMO TITULAR EN EL DEPÓSITO</strong></span>' +
-                '<span style="font-size:11px;background:rgba(0,0,0,0.45);padding:2px 8px;border-radius:4px;">🧪 WhatsApp redirigido a ' + (status.safeRedirectWhatsapp || '221-6615746') + ' · Emails redirigidos a ' + (status.safeRedirectEmail || 'miserrano75@gmail.com') + ' · Supabase Sandbox</span>';
+                '<span style="background:#38bdf8;color:#0f172a;padding:2px 7px;border-radius:4px;font-weight:900;">☁️ MODO PRUEBA EN NUBE (PARALELO)</span>' +
+                '<span>ENTORNO DE ENSAYO — <strong style="color:#fde68a;">PcAlmacen SIGUE COMO TITULAR EN EL DEPÓSITO</strong></span>' +
+                '<span style="font-size:11px;background:rgba(0,0,0,0.45);padding:2px 8px;border-radius:4px;">🧪 WhatsApp a ' + (status.safeRedirectWhatsapp || '221-6615746') + ' · Emails a ' + (status.safeRedirectEmail || 'miserrano75@gmail.com') + ' · Supabase B4.1 Activo</span>' +
+                '<button id="lamda-lab-banner-close" title="Ocultar aviso" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#f0f9ff;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:11px;font-weight:800;">✕</button>';
+            var btnCloseNube = document.getElementById('lamda-lab-banner-close');
+            if (btnCloseNube) btnCloseNube.onclick = dismissLabBanner;
+            labBannerDismissTimer = setTimeout(dismissLabBanner, 3800);
             return;
         }
         if (document.title && document.title.indexOf('[PRUEBAS]') === -1) {
             document.title = '[PRUEBAS] ' + document.title;
         }
+        if (labBannerShownOnce) return;
+        labBannerShownOnce = true;
         var container = ensureTopContainer();
         if (!container) return;
         if (!labBannerEl) {
@@ -330,25 +390,31 @@ const CLIENT_RUNTIME_SCRIPT = `
             labBannerEl.style.cssText = [
                 'background: repeating-linear-gradient(135deg, #b45309, #b45309 18px, #92400e 18px, #92400e 36px);',
                 'color: #fffbeb;',
-                'padding: 8px 16px;',
-                'font-size: 13px;',
+                'padding: 6px 14px;',
+                'font-size: 12px;',
                 'font-weight: 800;',
-                'letter-spacing: 0.3px;',
+                'letter-spacing: 0.2px;',
                 'text-align: center;',
                 'border-bottom: 2px solid #fde68a;',
                 'box-shadow: 0 3px 10px rgba(0,0,0,0.35);',
                 'display: flex;',
                 'align-items: center;',
                 'justify-content: center;',
-                'gap: 12px;',
-                'flex-wrap: wrap;'
+                'gap: 10px;',
+                'flex-wrap: wrap;',
+                'pointer-events: auto;',
+                'transition: opacity 0.35s ease, transform 0.35s ease;'
             ].join('');
             container.appendChild(labBannerEl);
         }
         labBannerEl.innerHTML =
             '<span style="background:#fef3c7;color:#78350f;padding:2px 8px;border-radius:4px;font-weight:900;">🛠️ MODO LABORATORIO / PRUEBAS</span>' +
             '<span>BASE DE DATOS: <strong style="color:#fde68a;text-decoration:underline;">' + (status.dbName || 'etiquetas_pruebas') + '</strong> — NO USAR PARA OPERACIÓN REAL</span>' +
-            '<span style="font-size:11px;background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:4px;">🔒 Supabase B2B Desconectado · WhatsApp Saliente Bloqueado · ARCA Homologación · Zebra Física Simulada</span>';
+            '<span style="font-size:11px;background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:4px;">🔒 Supabase B2B Desconectado · WhatsApp Saliente Bloqueado · ARCA Homologación · Zebra Física Simulada</span>' +
+            '<button id="lamda-lab-banner-close" title="Ocultar aviso" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fffbeb;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:11px;font-weight:800;">✕</button>';
+        var btnCloseLab = document.getElementById('lamda-lab-banner-close');
+        if (btnCloseLab) btnCloseLab.onclick = dismissLabBanner;
+        labBannerDismissTimer = setTimeout(dismissLabBanner, 4500);
     }
 
     function openZebraModal() {
@@ -439,7 +505,8 @@ const CLIENT_RUNTIME_SCRIPT = `
                 'align-items: center;',
                 'justify-content: center;',
                 'gap: 10px;',
-                'flex-wrap: wrap;'
+                'flex-wrap: wrap;',
+                'pointer-events: auto;'
             ].join('');
             container.appendChild(zebraBannerEl);
         }
@@ -465,6 +532,9 @@ const CLIENT_RUNTIME_SCRIPT = `
                 window.__LAMDA_ENV_STATUS__ = data;
                 renderLabBanner(data);
                 renderZebraBanner(data.zebraQueue);
+                if (data.canProbeLocalBridge) {
+                    pollLocalZebraPresence(false);
+                }
             })
             .catch(function() {});
     }
@@ -605,6 +675,15 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
         const isPruebaNube = flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
         const zebraQueue = await obtenerResumenColaRetenida();
+        const clientIp = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+        const bridgeSt = (zebraQueue && zebraQueue.bridgeStatus) ? zebraQueue.bridgeStatus : null;
+        const bridgeHbMs = (bridgeSt && bridgeSt.last_heartbeat_at) ? new Date(bridgeSt.last_heartbeat_at).getTime() : 0;
+        const bridgeActiveRecently = bridgeHbMs > 0 && (Date.now() - bridgeHbMs) < 25000;
+        const bridgeIp = (bridgeSt && bridgeSt.ip_origen) ? String(bridgeSt.ip_origen).split(',')[0].trim() : '';
+        const canProbeLocalBridge = Boolean(
+            bridgeActiveRecently &&
+            (!bridgeIp || !clientIp || bridgeIp === clientIp || clientIp === '127.0.0.1' || clientIp === '::1')
+        );
         res.json({
             ok: true,
             servicePort,
@@ -612,6 +691,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             isPruebaNube,
             lamdaRole: process.env.LAMDA_ROLE || 'PRIMARY',
             physicalPresence: req.zebraPhysicalPresence || { estacionFisicaVerificada: false },
+            canProbeLocalBridge,
             safeRedirectWhatsapp: process.env.SAFE_REDIRECT_WHATSAPP_TO || '5492216615746',
             safeRedirectEmail: process.env.SAFE_REDIRECT_EMAIL_TO || 'miserrano75@gmail.com',
             isCloudMode: esModoCloudOLinux(),

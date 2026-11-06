@@ -94,21 +94,23 @@ async function supabaseFetch(url, options = {}, retries = 3, delay = 500, timeou
                         continue;
                     }
                 }
-                // Si es un error 4xx que no sea 429, no reintentamos
-                throw new Error(`HTTP ${response.status}: ${statusText}`);
+                // Si es un error 4xx que no sea 429, no reintentamos y saltamos directo al fallback de caché local
+                const nonRetryErr = new Error(`HTTP ${response.status}: ${statusText}`);
+                nonRetryErr.noRetry = true;
+                throw nonRetryErr;
             }
         } catch (err) {
             clearTimeout(timeoutId);
             const isTimeout = err.name === 'AbortError';
             console.error(`❌ [Supabase Conn] Error en intento ${attempt + 1}: ${isTimeout ? 'TIMEOUT' : err.message}`);
             
-            if (attempt < retries) {
+            if (attempt < retries && !err.noRetry) {
                 const backoff = delay * Math.pow(2, attempt);
                 console.log(`🔄 Reintentando en ${backoff}ms...`);
                 await new Promise(resolve => setTimeout(resolve, backoff));
             } else {
-                // Agotado los reintentos: intentar recuperar desde la caché local
-                console.log(`🔌 [Supabase Fallback] Agotados reintentos. Buscando en caché local...`);
+                // Agotado los reintentos (o error 4xx directo): intentar recuperar desde la caché local
+                console.log(`🔌 [Supabase Fallback] Buscando en caché local...`);
                 if (fs.existsSync(cachePath)) {
                     try {
                         const cachedData = fs.readFileSync(cachePath, 'utf8');
