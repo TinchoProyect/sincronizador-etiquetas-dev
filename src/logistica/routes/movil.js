@@ -109,7 +109,7 @@ async function resolverQrPublicoHandler(req, res) {
             return res.json({ success: true, supabase_pedido_id: token });
         }
 
-        const pool = req.app.get('db');
+        const pool = req.db || (req.app && req.app.get && req.app.get('db'));
         if (!pool) {
             return res.status(500).json({ success: false, error: 'Base de datos no disponible' });
         }

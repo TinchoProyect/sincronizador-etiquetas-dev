@@ -70,6 +70,8 @@ const allowedOrigins = [
     'https://logistica.lamdaser.com',
     'https://nube.lamdaser.com',
     'http://nube.lamdaser.com',
+    'https://nube-prueba.lamdaser.com',
+    'http://nube-prueba.lamdaser.com',
     'http://logistica.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',

@@ -23,6 +23,10 @@ const pendingReRun = new Map();
 const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
 
 function esModoLaboratorioOSinCredencialesB2B() {
+  const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
+  if (daemonDisabled === 'true' || daemonDisabled === '1') {
+    return true;
+  }
   const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
   const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
   const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();

@@ -2101,9 +2101,18 @@ _Este código expira en 5 minutos._`;
 
 const healedProfileIds = new Set();
 
-if (!cloudOtpTimer) {
+const b2bDispatcherDisabled =
+    String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase() === 'true' ||
+    String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase() === 'true' ||
+    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
+    String(process.env.MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
+    String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas';
+
+if (!cloudOtpTimer && !b2bDispatcherDisabled) {
     cloudOtpTimer = setInterval(procesarOtpsPendientesCloud, 2000);
     console.log('⚡ [B2B-ONBOARDING] Cloud OTP, PWDRESET & ONBOARD Dispatcher ACTIVADO via telemetria_accesos (cada 2 seg)');
+} else if (b2bDispatcherDisabled) {
+    console.log('🔒 [B2B-ONBOARDING] Cloud OTP, PWDRESET & ONBOARD Dispatcher PAUSADO por candado de entorno (DAEMON_B2B_DISABLED / MODO_PRUEBA_NUBE / LABORATORIO).');
 }
 
 /**
