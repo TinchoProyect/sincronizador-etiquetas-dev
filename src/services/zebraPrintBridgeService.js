@@ -24,11 +24,58 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { exec } = require('child_process');
+const cp = require('child_process');
+const { exec } = cp;
 const { AsyncLocalStorage } = require('async_hooks');
 const pool = require('../config/db');
 
 const zebraRequestContext = new AsyncLocalStorage();
+
+// Propagar automáticamente el contexto de presencia física a procesos hijos lanzados vía child_process.exec / spawn
+if (!cp.__lamdaZebraExecPatched) {
+    const originalExec = cp.exec;
+    cp.exec = function patchedLamdaExec(command, options, callback) {
+        let opts = options;
+        let cb = callback;
+        if (typeof opts === 'function') {
+            cb = opts;
+            opts = {};
+        } else {
+            opts = opts ? Object.assign({}, opts) : {};
+        }
+        const store = zebraRequestContext.getStore();
+        if (store) {
+            opts.env = Object.assign({}, process.env, opts.env || {}, {
+                LAMDA_PHYSICAL_VERIFIED: store.estacionFisicaVerificada ? 'true' : 'false',
+                LAMDA_DEVICE_ORIGIN: String(store.dispositivoOrigen || ''),
+                LAMDA_CLIENT_IP: String(store.ipOrigen || '')
+            });
+        }
+        return originalExec.call(this, command, opts, cb);
+    };
+
+    if (cp.ChildProcess && cp.ChildProcess.prototype && typeof cp.ChildProcess.prototype.spawn === 'function') {
+        const originalProtoSpawn = cp.ChildProcess.prototype.spawn;
+        cp.ChildProcess.prototype.spawn = function patchedProtoSpawn(options) {
+            try {
+                const store = zebraRequestContext.getStore();
+                if (store && options && Array.isArray(options.envPairs)) {
+                    const verifiedPair = `LAMDA_PHYSICAL_VERIFIED=${store.estacionFisicaVerificada ? 'true' : 'false'}`;
+                    const originPair = `LAMDA_DEVICE_ORIGIN=${String(store.dispositivoOrigen || '')}`;
+                    const ipPair = `LAMDA_CLIENT_IP=${String(store.ipOrigen || '')}`;
+                    options.envPairs = options.envPairs.filter(
+                        (p) => !String(p).startsWith('LAMDA_PHYSICAL_VERIFIED=') &&
+                               !String(p).startsWith('LAMDA_DEVICE_ORIGIN=') &&
+                               !String(p).startsWith('LAMDA_CLIENT_IP=')
+                    );
+                    options.envPairs.push(verifiedPair, originPair, ipPair);
+                }
+            } catch (_) {}
+            return originalProtoSpawn.call(this, options);
+        };
+    }
+    cp.__lamdaZebraExecPatched = true;
+}
 let tablaInicializada = false;
 
 function esModoLaboratorio() {
@@ -272,10 +319,18 @@ async function despacharZplAZebra({
 
     const descripcionLimpia = String(descripcion || tipoEtiqueta).trim().slice(0, 300);
     const ctxStore = zebraRequestContext.getStore() || {};
+    const envPhysicalRaw = process.env.LAMDA_PHYSICAL_VERIFIED;
+    const envOriginRaw = process.env.LAMDA_DEVICE_ORIGIN;
     const isPhysicalVerified = estacionFisicaVerificada !== null
         ? Boolean(estacionFisicaVerificada)
-        : Boolean(ctxStore.estacionFisicaVerificada);
-    const origenDispositivo = dispositivoOrigen || ctxStore.dispositivoOrigen || (isPhysicalVerified ? 'PCALMACEN_LOOPBACK_3099' : 'REMOTO_SIN_LOOPBACK');
+        : (ctxStore.estacionFisicaVerificada !== undefined
+            ? Boolean(ctxStore.estacionFisicaVerificada)
+            : String(envPhysicalRaw || '').trim().toLowerCase() === 'true');
+    const origenDispositivo =
+        dispositivoOrigen ||
+        ctxStore.dispositivoOrigen ||
+        (envOriginRaw ? String(envOriginRaw).trim() : '') ||
+        (isPhysicalVerified ? 'PCALMACEN_LOOPBACK_3099' : 'REMOTO_SIN_LOOPBACK');
 
     // 1. MODO LABORATORIO: Nunca imprimir físicamente en pruebas
     if (esModoLaboratorio()) {

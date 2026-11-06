@@ -24,6 +24,7 @@ const path = require('path');
 const http = require('http');
 const { exec } = require('child_process');
 const {
+    obtenerSecretoPresenciaZebra,
     generarTokenPresenciaFisicaGalpon,
     registrarHeartbeatAgenteZebra,
     obtenerTrabajosLiberadosParaAgente,
@@ -32,7 +33,7 @@ const {
 } = require('../src/services/zebraPrintBridgeService');
 
 const CLOUD_API_URL = (process.env.LAMDA_CLOUD_PRINT_URL || '').replace(/\/+$/, '');
-const PRINT_TOKEN = process.env.LAMDA_PRINT_BRIDGE_TOKEN || '';
+const PRINT_TOKEN = String(process.env.LAMDA_PRINT_BRIDGE_TOKEN || obtenerSecretoPresenciaZebra()).trim();
 const POLL_INTERVAL_MS = parseInt(process.env.ZEBRA_BRIDGE_POLL_MS || '1000', 10);
 const LOCAL_PRESENCE_PORT = parseInt(process.env.ZEBRA_LOCAL_PRESENCE_PORT || '3099', 10);
 

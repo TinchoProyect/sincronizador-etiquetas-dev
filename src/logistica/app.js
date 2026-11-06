@@ -175,6 +175,9 @@ app.use((req, res, next) => {
     ) {
         return next();
     }
+    if ((req.method === 'GET' || req.method === 'HEAD') && /^\/(js|css)\//i.test(reqPath)) {
+        return res.redirect(307, `/gw/${gwPort}${req.originalUrl || req.url}`);
+    }
     req.url = `/gw/${gwPort}${req.url}`;
     req.originalUrl = `/gw/${gwPort}${req.originalUrl || req.url}`;
     return next();

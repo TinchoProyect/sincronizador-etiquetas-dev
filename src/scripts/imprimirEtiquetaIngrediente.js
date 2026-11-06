@@ -1,74 +1,150 @@
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const { despacharZplAZebra } = require('../services/zebraPrintBridgeService');
 
-async function imprimirEtiquetaIngrediente(ingrediente, sectorLetra) {
-    console.log('🖨️ Datos recibidos para etiqueta de ingrediente:', { ingrediente, sectorLetra });
-    const { nombre, codigo } = ingrediente;
+function generarParEtiquetasIngrediente(datos) {
+  const nombre = String(datos?.nombre || 'INGREDIENTE').trim();
+  const codigo = String(datos?.codigo || datos?.id || '0000').trim();
+  const sector = String(datos?.sector || datos?.sectorLetra || '').trim();
 
-    if (!nombre || !codigo || !sectorLetra) {
-        throw new Error('Faltan datos requeridos (nombre, codigo, sectorLetra) para imprimir la etiqueta.');
-    }
+  // Configuración de codificación para caracteres especiales
+  const encabezadoZPL = '^XA^CI28'; // CI28 para Latin-1/Windows-1252
 
-    function dividirTexto(texto, maxLinea = 20) {
-        const palabras = texto.trim().split(/\s+/);
-        let linea1 = '';
-        let linea2 = '';
+  // Lógica de adaptación de fuente basada en la longitud del nombre
+  let fuenteDescripcion = '^CF0,40'; // fuente grande por defecto
 
-        for (const palabra of palabras) {
-            if ((linea1 + ' ' + palabra).trim().length <= maxLinea) {
-                linea1 = (linea1 + ' ' + palabra).trim();
-            } else if ((linea2 + ' ' + palabra).trim().length <= maxLinea) {
-                linea2 = (linea2 + ' ' + palabra).trim();
-            } else {
-                break;
-            }
-        }
-        return [linea1, linea2];
-    }
+  if (nombre.length > 30) {
+    fuenteDescripcion = '^CF0,25'; // fuente más chica para nombres largos
+  } else if (nombre.length > 20) {
+    fuenteDescripcion = '^CF0,30'; // fuente mediana para nombres medianos
+  }
 
-    const [linea1, linea2] = dividirTexto(nombre, 16);
+  // Configuración del código de barras
+  const alturaCodigoBarras = 60; // Altura reducida para ingredientes
 
-    let zpl = `
-^XA
-^CI28
-^PW650
-^LL320
-^LH20,20
+  // Título identificador
+  const fuenteTitulo = '^CF0,20';
+  const textoTitulo = 'INGREDIENTE DE PRODUCCION';
 
-^FX --- SECCIÓN SUPERIOR IZQUIERDA: NOMBRE DEL INGREDIENTE ---
-^FO10,15^A0N,42,42^FB430,1,0,L^FD${linea1}^FS
-`;
-
-    if (linea2) {
-        zpl += `^FO10,65^A0N,42,42^FB430,1,0,L^FD${linea2}^FS\n`;
-    }
-
-    zpl += `
-^FX --- SECCIÓN SUPERIOR DERECHA: LETRA DEL SECTOR DESTACADA ---
-^FO460,5^GB140,120,120^FS
-^FO460,20^FR^A0N,100,100^FB140,1,0,C^FD${sectorLetra}^FS
-
-^FX --- SECCIÓN INFERIOR: CÓDIGO DE BARRAS ---
-^FO80,145^BY3,2,90
-^BCN,90,N,N,N
+  // Etiqueta izquierda
+  const etiqueta1 = `${fuenteDescripcion}
+^FO23,10^FD${nombre}^FS
+^BY2,2,40
+^FO23,50^BCN,${alturaCodigoBarras},Y,N,N
 ^FD${codigo}^FS
+${sector ? `^CF0,60^FO320,60^FD${sector}^FS` : ''}
+${fuenteTitulo}
+^FO23,160^FB400,1,0,C^FD${textoTitulo}^FS`;
 
-^FO0,250^A0N,32,32^FB600,1,0,C^FD${codigo}^FS
+  // Etiqueta derecha
+  const etiqueta2 = `${fuenteDescripcion}
+^FO443,10^FD${nombre}^FS
+^BY2,2,40
+^FO443,50^BCN,${alturaCodigoBarras},Y,N,N
+^FD${codigo}^FS
+${sector ? `^CF0,60^FO740,60^FD${sector}^FS` : ''}
+${fuenteTitulo}
+^FO443,160^FB400,1,0,C^FD${textoTitulo}^FS`;
 
-^XZ
-`.trim();
-
-    const nombreArchivo = path.join(__dirname, `../../temp_ing_${Date.now()}.zpl`);
-    fs.writeFileSync(nombreArchivo, zpl, 'utf8');
-
-    return despacharZplAZebra({
-        zplContent: zpl,
-        zplFilePath: nombreArchivo,
-        tipoEtiqueta: 'ETIQUETA_INGREDIENTE',
-        descripcion: `Ingrediente: ${nombre} [${codigo}] Sector ${sectorLetra}`,
-        nombreImpresora: 'Zebra'
-    });
+  return `${encabezadoZPL}
+^LH0,0
+^LT0
+${etiqueta1}
+${etiqueta2}
+^XZ`;
 }
 
-module.exports = { imprimirEtiquetaIngrediente };
+async function imprimirEtiquetaIngrediente(ingrediente, sectorLetra, cantidadArg = 2) {
+  const datos = {
+    ...(ingrediente || {}),
+    sector: sectorLetra || ingrediente?.sector || ingrediente?.sectorLetra || ''
+  };
+  const cantidad = Math.max(1, Math.ceil(parseFloat(cantidadArg) || 1));
+  const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
+  const paresNecesarios = Math.ceil(cantidadPar / 2);
+
+  let contenido = '';
+  for (let i = 0; i < paresNecesarios; i++) {
+    contenido += generarParEtiquetasIngrediente(datos);
+  }
+
+  return despacharZplAZebra({
+    zplContent: contenido,
+    tipoEtiqueta: 'ETIQUETA_INGREDIENTE',
+    descripcion: `Ingrediente (${cantidad}x): ${datos.nombre || ''} [${datos.codigo || ''}]`,
+    nombreImpresora: 'Zebra'
+  });
+}
+
+async function main() {
+  try {
+    if (process.argv.length < 3) {
+      throw new Error('Falta el argumento de cantidad');
+    }
+
+    const tempDir = path.resolve(__dirname, '../app-etiquetas/temp');
+    console.log('Directorio temporal:', tempDir);
+
+    const customJsonPath = process.argv[3] ? path.resolve(process.argv[3]) : null;
+    const jsonPath = customJsonPath || path.join(tempDir, 'temp-ingrediente.json');
+    console.log('Leyendo archivo JSON:', jsonPath);
+
+    const jsonContent = await fs.readFile(jsonPath, 'utf8');
+    console.log('Contenido JSON leído:', jsonContent);
+
+    const datos = JSON.parse(jsonContent);
+    console.log('JSON parseado:', datos);
+
+    const cantidad = Math.max(1, Math.ceil(parseFloat(process.argv[2]) || 1));
+    const cantidadPar = cantidad % 2 === 0 ? cantidad : cantidad + 1;
+
+    await fs.mkdir(tempDir, { recursive: true });
+    await fs.access(tempDir, fsSync.constants.W_OK);
+
+    let contenido = '';
+    const paresNecesarios = Math.ceil(cantidadPar / 2);
+    for (let i = 0; i < paresNecesarios; i++) {
+      contenido += generarParEtiquetasIngrediente(datos);
+    }
+
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const nombreArchivo = path.join(tempDir, `etiqueta_ingrediente_${uniqueSuffix}.zpl`);
+    const nombreArchivoDebug = path.join(tempDir, 'etiqueta_ingrediente.zpl');
+
+    await fs.writeFile(nombreArchivo, contenido, { encoding: 'utf8' });
+    await fs.writeFile(nombreArchivoDebug, contenido, { encoding: 'utf8' }).catch(() => {});
+    console.log('Archivo ZPL creado exitosamente');
+
+    const nombreImpresora = 'Zebra';
+    try {
+      await despacharZplAZebra({
+        zplContent: contenido,
+        zplFilePath: nombreArchivo,
+        tipoEtiqueta: 'ETIQUETA_INGREDIENTE',
+        descripcion: `Ingrediente (${cantidad}x): ${datos.nombre || ''} [${datos.codigo || ''}]`,
+        nombreImpresora
+      });
+      console.log('Etiqueta de ingrediente enviada a imprimir correctamente.');
+    } finally {
+      try { await fs.unlink(nombreArchivo); } catch (_) {}
+      if (customJsonPath) {
+        try { await fs.unlink(customJsonPath); } catch (_) {}
+      }
+    }
+  } catch (error) {
+    console.error('Error en el proceso:', error.message);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  main,
+  generarParEtiquetasIngrediente,
+  imprimirEtiquetaIngrediente
+};

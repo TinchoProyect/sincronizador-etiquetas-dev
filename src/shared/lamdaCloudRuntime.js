@@ -18,6 +18,7 @@ const path = require('path');
 const {
     esModoLaboratorio,
     esModoCloudOLinux,
+    obtenerSecretoPresenciaZebra,
     middlewareContextoPresenciaZebra,
     registrarHeartbeatAgenteZebra,
     obtenerResumenColaRetenida,
@@ -465,20 +466,40 @@ const CLIENT_RUNTIME_SCRIPT = `
 })();
 `;
 
-function injectScriptTagInHtml(htmlContent) {
+function injectScriptTagInHtml(htmlContent, servicePort = 3005) {
     if (typeof htmlContent !== 'string') return htmlContent;
-    if (htmlContent.includes('/lamda-cloud-runtime.js')) return htmlContent;
+    let outHtml = htmlContent;
+    const portNum = Number(servicePort);
+    if ([3000, 3002, 3003, 3004].includes(portNum)) {
+        outHtml = outHtml.replace(
+            /\b(src|href)=(["'])\/(js|css)\//gi,
+            `$1=$2/gw/${portNum}/$3/`
+        );
+    }
+    if (outHtml.includes('/lamda-cloud-runtime.js')) return outHtml;
     const scriptTag = '<script src="/lamda-cloud-runtime.js"></script>';
-    if (/<head[^>]*>/i.test(htmlContent)) {
-        return htmlContent.replace(/<head[^>]*>/i, (match) => `${match}\n    ${scriptTag}`);
+    if (/<head[^>]*>/i.test(outHtml)) {
+        return outHtml.replace(/<head[^>]*>/i, (match) => `${match}\n    ${scriptTag}`);
     }
-    if (/<body[^>]*>/i.test(htmlContent)) {
-        return htmlContent.replace(/<body[^>]*>/i, (match) => `${match}\n    ${scriptTag}`);
+    if (/<body[^>]*>/i.test(outHtml)) {
+        return outHtml.replace(/<body[^>]*>/i, (match) => `${match}\n    ${scriptTag}`);
     }
-    return `${scriptTag}\n${htmlContent}`;
+    return `${scriptTag}\n${outHtml}`;
 }
 
 function attachLamdaCloudRuntime(app, servicePort = 3000) {
+    // 0. Compatibilidad de rutas /gw/300X en acceso directo local (localhost:300X)
+    const portNum = Number(servicePort);
+    if ([3000, 3002, 3003, 3004].includes(portNum)) {
+        const gwPrefix = `/gw/${portNum}`;
+        app.use((req, res, next) => {
+            if (req.url === gwPrefix || req.url.startsWith(gwPrefix + '/')) {
+                req.url = req.url.slice(gwPrefix.length) || '/';
+            }
+            next();
+        });
+    }
+
     // 0A. Candado Triple Anti-Doble Arranque (LAMDA_ROLE=GALPON_BRIDGE_ONLY -> HTTP 423 / HTTP 302)
     app.use(galponBridgeRoleLockMiddleware);
 
@@ -614,9 +635,9 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
 
     app.get('/api/system/print-queue/agent-pull', async (req, res) => {
         try {
-            const tokenHeader = req.headers['x-lamda-print-token'] || req.query.token || '';
-            const expectedToken = process.env.LAMDA_PRINT_BRIDGE_TOKEN || '';
-            if (expectedToken && tokenHeader !== expectedToken) {
+            const tokenHeader = String(req.headers['x-lamda-print-token'] || req.query.token || '').trim();
+            const expectedToken = String(process.env.LAMDA_PRINT_BRIDGE_TOKEN || obtenerSecretoPresenciaZebra()).trim();
+            if (!tokenHeader || tokenHeader !== expectedToken) {
                 return res.status(401).json({ ok: false, error: 'Token de Print Bridge inválido.' });
             }
             await registrarHeartbeatAgenteZebra({
@@ -633,9 +654,9 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
 
     app.post('/api/system/print-queue/agent-ack/:id', async (req, res) => {
         try {
-            const tokenHeader = req.headers['x-lamda-print-token'] || req.query.token || '';
-            const expectedToken = process.env.LAMDA_PRINT_BRIDGE_TOKEN || '';
-            if (expectedToken && tokenHeader !== expectedToken) {
+            const tokenHeader = String(req.headers['x-lamda-print-token'] || req.query.token || '').trim();
+            const expectedToken = String(process.env.LAMDA_PRINT_BRIDGE_TOKEN || obtenerSecretoPresenciaZebra()).trim();
+            if (!tokenHeader || tokenHeader !== expectedToken) {
                 return res.status(401).json({ ok: false, error: 'Token de Print Bridge inválido.' });
             }
             const jobId = parseInt(req.params.id, 10);
@@ -657,7 +678,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             try {
                 const contentType = String(res.getHeader('Content-Type') || '');
                 if (typeof body === 'string' && (contentType.includes('text/html') || /^\s*<!DOCTYPE html/i.test(body) || /^\s*<html/i.test(body))) {
-                    body = injectScriptTagInHtml(body);
+                    body = injectScriptTagInHtml(body, servicePort);
                 }
             } catch (_) {}
             return originalSend(body);
@@ -668,7 +689,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
                 try {
                     const rawHtml = fs.readFileSync(filePath, 'utf8');
                     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                    return originalSend(injectScriptTagInHtml(rawHtml));
+                    return originalSend(injectScriptTagInHtml(rawHtml, servicePort));
                 } catch (_) {}
             }
             return originalSendFile(filePath, options, fn);
