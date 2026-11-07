@@ -429,25 +429,13 @@ window.construirHtmlPlanTrabajoDeposito = function(plan) {
   const ahoraLocal = new Date();
   const hoyLocalStr = `${ahoraLocal.getFullYear()}-${String(ahoraLocal.getMonth() + 1).padStart(2, '0')}-${String(ahoraLocal.getDate()).padStart(2, '0')}`;
   const infHoy = plan.informes_hoy || {};
-  const esMismaFechaHoy = !infHoy.fecha_hoy || infHoy.fecha_hoy === hoyLocalStr;
-  const mostrarPlanHoyPdf = typeof infHoy.plan_jornada_hoy_vigente === 'boolean'
-    ? (esMismaFechaHoy && infHoy.plan_jornada_hoy_vigente)
-    : true;
-  const mostrarFundamentalsHoyPdf = typeof infHoy.fundamentals_hoy_vigente === 'boolean'
-    ? (esMismaFechaHoy && infHoy.fundamentals_hoy_vigente)
-    : mostrarPlanHoyPdf;
-  const mostrarRetiroExternaPdf = typeof infHoy.retiro_externa_hoy_vigente === 'boolean'
-    ? (esMismaFechaHoy && infHoy.retiro_externa_hoy_vigente)
-    : true;
-  const mostrarFundamentalsExternaPdf = typeof infHoy.fundamentals_externa_hoy_vigente === 'boolean'
-    ? (esMismaFechaHoy && infHoy.fundamentals_externa_hoy_vigente)
-    : mostrarRetiroExternaPdf;
-  const mostrarPlan3JornadasPdf = typeof infHoy.plan_3_jornadas_vigente === 'boolean'
-    ? infHoy.plan_3_jornadas_vigente
-    : true;
-  const mostrarFundamentals3JornadasPdf = typeof infHoy.fundamentals_3_jornadas_vigente === 'boolean'
-    ? infHoy.fundamentals_3_jornadas_vigente
-    : mostrarPlan3JornadasPdf;
+  const esMismaFechaHoy = Boolean(infHoy.fecha_hoy && infHoy.fecha_hoy === hoyLocalStr);
+  const mostrarPlanHoyPdf = Boolean(esMismaFechaHoy && infHoy.plan_jornada_hoy_vigente === true);
+  const mostrarFundamentalsHoyPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_hoy_vigente === true);
+  const mostrarRetiroExternaPdf = Boolean(esMismaFechaHoy && infHoy.retiro_externa_hoy_vigente === true);
+  const mostrarFundamentalsExternaPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_externa_hoy_vigente === true);
+  const mostrarPlan3JornadasPdf = Boolean(esMismaFechaHoy && infHoy.plan_3_jornadas_vigente === true);
+  const mostrarFundamentals3JornadasPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_3_jornadas_vigente === true);
   const vCache = hoyLocalStr.replace(/-/g, '');
 
   return `

@@ -34,8 +34,40 @@ function formatearFechaLocalYYYYMMDD(dateObj) {
 }
 
 /**
- * Verifica de manera determinista si los informes PDF diarios (Plan de Hoy y Retiro Externa)
- * fueron generados en la fecha calendario de HOY.
+ * Extrae la fecha real de creación embebida dentro del binario PDF por PDFKit (`(D:YYYYMMDDHHmmssZ)`).
+ * Si el archivo fue restaurado por Git, copiado o tocado en el sistema de archivos hoy pero su
+ * contenido interno corresponde a un día anterior, prevalece siempre la fecha real más antigua
+ * para impedir que reaparezcan informes vencidos tras un `git checkout`, `git pull` o reinicio.
+ */
+function obtenerFechaCreacionRealPdf(fullPath, stat) {
+  let fechaefectivaMs = stat.mtimeMs;
+  try {
+    const rawStr = fs.readFileSync(fullPath).toString('latin1');
+    const m = /\(D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(Z|[+-]\d{2}'?\d{2}'?)?\)/.exec(rawStr);
+    if (m) {
+      const yyyy = parseInt(m[1], 10);
+      const mm = parseInt(m[2], 10) - 1;
+      const dd = parseInt(m[3], 10);
+      const hh = parseInt(m[4], 10);
+      const mi = parseInt(m[5], 10);
+      const ss = parseInt(m[6], 10);
+      const tz = m[7] || 'Z';
+      const pdfTimeMs = tz === 'Z'
+        ? Date.UTC(yyyy, mm, dd, hh, mi, ss)
+        : new Date(yyyy, mm, dd, hh, mi, ss).getTime();
+      if (Number.isFinite(pdfTimeMs) && pdfTimeMs > 0) {
+        fechaefectivaMs = Math.min(stat.mtimeMs, pdfTimeMs);
+      }
+    }
+  } catch (_) {
+    // Fallback a stat.mtimeMs si no se pudo leer el buffer
+  }
+  return new Date(fechaefectivaMs);
+}
+
+/**
+ * Verifica de manera determinista si los informes PDF de la Pizarra (Plan de Hoy, Retiro Externa y Plan 3 Jornadas)
+ * fueron generados realmente en la fecha calendario de HOY (o preparados la noche anterior >= 18:00 hs).
  * Si pertenecen a un día anterior, caducan automáticamente (se eliminan del directorio público
  * y dejan de mostrarse en la Pizarra Principal).
  */
@@ -48,33 +80,18 @@ function verificarVigenciaInformesHoy() {
     try {
       if (!fs.existsSync(fullPath)) return { vigente: false, mtimeMs: 0 };
       const stat = fs.statSync(fullPath);
-      const mtimeDate = new Date(stat.mtime);
-      const fechaArchivo = formatearFechaLocalYYYYMMDD(mtimeDate);
-      // Es vigente si se generó hoy mismo, o si se dejó preparado la noche anterior (>= 18:00 hs) dentro de las últimas 20 horas
-      const horasDesdeModificacion = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
-      const preparadoNocheAnteriorParaHoy = (horasDesdeModificacion <= 20 && mtimeDate.getHours() >= 18);
+      const realDate = obtenerFechaCreacionRealPdf(fullPath, stat);
+      const realMs = realDate.getTime();
+      const fechaArchivo = formatearFechaLocalYYYYMMDD(realDate);
+      // Es vigente únicamente si se generó hoy mismo, o si se dejó preparado la noche anterior (>= 18:00 hs) dentro de las últimas 20 horas
+      const horasDesdeCreacion = (Date.now() - realMs) / (1000 * 60 * 60);
+      const preparadoNocheAnteriorParaHoy = (horasDesdeCreacion <= 20 && realDate.getHours() >= 18);
       if (fechaArchivo !== hoyStr && !preparadoNocheAnteriorParaHoy) {
         // Venció al cambiar de día: eliminar automáticamente el PDF vencido
         try { fs.unlinkSync(fullPath); } catch (_) { /* ignore */ }
         return { vigente: false, mtimeMs: 0 };
       }
-      return { vigente: true, mtimeMs: Math.round(stat.mtimeMs) };
-    } catch (_) {
-      return { vigente: false, mtimeMs: 0 };
-    }
-  };
-
-  const evaluarArchivoRangoDias = (fileName, maxDiasVigencia = 8) => {
-    const fullPath = path.join(docsDir, fileName);
-    try {
-      if (!fs.existsSync(fullPath)) return { vigente: false, mtimeMs: 0 };
-      const stat = fs.statSync(fullPath);
-      const edadDias = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24);
-      if (edadDias > maxDiasVigencia) {
-        try { fs.unlinkSync(fullPath); } catch (_) { /* ignore */ }
-        return { vigente: false, mtimeMs: 0 };
-      }
-      return { vigente: true, mtimeMs: Math.round(stat.mtimeMs) };
+      return { vigente: true, mtimeMs: Math.round(realMs) };
     } catch (_) {
       return { vigente: false, mtimeMs: 0 };
     }
@@ -84,8 +101,8 @@ function verificarVigenciaInformesHoy() {
   const fundamentalsHoy = evaluarArchivoDiario('Fundamentals_Jornada_Hoy_Deposito.pdf');
   const retiroExterna = evaluarArchivoDiario('Plan_Retiro_Produccion_Externa_Hoy.pdf');
   const fundamentalsExterna = evaluarArchivoDiario('Fundamentals_Retiro_Produccion_Externa_Hoy.pdf');
-  const plan3Jornadas = evaluarArchivoRangoDias('Plan_Semanal_3_Jornadas_Deposito.pdf', 8);
-  const fundamentals3Jornadas = evaluarArchivoRangoDias('Fundamentals_Semanal_3_Jornadas_Deposito.pdf', 8);
+  const plan3Jornadas = evaluarArchivoDiario('Plan_Semanal_3_Jornadas_Deposito.pdf');
+  const fundamentals3Jornadas = evaluarArchivoDiario('Fundamentals_Semanal_3_Jornadas_Deposito.pdf');
 
   return {
     fecha_hoy: hoyStr,

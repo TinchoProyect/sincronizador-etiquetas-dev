@@ -144,3 +144,7 @@ src/scratch_*.js
 src/scratch_inspect_constraints.js
 scratch/
 
+# Informes PDF efímeros del día en Pizarra (caducan a las 00:00 y no deben versionarse en Git)
+src/app-etiquetas/documentos/*.pdf
+
+

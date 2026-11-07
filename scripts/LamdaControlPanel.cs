@@ -906,9 +906,7 @@ namespace LamdaControlCenter
                 if (title.Contains("Panel de Control (Modo Laboratorio)") || title.Contains("CENTRO DE CONTROL")) return true;
 
                 if (title.Contains("[PRUEBAS]") ||
-                    title.Contains("Gestiones LAMDA") ||
-                    title.Contains("Sistema de Etiquetas") ||
-                    title.Contains("LAMDA Móvil") ||
+                    title.Contains("LAMDA Móvil Lab") ||
                     title.Contains("localhost:3000") ||
                     title.Contains("localhost:3005"))
                 {
@@ -956,9 +954,7 @@ namespace LamdaControlCenter
                     if (title.Contains("Panel de Control (Modo Laboratorio)") || title.Contains("CENTRO DE CONTROL")) return true;
 
                     if (title.Contains("[PRUEBAS]") ||
-                        title.Contains("Gestiones LAMDA") ||
-                        title.Contains("Sistema de Etiquetas") ||
-                        title.Contains("LAMDA Móvil") ||
+                        title.Contains("LAMDA Móvil Lab") ||
                         title.Contains("localhost:3000") ||
                         title.Contains("localhost:3005"))
                     {
@@ -1399,7 +1395,6 @@ namespace LamdaControlCenter
             {
                 int code;
                 RunCliCommand(gitExePath, "checkout -- data/ia_credito_ledger.json", out code);
-                RunCliCommand(gitExePath, "checkout -- src/app-etiquetas/documentos", out code);
                 RunCliCommand(gitExePath, "checkout -- pagina-publica-web/dist", out code);
             }
             catch { }
