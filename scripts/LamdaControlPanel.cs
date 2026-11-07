@@ -34,6 +34,7 @@ namespace LamdaControlCenter
     public class MainForm : Form
     {
         private string rootDir;
+        private string hostLabel = "Equipo Local";
         private string nodeExePath;
         private string gitExePath;
         private string browserExePath;
@@ -100,6 +101,21 @@ namespace LamdaControlCenter
                 }
             }
 
+
+            string machine = (Environment.MachineName ?? "").Trim();
+            if (machine.Equals("SERVEDIORA", StringComparison.OrdinalIgnoreCase))
+            {
+                hostLabel = "Notebook";
+            }
+            else if (machine.IndexOf("ALMACEN", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     Directory.Exists(@"C:\Users\Martin\Documents\sincronizador-etiquetas - copia"))
+            {
+                hostLabel = "PcAlmacen";
+            }
+            else if (!string.IsNullOrWhiteSpace(machine))
+            {
+                hostLabel = machine;
+            }
 
             if (!File.Exists(Path.Combine(rootDir, "package.json")))
             {
@@ -373,7 +389,7 @@ namespace LamdaControlCenter
 
             y += 4;
 
-            // 5. Git Actions Row (Explicit & Separate: Pull to Notebook vs Push from Notebook)
+            // 5. Git Actions Row (Explicit & Separate: Pull vs Push)
             Panel gitRow = new Panel();
             gitRow.Location = new Point(18, y);
             gitRow.Size = new Size(706, 36);
@@ -387,20 +403,20 @@ namespace LamdaControlCenter
             gitLabel.AutoSize = true;
             gitRow.Controls.Add(gitLabel);
 
-            btnGitPull = CreateSmallToolButton("⬇️  Traer actualizaciones a la Notebook", 136, 2, 280);
+            btnGitPull = CreateSmallToolButton("⬇️  Traer actualizaciones", 136, 2, 280);
             btnGitPull.BackColor = Color.FromArgb(3, 105, 161); // Sky Blue #0369a1
             btnGitPull.ForeColor = Color.White;
             btnGitPull.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
-            btnGitPull.Click += (s, e) => RunGitPullToNotebookAsync();
-            mainToolTip.SetToolTip(btnGitPull, "Descarga únicamente los cambios nuevos subidos a la rama 'desarrollo' en GitHub hacia esta Notebook, informa qué trajo y reinicia los 5 servicios. (Nunca sube cambios).");
+            btnGitPull.Click += (s, e) => RunGitPullToLocalAsync();
+            mainToolTip.SetToolTip(btnGitPull, "Descarga únicamente los cambios nuevos subidos a la rama 'desarrollo' en GitHub hacia este equipo (" + hostLabel + "), informa qué trajo y reinicia los 5 servicios. (Nunca sube cambios).");
             gitRow.Controls.Add(btnGitPull);
 
-            btnGitPush = CreateSmallToolButton("⬆️  Subir avances desde la Notebook", 426, 2, 280);
+            btnGitPush = CreateSmallToolButton("⬆️  Subir avances", 426, 2, 280);
             btnGitPush.BackColor = Color.FromArgb(49, 46, 129); // Indigo #312e81
             btnGitPush.ForeColor = Color.FromArgb(224, 231, 255);
             btnGitPush.FlatAppearance.BorderColor = Color.FromArgb(129, 140, 248);
-            btnGitPush.Click += (s, e) => RunGitPushFromNotebookAsync();
-            mainToolTip.SetToolTip(btnGitPush, "Verifica si tenés commits o avances locales en esta Notebook y te pide confirmación explícita antes de subirlos a 'origin/desarrollo'. (Nunca mezcla con descarga).");
+            btnGitPush.Click += (s, e) => RunGitPushFromLocalAsync();
+            mainToolTip.SetToolTip(btnGitPush, "Verifica si tenés commits o avances locales en " + hostLabel + " y te pide confirmación explícita antes de subirlos a 'origin/desarrollo'. (Nunca mezcla con descarga).");
             gitRow.Controls.Add(btnGitPush);
 
             contentPanel.Controls.Add(gitRow);
@@ -413,7 +429,7 @@ namespace LamdaControlCenter
             toolsRow.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
             lblGitCommit = new Label();
-            lblGitCommit.Text = "📌 Commit en Notebook: verificando...";
+            lblGitCommit.Text = "📌 Commit local (" + hostLabel + "): verificando...";
             lblGitCommit.Font = new Font("Consolas", 8.5f, FontStyle.Bold);
             lblGitCommit.ForeColor = Color.FromArgb(125, 211, 252);
             lblGitCommit.Location = new Point(0, 9);
@@ -664,7 +680,7 @@ namespace LamdaControlCenter
                 overallCard.BackColor = Color.FromArgb(69, 10, 10); // Rojo oscuro
                 overallTitleLabel.Text = "🔴  SISTEMA APAGADO — 0 de 5 Servicios Activos";
                 overallTitleLabel.ForeColor = Color.FromArgb(254, 202, 202);
-                overallSubLabel.Text = "No hay ningún proceso de LAMDA corriendo en segundo plano (Notebook 100% libre).";
+                overallSubLabel.Text = "No hay ningún proceso de LAMDA corriendo en segundo plano (" + hostLabel + " 100% libre).";
                 overallSubLabel.ForeColor = Color.FromArgb(252, 165, 165);
             }
             else
@@ -793,7 +809,7 @@ namespace LamdaControlCenter
                     this.BeginInvoke(new Action(() =>
                     {
                         UpdateVisualState();
-                        if (!silent) AppendLog("✅ Todos los servicios y la ventana del navegador fueron cerrados. Notebook 100% libre.");
+                        if (!silent) AppendLog("✅ Todos los servicios y la ventana del navegador fueron cerrados. " + hostLabel + " 100% libre.");
                     }));
                 }
             });
@@ -1417,7 +1433,7 @@ namespace LamdaControlCenter
                     {
                         this.BeginInvoke(new Action(() =>
                         {
-                            lblGitCommit.Text = "📌 Commit en Notebook: " + shortInfo;
+                            lblGitCommit.Text = "📌 Commit local (" + hostLabel + "): " + shortInfo;
                             mainToolTip.SetToolTip(lblGitCommit, fullInfo);
                         }));
                     }
@@ -1426,7 +1442,7 @@ namespace LamdaControlCenter
             });
         }
 
-        private void RunGitPullToNotebookAsync()
+        private void RunGitPullToLocalAsync()
         {
             SetGitButtonsEnabled(false);
             AppendLog("⬇️ [TRAER ACTUALIZACIONES] Consultando rama 'origin/desarrollo' en GitHub...");
@@ -1472,14 +1488,14 @@ namespace LamdaControlCenter
 
                         int curCode;
                         string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out curCode).Trim();
-                        AppendLog("✅ La Notebook ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
+                        AppendLog("✅ " + hostLabel + " ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
                         UpdateGitCommitBadgeAsync();
                         this.BeginInvoke(new Action(() =>
                         {
                             SetGitButtonsEnabled(true);
                             MessageBox.Show(
-                                "✅ Tu Notebook ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar (esquema de 'etiquetas_pruebas' verificado).\n\n📌 Último commit activo en esta Notebook:\n" + currentCommit,
-                                "Notebook al Día (Sin Cambios Nuevos)",
+                                "✅ Este equipo (" + hostLabel + ") ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar (esquema de 'etiquetas_pruebas' verificado).\n\n📌 Último commit local activo en " + hostLabel + ":\n" + currentCommit,
+                                hostLabel + " al Día (Sin Cambios Nuevos)",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information
                             );
@@ -1502,7 +1518,7 @@ namespace LamdaControlCenter
                         stashedLocal = (stashCode == 0);
                     }
 
-                    AppendLog("📥 Descargando commits nuevos hacia la Notebook:\r\n" + incomingCommits);
+                    AppendLog("📥 Descargando commits nuevos hacia " + hostLabel + ":\r\n" + incomingCommits);
                     int pullCode;
                     string pullOut = RunCliCommand(gitExePath, "pull --rebase origin desarrollo", out pullCode);
                     AppendLog("[GIT PULL] " + pullOut.Trim());
@@ -1519,7 +1535,7 @@ namespace LamdaControlCenter
                         {
                             SetGitButtonsEnabled(true);
                             MessageBox.Show(
-                                "Ocurrió un conflicto o error al intentar aplicar los cambios en la Notebook:\n\n" + pullOut.Trim(),
+                                "Ocurrió un conflicto o error al intentar aplicar los cambios en " + hostLabel + ":\n\n" + pullOut.Trim(),
                                 "Error al Traer Actualizaciones",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error
@@ -1555,18 +1571,18 @@ namespace LamdaControlCenter
                     }
                     catch { }
                     UpdateGitCommitBadgeAsync();
-                    AppendLog("✅ Actualizaciones aplicadas en la Notebook. Reiniciando los 5 servicios automáticamente...");
+                    AppendLog("✅ Actualizaciones aplicadas en " + hostLabel + ". Reiniciando los 5 servicios automáticamente...");
 
                     this.BeginInvoke(new Action(() =>
                     {
                         SetGitButtonsEnabled(true);
                         RestartAllServices();
                         MessageBox.Show(
-                            "✅ Se descargaron y aplicaron las actualizaciones de 'origin/desarrollo' en esta Notebook.\n\n" +
+                            "✅ Se descargaron y aplicaron las actualizaciones de 'origin/desarrollo' en " + hostLabel + ".\n\n" +
                             "📥 Commits traídos:\n" + incomingCommits + "\n\n" +
                             "📂 Resumen de archivos actualizados:\n" + incomingStat + "\n\n" +
                             "🔄 Los 5 servicios del Modo Laboratorio se están reiniciando automáticamente con el código nuevo.",
-                            "Actualizaciones Traídas a la Notebook",
+                            "Actualizaciones Traídas (" + hostLabel + ")",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information
                         );
@@ -1583,10 +1599,10 @@ namespace LamdaControlCenter
             });
         }
 
-        private void RunGitPushFromNotebookAsync()
+        private void RunGitPushFromLocalAsync()
         {
             SetGitButtonsEnabled(false);
-            AppendLog("⬆️ [SUBIR AVANCES] Verificando si hay commits o cambios locales en la Notebook para subir...");
+            AppendLog("⬆️ [SUBIR AVANCES] Verificando si hay commits o cambios locales en " + hostLabel + " para subir...");
             Task.Factory.StartNew(() =>
             {
                 try
@@ -1626,14 +1642,14 @@ namespace LamdaControlCenter
                     {
                         int curCode;
                         string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out curCode).Trim();
-                        AppendLog("ℹ️ No hay avances ni commits locales pendientes de subir desde la Notebook.");
+                        AppendLog("ℹ️ No hay avances ni commits locales pendientes de subir desde " + hostLabel + ".");
                         this.BeginInvoke(new Action(() =>
                         {
                             SetGitButtonsEnabled(true);
                             MessageBox.Show(
-                                "ℹ️ No hay commits ni avances locales pendientes de subir desde esta Notebook.\n\n" +
-                                "Todo lo que está en tu Notebook ya figura publicado en la rama 'desarrollo' de GitHub.\n\n" +
-                                "📌 Commit actual: " + currentCommit,
+                                "ℹ️ No hay commits ni avances locales pendientes de subir desde " + hostLabel + ".\n\n" +
+                                "Todo lo que está en este equipo (" + hostLabel + ") ya figura publicado en la rama 'desarrollo' de GitHub.\n\n" +
+                                "📌 Commit local actual: " + currentCommit,
                                 "Sin Avances Pendientes para Subir",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information
@@ -1648,10 +1664,10 @@ namespace LamdaControlCenter
                     this.BeginInvoke(new Action(() =>
                     {
                         DialogResult confirm = MessageBox.Show(
-                            "¿Confirmás subir los siguientes avances desde esta Notebook hacia la rama 'desarrollo' en GitHub?\n\n" +
+                            "¿Confirmás subir los siguientes avances desde " + hostLabel + " hacia la rama 'desarrollo' en GitHub?\n\n" +
                             "📤 Commits listos para subir:\n" + unpushedCommits + "\n\n" +
                             "📂 Archivos incluidos:\n" + pushStat,
-                            "Confirmar Subida de Avances desde la Notebook",
+                            "Confirmar Subida de Avances (" + hostLabel + ")",
                             MessageBoxButtons.YesNo,
                             MessageBoxIcon.Question
                         );
@@ -1677,7 +1693,7 @@ namespace LamdaControlCenter
                                 if (pushCode == 0)
                                 {
                                     MessageBox.Show(
-                                        "✅ Los avances de la Notebook se subieron exitosamente a la rama 'desarrollo' en GitHub.\n\n" +
+                                        "✅ Los avances de " + hostLabel + " se subieron exitosamente a la rama 'desarrollo' en GitHub.\n\n" +
                                         "📤 Commits publicados:\n" + unpushedCommits,
                                         "Avances Subidos a GitHub",
                                         MessageBoxButtons.OK,
@@ -1688,7 +1704,7 @@ namespace LamdaControlCenter
                                 {
                                     MessageBox.Show(
                                         "No se pudo completar el push hacia 'origin/desarrollo'.\n\n" +
-                                        "Si hay cambios nuevos en GitHub, tocá primero '⬇️ Traer actualizaciones a la Notebook'.\n\nDetalle:\n" + pushOut.Trim(),
+                                        "Si hay cambios nuevos en GitHub, tocá primero '⬇️ Traer actualizaciones'.\n\nDetalle:\n" + pushOut.Trim(),
                                         "Error al Subir Avances",
                                         MessageBoxButtons.OK,
                                         MessageBoxIcon.Error
