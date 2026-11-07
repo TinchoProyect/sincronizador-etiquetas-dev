@@ -862,9 +862,11 @@ function renderHtmlApp() {
       : '<span class="err">❌ ERROR</span>';
     document.getElementById('locCounts').textContent = \`\${data.local.db.articulos} / \${data.local.db.clientes} / \${data.local.db.facturas}\`;
     const upCount = typeof data.local.portsUpCount === 'number' ? data.local.portsUpCount : (data.local.portsOk ? 5 : 0);
-    document.getElementById('locPorts').innerHTML = data.local.portsOk
-      ? '<span class="ok">✅ 5/5 ONLINE</span>'
-      : (isNube ? '<span style="color:#94a3b8;">⚪ Apagados (Modo Nube)</span>' : \`<span class="warn">⚠️ \${upCount}/5 Activos</span>\`);
+    document.getElementById('locPorts').innerHTML = data.local.isLaboratorioRunning
+      ? '<span class="warn">🧪 En Modo Laboratorio (etiquetas_pruebas)</span>'
+      : (data.local.portsOk
+          ? '<span class="ok">✅ 5/5 ONLINE</span>'
+          : (isNube ? '<span style="color:#94a3b8;">⚪ Apagados (Modo Nube)</span>' : \`<span class="warn">⚠️ \${upCount}/5 Activos</span>\`));
     document.getElementById('locWa').innerHTML = data.local.whatsappStatus === 'CONECTADO'
       ? '<span class="ok">✅ CONECTADO</span>'
       : (isNube ? '<span style="color:#94a3b8;">⚪ En espera</span>' : \`<span>\${data.local.whatsappStatus}</span>\`);
