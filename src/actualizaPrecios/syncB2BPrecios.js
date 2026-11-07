@@ -1,10 +1,11 @@
 // filepath: src/actualizaPrecios/syncB2BPrecios.js
 'use strict';
 
-require('dotenv').config();
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const lockFilePath = path.join(__dirname, 'syncB2BPrecios.lock');
 

@@ -1,7 +1,9 @@
 // filepath: src/actualizaPrecios/syncB2BHabituales.js
 'use strict';
 
-require('dotenv').config();
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { Pool } = require('pg');
 const ClientesBunkerModel = require('../logistica/models/clientesBunkerModel');
 

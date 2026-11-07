@@ -1,5 +1,5 @@
 {
-  "tableCount": 147,
+  "tableCount": 148,
   "tables": {
     "articulos": {
       "numero": {
@@ -3919,6 +3919,38 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "CURRENT_TIMESTAMP"
+      }
+    },
+    "bunker_preferencias_ui": {
+      "clave": {
+        "ordinal_position": 1,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "valor": {
+        "ordinal_position": 2,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      "updated_at": {
+        "ordinal_position": 3,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
       }
     },
     "bunker_prospectos": {

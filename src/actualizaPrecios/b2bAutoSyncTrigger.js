@@ -1,9 +1,11 @@
 // filepath: src/actualizaPrecios/b2bAutoSyncTrigger.js
 'use strict';
 
-require('dotenv').config();
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const { fork } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const SCRIPTS = {
   precios: { name: 'Catálogo y Precios', path: path.join(__dirname, 'syncB2BPrecios.js') },
@@ -21,17 +23,50 @@ const running = new Set();
 const pendingReRun = new Map();
 
 const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
+let staleDaemonFlagCleaned = false;
 
 function esModoLaboratorioOSinCredencialesB2B() {
-  const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
-  if (daemonDisabled === 'true' || daemonDisabled === '1') {
-    return true;
-  }
   const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
   const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+  const modoLab = String(process.env.MODO_LABORATORIO || '').trim().toLowerCase();
   const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
-  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
-  const isPruebaNube = flagNube === 'true' || flagNube === '1';
+  const safeRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+  const lamdaRole = String(process.env.LAMDA_ROLE || '').trim().toLowerCase();
+
+  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1' || modoLab === 'true' || modoLab === '1';
+  const isPruebaNube = flagNube === 'true' || flagNube === '1' || safeRedirect === 'true' || safeRedirect === '1';
+  const isStandbyBridge = lamdaRole === 'galpon_bridge_only';
+
+  // Si el nodo fue promovido explícitamente a Producción Titular (DB=etiquetas, LAMDA_MODO_PRUEBA_NUBE=false),
+  // limpiar cualquier DAEMON_B2B_DISABLED=true residual que haya quedado de la Etapa 2 de pruebas en Nube.
+  const esProduccionTitularActiva = !isLab && !isPruebaNube && !isStandbyBridge && dbName === 'etiquetas' && flagNube === 'false';
+  const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
+  if (daemonDisabled === 'true' || daemonDisabled === '1') {
+    if (esProduccionTitularActiva) {
+      process.env.DAEMON_B2B_DISABLED = 'false';
+      if (!staleDaemonFlagCleaned) {
+        staleDaemonFlagCleaned = true;
+        try {
+          const envPath = path.resolve(__dirname, '../../.env');
+          if (fs.existsSync(envPath)) {
+            const rawEnv = fs.readFileSync(envPath, 'utf8');
+            if (/^DAEMON_B2B_DISABLED\s*=\s*(true|1)/im.test(rawEnv)) {
+              const updatedEnv = rawEnv.replace(/^DAEMON_B2B_DISABLED\s*=\s*(true|1).*$/gim, 'DAEMON_B2B_DISABLED=false');
+              fs.writeFileSync(envPath, updatedEnv, 'utf8');
+              console.log('🔓 [B2B-AUTO-SYNC] Se normalizó DAEMON_B2B_DISABLED=false en .env por encontrarse en Producción Titular activa.');
+            }
+          }
+        } catch (_) {}
+      }
+    } else {
+      return true;
+    }
+  }
+
+  if (isStandbyBridge) {
+    return true;
+  }
+
   const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
   const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
   const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';
@@ -187,4 +222,4 @@ function createB2BAutoSyncMiddleware(moduleName = 'app') {
   };
 }
 
-module.exports = { triggerB2BSync, createB2BAutoSyncMiddleware };
+module.exports = { triggerB2BSync, createB2BAutoSyncMiddleware, esModoLaboratorioOSinCredencialesB2B };

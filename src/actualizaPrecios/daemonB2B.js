@@ -1,9 +1,10 @@
 // filepath: src/actualizaPrecios/daemonB2B.js
 'use strict';
 
-require('dotenv').config();
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const { fork } = require('child_process');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 console.log('═══════════════════════════════════════════════════════');
 console.log('🛡️  [B2B-DAEMON] INICIANDO MOTOR DE COMUNICACIÓN SUPABASE');
@@ -28,15 +29,25 @@ const PATHS = {
 const PROD_SUPABASE_ID = 'zysyxtbcvgswancxtpib';
 
 function esModoLaboratorioB2B() {
-  const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
-  if (daemonDisabled === 'true' || daemonDisabled === '1') {
-    return true;
-  }
   const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
   const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
+  const modoLab = String(process.env.MODO_LABORATORIO || '').trim().toLowerCase();
   const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
-  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
-  const isPruebaNube = flagNube === 'true' || flagNube === '1';
+  const safeRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
+  const lamdaRole = String(process.env.LAMDA_ROLE || '').trim().toLowerCase();
+
+  const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1' || modoLab === 'true' || modoLab === '1';
+  const isPruebaNube = flagNube === 'true' || flagNube === '1' || safeRedirect === 'true' || safeRedirect === '1';
+  const isStandbyBridge = lamdaRole === 'galpon_bridge_only';
+
+  const esProduccionTitularActiva = !isLab && !isPruebaNube && !isStandbyBridge && dbName === 'etiquetas' && flagNube === 'false';
+  const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
+  if ((daemonDisabled === 'true' || daemonDisabled === '1') && !esProduccionTitularActiva) {
+    return true;
+  }
+  if (isStandbyBridge) {
+    return true;
+  }
   const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
   const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
   const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';

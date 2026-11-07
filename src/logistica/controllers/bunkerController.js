@@ -1,5 +1,6 @@
 const BunkerService = require('../services/bunkerService');
 const PDFDocument = require('pdfkit');
+const { triggerB2BSync } = require('../../actualizaPrecios/b2bAutoSyncTrigger');
 
 console.log('📦 [BUNKER-CONTROLLER] Cargando controlador del Búnker...');
 
@@ -412,6 +413,7 @@ exports.crearArticulo = async (req, res) => {
         }
 
         const resultado = await BunkerService.crearArticuloTransaccional(db, articuloData, listasMargenes, terminosAsegurados, solo_taxonomia);
+        triggerB2BSync('precios', `bunker:crearArticulo:${articuloData.articulo_id || ''}`);
 
         res.status(201).json({
             success: true,
@@ -429,6 +431,7 @@ exports.eliminarArticulo = async (req, res) => {
         const { id } = req.params;
         const result = await BunkerService.eliminarArticuloTransaccional(req.db, id);
         if (result) {
+            triggerB2BSync('precios', `bunker:eliminarArticulo:${id}`);
             res.json({ success: true, message: 'Artículo eliminado del Búnker exitosamente' });
         } else {
             res.status(404).json({ success: false, error: 'Artículo no encontrado en el Búnker' });
@@ -459,6 +462,7 @@ exports.actualizarArticulo = async (req, res) => {
         const { articuloData, listasMargenes, solo_taxonomia } = req.body;
 
         await BunkerService.actualizarArticuloTransaccional(req.db, id, articuloData, listasMargenes, solo_taxonomia);
+        triggerB2BSync('precios', `bunker:actualizarArticulo:${id}`);
 
         res.json({ success: true, message: 'Artículo actualizado exitosamente' });
     } catch (error) {
@@ -500,6 +504,7 @@ exports.actualizarEstructuraFinanciera = async (req, res) => {
             pack_unidades,
             kilos_unidad
         });
+        triggerB2BSync('precios', `bunker:actualizarEstructuraFinanciera:${id}`);
         res.json({ success: true, message: 'Estructura financiera actualizada exitosamente' });
     } catch (error) {
         console.error(`❌ [BUNKER] Error actualizando finanzas ${req.params.id}:`, error);
@@ -514,6 +519,7 @@ exports.actualizarDisponibilidadArticulo = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos (articuloId, listaId)' });
         }
         await BunkerService.actualizarDisponibilidadArticulo(req.db, articuloId, listaId, disponible);
+        triggerB2BSync('precios', `bunker:actualizarDisponibilidadArticulo:${articuloId}`);
         res.json({ success: true, message: 'Disponibilidad del artículo actualizada con éxito en la lista.' });
     } catch (error) {
         console.error('❌ [BUNKER] Error actualizando disponibilidad de artículo:', error);
@@ -2524,6 +2530,69 @@ exports.obtenerMixesComposicion = async (req, res) => {
         res.json({ success: true, data: map });
     } catch (error) {
         console.error('❌ [BUNKER] Error obteniendo composición de mixes:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+let bunkerPrefsTableEnsured = false;
+async function ensureBunkerPreferenciasTable(db) {
+    if (bunkerPrefsTableEnsured) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS public.bunker_preferencias_ui (
+            clave VARCHAR(100) PRIMARY KEY,
+            valor JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    bunkerPrefsTableEnsured = true;
+}
+
+exports.obtenerPreferenciasUI = async (req, res) => {
+    try {
+        const db = req.db || require('../config/database').pool;
+        await ensureBunkerPreferenciasTable(db);
+        const result = await db.query('SELECT clave, valor, updated_at FROM public.bunker_preferencias_ui');
+        const data = {};
+        result.rows.forEach(r => {
+            data[r.clave] = r.valor;
+        });
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error obteniendo preferencias UI:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.guardarPreferenciasUI = async (req, res) => {
+    try {
+        const db = req.db || require('../config/database').pool;
+        await ensureBunkerPreferenciasTable(db);
+        const { clave, valor, preferencias } = req.body || {};
+
+        if (preferencias && typeof preferencias === 'object') {
+            for (const [k, v] of Object.entries(preferencias)) {
+                if (!k) continue;
+                await db.query(
+                    `INSERT INTO public.bunker_preferencias_ui (clave, valor, updated_at)
+                     VALUES ($1, $2::jsonb, NOW())
+                     ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, updated_at = NOW()`,
+                    [String(k).slice(0, 100), JSON.stringify(v ?? {})]
+                );
+            }
+        } else if (clave) {
+            await db.query(
+                `INSERT INTO public.bunker_preferencias_ui (clave, valor, updated_at)
+                 VALUES ($1, $2::jsonb, NOW())
+                 ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, updated_at = NOW()`,
+                [String(clave).slice(0, 100), JSON.stringify(valor ?? {})]
+            );
+        } else {
+            return res.status(400).json({ success: false, error: 'Se requiere clave o preferencias' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [BUNKER] Error guardando preferencias UI:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };

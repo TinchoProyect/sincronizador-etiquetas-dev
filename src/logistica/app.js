@@ -445,7 +445,7 @@ app.get('/env-config.js', (req, res) => {
 console.log('[LOGISTICA] Montando rutas API...');
 
 // Disparador reactivo automático en 2do plano hacia Portal B2B ante cambios locales
-const { createB2BAutoSyncMiddleware } = require('../actualizaPrecios/b2bAutoSyncTrigger');
+const { createB2BAutoSyncMiddleware, triggerB2BSync, esModoLaboratorioOSinCredencialesB2B } = require('../actualizaPrecios/b2bAutoSyncTrigger');
 app.use(createB2BAutoSyncMiddleware('logistica'));
 
 // Rutas de Domicilios
@@ -628,6 +628,35 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('[LOGISTICA] 📊 Base de datos:', process.env.DB_NAME || 'etiquetas');
     console.log('[LOGISTICA] 🌍 Entorno:', process.env.NODE_ENV || 'production');
     console.log('[LOGISTICA] 🎉 ================================\n');
+
+    // Asegurar regla de jerarquía Nivel 3 (marca) para Repostería -> Escurrida y preferencias UI
+    (async () => {
+        try {
+            const { pool } = require('./config/database');
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS public.bunker_preferencias_ui (
+                    clave VARCHAR(100) PRIMARY KEY,
+                    valor JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            `);
+            await pool.query(`
+                INSERT INTO public.bunker_portal_b2b_jerarquia (familia_id, articulo_principal, eje_nivel_3, updated_at, reglas_nivel_4, reglas_nivel_5)
+                VALUES (31, 'Escurrida', 'marca', NOW(), '{}'::jsonb, '{}'::jsonb)
+                ON CONFLICT (familia_id, articulo_principal) DO NOTHING;
+            `);
+        } catch (err) {
+            console.warn('[LOGISTICA] ⚠️ Aviso asegurando tablas/jerarquía inicial Búnker:', err.message);
+        }
+
+        if (!esModoLaboratorioOSinCredencialesB2B()) {
+            console.log('⚡ [LOGISTICA-B2B] Programando sincronización catch-up inicial del Portal B2B (Producción Titular)...');
+            triggerB2BSync('precios', 'logistica:startup-catchup', 3000);
+            triggerB2BSync('listas', 'logistica:startup-catchup', 7000);
+            triggerB2BSync('politicas', 'logistica:startup-catchup', 11000);
+            triggerB2BSync('ofertas', 'logistica:startup-catchup', 14000);
+        }
+    })();
 });
 
 // Manejo de errores del servidor

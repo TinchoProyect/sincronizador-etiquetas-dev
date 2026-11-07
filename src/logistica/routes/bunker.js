@@ -16,6 +16,8 @@ router.get('/exportar-pdf/:listaId', bunkerController.exportarPDFListado);
 router.post('/cotizaciones/exportar-pdf', bunkerController.exportarPDFCotizacionCliente);
 router.get('/ofertas-activas', bunkerController.obtenerOfertasActivas);
 router.get('/mixes-composicion', bunkerController.obtenerMixesComposicion);
+router.get('/preferencias-ui', bunkerController.obtenerPreferenciasUI);
+router.post('/preferencias-ui', bunkerController.guardarPreferenciasUI);
 
 // Obtener todos los artículos para el Grid
 router.get('/listado', bunkerController.obtenerTodosLosArticulos);

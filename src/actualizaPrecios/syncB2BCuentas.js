@@ -1,9 +1,10 @@
 // filepath: src/actualizaPrecios/syncB2BCuentas.js
 'use strict';
 
+if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { Pool } = require('pg');
 const PDFDocument = require('pdfkit');
 const salvavidasService = require('../logistica/services/salvavidasService');

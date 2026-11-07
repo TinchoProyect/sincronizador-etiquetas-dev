@@ -242,6 +242,84 @@ window.cargarPreferenciasGridBunker = function() {
     }
 };
 
+window.guardarPreferenciaBunkerRemota = function(clave, valor) {
+    try {
+        if (!clave) return;
+        fetch('/api/logistica/bunker/preferencias-ui', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify({ clave, valor })
+        }).catch(() => {});
+    } catch (_) {}
+};
+
+window.sincronizarPreferenciasBunkerDesdeServidor = async function() {
+    const keysToSync = [
+        'bunker_grid_preferences',
+        'bunker_grid_col_widths',
+        'lamda_v4_grid_state',
+        'bunker_pdf_columns_config_v2',
+        'bunker_cotizador_prefs'
+    ];
+    try {
+        const res = await fetch('/api/logistica/bunker/preferencias-ui');
+        if (!res.ok) return;
+        const payload = await res.json();
+        const remotePrefs = (payload && payload.data && typeof payload.data === 'object') ? payload.data : {};
+        const toUpload = {};
+        let changedGridCols = false;
+        let changedColWidths = false;
+
+        for (const [key, remoteVal] of Object.entries(remotePrefs)) {
+            if (key.startsWith('pdf_design_state_') && remoteVal !== undefined && remoteVal !== null) {
+                const remoteStr = typeof remoteVal === 'string' ? remoteVal : JSON.stringify(remoteVal);
+                if (localStorage.getItem(key) !== remoteStr) {
+                    localStorage.setItem(key, remoteStr);
+                }
+            }
+        }
+
+        for (const key of keysToSync) {
+            const localRaw = localStorage.getItem(key);
+            const remoteVal = remotePrefs[key];
+
+            if (remoteVal !== undefined && remoteVal !== null) {
+                const remoteStr = typeof remoteVal === 'string' ? remoteVal : JSON.stringify(remoteVal);
+                if (localRaw !== remoteStr) {
+                    localStorage.setItem(key, remoteStr);
+                    if (key === 'bunker_grid_preferences') changedGridCols = true;
+                    if (key === 'bunker_grid_col_widths') changedColWidths = true;
+                }
+            } else if (localRaw !== null) {
+                try {
+                    toUpload[key] = JSON.parse(localRaw);
+                } catch (_) {
+                    toUpload[key] = localRaw;
+                }
+            }
+        }
+
+        if (Object.keys(toUpload).length > 0) {
+            fetch('/api/logistica/bunker/preferencias-ui', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                keepalive: true,
+                body: JSON.stringify({ preferencias: toUpload })
+            }).catch(() => {});
+        }
+
+        if (changedGridCols) {
+            initColumnToggler();
+        }
+        if (changedColWidths) {
+            aplicarAnchosColumnasGuardados('tabla-bunker');
+        }
+    } catch (err) {
+        console.warn('⚠️ [BUNKER] No se pudieron sincronizar preferencias UI remotas:', err);
+    }
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     window.cargarPreferenciasGridBunker();
     const inputEl = document.getElementById('filtro-busqueda');
@@ -252,6 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     initColumnToggler();
+    await window.sincronizarPreferenciasBunkerDesdeServidor();
     await cargarListasPreciosFiltro();
     await cargarDataGrid();
     await cargarDesplegableClientesAutoseleccion();
@@ -872,7 +951,8 @@ const BUNKER_COLUMNS = [
     { id: 10, name: 'Margen Base', defaultVisible: true },
     { id: 11, name: 'Total Entrante (Un)', defaultVisible: true },
     { id: 12, name: 'Total Entrante (Kg)', defaultVisible: true },
-    { id: 13, name: 'Stock Disponible (Neto)', defaultVisible: true }
+    { id: 13, name: 'Stock Disponible (Neto)', defaultVisible: true },
+    { id: 14, name: 'Catálogo', defaultVisible: true }
 ];
 
 let bunkerGridPreferences = {};
@@ -880,7 +960,12 @@ let bunkerGridPreferences = {};
 function initColumnToggler() {
     const saved = localStorage.getItem('bunker_grid_preferences');
     if (saved) {
-        try { bunkerGridPreferences = JSON.parse(saved); } catch(e) {}
+        try {
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed === 'object') {
+                bunkerGridPreferences = parsed;
+            }
+        } catch(e) {}
     }
 
     const container = document.getElementById('col-toggler-list');
@@ -888,8 +973,13 @@ function initColumnToggler() {
     container.innerHTML = '';
 
     BUNKER_COLUMNS.forEach(col => {
-        if (bunkerGridPreferences[col.id] === undefined) {
+        const storedVal = bunkerGridPreferences[col.id] !== undefined
+            ? bunkerGridPreferences[col.id]
+            : bunkerGridPreferences[String(col.id)];
+        if (storedVal === undefined) {
             bunkerGridPreferences[col.id] = col.defaultVisible;
+        } else {
+            bunkerGridPreferences[col.id] = Boolean(storedVal);
         }
 
         const isVisible = bunkerGridPreferences[col.id];
@@ -906,9 +996,12 @@ function initColumnToggler() {
 }
 
 window.toggleBunkerColumn = function(colId, isVisible) {
-    bunkerGridPreferences[colId] = isVisible;
+    bunkerGridPreferences[colId] = Boolean(isVisible);
     localStorage.setItem('bunker_grid_preferences', JSON.stringify(bunkerGridPreferences));
-    aplicarVisibilidadColumna(colId, isVisible);
+    if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+        window.guardarPreferenciaBunkerRemota('bunker_grid_preferences', bunkerGridPreferences);
+    }
+    aplicarVisibilidadColumna(colId, Boolean(isVisible));
 };
 
 function aplicarVisibilidadColumna(colId, isVisible) {
@@ -4525,6 +4618,9 @@ window.guardarConfiguracionColumnas = function() {
     try {
         const toSave = pdfColumnsOrder.map(c => ({ id: c.id, checked: c.checked }));
         localStorage.setItem('bunker_pdf_columns_config_v2', JSON.stringify(toSave));
+        if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+            window.guardarPreferenciaBunkerRemota('bunker_pdf_columns_config_v2', toSave);
+        }
     } catch (e) {
         console.error("Error guardando configuración de columnas:", e);
     }
@@ -4579,6 +4675,8 @@ window.renderConfiguradorColumnas = function() {
         chk.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
         chk.onchange = (e) => {
             col.checked = e.target.checked;
+            window.guardarConfiguracionColumnas();
+            window.guardarDisenoPDF();
             window.actualizarPrevisualizacionPDF();
         };
         
@@ -4629,6 +4727,8 @@ window.moverColumnaPDF = function(fromIdx, toIdx) {
     pdfColumnsOrder[fromIdx] = pdfColumnsOrder[toIdx];
     pdfColumnsOrder[toIdx] = temp;
     
+    window.guardarConfiguracionColumnas();
+    window.guardarDisenoPDF();
     window.renderConfiguradorColumnas();
     window.actualizarPrevisualizacionPDF();
 };
@@ -5226,6 +5326,9 @@ window.guardarDisenoPDF = function() {
     };
     
     localStorage.setItem(`pdf_design_state_${listaId}`, JSON.stringify(designState));
+    if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+        window.guardarPreferenciaBunkerRemota(`pdf_design_state_${listaId}`, designState);
+    }
 };
 
 window.cargarDisenoPDF = function() {
@@ -5247,11 +5350,23 @@ window.cargarDisenoPDF = function() {
     try {
         const state = JSON.parse(saved);
         
-        if (state.capaA) {
+        if (state.capaA && !localStorage.getItem('bunker_pdf_columns_config_v2')) {
+            const merged = [];
             state.capaA.forEach(savedCol => {
-                const col = pdfColumnsOrder.find(c => c.id === savedCol.id);
-                if (col) col.checked = savedCol.checked;
+                const original = pdfColumnsOrder.find(c => c.id === savedCol.id);
+                if (original) {
+                    merged.push({
+                        ...original,
+                        checked: savedCol.checked !== undefined ? !!savedCol.checked : original.checked
+                    });
+                }
             });
+            pdfColumnsOrder.forEach(o => {
+                if (!merged.some(m => m.id === o.id)) {
+                    merged.push(o);
+                }
+            });
+            pdfColumnsOrder = merged;
         }
         
         if (state.capaB) {
@@ -5513,13 +5628,12 @@ window.abrirPrevisualizadorPDF = function() {
     // Cargar la configuración guardada de columnas desde localStorage antes de renderizar
     window.cargarConfiguracionColumnas();
     
-    // Renderizar las opciones y orden de las columnas dinámicamente
-    window.renderConfiguradorColumnas();
-    
     // Inicializar y renderizar Capa C y Capa B con persistencia atómica
     window.inicializarCapaCState();
     window.inicializarArbolCategorias();
     window.cargarDisenoPDF(); // Carga la memoria del localStorage indexada por ID de lista
+    window.cargarConfiguracionColumnas();
+    window.renderConfiguradorColumnas();
     window.inicializarArbolCategorias(); // Re-inicializa con el orden y estados cargados
     window.renderCapaCMatrix();
     window.renderArbolCategorias();
@@ -5582,6 +5696,8 @@ window.cambiarListaPreciosPDF = function(listaId) {
 
         // 4. Cargar el diseño de columnas/categorías específico de la nueva lista
         window.cargarDisenoPDF();
+        window.cargarConfiguracionColumnas();
+        window.renderConfiguradorColumnas();
 
         // 5. Re-inicializar y renderizar las capas comerciales
         window.inicializarArbolCategorias();
@@ -6385,7 +6501,8 @@ window.abrirVinculadorReposicion = async function() {
         // 2. Limpiar spinner o contenido
         gridDiv.innerHTML = '';
 
-        // Crear grilla de AG Grid
+        // Crear grilla de AG Grid bloqueando escrituras prematuras de flex-resize
+        window.v4GridReady = false;
         window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);
         
         // Cargar datos
@@ -6393,6 +6510,7 @@ window.abrirVinculadorReposicion = async function() {
         
         // Restaurar estado geométrico (Persistencia)
         window.cargarGridState();
+        window.v4GridReady = true;
         
         // Aplicar Clean Slate ( filterModel en null )
         window.v4GridApi.setFilterModel(null);
@@ -6519,16 +6637,21 @@ window.guardarVinculacionReposicion = async function() {
     }
 };
 
-// ✅ PERSISTENCIA DE PREFERENCIAS GEOMÉTRICAS (localStorage)
+// ✅ PERSISTENCIA DE PREFERENCIAS GEOMÉTRICAS (localStorage + PostgreSQL)
 window.guardarGridState = function() {
-    if (!window.v4GridApi) return;
+    if (!window.v4GridApi || !window.v4GridReady) return;
     const state = window.v4GridApi.getColumnState();
     localStorage.setItem('lamda_v4_grid_state', JSON.stringify(state));
+    if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+        window.guardarPreferenciaBunkerRemota('lamda_v4_grid_state', state);
+    }
     console.log("💾 [VINCULADOR-REPOSICION-V4.1] Guardando estado de columnas en localStorage:", state);
 };
 
 window.cargarGridState = function() {
     if (!window.v4GridApi) return;
+    const prevReady = window.v4GridReady;
+    window.v4GridReady = false;
     const stored = localStorage.getItem('lamda_v4_grid_state');
     if (stored) {
         try {
@@ -6539,6 +6662,7 @@ window.cargarGridState = function() {
             console.error('Error al restaurar firma geométrica de AG Grid:', e);
         }
     }
+    window.v4GridReady = prevReady;
 };
 
 // ✅ CONFIGURADOR EN VIVO DE VISIBILIDAD DE CAMPOS (⚙️ Campos)
@@ -6924,9 +7048,44 @@ function initScannerExpressListener() {
     }
 }
 
+function aplicarAnchosColumnasGuardados(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const savedRaw = localStorage.getItem('bunker_grid_col_widths');
+    if (!savedRaw) return;
+    try {
+        const savedWidths = JSON.parse(savedRaw);
+        if (!savedWidths || typeof savedWidths !== 'object') return;
+        const cols = table.querySelectorAll('thead th');
+        cols.forEach((col, idx) => {
+            const w = savedWidths[idx] || savedWidths[String(idx)];
+            if (w && typeof w === 'string' && w.endsWith('px')) {
+                col.style.width = w;
+            }
+        });
+    } catch (_) {}
+}
+
+function guardarAnchosColumnasTabla(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const widths = {};
+    const cols = table.querySelectorAll('thead th');
+    cols.forEach((col, idx) => {
+        if (col.style && col.style.width) {
+            widths[idx] = col.style.width;
+        }
+    });
+    localStorage.setItem('bunker_grid_col_widths', JSON.stringify(widths));
+    if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+        window.guardarPreferenciaBunkerRemota('bunker_grid_col_widths', widths);
+    }
+}
+
 function initTableResizableColumns(tableId) {
     const table = document.getElementById(tableId);
     if (!table) return;
+    aplicarAnchosColumnasGuardados(tableId);
     const cols = table.querySelectorAll('thead th');
     
     cols.forEach(col => {
@@ -6950,6 +7109,7 @@ function initTableResizableColumns(tableId) {
             document.removeEventListener('mousemove', mouseMoveHandler);
             document.removeEventListener('mouseup', mouseUpHandler);
             table.classList.remove('resizing');
+            guardarAnchosColumnasTabla(tableId);
         };
 
         resizer.addEventListener('mousedown', (e) => {
@@ -9393,17 +9553,23 @@ window.esArticuloActivoParaLista = function(art, targetListaId) {
     const familiasStr = Array.from(familiasSet).join(', ') || 'General';
     const principalesStr = Array.from(principalesSet).join(', ') || '';
 
+    let savedCotizPrefs = {};
+    try {
+        const rawCotiz = localStorage.getItem('bunker_cotizador_prefs');
+        if (rawCotiz) savedCotizPrefs = JSON.parse(rawCotiz) || {};
+    } catch (_) {}
+
     window.cotizadorState = {
         clientes: clientesList,
         clienteSeleccionado: clientePreseleccionado,
         listaId: defListaId,
-        modoIVA: 'con_iva',
-        ocultarColumnaIVA: false,
-        modoPrecio: 'ambos',
-        mostrarHijos: true,
-        destacarOfertas: true,
-        bonificacionVolumen: true,
-        mostrarComposicionMixes: false,
+        modoIVA: savedCotizPrefs.modoIVA || 'con_iva',
+        ocultarColumnaIVA: savedCotizPrefs.ocultarColumnaIVA === true,
+        modoPrecio: savedCotizPrefs.modoPrecio || 'ambos',
+        mostrarHijos: savedCotizPrefs.mostrarHijos !== undefined ? Boolean(savedCotizPrefs.mostrarHijos) : true,
+        destacarOfertas: savedCotizPrefs.destacarOfertas !== undefined ? Boolean(savedCotizPrefs.destacarOfertas) : true,
+        bonificacionVolumen: savedCotizPrefs.bonificacionVolumen !== undefined ? Boolean(savedCotizPrefs.bonificacionVolumen) : true,
+        mostrarComposicionMixes: savedCotizPrefs.mostrarComposicionMixes === true,
         ofertasActivas: ofertasActivas,
         mixesComposicion: mixesComposicionMap,
         agruparPorAtributo: null,
@@ -9547,8 +9713,8 @@ window.esArticuloActivoParaLista = function(art, targetListaId) {
                             💰 Tratamiento de IVA:
                         </label>
                         <select id="cotiz-select-iva" style="width: 100%; padding: 7px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85em; background: white;" onchange="window.onCotizModoIVAChanged(this.value)">
-                            <option value="con_iva" selected>Con IVA (Precios Finales)</option>
-                            <option value="sin_iva">Sin IVA (Precios Netos)</option>
+                            <option value="con_iva" ${window.cotizadorState.modoIVA === 'con_iva' ? 'selected' : ''}>Con IVA (Precios Finales)</option>
+                            <option value="sin_iva" ${window.cotizadorState.modoIVA === 'sin_iva' ? 'selected' : ''}>Sin IVA (Precios Netos)</option>
                         </select>
                     </div>
 
@@ -9558,15 +9724,15 @@ window.esArticuloActivoParaLista = function(art, targetListaId) {
                             📊 Precios a Mostrar:
                         </label>
                         <select id="cotiz-select-modo-precio" style="width: 100%; padding: 7px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85em; background: white;" onchange="window.onCotizModoPrecioChanged(this.value)">
-                            <option value="ambos" selected>Ambos (Precio Kilo + Precio Bulto / Unidad)</option>
-                            <option value="kilo">Solo Precio Kilo</option>
-                            <option value="bulto">Solo Precio Bulto / Unidad</option>
+                            <option value="ambos" ${window.cotizadorState.modoPrecio === 'ambos' ? 'selected' : ''}>Ambos (Precio Kilo + Precio Bulto / Unidad)</option>
+                            <option value="kilo" ${window.cotizadorState.modoPrecio === 'kilo' ? 'selected' : ''}>Solo Precio Kilo</option>
+                            <option value="bulto" ${window.cotizadorState.modoPrecio === 'bulto' ? 'selected' : ''}>Solo Precio Bulto / Unidad</option>
                         </select>
                     </div>
 
                     <!-- Toggle Mostrar Fraccionados Hijos -->
                     <div style="display: flex; align-items: center; gap: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                        <input type="checkbox" id="cotiz-chk-mostrar-hijos" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #7e22ce;" onchange="window.onCotizToggleHijosChanged(this.checked)">
+                        <input type="checkbox" id="cotiz-chk-mostrar-hijos" ${window.cotizadorState.mostrarHijos ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #7e22ce;" onchange="window.onCotizToggleHijosChanged(this.checked)">
                         <label for="cotiz-chk-mostrar-hijos" style="font-size: 0.82em; font-weight: 600; color: #334155; cursor: pointer;">
                             Incluir Presentaciones Fraccionadas (Hijas ↳)
                         </label>
@@ -9574,7 +9740,7 @@ window.esArticuloActivoParaLista = function(art, targetListaId) {
 
                     <!-- Toggle Omitir Columna % IVA en el Informe -->
                     <div style="display: flex; align-items: center; gap: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 2px;">
-                        <input type="checkbox" id="cotiz-chk-ocultar-iva" style="width: 16px; height: 16px; cursor: pointer; accent-color: #7e22ce;" onchange="window.onCotizToggleOcultarIVAChanged(this.checked)">
+                        <input type="checkbox" id="cotiz-chk-ocultar-iva" ${window.cotizadorState.ocultarColumnaIVA ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #7e22ce;" onchange="window.onCotizToggleOcultarIVAChanged(this.checked)">
                         <label for="cotiz-chk-ocultar-iva" style="font-size: 0.82em; font-weight: 600; color: #334155; cursor: pointer;">
                             🚫 Omitir Columna de % IVA en el Informe
                         </label>
@@ -9586,19 +9752,19 @@ window.esArticuloActivoParaLista = function(art, targetListaId) {
 
                         <!-- Toggle Destacar Ofertas Activas -->
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="cotiz-chk-destacar-ofertas" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #ef4444;" onchange="window.onCotizToggleDestacarOfertasChanged(this.checked)">
+                            <input type="checkbox" id="cotiz-chk-destacar-ofertas" ${window.cotizadorState.destacarOfertas ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #ef4444;" onchange="window.onCotizToggleDestacarOfertasChanged(this.checked)">
                             <span style="font-size: 0.82em; font-weight: 600; color: #1e293b;">🔥 Destacar Ofertas / Promociones Activas</span>
                         </label>
 
                         <!-- Toggle Bonificación por Volumen -->
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="cotiz-chk-bonificacion-volumen" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #2563eb;" onchange="window.onCotizToggleBonificacionVolumenChanged(this.checked)">
+                            <input type="checkbox" id="cotiz-chk-bonificacion-volumen" ${window.cotizadorState.bonificacionVolumen ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #2563eb;" onchange="window.onCotizToggleBonificacionVolumenChanged(this.checked)">
                             <span style="font-size: 0.82em; font-weight: 600; color: #1e293b;">🛡️ Bonificación Comercial (> $300.000: 5% OFF)</span>
                         </label>
 
                         <!-- Toggle Mostrar Composición de Mixes -->
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="cotiz-chk-composicion-mixes" style="width: 16px; height: 16px; cursor: pointer; accent-color: #10b981;" onchange="window.onCotizToggleComposicionMixesChanged(this.checked)">
+                            <input type="checkbox" id="cotiz-chk-composicion-mixes" ${window.cotizadorState.mostrarComposicionMixes ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: #10b981;" onchange="window.onCotizToggleComposicionMixesChanged(this.checked)">
                             <span style="font-size: 0.82em; font-weight: 600; color: #1e293b;">🥣 Mostrar Composición de Mixes (Ingredientes)</span>
                         </label>
                     </div>
@@ -9909,21 +10075,41 @@ window.onCotizTituloChanged = function(val) {
     window.renderCotizadorLivePreview();
 };
 
+function guardarPreferenciasCotizador() {
+    if (!window.cotizadorState) return;
+    const prefs = {
+        modoIVA: window.cotizadorState.modoIVA,
+        ocultarColumnaIVA: Boolean(window.cotizadorState.ocultarColumnaIVA),
+        modoPrecio: window.cotizadorState.modoPrecio,
+        mostrarHijos: Boolean(window.cotizadorState.mostrarHijos),
+        destacarOfertas: Boolean(window.cotizadorState.destacarOfertas),
+        bonificacionVolumen: Boolean(window.cotizadorState.bonificacionVolumen),
+        mostrarComposicionMixes: Boolean(window.cotizadorState.mostrarComposicionMixes)
+    };
+    localStorage.setItem('bunker_cotizador_prefs', JSON.stringify(prefs));
+    if (typeof window.guardarPreferenciaBunkerRemota === 'function') {
+        window.guardarPreferenciaBunkerRemota('bunker_cotizador_prefs', prefs);
+    }
+}
+
 window.onCotizModoIVAChanged = function(val) {
     if (!window.cotizadorState) return;
     window.cotizadorState.modoIVA = val;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
 window.onCotizModoPrecioChanged = function(val) {
     if (!window.cotizadorState) return;
     window.cotizadorState.modoPrecio = val;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
 window.onCotizToggleHijosChanged = function(checked) {
     if (!window.cotizadorState) return;
     window.cotizadorState.mostrarHijos = checked;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
@@ -9936,24 +10122,28 @@ window.onCotizToggleSepararPacksChanged = function(checked) {
 window.onCotizToggleOcultarIVAChanged = function(checked) {
     if (!window.cotizadorState) return;
     window.cotizadorState.ocultarColumnaIVA = checked === true;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
 window.onCotizToggleDestacarOfertasChanged = function(checked) {
     if (!window.cotizadorState) return;
     window.cotizadorState.destacarOfertas = checked === true;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
 window.onCotizToggleBonificacionVolumenChanged = function(checked) {
     if (!window.cotizadorState) return;
     window.cotizadorState.bonificacionVolumen = checked === true;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 
 window.onCotizToggleComposicionMixesChanged = function(checked) {
     if (!window.cotizadorState) return;
     window.cotizadorState.mostrarComposicionMixes = checked === true;
+    guardarPreferenciasCotizador();
     window.renderCotizadorLivePreview();
 };
 

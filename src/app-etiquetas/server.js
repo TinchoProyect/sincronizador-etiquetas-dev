@@ -2,6 +2,7 @@ if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch
 const express = require('express');
 const { exec, fork } = require('child_process');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const fs = require('fs');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const cors = require('cors');

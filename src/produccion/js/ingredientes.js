@@ -3574,10 +3574,12 @@ window.abrirVinculadorReposicionIngrediente = async function() {
         }
         gridDiv.innerHTML = '';
 
+        window.v4GridReady = false;
         window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);
         window.v4GridApi.setGridOption('rowData', vr_todasOfertas);
 
         window.cargarGridState();
+        window.v4GridReady = true;
         window.v4GridApi.setFilterModel(null);
 
         // Pre-seleccionar
@@ -3666,14 +3668,22 @@ window.guardarVinculacionReposicion = async function() {
 
 // PERSISTENCIA DE PREFERENCIAS GEOMÉTRICAS
 window.guardarGridState = function() {
-    if (!window.v4GridApi) return;
+    if (!window.v4GridApi || !window.v4GridReady) return;
     const state = window.v4GridApi.getColumnState();
     localStorage.setItem('lamda_v4_grid_state', JSON.stringify(state));
+    fetch('/api/logistica/bunker/preferencias-ui', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({ clave: 'lamda_v4_grid_state', valor: state })
+    }).catch(() => {});
     console.log("💾 [VINCULADOR-REPOSICION-V4.1] Guardando estado de columnas en localStorage:", state);
 };
 
 window.cargarGridState = function() {
     if (!window.v4GridApi) return;
+    const prevReady = window.v4GridReady;
+    window.v4GridReady = false;
     const stored = localStorage.getItem('lamda_v4_grid_state');
     if (stored) {
         try {
@@ -3684,6 +3694,7 @@ window.cargarGridState = function() {
             console.error('Error al restaurar firma geométrica de AG Grid:', e);
         }
     }
+    window.v4GridReady = prevReady;
 };
 
 // CONFIGURADOR EN VIVO DE VISIBILIDAD DE CAMPOS

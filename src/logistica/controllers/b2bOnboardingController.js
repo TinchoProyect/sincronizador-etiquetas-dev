@@ -2101,12 +2101,8 @@ _Este código expira en 5 minutos._`;
 
 const healedProfileIds = new Set();
 
-const b2bDispatcherDisabled =
-    String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase() === 'true' ||
-    String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase() === 'true' ||
-    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
-    String(process.env.MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
-    String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas';
+const { esModoLaboratorioOSinCredencialesB2B } = require('../../actualizaPrecios/b2bAutoSyncTrigger');
+const b2bDispatcherDisabled = esModoLaboratorioOSinCredencialesB2B();
 
 if (!cloudOtpTimer && !b2bDispatcherDisabled) {
     cloudOtpTimer = setInterval(procesarOtpsPendientesCloud, 2000);
