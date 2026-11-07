@@ -16,6 +16,7 @@
  */
 
 require('dotenv').config();
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -24,6 +25,18 @@ const { sincronizarEsquemaHaciaProduccion, exportarSnapshotLaboratorio } = requi
 const ROOT_DIR = path.resolve(__dirname, '..');
 const CLOUD_HOST = process.env.CLOUD_SSH_HOST || '34.39.187.220';
 const CLOUD_USER = process.env.CLOUD_SSH_USER || 'lamda_admin';
+
+function obtenerSupabaseKeyProductiva() {
+    try {
+        const origEnvPath = path.join(ROOT_DIR, '.env.original_deposito');
+        if (fs.existsSync(origEnvPath)) {
+            const raw = fs.readFileSync(origEnvPath, 'utf8');
+            const m = raw.match(/^SUPABASE_B2B_SERVICE_KEY=(.+)$/m);
+            if (m && m[1]) return m[1].trim();
+        }
+    } catch (_) {}
+    return String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+}
 
 function runCmd(cmd, cwd = ROOT_DIR) {
     return execSync(cmd, {
@@ -78,10 +91,14 @@ async function main() {
 
     // Paso 3: Desplegar en Google Cloud (34.39.187.220) y recargar PM2
     console.log('\n3️⃣ Actualizando servidor de Producción en la Nube (`34.39.187.220`)...');
+    const prodSupaKey = obtenerSupabaseKeyProductiva();
     let cloudUpdatedViaSsh = false;
     try {
+        const sedSupaCmd = (prodSupaKey && prodSupaKey !== 'modo_laboratorio_desconectado')
+            ? `sed -i 's|^SUPABASE_B2B_SERVICE_KEY=.*|SUPABASE_B2B_SERVICE_KEY=${prodSupaKey}|g' .env 2>/dev/null || true && `
+            : '';
         execSync(
-            `ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "cd /opt/lamda/sincronizador-etiquetas && git checkout -- data/ia_credito_ledger.json 2>/dev/null || true && git fetch origin && git checkout main && git reset --hard origin/main && sed -i 's/^DAEMON_B2B_DISABLED=true/DAEMON_B2B_DISABLED=false/g' .env 2>/dev/null || true && node scripts/auditarDiferenciasEsquemaDb.js --apply-local-etiquetas && pm2 restart all"`,
+            `ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "cd /opt/lamda/sincronizador-etiquetas && git checkout -- data/ia_credito_ledger.json 2>/dev/null || true && git fetch origin && git checkout main && git reset --hard origin/main && sed -i 's/^DAEMON_B2B_DISABLED=true/DAEMON_B2B_DISABLED=false/g' .env 2>/dev/null || true && ${sedSupaCmd}node scripts/auditarDiferenciasEsquemaDb.js --apply-local-etiquetas && pm2 restart all"`,
             { stdio: 'inherit', windowsHide: true, timeout: 45000 }
         );
         cloudUpdatedViaSsh = true;
@@ -106,51 +123,25 @@ async function main() {
                 'x-lamda-snapshot-key': snapshotKey
             };
 
-            const deployRes = await fetch('https://logistica.lamdaser.com/api/admin/deploy-main', {
+            console.log('ℹ️ Aplicando regla de jerarquía B2B y disparando `/gw/3000/api/sync-b2b/precios` en `https://logistica.lamdaser.com`...');
+            await fetch('https://logistica.lamdaser.com/api/logistica/b2b-jerarquia', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    familia_id: 31,
+                    articulo_principal: 'Escurrida',
+                    eje_nivel_3: 'marca',
+                    ejes_nivel_3: ['marca'],
+                    reglas_nivel_4: {},
+                    reglas_nivel_5: {}
+                })
+            });
+            const syncRes = await fetch('https://logistica.lamdaser.com/gw/3000/api/sync-b2b/precios', {
                 method: 'POST',
                 headers
             });
-            if (deployRes.ok) {
-                const deployJson = await deployRes.json();
-                console.log('✅ Servidor en la Nube actualizado vía HTTPS Admin Deploy:', JSON.stringify(deployJson));
-            } else {
-                console.log('ℹ️ Aplicando regla de jerarquía B2B y disparando `/gw/3000/api/sync-b2b/precios` en `https://logistica.lamdaser.com`...');
-                await fetch('https://logistica.lamdaser.com/api/logistica/b2b-jerarquia', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        familia_id: 31,
-                        articulo_principal: 'Escurrida',
-                        eje_nivel_3: 'marca',
-                        ejes_nivel_3: ['marca'],
-                        reglas_nivel_4: {},
-                        reglas_nivel_5: {}
-                    })
-                });
-                const syncRes = await fetch('https://logistica.lamdaser.com/gw/3000/api/sync-b2b/precios', {
-                    method: 'POST',
-                    headers
-                });
-                const syncText = await syncRes.text();
-                console.log(`ℹ️ Respuesta de /gw/3000/api/sync-b2b/precios en Nube: HTTP ${syncRes.status} (${syncText})`);
-                if (!syncRes.ok) {
-                    console.log('⚡ Ejecutando sincronización directa hacia Supabase B2B de Producción vía Pooler PostgreSQL con los datos vigentes de la Nube...');
-                    execSync('node scripts/dbRestaurarPruebas.js --force-cloud', { cwd: ROOT_DIR, stdio: 'inherit' });
-                    execSync('node scripts/auditarDiferenciasEsquemaDb.js --apply-lab', { cwd: ROOT_DIR, stdio: 'inherit' });
-                    execSync('node -e "const { Pool } = require(\'pg\'); require(\'dotenv\').config(); const p = new Pool({ user: process.env.DB_USER||\'postgres\', host: process.env.DB_HOST||\'localhost\', database: \'etiquetas_pruebas\', password: process.env.DB_PASSWORD||\'taKionga\', port: 5432 }); p.query(\\"INSERT INTO public.bunker_portal_b2b_jerarquia (familia_id, articulo_principal, eje_nivel_3, updated_at, reglas_nivel_4, reglas_nivel_5) VALUES (31, \'Escurrida\', \'marca\', NOW(), \'{}\'::jsonb, \'{}\'::jsonb) ON CONFLICT (familia_id, articulo_principal) DO UPDATE SET eje_nivel_3 = EXCLUDED.eje_nivel_3;\\").then(() => p.end());"', { cwd: ROOT_DIR, stdio: 'inherit' });
-                    execSync('node src/actualizaPrecios/syncB2BPrecios.js', {
-                        cwd: ROOT_DIR,
-                        stdio: 'inherit',
-                        env: {
-                            ...process.env,
-                            DB_NAME: 'etiquetas_pruebas',
-                            DB_PASSWORD: process.env.DB_PASSWORD || 'taKionga',
-                            SUPABASE_B2B_URL: 'https://zysyxtbcvgswancxtpib.supabase.co',
-                            SUPABASE_B2B_SERVICE_KEY: 'sb_secret__h-Z9In5Wo4ae6T_vHQVAw_6EA6QmPq'
-                        }
-                    });
-                }
-            }
+            const syncText = await syncRes.text();
+            console.log(`ℹ️ Respuesta de /gw/3000/api/sync-b2b/precios en Nube: HTTP ${syncRes.status} (${syncText})`);
         } catch (httpsErr) {
             console.error('❌ Error contactando a `https://logistica.lamdaser.com`:', httpsErr.message);
             process.exit(1);
