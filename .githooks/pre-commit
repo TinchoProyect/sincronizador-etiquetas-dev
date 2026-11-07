@@ -30,12 +30,13 @@ case "$REPO_ROOT" in
         ;;
 esac
 
-# 1. Candado en la Notebook: opera exclusivamente en 'desarrollo'
-if [ "$IS_NOTEBOOK" = "1" ] && [ "$BRANCH" = "main" ]; then
+# 1. Candado en la Notebook: opera exclusivamente en 'desarrollo' salvo pase oficial autorizado
+if [ "$IS_NOTEBOOK" = "1" ] && [ "$BRANCH" = "main" ] && [ "$LAMDA_ALLOW_PROD_PUBLISH" != "1" ]; then
     echo "==========================================================================" >&2
-    echo "❌ [CANDADO GIT - NOTEBOOK] Commit en la rama 'main' BLOQUEADO." >&2
-    echo "   La Notebook opera ÚNICAMENTE sobre la rama 'desarrollo' (etiquetas_pruebas)." >&2
-    echo "   Cambiá a 'desarrollo' con: git checkout desarrollo" >&2
+    echo "❌ [CANDADO GIT - NOTEBOOK] Commit directo en la rama 'main' BLOQUEADO." >&2
+    echo "   La Notebook opera sobre la rama 'desarrollo' (etiquetas_pruebas)." >&2
+    echo "   El pase a Producción solo puede ejecutarse bajo orden expresa mediante:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion" >&2
     echo "==========================================================================" >&2
     exit 1
 fi
@@ -45,8 +46,8 @@ if [ "$IS_LAB_FOLDER" = "1" ] && [ "$BRANCH" = "main" ] && [ "$LAMDA_ALLOW_PROD_
     echo "==========================================================================" >&2
     echo "❌ [CANDADO GIT - LABORATORIO] Commit directo en 'main' BLOQUEADO." >&2
     echo "   La carpeta LAMDA-Laboratorio opera únicamente sobre la rama 'desarrollo'." >&2
-    echo "   Para publicar a Producción desde PcAlmacen usá:" >&2
-    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "   Para publicar a Producción bajo orden expresa usá:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion" >&2
     echo "==========================================================================" >&2
     exit 1
 fi

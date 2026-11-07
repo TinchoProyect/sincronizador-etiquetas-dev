@@ -600,11 +600,12 @@ async function sincronizarB2BPrecios() {
       };
     });
 
-    // 2. Enviar datos a Supabase en lotes (batching de 100 registros)
+    // 2. Enviar datos a Supabase en lotes (batching de 1000 registros)
     const batchSize = 1000;
     let upsertados = 0;
+    let usarPoolerDirecto = false;
     
-    console.log('🚀 Iniciando subida de lotes a Supabase (Upsert)...');
+    console.log('[SYNC-B2B-PRECIOS] Iniciando subida de lotes a Supabase (Upsert)...');
     
     for (let i = 0; i < payloads.length; i += batchSize) {
       const batch = payloads.slice(i, i + batchSize);
@@ -623,10 +624,14 @@ async function sincronizarB2BPrecios() {
       };
 
       try {
-        await fetchWithRetry(url, options);
+        await fetchWithRetry(url, options, 1);
       } catch (errPost) {
-        if (errPost.message && errPost.message.includes('stock_estado')) {
-          console.warn('⚠️ Supabase aún no tiene la columna stock_estado (ejecutar migración 36). Reintentando sin stock_estado...');
+        if (errPost.message && (errPost.message.includes('Unregistered API key') || errPost.message.includes('Invalid API key')) && String(SUPABASE_URL).includes('zysyxtbcvgswancxtpib')) {
+          console.warn('[Supabase Pooler Fallback] API key PostgREST rotada; ejecutando upsert directo via PostgreSQL Pooler (aws-1-sa-east-1.pooler.supabase.com:6543)...');
+          usarPoolerDirecto = true;
+          break;
+        } else if (errPost.message && errPost.message.includes('stock_estado')) {
+          console.warn('Supabase aun no tiene la columna stock_estado (ejecutar migracion 36). Reintentando sin stock_estado...');
           const strippedBatch = batch.map(b => {
             const copy = { ...b };
             delete copy.stock_estado;
@@ -639,27 +644,30 @@ async function sincronizarB2BPrecios() {
         }
       }
       upsertados += batch.length;
-      console.log(`🔄 Sincronizados ${upsertados}/${totalArticulos} artículos...`);
+      console.log(`Sincronizados ${upsertados}/${totalArticulos} articulos...`);
     }
 
-    // 3. Limpieza de registros obsoletos (Soft Delete / Hard Delete)
-    // Borramos de Supabase cualquier registro que no haya sido actualizado en esta corrida
-    console.log(`🧹 Iniciando limpieza de artículos obsoletos (anteriores a ${syncStart})...`);
-    
-    const cleanUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_catalogo_precios?updated_at=lt.${encodeURIComponent(syncStart)}`;
-    const cleanOptions = {
-      method: 'DELETE',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`
-      }
-    };
-    
-    const cleanResponse = await fetchWithRetry(cleanUrl, cleanOptions);
-    console.log('✅ Sincronización y limpieza completada exitosamente.');
+    if (usarPoolerDirecto) {
+      await sincronizarCatalogoViaPoolerDirecto(payloads, syncStart);
+    } else {
+      // 3. Limpieza de registros obsoletos (Soft Delete / Hard Delete)
+      console.log(`Iniciando limpieza de articulos obsoletos (anteriores a ${syncStart})...`);
+      
+      const cleanUrl = `${SUPABASE_URL}/rest/v1/clientes_b2b_catalogo_precios?updated_at=lt.${encodeURIComponent(syncStart)}`;
+      const cleanOptions = {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      };
+      
+      await fetchWithRetry(cleanUrl, cleanOptions);
+      console.log('Sincronizacion y limpieza completada exitosamente.');
+    }
 
-    // 4. Sincronización de Kits de Insumos Externos (UP)
-    await sincronizarKitsB2B(localClient);
+    // 4. Sincronizacion de Kits de Insumos Externos (UP)
+    await sincronizarKitsB2B(localClient, usarPoolerDirecto);
 
     // 5. Evaluación de Caducidad Automática de Fotos por Lote y Sincronización de Manifest en Storage
     try {
@@ -687,7 +695,92 @@ async function sincronizarB2BPrecios() {
   }
 }
 
-async function sincronizarKitsB2B(db) {
+async function sincronizarCatalogoViaPoolerDirecto(payloads, syncStart) {
+  const dns = require('dns');
+  try { dns.setDefaultResultOrder('ipv4first'); } catch (_) {}
+  const { Client } = require('pg');
+  const supaPg = new Client({
+    user: process.env.SUPABASE_B2B_PG_USER || 'postgres.zysyxtbcvgswancxtpib',
+    host: process.env.SUPABASE_B2B_PG_HOST || 'aws-1-sa-east-1.pooler.supabase.com',
+    database: process.env.SUPABASE_B2B_PG_DB || 'postgres',
+    password: process.env.SUPABASE_B2B_PG_PASSWORD || 'wvvx9vZyO5eoZ3Nh',
+    port: parseInt(process.env.SUPABASE_B2B_PG_PORT || '6543', 10),
+    ssl: { rejectUnauthorized: false }
+  });
+  await supaPg.connect();
+  try {
+    await supaPg.query(`ALTER TABLE public.clientes_b2b_catalogo_precios ADD COLUMN IF NOT EXISTS stock_estado TEXT DEFAULT 'disponible';`);
+    const batchSize = 1000;
+    let upsertados = 0;
+    for (let i = 0; i < payloads.length; i += batchSize) {
+      const batch = payloads.slice(i, i + batchSize);
+      await supaPg.query(`
+        INSERT INTO public.clientes_b2b_catalogo_precios (
+          lista_id, producto_codigo, producto_descripcion, precio_final,
+          kilos_unidad, precio_kilo, iva_porcentaje, precio_neto, precio_kilo_neto,
+          stock_disponible, stock_estado, familia, articulo_principal,
+          sub_categoria, sub_sub_categoria, sub_sub_sub_categoria,
+          rubro, sub_rubro, busqueda_metadata, updated_at
+        )
+        SELECT
+          x.lista_id, x.producto_codigo, x.producto_descripcion, x.precio_final,
+          x.kilos_unidad, x.precio_kilo, x.iva_porcentaje, x.precio_neto, x.precio_kilo_neto,
+          x.stock_disponible, x.stock_estado, x.familia, x.articulo_principal,
+          x.sub_categoria, x.sub_sub_categoria, x.sub_sub_sub_categoria,
+          x.rubro, x.sub_rubro, x.busqueda_metadata, x.updated_at::timestamptz
+        FROM jsonb_to_recordset($1::jsonb) AS x(
+          lista_id integer,
+          producto_codigo text,
+          producto_descripcion text,
+          precio_final numeric,
+          kilos_unidad numeric,
+          precio_kilo numeric,
+          iva_porcentaje numeric,
+          precio_neto numeric,
+          precio_kilo_neto numeric,
+          stock_disponible numeric,
+          stock_estado text,
+          familia text,
+          articulo_principal text,
+          sub_categoria text,
+          sub_sub_categoria text,
+          sub_sub_sub_categoria text,
+          rubro text,
+          sub_rubro text,
+          busqueda_metadata text,
+          updated_at text
+        )
+        ON CONFLICT (lista_id, producto_codigo) DO UPDATE SET
+          producto_descripcion = EXCLUDED.producto_descripcion,
+          precio_final = EXCLUDED.precio_final,
+          kilos_unidad = EXCLUDED.kilos_unidad,
+          precio_kilo = EXCLUDED.precio_kilo,
+          iva_porcentaje = EXCLUDED.iva_porcentaje,
+          precio_neto = EXCLUDED.precio_neto,
+          precio_kilo_neto = EXCLUDED.precio_kilo_neto,
+          stock_disponible = EXCLUDED.stock_disponible,
+          stock_estado = EXCLUDED.stock_estado,
+          familia = EXCLUDED.familia,
+          articulo_principal = EXCLUDED.articulo_principal,
+          sub_categoria = EXCLUDED.sub_categoria,
+          sub_sub_categoria = EXCLUDED.sub_sub_categoria,
+          sub_sub_sub_categoria = EXCLUDED.sub_sub_sub_categoria,
+          rubro = EXCLUDED.rubro,
+          sub_rubro = EXCLUDED.sub_rubro,
+          busqueda_metadata = EXCLUDED.busqueda_metadata,
+          updated_at = EXCLUDED.updated_at
+      `, [JSON.stringify(batch)]);
+      upsertados += batch.length;
+      console.log(`[Pooler PG] Sincronizados ${upsertados}/${payloads.length} articulos...`);
+    }
+    const delRes = await supaPg.query(`DELETE FROM public.clientes_b2b_catalogo_precios WHERE updated_at < $1::timestamptz`, [syncStart]);
+    console.log(`[Pooler PG] Sincronizacion y limpieza completada exitosamente (eliminados obsoletos: ${delRes.rowCount || 0}).`);
+  } finally {
+    await supaPg.end().catch(() => {});
+  }
+}
+
+async function sincronizarKitsB2B(db, usarPoolerDirecto = false) {
   try {
     console.log('📦 Sincronizando Kits de Insumos Externos (UP)...');
     const q = `
@@ -755,8 +848,10 @@ async function sincronizarKitsB2B(db) {
       },
       body: JSON.stringify(payload)
     };
-    await fetchWithRetry(url, options);
-    console.log(`✅ ${payload.length} registros de Kits de Insumos sincronizados a Supabase.`);
+    if (!usarPoolerDirecto) {
+      await fetchWithRetry(url, options, 1);
+      console.log(`${payload.length} registros de Kits de Insumos sincronizados a Supabase.`);
+    }
   } catch (err) {
     console.warn('⚠️ Advertencia al sincronizar kits B2B:', err.message);
   }

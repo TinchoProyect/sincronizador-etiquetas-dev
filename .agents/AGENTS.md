@@ -23,11 +23,11 @@ Esta regla tiene prioridad absoluta sobre cualquier otra instrucción al iniciar
    - **Rutas Relativas de Informes y PDFs:** Todo informe o archivo PDF generado en `LAMDA-Laboratorio` debe guardarse usando rutas relativas a su propio directorio (`path.join(__dirname, ...)` -> `C:\Users\Martin\Documents\LAMDA-Laboratorio\src\app-etiquetas\documentos`), sin apuntar jamás por ruta fija a `sincronizador-etiquetas - copia`.
 
 3. **Única Vía Autorizada para Pasar a Producción (`"Pasá esto a Producción"`):**
-   - El pase de cambios desde `desarrollo` hacia Producción (`main` + Google Cloud `34.39.187.220` + migración automática de esquema DB `etiquetas_pruebas` -> `etiquetas`) **solo puede ejecutarse desde `PcAlmacen`** mediante el comando:
+   - El pase de cambios desde `desarrollo` hacia Producción (`main` + Google Cloud `34.39.187.220` + migración automática de esquema DB `etiquetas_pruebas` -> `etiquetas`) **solo puede ejecutarse** mediante el comando:
      ```powershell
      node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion
      ```
-   - Este comando **solo puede ejecutarse cuando el usuario lo ordene de forma expresa con la frase `"Pasá esto a Producción"`**.
+   - Este comando **solo puede ejecutarse cuando el usuario lo ordene de forma expresa con la frase `"Pasá esto a Producción"`** (tanto desde `PcAlmacen` como desde la `Notebook`), dejando siempre la carpeta local parada en la rama `desarrollo` al finalizar.
 
 ---
 

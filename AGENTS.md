@@ -30,9 +30,9 @@
 
 1. **Rama y Base Exclusivas:**
    - En la Notebook (`C:\Users\Martin\Documents\LAMDA-Laboratorio`) se trabaja **únicamente** sobre la rama **`desarrollo`** y la base de datos **`etiquetas_pruebas`** (`LAMDA_MODO_LABORATORIO=true`, `DB_NAME=etiquetas_pruebas`, `DB_PASSWORD=taKionga`).
-2. **Prohibición Total de tocar `main` desde la Notebook:**
-   - Desde la Notebook **jamás** se hace `git checkout main`, ni commits en `main`, ni `git push origin main`.
-   - El pase de `desarrollo` a `main` y el despliegue a Producción (`Google Cloud` + `PcAlmacen Standby`) se ejecutan **exclusivamente desde `PcAlmacen`** mediante `node scripts/publicarDesarrolloAProduccion.js`.
+2. **Prohibición de commits/push directos a `main` y Única Vía Oficial de Pase a Producción:**
+   - Desde la Notebook **jamás** se hace `git checkout main`, ni commits directos en `main`, ni `git push origin main` manuales durante tareas de desarrollo.
+   - El pase de `desarrollo` a `main` y el despliegue a Producción (`Google Cloud` + `PcAlmacen Standby`) se ejecutan **exclusivamente** cuando el usuario lo ordene con la frase expresa **`"Pasá esto a Producción"`** mediante `node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion` (tanto desde `PcAlmacen` como desde esta `Notebook`), dejando al finalizar el repositorio local nuevamente en la rama `desarrollo`.
 3. **Panel de Control del Modo Laboratorio:**
    - El ejecutable del panel en la Notebook es `scripts/LamdaControlPanel.exe` (compilado desde `scripts/LamdaControlPanel.cs` con ícono gris `scripts/lamda-lab.ico`).
    - Siempre que se modifique `scripts/LamdaControlPanel.cs`, se debe recompilar `scripts/LamdaControlPanel.exe` con `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /out:"scripts\LamdaControlPanel.exe" /win32icon:"scripts\lamda-lab.ico" "scripts\LamdaControlPanel.cs"`.

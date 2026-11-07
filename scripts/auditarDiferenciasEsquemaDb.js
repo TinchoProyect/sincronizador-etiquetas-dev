@@ -341,7 +341,7 @@ async function sincronizarEsquemaHaciaProduccion() {
     return { changesCount: sqlStatements.length, sqlStatements, summaryLog };
 }
 
-async function sincronizarEsquemaHaciaLaboratorio() {
+async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_pruebas') {
     if (!fs.existsSync(SNAPSHOT_JSON_PATH)) {
         return { changesCount: 0, sqlStatements: [] };
     }
@@ -353,13 +353,13 @@ async function sincronizarEsquemaHaciaLaboratorio() {
         return { changesCount: 0, sqlStatements: [] };
     }
 
-    const labClient = await conectarDbLocal('etiquetas_pruebas');
-    if (!labClient) {
+    const dbClient = await conectarDbLocal(targetDbName);
+    if (!dbClient) {
         return { changesCount: 0, sqlStatements: [] };
     }
 
     try {
-        const currentTables = await extraerEsquemaDesdeCliente(labClient);
+        const currentTables = await extraerEsquemaDesdeCliente(dbClient);
         const sqlStatements = [];
         for (const [tableName, snapCols] of Object.entries(snapshotTables)) {
             if (!currentTables[tableName]) {
@@ -388,20 +388,24 @@ async function sincronizarEsquemaHaciaLaboratorio() {
         }
 
         if (sqlStatements.length > 0) {
-            await labClient.query('SET default_transaction_read_only = off;');
+            await dbClient.query('SET default_transaction_read_only = off;');
             for (const stmt of sqlStatements) {
                 try {
-                    await labClient.query(stmt);
+                    await dbClient.query(stmt);
                 } catch (_) {}
             }
-            console.log(`✅ [SCHEMA-AUDIT] Aplicados ${sqlStatements.length} cambios estructurales de 'schema_laboratorio_snapshot.json' sobre 'etiquetas_pruebas'.`);
+            console.log(`✅ [SCHEMA-AUDIT] Aplicados ${sqlStatements.length} cambios estructurales de 'schema_laboratorio_snapshot.json' sobre '${targetDbName}'.`);
         } else {
-            console.log(`✅ [SCHEMA-AUDIT] Base 'etiquetas_pruebas' ya cuenta con el 100% de las tablas/columnas del snapshot.`);
+            console.log(`✅ [SCHEMA-AUDIT] Base '${targetDbName}' ya cuenta con el 100% de las tablas/columnas del snapshot.`);
         }
         return { changesCount: sqlStatements.length, sqlStatements };
     } finally {
-        try { await labClient.end(); } catch (_) {}
+        try { await dbClient.end(); } catch (_) {}
     }
+}
+
+async function sincronizarEsquemaHaciaLaboratorio() {
+    return sincronizarSnapshotHaciaBaseLocal('etiquetas_pruebas');
 }
 
 async function main() {
@@ -412,6 +416,10 @@ async function main() {
     }
     if (args.includes('--apply-lab')) {
         await sincronizarEsquemaHaciaLaboratorio();
+        return;
+    }
+    if (args.includes('--apply-local-etiquetas')) {
+        await sincronizarSnapshotHaciaBaseLocal('etiquetas');
         return;
     }
     await exportarSnapshotLaboratorio();

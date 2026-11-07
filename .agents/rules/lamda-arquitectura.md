@@ -10,8 +10,8 @@ description: Reglas permanentes de arquitectura LAMDA (Producción vs Laboratori
    - **Laboratorio (`desarrollo`):** Corre en espejo entre la **Notebook** (`C:\Users\Martin\Documents\LAMDA-Laboratorio`) y el Laboratorio de **`PcAlmacen`** (`C:\Users\Martin\Documents\LAMDA-Laboratorio`) sobre la base de pruebas `etiquetas_pruebas`.
 
 2. **Reglas Operativas en la Notebook (`SERVEDIORA`):**
-   - Se trabaja **únicamente** sobre la rama `desarrollo` y la base `etiquetas_pruebas` (`LAMDA_MODO_LABORATORIO=true`, `DB_PASSWORD=taKionga`).
-   - **Prohibido** hacer commits o push a la rama `main` desde la Notebook. El pase de `desarrollo` a `main` y el despliegue a Producción se ejecutan desde `PcAlmacen` mediante `node scripts/publicarDesarrolloAProduccion.js`.
+   - En tareas de desarrollo se trabaja **únicamente** sobre la rama `desarrollo` y la base `etiquetas_pruebas` (`LAMDA_MODO_LABORATORIO=true`, `DB_PASSWORD=taKionga`).
+   - **Prohibido** hacer commits o push directos a la rama `main`. El pase de `desarrollo` a `main` y el despliegue a Producción solo pueden ejecutarse cuando el usuario lo ordene con la frase expresa **`"Pasá esto a Producción"`** mediante `node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion`.
 
 3. **Flujo Automático de Sincronización en `desarrollo`:**
    - **Al iniciar tarea:** Verificar `git status`, limpiar ruido de runtime, ejecutar `git pull --rebase origin desarrollo` y aplicar diferencias de esquema con `node scripts/auditarDiferenciasEsquemaDb.js --apply-lab`.

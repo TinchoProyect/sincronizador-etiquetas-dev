@@ -30,25 +30,14 @@ do
     esac
 done
 
-# 1. Candado estricto en la Notebook: jamás se hace push a 'main'
-if [ "$IS_NOTEBOOK" = "1" ] && [ "$PUSHING_TO_MAIN" = "1" ]; then
-    echo "==========================================================================" >&2
-    echo "❌ [CANDADO GIT - NOTEBOOK] Push hacia la rama 'main' BLOQUEADO." >&2
-    echo "   Esta Notebook opera únicamente sobre 'origin/desarrollo'." >&2
-    echo "   El pase de 'desarrollo' a 'main' y despliegue a Producción se ejecutan" >&2
-    echo "   exclusivamente desde PcAlmacen mediante:" >&2
-    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
-    echo "==========================================================================" >&2
-    exit 1
-fi
-
-# 2. Candado en PcAlmacen: push a 'main' debe hacerse mediante publicarDesarrolloAProduccion.js
+# 1. Candado estricto en la Notebook y PcAlmacen: push a 'main' bloqueado salvo publicador oficial con --confirmar-produccion
 if [ "$PUSHING_TO_MAIN" = "1" ] && [ "$LAMDA_ALLOW_PROD_PUBLISH" != "1" ]; then
     echo "==========================================================================" >&2
-    echo "❌ [CANDADO GIT - PRODUCCIÓN] Push manual directo a 'main' BLOQUEADO." >&2
-    echo "   Para pasar cambios de 'desarrollo' a 'main' sincronizando esquemas DB" >&2
-    echo "   y actualizando Google Cloud + PcAlmacen, ejecutá desde PcAlmacen:" >&2
-    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "❌ [CANDADO GIT - PRODUCCIÓN] Push manual directo hacia la rama 'main' BLOQUEADO." >&2
+    echo "   En tareas normales de desarrollo solo se permite subir a 'origin/desarrollo'." >&2
+    echo "   El pase a Producción solo puede ejecutarse cuando el usuario lo ordene" >&2
+    echo "   expresamente con la frase \"Pasá esto a Producción\" mediante:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion" >&2
     echo "==========================================================================" >&2
     exit 1
 fi
