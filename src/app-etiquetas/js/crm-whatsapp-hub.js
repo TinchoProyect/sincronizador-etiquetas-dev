@@ -193,6 +193,64 @@
                 opacity: 0.9;
             }
 
+            @media (max-width: 768px) {
+                .pizarra-wa-entrantes-box {
+                    padding: 8px 10px;
+                    margin-bottom: 10px;
+                }
+                .pizarra-wa-entrantes-header {
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .pizarra-wa-entrantes-title {
+                    flex-wrap: wrap;
+                    font-size: 0.88rem;
+                    overflow: visible;
+                }
+                .pizarra-wa-resumen-inline {
+                    width: 100%;
+                    font-size: 0.78rem;
+                    white-space: normal;
+                    display: block;
+                    margin-top: 2px;
+                }
+                .pizarra-wa-acordeon-body {
+                    max-height: 320px;
+                    padding-right: 0;
+                }
+                .pizarra-wa-entrante-card {
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: 8px;
+                    padding: 8px 10px;
+                    flex-wrap: wrap;
+                }
+                .pizarra-wa-entrante-card > div:first-child {
+                    white-space: normal !important;
+                    overflow: visible !important;
+                    text-overflow: clip !important;
+                    line-height: 1.38;
+                }
+                .pizarra-wa-msg-preview {
+                    white-space: normal;
+                    max-width: 100%;
+                    display: block;
+                    margin-top: 3px;
+                    font-size: 0.82rem;
+                }
+                .pizarra-wa-entrante-card > div:last-child {
+                    width: 100%;
+                    justify-content: flex-end;
+                    gap: 6px !important;
+                    flex-wrap: wrap;
+                }
+                .pizarra-wa-btn {
+                    padding: 6px 10px;
+                    font-size: 0.78rem;
+                    min-height: 34px;
+                }
+            }
+
             /* Asegurar que cualquier modal SweetAlert2 se muestre siempre POR ENCIMA de la consola WhatsApp */
             .swal2-container {
                 z-index: 20000 !important;

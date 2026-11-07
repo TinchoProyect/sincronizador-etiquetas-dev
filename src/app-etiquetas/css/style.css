@@ -3423,9 +3423,533 @@ footer {
   transform: translateY(-1px);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ETAPA 1 — ADAPTACIÓN MÓVIL VERTICAL (PANTALLA PRINCIPAL 3000, CABECERA,
+   MENÚ TRES RAYITAS Y PIZARRA CENTRAL) — EXCLUSIVO <= 768px
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .container {
+    padding: 8px 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 
+  /* 1. Cabecera Compacta en 2 Filas */
+  .main-header {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    gap: 10px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+  }
 
+  .header-left-area {
+    order: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
 
+  .header-logo-container {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
 
+  .header-logo-img {
+    height: 30px;
+    width: auto;
+  }
 
+  .header-logo-text {
+    font-size: 0.72rem;
+    letter-spacing: 2.5px;
+    margin-top: 0;
+  }
 
+  .header-menu-container {
+    order: 2;
+    width: auto;
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  .hamburger-button {
+    min-width: 46px;
+    min-height: 46px;
+    padding: 8px 10px;
+    font-size: 1.55rem;
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    color: var(--dark-slate);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+
+  .header-nav-bar {
+    order: 3;
+    width: 100%;
+    margin: 2px 0 0 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .header-nav-bar .nav-btn {
+    width: 100%;
+    min-height: 42px;
+    padding: 7px 10px !important;
+    border-radius: 10px !important;
+    font-size: 0.85rem !important;
+    justify-content: center;
+    gap: 6px !important;
+  }
+
+  /* 2. Menú Lateral de las Tres Rayitas (Ergonomía de Pulgar en Vertical) */
+  .sidebar-drawer {
+    width: min(92vw, 360px);
+    max-width: 100vw;
+    right: -105vw;
+    height: 100vh;
+    height: 100dvh;
+    overscroll-behavior: contain;
+  }
+
+  .sidebar-drawer.open {
+    right: 0;
+  }
+
+  .sidebar-header {
+    padding: 14px 16px;
+    position: sticky;
+    top: 0;
+    background: #ffffff;
+    z-index: 5;
+  }
+
+  .sidebar-header h3 {
+    font-size: 1.05rem;
+  }
+
+  .sidebar-close {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    font-size: 1.5rem;
+    color: #334155;
+  }
+
+  .sidebar-content {
+    padding: 12px 10px calc(28px + env(safe-area-inset-bottom, 0px)) 10px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .nav-tree {
+    gap: 8px;
+  }
+
+  .tree-link,
+  .tree-branch-header {
+    min-height: 48px;
+    padding: 11px 14px;
+    font-size: 0.95rem;
+    line-height: 1.28;
+    box-sizing: border-box;
+    gap: 4px;
+  }
+
+  .tree-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 1.15rem;
+    margin-right: 10px;
+  }
+
+  .chevron {
+    font-size: 0.8rem;
+    padding: 4px 6px;
+  }
+
+  .tree-section-header {
+    padding: 12px 14px 4px 14px;
+    font-size: 0.72rem;
+  }
+
+  .tree-sublink {
+    min-height: 44px;
+    padding: 10px 12px 10px 14px;
+    font-size: 0.91rem;
+    line-height: 1.3;
+    box-sizing: border-box;
+  }
+
+  .nested-branch .tree-branch-header {
+    min-height: 44px;
+    padding: 10px 12px 10px 14px;
+    font-size: 0.91rem;
+    box-sizing: border-box;
+  }
+
+  .nested-branch .tree-submenu {
+    margin-left: 12px;
+    margin-right: 6px;
+    padding: 4px 0;
+    border-left: 2px solid #cbd5e1;
+    border-radius: 0 0 8px 8px;
+  }
+
+  .nested-branch .tree-sublink {
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 0.88rem;
+    line-height: 1.3;
+    box-sizing: border-box;
+  }
+
+  /* 3. Pizarra Central y Reloj / Barra Superior */
+  .dashboard-container {
+    width: 100%;
+    margin: 4px auto 18px auto;
+    padding: 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  .pizarra-card {
+    padding: 14px 12px 18px 12px;
+    border-radius: 16px;
+    overflow: visible;
+  }
+
+  .pizarra-top-row {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .pizarra-clock-wrapper {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pizarra-time {
+    font-size: 1.25rem;
+  }
+
+  .pizarra-date {
+    font-size: 0.84rem;
+  }
+
+  .pizarra-top-actions {
+    width: 100%;
+    margin-left: 0 !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  #pizarra-ia-global-widget {
+    width: 100%;
+  }
+
+  #pizarra-ia-global-widget > div:first-child {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: space-between;
+    padding: 7px 12px !important;
+    flex-wrap: wrap;
+  }
+
+  .pizarra-ia-dropdown-panel {
+    position: relative !important;
+    right: auto !important;
+    top: auto !important;
+    margin-top: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .btn-limpiar-pizarra {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+  }
+
+  .pizarra-extra-widgets {
+    margin-top: 14px;
+    gap: 10px;
+  }
+
+  /* 4. Plan de Trabajo de Depósito y Horizontes en Vertical */
+  .pizarra-plan-deposito-header {
+    padding: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .pizarra-plan-deposito-header > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .pizarra-pdf-pair {
+    flex: 1 1 calc(50% - 4px);
+    display: inline-flex;
+  }
+
+  .pizarra-btn-pdf-hoy,
+  .pizarra-btn-pdf-externa,
+  .pizarra-btn-pdf-semanal {
+    padding: 7px 9px;
+    font-size: 0.76rem;
+    flex: 1;
+    justify-content: center;
+    min-height: 34px;
+    box-sizing: border-box;
+  }
+
+  .pizarra-btn-clip-anexo {
+    padding: 7px 10px;
+    font-size: 0.85rem;
+    min-height: 34px;
+    box-sizing: border-box;
+  }
+
+  .pizarra-plan-deposito-body {
+    padding: 10px 8px;
+  }
+
+  .pizarra-horizontes-tabs {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pizarra-horizonte-tab {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 11px;
+  }
+
+  .pizarra-ldn-acordeon-header {
+    padding: 9px 10px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pizarra-ldn-acordeon-titulo {
+    font-size: 0.88rem;
+  }
+
+  .pizarra-ldn-acordeon-body {
+    padding: 6px;
+  }
+
+  .pizarra-estacion-header {
+    padding: 9px 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .pizarra-estacion-main-info {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .pizarra-estacion-titulo {
+    font-size: 0.92rem;
+    line-height: 1.3;
+  }
+
+  .pizarra-estacion-paso {
+    font-size: 0.83rem;
+    line-height: 1.45;
+    padding-left: 0;
+    word-break: break-word;
+  }
+
+  .pizarra-estacion-badges-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pizarra-estacion-drawer {
+    padding: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pizarra-consciente-table {
+    min-width: 480px;
+    font-size: 0.75rem;
+  }
+
+  /* 5. Pedidos, Demanda Satisfecha, Entregas sin Facturar y Trazabilidad */
+  .pizarra-pedido-header {
+    padding: 6px 8px;
+    font-size: 0.86rem;
+    line-height: 1.35;
+  }
+
+  .pizarra-subitems-container {
+    padding-left: 10px;
+    margin-left: 6px;
+  }
+
+  .pizarra-subitem-prod {
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+  }
+
+  .pizarra-demanda-fila {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .pizarra-demanda-acciones {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .btn-demanda-action {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pizarra-seccion-entregas-header {
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pizarra-alert-title-inline {
+    font-size: 0.88rem;
+  }
+
+  .pizarra-entrega-fila {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .pizarra-entrega-acciones {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .pizarra-trazabilidad-drawer {
+    padding: 10px;
+  }
+
+  .trazabilidad-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .trazabilidad-tabla-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .trazabilidad-tabla {
+    min-width: 440px;
+  }
+
+  /* 6. CRM Seguimientos WhatsApp y Jornadas de Colaboradores */
+  .pizarra-crm-card {
+    padding: 10px 12px;
+  }
+
+  .pizarra-crm-title-area {
+    flex-wrap: wrap;
+    font-size: 0.88rem;
+  }
+
+  .pizarra-crm-actions {
+    gap: 6px;
+  }
+
+  .btn-crm-enviar {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+    min-height: 38px;
+  }
+
+  .btn-crm-action {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    min-height: 34px;
+  }
+
+  .pizarra-crm-upcoming-banner {
+    padding: 8px 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .btn-ver-monitor-wa {
+    width: 100%;
+    text-align: center;
+    padding: 7px 10px;
+  }
+
+  .colaborador-empty-banner {
+    width: 100%;
+  }
+
+  .btn-iniciar-jornada-pizarra {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .btn-finalizar-jornada {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  footer {
+    margin-top: 16px;
+    padding: 12px 0;
+    font-size: 0.82rem;
+  }
+}

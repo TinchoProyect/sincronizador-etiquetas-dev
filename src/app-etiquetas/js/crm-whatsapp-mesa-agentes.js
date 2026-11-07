@@ -3426,7 +3426,7 @@
                 <span style="font-size: 0.75rem; color: #64748b; font-weight: 900; margin-left: 2px;">${arrow}</span>
             </div>
             ${isOpen ? `
-            <div onclick="event.stopPropagation()" style="position: absolute; right: 0; top: calc(100% + 7px); z-index: 300; width: 430px; max-width: 94vw; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; padding: 12px 14px; box-shadow: 0 12px 32px rgba(15,23,42,0.18); text-align: left;">
+            <div class="pizarra-ia-dropdown-panel" onclick="event.stopPropagation()" style="position: absolute; right: 0; top: calc(100% + 7px); z-index: 300; width: 430px; max-width: 94vw; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; padding: 12px 14px; box-shadow: 0 12px 32px rgba(15,23,42,0.18); text-align: left;">
                 <!-- Sección 0: Herramientas y Accesos Rápidos (Mamus, Instalar LAMDA, Estado QR WhatsApp) -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 11px; margin-bottom: 10px;">
                     <div style="font-size: 0.69rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #64748b; margin-bottom: 7px;">

@@ -2852,6 +2852,7 @@ function openSidebar() {
   if (drawer && overlay) {
     drawer.classList.add('open');
     overlay.classList.add('open');
+    if (window.innerWidth <= 768) document.body.style.overflow = 'hidden';
   }
 }
 
@@ -2861,6 +2862,7 @@ function closeSidebar() {
   if (drawer && overlay) {
     drawer.classList.remove('open');
     overlay.classList.remove('open');
+    document.body.style.overflow = '';
   }
 }
 
