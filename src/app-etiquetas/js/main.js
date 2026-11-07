@@ -30,7 +30,7 @@ async function cargarIndicadorEntorno() {
       if (iconElement) iconElement.textContent = '⚠️';
       if (textElement) textElement.textContent = `Pruebas: ${data.database}`;
       if (pulseElement) pulseElement.style.display = 'block';
-      indicator.style.display = 'inline-block';
+      indicator.style.display = 'none';
       
       console.log('%c🧪 MODO PRUEBAS ACTIVO', 'background: #ff6b6b; color: white; padding: 8px; font-weight: bold; font-size: 14px;');
       console.log(`📊 Base de datos: ${data.database}`);
@@ -44,7 +44,7 @@ async function cargarIndicadorEntorno() {
       if (iconElement) iconElement.textContent = '●';
       if (textElement) textElement.textContent = 'Producción';
       if (pulseElement) pulseElement.style.display = 'block';
-      indicator.style.display = 'inline-block';
+      indicator.style.display = 'none';
       
       console.log('%c✅ MODO PRODUCCIÓN', 'background: #28a745; color: white; padding: 8px; font-weight: bold; font-size: 14px;');
       console.log(`📊 Base de datos: ${data.database}`);
@@ -2225,8 +2225,10 @@ async function cargarIndicadorWhatsApp() {
   if (!container) return;
 
   const portFacturacion = 3004;
-  const url = `${window.location.protocol}//${window.location.hostname}:${portFacturacion}/facturacion/whatsapp/status`;
-  const configUrl = `${window.location.protocol}//${window.location.hostname}:${portFacturacion}/pages/whatsapp-config.html`;
+  const rawUrl = `${window.location.protocol}//${window.location.hostname}:${portFacturacion}/facturacion/whatsapp/status`;
+  const rawConfigUrl = `${window.location.protocol}//${window.location.hostname}:${portFacturacion}/pages/whatsapp-config.html`;
+  const url = typeof window.LAMDA_RESOLVE_URL === 'function' ? window.LAMDA_RESOLVE_URL(rawUrl) : rawUrl;
+  const configUrl = typeof window.LAMDA_RESOLVE_URL === 'function' ? window.LAMDA_RESOLVE_URL(rawConfigUrl) : rawConfigUrl;
 
   try {
     const response = await fetch(url);

@@ -681,12 +681,13 @@
     };
 
     /**
-     * Actualiza el contador en el botón de la barra superior de index.html
+     * Actualiza el contador en el acordeón de la Pizarra de index.html
      */
     function actualizarBadgeHeaderWhatsapp(cantidad) {
+        const n = parseInt(cantidad || 0);
+        window.__pizarraWaUnread = n;
         const badge = document.getElementById('nav-whatsapp-crm-badge');
         if (!badge) return;
-        const n = parseInt(cantidad || 0);
         if (n > 0) {
             badge.textContent = n;
             badge.style.display = 'inline-flex';

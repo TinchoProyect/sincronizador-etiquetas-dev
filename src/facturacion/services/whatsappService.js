@@ -29,16 +29,8 @@ function esModoEspejoWa() {
     return flagEspejo === 'true' || flagEspejo === '1';
 }
 
-function esModoStandbyPasivoWa() {
-    const role = String(process.env.LAMDA_ROLE || '').trim().toUpperCase();
-    const standby = String(process.env.WHATSAPP_STANDBY_PASIVO || '').trim().toLowerCase();
-    return role === 'GALPON_BRIDGE_ONLY' || standby === 'true' || standby === '1';
-}
-
 function esModoPruebaNubeWa() {
-    const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
-    const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
-    return flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
+    return false;
 }
 
 function obtenerNumeroRedireccionSeguraWa() {
@@ -145,9 +137,7 @@ const limpiarLockFiles = (sessionPath) => {
 const killZombieChrome = () => {
     return new Promise((resolve) => {
         if (process.platform !== 'win32') {
-            console.log('🧹 [WHATSAPP-SERVICE] Limpiando procesos Chromium huérfanos en Linux (session-lamda-billing)...');
-            exec('pkill -9 -f "session-lamda-billing" || true', () => resolve());
-            return;
+            return resolve();
         }
         
         console.log('🧹 [WHATSAPP-SERVICE] Buscando procesos de Chrome huérfanos con candados de sesión...');
@@ -170,13 +160,6 @@ const killZombieChrome = () => {
  * Inicializar cliente de WhatsApp
  */
 async function inicializarWhatsApp(force = false, isFallback = false) {
-    if (esModoStandbyPasivoWa()) {
-        console.log('🛑 [WHATSAPP-SERVICE] MODO STANDBY PASIVO (GALPON_BRIDGE_ONLY): No se inicia Chromium local para no competir con la sesión titular del VPS en la nube.');
-        connectionStatus = 'STANDBY_PASIVO_GALPON';
-        connectionStep = 0;
-        connectionStepText = 'Modo Standby Pasivo en PcAlmacen (Titular activo en Nube)';
-        return { success: true, status: 'STANDBY_PASIVO_GALPON', standby: true, message: 'Standby Pasivo en Galpón (Titular en Nube)' };
-    }
     if (esModoLaboratorioWa() && !esModoPruebaNubeWa()) {
         console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO: Omitiendo inicio de Chromium/WhatsApp Web real (envíos simulados localmente).');
         connectionStatus = 'CONECTADO';
@@ -292,8 +275,8 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             connectionStepText = '¡Listo! Dispositivo conectado.';
             qrCodeDataUrl = null;
 
-            if (esModoEspejoWa() || esModoLaboratorioWa() || esModoPruebaNubeWa() || esModoStandbyPasivoWa()) {
-                console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Prueba Nube/Standby activo: se omite sincronización CRM y monitor de no leídos para evitar colisiones.");
+            if (esModoEspejoWa() || esModoLaboratorioWa() || esModoPruebaNubeWa()) {
+                console.log("🔒 [WHATSAPP-GUARD] Modo Espejo/Laboratorio activo: se omite sincronización CRM en segundo plano para evitar colisiones.");
                 return;
             }
             // Sincronizar en segundo plano los chats recientes con clientes Búnker al conectar
@@ -311,17 +294,8 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         client.on('message_create', async (msg) => {
             try {
                 if (!msg) return;
-                if (esModoEspejoWa() || esModoStandbyPasivoWa()) {
-                    return;
-                }
                 let chatId = msg.fromMe ? msg.to : msg.from;
                 if (!chatId || chatId.endsWith('@g.us') || chatId.includes('broadcast') || chatId.endsWith('@newsletter')) {
-                    return;
-                }
-
-                // En Modo Prueba Nube (4° dispositivo en espejo silencioso), si el chatId ya es un número @c.us y no es el número de resguardo,
-                // salir inmediatamente sin tocar pupPage ni activar transcripciones de IA (Chofer/Gemini) duplicadas.
-                if (esModoPruebaNubeWa() && !chatId.endsWith('@lid') && !esNumeroPropioPruebaWa(chatId)) {
                     return;
                 }
 
@@ -350,11 +324,11 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
                     } catch (eLid) {}
                 }
 
-                // 🛡️ PROTECCIÓN TOTAL DE MENSAJES EN PRUEBA PARALELA DE NUBE / STANDBY:
+                // 🛡️ PROTECCIÓN DE MENSAJES ENTRANTES EN PRUEBA PARALELA DE NUBE:
                 // Mientras PcAlmacen sigue siendo el servidor titular del depósito, el servidor de prueba en la nube
-                // ignora por completo los mensajes y audios de clientes reales (tanto entrantes como salientes de otros dispositivos),
-                // evitando transcripciones duplicadas de audios con Gemini o respuestas cruzadas.
-                if ((esModoPruebaNubeWa() || esModoEspejoWa() || esModoStandbyPasivoWa()) && !esNumeroPropioPruebaWa(chatId)) {
+                // ignora por completo los mensajes y audios entrantes de clientes reales (!msg.fromMe), evitando
+                // transcripciones duplicadas de audios o respuestas cruzadas.
+                if ((esModoPruebaNubeWa() || esModoEspejoWa()) && !msg.fromMe && !esNumeroPropioPruebaWa(chatId)) {
                     return;
                 }
 
@@ -407,9 +381,7 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         client.on('message_ack', async (msg, ack) => {
             try {
                 if (!msg || !msg.id?._serialized) return;
-                if (esModoEspejoWa() || esModoStandbyPasivoWa()) return;
                 const chatId = msg.fromMe ? msg.to : msg.from;
-                if (esModoPruebaNubeWa() && !esNumeroPropioPruebaWa(chatId)) return;
                 await crmWhatsappDb.actualizarAckMensaje(msg.id._serialized, chatId, ack);
             } catch (errAck) {
                 console.warn('⚠️ [WHATSAPP-SERVICE] Error procesando message_ack para CRM:', errAck.message);
@@ -520,11 +492,7 @@ const obtenerEstado = () => {
         qr: qrCodeDataUrl,
         step: connectionStep,
         stepText: connectionStepText,
-        error: lastError,
-        modoPruebaNube: esModoPruebaNubeWa(),
-        modoEspejo: esModoEspejoWa(),
-        modoStandbyPasivo: esModoStandbyPasivoWa(),
-        safeRedirectTo: obtenerNumeroRedireccionSeguraWa()
+        error: lastError
     };
 };
 
@@ -1414,9 +1382,7 @@ const transcribirAudiosDeChat = async ({ chatId, msgIds = [], maxAudios = 4 } = 
  * Apagar cliente de WhatsApp de forma ordenada y limpia
  */
 async function shutdown() {
-    // IMPORTANTE: En apagado/transición a Standby NUNCA se invoca client.logout(),
-    // únicamente client.destroy() para cerrar Chromium preservando las llaves de sesión.
-    console.log('🔌 [WHATSAPP-SERVICE] Apagando cliente de WhatsApp de forma pasiva (sin logout)...');
+    console.log('🔌 [WHATSAPP-SERVICE] Apagando cliente de WhatsApp...');
     if (client) {
         try {
             await client.destroy();

@@ -32,7 +32,7 @@ const {
     obtenerResumenColaRetenida
 } = require('../src/services/zebraPrintBridgeService');
 
-const CLOUD_API_URL = (process.env.LAMDA_CLOUD_PRINT_URL || '').replace(/\/+$/, '');
+const CLOUD_API_URL = (process.env.LAMDA_CLOUD_PRINT_URL || process.env.CLOUD_BASE_URL || 'https://logistica.lamdaser.com').replace(/\/+$/, '');
 const PRINT_TOKEN = String(process.env.LAMDA_PRINT_BRIDGE_TOKEN || obtenerSecretoPresenciaZebra()).trim();
 const POLL_INTERVAL_MS = parseInt(process.env.ZEBRA_BRIDGE_POLL_MS || '1000', 10);
 const LOCAL_PRESENCE_PORT = parseInt(process.env.ZEBRA_LOCAL_PRESENCE_PORT || '3099', 10);

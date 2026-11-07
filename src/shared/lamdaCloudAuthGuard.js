@@ -211,7 +211,8 @@ function esRutaPublicaAllowlist(reqOrPath) {
         '/api/system/shortcut-desktop',
         '/api/system/auth/sync-cookie',
         '/api/system/auth/logout',
-        '/api/system/print-queue/agent-pull'
+        '/api/system/print-queue/agent-pull',
+        '/api/admin/db-snapshot-pruebas'
     ]);
 
     if (exactPublicPaths.has(reqPathLower)) {

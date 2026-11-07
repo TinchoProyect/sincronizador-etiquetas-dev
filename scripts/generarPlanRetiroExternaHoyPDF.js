@@ -1,5 +1,5 @@
 /**
- * Generador del PDF Operativo: RETIRO PARA PRODUCCIÓN EXTERNA — LÍNEA DE NEGOCIO 4, 5 Y 6 (MIÉRCOLES 04/11/2026)
+ * Generador del PDF Operativo: RETIRO PARA PRODUCCIÓN EXTERNA — LÍNEA DE NEGOCIO 4, 5 Y 6 (JUEVES 05/11/2026)
  * DIRECTRIZ OFICIAL DEL DIRECTOR:
  * - "En cuanto a retiro externo, si no hay nada para retirar, solamente el informe tiene que decir
  *    que no hay nada para producir y nada más, no tiene que decir 'ah, ya trajiste esto, entonces'."
@@ -41,7 +41,7 @@ async function generarPDFRetiroExternaHoy() {
     });
 
   doc.fillColor('#475569').font('Helvetica').fontSize(8.2)
-    .text('Miércoles 04/11/2026  ·  Total a retirar hoy: 0 UPs  ·  Finitud Externa Alcanzada', startX + 115, 44, {
+    .text('Jueves 05/11/2026  ·  Total a retirar hoy: 0 UPs  ·  Finitud Externa Alcanzada', startX + 115, 44, {
       width: pageWidth - 115,
       align: 'right',
       lineBreak: false

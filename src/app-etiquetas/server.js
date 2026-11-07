@@ -539,6 +539,7 @@ function httpGetJson(url) {
   });
 }
 
+require("../shared/connectionBoxEndpoint").registerConnectionBoxRoutes(app, router, pool);
 // Módulo Producción (resumen_faltantes_parciales)
 router.get('/pizarra/resumen_faltantes_parciales', async (req, res) => {
   try {

@@ -236,13 +236,6 @@
             <p>Conecta el sistema LAMDA a tu cuenta de WhatsApp</p>
         </div>
 
-        <div id="safe-mirror-banner" style="display: none; background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #2563eb; border-radius: 0.65rem; padding: 0.9rem 1rem; margin-bottom: 1.25rem; font-size: 0.84rem; line-height: 1.45; color: #1e3a8a;">
-            <div style="font-weight: 800; margin-bottom: 0.25rem;">🛡️ Modo Espejo Silencioso (4° Cupo de Dispositivo Vinculado)</div>
-            <div>• <strong>Cero interferencia con PcAlmacen:</strong> Vincular este QR usa el 4° lugar disponible de WhatsApp sin desconectar la PC del depósito ni los celulares.</div>
-            <div>• <strong>Silencio ante clientes reales:</strong> No marca mensajes como leídos ni responde o transcribe audios de clientes en duplicado.</div>
-            <div>• <strong>Redirección de resguardo:</strong> Todo envío de prueba desde aquí se redirige exclusivamente al número seguro <strong id="safe-redirect-num-label">221-6615746</strong>.</div>
-        </div>
-
         <div class="status-card">
             <div class="status-info">
                 <span class="status-label">Estado de Conexión</span>
@@ -260,15 +253,12 @@
             <p style="color: var(--text-muted); font-size: 0.9rem;" id="qr-status-msg">Iniciando servicio de WhatsApp...</p>
         </div>
 
-        <div class="actions">
-            <button id="btn-test-whatsapp-safe" type="button" class="btn btn-primary" style="display: none; background-color: #059669;" onclick="enviarMensajePruebaResguardo()">
-                🧪 Enviar WhatsApp de Prueba a Resguardo (221-6615746)
-            </button>
-            <a href="/pages/facturas.html" class="btn btn-secondary">
-                ⬅️ Volver a Facturación
+        <div class="actions" style="display:flex; gap:0.75rem;">
+            <a href="http://localhost:3000/" class="btn btn-secondary">
+                🏠 Volver al Inicio
             </a>
-            <a href="/gw/3000/" class="btn btn-secondary">
-                🏠 Ir a la Pantalla Principal
+            <a href="http://localhost:3004/pages/facturas.html" class="btn btn-secondary">
+                ⬅️ Volver a Facturación
             </a>
         </div>
     </div>
@@ -384,21 +374,10 @@
                     throw new Error(result.error);
                 }
 
-                const { status, qr, step, stepText, error, modoPruebaNube, safeRedirectTo } = result.data;
+                const { status, qr, step, stepText, error } = result.data;
                 const statusText = document.getElementById('status-text');
                 const btnLogout = document.getElementById('btn-logout');
                 const qrContainer = document.getElementById('qr-container');
-                const safeBanner = document.getElementById('safe-mirror-banner');
-                const btnTestSafe = document.getElementById('btn-test-whatsapp-safe');
-                if (safeBanner) {
-                    safeBanner.style.display = modoPruebaNube ? 'block' : 'none';
-                }
-                if (safeRedirectTo && document.getElementById('safe-redirect-num-label')) {
-                    document.getElementById('safe-redirect-num-label').textContent = '+' + safeRedirectTo;
-                }
-                if (btnTestSafe) {
-                    btnTestSafe.style.display = (status === 'CONECTADO') ? 'flex' : 'none';
-                }
 
                 // Enviar logs a la consola de desarrollo (F12) para auditorías rápidas
                 console.log(`[WHATSAPP-STATUS] Estado: ${status} | Paso: ${step || 0} | Detalle: ${stepText || ''}`);
@@ -512,43 +491,6 @@
                 });
             }
         });
-
-        async function enviarMensajePruebaResguardo() {
-            try {
-                Swal.fire({
-                    title: 'Enviando WhatsApp de prueba...',
-                    text: 'Despachando mensaje al número de resguardo (221-6615746)...',
-                    allowOutsideClick: false,
-                    didOpen: () => { Swal.showLoading(); }
-                });
-                const ahora = new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
-                const response = await fetch(`${API_URL}/enviar-mensaje`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        destinatarios: '5492216615746',
-                        mensajeTexto: `✅ Prueba de conexión WhatsApp Cloud (4° dispositivo vinculado en Modo Espejo Silencioso) verificada con éxito el ${ahora}. PcAlmacen permanece 100% intacta como titular.`
-                    })
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: '¡WhatsApp de Prueba Enviado!',
-                        text: 'Revisá el WhatsApp del número de resguardo (221-6615746).',
-                        confirmButtonColor: '#059669'
-                    });
-                } else {
-                    throw new Error(data.message || data.error || 'No se pudo enviar el mensaje de prueba.');
-                }
-            } catch (err) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error al enviar prueba',
-                    text: err.message
-                });
-            }
-        }
 
         // Iniciar polling pasivo cada 2.5 segundos
         actualizarEstado();

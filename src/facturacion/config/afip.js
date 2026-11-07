@@ -1,5 +1,12 @@
 const path = require('path');
+const _preLabAfip = process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO;
+const _preDbAfip = process.env.DB_NAME;
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), override: true });
+if (_preLabAfip === 'true' || _preLabAfip === '1' || _preDbAfip === 'etiquetas_pruebas') {
+    process.env.LAMDA_MODO_LABORATORIO = 'true';
+    process.env.MODO_LABORATORIO = 'true';
+    process.env.DB_NAME = 'etiquetas_pruebas';
+}
 
 console.log('🔍 [FACTURACION-AFIP] Cargando configuración de AFIP...');
 
@@ -15,10 +22,7 @@ console.log('🔍 [FACTURACION-AFIP] Cargando configuración de AFIP...');
 
 const IS_MODO_LABORATORIO =
     String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' ||
-    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
-    String(process.env.MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
-    String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase() === 'true' ||
-    String(process.env.LAMDA_ROLE || '').trim().toUpperCase() === 'GALPON_BRIDGE_ONLY';
+    String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
 
 // Entorno actual (HOMO o PROD) — En Modo Laboratorio siempre se fuerza HOMO
 const ENTORNO = IS_MODO_LABORATORIO ? 'HOMO' : (process.env.AFIP_ENV || 'HOMO');

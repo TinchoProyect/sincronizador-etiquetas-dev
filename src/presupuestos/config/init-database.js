@@ -108,6 +108,21 @@ const crearTablas = async () => {
         };
         
     } catch (error) {
+        if (error && (error.code === '25006' || String(error.message || '').includes('read-only transaction'))) {
+            console.log('[PRESUPUESTOS-BACK] 🔒 Base de datos en modo Read-Only (Standby Pasivo); omitiendo DDL de arranque.');
+            let totalPresupuestos = 0;
+            try {
+                const presupuestosResult = await pool.query('SELECT COUNT(*) as total FROM presupuestos WHERE activo = true');
+                totalPresupuestos = parseInt(presupuestosResult.rows[0]?.total || 0, 10);
+            } catch (_) {}
+            return {
+                success: true,
+                tablas_creadas: true,
+                configuracion_existe: false,
+                total_presupuestos: totalPresupuestos,
+                readOnlyStandby: true
+            };
+        }
         console.error('[PRESUPUESTOS-BACK] ❌ Error al inicializar base de datos:', error);
         throw error;
     }

@@ -3338,54 +3338,197 @@
         return obtenerMetricasConsolidadasIa();
     };
 
+    window.__pizarraInfoAccordionOpen = false;
+    window.__pizarraWaStatus = 'CONECTADO';
+    window.__pizarraWaUnread = 0;
+    window.__pizarraConnData = {
+        nodeMode: 'LOCAL',
+        nodeLabel: 'L · Local (PcAlmacen)',
+        dbName: 'etiquetas',
+        readOnly: 'off',
+        lastSyncFormatted: '--',
+        servicesActive: 5,
+        servicesTotal: 5,
+        servicesDetail: 'Etiquetas, Producción, Presupuestos, Facturación, Logística'
+    };
+
+    window.toggleAcordeonInfoSistemaPizarra = function (ev) {
+        if (ev) ev.stopPropagation();
+        window.__pizarraInfoAccordionOpen = !window.__pizarraInfoAccordionOpen;
+        window.renderizarWidgetCreditoIaPizarra();
+    };
+
+    if (!window.__pizarraAccordionDocListener) {
+        window.__pizarraAccordionDocListener = true;
+        document.addEventListener('click', function (ev) {
+            if (!window.__pizarraInfoAccordionOpen) return;
+            const el = document.getElementById('pizarra-ia-global-widget');
+            if (el && !el.contains(ev.target)) {
+                window.__pizarraInfoAccordionOpen = false;
+                window.renderizarWidgetCreditoIaPizarra();
+            }
+        });
+    }
+
     /**
-     * Renderiza en la Pizarra Principal (a la derecha de la Hora y el Día) el contador de tokens acumulados
-     * y la alerta visual si el saldo en Google llega a $0.
+     * Renderiza en la Pizarra Principal una barra desplegable (acordeón) delicada y plegada por defecto
+     * que concentra las herramientas accesorias del cabezal (WhatsApp, Mamus, Instalar LAMDA),
+     * la información de Conexión/Base/Servicios/WhatsApp y el estado de IA Gemini.
      */
     window.renderizarWidgetCreditoIaPizarra = function () {
         const el = document.getElementById('pizarra-ia-global-widget');
         if (!el) return;
+        const oldSeparate = document.getElementById('pizarra-conexion-global-widget');
+        if (oldSeparate) oldSeparate.remove();
+
+        el.onclick = null;
+        el.style.position = 'relative';
+        el.style.cursor = 'default';
 
         const m = obtenerMetricasConsolidadasIa();
         const agotado = m.agotado402 || (m.tieneSaldoConfigurado && m.saldoRestanteUsd <= 0);
+        const d = window.__pizarraConnData || {};
+        const isCloud = d.nodeMode === 'NUBE';
+        const isLab = d.nodeMode === 'LABORATORIO';
+        const connIcon = isLab ? '🧪' : (isCloud ? '☁️' : '🏢');
+        const shortNode = isLab ? 'L · Lab' : (isCloud ? 'N · Nube' : 'L · Local');
+        const connColor = isLab ? '#52525b' : (isCloud ? '#059669' : '#2563eb');
+        const allOk = (d.servicesActive || 5) >= (d.servicesTotal || 5);
+        const isOpen = Boolean(window.__pizarraInfoAccordionOpen);
+        const arrow = isOpen ? '▴' : '▾';
 
-        if (agotado) {
-            el.innerHTML = `
-                <div style="background: #fef2f2; border: 2px solid #ef4444; border-left: 6px solid #dc2626; border-radius: 12px; padding: 8px 14px; text-align: right; box-shadow: 0 4px 12px rgba(220,38,38,0.14);">
-                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-                        <span style="font-size: 0.82rem; font-weight: 900; color: #991b1b;">🚨 CRÉDITO IA EN $0 (SIN SALDO EN GOOGLE)</span>
-                        <button type="button" onclick="event.stopPropagation(); window.verificarEstadoCuentaIaSilencioso(true)" style="background: #dc2626; color: #fff; border: none; border-radius: 6px; padding: 2px 8px; font-size: 0.7rem; font-weight: 800; cursor: pointer;" title="Consultar estado en caliente a Google AI Studio">
-                            🔄 Verificar ahora
-                        </button>
-                    </div>
-                    <div style="font-size: 0.74rem; color: #7f1d1d; font-weight: 700; margin-top: 2px;">
-                        Tokens acum.: <strong>${Number(m.tokensDesdeRecarga || 0).toLocaleString('es-AR')} tok</strong> · Tocá acá para abrir Control de Crédito IA
-                    </div>
-                </div>
-            `;
-            return;
-        }
+        const waStatus = String(window.__pizarraWaStatus || 'CONECTADO').toUpperCase();
+        const waOk = waStatus === 'CONECTADO';
+        const waDot = waOk ? '🟢' : (waStatus === 'ESPERANDO_QR' || waStatus === 'CONECTANDO' ? '🟡' : '🔴');
+        const waLabel = waOk ? 'Conectado' : (waStatus === 'ESPERANDO_QR' ? 'Esperando QR' : (waStatus === 'CONECTANDO' ? 'Conectando...' : 'Desconectado'));
+        const waUnread = parseInt(window.__pizarraWaUnread || 0, 10);
+        const waConfigHref = window.LAMDA_RESOLVE_URL
+            ? window.LAMDA_RESOLVE_URL('http://localhost:3004/pages/whatsapp-config.html')
+            : 'http://localhost:3004/pages/whatsapp-config.html';
 
         const badgeSaldo = m.tieneSaldoConfigurado
-            ? `<span style="background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;">Saldo est.: USD $${m.saldoRestanteUsd.toFixed(2)}</span>`
+            ? `<span style="background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px; font-size: 0.71rem; font-weight: 800;">Saldo est.: USD $${m.saldoRestanteUsd.toFixed(2)}</span>`
             : `<span style="background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 1px 7px; border-radius: 999px; font-size: 0.7rem; font-weight: 800;">Configurar saldo</span>`;
 
+        const roLabel = d.readOnly === 'on'
+            ? '<span style="color:#d97706;">(Solo lectura)</span>'
+            : '<span style="color:#16a34a;">(Escritura)</span>';
+
+        const pillBg = agotado ? '#fef2f2' : '#f8fafc';
+        const pillBorder = agotado ? '#ef4444' : '#cbd5e1';
+
         el.innerHTML = `
-            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #059669; border-radius: 12px; padding: 7px 13px; text-align: right; transition: all 0.15s ease;">
-                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap;">
-                    <span style="font-size: 0.78rem; font-weight: 800; color: #065f46;">🟢 IA Gemini Activa</span>
-                    ${badgeSaldo}
-                    <button type="button" onclick="event.stopPropagation(); window.verificarEstadoCuentaIaSilencioso(true)" style="background: #ffffff; color: #0369a1; border: 1px solid #93c5fd; border-radius: 6px; padding: 2px 7px; font-size: 0.69rem; font-weight: 800; cursor: pointer;" title="Consultar en caliente a Google AI Studio si el crédito está activo">
-                        🔄 En caliente
-                    </button>
+            <div onclick="window.toggleAcordeonInfoSistemaPizarra(event)" title="Clic para desplegar información de Conexión, IA Gemini, Mamus e Instalar LAMDA" style="background: ${pillBg}; border: 1px solid ${pillBorder}; border-left: 4px solid ${connColor}; border-radius: 999px; padding: 5px 13px; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; box-shadow: 0 1px 4px rgba(15,23,42,0.06); transition: all 0.15s ease;">
+                <span style="font-size: 0.76rem; font-weight: 800; color: #1e293b;">${connIcon} ${shortNode}</span>
+                <span style="background: ${allOk ? '#dcfce7' : '#fef3c7'}; color: ${allOk ? '#166534' : '#92400e'}; border: 1px solid ${allOk ? '#86efac' : '#fcd34d'}; padding: 1px 6px; border-radius: 999px; font-size: 0.69rem; font-weight: 800;">${d.servicesActive || 5}/${d.servicesTotal || 5}</span>
+                <span style="color: #cbd5e1;">|</span>
+                <span style="font-size: 0.75rem; font-weight: 800; color: ${agotado ? '#dc2626' : '#065f46'};">${agotado ? '🚨 IA $0' : '🟢 IA Gemini'}</span>
+                <span style="font-size: 0.75rem; color: #64748b; font-weight: 900; margin-left: 2px;">${arrow}</span>
+            </div>
+            ${isOpen ? `
+            <div onclick="event.stopPropagation()" style="position: absolute; right: 0; top: calc(100% + 7px); z-index: 300; width: 430px; max-width: 94vw; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; padding: 12px 14px; box-shadow: 0 12px 32px rgba(15,23,42,0.18); text-align: left;">
+                <!-- Sección 0: Herramientas y Accesos Rápidos (Mamus, Instalar LAMDA, Estado QR WhatsApp) -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 11px; margin-bottom: 10px;">
+                    <div style="font-size: 0.69rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #64748b; margin-bottom: 7px;">
+                        Herramientas y Accesos
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                        <button type="button" onclick="event.stopPropagation(); window.__pizarraInfoAccordionOpen = false; window.renderizarWidgetCreditoIaPizarra(); if (window.abrirEspacioMamus) window.abrirEspacioMamus();" style="background: #fdf2f8; color: #be185d; border: 1px solid #f472b6; font-size: 0.76rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;">
+                            <span>🌸</span>
+                            <span>Mamus</span>
+                        </button>
+                        <button type="button" onclick="event.stopPropagation(); window.__pizarraInfoAccordionOpen = false; window.renderizarWidgetCreditoIaPizarra(); if (window.instalarAccesoDirectoLamdaPrueba) window.instalarAccesoDirectoLamdaPrueba();" style="background: #f5f3ff; color: #5b21b6; border: 1px solid #c4b5fd; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;">
+                            <span>📲</span>
+                            <span>Instalar LAMDA</span>
+                        </button>
+                        <a href="${waConfigHref}" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; font-size: 0.73rem; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 999px;" title="Abrir Configuración y Estado QR de WhatsApp">
+                            <span>${waDot}</span>
+                            <span>QR / Estado WA (${waLabel})</span>
+                        </a>
+                    </div>
                 </div>
-                <div style="font-size: 0.75rem; color: #334155; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums;">
-                    Hoy: <strong style="color:#0f172a;">${Number(m.tokensHoy || 0).toLocaleString('es-AR')} tok</strong> <span style="color:#64748b;">(~$${Number(m.consumidoHoyUsd || 0).toFixed(4)} USD)</span>
-                    &nbsp;·&nbsp;
-                    Acumulado: <strong style="color:#0369a1;">${Number(m.tokensDesdeRecarga || 0).toLocaleString('es-AR')} tok</strong> <span style="color:#64748b;">(~$${Number(m.consumidoDesdeRecargaUsd || 0).toFixed(4)} USD)</span>
+
+                <!-- Sección 1: Conexión, Base de Datos, Servicios y WhatsApp -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid ${connColor}; border-radius: 10px; padding: 9px 12px; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-size: 0.78rem; font-weight: 800; color: #0f172a;">${connIcon} Conectado: ${d.nodeLabel || shortNode}</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="background: ${allOk ? '#dcfce7' : '#fef3c7'}; color: ${allOk ? '#166534' : '#92400e'}; border: 1px solid ${allOk ? '#86efac' : '#fcd34d'}; padding: 1px 7px; border-radius: 999px; font-size: 0.7rem; font-weight: 800;" title="${d.servicesDetail || ''}">Servicios: ${d.servicesActive || 5}/${d.servicesTotal || 5} activos</span>
+                            <button type="button" onclick="event.stopPropagation(); window.renderizarWidgetConexionPizarra(true)" style="background: #ffffff; color: #0369a1; border: 1px solid #93c5fd; border-radius: 6px; padding: 2px 7px; font-size: 0.68rem; font-weight: 800; cursor: pointer;" title="Actualizar estado de conexión">🔄</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #334155; font-weight: 700; margin-top: 5px; line-height: 1.45;">
+                        Base: <strong style="color:#0f172a;">${d.dbName || 'etiquetas'}</strong> ${roLabel}
+                        &nbsp;·&nbsp;
+                        WhatsApp: <strong style="color:${waOk ? '#15803d' : '#dc2626'};">${waDot} ${waLabel}</strong>
+                        <br>
+                        Últ. act./sync: <strong style="color:#0369a1;">${d.lastSyncFormatted || '--'}</strong>
+                    </div>
+                </div>
+
+                <!-- Sección 2: IA Gemini y Tokens -->
+                <div style="background: ${agotado ? '#fef2f2' : '#f8fafc'}; border: 1px solid ${agotado ? '#fca5a5' : '#e2e8f0'}; border-left: 4px solid ${agotado ? '#dc2626' : '#059669'}; border-radius: 10px; padding: 9px 12px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-size: 0.78rem; font-weight: 800; color: ${agotado ? '#991b1b' : '#065f46'};">${agotado ? '🚨 CRÉDITO IA EN $0' : '🟢 IA Gemini Activa'}</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            ${badgeSaldo}
+                            <button type="button" onclick="event.stopPropagation(); window.verificarEstadoCuentaIaSilencioso(true)" style="background: #ffffff; color: #0369a1; border: 1px solid #93c5fd; border-radius: 6px; padding: 2px 7px; font-size: 0.68rem; font-weight: 800; cursor: pointer;" title="Consultar en caliente a Google AI Studio">🔄 En caliente</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.74rem; color: #334155; font-weight: 700; margin-top: 5px; font-variant-numeric: tabular-nums;">
+                        Hoy: <strong style="color:#0f172a;">${Number(m.tokensHoy || 0).toLocaleString('es-AR')} tok</strong> <span style="color:#64748b;">(~$${Number(m.consumidoHoyUsd || 0).toFixed(4)} USD)</span>
+                        &nbsp;·&nbsp;
+                        Acum.: <strong style="color:#0369a1;">${Number(m.tokensDesdeRecarga || 0).toLocaleString('es-AR')} tok</strong>
+                    </div>
+                    <div style="margin-top: 7px; text-align: right;">
+                        <button type="button" onclick="event.stopPropagation(); window.__pizarraInfoAccordionOpen = false; window.renderizarWidgetCreditoIaPizarra(); if (window.abrirModalControlCreditoIaGlobal) window.abrirModalControlCreditoIaGlobal();" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 6px; padding: 3px 9px; font-size: 0.7rem; font-weight: 800; cursor: pointer;">
+                            ⚙️ Abrir Control de Crédito y Consumo IA
+                        </button>
+                    </div>
                 </div>
             </div>
+            ` : ''}
         `;
+
+        if (typeof window.renderizarWidgetConexionPizarra === 'function' && !window.__connBoxInitialized) {
+            window.__connBoxInitialized = true;
+            window.renderizarWidgetConexionPizarra(false);
+            setInterval(() => window.renderizarWidgetConexionPizarra(false), 25000);
+        }
+    };
+
+    /**
+     * Actualiza los datos de Conexión, Base de Datos, Última Sincronización, Servicios Activos y WhatsApp
+     * dentro del acordeón unificado de la Pantalla Principal.
+     */
+    window.renderizarWidgetConexionPizarra = async function (forzarToast = false) {
+        try {
+            const [respConn, respWa] = await Promise.all([
+                fetch('api/system/connection-box?_t=' + Date.now()).catch(() => null),
+                fetch('http://localhost:3004/facturacion/whatsapp/status').catch(() => null)
+            ]);
+            if (respWa && respWa.ok) {
+                const jWa = await respWa.json().catch(() => null);
+                if (jWa && jWa.success && jWa.data && jWa.data.status) {
+                    window.__pizarraWaStatus = jWa.data.status;
+                }
+            }
+            if (!respConn || !respConn.ok) return;
+            const d = await respConn.json();
+            window.__pizarraConnData = d;
+            window.renderizarWidgetCreditoIaPizarra();
+            if (forzarToast && typeof Swal !== 'undefined') {
+                const icon = d.nodeMode === 'LABORATORIO' ? '🧪' : (d.nodeMode === 'NUBE' ? '☁️' : '🏢');
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'info',
+                    title: `${icon} ${d.nodeLabel} · BD: ${d.dbName} (${d.servicesActive}/${d.servicesTotal} activos)`,
+                    showConfirmButton: false,
+                    timer: 2500
+                });
+            }
+        } catch (_) {}
     };
 
     /**

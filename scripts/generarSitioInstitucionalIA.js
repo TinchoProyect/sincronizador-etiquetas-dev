@@ -323,11 +323,11 @@ function generarHtmlInstitucional(articulos, rubros) {
     <link rel="alternate" type="text/plain" title="LLMs Summary" href="/llms.txt">
     <link rel="alternate" type="text/plain" title="LLMs Full Catalog" href="/llms-full.txt">
     <link rel="alternate" type="application/json" title="Catálogo Público JSON" href="/catalogo-publico.json">
-    <link rel="icon" href="/favicon.ico" sizes="48x48">
-    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
-    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/x-icon" sizes="48x48" href="${SITE_URL}/favicon.ico">
+    <link rel="icon" type="image/png" sizes="48x48" href="${SITE_URL}/favicon-48x48.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="${SITE_URL}/favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="${SITE_URL}/favicon.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="${SITE_URL}/icon-192.png">
 
     <script type="application/ld+json">
 ${JSON.stringify(jsonLd, null, 2)}
@@ -2543,6 +2543,31 @@ Sitemap: ${SITE_URL}/sitemap.xml
         if (!fs.existsSync(dir)) continue;
         if (dir === PAGINA_PUBLICA_DIST) {
             fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
+            const cfHeaders = `/favicon.ico
+  Cache-Control: public, max-age=604800
+  Content-Type: image/x-icon
+
+/favicon-48x48.png
+  Cache-Control: public, max-age=604800
+  Content-Type: image/png
+
+/favicon-96x96.png
+  Cache-Control: public, max-age=604800
+  Content-Type: image/png
+
+/favicon.png
+  Cache-Control: public, max-age=604800
+  Content-Type: image/png
+
+/icon-192.png
+  Cache-Control: public, max-age=604800
+  Content-Type: image/png
+
+/logo_LAMDA.png
+  Cache-Control: public, max-age=604800
+  Content-Type: image/png
+`;
+            fs.writeFileSync(path.join(dir, '_headers'), cfHeaders, 'utf8');
         }
         fs.writeFileSync(path.join(dir, 'institucional.html'), html, 'utf8');
         fs.writeFileSync(path.join(dir, 'llms.txt'), llmsTxt, 'utf8');

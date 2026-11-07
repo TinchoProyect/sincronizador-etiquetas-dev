@@ -68,7 +68,7 @@ app.get('/api/supabase/lotes', async (req, res) => {
                 lotes = await response.json();
             }
         } catch (supaErr) {
-            debugLogs.push(`⚠️ [Supabase Proxy] Fallback a bunker_lotes_vinculos local: ${supaErr.message}`);
+            debugLogs.push(`?? [Supabase Proxy] Fallback a bunker_lotes_vinculos local: ${supaErr.message}`);
         }
 
         if (!Array.isArray(lotes)) {
@@ -133,7 +133,7 @@ app.get('/api/supabase/lotes', async (req, res) => {
             let hasMore = true;
             while (hasMore) {
                 const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})&limit=1000&offset=${offset}`;
-                const masterRes = await supabaseFetch(masterUrl, { headers }, 1, 300, 6000).catch(() => ({ ok: false, status: 500, text: async () => 'fallback error' }));
+                const masterRes = await fetch(masterUrl, { headers });
                 debugLogs.push(`📡 [Supabase Proxy] Fetching master table status: ${masterRes.status}`);
                 if (masterRes.ok) {
                     const rows = await masterRes.json();
@@ -296,27 +296,28 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
         
         const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,cant_bult,cant_valor)&id=gte.${minUuid}&id=lte.${maxUuid}&limit=1`;
         const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
-        let data = null;
+        let data = [];
         try {
-            const response = await supabaseFetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }, 1, 300, 5000);
+            const response = await supabaseFetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }, 1, 300, 6000);
             if (response.ok) {
                 data = await response.json();
             }
         } catch (_) {}
-
         if (!Array.isArray(data) || data.length === 0) {
-            const localLoteRes = await db.query(
+            const fbRes = await db.query(
                 `SELECT id, lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, cantidad_total_lote,
                         impuesto_iva, fecha_vinculacion, lote_codigo_corto, proveedor_nombre,
                         articulo_descripcion, producto_codigo, numero_remito
                  FROM public.bunker_lotes_vinculos
-                 WHERE UPPER(lote_codigo_corto) = UPPER($1) OR LOWER(lote_id_supabase) LIKE LOWER($2)
+                 WHERE UPPER(COALESCE(lote_codigo_corto, '')) = UPPER($1)
+                    OR LOWER(COALESCE(lote_id_supabase::text, '')) LIKE LOWER($2)
+                    OR LOWER(id::text) LIKE LOWER($2)
                  ORDER BY fecha_vinculacion DESC
                  LIMIT 1`,
-                [id_corto, `${id_corto}%`]
+                [id_corto, id_corto + '%']
             );
-            if (localLoteRes.rows.length > 0) {
-                const r = localLoteRes.rows[0];
+            if (fbRes.rows.length > 0) {
+                const r = fbRes.rows[0];
                 return res.json({
                     id: r.lote_id_supabase || r.id,
                     lote_codigo_corto: r.lote_codigo_corto,
@@ -345,9 +346,7 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
                     }
                 });
             }
-            return res.json(null);
         }
-
         if (data.length > 0) {
             const lote = data[0];
             const item = lote.pedidos_b2b_items || {};
@@ -357,7 +356,7 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
             let masterInfo = { cantBult: null, cantValor: null, iva: null };
             if (provId && cod) {
                 const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=eq.${provId}`;
-                const masterRes = await supabaseFetch(masterUrl, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }, 1, 300, 5000).catch(() => ({ ok: false }));
+                const masterRes = await fetch(masterUrl, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
                 if (masterRes.ok) {
                     const rows = await masterRes.json();
                     const matchingRow = rows.find(r => r.datos_maestros && String(r.datos_maestros.codigo).trim().toLowerCase() === cod);

@@ -133,6 +133,21 @@ const CLIENT_RUNTIME_SCRIPT = `
     var loopbackProbeInFlight = false;
     var lastLoopbackProbeTs = 0;
 
+    
+    function isAlreadyDesktopAppWindow() {
+        try {
+            if (window.location.search.indexOf('desktop_app=1') !== -1) {
+                sessionStorage.setItem('lamda_is_desktop_app', '1');
+                return true;
+            }
+            if (sessionStorage.getItem('lamda_is_desktop_app') === '1') return true;
+            if (window.__lamdaZebraPhysicalToken) return true;
+            if (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: minimal-ui)').matches)) return true;
+            if (!isMobileBrowser() && (window.outerHeight - window.innerHeight < 65)) return true;
+        } catch (e) {}
+        return false;
+    }
+
     function isMobileBrowser() {
         try {
             return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
@@ -700,32 +715,13 @@ const CLIENT_RUNTIME_SCRIPT = `
                 navigator.serviceWorker.register('/lamda-prueba-sw.js', { scope: '/' }).catch(function() {});
             }
 
-            var navBar = document.querySelector('.header-nav-bar');
-            if (navBar) {
-                if (isMobileBrowser() && !document.getElementById('btn-header-go-lamda-movil')) {
-                    var btnMovil = document.createElement('a');
-                    btnMovil.id = 'btn-header-go-lamda-movil';
-                    btnMovil.href = '/mobile/home.html';
-                    btnMovil.className = 'nav-btn';
-                    btnMovil.title = 'Abrir versión LAMDA Móvil para celular';
-                    btnMovil.style.cssText = 'background:linear-gradient(135deg,#6d28d9,#4f46e5);color:#ffffff;border:1px solid #8b5cf6;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;text-decoration:none;';
-                    btnMovil.innerHTML = '<span>📱 Ir a LAMDA Móvil</span>';
-                    navBar.appendChild(btnMovil);
-                }
-                if (!document.getElementById('btn-header-install-lamda-prueba')) {
-                    var btnHeader = document.createElement('button');
-                    btnHeader.type = 'button';
-                    btnHeader.id = 'btn-header-install-lamda-prueba';
-                    btnHeader.className = 'nav-btn';
-                    btnHeader.title = 'Instalar acceso directo ' + appTitle + ' en este dispositivo';
-                    btnHeader.style.cssText = isLab
-                        ? 'background:#f4f4f5;color:#27272a;border:1px solid #a1a1aa;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;'
-                        : 'background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;font-size:0.82rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:16px;';
-                    btnHeader.innerHTML = '<img src="' + iconPath + '" alt="' + appTitle + '" style="width:16px;height:16px;border-radius:4px;"><span>📲 Instalar "' + appTitle + '"</span>';
-                    btnHeader.onclick = function() { window.instalarAccesoDirectoLamdaPrueba(); };
-                    navBar.appendChild(btnHeader);
-                }
-            }
+            // Los botones accesorios (Instalar LAMDA, WhatsApp, Mamus) viven concentrados
+            // dentro del acordeón desplegable de la Pizarra y en el menú lateral (.nav-tree),
+            // manteniendo el zócalo superior (.header-nav-bar) totalmente despejado.
+            var oldBtnInstall = document.getElementById('btn-header-install-lamda-prueba');
+            if (oldBtnInstall) oldBtnInstall.remove();
+            var oldBtnMovil = document.getElementById('btn-header-go-lamda-movil');
+            if (oldBtnMovil) oldBtnMovil.remove();
 
             var navTree = document.querySelector('.nav-tree');
             if (navTree) {
@@ -736,7 +732,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                     liMovil.innerHTML = '<a href="/mobile/home.html" class="tree-link" style="background:#eef2ff;border-left:4px solid #6d28d9;color:#4c1d95;font-weight:800;display:flex;align-items:center;gap:8px;"><img src="' + iconPath + '" alt="LAMDA Móvil" style="width:18px;height:18px;border-radius:4px;"><span>📱 Abrir "LAMDA Móvil"</span></a>';
                     navTree.insertBefore(liMovil, navTree.firstChild);
                 }
-                if (!document.getElementById('tree-item-install-lamda-prueba')) {
+                if (!isAlreadyDesktopAppWindow() && !document.getElementById('tree-item-install-lamda-prueba')) {
                     var liInstall = document.createElement('li');
                     liInstall.id = 'tree-item-install-lamda-prueba';
                     liInstall.className = 'tree-item';
@@ -1437,6 +1433,68 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             res.json({ ok: true, jobs });
         } catch (err) {
             res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+
+    // 3C. Endpoint Administrativo Protegido para Clonar Base Productiva hacia etiquetas_pruebas (Notebook / PC)
+    app.get('/api/admin/db-snapshot-pruebas', async (req, res) => {
+        try {
+            const crypto = require('crypto');
+            const { spawn } = require('child_process');
+            const providedKey = String(req.headers['x-lamda-snapshot-key'] || '').trim();
+            const expectedKey = String(process.env.LAMDA_DB_SNAPSHOT_SECRET || 'lamda-snapshot-sec-9f8e7d6c5b4a3210-b2b-prod-2026').trim();
+            const bufA = Buffer.from(providedKey, 'utf8');
+            const bufB = Buffer.from(expectedKey, 'utf8');
+            if (!providedKey || bufA.length !== bufB.length || !crypto.timingSafeEqual(bufA, bufB)) {
+                return res.status(401).json({ ok: false, error: 'No autorizado: clave de snapshot inválida.' });
+            }
+
+            const dbHost = process.env.DB_HOST || 'localhost';
+            const dbPort = String(process.env.DB_PORT || '5432');
+            const dbUser = process.env.DB_USER || 'postgres';
+            const dbPass = process.env.DB_PASSWORD || 'postgres';
+            const dbName = 'etiquetas';
+
+            let pgDumpBin = 'pg_dump';
+            if (process.platform === 'win32') {
+                const candidatos = [
+                    'C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe',
+                    'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
+                    'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
+                    'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe'
+                ];
+                for (const c of candidatos) {
+                    if (fs.existsSync(c)) { pgDumpBin = c; break; }
+                }
+            }
+
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Disposition', 'attachment; filename="etiquetas_produccion_sanitizado.backup"');
+
+            const dumpArgs = [
+                '-h', dbHost,
+                '-p', dbPort,
+                '-U', dbUser,
+                '-d', dbName,
+                '-F', 'c',
+                '--no-owner',
+                '--no-privileges',
+                '--exclude-table-data=public.factura_afip_ta'
+            ];
+
+            const dumpProc = spawn(pgDumpBin, dumpArgs, {
+                env: { ...process.env, PGPASSWORD: dbPass },
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+
+            dumpProc.stdout.pipe(res);
+            dumpProc.stderr.on('data', () => {});
+            dumpProc.on('error', (err) => {
+                if (!res.headersSent) res.status(500).json({ ok: false, error: err.message });
+            });
+        } catch (err) {
+            if (!res.headersSent) res.status(500).json({ ok: false, error: err.message });
         }
     });
 

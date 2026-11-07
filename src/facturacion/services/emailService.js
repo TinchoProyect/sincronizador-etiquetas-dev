@@ -32,9 +32,7 @@ function esModoLaboratorioEmail() {
 }
 
 function esModoPruebaNubeEmail() {
-    const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
-    const flagRedirect = String(process.env.SAFE_DELIVERY_REDIRECT || '').trim().toLowerCase();
-    return flagNube === 'true' || flagNube === '1' || flagRedirect === 'true' || flagRedirect === '1';
+    return false;
 }
 
 const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {

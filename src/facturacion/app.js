@@ -6,7 +6,16 @@
 
 if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch (_) {} }
 const path = require('path');
+const _preLabMode = process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO;
+const _preDbName = process.env.DB_NAME;
+const _preSafeWa = process.env.SAFE_REDIRECT_WHATSAPP_TO;
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
+if (_preLabMode === 'true' || _preLabMode === '1' || _preDbName === 'etiquetas_pruebas') {
+    process.env.LAMDA_MODO_LABORATORIO = 'true';
+    process.env.MODO_LABORATORIO = 'true';
+    process.env.DB_NAME = 'etiquetas_pruebas';
+    if (_preSafeWa) process.env.SAFE_REDIRECT_WHATSAPP_TO = _preSafeWa;
+}
 const express = require('express');
 const cors = require('cors');
 

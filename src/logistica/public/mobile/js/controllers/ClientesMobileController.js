@@ -1535,6 +1535,19 @@ const ClientesMobileController = {
         return `${sign}$ ${Math.abs(safe).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     },
 
+    formatearDuracionDiasMeses(diasRaw) {
+        const d = Number(diasRaw);
+        if (!Number.isFinite(d) || d < 0) return '';
+        if (d <= 60) {
+            return `${d} ${d === 1 ? 'día' : 'días'}`;
+        }
+        const meses = Math.floor(d / 30);
+        const diasResto = d % 30;
+        const txtMeses = `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
+        if (diasResto === 0) return txtMeses;
+        return `${txtMeses} y ${diasResto} ${diasResto === 1 ? 'día' : 'días'}`;
+    },
+
     formatearFechaCortaMobile(fechaRaw, diasSumar = 0) {
         if (!fechaRaw) return null;
         try {
@@ -1800,13 +1813,13 @@ const ClientesMobileController = {
 
             let diasParentesisTexto = '';
             if (diasFinArr.length === 1) {
-                diasParentesisTexto = `${diasFinArr[0]} días`;
+                diasParentesisTexto = this.formatearDuracionDiasMeses(diasFinArr[0]);
             } else if (diasFinArr.length === 2) {
-                diasParentesisTexto = `${diasFinArr[0]}d y ${diasFinArr[1]}d`;
+                diasParentesisTexto = `${this.formatearDuracionDiasMeses(diasFinArr[0])} y ${this.formatearDuracionDiasMeses(diasFinArr[1])}`;
             } else if (diasFinArr.length > 2) {
-                diasParentesisTexto = `máx. ${Math.max(...diasFinArr)} días · ${diasFinArr.length} comp.`;
+                diasParentesisTexto = `máx. ${this.formatearDuracionDiasMeses(Math.max(...diasFinArr))} · ${diasFinArr.length} comp.`;
             } else if (salvavidasInfo?.antiguedad_max_dias) {
-                diasParentesisTexto = `${salvavidasInfo.antiguedad_max_dias} días`;
+                diasParentesisTexto = this.formatearDuracionDiasMeses(salvavidasInfo.antiguedad_max_dias);
             }
 
             let comprobantesHtml = '';
@@ -1827,6 +1840,7 @@ const ClientesMobileController = {
                     const dias = cs.antiguedad_dias !== undefined && cs.antiguedad_dias !== null
                         ? cs.antiguedad_dias
                         : (cs.dias_transcurridos !== null && cs.dias_transcurridos !== undefined ? cs.dias_transcurridos : null);
+                    const textoAntiguedad = dias !== null ? this.formatearDuracionDiasMeses(dias) : 'En plazo';
                     const canal = cs.canal_entrega === 'REPARTO' ? '🚚 Reparto' : '🏭 Depósito';
                     const movId = cs.movimiento_id || null;
 
@@ -1849,15 +1863,15 @@ const ClientesMobileController = {
                         const intIva = Number(cs.iva_financiacion ?? cs.interes_devengado_iva ?? (intNeto * 0.21));
                         const intTot = Number(cs.interes_financiacion_con_iva ?? cs.interes_devengado_con_iva ?? (intNeto + intIva));
                         if (modoSwitch === 'EXCLUIDO') {
-                            estLabel = `⚪ (${dias} días) · Financiación Apagada (Excluido · 0% interés)`;
+                            estLabel = `⚪ (${textoAntiguedad}) · Financiación Apagada (Excluido · 0% interés)`;
                             borderLeftColor = '#64748b';
                             badgeColor = '#cbd5e1';
                         } else if (modoSwitch === 'SOMBRA') {
-                            estLabel = `🌓 (${dias} días) · En Sombra (+${this.formatearMonedaMobile(intNeto)} + IVA ${this.formatearMonedaMobile(intIva)} = +${this.formatearMonedaMobile(intTot)})`;
+                            estLabel = `🌓 (${textoAntiguedad}) · En Sombra (+${this.formatearMonedaMobile(intNeto)} + IVA ${this.formatearMonedaMobile(intIva)} = +${this.formatearMonedaMobile(intTot)})`;
                             borderLeftColor = '#f59e0b';
                             badgeColor = '#fde68a';
                         } else {
-                            estLabel = `🛡️ (${dias} días) · Financiación Activa (+${this.formatearMonedaMobile(intNeto)} + IVA ${this.formatearMonedaMobile(intIva)} = +${this.formatearMonedaMobile(intTot)})`;
+                            estLabel = `🛡️ (${textoAntiguedad}) · Financiación Activa (+${this.formatearMonedaMobile(intNeto)} + IVA ${this.formatearMonedaMobile(intIva)} = +${this.formatearMonedaMobile(intTot)})`;
                             borderLeftColor = '#ef4444';
                             badgeColor = '#fca5a5';
                         }
@@ -1883,7 +1897,7 @@ const ClientesMobileController = {
                                         ${compNombre}
                                     </div>
                                     <div style="font-size:0.85rem; color:#cbd5e1; margin-top:0.2rem;">
-                                        ${canal} · <strong style="color:#fbbf24;">${dias !== null ? `${dias} días` : 'En plazo'}</strong> ${tuvoPagoParcial ? `· <span style="color:#38bdf8; font-weight:800;">Saldo Parcial (Orig: ${this.formatearMonedaMobile(montoOrig)})</span>` : '· 100% pendiente'}
+                                        ${canal} · <strong style="color:#fbbf24;">${textoAntiguedad}</strong> ${tuvoPagoParcial ? `· <span style="color:#38bdf8; font-weight:800;">Saldo Parcial (Orig: ${this.formatearMonedaMobile(montoOrig)})</span>` : '· 100% pendiente'}
                                     </div>
                                 </div>
                                 <div style="text-align:right; flex-shrink:0;">

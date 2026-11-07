@@ -1,5 +1,5 @@
 /**
- * Generador de los 3 Informes Gemelos de FUNDAMENTALS Y AUDITORÍA EMPÍRICA (PDF) — MIÉRCOLES 04/11/2026:
+ * Generador de los 3 Informes Gemelos de FUNDAMENTALS Y AUDITORÍA EMPÍRICA (PDF) — JUEVES 05/11/2026:
  * 1. /documentos/Fundamentals_Jornada_Hoy_Deposito.pdf
  * 2. /documentos/Fundamentals_Retiro_Produccion_Externa_Hoy.pdf
  * 3. /documentos/Fundamentals_Semanal_3_Jornadas_Deposito.pdf
@@ -27,12 +27,12 @@ const logoPath = path.join(__dirname, '..', 'src', 'app-etiquetas', 'img', 'logo
 
 async function obtenerDescripcionesBunker() {
   const skus = [
-    'BFX50G', 'BF24X50',
-    'EMB-NU9HD0', 'APN1x1', 'EMB-0W5BOW', 'EMB-IIVL86',
-    'CCTX1', 'ATX1', 'ATySx5',
-    'MPGDSX7', 'MPGDFX6,9', 'MPB',
-    'MFSXK', 'MFSx5',
-    'NMBEX1K', 'CHBx2', 'MRSSGx2'
+    'MCTXK', 'EMB-AI7OIK',
+    'MSXK', 'MSx2',
+    'APN25/27X150G', 'NMECHAMX200G', 'CRx5',
+    'MFBx2,5', 'MFDQX2,5', 'MFX2,5',
+    'EMB-VH3OLC', 'PRx2', 'EMB-JK1OOX', 'EMB-9KG3XS',
+    'MRSx5', 'APx2', 'EMB-JYS9SJ', 'QRX1'
   ];
   const res = await pool.query(
     `SELECT articulo_id,
@@ -81,7 +81,7 @@ function drawFourPillarsBox(doc, startX, pageWidth, pillars) {
   doc.rect(startX, y0, pageWidth, estimatedH).fillAndStroke('#f8fafc', '#64748b');
 
   doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(13.5)
-    .text('CRITERIOS DE AUDITORÍA EMPÍRICA APLICADOS (MIÉRCOLES 04/11/2026):', startX + 12, y0 + 10, { width: pageWidth - 24 });
+    .text('CRITERIOS DE AUDITORÍA EMPÍRICA APLICADOS (JUEVES 05/11/2026):', startX + 12, y0 + 10, { width: pageWidth - 24 });
 
   let py = doc.y + 6;
   pillars.forEach(p => {
@@ -96,7 +96,7 @@ function drawFourPillarsBox(doc, startX, pageWidth, pillars) {
 }
 
 function drawSectionBanner(doc, startX, pageWidth, titulo, badgeRight, bg = '#0f172a', fg = '#ffffff') {
-  ensureSpace(doc, 210);
+  ensureSpace(doc, 195);
   const y0 = doc.y;
   const textFull = badgeRight ? `${titulo}   (${badgeRight})` : titulo;
   doc.font('Helvetica-Bold').fontSize(13.5);
@@ -161,7 +161,7 @@ function drawLargeClosureBanner(doc, startX, pageWidth, texto) {
 }
 
 // ============================================================================
-// 1. FUNDAMENTALS DE LA JORNADA DE HOY (MIÉRCOLES 04/11/2026 — EXCLUSIVO HOY)
+// 1. FUNDAMENTALS DE LA JORNADA DE HOY (JUEVES 05/11/2026 — EXCLUSIVO HOY)
 // ============================================================================
 async function generarFundamentalsJornadaHoy(d) {
   const outPath = path.join(docsDir, 'Fundamentals_Jornada_Hoy_Deposito.pdf');
@@ -180,21 +180,21 @@ async function generarFundamentalsJornadaHoy(d) {
     startX,
     pageWidth,
     'FUNDAMENTALS — PLAN JORNADA DE HOY',
-    'Hoy Miércoles 04/11/2026  ·  Plan A (Cierre Total Hoy: ~1h 50m) + 0 Carros en Pausa + 0 Resto Hacia Adelante'
+    'Hoy Jueves 05/11/2026  ·  Plan A (~2h 51m) + 0 Carros en Pausa + Adelanto (+30 min)'
   );
 
   drawFourPillarsBox(doc, startX, pageWidth, [
     {
-      titulo: '1. Auditoría Empírica de lo que Matías ejecutó ayer Martes 03/11 (Jornada #34: 13:31 a 17:12 hs = 221 min)',
-      detalle: 'Ayer martes Matías ejecutó y confirmó 5 Carros Internos (#2995 al #2999): a) Carro #2995: Almendra Pelada NP x 1kg (APN1x1: 2 u., vaciando a 0 kg el tacho abierto); b) Carro #2996: Encajado de las 4 cajas de BARRA Flor 24 x 50g (BF24X50: 4 u., consumiendo los 4,80 kg del puente BFX50G y cerrando la Línea 5 en 10 cajas = ~34 días); c) Carro #2997: Higo Turco x 2kg (EMB-NU9HD0: 4 u.), Castañas Cajú Tostadas x 1kg (CCTX1: 2 u.), Almendra Tostada x 1kg (ATX1: 1 u.) y Almendra Tostada/Salada x 5kg (ATySx5: 2 u.); d) Carro #2998 (adelantado del bloque "Si sobra tiempo"): Nuez Mariposa x 1kg (NMBEX1K: 2 u.), Banana Chips x 2kg (CHBx2: 2 u.) y Maní R/T S/Sal x 2kg (MRSSGx2: 3 u.); e) Carro #2999: insumos de empaque. Dejó 0 carros en pausa y ayer se emitieron 0 facturas.'
+      titulo: '1. Auditoría Empírica de lo que Matías ejecutó ayer Miércoles 04/11 (Jornada #35: 13:27 a 16:36 hs = 189 min)',
+      detalle: 'Ayer miércoles Matías ejecutó y confirmó los 4 Carros Internos del plan (#3000 al #3003): a) Carros #3000 y #3001 (Línea 3): armó los 20,00 kg del artículo puente MFSXK y los fraccionó íntegros en 4 bolsas de Mix Con Pasas x 5kg (MFSx5: 4 u., cerrando el puente en 0,0 kg); b) Carro #3002 (Línea 2): Tomate Seco x 500g (EMB-0W5BOW: 5 u., vaciando la bolsa abierta a 0,39 kg) y Maíz Frito Barbacoa x 250g (EMB-IIVL86: 10 u. = 1 pack); c) Carro #3003 (Línea 5): Mezcla BARRA Flor x 4kg (MPB: 2 u. = 8,0 kg, reponiendo la bolsa salida a las 10:02 hs en Factura Interna #90-64 y dejando 2 bolsas de MPB, 2 de MPGDSX7 y 2 de MPGDFX6,9 listas en estantería). Dejó 0 carros en pausa.'
     },
     {
-      titulo: '2. Aplicación de REGLA_TANDA_EJECUTADA_ARTICULO_CERRADO_SIN_RESIDUALES',
-      detalle: 'Los 9 artículos producidos ayer en los Carros #2995, #2996, #2997 y #2998 alcanzaron entre 30 y 180 días de cobertura y quedan 100% CERRADOS, sin arrastrar saldos residuales.'
+      titulo: '2. Por qué hoy Jueves 05/11 ingresan nuevas tareas (8 Facturas emitidas ayer de 16:18 a 16:23 hs)',
+      detalle: 'Ayer miércoles por la tarde (entre las 16:18 y las 16:23 hs, justo al cierre de la jornada de Matías) se emitieron las Facturas A #32-169 a #32-174, Factura B #32-43 y Facturas Internas #90-65 y #90-66 (34 renglones despachados). Esas ventas dejaron en 0 u. (quiebre real) a Mix Color Tropical x 2kg (EMB-AI7OIK), Almendra Pelada x 150g (APN25/27X150G) y Nuez Mariposa x 200g (NMECHAMX200G), y bajaron Mix Salado x 2kg (MSx2) a 1 u. (15d) y Coco Rallado x 5kg (CRx5) a 2 u. (12d).'
     },
     {
-      titulo: '3. Finitud Total en la Jornada de Hoy Miércoles 04/11 (~1h 50m -> 0 Tareas Posteriores)',
-      detalle: 'Descontados los 5 carros de ayer martes, en todo el depósito restan únicamente las 6 tareas no ejecutadas ayer (~25 min de Línea 2 + ~44 min de Línea 3 + ~41 min de Pre-Mezclas L5/L6 = ~1h 50m). Al entrar íntegras en el Plan de Hoy Miércoles 04/11, quedan 0 jornadas hacia adelante.'
+      titulo: '3. Aplicación de REGLA_TANDA_EJECUTADA_ARTICULO_CERRADO_SIN_RESIDUALES',
+      detalle: 'Todo lo producido ayer en los Carros #3000, #3001, #3002 y #3003 (MFSx5, EMB-0W5BOW, EMB-IIVL86 y MPB) queda 100% CERRADO y descontado.'
     }
   ]);
 
@@ -202,76 +202,107 @@ async function generarFundamentalsJornadaHoy(d) {
     doc,
     startX,
     pageWidth,
-    '1. PLAN A · LÍNEA 2 — QUIEBRES EN STOCK 0 Y VACIADO DE TACHOS ABIERTOS',
-    '~25 min',
-    '#14532d'
-  );
-
-  drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: d('EMB-0W5BOW', 'Tomate Seco x 500g'),
-    sku: 'EMB-0W5BOW',
-    cantidad: '5 u. (2,5 kg)',
-    tiempo: '~13 min',
-    coberturaPost: 'Cobertura Post-Producción: >30 días (5 u. disponibles)',
-    datosEmpiricos: 'Sigue en 0 unidades en stock_ventas (ayer martes Matías priorizó #2995, #2996, #2997 y el adelanto #2998). En el taller continúan los 2,90 kg abiertos de Tomate Seco del Carro #2991.',
-    fundamental: 'Con los 2,90 kg ya abiertos en el taller, hoy miércoles se envasan las 5 bolsas de 500g (2,50 kg) en una sola tanda para dejar cubierto el mes y vaciar el contenedor abierto.'
-  });
-
-  drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: d('EMB-IIVL86', 'Maiz FTO Barbacoa x 250g'),
-    sku: 'EMB-IIVL86',
-    cantidad: '10 u. (2,5 kg — 1 pack de 10 x 250g)',
-    tiempo: '~12 min',
-    coberturaPost: 'Cobertura Post-Producción: ~30 días (10 u. = 1 pack disponible)',
-    datosEmpiricos: 'Sigue en 0 unidades en stock_ventas tras el despacho de la Factura A #32-168 del lunes, y en el taller hay materia prima abierta lista para fraccionar.',
-    fundamental: 'Se repone 1 pack de 10 x 250g (2,50 kg) con el contenedor abierto en taller para eliminar el quiebre en estantería.'
-  });
-
-  drawSectionBanner(
-    doc,
-    startX,
-    pageWidth,
-    '2. PLAN A · LÍNEA 3 — MEZCLA INTERNA EN TANDA ÚNICA (CIERRE PUENTE EN 0 KG)',
-    '~44 min',
+    '1. PLAN A · LÍNEA 3 — MIXES EN QUIEBRE POR VENTAS DE AYER (CIERRE PUENTES EN 0 KG)',
+    '~54 min',
     '#92400e'
   );
 
   drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: 'Artículo puente: Mix F/SCOS Con Pasas a Granel (MFSXK: 20,0 kg) -> 4 u. Mix F/SCOS Con Pasas x 5kg (MFSx5)',
-    sku: 'MFSXK -> MFSx5',
-    cantidad: '20,0 kg (4 bolsas x 5 kg, Cierre Puente = 0,0 kg)',
-    tiempo: '~44 min',
-    coberturaPost: 'Cobertura Post-Producción: 5 bolsas de MFSx5 (~30 días sobre demanda de 5,3 bolsas/mes)',
-    datosEmpiricos: 'MFSx5 tiene sólo 1 bolsa en stock (5,6 días de cobertura tras la venta en Factura A #32-166). Sus presentaciones hermanas ya están cubiertas: MFSX300G tiene 30 u. (3 packs cerrados), MFSx2 tiene 2 u. y MFSx1 tiene 1 u.',
-    fundamental: 'Como ayer martes Matías ya adelantó los 3 ítems de Línea 2 de la jornada siguiente (NMBEX1K, CHBx2 y MRSSGx2 en el Carro #2998), esta tanda única de 20,0 kg de MFSXK -> 4 bolsas de MFSx5 pasa hoy miércoles al Plan A principal, cerrando el puente en 0,0 kg.'
+    nombre: 'Artículo puente: PROD AP Interno F/SCOS Color Tropical Mix (MCTXK: 10,0 kg) -> 5 u. Mix F/SCOS Color Tropical x 2kg (EMB-AI7OIK)',
+    sku: 'MCTXK -> EMB-AI7OIK',
+    cantidad: '10,0 kg (5 bolsas x 2 kg, Cierre Puente = 0,0 kg)',
+    tiempo: '~28 min',
+    coberturaPost: 'Cobertura Post-Producción: 5 bolsas de EMB-AI7OIK (~30 a 90 días)',
+    datosEmpiricos: 'Ayer miércoles a las 16:18 y 16:23 hs (Factura B #32-43 y Factura Interna #90-65) se vendieron las 2 unidades de EMB-AI7OIK que había en estantería, cayendo el stock a 0 u. Sus hermanos ya están cubiertos: MCTX300 tiene 40 u. (4 packs cerrados = 120d) y MCTX5 tiene 1 u.',
+    fundamental: 'Se elabora 1 carro de 10,0 kg del puente MCTXK (absorbiendo el saldo técnico de 1,30 kg en taller) y se fracciona 100% en 5 bolsas de 2 kg (EMB-AI7OIK), cerrando el puente en 0,0 kg.'
+  });
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: 'Artículo puente: PROD AP Interno Salado Mix (MSXK: 10,0 kg) -> 5 u. Mix Salado x 2kg (MSx2)',
+    sku: 'MSXK -> MSx2',
+    cantidad: '10,0 kg (5 bolsas x 2 kg, Cierre Puente = 0,0 kg)',
+    tiempo: '~26 min',
+    coberturaPost: 'Cobertura Post-Producción: 6 bolsas de MSx2 (~90 días)',
+    datosEmpiricos: 'Ayer miércoles a las 16:23 hs (Factura Interna #90-65) salió 1 bolsa de MSx2, quedando sólo 1 u. en estantería (~15 días) y 1,28 kg abiertos en el puente MSXK. Sus hermanos MSX300G (10 u. = 45d) y MSx5 (3 u. = 45d) ya están cubiertos.',
+    fundamental: 'Se arma 1 carro de 10,0 kg del puente MSXK (sumando los 8,70 kg nuevos más el saldo abierto en puente) y se envasan 5 bolsas de MSx2, cerrando el puente en 0,0 kg.'
   });
 
   drawSectionBanner(
     doc,
     startX,
     pageWidth,
-    '3. PLAN A · LÍNEAS 5 Y 6 — REPOSICIÓN DE PRE-MEZCLAS DE ESTANTERÍA',
-    '~41 min',
+    '2. PLAN A · LÍNEA 2 — REPOSICIÓN DE QUIEBRES POR FACTURACIÓN DE AYER',
+    '~60 min',
+    '#14532d'
+  );
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: d('APN25/27X150G', 'ALMENDRA Peladas x 150g'),
+    sku: 'APN25/27X150G',
+    cantidad: '10 u. (1,5 kg — 1 pack de 10 x 150g)',
+    tiempo: '~11 min',
+    coberturaPost: 'Cobertura Post-Producción: ~30 días (1 pack de 10 x 150g disponible)',
+    datosEmpiricos: 'Ayer miércoles a las 16:18 hs en la Factura A #32-170 se vendieron las 10 u. (1 pack) de APN25/27X150G que se habían envasado el lunes, quedando hoy en 0 u. Sus hermanos mayores (APN27/30X5 = 7u, APNx2 = 3u, APN1x1 = 1u) están cubiertos.',
+    fundamental: 'Se repone 1 pack cerrado de 10 x 150g (1,5 kg) reservando las cajas de Almendra Nonparei para el Mix Premium.'
+  });
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: d('NMECHAMX200G', 'Nuez PADA CHLER MPSA EXLIGHT x 200g'),
+    sku: 'NMECHAMX200G',
+    cantidad: '15 u. (3,0 kg — 1 pack de 10 x 200g + 5 sueltas)',
+    tiempo: '~20 min',
+    coberturaPost: 'Cobertura Post-Producción: ~45 días (15 u. disponibles)',
+    datosEmpiricos: 'Ayer miércoles a las 16:18 hs en la Factura A #32-170 se vendieron las 10 u. (1 pack) de NMECHAMX200G, cayendo su stock a 0 u. En el taller hay 6,22 kg abiertos de Nuez Mariposa Extra Light (Ing. #25).',
+    fundamental: 'Usando sólo 3,0 kg de los 6,22 kg abiertos en taller, se envasan 15 unidades de 200g (1 pack + 5 sueltas) y se preservan 3,22 kg en taller más las 3 cajas cerradas para el Mix Premium (REGLA_INGREDIENTES_COMPARTIDOS_CON_MIXES_NO_VACIAR).'
+  });
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: d('CRx5', 'Coco Rallado HF x 5kg'),
+    sku: 'CRx5',
+    cantidad: '5 u. (25,0 kg — 1 bolsa entera de 25 kg)',
+    tiempo: '~29 min',
+    coberturaPost: 'Cobertura Post-Producción: 7 bolsas (~42 días sobre demanda de 5 bolsas/mes)',
+    datosEmpiricos: 'Ayer miércoles a las 16:18 hs salieron 3 bolsas de 5 kg en tres comprobantes distintos (Factura A #32-171, Factura A #32-173 y Factura B #32-43), cayendo el stock a sólo 2 bolsas (12 días de cobertura). En depósito hay 2 bolsas cerradas de 25 kg de Coco Rallado.',
+    fundamental: 'Se baja 1 bolsa cerrada entera de 25 kg y se fracciona completa en 5 bolsas de 5 kg (CRx5), llevando el stock de 2 a 7 bolsas (~42 días) sin dejar sobrante abierto en taller.'
+  });
+
+  drawSectionBanner(
+    doc,
+    startX,
+    pageWidth,
+    '3. PLAN A · LÍNEA 2 — VACIADO DE BOLSAS ABIERTAS DE MAÍZ FRITO EN STOCK 0',
+    '~57 min',
+    '#1e3a8a'
+  );
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: 'Maíz FTO Barbacoa x 2.5kg (5 u.) + Maíz FTO Queso x 2.5kg (2 u.) + Maíz Frito x 2.5kg (5 u.)',
+    sku: 'MFBx2,5 (5u) + MFDQX2,5 (2u) + MFX2,5 (5u)',
+    cantidad: '5 u. MFBx2,5 (12,5 kg) + 2 u. MFDQX2,5 (5,0 kg) + 5 u. MFX2,5 (12,5 kg)',
+    tiempo: '~57 min (~20m + ~17m + ~20m)',
+    coberturaPost: 'Cobertura Post-Producción: 60 a 150 días (y 3 tachos abiertos vaciados en taller)',
+    datosEmpiricos: 'Las 3 presentaciones de 2,5 kg de Maíz Frito están en 0 unidades (quiebre total) y las 3 tienen su bolsa abierta en el taller: 13,00 kg abiertos de Maíz Barbacoa (tras hacer ayer los 2,5 kg de 250g en el Carro #3002), 6,40 kg abiertos de Maíz Queso y 13,76 kg abiertos de Maíz Frito Clásico (tras descontar Mix Salado).',
+    fundamental: 'Envasar 5 bolsas de MFBx2,5 (12,5 kg), 2 bolsas de MFDQX2,5 (5,0 kg) y 5 bolsas de MFX2,5 (12,5 kg) elimina los 3 quiebres en estantería y vacía los 3 contenedores abiertos del taller en una sola sesión.'
+  });
+
+  drawSectionBanner(
+    doc,
+    startX,
+    pageWidth,
+    '4. SI SOBRA TIEMPO HOY — ADELANTO DEL PLAN HACIA ADELANTE',
+    '~30 min',
     '#4c1d95'
   );
 
   drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: 'Reposición de Pre-Mezclas Crudas en Estantería (MPGDSX7, MPGDFX6,9 y MPB)',
-    sku: 'MPGDSX7 + MPGDFX6,9 + MPB',
-    cantidad: '1 u. MPGDSX7 (7 kg) + 1 u. MPGDFX6,9 (6,9 kg) + 1 u. MPB (4 kg)',
-    tiempo: '~41 min (~14m + ~14m + ~13m)',
-    coberturaPost: 'Cobertura Post-Producción: Estantería en 3 bolsas de Grana Sol, 3 de Grana Flor y 2 de Barritas',
-    datosEmpiricos: 'En la estantería del depósito hay actualmente 2 bolsas de MPGDSX7, 2 bolsas de MPGDFX6,9 y 1 bolsa de MPB.',
-    fundamental: 'Restaura el pulmón obligatorio de pre-mezclas listas en estantería y deja el depósito en Finitud Total al concluir la jornada de hoy miércoles.'
+    nombre: 'Adelanto de la Jornada 1 Hacia Adelante: Nuez Cuarto LHT x 5kg (2 u.) + Pasas de Uva Rubia x 2kg (5 u.)',
+    sku: 'EMB-VH3OLC (2u) + PRx2 (5u)',
+    cantidad: '2 u. EMB-VH3OLC (10,0 kg, ~10m) + 5 u. PRx2 (10,0 kg, ~20m)',
+    tiempo: '~30 min',
+    coberturaPost: 'Cobertura Post-Producción: 45 a 150 días',
+    datosEmpiricos: 'EMB-VH3OLC tiene 1 u. (15 días) y 10,25 kg abiertos en taller; PRx2 está en 0 u. con 7 cajas cerradas de 10 kg en depósito.',
+    fundamental: 'Pertenecen a la Jornada 1 Hacia Adelante, pero figuran al pie del Plan de Hoy por si sobra tiempo en la jornada.'
   });
-
-  drawLargeClosureBanner(
-    doc,
-    startX,
-    pageWidth,
-    '• FINITUD TOTAL EN LA JORNADA DE HOY MIÉRCOLES 04/11/2026 (~1h 50m).\n' +
-    '• Al completarse estas 6 tareas hoy en el taller, quedan 0 tareas pendientes y 0 jornadas hacia adelante requeridas.'
-  );
 
   doc.end();
   return new Promise((resolve, reject) => {
@@ -300,21 +331,17 @@ async function generarFundamentalsRetiroExterna() {
     startX,
     pageWidth,
     'FUNDAMENTALS — RETIRO PRODUCCIÓN EXTERNA',
-    'Hoy Miércoles 04/11/2026  ·  Total a retirar hoy: 0 UPs  ·  0 Carros Externos en la Calle'
+    'Hoy Jueves 05/11/2026  ·  Total a retirar hoy: 0 UPs  ·  0 Carros Externos en la Calle'
   );
 
   drawFourPillarsBox(doc, startX, pageWidth, [
     {
-      titulo: '1. Cero Carros Externos en la Calle (Todas las Líneas Físicamente en Depósito)',
-      detalle: 'No hay ningún carro externo abierto ni mercadería en tránsito en casa de Matías. Ayer martes en el taller se encajaron las 4 cajas de BF24X50 (Carro #2996) y se completó el fraccionamiento de tostados (Carro #2997).'
+      titulo: '1. Cero Carros Externos en la Calle y Estantería de Pre-Mezclas al 100%',
+      detalle: 'No hay ningún carro externo abierto ni mercadería en tránsito en casa de Matías. Ayer miércoles en el Carro Interno #3003 Matías elaboró 2 bolsas nuevas de MPB (8,0 kg), dejando el pulmón de estantería completo: 2 bolsas de MPB, 2 bolsas de MPGDFX6,9 y 2 bolsas de MPGDSX7.'
     },
     {
-      titulo: '2. Principio de Finitud Externa: 0 UPs a Retirar Hoy Miércoles 04/11',
+      titulo: '2. Principio de Finitud Externa: 0 UPs a Retirar Hoy Jueves 05/11',
       detalle: 'Las Líneas 4, 5 y 6 cuentan con su stock ideal cubierto (30 a 50 días de demanda). El informe operativo muestra única y limpiamente: 0 UPs — NO HAY NADA PARA PRODUCIR EXTERNAMENTE HOY.'
-    },
-    {
-      titulo: '3. Buffer de Pre-Mezclas Asegurado en Depósito (Sin Necesidad de Salida Hoy)',
-      detalle: 'En estantería del depósito se mantienen listas 1 bolsa MPB (4kg), 2 bolsas MPGDFX6,9 (13,8kg) y 2 bolsas MPGDSX7 (14,0kg) como colchón de reserva para cuando la demanda lo amerite.'
     }
   ]);
 
@@ -331,39 +358,38 @@ async function generarFundamentalsRetiroExterna() {
     nombre: 'Línea de Negocio 4 — Tostadero Externo',
     sku: 'ATXKUP / CCTSGXKUP / APTSPGUP',
     cantidad: '0 UPs a retirar hoy',
-    tiempo: 'Cobertura: 30 a 120 días',
+    tiempo: 'Cobertura: 30 a 180 días',
     coberturaPost: 'FINITUD LÍNEA 4: 100% Cubierta con Mercadería Tostada en Depósito',
-    datosEmpiricos: 'Ayer martes se fraccionaron en taller CCTX1 (2 u.), ATX1 (1 u.) y ATySx5 (2 u.) en el Carro #2997. Con ATySx150 en 20 u. (120d) y CCTSySx150 en 11 u. (>88d), la línea no requiere tostado externo.',
-    fundamental: 'No se debe enviar ningún fruto seco crudo a tostadero externo hoy.'
+    datosEmpiricos: 'CCTX1 (2 u. = 180d), ATX1 (1 u. = 30d), ATySx5 (2 u. = 60d), ATySx150 (20 u. = 90d), CCTX5 (2 u. = 36d), CCTX2 (4 u. = 360d) y CCTSx150/2B/5 (20/4/3 u. > 45d) están cubiertos.',
+    fundamental: 'No se requiere enviar ningún fruto seco crudo a tostadero externo hoy.'
   });
 
   drawAuditItemCard(doc, startX, pageWidth, {
     nombre: 'Línea de Negocio 5 — Barritas de Cereal (Flor)',
     sku: 'MPB -> BF24X50',
     cantidad: '0 UPs a retirar hoy',
-    tiempo: 'Cobertura: ~31 a 34 días (10 cajas cerradas)',
-    coberturaPost: 'FINITUD LÍNEA 5: Stock Finito Completo (10 cajas en estantería)',
-    datosEmpiricos: 'Ayer martes en el Carro Interno #2996 se encajaron las 4 cajas de BF24X50 consumiendo el puente BFX50G (4,80 kg), elevando el stock terminado a 10 cajas cerradas (~31 a 34 días de cobertura). En estantería queda 1 bolsa MPB (4kg).',
-    fundamental: 'La línea queda en Finitud Total por un mes; no se requiere retirar ninguna bolsa de MPB hoy.'
+    tiempo: 'Cobertura: 30,0 días (9 cajas cerradas + 2 bolsas MPB)',
+    coberturaPost: 'FINITUD LÍNEA 5: Stock Finito Completo (9 cajas libres + 2 bolsas MPB en estantería)',
+    datosEmpiricos: 'Tras despacharse ayer el presupuesto comprometido de 1 caja en la Factura Interna #90-65, quedan 9 cajas libres de BF24X50 (30,0 días exactos sobre ventas de 9 cajas/mes) y 2 bolsas de pre-mezcla MPB (8,0 kg) producidas ayer en el Carro #3003.',
+    fundamental: 'Con 30 días de producto terminado y 2 bolsas de pre-mezcla listas en estantería, no se requiere retirar ninguna bolsa de MPB hoy.'
   });
 
   drawAuditItemCard(doc, startX, pageWidth, {
     nombre: 'Línea de Negocio 6 — Granolas Horneadas (Sol y Flor)',
     sku: 'MPGDSX7 / MPGDFX6,9 -> GSX / GDFX',
     cantidad: '0 UPs a retirar hoy',
-    tiempo: 'Cobertura: 30 a 45 días',
+    tiempo: 'Cobertura: 30 a 48 días',
     coberturaPost: 'FINITUD LÍNEA 6: Cobertura Plena',
-    datosEmpiricos: 'El stock actual al cierre del martes es: GSX500G = 5 u. (30d), GSX1 = 15 u. (35d), GDFX500G = 5 u. (45d) y GDFX1 = 13 u. (33d). Buffer en estantería: 2 bolsas MPGDFX6,9 y 2 bolsas MPGDSX7.',
-    fundamental: 'Ambas líneas de Granola superan holgadamente los 30 días de cobertura; 0 UPs a retirar hoy.'
+    datosEmpiricos: 'El stock actual hoy jueves es: GSX1 = 14 u. (46,7d), GSX500G = 5 u. (30d), GDFX1 = 13 u. (48,8d) y GDFX500G = 5 u. (45d). Buffer en estantería: 2 bolsas MPGDFX6,9 y 2 bolsas MPGDSX7.',
+    fundamental: 'Ambas líneas de Granola superan los 30 días de cobertura; 0 UPs a retirar hoy.'
   });
 
   drawLargeClosureBanner(
     doc,
     startX,
     pageWidth,
-    '• Estado Finito en Producción Externa = 0 UPs a retirar hoy miércoles 04/11/2026.\n' +
-    '• Las Líneas 4, 5 y 6 se encuentran cubiertas para el horizonte operativo mensual (>= 30 a 50 días).\n' +
-    '• El informe operativo cumple estrictamente la regla de mostrar únicamente que hoy no hay nada para producir externamente.'
+    '• Estado Finito en Producción Externa = 0 UPs a retirar hoy jueves 05/11/2026.\n' +
+    '• Las Líneas 4, 5 y 6 se encuentran cubiertas para el horizonte operativo mensual (>= 30 a 50 días).'
   );
 
   doc.end();
@@ -393,17 +419,17 @@ async function generarFundamentalsPlan3Jornadas() {
     startX,
     pageWidth,
     'FUNDAMENTALS — JORNADAS HACIA ADELANTE',
-    'Miércoles 04/11/2026  ·  Cantidad Libre de Jornadas hasta Completar el Ideal  ·  Requiere 0 Jornadas Hacia Adelante (0 Pendientes)'
+    'Jueves 05/11/2026  ·  Cantidad Libre de Jornadas hasta Completar el Ideal  ·  Se completa en 1 Jornada (~2h 13m -> 0 Pendientes)'
   );
 
   drawFourPillarsBox(doc, startX, pageWidth, [
     {
-      titulo: '1. Aplicación de REGLA_JORNADAS_HACIA_ADELANTE_LIBRES_HASTA_FINITUD (Caso 0 Jornadas)',
-      detalle: 'Por instrucción expresa del Director ("Ya no me interesa si son tres jornadas, son cinco, son una o son cero, las jornadas que hagan falta hasta completar el ideal"), este informe proyecta libremente la cantidad de jornadas laborales posteriores a hoy necesarias para alcanzar el Stock Ideal. Como ayer martes Matías adelantó el Carro #2998 y las 6 tareas restantes (~1h 50m) caben íntegras hoy en el Plan de Hoy Miércoles 04/11, quedan exactamente 0 Jornadas Hacia Adelante.'
+      titulo: '1. Aplicación de REGLA_JORNADAS_HACIA_ADELANTE_LIBRES_HASTA_FINITUD (1 Jornada Hacia Adelante)',
+      detalle: 'Descontando el Plan de Hoy Jueves 05/11 (~2h 51m), la totalidad del trabajo restante en el depósito suma ~2h 13m (133 minutos) y se completa íntegramente en 1 única Jornada Hacia Adelante, tras la cual quedan 0 tareas pendientes.'
     },
     {
-      titulo: '2. Descuento Total de los 5 Carros Confirmados Ayer Martes 03/11 (#2995 al #2999)',
-      detalle: 'Ayer martes se confirmaron 5 carros internos en 221 minutos de jornada y se emitieron 0 facturas. En particular, en el Carro #2998 Matías ya adelantó y cerró los 3 artículos de Línea 2 que estaban en la Jornada 1 Hacia Adelante del martes (NMBEX1K: 2u, CHBx2: 2u y MRSSGx2: 3u), y la tanda de Mix Con Pasas (MFSXK: 20 kg -> MFSx5: 4u) pasó hoy al Plan A de Hoy Miércoles.'
+      titulo: '2. Descuento Total de los 4 Carros Confirmados Ayer Miércoles 04/11 (#3000 al #3003)',
+      detalle: 'Se descontaron al 100% los Carros #3000 (MFSXK: 20 kg), #3001 (MFSx5: 4 u.), #3002 (EMB-0W5BOW: 5 u. + EMB-IIVL86: 10 u.) y #3003 (MPB: 2 u.) confirmados ayer miércoles por Matías.'
     }
   ]);
 
@@ -411,38 +437,47 @@ async function generarFundamentalsPlan3Jornadas() {
     doc,
     startX,
     pageWidth,
-    '1. TRAZABILIDAD DE DESCUENTO Y CIERRE TOTAL (MARTES 03/11 -> MIÉRCOLES 04/11)',
-    '0 Jornadas Posteriores',
+    '1. JORNADA 1 HACIA ADELANTE — VACIADO DE TACHOS ABIERTOS Y CIERRE DE STOCK IDEAL',
+    '~2h 13m',
     '#14532d'
   );
 
   drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: '[COMPLETADO AYER MARTES 03/11] 5 Carros Internos Confirmados (#2995, #2996, #2997, #2998 y #2999)',
-    sku: 'APN1x1 (2u), BF24X50 (4 cajas desde puente BFX50G 4,8kg), EMB-NU9HD0 (4u), CCTX1 (2u), ATX1 (1u), ATySx5 (2u), NMBEX1K (2u), CHBx2 (2u), MRSSGx2 (3u)',
-    cantidad: '39,8 kg y 96 barritas procesadas y cerradas ayer martes',
-    tiempo: '221 min de jornada ejecutados ayer martes',
-    coberturaPost: 'DESCONTADO AL 100%: 9 Artículos cerrados por 30 a 180 días (Cero residuales)',
-    badgeColor: '#15803d',
-    datosEmpiricos: 'Todos estos carros quedaron confirmados ayer en carros_produccion entre las 13:37 y las 17:01 hs ARG. En el Carro #2998 Matías adelantó NMBEX1K, CHBx2 y MRSSGx2.',
-    fundamental: 'Aplicando REGLA_TANDA_EJECUTADA_ARTICULO_CERRADO_SIN_RESIDUALES, ninguno de los artículos producidos ayer vuelve a programarse.'
+    nombre: '[JORNADA 1 HACIA ADELANTE · PARTE A] Nuez Cuarto LHT x 5kg (2 u.) + Pasas Rubias x 2kg (5 u.) + Pasas Jumbo x 1kg (8 u.) + Harina de Coco x 1kg (3 u.)',
+    sku: 'EMB-VH3OLC (2u) + PRx2 (5u) + EMB-JK1OOX (8u) + EMB-9KG3XS (3u)',
+    cantidad: '2 u. EMB-VH3OLC (10kg, ~10m) + 5 u. PRx2 (10kg, ~20m) + 8 u. EMB-JK1OOX (8kg, ~35m) + 3 u. EMB-9KG3XS (3kg, ~25m)',
+    tiempo: '~1h 30m',
+    coberturaPost: 'Post-Prod: 45 a 240 días de cobertura y 3 contenedores abiertos vaciados en taller',
+    datosEmpiricos: '1) EMB-VH3OLC tiene 1 u. (15d) y 10,25 kg abiertos en taller (Ing. #133); 2) PRx2 está en 0 u. con 7 cajas cerradas de 10 kg en depósito (Ing. #35); 3) EMB-JK1OOX está en 0 u. con 8,29 kg abiertos en taller (Ing. #153); 4) EMB-9KG3XS está en 0 u. con 3,59 kg abiertos en taller (Ing. #101).',
+    fundamental: 'Vacía los contenedores abiertos de Nuez Cuarto Light, Pasas Jumbo y Harina de Coco y fracciona 1 caja entera de 10 kg de Pasas Rubias sin dejar sobrantes.'
   });
 
   drawAuditItemCard(doc, startX, pageWidth, {
-    nombre: '[ASIGNADO AL PLAN DE HOY MIÉRCOLES 04/11] Las 6 Únicas Tareas Restantes del Depósito (~1h 50m)',
-    sku: 'EMB-0W5BOW (5u) + EMB-IIVL86 (10u) + MFSXK -> MFSx5 (4u) + MPGDSX7 (1u) + MPGDFX6,9 (1u) + MPB (1u)',
-    cantidad: '2 quiebres de Línea 2 (~25m) + 1 tanda única de Mix Con Pasas L3 (~44m) + 3 Pre-Mezclas L5/L6 (~41m)',
-    tiempo: '~1h 50m asignados íntegros al Plan de Hoy Miércoles 04/11',
-    coberturaPost: 'SE COMPLETA HOY (Quedan 0 Jornadas Hacia Adelante y 0 Tareas Pendientes)',
-    badgeColor: '#15803d',
-    datosEmpiricos: 'Al sumar exactamente 110 minutos (~1h 50m), todo el trabajo remanente del taller cabe holgadamente dentro de la jornada presencial de hoy miércoles.',
-    fundamental: 'No tiene sentido artificial dejar tareas sueltas para una jornada posterior cuando las 6 tareas restantes suman ~1h 50m y se completan hoy mismo.'
+    nombre: '[JORNADA 1 HACIA ADELANTE · PARTE B] Maní Salado x 5kg (3 u.) + Avellanas Peladas x 2kg (4 u.) + Semilla Chía Gris x 1kg (3 u.) + Semilla Quinoa x 1kg (3 u.)',
+    sku: 'MRSx5 (3u) + APx2 (4u) + EMB-JYS9SJ (3u) + QRX1 (3u)',
+    cantidad: '3 u. MRSx5 (15kg, ~12m) + 4 u. APx2 (8kg, ~10m) + 3 u. EMB-JYS9SJ (3kg, ~7m) + 3 u. QRX1 (3kg, ~14m)',
+    tiempo: '~43 min',
+    coberturaPost: 'Post-Prod: 45 a 240 días de cobertura y 4 contenedores abiertos vaciados en taller',
+    datosEmpiricos: '1) MRSx5 tiene 3 u. (22,5d) y 16,80 kg abiertos en taller (Ing. #45) más 1 bolsa cerrada de 25 kg; 2) APx2 está en 0 u. con 8,45 kg abiertos en taller (Ing. #21); 3) EMB-JYS9SJ está en 0 u. con 3,76 kg abiertos (Ing. #147); 4) QRX1 está en 0 u. con 3,83 kg abiertos (Ing. #97).',
+    fundamental: 'Envasa los 4 saldos abiertos en taller (respetando la bolsa cerrada de 25 kg de Maní Salado para Mix Salado) y completa el 100% del Stock Ideal.'
+  });
+
+  drawAuditItemCard(doc, startX, pageWidth, {
+    nombre: '[ANEXO DE COMPRAS — EXCLUIDOS DE TALLER POR FALTA DE MATERIA PRIMA]',
+    sku: 'PKX2 + EMB-W8QB6Y + HDGX5 + DIMx1 + SBX5 + MFSTXK (Mix Tropical)',
+    cantidad: 'Bloqueados hasta ingreso de mercadería de proveedor',
+    tiempo: '0 min en taller hoy',
+    coberturaPost: 'Derivar a Compras: Panko, Maíz Mostaza y Miel, Harina Garbanzo, Dátil, Sésamo Blanco y Kiwi',
+    badgeColor: '#b91c1c',
+    datosEmpiricos: 'PKX2 (Ing. #165: 0,05 kg disp.), EMB-W8QB6Y (Ing. #44: 1,40 kg disp. vs 2,50 kg req.), HDGX5 (Ing. #48: 0 kg), DIMx1 (Ing. #89: 0 kg), SBX5 (Ing. #128: 0,72 kg) y Mix Tropical MFSTXK (Ing. #126 Kiwi: 0,41 kg disp. vs 0,75 kg req.) no cuentan con materia prima suficiente.',
+    fundamental: 'No se incluyen en la hoja operativa de Matías para evitar tareas imposibles en taller hasta que ingrese la compra.'
   });
 
   drawLargeClosureBanner(
     doc,
     startX,
     pageWidth,
-    'DEMOSTRACIÓN DE FINITUD (CANTIDAD LIBRE DE JORNADAS HACIA ADELANTE = 0 JORNADAS -> 0 TAREAS PENDIENTES): Al ejecutarse hoy miércoles 04/11/2026 el Plan de Hoy (~1h 50m), el depósito alcanza el 100% del Stock Ideal (>= 30 días) sin requerir ninguna jornada adicional hacia adelante.'
+    'DEMOSTRACIÓN DE FINITUD (CANTIDAD LIBRE DE JORNADAS HACIA ADELANTE = 1 JORNADA DE ~2h 13m -> 0 TAREAS PENDIENTES): Al completarse esta única Jornada Hacia Adelante (~2h 13m), el depósito alcanza el 100% del Stock Ideal con 0 jornadas adicionales requeridas.'
   );
 
   doc.end();
@@ -463,9 +498,9 @@ async function generarTodosLosFundamentals() {
 if (require.main === module) {
   generarTodosLosFundamentals()
     .then(({ p1, p2, p3 }) => {
-      console.log(`✅ Fundamentals Jornada Hoy (Miércoles 04/11) generado en: ${p1}`);
-      console.log(`✅ Fundamentals Retiro Externa (Miércoles 04/11) generado en: ${p2}`);
-      console.log(`✅ Fundamentals Jornadas Hacia Adelante (Miércoles 04/11) generado en: ${p3}`);
+      console.log(`✅ Fundamentals Jornada Hoy (Jueves 05/11) generado en: ${p1}`);
+      console.log(`✅ Fundamentals Retiro Externa (Jueves 05/11) generado en: ${p2}`);
+      console.log(`✅ Fundamentals Jornadas Hacia Adelante (Jueves 05/11) generado en: ${p3}`);
       process.exit(0);
     })
     .catch(err => {

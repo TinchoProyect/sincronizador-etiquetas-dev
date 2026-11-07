@@ -1,235 +1,34 @@
 /**
  * Servicio WSFE (Web Service de Facturación Electrónica)
  * Gestiona la emisión de comprobantes electrónicos con AFIP usando @afipsdk/afip.js
- * Incluye Doble Persistencia Automática (Disco `certs/TA-*.json` <-> PostgreSQL `public.factura_afip_ta`)
- * para garantizar continuidad sin bloqueo de 12hs en ARCA/AFIP ante failover o rollback Nube <-> PcAlmacen.
  */
 
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const Afip = require('@afipsdk/afip.js');
 const { pool } = require('../config/database');
-const { ENTORNO, CUIT, CERTIFICADOS, ALICUOTAS_IVA } = require('../config/afip');
+const { ENTORNO, CUIT, CERTIFICADOS, ALICUOTAS_IVA, IS_MODO_LABORATORIO } = require('../config/afip');
 
-const CERTS_DIR = path.resolve(__dirname, '../certs/');
+function esModoLaboratorioAfip() {
+    return Boolean(
+        IS_MODO_LABORATORIO ||
+        String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' ||
+        String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true' ||
+        String(process.env.MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
+    );
+}
+const path = require('path');
 
-// Inicializar SDK de AFIP fijando tanto res_folder como ta_folder en src/facturacion/certs/
+// Inicializar SDK de AFIP
 const afip = new Afip({
     CUIT: parseInt(CUIT, 10),
     cert: CERTIFICADOS[ENTORNO].CERT,
     key: CERTIFICADOS[ENTORNO].KEY,
-    res_folder: CERTS_DIR,
-    ta_folder: CERTS_DIR,
+    res_folder: path.resolve(__dirname, '../certs/'),
     production: ENTORNO === 'PROD'
 });
 
-let _tablaTaVerificada = false;
-
-function obtenerRutaArchivoTA(service = 'wsfe') {
-    const isProd = afip.options && afip.options.production;
-    const cuitNum = afip.options ? afip.options.CUIT : parseInt(CUIT, 10);
-    return path.resolve(
-        CERTS_DIR,
-        `TA-${cuitNum}-${service}${isProd ? '-production' : ''}.json`
-    );
-}
-
-/**
- * Si existía un TA previo en la carpeta interna de node_modules/@afipsdk/afip.js/src/Afip_res/,
- * lo migra sin pérdida hacia src/facturacion/certs/.
- */
-function migrarTaLegacySiExiste(service = 'wsfe') {
-    try {
-        const targetPath = obtenerRutaArchivoTA(service);
-        if (fs.existsSync(targetPath)) return;
-        const legacyDir = path.resolve(path.dirname(require.resolve('@afipsdk/afip.js')), 'Afip_res');
-        const legacyPath = path.resolve(legacyDir, path.basename(targetPath));
-        if (fs.existsSync(legacyPath)) {
-            fs.copyFileSync(legacyPath, targetPath);
-            console.log(`🔄 [FACTURACION-TA-SYNC] TA previo migrado desde Afip_res a ${targetPath}`);
-        }
-    } catch (_) {}
-}
-
-async function asegurarTablaAfipTa() {
-    if (_tablaTaVerificada) return;
-    try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS public.factura_afip_ta (
-                id SERIAL PRIMARY KEY,
-                entorno VARCHAR(10) NOT NULL,
-                servicio VARCHAR(60) NOT NULL DEFAULT 'wsfe',
-                token TEXT NOT NULL,
-                sign TEXT NOT NULL,
-                expira_en TIMESTAMPTZ NOT NULL,
-                creado_en TIMESTAMPTZ DEFAULT NOW(),
-                cuit VARCHAR(20) DEFAULT '23248921749',
-                ta_raw_json JSONB,
-                origen_host VARCHAR(100),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                CONSTRAINT factura_afip_ta_entorno_servicio_key UNIQUE (entorno, servicio)
-            );
-            ALTER TABLE public.factura_afip_ta
-                ADD COLUMN IF NOT EXISTS cuit VARCHAR(20) DEFAULT '23248921749',
-                ADD COLUMN IF NOT EXISTS ta_raw_json JSONB,
-                ADD COLUMN IF NOT EXISTS origen_host VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-        `);
-        _tablaTaVerificada = true;
-    } catch (err) {
-        console.warn('⚠️ [FACTURACION-TA-SYNC] No se pudo verificar esquema factura_afip_ta:', err.message);
-    }
-}
-
-/**
- * Lee `public.factura_afip_ta` y si el Ticket de Acceso en PostgreSQL está vigente y es más reciente
- * que el archivo local en `src/facturacion/certs/TA-*.json` (o si el archivo local no existe),
- * reconstruye el JSON en disco antes de que `@afipsdk/afip.js` invoque WSAA.
- */
-async function sincronizarTADesdeBDHaciaDisco(service = 'wsfe') {
-    await asegurarTablaAfipTa();
-    migrarTaLegacySiExiste(service);
-
-    const taFilePath = obtenerRutaArchivoTA(service);
-    const res = await pool.query(
-        `SELECT entorno, servicio, token, sign, expira_en, cuit, ta_raw_json, origen_host
-         FROM public.factura_afip_ta
-         WHERE entorno = $1 AND servicio = $2
-         LIMIT 1`,
-        [ENTORNO, service]
-    );
-
-    if (!res.rows || res.rows.length === 0) {
-        return { syncedFromDb: false, reason: 'no_db_record' };
-    }
-
-    const dbRow = res.rows[0];
-    const dbExp = new Date(dbRow.expira_en);
-    const marginNow = new Date(Date.now() + 10 * 60 * 1000);
-    if (isNaN(dbExp.getTime()) || dbExp <= marginNow) {
-        return { syncedFromDb: false, reason: 'db_ta_expired' };
-    }
-
-    let diskExp = new Date(0);
-    let diskExists = false;
-    if (fs.existsSync(taFilePath)) {
-        try {
-            const rawDisk = JSON.parse(fs.readFileSync(taFilePath, 'utf8'));
-            const expStr = rawDisk && rawDisk.header && rawDisk.header[1] && rawDisk.header[1].expirationtime;
-            if (expStr) {
-                diskExp = new Date(expStr);
-                diskExists = true;
-            }
-        } catch (_) {}
-    }
-
-    if (!diskExists || dbExp.getTime() > diskExp.getTime() + 1000) {
-        const taPayload = (dbRow.ta_raw_json && typeof dbRow.ta_raw_json === 'object' && dbRow.ta_raw_json.credentials)
-            ? dbRow.ta_raw_json
-            : {
-                header: [
-                    { version: '1.0' },
-                    { expirationtime: dbExp.toISOString() }
-                ],
-                credentials: {
-                    token: dbRow.token,
-                    sign: dbRow.sign
-                }
-            };
-
-        if (!fs.existsSync(CERTS_DIR)) {
-            fs.mkdirSync(CERTS_DIR, { recursive: true });
-        }
-        fs.writeFileSync(taFilePath, JSON.stringify(taPayload, null, 2), 'utf8');
-        try {
-            delete require.cache[require.resolve(taFilePath)];
-        } catch (_) {}
-        console.log(`🔄 [FACTURACION-TA-SYNC] TA (${ENTORNO}/${service}) reconstruido en disco desde PostgreSQL (expira: ${dbExp.toISOString()}, origen: ${dbRow.origen_host || 'BD'}).`);
-        return { syncedFromDb: true, taFilePath, expiresAt: dbExp.toISOString() };
-    }
-
-    return { syncedFromDb: false, reason: 'disk_up_to_date', taFilePath };
-}
-
-/**
- * Lee el archivo `src/facturacion/certs/TA-*.json` vigente en disco y lo persiste/actualiza
- * en `public.factura_afip_ta` para que el espejo de 15m y cualquier nodo de respaldo tengan el TA real.
- */
-async function respaldarTADiscoHaciaBD(service = 'wsfe') {
-    await asegurarTablaAfipTa();
-    migrarTaLegacySiExiste(service);
-
-    const taFilePath = obtenerRutaArchivoTA(service);
-    if (!fs.existsSync(taFilePath)) {
-        return { backedUpToDb: false, reason: 'no_disk_file' };
-    }
-
-    let taData;
-    try {
-        taData = JSON.parse(fs.readFileSync(taFilePath, 'utf8'));
-    } catch (err) {
-        return { backedUpToDb: false, reason: 'invalid_disk_json', error: err.message };
-    }
-
-    const token = taData && taData.credentials && taData.credentials.token;
-    const sign = taData && taData.credentials && taData.credentials.sign;
-    const expStr = taData && taData.header && taData.header[1] && taData.header[1].expirationtime;
-    if (!token || !sign || !expStr) {
-        return { backedUpToDb: false, reason: 'incomplete_ta_fields' };
-    }
-
-    const expDate = new Date(expStr);
-    if (isNaN(expDate.getTime())) {
-        return { backedUpToDb: false, reason: 'invalid_expiration_date' };
-    }
-
-    const hostName = `${os.hostname()}:${process.env.LAMDA_ROLE || 'PRIMARY'}`;
-    await pool.query(
-        `INSERT INTO public.factura_afip_ta
-            (entorno, servicio, token, sign, expira_en, cuit, ta_raw_json, origen_host, creado_en, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW(), NOW())
-         ON CONFLICT (entorno, servicio) DO UPDATE SET
-            token = EXCLUDED.token,
-            sign = EXCLUDED.sign,
-            expira_en = EXCLUDED.expira_en,
-            cuit = EXCLUDED.cuit,
-            ta_raw_json = EXCLUDED.ta_raw_json,
-            origen_host = EXCLUDED.origen_host,
-            updated_at = NOW()
-         WHERE EXCLUDED.expira_en >= public.factura_afip_ta.expira_en`,
-        [ENTORNO, service, token, sign, expDate.toISOString(), String(CUIT), JSON.stringify(taData), hostName]
-    );
-
-    return { backedUpToDb: true, expiresAt: expDate.toISOString(), taFilePath };
-}
-
-// Interceptar de manera transparente afip.GetServiceTA para sincronizar BD <-> Disco en cada operación WSFE
-const _originalGetServiceTA = afip.GetServiceTA.bind(afip);
-afip.GetServiceTA = async function (service = 'wsfe', firstTry = true) {
-    try {
-        await sincronizarTADesdeBDHaciaDisco(service);
-    } catch (syncErr) {
-        console.warn(`⚠️ [FACTURACION-TA-SYNC] Aviso previo a GetServiceTA:`, syncErr.message);
-    }
-    const taCredentials = await _originalGetServiceTA(service, firstTry);
-    try {
-        await respaldarTADiscoHaciaBD(service);
-    } catch (backupErr) {
-        console.warn(`⚠️ [FACTURACION-TA-SYNC] Aviso posterior a GetServiceTA:`, backupErr.message);
-    }
-    return taCredentials;
-};
-
-// Sincronización inicial no bloqueante al cargar el módulo
-sincronizarTADesdeBDHaciaDisco('wsfe')
-    .then(() => respaldarTADiscoHaciaBD('wsfe'))
-    .catch(() => {});
-
-console.log('🔍 [FACTURACION-WSFE] Cargando servicio WSFE con afip.js + Doble Persistencia TA...');
+console.log('🔍 [FACTURACION-WSFE] Cargando servicio WSFE con afip.js...');
 console.log(`   Modo Producción: ${afip.options.production}`);
 console.log(`   CUIT: ${afip.options.CUIT}`);
-console.log(`   Carpeta Certs/TA: ${CERTS_DIR}`);
 
 /**
  * Obtener factura completa para CAE
@@ -272,6 +71,15 @@ const obtenerFacturaParaCAE = async (facturaId) => {
  */
 const ultimoAutorizado = async (ptoVta, tipoCbte, entorno = 'HOMO') => {
     console.log(`🔍 [FACTURACION-WSFE] Consultando último autorizado PV:${ptoVta} Tipo:${tipoCbte}`);
+    if (esModoLaboratorioAfip()) {
+        const resLocal = await pool.query(
+            'SELECT COALESCE(MAX(cbte_nro), 0) AS max_nro FROM factura_facturas WHERE pto_vta = $1 AND tipo_cbte = $2',
+            [ptoVta, tipoCbte]
+        );
+        const maxLocal = parseInt(resLocal.rows[0]?.max_nro || 0, 10);
+        console.log(`🧪 [FACTURACION-WSFE] MODO LABORATORIO: Último comprobante local simulado = ${maxLocal} (sin consultar ARCA)`);
+        return maxLocal;
+    }
     try {
         const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, tipoCbte);
         console.log(`✅ [FACTURACION-WSFE] Último autorizado (AFIP SDK): ${lastVoucher}`);
@@ -334,7 +142,16 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
             imp_total: factura.imp_total
         }, null, 2));
 
-        const nextVoucher = await afip.ElectronicBilling.getLastVoucher(factura.pto_vta, factura.tipo_cbte) + 1;
+        let nextVoucher;
+        if (esModoLaboratorioAfip()) {
+            const resMax = await pool.query(
+                'SELECT COALESCE(MAX(cbte_nro), 0) AS max_nro FROM factura_facturas WHERE pto_vta = $1 AND tipo_cbte = $2',
+                [factura.pto_vta, factura.tipo_cbte]
+            );
+            nextVoucher = parseInt(resMax.rows[0]?.max_nro || 0, 10) + 1;
+        } else {
+            nextVoucher = await afip.ElectronicBilling.getLastVoucher(factura.pto_vta, factura.tipo_cbte) + 1;
+        }
         console.log(`   Próximo comprobante: ${nextVoucher}`);
 
         const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -420,7 +237,7 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
             }
         }
 
-        let payload = {
+        payload = {
             'CantReg': 1,
             'PtoVta': factura.pto_vta,
             'CbteTipo': factura.tipo_cbte,
@@ -515,6 +332,22 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
         let caeExistente = null;
         let caeVtoExistente = null;
 
+        if (esModoLaboratorioAfip()) {
+            const vtoDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const caeSimulado = '99999999' + String(facturaId).replace(/\D/g, '').padStart(6, '0').slice(-6);
+            console.log(`🧪 [FACTURACION-WSFE] MODO LABORATORIO ACTIVO: Bloqueando llamada a ARCA. Emitiendo CAE de prueba (${caeSimulado}) para Factura ID ${facturaId}.`);
+            const resultadoSimulado = {
+                cae: caeSimulado,
+                cae_vto: vtoDate,
+                cbte_nro: nextVoucher,
+                resultado: 'A',
+                observaciones: ['MODO LABORATORIO: CAE DE PRUEBA SIMULADO LOCALMENTE (SIN EMISIÓN FISCAL EN ARCA)'],
+                simulado_laboratorio: true
+            };
+            await guardarLogWSFE(facturaId, 'createVoucher_LAB_SIMULADO', payload, { CAE: caeSimulado, CAEFchVto: vtoDate, simulado: true }, resultadoSimulado);
+            return resultadoSimulado;
+        }
+
         if (lastVoucher > 0) {
             try {
                 console.log(`🔍 [FACTURACION-WSFE] Verificando si el último comprobante en AFIP (${lastVoucher}) ya fue autorizado para esta factura...`);
@@ -602,6 +435,22 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
  */
 const consultarComprobante = async (ptoVta, tipoCbte, cbteNro, entorno = 'HOMO') => {
     console.log(`🔍 [FACTURACION-WSFE] Consultando comprobante PV:${ptoVta} Tipo:${tipoCbte} Nro:${cbteNro}`);
+    if (esModoLaboratorioAfip()) {
+        const resLocal = await pool.query(
+            'SELECT cae, estado FROM factura_facturas WHERE pto_vta = $1 AND tipo_cbte = $2 AND cbte_nro = $3 LIMIT 1',
+            [ptoVta, tipoCbte, cbteNro]
+        );
+        if (resLocal.rows.length === 0) return { encontrado: false, simulado_laboratorio: true };
+        return {
+            encontrado: true,
+            ptoVta,
+            tipoCbte,
+            cbteNro,
+            cae: resLocal.rows[0].cae || '99999999000000',
+            estado: resLocal.rows[0].estado || 'APROBADA',
+            simulado_laboratorio: true
+        };
+    }
     try {
         const voucherInfo = await afip.ElectronicBilling.getVoucherInfo(cbteNro, ptoVta, tipoCbte);
         if (!voucherInfo) {
@@ -624,11 +473,7 @@ const consultarComprobante = async (ptoVta, tipoCbte, cbteNro, entorno = 'HOMO')
 console.log('✅ [FACTURACION-WSFE] Servicio WSFE cargado con afip.js');
 
 module.exports = {
-    afip,
     ultimoAutorizado,
     solicitarCAE,
-    consultarComprobante,
-    sincronizarTADesdeBDHaciaDisco,
-    respaldarTADiscoHaciaBD,
-    obtenerRutaArchivoTA
+    consultarComprobante
 };

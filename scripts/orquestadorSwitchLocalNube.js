@@ -5,12 +5,6 @@
  * Gobierna la conmutación entre:
  *   - NODO LOCAL (PcAlmacen): Túnel Cloudflare `tunel-etiquetas` (d72f6c10-9fdc-4130-a0fb-ebadefb7006b)
  *   - NODO NUBE (34.39.187.220): Túnel Cloudflare `tunel-nube` (cf41c278-0a41-417f-9b99-806486fc166b)
- *
- * Modos de uso:
- *   node scripts/orquestadorSwitchLocalNube.js status          -> Chequeo completo de salud Pre-Vuelo (Sin cambios)
- *   node scripts/orquestadorSwitchLocalNube.js to-nube         -> Conmuta Producción de Local -> Nube
- *   node scripts/orquestadorSwitchLocalNube.js to-local        -> Conmuta Producción de Nube -> Local (con o sin Nube activa)
- *   node scripts/orquestadorSwitchLocalNube.js local-json      -> Salida JSON de salud local (usado remotamente por SSH)
  */
 
 const fs = require('fs');
@@ -127,7 +121,7 @@ async function conmutarDnsCloudflareHaciaTunel(tunnelId, etiquetaDestino) {
 
 function checkLocalHttp(port, urlPath = '/') {
     return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}${urlPath}`, { timeout: 3000 }, (res) => {
+        const req = http.get(`http://127.0.0.1:${port}${urlPath}`, { timeout: 6000, agent: false }, (res) => {
             let body = '';
             res.on('data', (c) => { body += c; });
             res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 500, statusCode: res.statusCode, body }));
@@ -186,6 +180,14 @@ async function verificarSaludLocal() {
         const parsedWa = JSON.parse(waRes.body || '{}');
         waStatus = parsedWa?.data?.status || 'DESCONOCIDO';
         modoPruebaNube = Boolean(parsedWa?.data?.modoPruebaNube);
+        if (fs.existsSync(ENV_PATH)) {
+            const rawEnv = fs.readFileSync(ENV_PATH, 'utf8');
+            const mFlag = /^LAMDA_MODO_PRUEBA_NUBE=(.+)$/m.exec(rawEnv);
+            if (mFlag) {
+                const v = mFlag[1].trim().toLowerCase();
+                modoPruebaNube = (v === 'true' || v === '1');
+            }
+        }
     } catch (_) {}
 
     return {
@@ -201,8 +203,8 @@ async function verificarSaludLocal() {
 function verificarSaludNube() {
     try {
         const out = execSync(
-            `ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "node /opt/lamda/sincronizador-etiquetas/scripts/orquestadorSwitchLocalNube.js local-json"`,
-            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 12000 }
+            `ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "node /opt/lamda/sincronizador-etiquetas/scripts/orquestadorSwitchLocalNube.js local-json"`,
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20000, windowsHide: true }
         );
         const lines = String(out || '').trim().split(/\r?\n/);
         const lastJsonLine = lines[lines.length - 1];
@@ -210,6 +212,217 @@ function verificarSaludNube() {
     } catch (err) {
         return { reachable: false, error: err.message };
     }
+}
+
+function detenerCincoServiciosLocales() {
+    liberarPuertosEspecificosYLocks([3000, 3002, 3003, 3004, 3005]);
+}
+
+function runHiddenPsEncoded(psScript, timeoutMs = 15000) {
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    return execSync(`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, {
+        stdio: 'ignore',
+        windowsHide: true,
+        timeout: timeoutMs
+    });
+}
+
+function lanzarProcesoNodeOcultoWmi(scriptRelPath) {
+    const fullScript = path.join(ROOT_DIR, scriptRelPath);
+    const nodeExe = process.execPath || 'C:\\Program Files\\nodejs\\node.exe';
+    const ps = `
+$si = New-CimInstance -ClassName Win32_ProcessStartup -Property @{ ShowWindow = [uint16]0 } -ClientOnly
+$cmd = '"' + '${nodeExe.replace(/'/g, "''")}' + '" "' + '${fullScript.replace(/'/g, "''")}' + '"'
+Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = $cmd
+    CurrentDirectory = '${ROOT_DIR.replace(/'/g, "''")}'
+    ProcessStartupInformation = $si
+} | Out-Null
+`;
+    runHiddenPsEncoded(ps, 10000);
+}
+
+function liberarPuertosEspecificosYLocks(portsToFree = []) {
+    if (!Array.isArray(portsToFree) || portsToFree.length === 0) return;
+    const portsList = portsToFree.map(p => Number(p)).filter(Boolean).join(',');
+    const clearPuppeteer = portsToFree.includes(3004) ? '$true' : '$false';
+    const myPid = process.pid || 0;
+    const ps = `
+$puertos = @(${portsList})
+foreach ($p in $puertos) {
+    $conns = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+    if ($conns) {
+        foreach ($c in $conns) {
+            $pidToKill = $c.OwningProcess
+            if ($pidToKill -gt 4 -and $pidToKill -ne ${myPid}) {
+                $wmi = Get-CimInstance Win32_Process -Filter "ProcessId = $pidToKill" -ErrorAction SilentlyContinue
+                if ($wmi -and ($wmi.CommandLine -like '*lamdaSwitchGuiServer.js*')) {
+                    continue
+                }
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+Get-Process -Name "LamdaControlPanel","LamdaControlPanel_Runtime" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'msedge.exe'" -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -like '*LamdaLaboratorioBrowserProfile*'
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+if (${clearPuppeteer}) {
+    Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'chromium.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -like '*session-lamda-billing*' -or $_.CommandLine -like '*\\.cache\\puppeteer\\*'
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+$cfProcs = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*runCloudflaredSafe.js*' })
+if ($cfProcs.Count -gt 1) {
+    for ($i = 1; $i -lt $cfProcs.Count; $i++) {
+        Stop-Process -Id $cfProcs[$i].ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+`;
+    try {
+        runHiddenPsEncoded(ps, 15000);
+    } catch (_) {}
+}
+
+async function consultarEstadoDetallado5Puertos() {
+    const [p3000, p3002, p3003, p3004, p3005, waRes, cfgRes] = await Promise.all([
+        checkLocalHttp(3000, '/'),
+        checkLocalHttp(3002, '/'),
+        checkLocalHttp(3003, '/'),
+        checkLocalHttp(3004, '/'),
+        checkLocalHttp(3005, '/login'),
+        checkLocalHttp(3004, '/facturacion/whatsapp/status'),
+        checkLocalHttp(3000, '/api/config/status')
+    ]);
+    let whatsappStatus = 'DESCONOCIDO';
+    try {
+        const parsed = JSON.parse(waRes.body || '{}');
+        whatsappStatus = parsed?.data?.status || 'DESCONOCIDO';
+    } catch (_) {}
+    let isLaboratorio = false;
+    try {
+        if (cfgRes.ok && cfgRes.body) {
+            const parsedCfg = JSON.parse(cfgRes.body);
+            if (parsedCfg.isTest === true || String(parsedCfg.database || '').toLowerCase() === 'etiquetas_pruebas') {
+                isLaboratorio = true;
+            }
+        }
+    } catch (_) {}
+    const ports = {
+        3000: p3000.ok && !isLaboratorio,
+        3002: p3002.ok && !isLaboratorio,
+        3003: p3003.ok && !isLaboratorio,
+        3004: p3004.ok && !isLaboratorio,
+        3005: p3005.ok && !isLaboratorio
+    };
+    const rawUpCount = [p3000.ok, p3002.ok, p3003.ok, p3004.ok, p3005.ok].filter(Boolean).length;
+    const activeCount = Object.values(ports).filter(Boolean).length;
+    return {
+        ports,
+        activeCount,
+        rawUpCount,
+        isLaboratorio,
+        total: 5,
+        allOk: activeCount === 5 && !isLaboratorio,
+        whatsappStatus
+    };
+}
+
+async function asegurarCincoServiciosLocalesEncendidos(maxWaitSec = 35, onProgress = null) {
+    const services = [
+        { port: 3000, name: 'Pizarra / Etiquetas', script: 'src/app-etiquetas/server.js' },
+        { port: 3002, name: 'Producción', script: 'src/produccion/app.js' },
+        { port: 3003, name: 'Presupuestos', script: 'src/presupuestos/app.js' },
+        { port: 3004, name: 'Facturación & WhatsApp', script: 'src/facturacion/app.js' },
+        { port: 3005, name: 'Logística', script: 'src/logistica/app.js' }
+    ];
+
+    const initial = await consultarEstadoDetallado5Puertos();
+    if (typeof onProgress === 'function') {
+        onProgress({
+            ...initial,
+            phase: 'check',
+            message: initial.allOk
+                ? '5/5 servicios locales activos y verificados'
+                : `Verificando puertos locales (${initial.activeCount}/5 activos)...`
+        });
+    }
+    if (initial.allOk) return true;
+
+    const downPorts = initial.isLaboratorio ? [3000, 3002, 3003, 3004, 3005] : services.filter(s => !initial.ports[s.port]).map(s => s.port);
+    if (typeof onProgress === 'function') {
+        onProgress({
+            ...initial,
+            phase: 'cleanup',
+            message: `Liberando puertos locales (${downPorts.join(', ')}) e iniciando procesos...`
+        });
+    }
+    liberarPuertosEspecificosYLocks(downPorts);
+    await new Promise(r => setTimeout(r, 600));
+
+    for (const svc of services) {
+        if (initial.ports[svc.port]) continue;
+        try {
+            lanzarProcesoNodeOcultoWmi(svc.script);
+        } catch (_) {}
+    }
+
+    // Asegurar 1 única instancia de runCloudflaredSafe.js
+    try {
+        const psCf = `
+$cf = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -like '*runCloudflaredSafe.js*' })
+if ($cf.Count -eq 0) {
+    $si = New-CimInstance -ClassName Win32_ProcessStartup -Property @{ ShowWindow = [uint16]0 } -ClientOnly
+    $cmd = '"' + '${(process.execPath || 'C:\\Program Files\\nodejs\\node.exe').replace(/'/g, "''")}' + '" "' + '${path.join(ROOT_DIR, 'scripts/runCloudflaredSafe.js').replace(/'/g, "''")}' + '"'
+    Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = $cmd
+        CurrentDirectory = '${ROOT_DIR.replace(/'/g, "''")}'
+        ProcessStartupInformation = $si
+    } | Out-Null
+}
+`;
+        runHiddenPsEncoded(psCf, 8000);
+    } catch (_) {}
+
+    const deadline = Date.now() + maxWaitSec * 1000;
+    while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 800));
+        const st = await consultarEstadoDetallado5Puertos();
+        const detailStr = services.map(s => `${s.port} ${st.ports[s.port] ? '✅' : '⏳'}`).join(' · ');
+        if (typeof onProgress === 'function') {
+            onProgress({
+                ...st,
+                phase: st.allOk ? 'ready' : 'starting',
+                message: st.allOk
+                    ? `5/5 servicios ONLINE (${detailStr})`
+                    : `Encendiendo servicios (${st.activeCount}/5): ${detailStr}`
+            });
+        }
+        if (st.allOk) {
+            return true;
+        }
+    }
+    const finalSt = await consultarEstadoDetallado5Puertos();
+    return finalSt.allOk;
+}
+
+function iniciarPuenteZebraEnBackground() {
+    const agentScript = path.join(ROOT_DIR, 'scripts', 'lamdaSwitchGuiServer.js');
+    const fallbackScript = path.join(ROOT_DIR, 'scripts', 'lamdaPrintBridgeAgent.js');
+    const target = fs.existsSync(agentScript) ? agentScript : fallbackScript;
+    if (!fs.existsSync(target)) return;
+    const child = spawn(process.execPath, [target], {
+        cwd: ROOT_DIR,
+        env: {
+            ...process.env,
+            LAMDA_CLOUD_PRINT_URL: 'https://logistica.lamdaser.com'
+        },
+        detached: true,
+        windowsHide: true,
+        stdio: 'ignore'
+    });
+    child.unref();
 }
 
 async function mostrarDiagnosticoPreVuelo() {
@@ -237,9 +450,9 @@ async function mostrarDiagnosticoPreVuelo() {
     console.log(`   • Base PostgreSQL Local   : ${localHealth.db.ok ? '✅ ONLINE' : '❌ ERROR'} (Modo Read-Only: ${localHealth.db.readOnly})`);
     console.log(`   • Conteo de Registros     : ${localHealth.db.articulos} Artículos | ${localHealth.db.clientes} Clientes | ${localHealth.db.facturas} Facturas`);
     console.log(`   • Tickets ARCA Vigentes   : ${localHealth.db.taVigentes}`);
-    console.log(`   • 5 Servicios Web Locales : ${localHealth.portsOk ? '✅ 5/5 ONLINE (3000..3005)' : '⚠️ ALGUNOS PUERTOS DETENIDOS'}`);
+    console.log(`   • 5 Servicios Web Locales : ${localHealth.portsOk ? '✅ 5/5 ONLINE (3000..3005)' : (dnsInfo.isNubeTitular ? '⚪ Apagados (Modo Nube Activo)' : '⚠️ ALGUNOS PUERTOS DETENIDOS')}`);
     console.log(`   • WhatsApp en PcAlmacen   : ${localHealth.whatsappStatus}`);
-    console.log(`   • Puente Zebra (3099)     : ${localHealth.zebraBridge3099Active ? '✅ ACTIVO (Impresión ~1s)' : '⚪ En espera (se enciende automático al pasar a Nube)'}`);
+    console.log(`   • Puente Zebra (3099)     : ${localHealth.zebraBridge3099Active ? '✅ ACTIVO (Impresión ~1s)' : '⚪ En espera'}`);
 
     console.log(`\n☁️  3. SALUD DEL NODO NUBE (${CLOUD_HOST}):`);
     if (!cloudHealth.reachable) {
@@ -257,28 +470,18 @@ async function mostrarDiagnosticoPreVuelo() {
     return { dnsInfo, localHealth, cloudHealth };
 }
 
-function iniciarPuenteZebraEnBackground() {
-    const agentScript = path.join(ROOT_DIR, 'scripts', 'lamdaPrintBridgeAgent.js');
-    if (!fs.existsSync(agentScript)) return;
-    const child = spawn(process.execPath, [agentScript], {
-        cwd: ROOT_DIR,
-        env: {
-            ...process.env,
-            CLOUD_BASE_URL: 'https://nube-prueba.lamdaser.com'
-        },
-        detached: true,
-        stdio: 'ignore'
-    });
-    child.unref();
-}
-
 async function ejecutarSwitchHaciaNube() {
     const { localHealth, cloudHealth } = await mostrarDiagnosticoPreVuelo();
     if (!cloudHealth.reachable || !cloudHealth.db?.ok || !cloudHealth.portsOk) {
         throw new Error('Pre-Flight abortado: El servidor de la Nube no tiene todos sus servicios listos. PcAlmacen sigue como Titular sin cambios.');
     }
 
-    console.log('🚀 [PASO 1/4] Sincronizando base `etiquetas` + Tickets ARCA de PcAlmacen -> Nube...');
+    console.log('🚀 [PASO 1/4] Abriendo escritura en Nube y sincronizando base `etiquetas` + Tickets ARCA (PcAlmacen -> Nube)...');
+    execSync(
+        `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sudo -u postgres psql -d postgres -c 'ALTER DATABASE etiquetas SET default_transaction_read_only = off;'"`,
+        { stdio: 'ignore', windowsHide: true }
+    );
+
     const { detectarBinarioPostgres } = require('./syncEspejoDesdeNube');
     const pgDumpBin = detectarBinarioPostgres('pg_dump');
     const localPass = process.env.DB_PASSWORD || 'postgres';
@@ -286,20 +489,25 @@ async function ejecutarSwitchHaciaNube() {
     const localHost = process.env.DB_HOST || 'localhost';
     const localPort = process.env.DB_PORT || '5432';
 
-    const dumpCmd = `"${pgDumpBin}" -h ${localHost} -p ${localPort} -U ${localUser} -d etiquetas --clean --if-exists --no-owner --no-privileges | ssh -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "PGPASSWORD=postgres psql -h localhost -U postgres -d etiquetas -q"`;
+    const dumpCmd = `"${pgDumpBin}" -h ${localHost} -p ${localPort} -U ${localUser} -d etiquetas --clean --if-exists --no-owner --no-privileges | ssh -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sudo -u postgres psql -d etiquetas -q"`;
     execSync(dumpCmd, {
         env: { ...process.env, PGPASSWORD: localPass },
-        stdio: 'inherit'
+        stdio: ['ignore', 'ignore', 'inherit'],
+        windowsHide: true
     });
     console.log('   ✅ Base de datos y Tickets ARCA sincronizados al 100% en la Nube.');
 
     console.log('🟢 [PASO 2/4] Activando Nube como Nodo Titular de Producción...');
     execSync(
-        `ssh -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env"`,
-        { stdio: 'inherit' }
+        `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env"`,
+        { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true }
     );
 
-    console.log('🔒 [PASO 3/4] Activando candado Read-Only preventivo en PcAlmacen y encendiendo Puente Zebra (3099)...');
+    console.log('☁️  [PASO 3/4] Conmutando Cloudflare hacia `tunel-nube` (Nube Titular)...');
+    await conmutarDnsCloudflareHaciaTunel(TUNNEL_NUBE_ID, `NUBE (${CLOUD_HOST})`);
+
+    console.log('🔒 [PASO 4/4] Apagando los 5 servicios locales (3000..3005), activando Read-Only en PcAlmacen y dejando Puente Zebra (3099)...');
+    detenerCincoServiciosLocales();
     const adminClient = new Client({ host: localHost, port: parseInt(localPort, 10), user: localUser, password: localPass, database: 'postgres' });
     await adminClient.connect();
     try {
@@ -309,40 +517,21 @@ async function ejecutarSwitchHaciaNube() {
     }
     if (!localHealth.zebraBridge3099Active) {
         iniciarPuenteZebraEnBackground();
+        await new Promise(r => setTimeout(r, 1500));
     }
-
-    console.log('☁️  [PASO 4/4] Conmutando Cloudflare hacia `tunel-nube` (Nube Titular)...');
-    await conmutarDnsCloudflareHaciaTunel(TUNNEL_NUBE_ID, `NUBE (${CLOUD_HOST})`);
 
     console.log('\n✅ [SWITCH COMPLETADO] La Nube está ahora ACTIVA como Titular (Sello en pantalla: N · Nube).');
 }
 
-async function ejecutarSwitchHaciaLocal() {
+async function ejecutarSwitchHaciaLocal(esEmergencia = false) {
     console.log('\n🔙 [SWITCH NUBE -> LOCAL] Iniciando retorno de titularidad a PcAlmacen...');
-    const cloudHealth = verificarSaludNube();
 
-    if (cloudHealth.reachable) {
-        console.log('🛡️  [PASO 1/3] Poniendo Nube en Modo Espejo Silencioso / Standby y descargando última foto de la base...');
-        try {
-            execSync(
-                `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=true/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=true/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env"`,
-                { stdio: 'inherit', timeout: 15000 }
-            );
-            const { sincronizarEspejo } = require('./syncEspejoDesdeNube');
-            await sincronizarEspejo();
-        } catch (eSync) {
-            console.warn('⚠️  Aviso durante sincronización final desde Nube:', eSync.message);
-        }
-    } else {
-        console.log('⚠️  [MODO EMERGENCIA SIN NUBE] La Nube no responde; procediendo directamente con el estado local / último espejo en PcAlmacen...');
-    }
-
-    console.log('🔓 [PASO 2/3] Levantando candado Read-Only en PcAlmacen y asegurando Tickets ARCA...');
     const localPass = process.env.DB_PASSWORD || 'postgres';
     const localUser = process.env.DB_USER || 'postgres';
     const localHost = process.env.DB_HOST || 'localhost';
     const localPort = parseInt(process.env.DB_PORT || '5432', 10);
 
+    console.log('🔓 [PASO 1/4] Levantando candado Read-Only en PcAlmacen...');
     const adminClient = new Client({ host: localHost, port: localPort, user: localUser, password: localPass, database: 'postgres' });
     await adminClient.connect();
     try {
@@ -351,21 +540,38 @@ async function ejecutarSwitchHaciaLocal() {
         await adminClient.end();
     }
 
-    try {
-        const { reconstruirTaAfipDesdeBase } = require('./syncEspejoDesdeNube');
-        await reconstruirTaAfipDesdeBase({
-            host: localHost,
-            port: localPort,
-            user: localUser,
-            password: localPass,
-            database: 'etiquetas'
-        }, ROOT_DIR);
-    } catch (_) {}
+    const cloudHealth = !esEmergencia ? verificarSaludNube() : { reachable: false };
+    if (cloudHealth.reachable) {
+        console.log('🛡️  [PASO 2/4] Sincronizando base actualizada desde la Nube hacia PcAlmacen y pasando Nube a Standby (Read-Only: on)...');
+        try {
+            const { detectarBinarioPostgres } = require('./syncEspejoDesdeNube');
+            const psqlBin = detectarBinarioPostgres('psql');
+            const pullCmd = `ssh -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sudo -u postgres pg_dump -d etiquetas --clean --if-exists --no-owner --no-privileges" | "${psqlBin}" -h ${localHost} -p ${localPort} -U ${localUser} -d etiquetas -q`;
+            execSync(pullCmd, {
+                env: { ...process.env, PGPASSWORD: localPass },
+                stdio: ['ignore', 'ignore', 'inherit'],
+                windowsHide: true,
+                timeout: 120000
+            });
+            execSync(
+                `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=true/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=true/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env && sudo -u postgres psql -d postgres -c 'ALTER DATABASE etiquetas SET default_transaction_read_only = on;'"`,
+                { stdio: 'ignore', windowsHide: true, timeout: 25000 }
+            );
+            console.log('   ✅ Base sincronizada y Nube protegida en Read-Only.');
+        } catch (eSync) {
+            console.warn('⚠️  Aviso durante sincronización final desde Nube:', eSync.message);
+        }
+    } else {
+        console.log('⚠️  [PASO 2/4] Modo Emergencia / Sin Nube: procediendo con el estado local en PcAlmacen...');
+    }
 
     const { limpiarBanderasEnvLocalPrimary } = require('./ejecutarRollbackNubeAPcAlmacen');
     limpiarBanderasEnvLocalPrimary();
 
-    console.log('☁️  [PASO 3/3] Conmutando Cloudflare hacia `tunel-etiquetas` (PcAlmacen Titular)...');
+    console.log('🚀 [PASO 3/4] Asegurando que los 5 servicios locales (3000..3005) estén encendidos en PcAlmacen...');
+    await asegurarCincoServiciosLocalesEncendidos(28);
+
+    console.log('☁️  [PASO 4/4] Conmutando Cloudflare hacia `tunel-etiquetas` (PcAlmacen Titular)...');
     await conmutarDnsCloudflareHaciaTunel(TUNNEL_LOCAL_ID, 'LOCAL (PcAlmacen)');
 
     console.log('\n✅ [SWITCH COMPLETADO] PcAlmacen está nuevamente ACTIVA como Titular (Sello en pantalla: L · Local).');
@@ -382,10 +588,12 @@ async function main() {
         await mostrarDiagnosticoPreVuelo();
     } else if (action === 'to-nube') {
         await ejecutarSwitchHaciaNube();
-    } else if (action === 'to-local' || action === 'emergency-local') {
-        await ejecutarSwitchHaciaLocal();
+    } else if (action === 'to-local') {
+        await ejecutarSwitchHaciaLocal(false);
+    } else if (action === 'emergency-local') {
+        await ejecutarSwitchHaciaLocal(true);
     } else {
-        console.log('Uso: node scripts/orquestadorSwitchLocalNube.js [status | to-nube | to-local]');
+        console.log('Uso: node scripts/orquestadorSwitchLocalNube.js [status | to-nube | to-local | emergency-local]');
     }
 }
 
@@ -399,6 +607,9 @@ if (require.main === module) {
 module.exports = {
     obtenerEstadoDnsCloudflare,
     conmutarDnsCloudflareHaciaTunel,
+    detenerCincoServiciosLocales,
+    asegurarCincoServiciosLocalesEncendidos,
+    consultarEstadoDetallado5Puertos,
     mostrarDiagnosticoPreVuelo,
     ejecutarSwitchHaciaNube,
     ejecutarSwitchHaciaLocal

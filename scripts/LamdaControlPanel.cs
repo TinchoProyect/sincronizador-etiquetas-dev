@@ -63,9 +63,9 @@ namespace LamdaControlCenter
         private Button btnOpenMobile;
         private RichTextBox logBox;
 
-        public MainForm()
+        public MainForm(string rootDirOverride = null)
         {
-            ResolvePaths();
+            ResolvePaths(rootDirOverride);
             InitializeServicesList();
             BuildUserInterface();
 
@@ -78,17 +78,25 @@ namespace LamdaControlCenter
             this.FormClosing += MainForm_FormClosing;
         }
 
-        private void ResolvePaths()
+        private void ResolvePaths(string rootDirOverride = null)
         {
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
-            if (exeDir.EndsWith("scripts", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(rootDirOverride) && Directory.Exists(rootDirOverride))
             {
-                rootDir = Directory.GetParent(exeDir).FullName;
+                rootDir = rootDirOverride.TrimEnd('\\', '/');
             }
             else
             {
-                rootDir = exeDir;
+                string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+                if (exeDir.EndsWith("scripts", StringComparison.OrdinalIgnoreCase))
+                {
+                    rootDir = Directory.GetParent(exeDir).FullName;
+                }
+                else
+                {
+                    rootDir = exeDir;
+                }
             }
+
 
             if (!File.Exists(Path.Combine(rootDir, "package.json")))
             {
@@ -706,6 +714,7 @@ namespace LamdaControlCenter
                 psi.EnvironmentVariables["MODO_LABORATORIO"] = "true";
                 psi.EnvironmentVariables["LAMDA_MODO_LABORATORIO"] = "true";
                 psi.EnvironmentVariables["DB_NAME"] = "etiquetas_pruebas";
+                psi.EnvironmentVariables["SAFE_REDIRECT_WHATSAPP_TO"] = "5492216615746";
 
                 Process proc = new Process();
                 proc.StartInfo = psi;
@@ -1052,6 +1061,8 @@ namespace LamdaControlCenter
             {
                 int code;
                 RunCliCommand(gitExePath, "checkout -- data/ia_credito_ledger.json", out code);
+                RunCliCommand(gitExePath, "checkout -- src/app-etiquetas/documentos", out code);
+                RunCliCommand(gitExePath, "checkout -- pagina-publica-web/dist", out code);
             }
             catch { }
         }
@@ -1088,6 +1099,25 @@ namespace LamdaControlCenter
                 try
                 {
                     CleanRuntimeNoiseFiles();
+
+                    // Exportar snapshot automático de esquema de etiquetas_pruebas para detectar tablas/columnas nuevas
+                    try
+                    {
+                        string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
+                        if (File.Exists(auditScript))
+                        {
+                            int audCode;
+                            RunCliCommand(nodeExePath, "\"" + auditScript + "\" --export-lab", out audCode);
+                            int diffSchemaCode;
+                            string schemaDiff = RunCliCommand(gitExePath, "status --porcelain migrations/schema_laboratorio_snapshot.json", out diffSchemaCode).Trim();
+                            if (!string.IsNullOrWhiteSpace(schemaDiff))
+                            {
+                                RunCliCommand(gitExePath, "add migrations/schema_laboratorio_snapshot.json", out diffSchemaCode);
+                                RunCliCommand(gitExePath, "commit -m \"chore(db-schema): actualizar snapshot de estructura de etiquetas_pruebas\"", out diffSchemaCode);
+                            }
+                        }
+                    }
+                    catch { }
 
                     int fetchCode;
                     string fetchOut = RunCliCommand(gitExePath, "fetch origin desarrollo", out fetchCode);
@@ -1170,6 +1200,19 @@ namespace LamdaControlCenter
                         return;
                     }
 
+                    try
+                    {
+                        string csc = @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe";
+                        string csFile = Path.Combine(rootDir, @"scripts\LamdaControlPanel.cs");
+                        string outExe = Path.Combine(rootDir, @"scripts\LamdaControlPanel.exe");
+                        string icoFile = Path.Combine(rootDir, @"scripts\lamda-lab.ico");
+                        if (File.Exists(csc) && File.Exists(csFile))
+                        {
+                            int cscCode;
+                            RunCliCommand(csc, "/nologo /target:winexe /out:\"" + outExe + "\" /win32icon:\"" + icoFile + "\" \"" + csFile + "\"", out cscCode);
+                        }
+                    }
+                    catch { }
                     UpdateGitCommitBadgeAsync();
                     AppendLog("✅ Actualizaciones aplicadas en la Notebook. Reiniciando los 5 servicios automáticamente...");
 
@@ -1324,7 +1367,7 @@ namespace LamdaControlCenter
         private void RunRestoreDatabaseAsync()
         {
             DialogResult dr = MessageBox.Show(
-                "¿Querés restaurar la base local 'etiquetas_pruebas' desde el último backup?\n\nEsto reiniciará los datos de prueba locales sin tocar ninguna otra base de tu Notebook.",
+                "¿Querés refrescar la base de prueba 'etiquetas_pruebas' trayendo la última foto real de Producción (logistica.lamdaser.com)?\n\nEsto limpiará tus pruebas anteriores y cargará los últimos datos reales (con ARCA y WhatsApp protegidos en modo prueba).",
                 "Restaurar Base de Pruebas",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question
@@ -1338,7 +1381,7 @@ namespace LamdaControlCenter
                 try
                 {
                     StopAllServicesSync();
-                    string scriptPath = Path.Combine(rootDir, @"scripts\restaurar-db-pruebas.js");
+                    string scriptPath = Path.Combine(rootDir, @"scripts\dbRestaurarPruebas.js");
                     string outText = RunCliCommand(nodeExePath, "\"" + scriptPath + "\"");
                     AppendLog(outText.Trim());
                     this.BeginInvoke(new Action(() =>
@@ -1419,13 +1462,40 @@ namespace LamdaControlCenter
         }
 
         [STAThread]
-        public static void Main()
+        public static void Main(string[] args)
         {
+            string explicitRoot = (args != null && args.Length > 0) ? args[0] : null;
+            try
+            {
+                string currentExe = Application.ExecutablePath;
+                string tempDir = Path.GetTempPath().TrimEnd('\\', '/');
+                if (!currentExe.StartsWith(tempDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    string exeDir = Path.GetDirectoryName(currentExe).TrimEnd('\\', '/');
+                    string resolvedRoot = exeDir.EndsWith("scripts", StringComparison.OrdinalIgnoreCase)
+                        ? Directory.GetParent(exeDir).FullName
+                        : exeDir;
+                    string runtimeExe = Path.Combine(tempDir, "LamdaControlPanel_Runtime.exe");
+                    try { File.Copy(currentExe, runtimeExe, true); } catch { }
+                    if (File.Exists(runtimeExe))
+                    {
+                        ProcessStartInfo psi = new ProcessStartInfo(runtimeExe, "\"" + resolvedRoot + "\"");
+                        psi.WorkingDirectory = resolvedRoot;
+                        psi.UseShellExecute = false;
+                        Process.Start(psi);
+                        return;
+                    }
+                }
+            }
+            catch { }
+
             try
             {
                 int currentId = Process.GetCurrentProcess().Id;
-                Process[] existing = Process.GetProcessesByName("LamdaControlPanel");
-                foreach (Process p in existing)
+                List<Process> allExisting = new List<Process>();
+                allExisting.AddRange(Process.GetProcessesByName("LamdaControlPanel"));
+                allExisting.AddRange(Process.GetProcessesByName("LamdaControlPanel_Runtime"));
+                foreach (Process p in allExisting)
                 {
                     if (p.Id == currentId) continue;
                     if (p.MainWindowHandle != IntPtr.Zero)
@@ -1444,7 +1514,7 @@ namespace LamdaControlCenter
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            Application.Run(new MainForm(explicitRoot));
         }
     }
 }
