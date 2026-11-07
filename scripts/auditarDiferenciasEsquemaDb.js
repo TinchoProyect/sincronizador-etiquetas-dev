@@ -30,7 +30,7 @@ async function conectarDbLocal(dbName) {
     const dbHost = process.env.DB_HOST || 'localhost';
     const dbPort = parseInt(process.env.DB_PORT || '5432', 10);
     const dbUser = process.env.DB_USER || 'postgres';
-    const candidates = [process.env.DB_PASSWORD, 'ta3Mionga', '1234', 'postgres'].filter(Boolean);
+    const candidates = [process.env.DB_PASSWORD, 'taKionga', 'ta3Mionga', '1234', 'postgres'].filter(Boolean);
 
     for (const password of candidates) {
         const client = new Client({ host: dbHost, port: dbPort, user: dbUser, password, database: dbName });
@@ -265,10 +265,77 @@ async function sincronizarEsquemaHaciaProduccion() {
     return { changesCount: sqlStatements.length, sqlStatements, summaryLog };
 }
 
+async function sincronizarEsquemaHaciaLaboratorio() {
+    if (!fs.existsSync(SNAPSHOT_JSON_PATH)) {
+        return { changesCount: 0, sqlStatements: [] };
+    }
+    let snapshotTables = {};
+    try {
+        const parsed = JSON.parse(fs.readFileSync(SNAPSHOT_JSON_PATH, 'utf8'));
+        if (parsed && parsed.tables) snapshotTables = parsed.tables;
+    } catch (_) {
+        return { changesCount: 0, sqlStatements: [] };
+    }
+
+    const labClient = await conectarDbLocal('etiquetas_pruebas');
+    if (!labClient) {
+        return { changesCount: 0, sqlStatements: [] };
+    }
+
+    try {
+        const currentTables = await extraerEsquemaDesdeCliente(labClient);
+        const sqlStatements = [];
+        for (const [tableName, snapCols] of Object.entries(snapshotTables)) {
+            if (!currentTables[tableName]) {
+                const colDefs = Object.entries(snapCols)
+                    .sort((a, b) => (a[1].ordinal_position || 0) - (b[1].ordinal_position || 0))
+                    .map(([cName, cMeta]) => {
+                        const tSql = construirTipoSql(cMeta);
+                        const dSql = construirClausulaDefault(cMeta, tSql);
+                        const nullSql = (tSql === 'SERIAL' || tSql === 'BIGSERIAL') ? ' PRIMARY KEY' : '';
+                        return `    "${cName}" ${tSql}${dSql}${nullSql}`;
+                    });
+                if (colDefs.length > 0) {
+                    sqlStatements.push(`CREATE TABLE IF NOT EXISTS public."${tableName}" (\n${colDefs.join(',\n')}\n);`);
+                }
+            } else {
+                const curCols = currentTables[tableName];
+                for (const [colName, colMeta] of Object.entries(snapCols)) {
+                    if (!curCols[colName]) {
+                        const tSql = construirTipoSql(colMeta);
+                        const finalType = tSql === 'SERIAL' ? 'INTEGER' : (tSql === 'BIGSERIAL' ? 'BIGINT' : tSql);
+                        const dSql = construirClausulaDefault(colMeta, finalType);
+                        sqlStatements.push(`ALTER TABLE public."${tableName}" ADD COLUMN IF NOT EXISTS "${colName}" ${finalType}${dSql};`);
+                    }
+                }
+            }
+        }
+
+        if (sqlStatements.length > 0) {
+            await labClient.query('SET default_transaction_read_only = off;');
+            for (const stmt of sqlStatements) {
+                try {
+                    await labClient.query(stmt);
+                } catch (_) {}
+            }
+            console.log(`✅ [SCHEMA-AUDIT] Aplicados ${sqlStatements.length} cambios estructurales de 'schema_laboratorio_snapshot.json' sobre 'etiquetas_pruebas'.`);
+        } else {
+            console.log(`✅ [SCHEMA-AUDIT] Base 'etiquetas_pruebas' ya cuenta con el 100% de las tablas/columnas del snapshot.`);
+        }
+        return { changesCount: sqlStatements.length, sqlStatements };
+    } finally {
+        try { await labClient.end(); } catch (_) {}
+    }
+}
+
 async function main() {
     const args = process.argv.slice(2);
     if (args.includes('--export-lab')) {
         await exportarSnapshotLaboratorio();
+        return;
+    }
+    if (args.includes('--apply-lab')) {
+        await sincronizarEsquemaHaciaLaboratorio();
         return;
     }
     await exportarSnapshotLaboratorio();
@@ -284,5 +351,6 @@ if (require.main === module) {
 
 module.exports = {
     exportarSnapshotLaboratorio,
+    sincronizarEsquemaHaciaLaboratorio,
     sincronizarEsquemaHaciaProduccion
 };

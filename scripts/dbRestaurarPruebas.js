@@ -39,6 +39,7 @@ function detectarBinarioPg(binName) {
 
 function sanitizarSqlCompatible(sqlText) {
     return String(sqlText || '')
+        .replace(/^\\(un)?restrict\s+.*$/gm, '-- \\restrict/\\unrestrict omitted')
         .replace(/^SET transaction_timeout = .*$/gm, '-- SET transaction_timeout omitted')
         .replace(/^SET idle_in_transaction_session_timeout = .*$/gm, '-- SET idle_in_transaction_session_timeout omitted');
 }
@@ -105,7 +106,7 @@ async function main() {
     const pgDumpBin = detectarBinarioPg('pg_dump');
 
     let activePassword = PG_PASSWORD;
-    for (const candidatePass of [PG_PASSWORD, 'ta3Mionga', '1234', 'postgres']) {
+    for (const candidatePass of [PG_PASSWORD, 'taKionga', 'ta3Mionga', '1234', 'postgres']) {
         try {
             execSync(`${psqlBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d postgres -c "SELECT 1;"`, {
                 env: { ...process.env, PGPASSWORD: candidatePass },
@@ -192,6 +193,12 @@ async function main() {
             { env, stdio: 'ignore' }
         );
         console.log('🔒 Tickets ARCA de Producción eliminados de `etiquetas_pruebas` (emisión ARCA 100% simulada en Laboratorio).');
+    } catch (_) {}
+
+    // 4️⃣ Aplicar tablas o columnas nuevas que estén en migrations/schema_laboratorio_snapshot.json
+    try {
+        const { sincronizarEsquemaHaciaLaboratorio } = require('./auditarDiferenciasEsquemaDb');
+        await sincronizarEsquemaHaciaLaboratorio();
     } catch (_) {}
 
     console.log('✅ Base `etiquetas_pruebas` actualizada con los últimos datos reales de Producción y lista para Modo Laboratorio.');

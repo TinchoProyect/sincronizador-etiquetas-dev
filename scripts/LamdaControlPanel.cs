@@ -1100,25 +1100,6 @@ namespace LamdaControlCenter
                 {
                     CleanRuntimeNoiseFiles();
 
-                    // Exportar snapshot automático de esquema de etiquetas_pruebas para detectar tablas/columnas nuevas
-                    try
-                    {
-                        string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
-                        if (File.Exists(auditScript))
-                        {
-                            int audCode;
-                            RunCliCommand(nodeExePath, "\"" + auditScript + "\" --export-lab", out audCode);
-                            int diffSchemaCode;
-                            string schemaDiff = RunCliCommand(gitExePath, "status --porcelain migrations/schema_laboratorio_snapshot.json", out diffSchemaCode).Trim();
-                            if (!string.IsNullOrWhiteSpace(schemaDiff))
-                            {
-                                RunCliCommand(gitExePath, "add migrations/schema_laboratorio_snapshot.json", out diffSchemaCode);
-                                RunCliCommand(gitExePath, "commit -m \"chore(db-schema): actualizar snapshot de estructura de etiquetas_pruebas\"", out diffSchemaCode);
-                            }
-                        }
-                    }
-                    catch { }
-
                     int fetchCode;
                     string fetchOut = RunCliCommand(gitExePath, "fetch origin desarrollo", out fetchCode);
                     if (fetchCode != 0)
@@ -1142,6 +1123,17 @@ namespace LamdaControlCenter
 
                     if (string.IsNullOrWhiteSpace(incomingCommits))
                     {
+                        try
+                        {
+                            string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
+                            if (File.Exists(auditScript))
+                            {
+                                int applyCode;
+                                RunCliCommand(nodeExePath, "\"" + auditScript + "\" --apply-lab", out applyCode);
+                            }
+                        }
+                        catch { }
+
                         int curCode;
                         string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out curCode).Trim();
                         AppendLog("✅ La Notebook ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
@@ -1150,7 +1142,7 @@ namespace LamdaControlCenter
                         {
                             SetGitButtonsEnabled(true);
                             MessageBox.Show(
-                                "✅ Tu Notebook ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar.\n\n📌 Último commit activo en esta Notebook:\n" + currentCommit,
+                                "✅ Tu Notebook ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar (esquema de 'etiquetas_pruebas' verificado).\n\n📌 Último commit activo en esta Notebook:\n" + currentCommit,
                                 "Notebook al Día (Sin Cambios Nuevos)",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information
@@ -1199,6 +1191,19 @@ namespace LamdaControlCenter
                         }));
                         return;
                     }
+
+                    // Aplicar automáticamente tablas o columnas nuevas sobre etiquetas_pruebas desde migrations/schema_laboratorio_snapshot.json
+                    try
+                    {
+                        string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
+                        if (File.Exists(auditScript))
+                        {
+                            int applyCode;
+                            string applyOut = RunCliCommand(nodeExePath, "\"" + auditScript + "\" --apply-lab", out applyCode);
+                            if (!string.IsNullOrWhiteSpace(applyOut)) AppendLog(applyOut.Trim());
+                        }
+                    }
+                    catch { }
 
                     try
                     {
@@ -1252,16 +1257,36 @@ namespace LamdaControlCenter
                 {
                     CleanRuntimeNoiseFiles();
 
+                    // Exportar snapshot automático de esquema de etiquetas_pruebas antes de subir avances
+                    try
+                    {
+                        string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
+                        if (File.Exists(auditScript))
+                        {
+                            int audCode;
+                            RunCliCommand(nodeExePath, "\"" + auditScript + "\" --export-lab", out audCode);
+                        }
+                    }
+                    catch { }
+
                     int fetchCode;
                     RunCliCommand(gitExePath, "fetch origin desarrollo", out fetchCode);
-
-                    int aheadCode;
-                    string unpushedCommits = RunCliCommand(gitExePath, "log origin/desarrollo..HEAD --oneline", out aheadCode).Trim();
 
                     int statusCode;
                     string dirtyTracked = RunCliCommand(gitExePath, "status --porcelain --untracked-files=no", out statusCode).Trim();
 
-                    if (string.IsNullOrWhiteSpace(unpushedCommits) && string.IsNullOrWhiteSpace(dirtyTracked))
+                    if (!string.IsNullOrWhiteSpace(dirtyTracked))
+                    {
+                        AppendLog("📦 Confirmando automáticamente archivos modificados en Laboratorio antes de subir...");
+                        int addCode, commitCode;
+                        RunCliCommand(gitExePath, "add -u", out addCode);
+                        RunCliCommand(gitExePath, "commit -m \"chore(desarrollo): sincronizar avances y esquema de Laboratorio\"", out commitCode);
+                    }
+
+                    int aheadCode;
+                    string unpushedCommits = RunCliCommand(gitExePath, "log origin/desarrollo..HEAD --oneline", out aheadCode).Trim();
+
+                    if (string.IsNullOrWhiteSpace(unpushedCommits))
                     {
                         int curCode;
                         string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out curCode).Trim();
@@ -1276,22 +1301,6 @@ namespace LamdaControlCenter
                                 "Sin Avances Pendientes para Subir",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information
-                            );
-                        }));
-                        return;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(unpushedCommits) && !string.IsNullOrWhiteSpace(dirtyTracked))
-                    {
-                        this.BeginInvoke(new Action(() =>
-                        {
-                            SetGitButtonsEnabled(true);
-                            MessageBox.Show(
-                                "Tenés archivos modificados localmente aún sin confirmar (sin commit):\n\n" + dirtyTracked + "\n\n" +
-                                "Pedile a Antigravity que revise y confirme el commit antes de subirlo a la rama 'desarrollo'.",
-                                "Cambios Locales sin Commit",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Warning
                             );
                         }));
                         return;

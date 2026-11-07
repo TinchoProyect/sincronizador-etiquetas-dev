@@ -20,11 +20,16 @@ crmWhatsappDb.asegurarTablasCrmWhatsapp().catch(() => {});
 
 function esModoLaboratorioWa() {
     const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
-    const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase();
-    return dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+    const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO || '').trim().toLowerCase();
+    // Blindaje doble obligatorio: si la base es 'etiquetas' (Producción), jamás activar modo laboratorio/redirección.
+    // Solo se activa cuando AMBAS condiciones se cumplen: DB_NAME === 'etiquetas_pruebas' Y LAMDA_MODO_LABORATORIO === 'true'.
+    if (dbName === 'etiquetas') return false;
+    return dbName === 'etiquetas_pruebas' && (flagLab === 'true' || flagLab === '1');
 }
 
 function esModoEspejoWa() {
+    const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+    if (dbName === 'etiquetas') return false;
     const flagEspejo = String(process.env.WHATSAPP_MODO_ESPEJO || '').trim().toLowerCase();
     return flagEspejo === 'true' || flagEspejo === '1';
 }
@@ -46,13 +51,13 @@ function esNumeroPropioPruebaWa(telefonoOChatId) {
 }
 
 function aplicarRedireccionSeguraWhatsApp(listaNumeros, textoMensaje, tipoEnvio = 'MENSAJE') {
-    if (!esModoPruebaNubeWa()) {
+    if (!esModoLaboratorioWa() && !esModoPruebaNubeWa()) {
         return { listaFinal: listaNumeros, textoFinal: textoMensaje, redirigido: false };
     }
     const destinoSeguro = obtenerNumeroRedireccionSeguraWa();
     const originalesStr = (listaNumeros || []).map(n => '+' + n).join(', ');
     const prefijo =
-        `🧪 *[PRUEBA NUBE LAMDA — REDIRECCIÓN SEGURA]*\n` +
+        `🧪 *[PRUEBA LABORATORIO LAMDA — REDIRECCIÓN SEGURA]*\n` +
         `📌 *Tipo:* ${tipoEnvio}\n` +
         `🔒 *Destinatario(s) original(es) bloqueado(s):* ${originalesStr || 'N/A'}\n` +
         `───────────────────\n`;
@@ -66,21 +71,25 @@ function aplicarRedireccionSeguraWhatsApp(listaNumeros, textoMensaje, tipoEnvio 
 }
 
 function interceptarEnvioEnModoSeguro(numeros, tipoEnvio, detalle = '') {
-    // Si estamos en Modo Prueba Nube (SAFE_DELIVERY_REDIRECT), NO simulamos en vacío:
-    // permitimos que continúe hacia aplicarRedireccionSeguraWhatsApp() para que llegue al WhatsApp de Martín.
-    if (esModoPruebaNubeWa()) return null;
     if (!esModoLaboratorioWa() && !esModoEspejoWa()) return null;
-    const modo = esModoLaboratorioWa() ? 'MODO_LABORATORIO (etiquetas_pruebas)' : 'WHATSAPP_MODO_ESPEJO (Fase 3)';
+    // Si hubiera una sesión Chromium real conectada en Laboratorio, permitir que continúe hacia aplicarRedireccionSeguraWhatsApp()
+    if (esModoLaboratorioWa() && client && client.pupPage && connectionStatus === 'CONECTADO') {
+        return null;
+    }
+    const destinoSeguro = obtenerNumeroRedireccionSeguraWa();
+    const modo = esModoLaboratorioWa() ? 'MODO_LABORATORIO (etiquetas_pruebas + LAMDA_MODO_LABORATORIO=true)' : 'WHATSAPP_MODO_ESPEJO';
     const lista = String(numeros || '')
         .split(',')
         .map(n => n.replace(/[^0-9]/g, '').trim())
         .filter(Boolean);
-    console.log(`🔒 [WHATSAPP-GUARD] Envío real de ${tipoEnvio} BLOQUEADO preventivamente por ${modo}. Destinatarios simulados: [${lista.join(', ')}] ${detalle}`);
+    console.log(`🧪 [WHATSAPP-LAB-SIM] Envío de ${tipoEnvio} simulado localmente sin error (${modo} — sin ocupar cupo QR). Habría enviado ${detalle || tipoEnvio} redirigido a [+${destinoSeguro}], bloqueando destinatarios originales: [${lista.join(', ')}]`);
     return lista.map(numero => ({
         numero,
+        redirectedTo: destinoSeguro,
         success: true,
         simulated: true,
-        blockedByGuard: modo
+        blockedByGuard: modo,
+        message: `Simulado en Modo Laboratorio: se habría enviado ${tipoEnvio} (${detalle || 'sin detalle'}) redirigido a +${destinoSeguro} (destinatario original +${numero} protegido).`
     }));
 }
 
