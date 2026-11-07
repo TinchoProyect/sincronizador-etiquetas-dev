@@ -2544,6 +2544,31 @@ async function ensureBunkerPreferenciasTable(db) {
             updated_at TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+    await db.query(`
+        DELETE FROM public.bunker_preferencias_ui WHERE clave IS NULL;
+        DELETE FROM public.bunker_preferencias_ui a
+        USING public.bunker_preferencias_ui b
+        WHERE a.ctid < b.ctid AND a.clave = b.clave;
+        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN clave SET NOT NULL;
+        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN valor SET NOT NULL;
+    `).catch(() => {});
+    await db.query(`
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = 'public.bunker_preferencias_ui'::regclass
+                  AND contype = 'p'
+            ) THEN
+                ALTER TABLE public.bunker_preferencias_ui
+                ADD CONSTRAINT bunker_preferencias_ui_pkey PRIMARY KEY (clave);
+            END IF;
+        END $$;
+    `).catch(() => {});
+    await db.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bunker_preferencias_ui_clave_unq
+        ON public.bunker_preferencias_ui (clave);
+    `).catch(() => {});
     bunkerPrefsTableEnsured = true;
 }
 
@@ -2551,6 +2576,7 @@ exports.obtenerPreferenciasUI = async (req, res) => {
     try {
         const db = req.db || require('../config/database').pool;
         await ensureBunkerPreferenciasTable(db);
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         const result = await db.query('SELECT clave, valor, updated_at FROM public.bunker_preferencias_ui');
         const data = {};
         result.rows.forEach(r => {

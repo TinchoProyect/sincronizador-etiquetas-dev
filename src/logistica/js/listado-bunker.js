@@ -263,7 +263,7 @@ window.sincronizarPreferenciasBunkerDesdeServidor = async function() {
         'bunker_cotizador_prefs'
     ];
     try {
-        const res = await fetch('/api/logistica/bunker/preferencias-ui');
+        const res = await fetch('/api/logistica/bunker/preferencias-ui', { cache: 'no-store' });
         if (!res.ok) return;
         const payload = await res.json();
         const remotePrefs = (payload && payload.data && typeof payload.data === 'object') ? payload.data : {};
@@ -309,10 +309,10 @@ window.sincronizarPreferenciasBunkerDesdeServidor = async function() {
             }).catch(() => {});
         }
 
-        if (changedGridCols) {
+        if (changedGridCols || remotePrefs.bunker_grid_preferences !== undefined) {
             initColumnToggler();
         }
-        if (changedColWidths) {
+        if (changedColWidths || remotePrefs.bunker_grid_col_widths !== undefined) {
             aplicarAnchosColumnasGuardados('tabla-bunker');
         }
     } catch (err) {
@@ -321,6 +321,7 @@ window.sincronizarPreferenciasBunkerDesdeServidor = async function() {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await window.sincronizarPreferenciasBunkerDesdeServidor();
     window.cargarPreferenciasGridBunker();
     const inputEl = document.getElementById('filtro-busqueda');
     if (inputEl) {
@@ -330,7 +331,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     initColumnToggler();
-    await window.sincronizarPreferenciasBunkerDesdeServidor();
+    window.addEventListener('focus', () => {
+        window.sincronizarPreferenciasBunkerDesdeServidor();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            window.sincronizarPreferenciasBunkerDesdeServidor();
+        }
+    });
     await cargarListasPreciosFiltro();
     await cargarDataGrid();
     await cargarDesplegableClientesAutoseleccion();
@@ -958,10 +966,14 @@ const BUNKER_COLUMNS = [
 let bunkerGridPreferences = {};
 
 function initColumnToggler() {
+    bunkerGridPreferences = {};
     const saved = localStorage.getItem('bunker_grid_preferences');
     if (saved) {
         try {
-            const parsed = JSON.parse(saved);
+            let parsed = JSON.parse(saved);
+            if (typeof parsed === 'string') {
+                try { parsed = JSON.parse(parsed); } catch (_) {}
+            }
             if (parsed && typeof parsed === 'object') {
                 bunkerGridPreferences = parsed;
             }

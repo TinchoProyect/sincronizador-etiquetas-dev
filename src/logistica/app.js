@@ -639,6 +639,25 @@ const server = app.listen(PORT, '0.0.0.0', () => {
                     valor JSONB NOT NULL DEFAULT '{}'::jsonb,
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 );
+                DELETE FROM public.bunker_preferencias_ui WHERE clave IS NULL;
+                DELETE FROM public.bunker_preferencias_ui a
+                USING public.bunker_preferencias_ui b
+                WHERE a.ctid < b.ctid AND a.clave = b.clave;
+                ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN clave SET NOT NULL;
+                ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN valor SET NOT NULL;
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conrelid = 'public.bunker_preferencias_ui'::regclass
+                          AND contype = 'p'
+                    ) THEN
+                        ALTER TABLE public.bunker_preferencias_ui
+                        ADD CONSTRAINT bunker_preferencias_ui_pkey PRIMARY KEY (clave);
+                    END IF;
+                END $$;
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_bunker_preferencias_ui_clave_unq
+                ON public.bunker_preferencias_ui (clave);
             `);
             await pool.query(`
                 INSERT INTO public.bunker_portal_b2b_jerarquia (familia_id, articulo_principal, eje_nivel_3, updated_at, reglas_nivel_4, reglas_nivel_5)

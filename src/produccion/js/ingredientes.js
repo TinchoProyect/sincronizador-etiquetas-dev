@@ -3578,6 +3578,20 @@ window.abrirVinculadorReposicionIngrediente = async function() {
         window.v4GridApi = agGrid.createGrid(gridDiv, gridOptions);
         window.v4GridApi.setGridOption('rowData', vr_todasOfertas);
 
+        try {
+            const prefRes = await fetch('/api/logistica/bunker/preferencias-ui', { cache: 'no-store' });
+            if (prefRes.ok) {
+                const prefJson = await prefRes.json();
+                const remoteState = prefJson && prefJson.data && prefJson.data.lamda_v4_grid_state;
+                if (remoteState !== undefined && remoteState !== null) {
+                    const remoteStr = typeof remoteState === 'string' ? remoteState : JSON.stringify(remoteState);
+                    if (localStorage.getItem('lamda_v4_grid_state') !== remoteStr) {
+                        localStorage.setItem('lamda_v4_grid_state', remoteStr);
+                    }
+                }
+            }
+        } catch (_) {}
+
         window.cargarGridState();
         window.v4GridReady = true;
         window.v4GridApi.setFilterModel(null);

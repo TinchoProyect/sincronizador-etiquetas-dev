@@ -3929,7 +3929,7 @@
         "character_maximum_length": 100,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": null
       },
       "valor": {
@@ -3939,7 +3939,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
       },
       "updated_at": {

@@ -264,14 +264,25 @@ async function sincronizarEsquemaHaciaProduccion() {
 
     for (const [tableName, labCols] of Object.entries(labTables)) {
         if (!prodTables[tableName]) {
-            const colDefs = Object.entries(labCols)
-                .sort((a, b) => (a[1].ordinal_position || 0) - (b[1].ordinal_position || 0))
-                .map(([cName, cMeta]) => {
-                    const tSql = construirTipoSql(cMeta);
-                    const dSql = construirClausulaDefault(cMeta, tSql);
-                    const nullSql = (tSql === 'SERIAL' || tSql === 'BIGSERIAL') ? ' PRIMARY KEY' : '';
-                    return `    "${cName}" ${tSql}${dSql}${nullSql}`;
-                });
+            const orderedCols = Object.entries(labCols)
+                .sort((a, b) => (a[1].ordinal_position || 0) - (b[1].ordinal_position || 0));
+            const hasSerialPk = orderedCols.some(([, cMeta]) => {
+                const t = construirTipoSql(cMeta);
+                return t === 'SERIAL' || t === 'BIGSERIAL';
+            });
+            const colDefs = orderedCols.map(([cName, cMeta], idx) => {
+                const tSql = construirTipoSql(cMeta);
+                const dSql = construirClausulaDefault(cMeta, tSql);
+                let pkOrNullSql = '';
+                if (tSql === 'SERIAL' || tSql === 'BIGSERIAL') {
+                    pkOrNullSql = ' PRIMARY KEY';
+                } else if (!hasSerialPk && idx === 0 && (cName === 'clave' || cName === 'id' || cName === 'codigo')) {
+                    pkOrNullSql = ' NOT NULL PRIMARY KEY';
+                } else if (String(cMeta.is_nullable || '').toUpperCase() === 'NO') {
+                    pkOrNullSql = ' NOT NULL';
+                }
+                return `    "${cName}" ${tSql}${dSql}${pkOrNullSql}`;
+            });
             if (colDefs.length > 0) {
                 const stmt = `CREATE TABLE IF NOT EXISTS public."${tableName}" (\n${colDefs.join(',\n')}\n);`;
                 sqlStatements.push(stmt);
@@ -291,6 +302,28 @@ async function sincronizarEsquemaHaciaProduccion() {
             }
         }
     }
+
+    const ensureBunkerPrefsConstraintSql = `
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'bunker_preferencias_ui') THEN
+        DELETE FROM public.bunker_preferencias_ui WHERE clave IS NULL;
+        DELETE FROM public.bunker_preferencias_ui a USING public.bunker_preferencias_ui b WHERE a.ctid < b.ctid AND a.clave = b.clave;
+        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN clave SET NOT NULL;
+        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN valor SET NOT NULL;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conrelid = 'public.bunker_preferencias_ui'::regclass AND contype = 'p'
+        ) THEN
+            ALTER TABLE public.bunker_preferencias_ui ADD CONSTRAINT bunker_preferencias_ui_pkey PRIMARY KEY (clave);
+        END IF;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bunker_preferencias_ui_clave_unq ON public.bunker_preferencias_ui (clave);
+    END IF;
+END $$;`.trim();
+
+    try {
+        await prodClient.query('SET default_transaction_read_only = off;');
+        await prodClient.query(ensureBunkerPrefsConstraintSql);
+    } catch (_) {}
 
     if (sqlStatements.length === 0) {
         console.log('✅ [SCHEMA-AUDIT] Esquemas 100% alineados: no hay tablas ni columnas faltantes en Producción.');
@@ -363,14 +396,25 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
         const sqlStatements = [];
         for (const [tableName, snapCols] of Object.entries(snapshotTables)) {
             if (!currentTables[tableName]) {
-                const colDefs = Object.entries(snapCols)
-                    .sort((a, b) => (a[1].ordinal_position || 0) - (b[1].ordinal_position || 0))
-                    .map(([cName, cMeta]) => {
-                        const tSql = construirTipoSql(cMeta);
-                        const dSql = construirClausulaDefault(cMeta, tSql);
-                        const nullSql = (tSql === 'SERIAL' || tSql === 'BIGSERIAL') ? ' PRIMARY KEY' : '';
-                        return `    "${cName}" ${tSql}${dSql}${nullSql}`;
-                    });
+                const orderedCols = Object.entries(snapCols)
+                    .sort((a, b) => (a[1].ordinal_position || 0) - (b[1].ordinal_position || 0));
+                const hasSerialPk = orderedCols.some(([, cMeta]) => {
+                    const t = construirTipoSql(cMeta);
+                    return t === 'SERIAL' || t === 'BIGSERIAL';
+                });
+                const colDefs = orderedCols.map(([cName, cMeta], idx) => {
+                    const tSql = construirTipoSql(cMeta);
+                    const dSql = construirClausulaDefault(cMeta, tSql);
+                    let pkOrNullSql = '';
+                    if (tSql === 'SERIAL' || tSql === 'BIGSERIAL') {
+                        pkOrNullSql = ' PRIMARY KEY';
+                    } else if (!hasSerialPk && idx === 0 && (cName === 'clave' || cName === 'id' || cName === 'codigo')) {
+                        pkOrNullSql = ' NOT NULL PRIMARY KEY';
+                    } else if (String(cMeta.is_nullable || '').toUpperCase() === 'NO') {
+                        pkOrNullSql = ' NOT NULL';
+                    }
+                    return `    "${cName}" ${tSql}${dSql}${pkOrNullSql}`;
+                });
                 if (colDefs.length > 0) {
                     sqlStatements.push(`CREATE TABLE IF NOT EXISTS public."${tableName}" (\n${colDefs.join(',\n')}\n);`);
                 }
@@ -387,8 +431,8 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
             }
         }
 
+        await dbClient.query('SET default_transaction_read_only = off;');
         if (sqlStatements.length > 0) {
-            await dbClient.query('SET default_transaction_read_only = off;');
             for (const stmt of sqlStatements) {
                 try {
                     await dbClient.query(stmt);
@@ -398,6 +442,26 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
         } else {
             console.log(`✅ [SCHEMA-AUDIT] Base '${targetDbName}' ya cuenta con el 100% de las tablas/columnas del snapshot.`);
         }
+
+        try {
+            await dbClient.query(`
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'bunker_preferencias_ui') THEN
+                        DELETE FROM public.bunker_preferencias_ui WHERE clave IS NULL;
+                        DELETE FROM public.bunker_preferencias_ui a USING public.bunker_preferencias_ui b WHERE a.ctid < b.ctid AND a.clave = b.clave;
+                        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN clave SET NOT NULL;
+                        ALTER TABLE public.bunker_preferencias_ui ALTER COLUMN valor SET NOT NULL;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conrelid = 'public.bunker_preferencias_ui'::regclass AND contype = 'p'
+                        ) THEN
+                            ALTER TABLE public.bunker_preferencias_ui ADD CONSTRAINT bunker_preferencias_ui_pkey PRIMARY KEY (clave);
+                        END IF;
+                        CREATE UNIQUE INDEX IF NOT EXISTS idx_bunker_preferencias_ui_clave_unq ON public.bunker_preferencias_ui (clave);
+                    END IF;
+                END $$;
+            `);
+        } catch (_) {}
         return { changesCount: sqlStatements.length, sqlStatements };
     } finally {
         try { await dbClient.end(); } catch (_) {}

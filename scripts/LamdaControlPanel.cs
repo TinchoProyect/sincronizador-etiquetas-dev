@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -408,7 +408,7 @@ namespace LamdaControlCenter
             btnGitPull.ForeColor = Color.White;
             btnGitPull.FlatAppearance.BorderColor = Color.FromArgb(56, 189, 248);
             btnGitPull.Click += (s, e) => RunGitPullToLocalAsync();
-            mainToolTip.SetToolTip(btnGitPull, "Descarga únicamente los cambios nuevos subidos a la rama 'desarrollo' en GitHub hacia este equipo (" + hostLabel + "), informa qué trajo y reinicia los 5 servicios. (Nunca sube cambios).");
+            mainToolTip.SetToolTip(btnGitPull, "Descarga los cambios nuevos subidos a 'origin/desarrollo' hacia este Laboratorio (" + hostLabel + ") y, si está presente la carpeta de Producción Local del Switch ('main'), la alinea también con 'origin/main'. (Nunca sube cambios).");
             gitRow.Controls.Add(btnGitPull);
 
             btnGitPush = CreateSmallToolButton("⬆️  Subir avances", 426, 2, 280);
@@ -1447,10 +1447,76 @@ namespace LamdaControlCenter
             });
         }
 
+        private class ProdStandbySyncResult
+        {
+            public bool Exists;
+            public bool Updated;
+            public string IncomingCommits;
+            public string CurrentCommit;
+            public string ErrorMessage;
+        }
+
+        private ProdStandbySyncResult SyncLocalProductionStandbyRepo()
+        {
+            ProdStandbySyncResult res = new ProdStandbySyncResult();
+            string prodDir = @"C:\Users\Martin\Documents\sincronizador-etiquetas - copia";
+            if (!Directory.Exists(prodDir) || !Directory.Exists(Path.Combine(prodDir, ".git")))
+            {
+                res.Exists = false;
+                return res;
+            }
+
+            res.Exists = true;
+            try
+            {
+                int code;
+                RunCliCommandInDir(prodDir, gitExePath, "checkout -- data/ia_credito_ledger.json", out code);
+                RunCliCommandInDir(prodDir, gitExePath, "checkout -- pagina-publica-web/dist", out code);
+                RunCliCommandInDir(prodDir, gitExePath, "checkout -- src/app-etiquetas/documentos", out code);
+
+                int fetchCode;
+                string fetchOut = RunCliCommandInDir(prodDir, gitExePath, "fetch origin main", out fetchCode);
+                if (fetchCode != 0)
+                {
+                    res.ErrorMessage = fetchOut.Trim();
+                    return res;
+                }
+
+                string incomingMain = RunCliCommandInDir(prodDir, gitExePath, "log HEAD..origin/main --oneline", out code).Trim();
+                if (!string.IsNullOrWhiteSpace(incomingMain))
+                {
+                    AppendLog("📥 [SWITCH LOCAL] Alineando carpeta de Producción Local ('sincronizador-etiquetas - copia') con 'origin/main'...");
+                    RunCliCommandInDir(prodDir, gitExePath, "checkout -f main", out code);
+                    RunCliCommandInDir(prodDir, gitExePath, "reset --hard origin/main", out code);
+                    RunCliCommandInDir(prodDir, gitExePath, "config core.hooksPath .githooks", out code);
+                    res.Updated = true;
+                    res.IncomingCommits = incomingMain;
+                }
+
+                try
+                {
+                    string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
+                    if (File.Exists(auditScript))
+                    {
+                        int applyProdCode;
+                        RunCliCommand(nodeExePath, "\"" + auditScript + "\" --apply-local-etiquetas", out applyProdCode);
+                    }
+                }
+                catch { }
+
+                res.CurrentCommit = RunCliCommandInDir(prodDir, gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out code).Trim();
+            }
+            catch (Exception ex)
+            {
+                res.ErrorMessage = ex.Message;
+            }
+            return res;
+        }
+
         private void RunGitPullToLocalAsync()
         {
             SetGitButtonsEnabled(false);
-            AppendLog("⬇️ [TRAER ACTUALIZACIONES] Consultando rama 'origin/desarrollo' en GitHub...");
+            AppendLog("⬇️ [TRAER ACTUALIZACIONES] Consultando ramas en GitHub ('origin/desarrollo' y 'origin/main')...");
             Task.Factory.StartNew(() =>
             {
                 try
@@ -1477,76 +1543,52 @@ namespace LamdaControlCenter
 
                     int logCode;
                     string incomingCommits = RunCliCommand(gitExePath, "log HEAD..origin/desarrollo --oneline", out logCode).Trim();
+                    bool labUpdated = false;
+                    string incomingStat = "";
 
-                    if (string.IsNullOrWhiteSpace(incomingCommits))
+                    if (!string.IsNullOrWhiteSpace(incomingCommits))
                     {
-                        try
+                        int statCode;
+                        incomingStat = RunCliCommand(gitExePath, "diff --stat HEAD..origin/desarrollo", out statCode).Trim();
+
+                        // Si hubiera algún archivo rastreado modificado localmente, guardarlo en stash preventivo antes de bajar
+                        int statusCode;
+                        string dirtyTracked = RunCliCommand(gitExePath, "status --porcelain --untracked-files=no", out statusCode).Trim();
+                        bool stashedLocal = false;
+                        if (!string.IsNullOrWhiteSpace(dirtyTracked))
                         {
-                            string auditScript = Path.Combine(rootDir, @"scripts\auditarDiferenciasEsquemaDb.js");
-                            if (File.Exists(auditScript))
-                            {
-                                int applyCode;
-                                RunCliCommand(nodeExePath, "\"" + auditScript + "\" --apply-lab", out applyCode);
-                            }
+                            AppendLog("ℹ️ Resguardando modificaciones locales temporalmente (git stash) antes de actualizar...");
+                            int stashCode;
+                            RunCliCommand(gitExePath, "stash push -m \"auto-stash-panel-laboratorio\"", out stashCode);
+                            stashedLocal = (stashCode == 0);
                         }
-                        catch { }
 
-                        int curCode;
-                        string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out curCode).Trim();
-                        AppendLog("✅ " + hostLabel + " ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
-                        UpdateGitCommitBadgeAsync();
-                        this.BeginInvoke(new Action(() =>
+                        AppendLog("📥 Descargando commits nuevos de 'origin/desarrollo' hacia " + hostLabel + ":\r\n" + incomingCommits);
+                        int pullCode;
+                        string pullOut = RunCliCommand(gitExePath, "pull --rebase origin desarrollo", out pullCode);
+                        AppendLog("[GIT PULL] " + pullOut.Trim());
+
+                        if (stashedLocal)
                         {
-                            SetGitButtonsEnabled(true);
-                            MessageBox.Show(
-                                "✅ Este equipo (" + hostLabel + ") ya está 100% al día con la rama 'desarrollo' de GitHub.\n\nNo había cambios nuevos para descargar (esquema de 'etiquetas_pruebas' verificado).\n\n📌 Último commit local activo en " + hostLabel + ":\n" + currentCommit,
-                                hostLabel + " al Día (Sin Cambios Nuevos)",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Information
-                            );
-                        }));
-                        return;
-                    }
+                            int popCode;
+                            RunCliCommand(gitExePath, "stash pop", out popCode);
+                        }
 
-                    int statCode;
-                    string incomingStat = RunCliCommand(gitExePath, "diff --stat HEAD..origin/desarrollo", out statCode).Trim();
-
-                    // Si hubiera algún archivo rastreado modificado localmente, guardarlo en stash preventivo antes de bajar
-                    int statusCode;
-                    string dirtyTracked = RunCliCommand(gitExePath, "status --porcelain --untracked-files=no", out statusCode).Trim();
-                    bool stashedLocal = false;
-                    if (!string.IsNullOrWhiteSpace(dirtyTracked))
-                    {
-                        AppendLog("ℹ️ Resguardando modificaciones locales temporalmente (git stash) antes de actualizar...");
-                        int stashCode;
-                        RunCliCommand(gitExePath, "stash push -m \"auto-stash-panel-laboratorio\"", out stashCode);
-                        stashedLocal = (stashCode == 0);
-                    }
-
-                    AppendLog("📥 Descargando commits nuevos hacia " + hostLabel + ":\r\n" + incomingCommits);
-                    int pullCode;
-                    string pullOut = RunCliCommand(gitExePath, "pull --rebase origin desarrollo", out pullCode);
-                    AppendLog("[GIT PULL] " + pullOut.Trim());
-
-                    if (stashedLocal)
-                    {
-                        int popCode;
-                        RunCliCommand(gitExePath, "stash pop", out popCode);
-                    }
-
-                    if (pullCode != 0)
-                    {
-                        this.BeginInvoke(new Action(() =>
+                        if (pullCode != 0)
                         {
-                            SetGitButtonsEnabled(true);
-                            MessageBox.Show(
-                                "Ocurrió un conflicto o error al intentar aplicar los cambios en " + hostLabel + ":\n\n" + pullOut.Trim(),
-                                "Error al Traer Actualizaciones",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error
-                            );
-                        }));
-                        return;
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                SetGitButtonsEnabled(true);
+                                MessageBox.Show(
+                                    "Ocurrió un conflicto o error al intentar aplicar los cambios en " + hostLabel + ":\n\n" + pullOut.Trim(),
+                                    "Error al Traer Actualizaciones",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Error
+                                );
+                            }));
+                            return;
+                        }
+                        labUpdated = true;
                     }
 
                     // Aplicar automáticamente tablas o columnas nuevas sobre etiquetas_pruebas desde migrations/schema_laboratorio_snapshot.json
@@ -1562,19 +1604,75 @@ namespace LamdaControlCenter
                     }
                     catch { }
 
+                    // Si en este equipo existe la carpeta de Producción Local del Switch ('sincronizador-etiquetas - copia'), alinearla también con origin/main
+                    ProdStandbySyncResult prodSync = SyncLocalProductionStandbyRepo();
+                    if (prodSync.Exists)
+                    {
+                        if (!string.IsNullOrWhiteSpace(prodSync.ErrorMessage))
+                        {
+                            AppendLog("⚠️ [SWITCH LOCAL] Aviso sincronizando Producción Local: " + prodSync.ErrorMessage);
+                        }
+                        else if (prodSync.Updated)
+                        {
+                            AppendLog("✅ [SWITCH LOCAL] Carpeta de Producción Local ('main') actualizada a: " + prodSync.CurrentCommit);
+                        }
+                        else
+                        {
+                            AppendLog("✅ [SWITCH LOCAL] Carpeta de Producción Local ('main') ya está al día: " + prodSync.CurrentCommit);
+                        }
+                    }
+
                     CleanRuntimeNoiseFiles();
                     UpdateGitCommitBadgeAsync();
+
+                    int curCode;
+                    string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s (%cr)\"", out curCode).Trim();
+
+                    if (!labUpdated && (!prodSync.Exists || !prodSync.Updated))
+                    {
+                        AppendLog("✅ " + hostLabel + " ya está al día con 'origin/desarrollo'. Último commit: " + currentCommit);
+                        string prodStatusLine = prodSync.Exists
+                            ? ("\n📌 Producción Local / Switch ('main'):\n" + prodSync.CurrentCommit)
+                            : "";
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            SetGitButtonsEnabled(true);
+                            MessageBox.Show(
+                                "✅ Este equipo (" + hostLabel + ") ya está 100% al día con GitHub.\n\n" +
+                                "No había cambios nuevos para descargar (esquema de base de datos verificado).\n\n" +
+                                "📌 Laboratorio ('desarrollo'):\n" + currentCommit + prodStatusLine,
+                                hostLabel + " al Día (Sin Cambios Nuevos)",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information
+                            );
+                        }));
+                        return;
+                    }
+
                     AppendLog("✅ Actualizaciones aplicadas en " + hostLabel + ". Reiniciando los 5 servicios automáticamente...");
+
+                    string prodSummaryBlock = "";
+                    if (prodSync.Exists)
+                    {
+                        prodSummaryBlock = prodSync.Updated
+                            ? ("\n\n🛡️ Producción Local / Switch ('main') actualizada:\n" + prodSync.IncomingCommits)
+                            : ("\n\n🛡️ Producción Local / Switch ('main') al día:\n" + prodSync.CurrentCommit);
+                    }
 
                     this.BeginInvoke(new Action(() =>
                     {
                         SetGitButtonsEnabled(true);
-                        RestartAllServices();
+                        if (labUpdated)
+                        {
+                            RestartAllServices();
+                        }
                         MessageBox.Show(
-                            "✅ Se descargaron y aplicaron las actualizaciones de 'origin/desarrollo' en " + hostLabel + ".\n\n" +
-                            "📥 Commits traídos:\n" + incomingCommits + "\n\n" +
-                            "📂 Resumen de archivos actualizados:\n" + incomingStat + "\n\n" +
-                            "🔄 Los 5 servicios del Modo Laboratorio se están reiniciando automáticamente con el código nuevo.",
+                            "✅ Se descargaron y aplicaron las actualizaciones en " + hostLabel + ".\n\n" +
+                            (labUpdated
+                                ? ("📥 Commits traídos en Laboratorio ('desarrollo'):\n" + incomingCommits + "\n\n📂 Resumen de archivos:\n" + incomingStat)
+                                : ("📌 Laboratorio ('desarrollo') ya estaba al día:\n" + currentCommit)) +
+                            prodSummaryBlock +
+                            (labUpdated ? "\n\n🔄 Los 5 servicios del Modo Laboratorio se están reiniciando automáticamente con el código nuevo." : ""),
                             "Actualizaciones Traídas (" + hostLabel + ")",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information
@@ -1763,8 +1861,13 @@ namespace LamdaControlCenter
 
         private string RunCliCommand(string exe, string args, out int exitCode)
         {
+            return RunCliCommandInDir(rootDir, exe, args, out exitCode);
+        }
+
+        private string RunCliCommandInDir(string workDir, string exe, string args, out int exitCode)
+        {
             ProcessStartInfo psi = new ProcessStartInfo(exe, args);
-            psi.WorkingDirectory = rootDir;
+            psi.WorkingDirectory = workDir;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true;

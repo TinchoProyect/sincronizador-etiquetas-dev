@@ -148,7 +148,25 @@ async function main() {
         }
     }
 
-    // Paso 4: Garantizar que el entorno local quede en la rama `desarrollo`
+    // Paso 4: Si existe la carpeta de Producción Respaldo en este equipo (PcAlmacen), alinearla con origin/main
+    const localProdStandbyDir = 'C:\\Users\\Martin\\Documents\\sincronizador-etiquetas - copia';
+    if (fs.existsSync(path.join(localProdStandbyDir, '.git'))) {
+        try {
+            console.log('\n4️⃣ Alineando carpeta local de Producción Standby (`sincronizador-etiquetas - copia` -> `origin/main`)...');
+            runCmd('git checkout -- data/ia_credito_ledger.json 2>nul || exit 0', localProdStandbyDir);
+            runCmd('git checkout -- pagina-publica-web/dist 2>nul || exit 0', localProdStandbyDir);
+            runCmd('git checkout -- src/app-etiquetas/documentos 2>nul || exit 0', localProdStandbyDir);
+            runCmd('git fetch origin main', localProdStandbyDir);
+            runCmd('git checkout -f main', localProdStandbyDir);
+            runCmd('git reset --hard origin/main', localProdStandbyDir);
+            runCmd('git config core.hooksPath .githooks', localProdStandbyDir);
+            console.log('✅ Carpeta de Producción Local (`main`) actualizada para el Switch.');
+        } catch (standbyErr) {
+            console.warn('⚠️ Aviso alineando carpeta de Producción Local:', standbyErr.message);
+        }
+    }
+
+    // Paso 5: Garantizar que el entorno local de Laboratorio quede en la rama `desarrollo`
     try {
         const branchAfter = runCmd('git rev-parse --abbrev-ref HEAD').trim();
         if (branchAfter !== 'desarrollo') {
