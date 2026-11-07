@@ -317,7 +317,7 @@ namespace LamdaControlCenter
             // Auto-open checkbox
             chkAutoOpenBrowser = new CheckBox();
             chkAutoOpenBrowser.Text = "Abrir automáticamente el navegador en http://localhost:3000 (1 sola pestaña) cuando los servicios estén activos";
-            chkAutoOpenBrowser.Checked = true;
+            chkAutoOpenBrowser.Checked = false;
             chkAutoOpenBrowser.Font = new Font("Segoe UI", 8.8f, FontStyle.Regular);
             chkAutoOpenBrowser.ForeColor = Color.FromArgb(203, 213, 225);
             chkAutoOpenBrowser.AutoSize = true;
@@ -539,11 +539,15 @@ namespace LamdaControlCenter
                     }
                     else
                     {
-                        AppendLog("Los 5 servicios ya estaban activos. Abriendo http://localhost:3000 (1 sola pestaña)...");
                         if (chkAutoOpenBrowser.Checked && !browserOpenedForCurrentRun)
                         {
+                            AppendLog("Los 5 servicios ya estaban activos. Abriendo http://localhost:3000 (1 sola pestaña)...");
                             browserOpenedForCurrentRun = true;
                             OpenMainBrowserTab();
+                        }
+                        else
+                        {
+                            AppendLog("Los 5 servicios ya se encuentran activos.");
                         }
                     }
                 }));
