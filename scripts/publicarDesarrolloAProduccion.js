@@ -98,7 +98,7 @@ async function main() {
             ? `sed -i 's|^SUPABASE_B2B_SERVICE_KEY=.*|SUPABASE_B2B_SERVICE_KEY=${prodSupaKey}|g' .env 2>/dev/null || true && `
             : '';
         execSync(
-            `ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "cd /opt/lamda/sincronizador-etiquetas && git checkout -- data/ia_credito_ledger.json 2>/dev/null || true && git fetch origin && git checkout main && git reset --hard origin/main && sed -i 's/^DAEMON_B2B_DISABLED=true/DAEMON_B2B_DISABLED=false/g' .env 2>/dev/null || true && ${sedSupaCmd}node scripts/auditarDiferenciasEsquemaDb.js --apply-local-etiquetas && pm2 restart all"`,
+            `ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "cd /opt/lamda/sincronizador-etiquetas && git checkout -- data/ia_credito_ledger.json 2>/dev/null || true && git fetch origin && git checkout main && git reset --hard origin/main && sed -i 's/^DAEMON_B2B_DISABLED=true/DAEMON_B2B_DISABLED=false/g' .env 2>/dev/null || true && ${sedSupaCmd}node scripts/auditarDiferenciasEsquemaDb.js --apply-local-etiquetas && pm2 restart all --update-env"`,
             { stdio: 'inherit', windowsHide: true, timeout: 45000 }
         );
         cloudUpdatedViaSsh = true;
