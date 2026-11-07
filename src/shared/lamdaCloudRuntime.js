@@ -63,27 +63,27 @@ const CLIENT_RUNTIME_SCRIPT = `
         var resolved = rawUrl;
         if (isCloudSinglePortOrigin()) {
             var origin = window.location.origin;
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3005\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3005\\/?$/i.test(resolved)) {
                 return origin + '/pages/dashboard.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3000\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3000\\/?$/i.test(resolved)) {
                 return origin + '/gw/3000/';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3002\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3002\\/?$/i.test(resolved)) {
                 return origin + '/gw/3002/pages/produccion.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3003\\/?$/i.test(resolved) || /^\\/presupuestos\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3003\\/?$/i.test(resolved) || /^\\/presupuestos\\/?$/i.test(resolved)) {
                 return origin + '/gw/3003/pages/presupuestos.html';
             }
-            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3004\\/?$/i.test(resolved)) {
+            if (/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3004\\/?$/i.test(resolved)) {
                 return origin + '/gw/3004/pages/facturas.html';
             }
             resolved = resolved
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3005(\\/|$)/i, origin + '$2')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3000(\\/|$)/i, origin + '/gw/3000/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3002(\\/|$)/i, origin + '/gw/3002/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3003(\\/|$)/i, origin + '/gw/3003/')
-                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|[^/:]+\\.lamdaser\\.com):3004(\\/|$)/i, origin + '/gw/3004/');
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3005(\\/|$)/i, origin + '$2')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3000(\\/|$)/i, origin + '/gw/3000/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3002(\\/|$)/i, origin + '/gw/3002/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3003(\\/|$)/i, origin + '/gw/3003/')
+                .replace(/^https?:\\/\\/(localhost|127\\.0\\.0\\.1|(?:\\d{1,3}\\.){3}\\d{1,3}|[^/:]+\\.lamdaser\\.com):3004(\\/|$)/i, origin + '/gw/3004/');
         }
 
         // Si el navegador está bajo /gw/(300[0234])/ y la URL es relativa a la raíz (/...),

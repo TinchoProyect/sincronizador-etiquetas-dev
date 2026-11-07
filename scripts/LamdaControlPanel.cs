@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -61,6 +63,7 @@ namespace LamdaControlCenter
         private ToolTip mainToolTip;
         private Button btnRestoreDb;
         private Button btnOpenMobile;
+        private Button btnQrMobile;
         private RichTextBox logBox;
 
         public MainForm(string rootDirOverride = null)
@@ -412,19 +415,27 @@ namespace LamdaControlCenter
             lblGitCommit.Font = new Font("Consolas", 8.5f, FontStyle.Bold);
             lblGitCommit.ForeColor = Color.FromArgb(125, 211, 252);
             lblGitCommit.Location = new Point(0, 9);
-            lblGitCommit.Size = new Size(384, 20);
+            lblGitCommit.Size = new Size(286, 20);
             lblGitCommit.AutoEllipsis = true;
             toolsRow.Controls.Add(lblGitCommit);
 
-            btnRestoreDb = CreateSmallToolButton("🗄️ Restaurar Base de Pruebas", 392, 2, 192);
+            btnRestoreDb = CreateSmallToolButton("🗄️ Restaurar Base Pruebas", 292, 2, 168);
             btnRestoreDb.Click += (s, e) => RunRestoreDatabaseAsync();
-            mainToolTip.SetToolTip(btnRestoreDb, "Restaura la base PostgreSQL local 'etiquetas_pruebas' desde el último snapshot local.");
+            mainToolTip.SetToolTip(btnRestoreDb, "Restaura la base PostgreSQL local 'etiquetas_pruebas' trayendo la última foto real de Producción.");
             toolsRow.Controls.Add(btnRestoreDb);
 
-            btnOpenMobile = CreateSmallToolButton("📱 Abrir /mobile", 592, 2, 114);
+            btnOpenMobile = CreateSmallToolButton("📱 Abrir /mobile", 466, 2, 114);
             btnOpenMobile.Click += (s, e) => OpenMobileTab();
             mainToolTip.SetToolTip(btnOpenMobile, "Abre la App Móvil Operativa en http://localhost:3005/mobile/home.html");
             toolsRow.Controls.Add(btnOpenMobile);
+
+            btnQrMobile = CreateSmallToolButton("📲 QR Wi-Fi", 586, 2, 120);
+            btnQrMobile.BackColor = Color.FromArgb(88, 28, 135); // Purple #581c87
+            btnQrMobile.ForeColor = Color.FromArgb(243, 232, 255);
+            btnQrMobile.FlatAppearance.BorderColor = Color.FromArgb(168, 85, 247);
+            btnQrMobile.Click += (s, e) => OpenMobileQrModal();
+            mainToolTip.SetToolTip(btnQrMobile, "Muestra el código QR y la URL con IP local Wi-Fi para escanear desde tu celular y abrir /mobile en Modo Laboratorio.");
+            toolsRow.Controls.Add(btnQrMobile);
 
             contentPanel.Controls.Add(toolsRow);
             y += 40;
@@ -1041,6 +1052,333 @@ namespace LamdaControlCenter
             {
                 AppendLog("Error al abrir /mobile: " + ex.Message);
             }
+        }
+
+        private class LanCandidate
+        {
+            public string InterfaceName;
+            public string IpAddress;
+            public int Score;
+            public string DisplayText
+            {
+                get { return InterfaceName + " — http://" + IpAddress + ":3005/mobile/home.html"; }
+            }
+            public string Url
+            {
+                get { return "http://" + IpAddress + ":3005/mobile/home.html"; }
+            }
+            public override string ToString() { return DisplayText; }
+        }
+
+        private List<LanCandidate> GetLocalLanIpCandidates()
+        {
+            List<LanCandidate> list = new List<LanCandidate>();
+            try
+            {
+                string[] virtualKeywords = new string[] {
+                    "tailscale", "zerotier", "vethernet", "wsl", "hyper-v",
+                    "virtualbox", "vmware", "docker", "vpn", "tap", "tun",
+                    "bluetooth", "npcap", "loopback", "teredo", "isatap"
+                };
+
+                foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                        ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                    string nameAndDesc = ((ni.Name ?? "") + " " + (ni.Description ?? "")).ToLowerInvariant();
+                    bool isVirtual = false;
+                    foreach (string kw in virtualKeywords)
+                    {
+                        if (nameAndDesc.Contains(kw)) { isVirtual = true; break; }
+                    }
+                    if (isVirtual) continue;
+
+                    IPInterfaceProperties ipProps = ni.GetIPProperties();
+                    if (ipProps == null) continue;
+
+                    bool hasIpv4Gateway = false;
+                    foreach (GatewayIPAddressInformation gw in ipProps.GatewayAddresses)
+                    {
+                        if (gw.Address != null &&
+                            gw.Address.AddressFamily == AddressFamily.InterNetwork &&
+                            !gw.Address.Equals(IPAddress.Any))
+                        {
+                            hasIpv4Gateway = true;
+                            break;
+                        }
+                    }
+
+                    foreach (UnicastIPAddressInformation uni in ipProps.UnicastAddresses)
+                    {
+                        if (uni.Address == null || uni.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                        string ip = uni.Address.ToString();
+                        if (ip.StartsWith("127.") || ip.StartsWith("169.254.")) continue;
+
+                        // Evitar rango CGNAT / Tailscale (100.64.0.0/10)
+                        string[] octets = ip.Split('.');
+                        if (octets.Length == 4)
+                        {
+                            int o0, o1;
+                            if (int.TryParse(octets[0], out o0) && int.TryParse(octets[1], out o1))
+                            {
+                                if (o0 == 100 && o1 >= 64 && o1 <= 127) continue;
+                            }
+                        }
+
+                        int score = 0;
+                        if (hasIpv4Gateway) score += 100;
+                        if (ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) score += 50;
+                        else if (ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet) score += 40;
+                        if (ip.StartsWith("192.168.") || ip.StartsWith("10.") || ip.StartsWith("172.")) score += 20;
+
+                        list.Add(new LanCandidate
+                        {
+                            InterfaceName = ni.Name,
+                            IpAddress = ip,
+                            Score = score
+                        });
+                    }
+                }
+            }
+            catch { }
+
+            list.Sort((a, b) => b.Score.CompareTo(a.Score));
+            return list;
+        }
+
+        private bool IsFirewallRulePresent()
+        {
+            try
+            {
+                int code;
+                string outTxt = RunCliCommand("netsh.exe", "advfirewall firewall show rule name=\"LAMDA Laboratorio Movil LAN (TCP 3000-3005)\"", out code);
+                return code == 0 && (outTxt.Contains("3005") || outTxt.Contains("LAMDA Laboratorio Movil LAN"));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool EnsureFirewallRuleForMobileLan()
+        {
+            if (IsFirewallRulePresent()) return true;
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(
+                    "netsh.exe",
+                    "advfirewall firewall add rule name=\"LAMDA Laboratorio Movil LAN (TCP 3000-3005)\" dir=in action=allow protocol=TCP localport=3000,3002,3003,3004,3005 profile=any"
+                );
+                psi.Verb = "runas";
+                psi.UseShellExecute = true;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                using (Process p = Process.Start(psi))
+                {
+                    if (p != null) p.WaitForExit(10000);
+                }
+            }
+            catch { }
+            return IsFirewallRulePresent();
+        }
+
+        private Image GenerateQrBitmapForUrl(string url)
+        {
+            try
+            {
+                string tempPng = Path.Combine(Path.GetTempPath(), "lamda_lab_mobile_qr.png");
+                if (File.Exists(tempPng))
+                {
+                    try { File.Delete(tempPng); } catch { }
+                }
+
+                string escapedPng = tempPng.Replace("\\", "/");
+                string escapedUrl = url.Replace("'", "\\'");
+                string nodeScript =
+                    "let q; try { q = require('./src/facturacion/node_modules/qrcode'); } catch(e) { q = require('qrcode'); } " +
+                    "q.toFile('" + escapedPng + "', '" + escapedUrl + "', { width: 260, margin: 2 }, (err) => { if (err) process.exit(1); });";
+
+                int code;
+                RunCliCommand(nodeExePath, "-e \"" + nodeScript.Replace("\"", "\\\"") + "\"", out code);
+
+                if (File.Exists(tempPng))
+                {
+                    byte[] bytes = File.ReadAllBytes(tempPng);
+                    using (MemoryStream ms = new MemoryStream(bytes))
+                    {
+                        return new Bitmap(Image.FromStream(ms));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog("Error generando código QR: " + ex.Message);
+            }
+            return null;
+        }
+
+        private void OpenMobileQrModal()
+        {
+            bool port3005Up = CheckPortOpen("127.0.0.1", 3005, 250);
+            if (!port3005Up)
+            {
+                DialogResult dr = MessageBox.Show(
+                    "El servicio de Logística / Móvil (Puerto 3005) está apagado.\n\n¿Querés encender los 5 servicios ahora mismo y mostrar el código QR?",
+                    "Servicio Móvil (3005) Apagado",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                );
+                if (dr == DialogResult.Yes)
+                {
+                    StartAllServices();
+                }
+            }
+
+            List<LanCandidate> candidates = GetLocalLanIpCandidates();
+            if (candidates.Count == 0)
+            {
+                candidates.Add(new LanCandidate { InterfaceName = "Localhost", IpAddress = "127.0.0.1", Score = 0 });
+            }
+
+            bool fwOk = IsFirewallRulePresent();
+            if (!fwOk)
+            {
+                fwOk = EnsureFirewallRuleForMobileLan();
+            }
+
+            Form modal = new Form();
+            modal.Text = "📲 QR Celular (Wi-Fi) — LAMDA Móvil Lab (etiquetas_pruebas)";
+            modal.Size = new Size(480, 560);
+            modal.FormBorderStyle = FormBorderStyle.FixedDialog;
+            modal.MaximizeBox = false;
+            modal.MinimizeBox = false;
+            modal.StartPosition = FormStartPosition.CenterParent;
+            modal.BackColor = Color.FromArgb(15, 23, 42); // #0f172a
+            modal.ForeColor = Color.FromArgb(248, 250, 252);
+            if (this.Icon != null) modal.Icon = this.Icon;
+
+            Label titleLbl = new Label();
+            titleLbl.Text = "📲 Probar LAMDA Móvil en tu Celular (Wi-Fi)";
+            titleLbl.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
+            titleLbl.ForeColor = Color.FromArgb(248, 250, 252);
+            titleLbl.Location = new Point(20, 16);
+            titleLbl.AutoSize = true;
+            modal.Controls.Add(titleLbl);
+
+            Label subLbl = new Label();
+            subLbl.Text = "Conectá tu teléfono al mismo Wi-Fi, escaneá el QR con la cámara\r\ny abrirá directamente LAMDA Móvil Lab conectado a 'etiquetas_pruebas'.";
+            subLbl.Font = new Font("Segoe UI", 8.8f, FontStyle.Regular);
+            subLbl.ForeColor = Color.FromArgb(148, 163, 184);
+            subLbl.Location = new Point(21, 42);
+            subLbl.Size = new Size(430, 36);
+            modal.Controls.Add(subLbl);
+
+            Label netLbl = new Label();
+            netLbl.Text = "Placa Wi-Fi / Red Local detectada:";
+            netLbl.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+            netLbl.ForeColor = Color.FromArgb(196, 181, 253);
+            netLbl.Location = new Point(21, 84);
+            netLbl.AutoSize = true;
+            modal.Controls.Add(netLbl);
+
+            ComboBox cmbInterfaces = new ComboBox();
+            cmbInterfaces.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbInterfaces.Font = new Font("Consolas", 9f, FontStyle.Bold);
+            cmbInterfaces.BackColor = Color.FromArgb(30, 41, 59);
+            cmbInterfaces.ForeColor = Color.FromArgb(248, 250, 252);
+            cmbInterfaces.Location = new Point(21, 104);
+            cmbInterfaces.Size = new Size(422, 26);
+            foreach (LanCandidate c in candidates) cmbInterfaces.Items.Add(c);
+            cmbInterfaces.SelectedIndex = 0;
+            modal.Controls.Add(cmbInterfaces);
+
+            Panel qrCard = new Panel();
+            qrCard.Size = new Size(276, 276);
+            qrCard.Location = new Point(94, 140);
+            qrCard.BackColor = Color.White;
+            modal.Controls.Add(qrCard);
+
+            PictureBox picQr = new PictureBox();
+            picQr.Size = new Size(260, 260);
+            picQr.Location = new Point(8, 8);
+            picQr.SizeMode = PictureBoxSizeMode.StretchImage;
+            qrCard.Controls.Add(picQr);
+
+            TextBox txtUrl = new TextBox();
+            txtUrl.ReadOnly = true;
+            txtUrl.Font = new Font("Consolas", 9.5f, FontStyle.Bold);
+            txtUrl.BackColor = Color.FromArgb(30, 41, 59);
+            txtUrl.ForeColor = Color.FromArgb(56, 189, 248);
+            txtUrl.BorderStyle = BorderStyle.FixedSingle;
+            txtUrl.Location = new Point(21, 428);
+            txtUrl.Size = new Size(318, 26);
+            modal.Controls.Add(txtUrl);
+
+            Button btnCopy = CreateSmallToolButton("📋 Copiar URL", 345, 425, 98);
+            btnCopy.BackColor = Color.FromArgb(3, 105, 161);
+            btnCopy.ForeColor = Color.White;
+            btnCopy.Click += (s, e) =>
+            {
+                try
+                {
+                    Clipboard.SetText(txtUrl.Text);
+                    btnCopy.Text = "✅ Copiada";
+                }
+                catch { }
+            };
+            modal.Controls.Add(btnCopy);
+
+            Label fwStatusLbl = new Label();
+            fwStatusLbl.Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+            fwStatusLbl.Location = new Point(21, 464);
+            fwStatusLbl.Size = new Size(422, 20);
+            fwStatusLbl.Text = fwOk
+                ? "🟢 Firewall Windows: Puerto 3005 habilitado para conexiones Wi-Fi / LAN"
+                : "⚠️ Firewall Windows: Si el celular no conecta, tocá 'Habilitar Firewall'";
+            fwStatusLbl.ForeColor = fwOk ? Color.FromArgb(52, 211, 153) : Color.FromArgb(251, 191, 36);
+            modal.Controls.Add(fwStatusLbl);
+
+            if (!fwOk)
+            {
+                Button btnEnableFw = CreateSmallToolButton("🛡️ Habilitar Firewall Windows (Puerto 3005)", 21, 486, 280);
+                btnEnableFw.BackColor = Color.FromArgb(180, 83, 9);
+                btnEnableFw.ForeColor = Color.White;
+                btnEnableFw.Click += (s, e) =>
+                {
+                    if (EnsureFirewallRuleForMobileLan())
+                    {
+                        fwStatusLbl.Text = "🟢 Firewall Windows: Puerto 3005 habilitado para conexiones Wi-Fi / LAN";
+                        fwStatusLbl.ForeColor = Color.FromArgb(52, 211, 153);
+                        btnEnableFw.Visible = false;
+                    }
+                };
+                modal.Controls.Add(btnEnableFw);
+            }
+
+            Button btnClose = CreateSmallToolButton("Cerrar", 345, 486, 98);
+            btnClose.Click += (s, e) => modal.Close();
+            modal.Controls.Add(btnClose);
+
+            Action updateSelectedCandidate = () =>
+            {
+                LanCandidate sel = cmbInterfaces.SelectedItem as LanCandidate;
+                if (sel == null) return;
+                txtUrl.Text = sel.Url;
+                btnCopy.Text = "📋 Copiar URL";
+                Image img = GenerateQrBitmapForUrl(sel.Url);
+                if (picQr.Image != null)
+                {
+                    try { picQr.Image.Dispose(); } catch { }
+                }
+                picQr.Image = img;
+                AppendLog("📲 QR Móvil Wi-Fi generado para: " + sel.Url);
+            };
+
+            cmbInterfaces.SelectedIndexChanged += (s, e) => updateSelectedCandidate();
+            updateSelectedCandidate();
+
+            modal.ShowDialog(this);
         }
 
         private void SetGitButtonsEnabled(bool enabled)
