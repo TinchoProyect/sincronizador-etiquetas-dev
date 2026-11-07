@@ -1414,6 +1414,7 @@ namespace LamdaControlCenter
                 int code;
                 RunCliCommand(gitExePath, "checkout -- data/ia_credito_ledger.json", out code);
                 RunCliCommand(gitExePath, "checkout -- pagina-publica-web/dist", out code);
+                RunCliCommand(gitExePath, "checkout -- src/app-etiquetas/documentos", out code);
             }
             catch { }
         }
@@ -1557,19 +1558,7 @@ namespace LamdaControlCenter
                     }
                     catch { }
 
-                    try
-                    {
-                        string csc = @"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe";
-                        string csFile = Path.Combine(rootDir, @"scripts\LamdaControlPanel.cs");
-                        string outExe = Path.Combine(rootDir, @"scripts\LamdaControlPanel.exe");
-                        string icoFile = Path.Combine(rootDir, @"scripts\lamda-lab.ico");
-                        if (File.Exists(csc) && File.Exists(csFile))
-                        {
-                            int cscCode;
-                            RunCliCommand(csc, "/nologo /target:winexe /out:\"" + outExe + "\" /win32icon:\"" + icoFile + "\" \"" + csFile + "\"", out cscCode);
-                        }
-                    }
-                    catch { }
+                    CleanRuntimeNoiseFiles();
                     UpdateGitCommitBadgeAsync();
                     AppendLog("✅ Actualizaciones aplicadas en " + hostLabel + ". Reiniciando los 5 servicios automáticamente...");
 
@@ -1642,15 +1631,14 @@ namespace LamdaControlCenter
                     {
                         int curCode;
                         string currentCommit = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out curCode).Trim();
-                        AppendLog("ℹ️ No hay avances ni commits locales pendientes de subir desde " + hostLabel + ".");
+                        AppendLog("ℹ️ No hay avances nuevos para subir (el equipo ya está sincronizado con GitHub).");
                         this.BeginInvoke(new Action(() =>
                         {
                             SetGitButtonsEnabled(true);
                             MessageBox.Show(
-                                "ℹ️ No hay commits ni avances locales pendientes de subir desde " + hostLabel + ".\n\n" +
-                                "Todo lo que está en este equipo (" + hostLabel + ") ya figura publicado en la rama 'desarrollo' de GitHub.\n\n" +
-                                "📌 Commit local actual: " + currentCommit,
-                                "Sin Avances Pendientes para Subir",
+                                "No hay avances nuevos para subir (el equipo ya está sincronizado con GitHub).\n\n" +
+                                "📌 Commit local actual (" + hostLabel + "): " + currentCommit,
+                                "Sin Avances Nuevos para Subir",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information
                             );

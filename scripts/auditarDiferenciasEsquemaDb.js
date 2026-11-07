@@ -62,7 +62,7 @@ async function extraerEsquemaDesdeCliente(client) {
             ON t.table_schema = c.table_schema AND t.table_name = c.table_name
         WHERE c.table_schema = 'public'
           AND t.table_type = 'BASE TABLE'
-        ORDER BY c.table_name, c.ordinal_position;
+        ORDER BY c.table_name ASC, c.ordinal_position ASC, c.column_name ASC;
     `);
 
     const tables = {};
@@ -82,6 +82,60 @@ async function extraerEsquemaDesdeCliente(client) {
         };
     }
     return tables;
+}
+
+function ordenarEsquemaDeterminista(tables) {
+    const sortedTables = {};
+    const tableNames = Object.keys(tables || {}).sort((a, b) => a.localeCompare(b));
+    for (const tName of tableNames) {
+        const cols = tables[tName] || {};
+        const sortedCols = {};
+        const colNames = Object.keys(cols).sort((a, b) => {
+            const posA = Number(cols[a]?.ordinal_position || 0);
+            const posB = Number(cols[b]?.ordinal_position || 0);
+            if (posA !== posB) return posA - posB;
+            return a.localeCompare(b);
+        });
+        for (const cName of colNames) {
+            const c = cols[cName];
+            sortedCols[cName] = {
+                ordinal_position: c.ordinal_position,
+                data_type: c.data_type,
+                udt_name: c.udt_name,
+                character_maximum_length: c.character_maximum_length,
+                numeric_precision: c.numeric_precision,
+                numeric_scale: c.numeric_scale,
+                is_nullable: c.is_nullable,
+                column_default: c.column_default
+            };
+        }
+        sortedTables[tName] = sortedCols;
+    }
+    return sortedTables;
+}
+
+function construirFirmaEstructuralCanonica(tables) {
+    const canonical = {};
+    const tableNames = Object.keys(tables || {}).sort((a, b) => a.localeCompare(b));
+    for (const tName of tableNames) {
+        const cols = tables[tName] || {};
+        const canonicalCols = {};
+        const colNames = Object.keys(cols).sort((a, b) => a.localeCompare(b));
+        for (const cName of colNames) {
+            const c = cols[cName] || {};
+            canonicalCols[cName] = {
+                data_type: c.data_type ?? null,
+                udt_name: c.udt_name ?? null,
+                character_maximum_length: c.character_maximum_length ?? null,
+                numeric_precision: c.numeric_precision ?? null,
+                numeric_scale: c.numeric_scale ?? null,
+                is_nullable: c.is_nullable ?? null,
+                column_default: c.column_default ?? null
+            };
+        }
+        canonical[tName] = canonicalCols;
+    }
+    return JSON.stringify(canonical);
 }
 
 function construirTipoSql(col) {
@@ -128,15 +182,37 @@ async function exportarSnapshotLaboratorio() {
         return null;
     }
     try {
-        const tables = await extraerEsquemaDesdeCliente(client);
+        const rawTables = await extraerEsquemaDesdeCliente(client);
+        const tables = ordenarEsquemaDeterminista(rawTables);
         const dir = path.dirname(SNAPSHOT_JSON_PATH);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+        if (fs.existsSync(SNAPSHOT_JSON_PATH)) {
+            try {
+                const existingRaw = fs.readFileSync(SNAPSHOT_JSON_PATH, 'utf8');
+                const existingParsed = JSON.parse(existingRaw);
+                const hasVolatileFields = existingParsed && (
+                    Object.prototype.hasOwnProperty.call(existingParsed, 'updatedAt') ||
+                    Object.prototype.hasOwnProperty.call(existingParsed, 'exportedAt') ||
+                    Object.prototype.hasOwnProperty.call(existingParsed, 'generatedAt') ||
+                    Object.prototype.hasOwnProperty.call(existingParsed, 'host')
+                );
+                if (!hasVolatileFields && existingParsed && existingParsed.tables) {
+                    const prevSig = construirFirmaEstructuralCanonica(existingParsed.tables);
+                    const nextSig = construirFirmaEstructuralCanonica(tables);
+                    if (prevSig === nextSig) {
+                        console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' sin cambios estructurales (${Object.keys(tables).length} tablas). Snapshot intacto.`);
+                        return existingParsed.tables;
+                    }
+                }
+            } catch (_) {}
+        }
+
         const payload = {
-            updatedAt: new Date().toISOString(),
             tableCount: Object.keys(tables).length,
             tables
         };
-        fs.writeFileSync(SNAPSHOT_JSON_PATH, JSON.stringify(payload, null, 2), 'utf8');
+        fs.writeFileSync(SNAPSHOT_JSON_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8');
         console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' exportado (${payload.tableCount} tablas) -> migrations/schema_laboratorio_snapshot.json`);
         return tables;
     } finally {
