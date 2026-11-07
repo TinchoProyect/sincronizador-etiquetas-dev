@@ -1,0 +1,56 @@
+#!/bin/sh
+# ==============================================================================
+# LAMDA Git Hook: pre-push
+# Bloquea push a 'main' desde la Notebook o push manual a 'main' fuera del
+# publicador oficial (scripts/publicarDesarrolloAProduccion.js).
+# ==============================================================================
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+HOST_LOWER=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+IS_NOTEBOOK=0
+if [ "$HOST_LOWER" = "servediora" ]; then
+    IS_NOTEBOOK=1
+elif [ -f "$REPO_ROOT/.env" ] && grep -q "DB_PASSWORD=taKionga" "$REPO_ROOT/.env" 2>/dev/null; then
+    IS_NOTEBOOK=1
+fi
+
+PUSHING_TO_MAIN=0
+if [ "$BRANCH" = "main" ]; then
+    PUSHING_TO_MAIN=1
+fi
+
+while read local_ref local_sha remote_ref remote_sha
+do
+    case "$remote_ref" in
+        *refs/heads/main*)
+            PUSHING_TO_MAIN=1
+            ;;
+    esac
+done
+
+# 1. Candado estricto en la Notebook: jamás se hace push a 'main'
+if [ "$IS_NOTEBOOK" = "1" ] && [ "$PUSHING_TO_MAIN" = "1" ]; then
+    echo "==========================================================================" >&2
+    echo "❌ [CANDADO GIT - NOTEBOOK] Push hacia la rama 'main' BLOQUEADO." >&2
+    echo "   Esta Notebook opera únicamente sobre 'origin/desarrollo'." >&2
+    echo "   El pase de 'desarrollo' a 'main' y despliegue a Producción se ejecutan" >&2
+    echo "   exclusivamente desde PcAlmacen mediante:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "==========================================================================" >&2
+    exit 1
+fi
+
+# 2. Candado en PcAlmacen: push a 'main' debe hacerse mediante publicarDesarrolloAProduccion.js
+if [ "$PUSHING_TO_MAIN" = "1" ] && [ "$LAMDA_ALLOW_PROD_PUBLISH" != "1" ]; then
+    echo "==========================================================================" >&2
+    echo "❌ [CANDADO GIT - PRODUCCIÓN] Push manual directo a 'main' BLOQUEADO." >&2
+    echo "   Para pasar cambios de 'desarrollo' a 'main' sincronizando esquemas DB" >&2
+    echo "   y actualizando Google Cloud + PcAlmacen, ejecutá desde PcAlmacen:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "==========================================================================" >&2
+    exit 1
+fi
+
+exit 0

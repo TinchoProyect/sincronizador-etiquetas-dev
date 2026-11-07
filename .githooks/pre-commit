@@ -1,0 +1,78 @@
+#!/bin/sh
+# ==============================================================================
+# LAMDA Git Hook: pre-commit
+# Candados de seguridad de ramas (Notebook / Laboratorio / Producción)
+# y limpieza automática de archivos efímeros de runtime en 'desarrollo'.
+# ==============================================================================
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+HOST_LOWER=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+IS_NOTEBOOK=0
+if [ "$HOST_LOWER" = "servediora" ]; then
+    IS_NOTEBOOK=1
+elif [ -f "$REPO_ROOT/.env" ] && grep -q "DB_PASSWORD=taKionga" "$REPO_ROOT/.env" 2>/dev/null; then
+    IS_NOTEBOOK=1
+fi
+
+IS_LAB_FOLDER=0
+case "$REPO_ROOT" in
+    *LAMDA-Laboratorio*|*LAMDA-Desarrollo*)
+        IS_LAB_FOLDER=1
+        ;;
+esac
+
+IS_PROD_PCALMACEN_FOLDER=0
+case "$REPO_ROOT" in
+    *"sincronizador-etiquetas - copia"*)
+        IS_PROD_PCALMACEN_FOLDER=1
+        ;;
+esac
+
+# 1. Candado en la Notebook: opera exclusivamente en 'desarrollo'
+if [ "$IS_NOTEBOOK" = "1" ] && [ "$BRANCH" = "main" ]; then
+    echo "==========================================================================" >&2
+    echo "❌ [CANDADO GIT - NOTEBOOK] Commit en la rama 'main' BLOQUEADO." >&2
+    echo "   La Notebook opera ÚNICAMENTE sobre la rama 'desarrollo' (etiquetas_pruebas)." >&2
+    echo "   Cambiá a 'desarrollo' con: git checkout desarrollo" >&2
+    echo "==========================================================================" >&2
+    exit 1
+fi
+
+# 2. Candado en carpeta de Laboratorio (Notebook o PcAlmacen): no commitear en 'main'
+if [ "$IS_LAB_FOLDER" = "1" ] && [ "$BRANCH" = "main" ] && [ "$LAMDA_ALLOW_PROD_PUBLISH" != "1" ]; then
+    echo "==========================================================================" >&2
+    echo "❌ [CANDADO GIT - LABORATORIO] Commit directo en 'main' BLOQUEADO." >&2
+    echo "   La carpeta LAMDA-Laboratorio opera únicamente sobre la rama 'desarrollo'." >&2
+    echo "   Para publicar a Producción desde PcAlmacen usá:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "==========================================================================" >&2
+    exit 1
+fi
+
+# 3. Candado en carpeta de Producción de PcAlmacen ('sincronizador-etiquetas - copia')
+if [ "$IS_PROD_PCALMACEN_FOLDER" = "1" ] && [ "$BRANCH" = "main" ] && [ "$LAMDA_ALLOW_PROD_PUBLISH" != "1" ]; then
+    echo "==========================================================================" >&2
+    echo "❌ [CANDADO GIT - PRODUCCIÓN PCALMACEN] Commit manual en 'main' BLOQUEADO." >&2
+    echo "   No se permiten commits directos en 'sincronizador-etiquetas - copia'." >&2
+    echo "   Realizá los cambios en 'C:\\Users\\Martin\\Documents\\LAMDA-Laboratorio'" >&2
+    echo "   (rama 'desarrollo') y publicalos con:" >&2
+    echo "   node scripts/publicarDesarrolloAProduccion.js" >&2
+    echo "==========================================================================" >&2
+    exit 1
+fi
+
+# 4. En 'desarrollo', limpiar automáticamente archivos efímeros de ruido antes del commit
+if [ "$BRANCH" = "desarrollo" ]; then
+    git reset -q HEAD -- data/ia_credito_ledger.json 2>/dev/null || true
+    git checkout -- data/ia_credito_ledger.json 2>/dev/null || true
+
+    git reset -q HEAD -- "src/app-etiquetas/documentos/*.pdf" 2>/dev/null || true
+    rm -f "$REPO_ROOT"/src/app-etiquetas/documentos/*.pdf 2>/dev/null || true
+
+    git reset -q HEAD -- pagina-publica-web/dist 2>/dev/null || true
+    git checkout -- pagina-publica-web/dist 2>/dev/null || true
+fi
+
+exit 0

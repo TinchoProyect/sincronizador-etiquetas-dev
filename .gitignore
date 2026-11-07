@@ -148,3 +148,13 @@ scratch/
 src/app-etiquetas/documentos/*.pdf
 
 
+
+# Reglas permanentes del Agente (Memoria de Proyecto) y Git Hooks
+!AGENTS.md
+!GEMINI.md
+!.antigravity/
+!.antigravity/rules.md
+!.agents/
+!.agents/rules/
+!.agents/rules/*.md
+!scripts/activar-git-hooks.bat

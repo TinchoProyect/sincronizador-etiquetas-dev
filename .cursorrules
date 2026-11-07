@@ -1,0 +1,13 @@
+# Reglas Permanentes del Proyecto LAMDA
+
+- **Mapa de la arquitectura LAMDA:**
+  - **Producción (`main`):** Corre en Google Cloud (`34.39.187.220` — `/opt/lamda/sincronizador-etiquetas`) y en `PcAlmacen` Standby (`C:\Users\Martin\Documents\sincronizador-etiquetas - copia`) sobre la base productiva `etiquetas`.
+  - **Laboratorio (`desarrollo`):** Corre en espejo entre la **Notebook** (`C:\Users\Martin\Documents\LAMDA-Laboratorio`) y el Laboratorio de **`PcAlmacen`** (`C:\Users\Martin\Documents\LAMDA-Laboratorio`) sobre la base de pruebas `etiquetas_pruebas`.
+- **Reglas operativas en la Notebook:**
+  - En la Notebook se trabaja **únicamente** sobre la rama `desarrollo` y la base `etiquetas_pruebas` (`LAMDA_MODO_LABORATORIO=true`).
+  - Desde la Notebook no se hacen commits ni push a la rama `main` (el pase de `desarrollo` a `main` y el despliegue a Producción se ejecutan desde `PcAlmacen` mediante `scripts/publicarDesarrolloAProduccion.js`).
+- **Flujo automático de sincronización en `desarrollo`:**
+  - Al iniciar una tarea nueva, verificar `git status` y traer lo último de `origin/desarrollo` (`git pull --rebase origin desarrollo` + aplicar cambios de esquema en `etiquetas_pruebas` con `node scripts/auditarDiferenciasEsquemaDb.js --apply-lab`).
+  - Al finalizar y verificar un cambio pedido por el usuario, limpiar archivos de ruido de runtime, exportar el esquema actual (`node scripts/auditarDiferenciasEsquemaDb.js --export-lab`), hacer `git commit` en `desarrollo` y `git push origin desarrollo` automáticamente para que `PcAlmacen` ya lo tenga disponible.
+- **Blindajes que no deben desactivarse:**
+  - Mantener intactos la simulación local de ARCA en Laboratorio (`esModoLaboratorioAfip()`), la protección de WhatsApp sin consumo de QR en Laboratorio (`esModoLaboratorioWa()`) y los controladores del Switch de Producción (`lamdaSwitchGuiServer.js`, `orquestadorSwitchLocalNube.js`, `lamdaCloudAuthGuard.js`).

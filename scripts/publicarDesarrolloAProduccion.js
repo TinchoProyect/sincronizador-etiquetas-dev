@@ -14,6 +14,7 @@
  */
 
 require('dotenv').config();
+const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
 const { sincronizarEsquemaHaciaProduccion, exportarSnapshotLaboratorio } = require('./auditarDiferenciasEsquemaDb');
@@ -23,10 +24,21 @@ const CLOUD_HOST = process.env.CLOUD_SSH_HOST || '34.39.187.220';
 const CLOUD_USER = process.env.CLOUD_SSH_USER || 'lamda_admin';
 
 function runCmd(cmd, cwd = ROOT_DIR) {
-    return execSync(cmd, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    return execSync(cmd, {
+        cwd,
+        encoding: 'utf8',
+        stdio: 'pipe',
+        windowsHide: true,
+        env: { ...process.env, LAMDA_ALLOW_PROD_PUBLISH: '1' }
+    });
 }
 
 async function main() {
+    if (String(os.hostname() || '').toLowerCase() === 'servediora') {
+        console.error('❌ [BLOQUEADO EN NOTEBOOK] El pase de desarrollo a Producción (`main`) se ejecuta exclusivamente desde PcAlmacen.');
+        process.exit(1);
+    }
+
     console.log('==================================================================');
     console.log('🚀 PUBLICADOR DE DESARROLLO A PRODUCCIÓN (NUBE + PCALMACEN)');
     console.log('==================================================================');
@@ -39,6 +51,7 @@ async function main() {
     // Paso 2: Consolidar ramas en GitHub (desarrollo -> main)
     console.log('\n2️⃣ Sincronizando ramas `desarrollo` y `main` en GitHub...');
     try {
+        runCmd('git config core.hooksPath .githooks');
         runCmd('git fetch origin --prune');
         const currentBranch = runCmd('git rev-parse --abbrev-ref HEAD').trim();
         if (currentBranch === 'desarrollo') {

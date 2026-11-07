@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -103,8 +103,10 @@ namespace LamdaControlCenter
 
             if (!File.Exists(Path.Combine(rootDir, "package.json")))
             {
-                string fallback = @"C:\Users\Martin\Downloads\LAMDA-Desarrollo";
-                if (Directory.Exists(fallback)) rootDir = fallback;
+                string fallbackLab = @"C:\Users\Martin\Documents\LAMDA-Laboratorio";
+                string fallbackDev = @"C:\Users\Martin\Downloads\LAMDA-Desarrollo";
+                if (Directory.Exists(fallbackLab)) rootDir = fallbackLab;
+                else if (Directory.Exists(fallbackDev)) rootDir = fallbackDev;
             }
 
             nodeExePath = @"C:\Program Files\nodejs\node.exe";
@@ -1407,6 +1409,7 @@ namespace LamdaControlCenter
                 try
                 {
                     int code;
+                    RunCliCommand(gitExePath, "config core.hooksPath .githooks", out code);
                     string shortInfo = RunCliCommand(gitExePath, "log -1 --format=\"%h — %s\"", out code).Trim();
                     string fullInfo = RunCliCommand(gitExePath, "log -1 --format=\"Commit %h (%ci): %s\"", out code).Trim();
                     if (string.IsNullOrWhiteSpace(shortInfo)) shortInfo = "desconocido";
