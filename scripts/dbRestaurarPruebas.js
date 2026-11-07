@@ -3,14 +3,16 @@
  * Restaurador y Clonador Inteligente de Base de Laboratorio (`etiquetas_pruebas`)
  * -------------------------------------------------------------------------------
  * 1. Descarga en vivo la última foto real de Producción desde `https://logistica.lamdaser.com/api/admin/db-snapshot-pruebas`
- *    (protegido por token criptográfico `x-lamda-snapshot-key` y sin tickets ARCA), o usa la base `etiquetas` local / snapshot previo si no hay red.
+ *    (comprimida en `.sql.gz`, compatible con PostgreSQL 12..18 en Windows, protegida con `x-lamda-snapshot-key` y sin tickets ARCA),
+ *    o usa la base `etiquetas` local / snapshot previo si no hay red.
  * 2. Recrea exclusivamente `etiquetas_pruebas` (candado rígido: jamás toca `etiquetas`).
- * 3. Purga preventivamente `public.factura_afip_ta` dentro de `etiquetas_pruebas` para que nunca viaje un ticket ARCA de Producción.
+ * 3. Purga preventivamente `public.factura_afip_ta` dentro de `etiquetas_pruebas` y deja `default_transaction_read_only = off` en `etiquetas_pruebas`.
  */
 
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const https = require('https');
 const { execSync } = require('child_process');
 
@@ -28,21 +30,22 @@ const SNAPSHOT_SECRET = String(process.env.LAMDA_DB_SNAPSHOT_SECRET || 'lamda-sn
 const PROD_SNAPSHOT_URL = String(process.env.LAMDA_PROD_SNAPSHOT_URL || 'https://logistica.lamdaser.com/api/admin/db-snapshot-pruebas').trim();
 
 function detectarBinarioPg(binName) {
-    const candidatos = [
-        `C:\\Program Files\\PostgreSQL\\18\\bin\\${binName}.exe`,
-        `C:\\Program Files\\PostgreSQL\\17\\bin\\${binName}.exe`,
-        `C:\\Program Files\\PostgreSQL\\16\\bin\\${binName}.exe`,
-        `C:\\Program Files\\PostgreSQL\\15\\bin\\${binName}.exe`
-    ];
-    for (const c of candidatos) {
+    for (const v of [18, 17, 16, 15, 14, 13, 12]) {
+        const c = `C:\\Program Files\\PostgreSQL\\${v}\\bin\\${binName}.exe`;
         if (fs.existsSync(c)) return `"${c}"`;
     }
     return binName;
 }
 
-function descargarSnapshotDesdeProduccionActiva(destPath) {
+function sanitizarSqlCompatible(sqlText) {
+    return String(sqlText || '')
+        .replace(/^SET transaction_timeout = .*$/gm, '-- SET transaction_timeout omitted')
+        .replace(/^SET idle_in_transaction_session_timeout = .*$/gm, '-- SET idle_in_transaction_session_timeout omitted');
+}
+
+function descargarSnapshotSqlGzDesdeProduccion(destSqlPath) {
     return new Promise((resolve) => {
-        const tempDownload = destPath + '.downloading';
+        const chunks = [];
         const req = https.get(
             PROD_SNAPSHOT_URL,
             {
@@ -54,26 +57,25 @@ function descargarSnapshotDesdeProduccionActiva(destPath) {
                     res.resume();
                     return resolve({ ok: false, reason: `HTTP ${res.statusCode}` });
                 }
-                const fileStream = fs.createWriteStream(tempDownload);
-                res.pipe(fileStream);
-                fileStream.on('finish', () => {
-                    fileStream.close(() => {
-                        try {
-                            const stat = fs.statSync(tempDownload);
-                            if (stat.size > 50000) {
-                                fs.renameSync(tempDownload, destPath);
-                                return resolve({ ok: true, bytes: stat.size });
-                            }
-                            fs.unlinkSync(tempDownload);
-                            return resolve({ ok: false, reason: 'Snapshot demasiado pequeño' });
-                        } catch (e) {
-                            return resolve({ ok: false, reason: e.message });
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => {
+                    try {
+                        const rawBuf = Buffer.concat(chunks);
+                        let sqlStr = '';
+                        // Si viene comprimido con gzip (0x1f 0x8b)
+                        if (rawBuf.length > 2 && rawBuf[0] === 0x1f && rawBuf[1] === 0x8b) {
+                            sqlStr = zlib.gunzipSync(rawBuf).toString('utf8');
+                        } else {
+                            sqlStr = rawBuf.toString('utf8');
                         }
-                    });
-                });
-                fileStream.on('error', (err) => {
-                    try { fs.unlinkSync(tempDownload); } catch (_) {}
-                    resolve({ ok: false, reason: err.message });
+                        if (sqlStr.length < 10000 || !sqlStr.includes('CREATE TABLE')) {
+                            return resolve({ ok: false, reason: 'Contenido SQL incompleto o formato anterior' });
+                        }
+                        fs.writeFileSync(destSqlPath, sanitizarSqlCompatible(sqlStr), 'utf8');
+                        return resolve({ ok: true, bytes: rawBuf.length });
+                    } catch (e) {
+                        return resolve({ ok: false, reason: e.message });
+                    }
                 });
             }
         );
@@ -95,14 +97,13 @@ async function main() {
         fs.mkdirSync(backupsDir, { recursive: true });
     }
 
-    const backupCustom = path.join(backupsDir, 'etiquetas_snapshot_fase1.backup');
     const backupSql = path.join(backupsDir, 'etiquetas_snapshot_fase1.sql');
+    const backupCustom = path.join(backupsDir, 'etiquetas_snapshot_fase1.backup');
 
     const psqlBin = detectarBinarioPg('psql');
     const pgRestoreBin = detectarBinarioPg('pg_restore');
     const pgDumpBin = detectarBinarioPg('pg_dump');
 
-    // Probar contraseña local ('ta3Mionga' en PcAlmacen o '1234' en Notebook)
     let activePassword = PG_PASSWORD;
     for (const candidatePass of [PG_PASSWORD, 'ta3Mionga', '1234', 'postgres']) {
         try {
@@ -117,23 +118,30 @@ async function main() {
     const env = { ...process.env, PGPASSWORD: activePassword };
 
     console.log('☁️  0️⃣ Descargando última foto real de Producción activa (logistica.lamdaser.com)...');
-    const dl = await descargarSnapshotDesdeProduccionActiva(backupCustom);
+    const dl = await descargarSnapshotSqlGzDesdeProduccion(backupSql);
+    let usePlainSql = false;
     if (dl.ok) {
-        console.log(`✅ Foto fresca de Producción descargada con éxito (${Math.round(dl.bytes / 1024)} KB).`);
+        console.log(`✅ Foto fresca de Producción descargada con éxito (${Math.round(dl.bytes / 1024)} KB comprimidos).`);
+        usePlainSql = true;
     } else {
-        console.log(`ℹ️ No se pudo descargar desde Nube (${dl.reason}). Verificando base local 'etiquetas'...`);
+        console.log(`ℹ️ No se descargó SQL comprimido desde Nube (${dl.reason}). Tomando snapshot desde base local 'etiquetas'...`);
         try {
-            execSync(
-                `${pgDumpBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d etiquetas -F c --no-owner --no-privileges --exclude-table-data=public.factura_afip_ta -f "${backupCustom}"`,
-                { env, stdio: 'ignore' }
+            const rawLocalSql = execSync(
+                `${pgDumpBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d etiquetas --no-owner --no-privileges --exclude-table-data=public.factura_afip_ta`,
+                { env, encoding: 'utf8', maxBuffer: 100 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }
             );
-            console.log('✅ Snapshot fresco tomado desde la base local `etiquetas`.');
+            if (rawLocalSql && rawLocalSql.includes('CREATE TABLE')) {
+                fs.writeFileSync(backupSql, sanitizarSqlCompatible(rawLocalSql), 'utf8');
+                usePlainSql = true;
+                console.log('✅ Snapshot fresco tomado desde la base local `etiquetas`.');
+            }
         } catch (_) {
-            console.log('ℹ️ Usando último snapshot guardado en `backups/etiquetas_snapshot_fase1.backup`.');
+            console.log('ℹ️ Usando último snapshot guardado en `backups/`.');
+            if (fs.existsSync(backupSql)) usePlainSql = true;
         }
     }
 
-    if (!fs.existsSync(backupCustom) && !fs.existsSync(backupSql)) {
+    if (!fs.existsSync(backupSql) && !fs.existsSync(backupCustom)) {
         console.error('❌ No se encontró ningún snapshot en backups/.');
         process.exit(1);
     }
@@ -152,25 +160,29 @@ async function main() {
             `${psqlBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d postgres -c "CREATE DATABASE ${TARGET_DB};"`,
             { env, stdio: 'inherit' }
         );
+        execSync(
+            `${psqlBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d postgres -c "ALTER DATABASE ${TARGET_DB} SET default_transaction_read_only = off;"`,
+            { env, stdio: 'ignore' }
+        );
     } catch (err) {
         console.error('❌ Error preparando base etiquetas_pruebas:', err.message);
         process.exit(1);
     }
 
-    if (fs.existsSync(backupCustom)) {
+    if (usePlainSql && fs.existsSync(backupSql)) {
         console.log(`2️⃣ Inyectando datos de Producción en \`${TARGET_DB}\`...`);
+        execSync(
+            `${psqlBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${TARGET_DB} -f "${backupSql}"`,
+            { env, stdio: 'ignore' }
+        );
+    } else if (fs.existsSync(backupCustom)) {
+        console.log(`2️⃣ Restaurando desde ${path.basename(backupCustom)}...`);
         try {
             execSync(
                 `${pgRestoreBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${TARGET_DB} --no-owner --no-privileges "${backupCustom}"`,
                 { env, stdio: 'ignore' }
             );
         } catch (_) {}
-    } else {
-        console.log(`2️⃣ Restaurando desde ${path.basename(backupSql)}...`);
-        execSync(
-            `${psqlBin} -h ${PG_HOST} -p ${PG_PORT} -U ${PG_USER} -d ${TARGET_DB} -f "${backupSql}"`,
-            { env, stdio: 'ignore' }
-        );
     }
 
     // 3️⃣ Sanitización obligatoria post-clonado: eliminar cualquier ticket TA real de ARCA en etiquetas_pruebas

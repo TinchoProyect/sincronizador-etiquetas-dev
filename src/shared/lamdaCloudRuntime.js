@@ -1441,6 +1441,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     app.get('/api/admin/db-snapshot-pruebas', async (req, res) => {
         try {
             const crypto = require('crypto');
+            const zlib = require('zlib');
             const { spawn } = require('child_process');
             const providedKey = String(req.headers['x-lamda-snapshot-key'] || '').trim();
             const expectedKey = String(process.env.LAMDA_DB_SNAPSHOT_SECRET || 'lamda-snapshot-sec-9f8e7d6c5b4a3210-b2b-prod-2026').trim();
@@ -1458,26 +1459,20 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
 
             let pgDumpBin = 'pg_dump';
             if (process.platform === 'win32') {
-                const candidatos = [
-                    'C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe',
-                    'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
-                    'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
-                    'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe'
-                ];
-                for (const c of candidatos) {
+                for (const v of [18, 17, 16, 15, 14, 13, 12]) {
+                    const c = `C:\\Program Files\\PostgreSQL\\${v}\\bin\\pg_dump.exe`;
                     if (fs.existsSync(c)) { pgDumpBin = c; break; }
                 }
             }
 
-            res.setHeader('Content-Type', 'application/octet-stream');
-            res.setHeader('Content-Disposition', 'attachment; filename="etiquetas_produccion_sanitizado.backup"');
+            res.setHeader('Content-Type', 'application/gzip');
+            res.setHeader('Content-Disposition', 'attachment; filename="etiquetas_produccion_sanitizado.sql.gz"');
 
             const dumpArgs = [
                 '-h', dbHost,
                 '-p', dbPort,
                 '-U', dbUser,
                 '-d', dbName,
-                '-F', 'c',
                 '--no-owner',
                 '--no-privileges',
                 '--exclude-table-data=public.factura_afip_ta'
@@ -1488,7 +1483,8 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
                 stdio: ['ignore', 'pipe', 'pipe']
             });
 
-            dumpProc.stdout.pipe(res);
+            const gzipStream = zlib.createGzip({ level: 1 });
+            dumpProc.stdout.pipe(gzipStream).pipe(res);
             dumpProc.stderr.on('data', () => {});
             dumpProc.on('error', (err) => {
                 if (!res.headersSent) res.status(500).json({ ok: false, error: err.message });
