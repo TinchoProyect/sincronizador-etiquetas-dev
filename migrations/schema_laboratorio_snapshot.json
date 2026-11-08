@@ -1,5 +1,5 @@
 {
-  "tableCount": 148,
+  "tableCount": 152,
   "tables": {
     "articulos": {
       "numero": {
@@ -11501,6 +11501,914 @@
         "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": null
+      }
+    },
+    "nodos_articulos_catalogo": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_articulos_catalogo_id_seq'::regclass)"
+      },
+      "sku_nodo": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nombre_publico": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "categoria_familiar": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'Frutos Secos'::character varying"
+      },
+      "presentacion_etiqueta": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "flujo_lamda": {
+        "ordinal_position": 6,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "origen_tipo": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'INGREDIENTE'::character varying"
+      },
+      "ingrediente_origen_id": {
+        "ordinal_position": 8,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_bunker_origen_codigo": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "kilos_unidad": {
+        "ordinal_position": 10,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 4,
+        "is_nullable": "NO",
+        "column_default": "0.2500"
+      },
+      "insumo_envase_id": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cantidad_envases_unidad": {
+        "ordinal_position": 12,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "1.00"
+      },
+      "segundos_fraccionamiento": {
+        "ordinal_position": 13,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "35.00"
+      },
+      "tarifa_colaborador_id": {
+        "ordinal_position": 14,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "valor_hora_aplicado": {
+        "ordinal_position": 15,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "7000.00"
+      },
+      "costo_insumo_kg": {
+        "ordinal_position": 16,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "costo_insumo_fraccion": {
+        "ordinal_position": 17,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "costo_envase_aplicado": {
+        "ordinal_position": 18,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "costo_mano_obra_aplicado": {
+        "ordinal_position": 19,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "margen_lamda_pct": {
+        "ordinal_position": 20,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "22.00"
+      },
+      "iva_pct": {
+        "ordinal_position": 21,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "21.00"
+      },
+      "iibb_pct": {
+        "ordinal_position": 22,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "3.50"
+      },
+      "costo_puro_total": {
+        "ordinal_position": 23,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "precio_base_nodo_neto": {
+        "ordinal_position": 24,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "precio_base_nodo_final": {
+        "ordinal_position": 25,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "margen_sugerido_gestor_pct": {
+        "ordinal_position": 26,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "28.00"
+      },
+      "precio_sugerido_vecino": {
+        "ordinal_position": 27,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "estado": {
+        "ordinal_position": 28,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'APROBADO'::character varying"
+      },
+      "notas_tecnicas": {
+        "ordinal_position": 29,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "activo": {
+        "ordinal_position": 30,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
+      },
+      "created_at": {
+        "ordinal_position": 31,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 32,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
+    "nodos_maestro": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_maestro_id_seq'::regclass)"
+      },
+      "codigo_nodo": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "slug": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nombre_marca": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "subtitulo_marca": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 200,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'Comunidad Barrial - Entrega Fresca'::character varying"
+      },
+      "gestor_nombre": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "gestor_telefono": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "gestor_email": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 140,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "barrio_zona": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "direccion_retiro": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 240,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "bunker_cliente_id": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "codigo_bunker_cliente": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cuenta_bancaria_id": {
+        "ordinal_position": 13,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "usa_cuenta_compartida": {
+        "ordinal_position": 14,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      "alias_bancario_display": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 140,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cbu_display": {
+        "ordinal_position": 16,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "titular_display": {
+        "ordinal_position": 17,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "permitir_envio_barrial": {
+        "ordinal_position": 18,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
+      },
+      "cargo_envio_barrial": {
+        "ordinal_position": 19,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": "0.00"
+      },
+      "margen_gestor_default_pct": {
+        "ordinal_position": 20,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": "28.00"
+      },
+      "config_ventanas_corte": {
+        "ordinal_position": 21,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'[]'::jsonb"
+      },
+      "color_primario": {
+        "ordinal_position": 22,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'#16a34a'::character varying"
+      },
+      "logo_original_base64": {
+        "ordinal_position": 23,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "logo_mono_preview_base64": {
+        "ordinal_position": 24,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "logo_zpl_gfa": {
+        "ordinal_position": 25,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "logo_zpl_config": {
+        "ordinal_position": 26,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'{}'::jsonb"
+      },
+      "activo": {
+        "ordinal_position": 27,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
+      },
+      "created_at": {
+        "ordinal_position": 28,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 29,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
+    "nodos_ofertas_gestor": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_ofertas_gestor_id_seq'::regclass)"
+      },
+      "nodo_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "articulo_catalogo_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "precio_base_nodo_snapshot": {
+        "ordinal_position": 4,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "margen_gestor_pct": {
+        "ordinal_position": 5,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "28.00"
+      },
+      "precio_venta_vecino": {
+        "ordinal_position": 6,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "ganancia_unitaria_gestor": {
+        "ordinal_position": 7,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "publicado_tienda": {
+        "ordinal_position": 8,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
+      },
+      "destacado_tienda": {
+        "ordinal_position": 9,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      "alerta_cambio_costo": {
+        "ordinal_position": 10,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      "updated_at": {
+        "ordinal_position": 11,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
+    "nodos_propuestas_fracciones": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_propuestas_fracciones_id_seq'::regclass)"
+      },
+      "codigo_propuesta": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_solicitante_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "nombre_sugerido": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "categoria_sugerida": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'Frutos Secos'::character varying"
+      },
+      "flujo_sugerido": {
+        "ordinal_position": 6,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "2"
+      },
+      "ingrediente_sugerido_id": {
+        "ordinal_position": 7,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_bunker_sugerido_codigo": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "kilos_sugeridos": {
+        "ordinal_position": 9,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 4,
+        "is_nullable": "NO",
+        "column_default": "0.2500"
+      },
+      "insumo_envase_sugerido_id": {
+        "ordinal_position": 10,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "segundos_estimados": {
+        "ordinal_position": 11,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": "35.00"
+      },
+      "precio_objetivo_vecino": {
+        "ordinal_position": 12,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comentario_gestor": {
+        "ordinal_position": 13,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "respuesta_lamda": {
+        "ordinal_position": 14,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "estado": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE_COTIZACION'::character varying"
+      },
+      "articulo_catalogo_id": {
+        "ordinal_position": 16,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 17,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 18,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
       }
     },
     "ordenes_compra": {

@@ -40,7 +40,8 @@ app.use('/api/logistica', createProxyMiddleware({
 }));
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
@@ -48,8 +49,10 @@ attachLamdaCloudRuntime(app, 3002);
 
 //Temporizacion -Mari
 const tiemposRouter = require('./routes/tiemposCarro');
+const nodosBarrialesRouter = require('./routes/nodosBarrialesRoutes');
 app.use('/api/tiempos', tiemposRouter);
 app.use('/api/produccion/tiempos', tiemposRouter);
+app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)

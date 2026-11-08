@@ -1684,6 +1684,10 @@
         <span class="ldn-tab-title">[LDN 6] Granolas</span>
         <span class="ldn-incidence-badge" id="ldn-badge-6" style="display: none;"></span>
       </button>
+      <button class="ldn-tab" id="ldn-btn-7" onclick="cambiarContextoLDN(7)" title="Cotizador de Nodos Barriales (Marca Blanca), Padrón Aislado y ABM de Nodos con Etiqueta Zebra ^GFA" style="border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.08);">
+        <span class="ldn-tab-title" style="color: #6ee7b7;">🏘️ Cotizador Nodos</span>
+        <span class="ldn-incidence-badge" id="ldn-badge-7" style="display: none;"></span>
+      </button>
 
       <!-- Indicador Global de Enfoque Reactivo de Líneas de Negocio -->
       <div id="ldn-incidence-status" style="display: none; align-items: center; gap: 6px; font-size: 0.74rem; padding: 3px 10px; border-radius: 6px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); color: #bae6fd; white-space: nowrap; margin-left: 6px;">
@@ -1921,6 +1925,9 @@
     </div>
 
   </div>
+
+  <!-- CONTENEDOR EXCLUSIVO: UNIDAD DE NEGOCIO NODOS BARRIALES (MARCA BLANCA) -->
+  <div id="nodos-cotizador-container" style="display: none; padding: 12px 18px; max-width: 100%; overflow-x: hidden;"></div>
 
 
 
@@ -5036,9 +5043,22 @@
       });
 
       const dashboard = document.getElementById('dashboard-container');
+      const nodosContainer = document.getElementById('nodos-cotizador-container');
       const leftPanel = document.getElementById('left-panel');
       const rightPanel = document.getElementById('right-panel');
       const articulosTitle = document.getElementById('articulos-title');
+
+      if (fase === 7) {
+        if (dashboard) dashboard.style.display = 'none';
+        if (nodosContainer) nodosContainer.style.display = 'block';
+        if (window.NodosPizarra && typeof window.NodosPizarra.inicializar === 'function') {
+          window.NodosPizarra.inicializar();
+        }
+        return;
+      } else {
+        if (nodosContainer) nodosContainer.style.display = 'none';
+        if (dashboard) dashboard.style.display = 'grid';
+      }
 
       if (fase === 1) {
         // [LDN 1]: Comercialización Directa Limpia (Panel Izquierdo Oculto, Solo Directos + Insumos Fábrica)
@@ -11716,6 +11736,7 @@
       }
     });
   </script>
+  <script src="/js/components/nodosCotizadorPizarra.js?v=1.0.0"></script>
 </body>
 
 </html>

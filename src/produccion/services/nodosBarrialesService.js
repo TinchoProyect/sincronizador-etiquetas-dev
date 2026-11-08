@@ -1,0 +1,1457 @@
+/**
+ * ============================================================================
+ * SERVICIO INTEGRAL: NODOS BARRIALES (MARCA BLANCA) - ETAPA 1
+ * ============================================================================
+ * Conecta el padrón exclusivo de Nodos Barriales, el ABM de Nodos (con logo
+ * térmico ZPL ^GFA y vínculo contable a bunker_clientes / factura_cuentas_corrientes /
+ * fin_cuentas_bancarias) y el Cotizador de Propuestas de Fracciones directamente
+ * con los 6 Flujos de Costos de la Pizarra Inteligente LAMDA.
+ */
+
+const db = require('../config/database');
+const {
+    convertirLogoAZplGfa,
+    generarEtiquetaZplParNodo,
+    generarPreviewVisualEtiquetaPar
+} = require('../utils/zplLogoConverter');
+
+let esquemaInicializado = false;
+
+/**
+ * Clasifica un ingrediente o artículo en uno de los 6 Flujos del Modelo de Dominio LAMDA
+ */
+function clasificarIngredienteEnFlujo(ing, idsCompuestosSet) {
+    const id = Number(ing.id);
+    const nombreLower = String(ing.nombre || '').toLowerCase();
+    const artVinc = String(ing.articulo_vinculado_numero || '').toUpperCase();
+
+    // Flujo 6: Doble Mezcla / Granola Compleja
+    if (
+        [122, 131, 132, 134].includes(id) ||
+        nombreLower.includes('grana') ||
+        artVinc.startsWith('GS') ||
+        artVinc.startsWith('GF')
+    ) {
+        return {
+            flujo: 6,
+            flujo_nombre: '[LDN 6] Granolas (Doble Mezcla + UP)',
+            origen_tipo: 'UP_EXTERNA'
+        };
+    }
+
+    // Flujo 5: Barritas (Mezcla Interna + UP Externa)
+    if (
+        [109, 141].includes(id) ||
+        nombreLower.includes('barrit') ||
+        artVinc.startsWith('BF')
+    ) {
+        return {
+            flujo: 5,
+            flujo_nombre: '[LDN 5] Barritas (Mezcla Interna + UP)',
+            origen_tipo: 'UP_EXTERNA'
+        };
+    }
+
+    // Flujo 4: Tostaderos (Unidad Productiva Externa Simple)
+    if (
+        [18, 38, 41, 56, 57, 123, 166].includes(id) ||
+        nombreLower.includes('tostad')
+    ) {
+        return {
+            flujo: 4,
+            flujo_nombre: '[LDN 4] Tostaderos (UP Externa Simple)',
+            origen_tipo: 'UP_EXTERNA'
+        };
+    }
+
+    // Flujo 3: Mixes (Mezclas Internas a Fracciones)
+    if (
+        idsCompuestosSet.has(id) ||
+        nombreLower.includes('mix') ||
+        artVinc.startsWith('MFS') ||
+        artVinc.startsWith('MCT') ||
+        artVinc.startsWith('MSX')
+    ) {
+        return {
+            flujo: 3,
+            flujo_nombre: '[LDN 3] Mixes (Mezcla Interna)',
+            origen_tipo: 'MIX'
+        };
+    }
+
+    // Flujo 2: Fraccionados de Bulto Cerrado (Mono-Ingredientes 100% Puros)
+    return {
+        flujo: 2,
+        flujo_nombre: '[LDN 2] Mono-Ingrediente Fraccionado',
+        origen_tipo: 'INGREDIENTE'
+    };
+}
+
+/**
+ * Fórmula exacta del Cotizador de Nodos LAMDA:
+ * PrecioBaseNodo = ((CostoInsumoKg * KilosFraccion + CostoEnvase) * (1 + MargenLAMDA%/100) + CostoTiempoMO) * (1 + (IVA% + IIBB%)/100)
+ */
+function calcularEstructuraCostosNodo(params = {}) {
+    const costoInsumoKg = Math.max(0, Number(params.costo_insumo_kg) || 0);
+    const kilosUnidad = Math.max(0.001, Number(params.kilos_unidad) || 0.25);
+    const costoEnvaseUnitario = Math.max(0, Number(params.costo_envase_unitario) || 0);
+    const cantidadEnvases = Math.max(0, Number(params.cantidad_envases_unidad ?? 1));
+    const segundosFraccionamiento = Math.max(0, Number(params.segundos_fraccionamiento ?? 35));
+    const valorHoraAplicado = Math.max(0, Number(params.valor_hora_aplicado ?? 7000));
+    const margenLamdaPct = Math.max(0, Number(params.margen_lamda_pct ?? 22));
+    const ivaPct = Math.max(0, Number(params.iva_pct ?? 21));
+    const iibbPct = Math.max(0, Number(params.iibb_pct ?? 3.5));
+    const margenSugeridoGestorPct = Math.max(0, Number(params.margen_sugerido_gestor_pct ?? 28));
+
+    const costoInsumoFraccion = Number((costoInsumoKg * kilosUnidad).toFixed(2));
+    const costoEnvaseAplicado = Number((costoEnvaseUnitario * cantidadEnvases).toFixed(2));
+    const costoManoObraAplicado = Number(((segundosFraccionamiento / 3600) * valorHoraAplicado).toFixed(2));
+
+    const costoMateriaYEnvase = costoInsumoFraccion + costoEnvaseAplicado;
+    const costoPuroTotal = Number((costoMateriaYEnvase + costoManoObraAplicado).toFixed(2));
+
+    const gananciaLamdaNeta = Number((costoMateriaYEnvase * (margenLamdaPct / 100)).toFixed(2));
+    const precioBaseNodoNeto = Number((costoMateriaYEnvase + gananciaLamdaNeta + costoManoObraAplicado).toFixed(2));
+
+    const coefImpuestos = 1 + (ivaPct + iibbPct) / 100;
+    const montoImpuestos = Number((precioBaseNodoNeto * ((ivaPct + iibbPct) / 100)).toFixed(2));
+    const precioBaseNodoFinal = Math.round(precioBaseNodoNeto * coefImpuestos);
+
+    // Redondeo comercial amigable para vecino (múltiplo de $50)
+    const rawVecino = precioBaseNodoFinal * (1 + margenSugeridoGestorPct / 100);
+    const precioSugeridoVecino = Math.ceil(rawVecino / 50) * 50;
+    const gananciaUnitariaGestor = Math.max(0, precioSugeridoVecino - precioBaseNodoFinal);
+
+    return {
+        costo_insumo_kg: Number(costoInsumoKg.toFixed(2)),
+        kilos_unidad: Number(kilosUnidad.toFixed(4)),
+        costo_insumo_fraccion: costoInsumoFraccion,
+        costo_envase_aplicado: costoEnvaseAplicado,
+        segundos_fraccionamiento: Number(segundosFraccionamiento.toFixed(2)),
+        valor_hora_aplicado: Number(valorHoraAplicado.toFixed(2)),
+        costo_mano_obra_aplicado: costoManoObraAplicado,
+        costo_puro_total: costoPuroTotal,
+        margen_lamda_pct: Number(margenLamdaPct.toFixed(2)),
+        ganancia_lamda_neta: gananciaLamdaNeta,
+        precio_base_nodo_neto: precioBaseNodoNeto,
+        iva_pct: Number(ivaPct.toFixed(2)),
+        iibb_pct: Number(iibbPct.toFixed(2)),
+        monto_impuestos: montoImpuestos,
+        precio_base_nodo_final: precioBaseNodoFinal,
+        margen_sugerido_gestor_pct: Number(margenSugeridoGestorPct.toFixed(2)),
+        precio_sugerido_vecino: precioSugeridoVecino,
+        ganancia_unitaria_gestor: gananciaUnitariaGestor
+    };
+}
+
+/**
+ * Crea o asegura el vínculo de un Nodo con public.bunker_clientes y public.factura_cuentas_corrientes
+ */
+async function asegurarVinculoContableNodo(client, datosNodo) {
+    let bunkerClienteId = datosNodo.bunker_cliente_id ? Number(datosNodo.bunker_cliente_id) : null;
+    let codigoBunker = datosNodo.codigo_bunker_cliente ? String(datosNodo.codigo_bunker_cliente).trim() : '';
+
+    if (bunkerClienteId) {
+        const resExist = await client.query(
+            'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1 LIMIT 1',
+            [bunkerClienteId]
+        );
+        if (resExist.rows.length > 0) {
+            codigoBunker = resExist.rows[0].codigo_bunker_cliente;
+        }
+    }
+
+    if (!codigoBunker) {
+        const sufijo = String(datosNodo.codigo_nodo || 'NODO-001').replace(/[^0-9A-Z]/gi, '').slice(-4).toUpperCase();
+        codigoBunker = `CB-NODO-${sufijo}`;
+    }
+
+    // Verificar si ya existe en bunker_clientes por codigo_bunker_cliente
+    const checkBc = await client.query(
+        'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
+        [codigoBunker]
+    );
+
+    if (checkBc.rows.length > 0) {
+        bunkerClienteId = checkBc.rows[0].id;
+    } else {
+        const insBc = await client.query(
+            `INSERT INTO public.bunker_clientes (
+                codigo_bunker_cliente, cliente_nombre, razon_social,
+                condicion_iva, domicilio_fiscal, provincia, estado_clave,
+                actividad_principal, canal_envio_preferido, preferencia_facturacion
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVO', 'GESTOR NODO BARRIAL MARCA BLANCA', 'whatsapp', 'PREGUNTAR')
+            RETURNING id, codigo_bunker_cliente`,
+            [
+                codigoBunker,
+                `[NODO] ${datosNodo.nombre_marca} (${datosNodo.gestor_nombre})`,
+                datosNodo.gestor_nombre || datosNodo.nombre_marca,
+                'Consumidor Final / Monotributo',
+                datosNodo.direccion_retiro || datosNodo.barrio_zona || 'La Plata',
+                'BUENOS AIRES'
+            ]
+        );
+        bunkerClienteId = insBc.rows[0].id;
+    }
+
+    // Asegurar cuenta corriente en factura_cuentas_corrientes
+    const checkCc = await client.query(
+        'SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
+        [codigoBunker]
+    );
+
+    if (checkCc.rows.length === 0) {
+        await client.query(
+            `INSERT INTO public.factura_cuentas_corrientes (
+                codigo_bunker_cliente, nombre_cuenta, moneda, saldo, estado, saldo_apertura
+            ) VALUES ($1, $2, 'ARS', 0.00, 'ACTIVA', 0.00)`,
+            [codigoBunker, `Cta. Cte. Nodo ${datosNodo.nombre_marca}`]
+        );
+    }
+
+    return { bunker_cliente_id: bunkerClienteId, codigo_bunker_cliente: codigoBunker };
+}
+
+/**
+ * Crea las 4 tablas de Etapa 1 en etiquetas_pruebas y siembra datos iniciales
+ * realistas vinculados a los ingredientes y cuentas reales del Laboratorio.
+ */
+async function asegurarEsquemaNodosBarriales() {
+    if (esquemaInicializado) return;
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS public.nodos_maestro (
+                id SERIAL PRIMARY KEY,
+                codigo_nodo VARCHAR(50) UNIQUE NOT NULL,
+                slug VARCHAR(120) UNIQUE NOT NULL,
+                nombre_marca VARCHAR(160) NOT NULL,
+                subtitulo_marca VARCHAR(200) DEFAULT 'Comunidad Barrial - Entrega Fresca',
+                gestor_nombre VARCHAR(160) NOT NULL,
+                gestor_telefono VARCHAR(80),
+                gestor_email VARCHAR(140),
+                barrio_zona VARCHAR(160),
+                direccion_retiro VARCHAR(240),
+                bunker_cliente_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
+                codigo_bunker_cliente VARCHAR(80),
+                cuenta_bancaria_id INTEGER REFERENCES public.fin_cuentas_bancarias(id) ON DELETE SET NULL,
+                usa_cuenta_compartida BOOLEAN DEFAULT false,
+                alias_bancario_display VARCHAR(140),
+                cbu_display VARCHAR(40),
+                titular_display VARCHAR(180),
+                permitir_envio_barrial BOOLEAN DEFAULT true,
+                cargo_envio_barrial NUMERIC(12,2) DEFAULT 0.00,
+                margen_gestor_default_pct NUMERIC(8,2) DEFAULT 28.00,
+                config_ventanas_corte JSONB DEFAULT '[]'::jsonb,
+                color_primario VARCHAR(20) DEFAULT '#16a34a',
+                logo_original_base64 TEXT,
+                logo_mono_preview_base64 TEXT,
+                logo_zpl_gfa TEXT,
+                logo_zpl_config JSONB DEFAULT '{}'::jsonb,
+                activo BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_articulos_catalogo (
+                id SERIAL PRIMARY KEY,
+                sku_nodo VARCHAR(60) UNIQUE NOT NULL,
+                nombre_publico VARCHAR(180) NOT NULL,
+                categoria_familiar VARCHAR(100) DEFAULT 'Frutos Secos',
+                presentacion_etiqueta VARCHAR(80),
+                flujo_lamda INTEGER NOT NULL CHECK (flujo_lamda BETWEEN 1 AND 6),
+                origen_tipo VARCHAR(40) NOT NULL DEFAULT 'INGREDIENTE',
+                ingrediente_origen_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
+                articulo_bunker_origen_codigo VARCHAR(80),
+                kilos_unidad NUMERIC(10,4) NOT NULL DEFAULT 0.2500,
+                insumo_envase_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
+                cantidad_envases_unidad NUMERIC(8,2) NOT NULL DEFAULT 1.00,
+                segundos_fraccionamiento NUMERIC(10,2) NOT NULL DEFAULT 35.00,
+                tarifa_colaborador_id INTEGER REFERENCES public.colaboradores_tarifas(id) ON DELETE SET NULL,
+                valor_hora_aplicado NUMERIC(12,2) NOT NULL DEFAULT 7000.00,
+                costo_insumo_kg NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                costo_insumo_fraccion NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                costo_envase_aplicado NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                costo_mano_obra_aplicado NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                margen_lamda_pct NUMERIC(8,2) NOT NULL DEFAULT 22.00,
+                iva_pct NUMERIC(6,2) NOT NULL DEFAULT 21.00,
+                iibb_pct NUMERIC(6,2) NOT NULL DEFAULT 3.50,
+                costo_puro_total NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                precio_base_nodo_neto NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                precio_base_nodo_final NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                margen_sugerido_gestor_pct NUMERIC(8,2) NOT NULL DEFAULT 28.00,
+                precio_sugerido_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                estado VARCHAR(40) NOT NULL DEFAULT 'APROBADO',
+                notas_tecnicas TEXT,
+                activo BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_propuestas_fracciones (
+                id SERIAL PRIMARY KEY,
+                codigo_propuesta VARCHAR(50) UNIQUE NOT NULL,
+                nodo_solicitante_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL,
+                nombre_sugerido VARCHAR(180) NOT NULL,
+                categoria_sugerida VARCHAR(100) DEFAULT 'Frutos Secos',
+                flujo_sugerido INTEGER NOT NULL DEFAULT 2 CHECK (flujo_sugerido BETWEEN 1 AND 6),
+                ingrediente_sugerido_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
+                articulo_bunker_sugerido_codigo VARCHAR(80),
+                kilos_sugeridos NUMERIC(10,4) NOT NULL DEFAULT 0.2500,
+                insumo_envase_sugerido_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
+                segundos_estimados NUMERIC(10,2) DEFAULT 35.00,
+                precio_objetivo_vecino NUMERIC(14,2),
+                comentario_gestor TEXT,
+                respuesta_lamda TEXT,
+                estado VARCHAR(40) NOT NULL DEFAULT 'PENDIENTE_COTIZACION',
+                articulo_catalogo_id INTEGER REFERENCES public.nodos_articulos_catalogo(id) ON DELETE SET NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_ofertas_gestor (
+                id SERIAL PRIMARY KEY,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                articulo_catalogo_id INTEGER NOT NULL REFERENCES public.nodos_articulos_catalogo(id) ON DELETE CASCADE,
+                precio_base_nodo_snapshot NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                margen_gestor_pct NUMERIC(8,2) NOT NULL DEFAULT 28.00,
+                precio_venta_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ganancia_unitaria_gestor NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                publicado_tienda BOOLEAN DEFAULT true,
+                destacado_tienda BOOLEAN DEFAULT false,
+                alerta_cambio_costo BOOLEAN DEFAULT false,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                CONSTRAINT unq_nodo_articulo_oferta UNIQUE (nodo_id, articulo_catalogo_id)
+            );
+        `);
+
+        // Verificar si necesitamos poblar datos iniciales de Laboratorio
+        const countNodos = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_maestro');
+        if (countNodos.rows[0].total === 0) {
+            // Buscar cuenta bancaria activa y tarifa activa
+            const ctaRes = await client.query('SELECT id, alias, cbu, titular FROM public.fin_cuentas_bancarias WHERE estado = $1 ORDER BY id LIMIT 1', ['ACTIVA']);
+            const ctaDefault = ctaRes.rows[0] || { id: null, alias: 'LAMDA.SER.MARTIN', cbu: '0070373230004007844141', titular: 'MARTIN IGNACIO SERRANO' };
+
+            const tarRes = await client.query('SELECT id, valor_hora FROM public.colaboradores_tarifas WHERE activo = true ORDER BY id LIMIT 1');
+            const tarifaDefault = tarRes.rows[0] || { id: null, valor_hora: 7000 };
+
+            // Generar logos ZPL ^GFA reales para los 2 Nodos semilla
+            const logoNodo1 = await convertirLogoAZplGfa({
+                nombreMarca: 'ALMACEN VERDE',
+                iniciales: 'AV',
+                threshold: 138,
+                mode: 'threshold'
+            });
+
+            const logoNodo2 = await convertirLogoAZplGfa({
+                nombreMarca: 'LA DESPENSA',
+                iniciales: 'LD',
+                threshold: 138,
+                mode: 'threshold'
+            });
+
+            const nodo1Datos = {
+                codigo_nodo: 'NODO-001',
+                slug: 'almacen-verde-city-bell',
+                nombre_marca: 'Almacén Verde City Bell',
+                subtitulo_marca: 'Alimentación Consciente - Entrega Barrial',
+                gestor_nombre: 'Carolina Méndez',
+                gestor_telefono: '5492215548910',
+                gestor_email: 'carolina@almacenverde.com.ar',
+                barrio_zona: 'City Bell Centro / Cantilo',
+                direccion_retiro: 'Calle Cantilo 452 e/ 13c y 14, City Bell',
+                cuenta_bancaria_id: ctaDefault.id,
+                usa_cuenta_compartida: false,
+                alias_bancario_display: 'ALMACEN.VERDE.CB',
+                cbu_display: ctaDefault.cbu,
+                titular_display: ctaDefault.titular,
+                permitir_envio_barrial: true,
+                cargo_envio_barrial: 1500.00,
+                margen_gestor_default_pct: 28.00,
+                color_primario: '#16a34a',
+                config_ventanas_corte: [
+                    { dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' },
+                    { dia_entrega: 'Sábado', cierre_dia: 'Viernes', cierre_hora: '14:00', ventana_retiro: '10:00 a 13:30 hs' }
+                ]
+            };
+
+            const vinculo1 = await asegurarVinculoContableNodo(client, nodo1Datos);
+            const insN1 = await client.query(
+                `INSERT INTO public.nodos_maestro (
+                    codigo_nodo, slug, nombre_marca, subtitulo_marca,
+                    gestor_nombre, gestor_telefono, gestor_email, barrio_zona, direccion_retiro,
+                    bunker_cliente_id, codigo_bunker_cliente, cuenta_bancaria_id, usa_cuenta_compartida,
+                    alias_bancario_display, cbu_display, titular_display,
+                    permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
+                    config_ventanas_corte, color_primario, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config
+                ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24
+                ) RETURNING id`,
+                [
+                    nodo1Datos.codigo_nodo, nodo1Datos.slug, nodo1Datos.nombre_marca, nodo1Datos.subtitulo_marca,
+                    nodo1Datos.gestor_nombre, nodo1Datos.gestor_telefono, nodo1Datos.gestor_email, nodo1Datos.barrio_zona, nodo1Datos.direccion_retiro,
+                    vinculo1.bunker_cliente_id, vinculo1.codigo_bunker_cliente, nodo1Datos.cuenta_bancaria_id, nodo1Datos.usa_cuenta_compartida,
+                    nodo1Datos.alias_bancario_display, nodo1Datos.cbu_display, nodo1Datos.titular_display,
+                    nodo1Datos.permitir_envio_barrial, nodo1Datos.cargo_envio_barrial, nodo1Datos.margen_gestor_default_pct,
+                    JSON.stringify(nodo1Datos.config_ventanas_corte), nodo1Datos.color_primario,
+                    logoNodo1.logo_mono_preview_base64, logoNodo1.logo_zpl_gfa,
+                    JSON.stringify({ width: logoNodo1.width, height: logoNodo1.height, threshold: 138, mode: 'threshold', iniciales: 'AV' })
+                ]
+            );
+            const nodo1Id = insN1.rows[0].id;
+
+            const nodo2Datos = {
+                codigo_nodo: 'NODO-002',
+                slug: 'la-despensa-gonnet',
+                nombre_marca: 'La Despensa de Gonnet',
+                subtitulo_marca: 'Compras Comunitarias Saludables',
+                gestor_nombre: 'Martín Echeverría',
+                gestor_telefono: '5492216123344',
+                gestor_email: 'martin@ladespensagonnet.com.ar',
+                barrio_zona: 'Villa Elisa / Gonnet',
+                direccion_retiro: 'Calle 502 N° 1840 e/ 13 y 14, Gonnet',
+                cuenta_bancaria_id: ctaDefault.id,
+                usa_cuenta_compartida: true,
+                alias_bancario_display: ctaDefault.alias || 'LAMDA.SER.MARTIN',
+                cbu_display: ctaDefault.cbu,
+                titular_display: ctaDefault.titular,
+                permitir_envio_barrial: true,
+                cargo_envio_barrial: 1800.00,
+                margen_gestor_default_pct: 25.00,
+                color_primario: '#0284c7',
+                config_ventanas_corte: [
+                    { dia_entrega: 'Jueves', cierre_dia: 'Miércoles', cierre_hora: '18:00', ventana_retiro: '16:30 a 19:30 hs' }
+                ]
+            };
+
+            const vinculo2 = await asegurarVinculoContableNodo(client, nodo2Datos);
+            const insN2 = await client.query(
+                `INSERT INTO public.nodos_maestro (
+                    codigo_nodo, slug, nombre_marca, subtitulo_marca,
+                    gestor_nombre, gestor_telefono, gestor_email, barrio_zona, direccion_retiro,
+                    bunker_cliente_id, codigo_bunker_cliente, cuenta_bancaria_id, usa_cuenta_compartida,
+                    alias_bancario_display, cbu_display, titular_display,
+                    permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
+                    config_ventanas_corte, color_primario, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config
+                ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24
+                ) RETURNING id`,
+                [
+                    nodo2Datos.codigo_nodo, nodo2Datos.slug, nodo2Datos.nombre_marca, nodo2Datos.subtitulo_marca,
+                    nodo2Datos.gestor_nombre, nodo2Datos.gestor_telefono, nodo2Datos.gestor_email, nodo2Datos.barrio_zona, nodo2Datos.direccion_retiro,
+                    vinculo2.bunker_cliente_id, vinculo2.codigo_bunker_cliente, nodo2Datos.cuenta_bancaria_id, nodo2Datos.usa_cuenta_compartida,
+                    nodo2Datos.alias_bancario_display, nodo2Datos.cbu_display, nodo2Datos.titular_display,
+                    nodo2Datos.permitir_envio_barrial, nodo2Datos.cargo_envio_barrial, nodo2Datos.margen_gestor_default_pct,
+                    JSON.stringify(nodo2Datos.config_ventanas_corte), nodo2Datos.color_primario,
+                    logoNodo2.logo_mono_preview_base64, logoNodo2.logo_zpl_gfa,
+                    JSON.stringify({ width: logoNodo2.width, height: logoNodo2.height, threshold: 138, mode: 'threshold', iniciales: 'LD' })
+                ]
+            );
+            const nodo2Id = insN2.rows[0].id;
+
+            // Consultar costos reales de ingredientes e insumos de envase en etiquetas_pruebas
+            const ingRows = await client.query(
+                'SELECT id, nombre, costo_patron, es_insumo FROM public.ingredientes WHERE id IN (1, 18, 25, 30, 31, 122, 131, 141, 179, 180, 181)'
+            );
+            const ingMap = new Map(ingRows.rows.map(r => [Number(r.id), r]));
+            const getCostoIng = (id, fallback) => Number(ingMap.get(id)?.costo_patron || fallback);
+
+            const envase180Cost = getCostoIng(180, 45.96); // Bolsa 15 x 18
+            const envase179Cost = getCostoIng(179, 71.54); // Bolsa 20 x 25
+            const valorHora = Number(tarifaDefault.valor_hora || 7000);
+
+            const catalogoSemilla = [
+                {
+                    sku_nodo: 'NB-ALM-250G',
+                    nombre_publico: 'Almendra Nonpareil Californiana x 250g',
+                    categoria_familiar: 'Frutos Secos Puros',
+                    presentacion_etiqueta: 'Bolsa 250g',
+                    flujo_lamda: 2,
+                    origen_tipo: 'INGREDIENTE',
+                    ingrediente_origen_id: ingMap.has(1) ? 1 : null,
+                    kilos_unidad: 0.25,
+                    insumo_envase_id: ingMap.has(180) ? 180 : null,
+                    costo_envase_unitario: envase180Cost,
+                    segundos_fraccionamiento: 32,
+                    costo_insumo_kg: getCostoIng(1, 18109.43),
+                    margen_lamda_pct: 22,
+                    margen_sugerido_gestor_pct: 28,
+                    notas_tecnicas: 'Flujo 2: Fraccionado directo de Almendra Nonpareil calibre grande.'
+                },
+                {
+                    sku_nodo: 'NB-MIX-PASAS-500G',
+                    nombre_publico: 'Mix Frutos Secos con Pasas Familiar x 500g',
+                    categoria_familiar: 'Mixes Familiares',
+                    presentacion_etiqueta: 'Bolsa 500g',
+                    flujo_lamda: 3,
+                    origen_tipo: 'MIX',
+                    ingrediente_origen_id: ingMap.has(30) ? 30 : null,
+                    kilos_unidad: 0.50,
+                    insumo_envase_id: ingMap.has(179) ? 179 : null,
+                    costo_envase_unitario: envase179Cost,
+                    segundos_fraccionamiento: 40,
+                    costo_insumo_kg: getCostoIng(30, 5481.93),
+                    margen_lamda_pct: 24,
+                    margen_sugerido_gestor_pct: 30,
+                    notas_tecnicas: 'Flujo 3: Mezcla interna en carro granel + fraccionamiento familiar 500g.'
+                },
+                {
+                    sku_nodo: 'NB-CAJU-TOST-250G',
+                    nombre_publico: 'Castaña de Cajú Tostada Artesanal x 250g',
+                    categoria_familiar: 'Tostadero Artesanal',
+                    presentacion_etiqueta: 'Bolsa 250g',
+                    flujo_lamda: 4,
+                    origen_tipo: 'UP_EXTERNA',
+                    ingrediente_origen_id: ingMap.has(18) ? 18 : null,
+                    kilos_unidad: 0.25,
+                    insumo_envase_id: ingMap.has(180) ? 180 : null,
+                    costo_envase_unitario: envase180Cost,
+                    segundos_fraccionamiento: 35,
+                    costo_insumo_kg: getCostoIng(18, 10575.53),
+                    margen_lamda_pct: 22,
+                    margen_sugerido_gestor_pct: 28,
+                    notas_tecnicas: 'Flujo 4: Tostado en Unidad Productiva Externa + fraccionamiento local.'
+                },
+                {
+                    sku_nodo: 'NB-BARRITA-PACK6',
+                    nombre_publico: 'Pack Familiar 6 Barritas Energéticas (6 x 50g)',
+                    categoria_familiar: 'Barritas & Snacks',
+                    presentacion_etiqueta: 'Pack 6 u. (300g)',
+                    flujo_lamda: 5,
+                    origen_tipo: 'UP_EXTERNA',
+                    ingrediente_origen_id: ingMap.has(141) ? 141 : null,
+                    kilos_unidad: 0.30,
+                    insumo_envase_id: ingMap.has(180) ? 180 : null,
+                    costo_envase_unitario: envase180Cost,
+                    segundos_fraccionamiento: 45,
+                    costo_insumo_kg: getCostoIng(141, 15143.70),
+                    margen_lamda_pct: 22,
+                    margen_sugerido_gestor_pct: 28,
+                    notas_tecnicas: 'Flujo 5: Pre-mezcla MPB + UP Externa Barritas + Pack familiar x 6 unidades.'
+                },
+                {
+                    sku_nodo: 'NB-GRANA-SOL-500G',
+                    nombre_publico: 'Granola de Sol Crocante con Miel x 500g',
+                    categoria_familiar: 'Granolas Horneadas',
+                    presentacion_etiqueta: 'Bolsa 500g',
+                    flujo_lamda: 6,
+                    origen_tipo: 'UP_EXTERNA',
+                    ingrediente_origen_id: ingMap.has(131) ? 131 : null,
+                    kilos_unidad: 0.50,
+                    insumo_envase_id: ingMap.has(179) ? 179 : null,
+                    costo_envase_unitario: envase179Cost,
+                    segundos_fraccionamiento: 42,
+                    costo_insumo_kg: getCostoIng(131, 9549.29),
+                    margen_lamda_pct: 24,
+                    margen_sugerido_gestor_pct: 30,
+                    notas_tecnicas: 'Flujo 6: Doble mezcla (Mezcla base + Horneado UP + Agregado seco en taller).'
+                }
+            ];
+
+            const catalogoIds = [];
+            for (const item of catalogoSemilla) {
+                const calc = calcularEstructuraCostosNodo({
+                    ...item,
+                    valor_hora_aplicado: valorHora,
+                    iva_pct: 21,
+                    iibb_pct: 3.5
+                });
+
+                const insCat = await client.query(
+                    `INSERT INTO public.nodos_articulos_catalogo (
+                        sku_nodo, nombre_publico, categoria_familiar, presentacion_etiqueta,
+                        flujo_lamda, origen_tipo, ingrediente_origen_id, kilos_unidad,
+                        insumo_envase_id, cantidad_envases_unidad, segundos_fraccionamiento,
+                        tarifa_colaborador_id, valor_hora_aplicado, costo_insumo_kg,
+                        costo_insumo_fraccion, costo_envase_aplicado, costo_mano_obra_aplicado,
+                        margen_lamda_pct, iva_pct, iibb_pct, costo_puro_total,
+                        precio_base_nodo_neto, precio_base_nodo_final,
+                        margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas
+                    ) VALUES (
+                        $1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+                    ) RETURNING id`,
+                    [
+                        item.sku_nodo, item.nombre_publico, item.categoria_familiar, item.presentacion_etiqueta,
+                        item.flujo_lamda, item.origen_tipo, item.ingrediente_origen_id, calc.kilos_unidad,
+                        item.insumo_envase_id, calc.segundos_fraccionamiento,
+                        tarifaDefault.id, calc.valor_hora_aplicado, calc.costo_insumo_kg,
+                        calc.costo_insumo_fraccion, calc.costo_envase_aplicado, calc.costo_mano_obra_aplicado,
+                        calc.margen_lamda_pct, calc.iva_pct, calc.iibb_pct, calc.costo_puro_total,
+                        calc.precio_base_nodo_neto, calc.precio_base_nodo_final,
+                        calc.margen_sugerido_gestor_pct, calc.precio_sugerido_vecino, item.notas_tecnicas
+                    ]
+                );
+                const catId = insCat.rows[0].id;
+                catalogoIds.push({ id: catId, calc });
+
+                // Crear ofertas para Nodo 1 y Nodo 2
+                for (const [nId, margenNodo] of [[nodo1Id, 28], [nodo2Id, 25]]) {
+                    const precioVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenNodo / 100)) / 50) * 50;
+                    const gananciaGestor = Math.max(0, precioVecino - calc.precio_base_nodo_final);
+                    await client.query(
+                        `INSERT INTO public.nodos_ofertas_gestor (
+                            nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
+                            publicado_tienda, destacado_tienda
+                        ) VALUES ($1,$2,$3,$4,$5,$6,true,false)`,
+                        [nId, catId, calc.precio_base_nodo_final, margenNodo, precioVecino, gananciaGestor]
+                    );
+                }
+            }
+
+            // Sembrar 3 propuestas de fracciones de los gestores (2 pendientes de cotización y 1 ya aprobada)
+            await client.query(
+                `INSERT INTO public.nodos_propuestas_fracciones (
+                    codigo_propuesta, nodo_solicitante_id, nombre_sugerido, categoria_sugerida,
+                    flujo_sugerido, ingrediente_sugerido_id, kilos_sugeridos, insumo_envase_sugerido_id,
+                    segundos_estimados, precio_objetivo_vecino, comentario_gestor, estado
+                ) VALUES
+                ($1, $2, 'Nuez Mariposa Extra Light Familiar x 250g', 'Frutos Secos Puros', 2, $3, 0.2500, $4, 35, 6200,
+                 'Las familias del barrio nos piden mucho nuez mariposa clara en bolsita de 250g para desayunos.', 'PENDIENTE_COTIZACION'),
+                ($5, $6, 'Mix Premium Sin Pasas x 400g', 'Mixes Familiares', 3, $7, 0.4000, $8, 38, 11900,
+                 'Buscamos una presentación intermedia de 400g de Mix Premium (almendra, cajú, nuez y avellana).', 'PENDIENTE_COTIZACION'),
+                ($9, $2, 'Granola de Flor Premium x 500g', 'Granolas Horneadas', 6, $10, 0.5000, $8, 42, 13800,
+                 'Queremos sumar la variedad Granola de Flor en medio kilo junto a la de Sol.', 'PENDIENTE_COTIZACION')`,
+                [
+                    'PROP-NB-001', nodo1Id, ingMap.has(25) ? 25 : null, ingMap.has(180) ? 180 : null,
+                    'PROP-NB-002', nodo2Id, ingMap.has(31) ? 31 : null, ingMap.has(179) ? 179 : null,
+                    'PROP-NB-003', ingMap.has(122) ? 122 : null
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+        esquemaInicializado = true;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('❌ [NodosBarriales] Error inicializando esquema:', err);
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Obtiene todas las fuentes de costo vivas de los 6 Flujos de la Pizarra
+ */
+async function obtenerFuentesCostoSeisFlujos() {
+    const [ingRes, compRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes] = await Promise.all([
+        db.query(`
+            SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
+                   articulo_vinculado_numero, COALESCE(es_insumo, false) AS es_insumo
+            FROM public.ingredientes
+            WHERE COALESCE(es_insumo, false) = false
+              AND COALESCE(costo_patron, 0) > 0
+              AND nombre NOT ILIKE '%Fuera de Servicio%'
+            ORDER BY nombre ASC
+        `),
+        db.query(`
+            SELECT DISTINCT mix_id AS ingrediente_padre_id
+            FROM public.ingrediente_composicion
+        `),
+        db.query(`
+            SELECT articulo_id, descripcion_generada, descripcion, rubro, sub_rubro,
+                   COALESCE(costo_base, 0)::numeric(14,2) AS costo_base,
+                   COALESCE(kilos_unidad, 1)::numeric(10,4) AS kilos_unidad
+            FROM public.bunker_articulos
+            WHERE COALESCE(costo_base, 0) > 0
+              AND COALESCE(es_pack, false) = false
+            ORDER BY descripcion_generada ASC NULLS LAST
+            LIMIT 120
+        `),
+        db.query(`
+            SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_unitario
+            FROM public.ingredientes
+            WHERE COALESCE(es_insumo, false) = true
+            ORDER BY costo_patron ASC, nombre ASC
+        `),
+        db.query(`
+            SELECT ct.id, ct.usuario_id,
+                   COALESCE(u.nombre_completo, u.usuario, 'Operador Taller') AS nombre_completo,
+                   COALESCE(ct.valor_hora, 7000)::numeric(12,2) AS valor_hora, ct.activo
+            FROM public.colaboradores_tarifas ct
+            LEFT JOIN public.usuarios u ON u.id = ct.usuario_id
+            WHERE COALESCE(ct.activo, true) = true
+            ORDER BY ct.id ASC
+        `),
+        db.query(`
+            SELECT id, banco, titular, alias, cbu, estado
+            FROM public.fin_cuentas_bancarias
+            WHERE COALESCE(estado, 'ACTIVA') = 'ACTIVA'
+            ORDER BY id ASC
+        `),
+        db.query(`
+            SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social,
+                   COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cta_cte
+            FROM public.bunker_clientes bc
+            LEFT JOIN public.factura_cuentas_corrientes cc
+              ON cc.codigo_bunker_cliente = bc.codigo_bunker_cliente
+            ORDER BY bc.id DESC
+            LIMIT 60
+        `)
+    ]);
+
+    const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
+
+    const fuentesIngredientes = ingRes.rows.map(ing => {
+        const clasif = clasificarIngredienteEnFlujo(ing, idsCompuestosSet);
+        return {
+            id: Number(ing.id),
+            codigo: ing.codigo,
+            nombre: ing.nombre,
+            costo_kg: Number(ing.costo_patron),
+            articulo_vinculado_numero: ing.articulo_vinculado_numero,
+            flujo: clasif.flujo,
+            flujo_nombre: clasif.flujo_nombre,
+            origen_tipo: clasif.origen_tipo
+        };
+    });
+
+    const fuentesDirectosFlujo1 = artDirectosRes.rows.map(art => {
+        const kilos = Math.max(0.001, Number(art.kilos_unidad) || 1);
+        const costoBase = Number(art.costo_base) || 0;
+        const costoKg = Number((costoBase / kilos).toFixed(2));
+        return {
+            articulo_id: art.articulo_id,
+            nombre: art.descripcion_generada || art.descripcion || art.articulo_id,
+            rubro: art.rubro,
+            kilos_bulto: kilos,
+            costo_bulto: costoBase,
+            costo_kg: costoKg,
+            flujo: 1,
+            flujo_nombre: '[LDN 1] Directo (Sin Receta)',
+            origen_tipo: 'ARTICULO_BUNKER'
+        };
+    });
+
+    return {
+        ingredientes_por_flujo: fuentesIngredientes,
+        articulos_flujo_1: fuentesDirectosFlujo1,
+        envases: envasesRes.rows.map(e => ({
+            id: Number(e.id),
+            codigo: e.codigo,
+            nombre: e.nombre,
+            costo_unitario: Number(e.costo_unitario)
+        })),
+        tarifas_mano_obra: tarifasRes.rows.map(t => ({
+            id: Number(t.id),
+            nombre_completo: t.nombre_completo,
+            valor_hora: Number(t.valor_hora)
+        })),
+        cuentas_bancarias: cuentasRes.rows,
+        clientes_bunker: clientesRes.rows
+    };
+}
+
+/**
+ * Obtiene el estado completo del ecosistema de Nodos Barriales para la Pizarra
+ */
+async function obtenerEstadoCompletoNodos() {
+    await asegurarEsquemaNodosBarriales();
+
+    const [nodosRes, catalogoRes, propuestasRes, ofertasRes, fuentes] = await Promise.all([
+        db.query(`
+            SELECT nm.*,
+                   fb.banco AS banco_nombre,
+                   fb.alias AS banco_alias_oficial,
+                   fb.cbu AS banco_cbu_oficial,
+                   COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                   (SELECT COUNT(*)::int FROM public.nodos_ofertas_gestor nog WHERE nog.nodo_id = nm.id AND nog.publicado_tienda = true) AS total_ofertas_publicadas
+            FROM public.nodos_maestro nm
+            LEFT JOIN public.fin_cuentas_bancarias fb ON fb.id = nm.cuenta_bancaria_id
+            LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+            ORDER BY nm.id ASC
+        `),
+        db.query(`
+            SELECT nac.*,
+                   ing.nombre AS ingrediente_origen_nombre,
+                   COALESCE(ing.costo_patron, nac.costo_insumo_kg)::numeric(14,2) AS costo_insumo_kg_vivo,
+                   env.nombre AS envase_nombre,
+                   COALESCE(env.costo_patron, nac.costo_envase_aplicado)::numeric(14,2) AS costo_envase_vivo,
+                   COALESCE(u.nombre_completo, u.usuario, 'Operador Taller') AS colaborador_nombre
+            FROM public.nodos_articulos_catalogo nac
+            LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
+            LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
+            LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
+            LEFT JOIN public.usuarios u ON u.id = ct.usuario_id
+            ORDER BY nac.flujo_lamda ASC, nac.nombre_publico ASC
+        `),
+        db.query(`
+            SELECT npf.*,
+                   nm.nombre_marca AS nodo_solicitante_nombre,
+                   nm.gestor_nombre AS nodo_gestor_nombre,
+                   nm.color_primario AS nodo_color,
+                   ing.nombre AS ingrediente_sugerido_nombre,
+                   COALESCE(ing.costo_patron, 0)::numeric(14,2) AS ingrediente_sugerido_costo_kg,
+                   env.nombre AS envase_sugerido_nombre,
+                   COALESCE(env.costo_patron, 0)::numeric(14,2) AS envase_sugerido_costo
+            FROM public.nodos_propuestas_fracciones npf
+            LEFT JOIN public.nodos_maestro nm ON nm.id = npf.nodo_solicitante_id
+            LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
+            LEFT JOIN public.ingredientes env ON env.id = npf.insumo_envase_sugerido_id
+            ORDER BY
+                CASE WHEN npf.estado = 'PENDIENTE_COTIZACION' THEN 0 ELSE 1 END,
+                npf.id DESC
+        `),
+        db.query(`
+            SELECT nog.*,
+                   nm.nombre_marca,
+                   nm.slug AS nodo_slug,
+                   nm.color_primario,
+                   nac.sku_nodo,
+                   nac.nombre_publico,
+                   nac.presentacion_etiqueta,
+                   nac.flujo_lamda,
+                   nac.kilos_unidad,
+                   nac.precio_base_nodo_final AS precio_base_actual_lamda
+            FROM public.nodos_ofertas_gestor nog
+            JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
+            JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+            ORDER BY nog.nodo_id ASC, nac.flujo_lamda ASC, nac.nombre_publico ASC
+        `),
+        obtenerFuentesCostoSeisFlujos()
+    ]);
+
+    return {
+        nodos: nodosRes.rows,
+        catalogo: catalogoRes.rows,
+        propuestas: propuestasRes.rows,
+        ofertas_gestor: ofertasRes.rows,
+        fuentes
+    };
+}
+
+/**
+ * Crea o actualiza un Nodo Barrial con generación de logo ZPL ^GFA y vínculo contable
+ */
+async function guardarNodoMaestro(payload = {}, idExistente = null) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nombreMarca = String(payload.nombre_marca || '').trim();
+    const gestorNombre = String(payload.gestor_nombre || '').trim();
+    if (!nombreMarca || !gestorNombre) {
+        throw new Error('El nombre de la marca del Nodo y el nombre del gestor son obligatorios.');
+    }
+
+    const slugBase = String(payload.slug || nombreMarca)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || `nodo-${Date.now()}`;
+
+    // Convertir o regenerar el logo a ZPL ^GFA si se envió imagen o configuración
+    const zplConfig = payload.logo_zpl_config || {};
+    const conversionLogo = await convertirLogoAZplGfa({
+        imageBase64: payload.logo_original_base64 || null,
+        nombreMarca,
+        iniciales: zplConfig.iniciales || '',
+        width: zplConfig.width || 112,
+        height: zplConfig.height || 56,
+        threshold: zplConfig.threshold || 138,
+        mode: zplConfig.mode || 'threshold',
+        invert: Boolean(zplConfig.invert)
+    });
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        let codigoNodo = String(payload.codigo_nodo || '').trim();
+        if (!codigoNodo && !idExistente) {
+            const maxRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_maestro');
+            codigoNodo = `NODO-${String(maxRes.rows[0].total + 1).padStart(3, '0')}`;
+        }
+
+        const vinculoContable = await asegurarVinculoContableNodo(client, {
+            ...payload,
+            codigo_nodo: codigoNodo || `NODO-${idExistente}`,
+            nombre_marca: nombreMarca,
+            gestor_nombre: gestorNombre
+        });
+
+        const ventanas = Array.isArray(payload.config_ventanas_corte)
+            ? payload.config_ventanas_corte
+            : [
+                { dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }
+            ];
+
+        let nodoGuardado;
+        if (idExistente) {
+            const upd = await client.query(
+                `UPDATE public.nodos_maestro SET
+                    slug = $1,
+                    nombre_marca = $2,
+                    subtitulo_marca = $3,
+                    gestor_nombre = $4,
+                    gestor_telefono = $5,
+                    gestor_email = $6,
+                    barrio_zona = $7,
+                    direccion_retiro = $8,
+                    bunker_cliente_id = $9,
+                    codigo_bunker_cliente = $10,
+                    cuenta_bancaria_id = $11,
+                    usa_cuenta_compartida = $12,
+                    alias_bancario_display = $13,
+                    cbu_display = $14,
+                    titular_display = $15,
+                    permitir_envio_barrial = $16,
+                    cargo_envio_barrial = $17,
+                    margen_gestor_default_pct = $18,
+                    config_ventanas_corte = $19,
+                    color_primario = $20,
+                    logo_original_base64 = COALESCE($21, logo_original_base64),
+                    logo_mono_preview_base64 = $22,
+                    logo_zpl_gfa = $23,
+                    logo_zpl_config = $24,
+                    activo = COALESCE($25, activo),
+                    updated_at = NOW()
+                WHERE id = $26
+                RETURNING *`,
+                [
+                    slugBase,
+                    nombreMarca,
+                    payload.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+                    gestorNombre,
+                    payload.gestor_telefono || '',
+                    payload.gestor_email || '',
+                    payload.barrio_zona || '',
+                    payload.direccion_retiro || '',
+                    vinculoContable.bunker_cliente_id,
+                    vinculoContable.codigo_bunker_cliente,
+                    payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
+                    Boolean(payload.usa_cuenta_compartida),
+                    payload.alias_bancario_display || '',
+                    payload.cbu_display || '',
+                    payload.titular_display || '',
+                    payload.permitir_envio_barrial !== false,
+                    Number(payload.cargo_envio_barrial || 0),
+                    Number(payload.margen_gestor_default_pct || 28),
+                    JSON.stringify(ventanas),
+                    payload.color_primario || '#16a34a',
+                    payload.logo_original_base64 || null,
+                    conversionLogo.logo_mono_preview_base64,
+                    conversionLogo.logo_zpl_gfa,
+                    JSON.stringify({
+                        width: conversionLogo.width,
+                        height: conversionLogo.height,
+                        threshold: conversionLogo.threshold,
+                        mode: conversionLogo.mode,
+                        invert: conversionLogo.invert,
+                        iniciales: zplConfig.iniciales || ''
+                    }),
+                    payload.activo !== undefined ? Boolean(payload.activo) : true,
+                    Number(idExistente)
+                ]
+            );
+            nodoGuardado = upd.rows[0];
+        } else {
+            const ins = await client.query(
+                `INSERT INTO public.nodos_maestro (
+                    codigo_nodo, slug, nombre_marca, subtitulo_marca,
+                    gestor_nombre, gestor_telefono, gestor_email, barrio_zona, direccion_retiro,
+                    bunker_cliente_id, codigo_bunker_cliente, cuenta_bancaria_id, usa_cuenta_compartida,
+                    alias_bancario_display, cbu_display, titular_display,
+                    permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
+                    config_ventanas_corte, color_primario,
+                    logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config
+                ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+                ) RETURNING *`,
+                [
+                    codigoNodo,
+                    slugBase,
+                    nombreMarca,
+                    payload.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+                    gestorNombre,
+                    payload.gestor_telefono || '',
+                    payload.gestor_email || '',
+                    payload.barrio_zona || '',
+                    payload.direccion_retiro || '',
+                    vinculoContable.bunker_cliente_id,
+                    vinculoContable.codigo_bunker_cliente,
+                    payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
+                    Boolean(payload.usa_cuenta_compartida),
+                    payload.alias_bancario_display || '',
+                    payload.cbu_display || '',
+                    payload.titular_display || '',
+                    payload.permitir_envio_barrial !== false,
+                    Number(payload.cargo_envio_barrial || 0),
+                    Number(payload.margen_gestor_default_pct || 28),
+                    JSON.stringify(ventanas),
+                    payload.color_primario || '#16a34a',
+                    payload.logo_original_base64 || null,
+                    conversionLogo.logo_mono_preview_base64,
+                    conversionLogo.logo_zpl_gfa,
+                    JSON.stringify({
+                        width: conversionLogo.width,
+                        height: conversionLogo.height,
+                        threshold: conversionLogo.threshold,
+                        mode: conversionLogo.mode,
+                        invert: conversionLogo.invert,
+                        iniciales: zplConfig.iniciales || ''
+                    })
+                ]
+            );
+            nodoGuardado = ins.rows[0];
+
+            // Vincular automáticamente el catálogo activo al nuevo Nodo con su margen por defecto
+            const catActivos = await client.query('SELECT id, precio_base_nodo_final FROM public.nodos_articulos_catalogo WHERE activo = true');
+            const margenDef = Number(nodoGuardado.margen_gestor_default_pct || 28);
+            for (const c of catActivos.rows) {
+                const base = Number(c.precio_base_nodo_final || 0);
+                const pVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
+                const gan = Math.max(0, pVecino - base);
+                await client.query(
+                    `INSERT INTO public.nodos_ofertas_gestor (
+                        nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                        margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+                    ) VALUES ($1,$2,$3,$4,$5,$6,true)
+                    ON CONFLICT (nodo_id, articulo_catalogo_id) DO NOTHING`,
+                    [nodoGuardado.id, c.id, base, margenDef, pVecino, gan]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        return nodoGuardado;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Registra una nueva propuesta de fracción solicitada por un Gestor de Nodo
+ */
+async function crearPropuestaFraccion(payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nombreSugerido = String(payload.nombre_sugerido || '').trim();
+    if (!nombreSugerido) {
+        throw new Error('El nombre sugerido de la fracción es obligatorio.');
+    }
+
+    const countRes = await db.query('SELECT COUNT(*)::int AS total FROM public.nodos_propuestas_fracciones');
+    const codigoPropuesta = `PROP-NB-${String(countRes.rows[0].total + 1).padStart(3, '0')}`;
+
+    const ins = await db.query(
+        `INSERT INTO public.nodos_propuestas_fracciones (
+            codigo_propuesta, nodo_solicitante_id, nombre_sugerido, categoria_sugerida,
+            flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
+            kilos_sugeridos, insumo_envase_sugerido_id, segundos_estimados,
+            precio_objetivo_vecino, comentario_gestor, estado
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDIENTE_COTIZACION')
+        RETURNING *`,
+        [
+            codigoPropuesta,
+            payload.nodo_solicitante_id ? Number(payload.nodo_solicitante_id) : null,
+            nombreSugerido,
+            payload.categoria_sugerida || 'Frutos Secos',
+            Number(payload.flujo_sugerido || 2),
+            payload.ingrediente_sugerido_id ? Number(payload.ingrediente_sugerido_id) : null,
+            payload.articulo_bunker_sugerido_codigo || null,
+            Number(payload.kilos_sugeridos || 0.25),
+            payload.insumo_envase_sugerido_id ? Number(payload.insumo_envase_sugerido_id) : null,
+            Number(payload.segundos_estimados || 35),
+            payload.precio_objetivo_vecino ? Number(payload.precio_objetivo_vecino) : null,
+            payload.comentario_gestor || ''
+        ]
+    );
+
+    return ins.rows[0];
+}
+
+/**
+ * Cotiza y aprueba una fracción (desde una propuesta de gestor o creación directa en Pizarra),
+ * la inserta/actualiza en public.nodos_articulos_catalogo y propaga la oferta a los Nodos.
+ */
+async function cotizarYAprobarArticuloNodo(payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nombrePublico = String(payload.nombre_publico || '').trim();
+    if (!nombrePublico) {
+        throw new Error('El nombre público del producto para Nodos es obligatorio.');
+    }
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Resolver costo de envase si se indicó insumo_envase_id y no vino costo explícito
+        let costoEnvaseUnitario = Number(payload.costo_envase_unitario ?? 0);
+        if (payload.insumo_envase_id && !costoEnvaseUnitario) {
+            const envRes = await client.query('SELECT costo_patron FROM public.ingredientes WHERE id = $1', [Number(payload.insumo_envase_id)]);
+            if (envRes.rows[0]) costoEnvaseUnitario = Number(envRes.rows[0].costo_patron || 0);
+        }
+
+        // Resolver costo por kilo del insumo origen si no vino explícito
+        let costoInsumoKg = Number(payload.costo_insumo_kg ?? 0);
+        if (payload.ingrediente_origen_id && !costoInsumoKg) {
+            const ingRes = await client.query('SELECT costo_patron FROM public.ingredientes WHERE id = $1', [Number(payload.ingrediente_origen_id)]);
+            if (ingRes.rows[0]) costoInsumoKg = Number(ingRes.rows[0].costo_patron || 0);
+        }
+
+        const calc = calcularEstructuraCostosNodo({
+            ...payload,
+            costo_insumo_kg: costoInsumoKg,
+            costo_envase_unitario: costoEnvaseUnitario
+        });
+
+        let skuNodo = String(payload.sku_nodo || '').trim().toUpperCase();
+        if (!skuNodo) {
+            const pref = nombrePublico
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase()
+                .replace(/[^A-Z0-9]+/g, '-')
+                .split('-')
+                .filter(Boolean)
+                .slice(0, 2)
+                .join('-');
+            const gramos = Math.round(calc.kilos_unidad * 1000);
+            skuNodo = `NB-${pref}-${gramos}G`;
+        }
+
+        let articuloRow;
+        if (payload.catalogo_id) {
+            const upd = await client.query(
+                `UPDATE public.nodos_articulos_catalogo SET
+                    sku_nodo = $1,
+                    nombre_publico = $2,
+                    categoria_familiar = $3,
+                    presentacion_etiqueta = $4,
+                    flujo_lamda = $5,
+                    origen_tipo = $6,
+                    ingrediente_origen_id = $7,
+                    articulo_bunker_origen_codigo = $8,
+                    kilos_unidad = $9,
+                    insumo_envase_id = $10,
+                    cantidad_envases_unidad = $11,
+                    segundos_fraccionamiento = $12,
+                    tarifa_colaborador_id = $13,
+                    valor_hora_aplicado = $14,
+                    costo_insumo_kg = $15,
+                    costo_insumo_fraccion = $16,
+                    costo_envase_aplicado = $17,
+                    costo_mano_obra_aplicado = $18,
+                    margen_lamda_pct = $19,
+                    iva_pct = $20,
+                    iibb_pct = $21,
+                    costo_puro_total = $22,
+                    precio_base_nodo_neto = $23,
+                    precio_base_nodo_final = $24,
+                    margen_sugerido_gestor_pct = $25,
+                    precio_sugerido_vecino = $26,
+                    notas_tecnicas = $27,
+                    estado = 'APROBADO',
+                    updated_at = NOW()
+                WHERE id = $28
+                RETURNING *`,
+                [
+                    skuNodo,
+                    nombrePublico,
+                    payload.categoria_familiar || 'Frutos Secos',
+                    payload.presentacion_etiqueta || `${Math.round(calc.kilos_unidad * 1000)}g`,
+                    Number(payload.flujo_lamda || 2),
+                    payload.origen_tipo || 'INGREDIENTE',
+                    payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null,
+                    payload.articulo_bunker_origen_codigo || null,
+                    calc.kilos_unidad,
+                    payload.insumo_envase_id ? Number(payload.insumo_envase_id) : null,
+                    Number(payload.cantidad_envases_unidad || 1),
+                    calc.segundos_fraccionamiento,
+                    payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
+                    calc.valor_hora_aplicado,
+                    calc.costo_insumo_kg,
+                    calc.costo_insumo_fraccion,
+                    calc.costo_envase_aplicado,
+                    calc.costo_mano_obra_aplicado,
+                    calc.margen_lamda_pct,
+                    calc.iva_pct,
+                    calc.iibb_pct,
+                    calc.costo_puro_total,
+                    calc.precio_base_nodo_neto,
+                    calc.precio_base_nodo_final,
+                    calc.margen_sugerido_gestor_pct,
+                    calc.precio_sugerido_vecino,
+                    payload.notas_tecnicas || '',
+                    Number(payload.catalogo_id)
+                ]
+            );
+            articuloRow = upd.rows[0];
+        } else {
+            const ins = await client.query(
+                `INSERT INTO public.nodos_articulos_catalogo (
+                    sku_nodo, nombre_publico, categoria_familiar, presentacion_etiqueta,
+                    flujo_lamda, origen_tipo, ingrediente_origen_id, articulo_bunker_origen_codigo,
+                    kilos_unidad, insumo_envase_id, cantidad_envases_unidad, segundos_fraccionamiento,
+                    tarifa_colaborador_id, valor_hora_aplicado, costo_insumo_kg,
+                    costo_insumo_fraccion, costo_envase_aplicado, costo_mano_obra_aplicado,
+                    margen_lamda_pct, iva_pct, iibb_pct, costo_puro_total,
+                    precio_base_nodo_neto, precio_base_nodo_final,
+                    margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas
+                ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+                )
+                ON CONFLICT (sku_nodo) DO UPDATE SET
+                    nombre_publico = EXCLUDED.nombre_publico,
+                    costo_insumo_kg = EXCLUDED.costo_insumo_kg,
+                    costo_insumo_fraccion = EXCLUDED.costo_insumo_fraccion,
+                    costo_envase_aplicado = EXCLUDED.costo_envase_aplicado,
+                    costo_mano_obra_aplicado = EXCLUDED.costo_mano_obra_aplicado,
+                    margen_lamda_pct = EXCLUDED.margen_lamda_pct,
+                    precio_base_nodo_neto = EXCLUDED.precio_base_nodo_neto,
+                    precio_base_nodo_final = EXCLUDED.precio_base_nodo_final,
+                    precio_sugerido_vecino = EXCLUDED.precio_sugerido_vecino,
+                    updated_at = NOW()
+                RETURNING *`,
+                [
+                    skuNodo,
+                    nombrePublico,
+                    payload.categoria_familiar || 'Frutos Secos',
+                    payload.presentacion_etiqueta || `${Math.round(calc.kilos_unidad * 1000)}g`,
+                    Number(payload.flujo_lamda || 2),
+                    payload.origen_tipo || 'INGREDIENTE',
+                    payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null,
+                    payload.articulo_bunker_origen_codigo || null,
+                    calc.kilos_unidad,
+                    payload.insumo_envase_id ? Number(payload.insumo_envase_id) : null,
+                    Number(payload.cantidad_envases_unidad || 1),
+                    calc.segundos_fraccionamiento,
+                    payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
+                    calc.valor_hora_aplicado,
+                    calc.costo_insumo_kg,
+                    calc.costo_insumo_fraccion,
+                    calc.costo_envase_aplicado,
+                    calc.costo_mano_obra_aplicado,
+                    calc.margen_lamda_pct,
+                    calc.iva_pct,
+                    calc.iibb_pct,
+                    calc.costo_puro_total,
+                    calc.precio_base_nodo_neto,
+                    calc.precio_base_nodo_final,
+                    calc.margen_sugerido_gestor_pct,
+                    calc.precio_sugerido_vecino,
+                    payload.notas_tecnicas || ''
+                ]
+            );
+            articuloRow = ins.rows[0];
+        }
+
+        // Si provenía de una propuesta de fracción, marcarla como APROBADA y vincularla
+        if (payload.propuesta_id) {
+            await client.query(
+                `UPDATE public.nodos_propuestas_fracciones SET
+                    estado = 'APROBADA',
+                    articulo_catalogo_id = $1,
+                    respuesta_lamda = $2,
+                    updated_at = NOW()
+                WHERE id = $3`,
+                [
+                    articuloRow.id,
+                    payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')}`,
+                    Number(payload.propuesta_id)
+                ]
+            );
+        }
+
+        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos
+        const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
+        for (const nodo of nodosActivos.rows) {
+            const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
+            const precioVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenDef / 100)) / 50) * 50;
+            const ganancia = Math.max(0, precioVecino - calc.precio_base_nodo_final);
+
+            await client.query(
+                `INSERT INTO public.nodos_ofertas_gestor (
+                    nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                    margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+                ) VALUES ($1,$2,$3,$4,$5,$6,true)
+                ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
+                    alerta_cambio_costo = (public.nodos_ofertas_gestor.precio_base_nodo_snapshot <> EXCLUDED.precio_base_nodo_snapshot),
+                    precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
+                    precio_venta_vecino = CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50,
+                    ganancia_unitaria_gestor = (CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50) - EXCLUDED.precio_base_nodo_snapshot,
+                    updated_at = NOW()`,
+                [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia]
+            );
+        }
+
+        await client.query('COMMIT');
+        return { articulo: articuloRow, calculo: calc };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Recalcula en cascada todo el catálogo de Nodos tomando los costos vivos de los 6 Flujos
+ * de la base de datos (y opcionalmente costos simulados en memoria de la Pizarra).
+ */
+async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const catRes = await client.query(`
+            SELECT nac.*,
+                   COALESCE(ing.costo_patron, nac.costo_insumo_kg) AS ing_costo_db,
+                   COALESCE(env.costo_patron, nac.costo_envase_aplicado) AS env_costo_db,
+                   COALESCE(ct.valor_hora, nac.valor_hora_aplicado) AS tarifa_hora_db
+            FROM public.nodos_articulos_catalogo nac
+            LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
+            LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
+            LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
+            WHERE nac.activo = true
+        `);
+
+        let actualizados = 0;
+        for (const row of catRes.rows) {
+            const ingId = row.ingrediente_origen_id ? Number(row.ingrediente_origen_id) : null;
+            const envId = row.insumo_envase_id ? Number(row.insumo_envase_id) : null;
+
+            const costoInsumoVivo = (ingId && costosSimuladosIngredientes[ingId] !== undefined)
+                ? Number(costosSimuladosIngredientes[ingId])
+                : Number(row.ing_costo_db || row.costo_insumo_kg);
+
+            const costoEnvaseVivo = (envId && costosSimuladosIngredientes[envId] !== undefined)
+                ? Number(costosSimuladosIngredientes[envId])
+                : Number(row.env_costo_db || row.costo_envase_aplicado);
+
+            const calc = calcularEstructuraCostosNodo({
+                costo_insumo_kg: costoInsumoVivo,
+                kilos_unidad: row.kilos_unidad,
+                costo_envase_unitario: costoEnvaseVivo,
+                cantidad_envases_unidad: row.cantidad_envases_unidad,
+                segundos_fraccionamiento: row.segundos_fraccionamiento,
+                valor_hora_aplicado: row.tarifa_hora_db || row.valor_hora_aplicado,
+                margen_lamda_pct: row.margen_lamda_pct,
+                iva_pct: row.iva_pct,
+                iibb_pct: row.iibb_pct,
+                margen_sugerido_gestor_pct: row.margen_sugerido_gestor_pct
+            });
+
+            await client.query(
+                `UPDATE public.nodos_articulos_catalogo SET
+                    costo_insumo_kg = $1,
+                    costo_insumo_fraccion = $2,
+                    costo_envase_aplicado = $3,
+                    valor_hora_aplicado = $4,
+                    costo_mano_obra_aplicado = $5,
+                    costo_puro_total = $6,
+                    precio_base_nodo_neto = $7,
+                    precio_base_nodo_final = $8,
+                    precio_sugerido_vecino = $9,
+                    updated_at = NOW()
+                WHERE id = $10`,
+                [
+                    calc.costo_insumo_kg,
+                    calc.costo_insumo_fraccion,
+                    calc.costo_envase_aplicado,
+                    calc.valor_hora_aplicado,
+                    calc.costo_mano_obra_aplicado,
+                    calc.costo_puro_total,
+                    calc.precio_base_nodo_neto,
+                    calc.precio_base_nodo_final,
+                    calc.precio_sugerido_vecino,
+                    row.id
+                ]
+            );
+
+            await client.query(
+                `UPDATE public.nodos_ofertas_gestor SET
+                    alerta_cambio_costo = (precio_base_nodo_snapshot <> $1),
+                    precio_base_nodo_snapshot = $1,
+                    precio_venta_vecino = CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50,
+                    ganancia_unitaria_gestor = (CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50) - $1,
+                    updated_at = NOW()
+                WHERE articulo_catalogo_id = $2`,
+                [calc.precio_base_nodo_final, row.id]
+            );
+
+            actualizados++;
+        }
+
+        await client.query('COMMIT');
+        return { actualizados };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Actualiza el margen del gestor y el estado de publicación en su tienda vecinal
+ */
+async function actualizarOfertaGestor(ofertaId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const cur = await db.query(
+        `SELECT nog.*, nac.precio_base_nodo_final
+         FROM public.nodos_ofertas_gestor nog
+         JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+         WHERE nog.id = $1`,
+        [Number(ofertaId)]
+    );
+    if (cur.rows.length === 0) {
+        throw new Error('Oferta de Nodo no encontrada.');
+    }
+
+    const row = cur.rows[0];
+    const baseActual = Number(row.precio_base_nodo_final || row.precio_base_nodo_snapshot || 0);
+    const margenPct = payload.margen_gestor_pct !== undefined
+        ? Number(payload.margen_gestor_pct)
+        : Number(row.margen_gestor_pct);
+
+    const precioVecino = payload.precio_venta_vecino !== undefined
+        ? Number(payload.precio_venta_vecino)
+        : Math.ceil((baseActual * (1 + margenPct / 100)) / 50) * 50;
+
+    const gananciaUnitaria = Math.max(0, precioVecino - baseActual);
+    const publicado = payload.publicado_tienda !== undefined
+        ? Boolean(payload.publicado_tienda)
+        : Boolean(row.publicado_tienda);
+
+    const upd = await db.query(
+        `UPDATE public.nodos_ofertas_gestor SET
+            precio_base_nodo_snapshot = $1,
+            margen_gestor_pct = $2,
+            precio_venta_vecino = $3,
+            ganancia_unitaria_gestor = $4,
+            publicado_tienda = $5,
+            alerta_cambio_costo = false,
+            updated_at = NOW()
+         WHERE id = $6
+         RETURNING *`,
+        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, Number(ofertaId)]
+    );
+
+    return upd.rows[0];
+}
+
+module.exports = {
+    asegurarEsquemaNodosBarriales,
+    calcularEstructuraCostosNodo,
+    obtenerEstadoCompletoNodos,
+    guardarNodoMaestro,
+    crearPropuestaFraccion,
+    cotizarYAprobarArticuloNodo,
+    recalcularCascadaCatalogoNodos,
+    actualizarOfertaGestor,
+    convertirLogoAZplGfa,
+    generarEtiquetaZplParNodo,
+    generarPreviewVisualEtiquetaPar
+};
