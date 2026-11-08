@@ -93,8 +93,9 @@ class BunkerService {
      * Obtener todas las listas activas de bunker_listas_precios
      */
     static async getListasActivas(db) {
+        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
         const query = `
-            SELECT id, nombre, activa, descripcion 
+            SELECT id, nombre, activa, descripcion, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial
             FROM public.bunker_listas_precios 
             WHERE activa = true 
             ORDER BY id ASC
@@ -965,7 +966,8 @@ class BunkerService {
         const articulo = resArticulo.rows[0];
 
         // 1. Obtener todas las listas activas
-        const resListas = await db.query("SELECT id, nombre FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
+        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
+        const resListas = await db.query("SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
         const listasActivas = resListas.rows;
 
         // 2. Obtener configuraciones de este artículo en bunker_lista_articulos
@@ -985,20 +987,32 @@ class BunkerService {
         const laL1 = artConfigs.find(c => Number(c.lista_id) === 1);
 
         articulo.margenes = listasActivas.map(list => {
+            const canalLista = list.canal_comercial || 'MAYORISTA';
             const la = artConfigs.find(c => Number(c.lista_id) === Number(list.id));
             if (la) {
                 return {
                     lista_id: la.lista_id,
+                    canal_comercial: canalLista,
                     asignado: true,
                     margen_porcentaje: la.margen_porcentaje,
                     disponible: la.disponible === true || la.disponible === 'true',
                     precio_final: la.precio_final
+                };
+            } else if (canalLista === 'NODOS') {
+                return {
+                    lista_id: list.id,
+                    canal_comercial: 'NODOS',
+                    asignado: false,
+                    margen_porcentaje: 0,
+                    disponible: false,
+                    precio_final: 0
                 };
             } else {
                 const lm = legacyMargenes.find(m => Number(m.lista_id) === Number(list.id));
                 if (lm) {
                     return {
                         lista_id: list.id,
+                        canal_comercial: canalLista,
                         asignado: false,
                         margen_porcentaje: lm.margen_porcentaje,
                         disponible: true,
@@ -1007,6 +1021,7 @@ class BunkerService {
                 } else if (laL1) {
                     return {
                         lista_id: list.id,
+                        canal_comercial: canalLista,
                         asignado: false,
                         margen_porcentaje: laL1.margen_porcentaje,
                         disponible: true,
@@ -1015,6 +1030,7 @@ class BunkerService {
                 } else {
                     return {
                         lista_id: list.id,
+                        canal_comercial: canalLista,
                         asignado: false,
                         margen_porcentaje: 0,
                         disponible: false,
@@ -2099,8 +2115,9 @@ class BunkerService {
         const context = await this.resolverCostosEnVivo(db);
 
         // 1b. Obtener todas las listas de precios activas para asegurar correspondencia
-        const resListasActivas = await db.query("SELECT id, nombre FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
-        const listasActivas = resListasActivas.rows.length > 0 ? resListasActivas.rows : [{ id: 1, nombre: 'Lista Nico' }];
+        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
+        const resListasActivas = await db.query("SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
+        const listasActivas = resListasActivas.rows.length > 0 ? resListasActivas.rows : [{ id: 1, nombre: 'Lista Nico', canal_comercial: 'MAYORISTA' }];
 
         // 2. Obtener todas las configuraciones de listas para todos los artículos
         const queryLA = `
@@ -2187,6 +2204,7 @@ class BunkerService {
             const baseIng = art.pack_hijo_codigo || art.articulo_id;
 
             art.margenes = listasActivas.map(list => {
+                const canalLista = list.canal_comercial || 'MAYORISTA';
                 const la = artConfigs.find(c => c.lista_id === list.id);
                 if (la) {
                     const laInsumos = insumosPorLA.get(la.id) || [];
@@ -2208,7 +2226,8 @@ class BunkerService {
 
                     const targetMargen = parseFloat(la.margen_ganancia);
                     const diffMargen = targetMargen - margenImplicito;
-                    const costo_desactualizado = Math.abs(diffMargen) > 0.1; // Desvío superior al 0.1% de margen
+                    const precioEsperado = (baseCostoVivo * (1 + targetMargen / 100) + costoOperativo) * ivaCoeff;
+                    const costo_desactualizado = Math.abs(diffMargen) > 0.1 && Math.abs(parseFloat(la.precio_final || 0) - precioEsperado) > 1.5; // Desvío superior al 0.1% y > $1.50 (evita falsos positivos por redondeo entero)
 
                     // Buscar margen heredado
                     const keyPatron = `${la.lista_id}_${baseIng}`;
@@ -2222,6 +2241,7 @@ class BunkerService {
 
                     return {
                         lista_id: la.lista_id,
+                        canal_comercial: canalLista,
                         asignado: true,
                         margen_porcentaje: la.margen_ganancia, // compatibilidad
                         costo_base_sobrescrito: la.costo_base_sobrescrito,
@@ -2242,8 +2262,33 @@ class BunkerService {
                         rendimiento_activo: la.rendimiento_activo !== false,
                         mano_obra_activa: la.mano_obra_activa !== false
                     };
+                } else if (canalLista === 'NODOS') {
+                    // Aislamiento estricto: los artículos mayoristas sin fila explícita en la lista de Nodos no se activan por herencia
+                    return {
+                        lista_id: list.id,
+                        canal_comercial: 'NODOS',
+                        asignado: false,
+                        margen_porcentaje: 0,
+                        costo_base_sobrescrito: null,
+                        costo_tiempo: 0,
+                        iva: art.porcentaje_iva || 21.00,
+                        precio_final: 0,
+                        modo_calculo: 'AUTOMATIC',
+                        costo_desactualizado: false,
+                        costo_ingrediente_en_vivo: liveIngredienteCost,
+                        costo_insumos_en_vivo: 0,
+                        margen_implicito: 0,
+                        modo_iva: 'COMPLETO',
+                        es_patron: false,
+                        margen_patron_heredado: null,
+                        descripcion_patron: null,
+                        disponible: false,
+                        exencion_operativa: false,
+                        rendimiento_activo: false,
+                        mano_obra_activa: false
+                    };
                 } else {
-                    // Si no tiene configuración en la nueva lista, intentar heredar del fallback
+                    // Si no tiene configuración en la nueva lista mayorista, intentar heredar del fallback habitual
                     const legacyMargenes = legacyPorArt.get(art.articulo_id) || [];
                     const lm = legacyMargenes.find(m => m.lista_id === list.id);
                     
@@ -2259,6 +2304,7 @@ class BunkerService {
 
                         return {
                             lista_id: lm.lista_id,
+                            canal_comercial: canalLista,
                             asignado: false,
                             margen_porcentaje: parseFloat(lm.margen_porcentaje),
                             costo_base_sobrescrito: null,
@@ -2281,7 +2327,7 @@ class BunkerService {
                         };
                     } else {
                         // Intentar heredar de la configuración de Lista 1 (Lista Nico) si existe
-                        const laL1 = artConfigs.find(c => c.lista_id === 1) || artConfigs[0];
+                        const laL1 = artConfigs.find(c => c.lista_id === 1);
                         if (laL1) {
                             const laInsumos = insumosPorLA.get(laL1.id) || [];
                             const liveInsumoCost = BunkerService.calcularCostoInsumosEnVivo(laInsumos, context);
@@ -2313,6 +2359,7 @@ class BunkerService {
 
                             return {
                                 lista_id: list.id,
+                                canal_comercial: canalLista,
                                 asignado: false,
                                 margen_porcentaje: laL1.margen_ganancia,
                                 costo_base_sobrescrito: laL1.costo_base_sobrescrito,
@@ -2349,6 +2396,7 @@ class BunkerService {
 
                             return {
                                 lista_id: list.id,
+                                canal_comercial: canalLista,
                                 asignado: false,
                                 margen_porcentaje: defMargen,
                                 costo_base_sobrescrito: null,
@@ -2647,6 +2695,7 @@ class BunkerService {
             SELECT 
                 lp.id as lista_id, 
                 lp.nombre as nombre_lista,
+                COALESCE(lp.canal_comercial, 'MAYORISTA') as canal_comercial,
                 la.id as lista_articulo_id,
                 COALESCE(la.margen_ganancia, 0) as margen_porcentaje, -- Para compatibilidad
                 la.costo_base_sobrescrito,
@@ -2657,7 +2706,7 @@ class BunkerService {
                 COALESCE(la.modo_calculo, 'AUTOMATIC') as modo_calculo,
                 COALESCE(la.modo_iva, 'COMPLETO') as modo_iva,
                 COALESCE(la.es_patron, false) as es_patron,
-                COALESCE(la.disponible, true) as disponible,
+                COALESCE(la.disponible, CASE WHEN COALESCE(lp.canal_comercial, 'MAYORISTA') = 'NODOS' THEN false ELSE true END) as disponible,
                 COALESCE(la.exencion_operativa, false) as exencion_operativa,
                 COALESCE(la.rendimiento_activo, false) as rendimiento_activo,
                 COALESCE(la.mano_obra_activa, false) as mano_obra_activa

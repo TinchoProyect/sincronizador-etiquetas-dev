@@ -1105,6 +1105,29 @@
                 </div>
 
                 <!-- Fila 3: Radar Auditoría LDN 1 (Bulto Cerrado Directo: Stock vs. Ofertas en Listas) -->
+                <div id="bunker-canal-comercial-bar" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 0.8em; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.4px;">
+                            🧭 Canal Comercial:
+                        </span>
+                        <button type="button" id="btn-canal-bunker-mayorista" onclick="window.cambiarCanalComercialBunker('MAYORISTA')" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 20px; font-size: 0.82em; font-weight: 800; cursor: pointer; border: 1.5px solid #0284c7; background: #0284c7; color: #ffffff; transition: all 0.18s ease;" title="Vista Mayorista tradicional (6 listas): oculta las fracciones que son exclusivas de Nodos Barriales y muestra los artículos mayoristas y compartidos">
+                            <span>🏢 Canal Mayorista (6 Listas)</span>
+                            <span id="badge-canal-bunker-mayorista" style="background: rgba(255,255,255,0.22); color: #ffffff; padding: 1px 7px; border-radius: 10px; font-size: 0.9em;">0</span>
+                        </button>
+                        <button type="button" id="btn-canal-bunker-nodos" onclick="window.cambiarCanalComercialBunker('NODOS')" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 20px; font-size: 0.82em; font-weight: 800; cursor: pointer; border: 1.5px solid #86efac; background: #f0fdf4; color: #166534; transition: all 0.18s ease;" title="Filtra los artículos habilitados en la Lista Base Nodos Barriales (exclusivos + compartidos) dentro de sus Familias Reales y enfoca el Precio Base Nodo">
+                            <span>🏘️ Canal Nodos Barriales</span>
+                            <span id="badge-canal-bunker-nodos" style="background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 10px; font-size: 0.9em;">0</span>
+                        </button>
+                        <button type="button" id="btn-canal-bunker-todos" onclick="window.cambiarCanalComercialBunker('TODOS')" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 20px; font-size: 0.82em; font-weight: 700; cursor: pointer; border: 1.5px solid #cbd5e1; background: #f8fafc; color: #475569; transition: all 0.18s ease;" title="Ver simultáneamente todos los artículos de Mayorista y Nodos Barriales">
+                            <span>🌐 Todos los Canales</span>
+                            <span id="badge-canal-bunker-todos" style="background: #e2e8f0; color: #334155; padding: 1px 7px; border-radius: 10px; font-size: 0.9em;">0</span>
+                        </button>
+                    </div>
+                    <div id="bunker-canal-nodos-info" style="display: none; align-items: center; gap: 8px; font-size: 0.8em; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 5px 12px; border-radius: 16px; font-weight: 700;">
+                        <span>🏘️ Viendo <strong>Lista Base Nodos Barriales</strong> (Familias Reales + Alias Vecino)</span>
+                        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" target="_blank" style="color: #15803d; text-decoration: underline; font-weight: 800; margin-left: 4px;">Abrir Cotizador Nodos ↗</a>
+                    </div>
+                </div>
                 <div class="bunker-ldn1-radar-bar" id="bunker-ldn1-radar-bar">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span style="font-size: 0.8em; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 5px;" title="Auditoría automática de Línea de Negocio 1 (Bulto Cerrado Directo sin receta): detecta desfasajes entre Stock Disponible y Ofertas Activas en cualquiera de las listas">

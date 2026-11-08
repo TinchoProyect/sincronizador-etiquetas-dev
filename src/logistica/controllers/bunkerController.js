@@ -504,6 +504,10 @@ exports.actualizarEstructuraFinanciera = async (req, res) => {
             pack_unidades,
             kilos_unidad
         });
+        try {
+            const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+            await sincronizarCatalogoNodoDesdeBunker(id);
+        } catch (_) {}
         triggerB2BSync('precios', `bunker:actualizarEstructuraFinanciera:${id}`);
         res.json({ success: true, message: 'Estructura financiera actualizada exitosamente' });
     } catch (error) {
@@ -519,6 +523,10 @@ exports.actualizarDisponibilidadArticulo = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Faltan parámetros requeridos (articuloId, listaId)' });
         }
         await BunkerService.actualizarDisponibilidadArticulo(req.db, articuloId, listaId, disponible);
+        try {
+            const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+            await sincronizarCatalogoNodoDesdeBunker(articuloId);
+        } catch (_) {}
         triggerB2BSync('precios', `bunker:actualizarDisponibilidadArticulo:${articuloId}`);
         res.json({ success: true, message: 'Disponibilidad del artículo actualizada con éxito en la lista.' });
     } catch (error) {

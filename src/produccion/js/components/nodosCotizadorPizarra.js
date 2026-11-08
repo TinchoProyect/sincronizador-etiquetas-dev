@@ -418,22 +418,38 @@
                         `).join('')}
                     </div>
 
-                    <!-- IDENTIDAD COMERCIAL DEL ARTÍCULO EN EL PADRÓN DE NODOS -->
-                    <div style="display:grid; grid-template-columns: 1.6fr 0.9fr 0.9fr; gap:10px; margin-bottom:12px;">
+                    <!-- IDENTIDAD COMERCIAL DEL ARTÍCULO EN EL PADRÓN DE NODOS Y NOMENCLATURA BÚNKER -->
+                    <div style="display:grid; grid-template-columns: 1.4fr 1.4fr; gap:10px; margin-bottom:10px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Nombre Comercial para el Vecino</label>
-                            <input type="text" id="cot-nombre-publico" placeholder="Ej: Almendra Nonpareil Californiana x 250g"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
+                            <label style="display:block; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">🏛️ Nomenclatura Posicional en Búnker (Familia Real LAMDA)</label>
+                            <input type="text" id="cot-bunker-nomenclatura" placeholder="Ej: ALMENDRA Peladas NP 25-27 x 250g"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0f172a; color:#bae6fd; font-weight:700; font-size:0.82rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Código Interno Nodo</label>
+                            <label style="display:block; font-size:0.74rem; color:#34d399; font-weight:700; margin-bottom:4px;">🏘️ Alias Amigable para Tienda del Vecino y Etiqueta</label>
+                            <input type="text" id="cot-nombre-publico" placeholder="Ej: Almendra Nonpareil"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.83rem;">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 0.9fr 1fr 1.3fr; gap:10px; margin-bottom:12px;">
+                        <div>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Código SKU (Búnker + Nodo)</label>
                             <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: NB-ALM-250G)"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace; font-size:0.82rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Categoría en Tienda</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Categoría en Tienda Vecinal</label>
                             <input type="text" id="cot-categoria" value="Frutos Secos Puros"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.82rem;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Disponibilidad en Listas del Búnker</label>
+                            <select id="cot-compartido-mayorista"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem; font-weight:700;">
+                                <option value="false">🏘️ Exclusivo Nodos Barriales (0/6 en Mayorista)</option>
+                                <option value="true">🔄 Compartido: Nodos + Mayorista (Dietética y Cons. Final)</option>
+                            </select>
                         </div>
                     </div>
 
@@ -477,8 +493,8 @@
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">Ingresos Brutos (%)</label>
-                            <input type="number" id="cot-iibb-pct" step="0.1" value="3.5" oninput="window.NodosPizarra.recalcularEnVivo()"
+                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">Retención IIBB (%)</label>
+                            <input type="number" id="cot-iibb-pct" step="0.1" value="4" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:7px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                         </div>
                         <div>
@@ -574,7 +590,7 @@
         const valorHora = Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000);
         const margenLamdaPct = Math.max(0, Number(margenLamdaEl.value) || 22);
         const ivaPct = Math.max(0, Number(ivaEl.value) || 21);
-        const iibbPct = Math.max(0, Number(iibbEl.value) || 3.5);
+        const iibbPct = Math.max(0, Number(iibbEl.value) || 4);
         const margenGestorPct = Math.max(0, Number(margenGestorEl.value) || 28);
 
         const costoInsumoFraccion = costoInsumoKg * kilosUnidad;
@@ -582,9 +598,15 @@
         const costoManoObra = (segundos / 3600) * valorHora;
         const costoPuroTotal = costoMateriaYEnvase + costoManoObra;
 
-        const gananciaLamda = costoMateriaYEnvase * (margenLamdaPct / 100);
-        const precioBaseNeto = costoMateriaYEnvase + gananciaLamda + costoManoObra;
-        const impuestosMonto = precioBaseNeto * ((ivaPct + iibbPct) / 100);
+        // Fórmula unificada 100% con BunkerService (listado-bunker.html):
+        // precio_sin_iva = (costoMateriaYEnvase * (1 + margen / 100)) + costoManoObra
+        // precio_final = Math.round(precio_sin_iva * (1 + iva / 100))
+        // IIBB se descuenta de la utilidad neta como retención sobre precio_sin_iva
+        const gananciaBrutaLamda = costoMateriaYEnvase * (margenLamdaPct / 100);
+        const precioBaseNeto = costoMateriaYEnvase + gananciaBrutaLamda + costoManoObra;
+        const impuestosMonto = precioBaseNeto * (ivaPct / 100);
+        const retencionIibbMonto = precioBaseNeto * (iibbPct / 100);
+        const gananciaLamda = Math.max(0, gananciaBrutaLamda - retencionIibbMonto);
         const precioBaseNodoFinal = Math.round(precioBaseNeto + impuestosMonto);
 
         const precioSugeridoVecino = Math.ceil((precioBaseNodoFinal * (1 + margenGestorPct / 100)) / 50) * 50;
@@ -596,8 +618,9 @@
             : null;
 
         box.innerHTML = `
-            <div style="font-size:0.74rem; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:8px;">
-                📊 Desglose de Costos por Presentación (${Math.round(kilosUnidad * 1000)}g)
+            <div style="font-size:0.74rem; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>📊 Desglose Unificado con Calculadora del Búnker (${Math.round(kilosUnidad * 1000)}g)</span>
+                <span style="color:#6ee7b7; font-size:0.7rem;">bunker_lista_articulos + bunker_lista_insumos</span>
             </div>
             <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-bottom:10px;">
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
@@ -610,21 +633,22 @@
                     <div style="font-size:0.66rem; color:#64748b;">Bolsa ${fmtMoneda(costoEnvaseUnitario, 1)} + MO ${fmtMoneda(costoManoObra, 1)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
-                    <div style="font-size:0.7rem; color:#94a3b8;">3. Costo + Margen LAMDA</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">3. Neto S/IVA (+${margenLamdaPct}%)</div>
                     <div style="font-size:0.95rem; font-weight:800; color:#34d399;">${fmtMoneda(precioBaseNeto, 2)}</div>
-                    <div style="font-size:0.66rem; color:#6ee7b7;">Costo ${fmtMoneda(costoPuroTotal, 0)} + Ganancia ${fmtMoneda(gananciaLamda, 0)}</div>
+                    <div style="font-size:0.66rem; color:#6ee7b7;">Util. Neta (s/IIBB ${iibbPct}%): ${fmtMoneda(gananciaLamda, 0)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
-                    <div style="font-size:0.7rem; color:#94a3b8;">4. IVA (${ivaPct}%) + IIBB (${iibbPct}%)</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">4. IVA (${ivaPct}%)</div>
                     <div style="font-size:0.95rem; font-weight:800; color:#fbbf24;">+${fmtMoneda(impuestosMonto, 2)}</div>
+                    <div style="font-size:0.66rem; color:#94a3b8;">Ret. IIBB: -${fmtMoneda(retencionIibbMonto, 0)}</div>
                 </div>
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; padding-top:8px; border-top:1px dashed #334155;">
                 <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.45); display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <div style="font-size:0.72rem; color:#6ee7b7; font-weight:800; text-transform:uppercase;">Precio Base LAMDA → Nodo</div>
-                        <div style="font-size:0.7rem; color:#94a3b8;">Valor en Cuenta Corriente del Gestor</div>
+                        <div style="font-size:0.72rem; color:#6ee7b7; font-weight:800; text-transform:uppercase;">Precio Lista Base Nodos (Final c/IVA)</div>
+                        <div style="font-size:0.7rem; color:#94a3b8;">Valor oficial en Búnker y Cta. Cte. del Gestor</div>
                     </div>
                     <div style="font-size:1.35rem; font-weight:900; color:#34d399;">${fmtMoneda(precioBaseNodoFinal)}</div>
                 </div>
@@ -644,24 +668,52 @@
     }
 
     // =========================================================================
-    // SUB-PESTAÑA 2: CATÁLOGO AISLADO DE NODOS Y MÁRGENES POR GESTOR
+    // SUB-PESTAÑA 2: CATÁLOGO CONECTADO AL BÚNKER Y MÁRGENES POR GESTOR
     // =========================================================================
     function renderizarSubTabCatalogo() {
         const q = ESTADO_NODOS.busquedaCatalogo;
         const fFlujo = Number(ESTADO_NODOS.filtroFlujoCatalogo || 0);
         const fNodo = Number(ESTADO_NODOS.filtroNodoOfertas || 0);
+        const listaBunkerNodos = ESTADO_NODOS.fuentes.lista_bunker_nodos || { nombre_lista: 'Lista Base Nodos Barriales', canal_comercial: 'NODOS' };
+        const politicasNodos = ESTADO_NODOS.fuentes.politicas_bunker_nodos || [];
 
         const filasCatalogo = ESTADO_NODOS.catalogo.filter(c => {
             if (fFlujo > 0 && Number(c.flujo_lamda) !== fFlujo) return false;
-            const bolsa = `${c.sku_nodo} ${c.nombre_publico} ${c.categoria_familiar} ${c.presentacion_etiqueta || ''} ${c.ingrediente_origen_nombre || ''} ${c.notas_tecnicas || ''} flujo ${c.flujo_lamda}`;
+            const bolsa = `${c.sku_nodo} ${c.bunker_descripcion_generada || ''} ${c.bunker_familia_nombre || ''} ${c.nombre_publico} ${c.categoria_familiar} ${c.presentacion_etiqueta || ''} ${c.ingrediente_origen_nombre || ''} ${c.notas_tecnicas || ''} flujo ${c.flujo_lamda}`;
             return cumpleBusquedaUniversalLamda(bolsa, q);
         });
 
         return `
             <div style="display:flex; flex-direction:column; gap:14px;">
+                <!-- BANNER DE ARQUITECTURA DE CASCADA: BÚNKER -> NODO -> VECINO -->
+                <div class="card" style="padding:12px 16px; background:linear-gradient(135deg, rgba(6,78,59,0.32), rgba(15,23,42,0.95)); border:1px solid rgba(16,185,129,0.45); border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="background:rgba(16,185,129,0.22); color:#34d399; border:1px solid rgba(16,185,129,0.45); font-size:0.74rem; font-weight:800; padding:2px 9px; border-radius:999px;">
+                                🏛️ Lista Oficial Búnker: ${escaparHtml(listaBunkerNodos.nombre_lista)} (ID #${listaBunkerNodos.id || '-'})
+                            </span>
+                            <span style="font-size:0.75rem; color:#94a3b8;">
+                                Sincronizada bidireccionalmente con <code>bunker_lista_articulos</code>, <code>bunker_lista_insumos</code> y <code>bunker_cliente_listas_precios</code>
+                            </span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px;">
+                            <span style="font-size:0.73rem; color:#cbd5e1; font-weight:700;">📜 Políticas Comerciales y Financiación Activas:</span>
+                            ${politicasNodos.map(p => `
+                                <span style="font-size:0.71rem; background:rgba(56,189,248,0.14); color:#bae6fd; border:1px solid rgba(56,189,248,0.35); padding:2px 8px; border-radius:6px;" title="${escaparHtml(p.descripcion || '')}">
+                                    ✅ ${escaparHtml(p.nombre)}
+                                </span>
+                            `).join('') || '<span style="font-size:0.72rem; color:#94a3b8;">Bonificación por Canasto (-3% / -5%) + Financiación Cta. Cte. 7 días (0%)</span>'}
+                        </div>
+                    </div>
+                    <a href="/pages/listado-bunker.html" target="_blank"
+                        style="text-decoration:none; padding:8px 13px; border-radius:8px; font-weight:800; font-size:0.78rem; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; display:inline-flex; align-items:center; gap:6px;">
+                        🏛️ Abrir Búnker de Artículos ↗
+                    </a>
+                </div>
+
                 <div class="card" style="padding:12px 16px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:280px;">
-                        <input type="text" placeholder="🔍 Buscar producto por nombre, código, ingrediente o peso..."
+                        <input type="text" placeholder="🔍 Buscar por nomenclatura Búnker, alias vecino, familia, código o peso..."
                             value="${escaparHtml(ESTADO_NODOS.busquedaCatalogo)}"
                             oninput="window.NodosPizarra.filtrarCatalogo(this.value)"
                             style="flex:1; padding:8px 12px; border-radius:8px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
@@ -684,12 +736,12 @@
                     <table style="width:100%; border-collapse:collapse; font-size:0.81rem; color:#e2e8f0;">
                         <thead>
                             <tr style="background:#0f172a; color:#94a3b8; text-align:left; border-bottom:1px solid #334155;">
-                                <th style="padding:10px;">Código / Flujo</th>
-                                <th style="padding:10px;">Producto Familiar</th>
+                                <th style="padding:10px;">Código / Flujo / Canal</th>
+                                <th style="padding:10px;">Nomenclatura Búnker y Alias Vecino</th>
                                 <th style="padding:10px;">Insumo Base</th>
                                 <th style="padding:10px;">Costo Total</th>
                                 <th style="padding:10px;">Margen LAMDA</th>
-                                <th style="padding:10px; color:#34d399;">Precio Base Nodo</th>
+                                <th style="padding:10px; color:#34d399;">Precio Lista Base Nodo</th>
                                 <th style="padding:10px; color:#38bdf8;">Márgenes y Precio al Vecino por Nodo</th>
                                 <th style="padding:10px; text-align:right;">Acción</th>
                             </tr>
@@ -697,6 +749,7 @@
                         <tbody>
                             ${filasCatalogo.map(cat => {
                                 const meta = FLUJO_META[cat.flujo_lamda] || FLUJO_META[2];
+                                const esCompartido = Boolean(cat.compartido_mayorista);
                                 const ofertasItem = ESTADO_NODOS.ofertas_gestor.filter(o =>
                                     Number(o.articulo_catalogo_id) === Number(cat.id) &&
                                     (fNodo === 0 || Number(o.nodo_id) === fNodo)
@@ -706,15 +759,24 @@
                                     <tr style="border-bottom:1px solid #1e293b;">
                                         <td style="padding:10px; vertical-align:top;">
                                             <div style="font-family:monospace; font-weight:800; color:#f8fafc;">${escaparHtml(cat.sku_nodo)}</div>
-                                            <span style="display:inline-block; margin-top:4px; font-size:0.68rem; padding:2px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700;">
-                                                ${meta.corto}
-                                            </span>
+                                            <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px; align-items:flex-start;">
+                                                <span style="font-size:0.68rem; padding:2px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700;">
+                                                    ${meta.corto}
+                                                </span>
+                                                <span style="font-size:0.66rem; padding:2px 6px; border-radius:4px; background:${esCompartido ? 'rgba(56,189,248,0.16)' : 'rgba(16,185,129,0.15)'}; color:${esCompartido ? '#38bdf8' : '#34d399'}; border:1px solid ${esCompartido ? 'rgba(56,189,248,0.35)' : 'rgba(16,185,129,0.35)'}; font-weight:700;">
+                                                    ${esCompartido ? '🔄 Compartido Mayorista + Nodo' : '🏘️ Exclusivo Nodos'}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
-                                            <div style="font-weight:700; color:#f8fafc; font-size:0.88rem;">${escaparHtml(cat.nombre_publico)}</div>
-                                            <div style="font-size:0.74rem; color:#94a3b8;">
-                                                Presentación: <strong>${escaparHtml(cat.presentacion_etiqueta || `${Math.round(Number(cat.kilos_unidad) * 1000)}g`)}</strong>
-                                                · ${escaparHtml(cat.categoria_familiar)}
+                                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                <span style="font-size:0.68rem; background:#1e293b; color:#38bdf8; border:1px solid #334155; padding:1px 6px; border-radius:4px; font-weight:800;">
+                                                    🌳 ${escaparHtml(cat.bunker_familia_nombre || 'Frutos Secos')}
+                                                </span>
+                                                <strong style="color:#f8fafc; font-size:0.86rem;">${escaparHtml(cat.bunker_descripcion_generada || cat.nombre_publico)}</strong>
+                                            </div>
+                                            <div style="font-size:0.76rem; color:#6ee7b7; margin-top:4px; font-weight:700;">
+                                                🏘️ Alias Vecino: "${escaparHtml(cat.nombre_publico)}" · <span style="color:#cbd5e1;">${escaparHtml(cat.presentacion_etiqueta || `${Math.round(Number(cat.kilos_unidad) * 1000)}g`)}</span>
                                             </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
@@ -729,11 +791,11 @@
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
                                             <span style="color:#34d399; font-weight:700;">+${Number(cat.margen_lamda_pct)}%</span>
-                                            <div style="font-size:0.71rem; color:#94a3b8;">IVA ${Number(cat.iva_pct)}% + IIBB ${Number(cat.iibb_pct)}%</div>
+                                            <div style="font-size:0.71rem; color:#94a3b8;">IVA ${Number(cat.iva_pct)}% · Ret. IIBB ${Number(cat.iibb_pct)}%</div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
                                             <div style="font-size:1.05rem; font-weight:900; color:#34d399;">${fmtMoneda(cat.precio_base_nodo_final)}</div>
-                                            <div style="font-size:0.7rem; color:#94a3b8;">Neto: ${fmtMoneda(cat.precio_base_nodo_neto, 0)}</div>
+                                            <div style="font-size:0.7rem; color:#94a3b8;">S/IVA: ${fmtMoneda(cat.precio_base_nodo_neto, 0)}</div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top; min-width:310px;">
                                             <div style="display:flex; flex-direction:column; gap:6px;">
@@ -1049,10 +1111,29 @@
         renderizarVistaNodosCompleta();
     }
 
+    function sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, flujo) {
+        const txt = String(nombreBase || '').trim();
+        const etiquetaPeso = Number(kilos) >= 1
+            ? `${Number(kilos).toFixed(Number(kilos) % 1 === 0 ? 0 : 2)}kg`
+            : `${Math.round(Number(kilos || 0.25) * 1000)}g`;
+
+        if (/almendra/i.test(txt)) return `ALMENDRA Peladas NP 25-27 x ${etiquetaPeso}`;
+        if (/mix/i.test(txt) || Number(flujo) === 3) {
+            const sub = /pasas/i.test(txt) ? 'Con Pasas' : 'Especial';
+            return `Mix F/SCOS ${sub} x ${etiquetaPeso}`;
+        }
+        if (/casta[ñn]a.*caju|caj[uú]/i.test(txt)) return `Castañas de Caju W4 Tostado x ${etiquetaPeso}`;
+        if (/nuez|nueces/i.test(txt)) return `NUEZ Peladas Mariposa Extra Light x ${etiquetaPeso}`;
+        if (/barrita|barra/i.test(txt) || Number(flujo) === 5) return `BARRA Flor 6 x 50g`;
+        if (/granola|grana/i.test(txt) || Number(flujo) === 6) return `GRANA Sol x ${etiquetaPeso}`;
+        return `${txt.replace(/\s+x\s+\d+.*$/i, '').trim()} x ${etiquetaPeso}`;
+    }
+
     function alCambiarOrigenSelect() {
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const kilosEl = document.getElementById('cot-kilos-unidad');
         if (!selectEl || !costoEl) return;
 
@@ -1060,10 +1141,13 @@
         if (opt) {
             const costo = Number(opt.getAttribute('data-costo') || 0);
             const nombreBase = opt.getAttribute('data-nombre') || '';
+            const kilos = Number(kilosEl?.value) || 0.25;
             costoEl.value = costo.toFixed(2);
-            const gramos = Math.round((Number(kilosEl?.value) || 0.25) * 1000);
             if (nombreEl && (!nombreEl.value.trim() || !ESTADO_NODOS.propuestaActivaId)) {
-                nombreEl.value = `${nombreBase.replace(/\s*\(Mix\)\s*/i, ' ')} x ${gramos}g`.replace(/\s+/g, ' ').trim();
+                nombreEl.value = nombreBase.replace(/\s*\(Mix\)\s*/i, ' ').replace(/\s+/g, ' ').trim();
+            }
+            if (bunkerNomEl && (!bunkerNomEl.value.trim() || !ESTADO_NODOS.catalogoEditandoId)) {
+                bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, ESTADO_NODOS.flujoSeleccionadoMesa);
             }
         }
         recalcularMesaCotizacionEnVivo();
@@ -1072,12 +1156,20 @@
     function fijarGramajeRapido(kilos) {
         const kilosEl = document.getElementById('cot-kilos-unidad');
         const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         if (kilosEl) {
             kilosEl.value = Number(kilos).toFixed(2);
         }
+        const etiquetaGramos = kilos >= 1 ? `${kilos}kg` : `${Math.round(kilos * 1000)}g`;
         if (nombreEl && nombreEl.value) {
-            const etiquetaGramos = kilos >= 1 ? `${kilos}kg` : `${Math.round(kilos * 1000)}g`;
-            nombreEl.value = nombreEl.value.replace(/x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, `x ${etiquetaGramos}`);
+            nombreEl.value = nombreEl.value.replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '').trim();
+        }
+        if (bunkerNomEl && bunkerNomEl.value) {
+            if (/x\s*\d+(\.\d+)?\s*(g|gr|kg)/i.test(bunkerNomEl.value)) {
+                bunkerNomEl.value = bunkerNomEl.value.replace(/x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, `x ${etiquetaGramos}`);
+            } else {
+                bunkerNomEl.value = `${bunkerNomEl.value.trim()} x ${etiquetaGramos}`;
+            }
         }
         recalcularMesaCotizacionEnVivo();
     }
@@ -1094,13 +1186,15 @@
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const kilosEl = document.getElementById('cot-kilos-unidad');
 
         if (selectEl) selectEl.value = String(item.id);
         const costoVivo = obtenerCostoVivoIngredientePizarra(item.id, item.costo_kg);
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
-        const gramos = Math.round((Number(kilosEl?.value) || 0.25) * 1000);
-        if (nombreEl) nombreEl.value = `${item.nombre.replace(/\s*\(Mix\)\s*/i, ' ')} Familiar x ${gramos}g`.replace(/\s+/g, ' ');
+        const kilos = Number(kilosEl?.value) || 0.25;
+        if (nombreEl) nombreEl.value = item.nombre.replace(/\s*\(Mix\)\s*/i, ' ').replace(/\s+/g, ' ').trim();
+        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(item.nombre, kilos, item.flujo);
         recalcularMesaCotizacionEnVivo();
     }
 
@@ -1118,6 +1212,7 @@
         const costoEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
         const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const catEl = document.getElementById('cot-categoria');
         const envEl = document.getElementById('cot-envase-select');
         const segEl = document.getElementById('cot-segundos-mo');
@@ -1134,9 +1229,11 @@
             ? obtenerCostoVivoIngredientePizarra(prop.ingrediente_sugerido_id, prop.ingrediente_sugerido_costo_kg)
             : Number(prop.ingrediente_sugerido_costo_kg || 10000);
 
+        const kilosSug = Number(prop.kilos_sugeridos || 0.25);
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
-        if (kilosEl) kilosEl.value = Number(prop.kilos_sugeridos || 0.25).toFixed(2);
-        if (nombreEl) nombreEl.value = prop.nombre_sugerido || '';
+        if (kilosEl) kilosEl.value = kilosSug.toFixed(2);
+        if (nombreEl) nombreEl.value = (prop.nombre_sugerido || '').replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '').trim();
+        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(prop.ingrediente_sugerido_nombre || prop.nombre_sugerido, kilosSug, prop.flujo_sugerido);
         if (catEl) catEl.value = prop.categoria_sugerida || 'Frutos Secos';
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
         if (segEl && prop.segundos_estimados) segEl.value = Number(prop.segundos_estimados);
@@ -1159,11 +1256,14 @@
         const costoEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
         const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
+        const compMayEl = document.getElementById('cot-compartido-mayorista');
         const skuEl = document.getElementById('cot-sku-nodo');
         const catEl = document.getElementById('cot-categoria');
         const envEl = document.getElementById('cot-envase-select');
         const segEl = document.getElementById('cot-segundos-mo');
         const margenL = document.getElementById('cot-margen-lamda');
+        const iibbEl = document.getElementById('cot-iibb-pct');
         const margenG = document.getElementById('cot-margen-gestor');
         const notasEl = document.getElementById('cot-notas-tecnicas');
 
@@ -1171,11 +1271,14 @@
         if (costoEl) costoEl.value = Number(cat.costo_insumo_kg_vivo || cat.costo_insumo_kg).toFixed(2);
         if (kilosEl) kilosEl.value = Number(cat.kilos_unidad).toFixed(2);
         if (nombreEl) nombreEl.value = cat.nombre_publico;
+        if (bunkerNomEl) bunkerNomEl.value = cat.bunker_descripcion_generada || sugerirNomenclaturaPosicionalFrontend(cat.nombre_publico, cat.kilos_unidad, cat.flujo_lamda);
+        if (compMayEl) compMayEl.value = Boolean(cat.compartido_mayorista) ? 'true' : 'false';
         if (skuEl) skuEl.value = cat.sku_nodo;
         if (catEl) catEl.value = cat.categoria_familiar || 'Frutos Secos';
         if (envEl && cat.insumo_envase_id) envEl.value = String(cat.insumo_envase_id);
         if (segEl) segEl.value = Number(cat.segundos_fraccionamiento || 35);
         if (margenL) margenL.value = Number(cat.margen_lamda_pct || 22);
+        if (iibbEl) iibbEl.value = Number(cat.iibb_pct || 4);
         if (margenG) margenG.value = Number(cat.margen_sugerido_gestor_pct || 28);
         if (notasEl) notasEl.value = cat.notas_tecnicas || '';
 
@@ -1206,6 +1309,8 @@
                 propuesta_id: ESTADO_NODOS.propuestaActivaId || null,
                 sku_nodo: document.getElementById('cot-sku-nodo')?.value || '',
                 nombre_publico: document.getElementById('cot-nombre-publico')?.value || '',
+                bunker_descripcion_generada: document.getElementById('cot-bunker-nomenclatura')?.value || '',
+                compartido_mayorista: document.getElementById('cot-compartido-mayorista')?.value === 'true',
                 categoria_familiar: document.getElementById('cot-categoria')?.value || 'Frutos Secos',
                 presentacion_etiqueta: kilos >= 1 ? `Bolsa ${kilos}kg` : `Bolsa ${Math.round(kilos * 1000)}g`,
                 flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa,
@@ -1221,7 +1326,7 @@
                 valor_hora_aplicado: Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000),
                 margen_lamda_pct: Number(document.getElementById('cot-margen-lamda')?.value || 22),
                 iva_pct: Number(document.getElementById('cot-iva-pct')?.value || 21),
-                iibb_pct: Number(document.getElementById('cot-iibb-pct')?.value || 3.5),
+                iibb_pct: Number(document.getElementById('cot-iibb-pct')?.value || 4),
                 margen_sugerido_gestor_pct: Number(document.getElementById('cot-margen-gestor')?.value || 28),
                 notas_tecnicas: document.getElementById('cot-notas-tecnicas')?.value || ''
             };
@@ -1239,12 +1344,14 @@
             if (window.Swal) {
                 await Swal.fire({
                     icon: 'success',
-                    title: 'Precio Base Nodo Aprobado',
+                    title: 'Artículo Sincronizado con Búnker y Nodos',
                     html: `
-                        <div style="text-align:left; font-size:0.9rem;">
-                            <p><strong>${escaparHtml(data.articulo.nombre_publico)}</strong> (<code>${escaparHtml(data.articulo.sku_nodo)}</code>)</p>
-                            <p>✅ <strong>Precio Base LAMDA → Nodo:</strong> ${fmtMoneda(data.calculo.precio_base_nodo_final)}</p>
-                            <p>🏘️ <strong>Precio Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)}</p>
+                        <div style="text-align:left; font-size:0.88rem; line-height:1.5;">
+                            <p>🏛️ <strong>Nomenclatura Búnker (${escaparHtml(data.articulo.bunker_familia_nombre || 'Familia')}):</strong><br>
+                            <code style="color:#38bdf8;">${escaparHtml(data.articulo.bunker_descripcion_generada || data.articulo.nombre_publico)}</code> (<code>${escaparHtml(data.articulo.sku_nodo)}</code>)</p>
+                            <p>🏘️ <strong>Alias Tienda Vecinal:</strong> ${escaparHtml(data.articulo.nombre_publico)} (${escaparHtml(data.articulo.presentacion_etiqueta)})</p>
+                            <p>✅ <strong>Precio Lista Base Nodos:</strong> ${fmtMoneda(data.calculo.precio_base_nodo_final)}</p>
+                            <p>🛒 <strong>Precio Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)}</p>
                         </div>
                     `,
                     background: '#151e2e',

@@ -884,6 +884,58 @@ document.addEventListener('click', (e) => {
     }
 });
 
+window.bunkerCanalComercialActivo = window.bunkerCanalComercialActivo || 'MAYORISTA';
+window.listaPrecioNodosId = null;
+window.listaPrecioMayoristaDefaultId = 1;
+
+window.actualizarEstilosCanalComercialBunker = function() {
+    const canal = window.bunkerCanalComercialActivo || 'MAYORISTA';
+    const btnMay = document.getElementById('btn-canal-bunker-mayorista');
+    const btnNod = document.getElementById('btn-canal-bunker-nodos');
+    const btnTod = document.getElementById('btn-canal-bunker-todos');
+    const infoNodos = document.getElementById('bunker-canal-nodos-info');
+
+    if (btnMay) {
+        const act = canal === 'MAYORISTA';
+        btnMay.style.background = act ? '#0284c7' : '#f8fafc';
+        btnMay.style.color = act ? '#ffffff' : '#334155';
+        btnMay.style.borderColor = act ? '#0284c7' : '#cbd5e1';
+    }
+    if (btnNod) {
+        const act = canal === 'NODOS';
+        btnNod.style.background = act ? '#16a34a' : '#f0fdf4';
+        btnNod.style.color = act ? '#ffffff' : '#166534';
+        btnNod.style.borderColor = act ? '#15803d' : '#86efac';
+    }
+    if (btnTod) {
+        const act = canal === 'TODOS';
+        btnTod.style.background = act ? '#334155' : '#f8fafc';
+        btnTod.style.color = act ? '#ffffff' : '#475569';
+        btnTod.style.borderColor = act ? '#1e293b' : '#cbd5e1';
+    }
+    if (infoNodos) {
+        infoNodos.style.display = canal === 'NODOS' ? 'inline-flex' : 'none';
+    }
+};
+
+window.cambiarCanalComercialBunker = function(nuevoCanal) {
+    window.bunkerCanalComercialActivo = nuevoCanal || 'MAYORISTA';
+    window.actualizarEstilosCanalComercialBunker();
+
+    const selectLista = document.getElementById('filtro-lista-precios');
+    if (window.bunkerCanalComercialActivo === 'NODOS' && window.listaPrecioNodosId) {
+        listaSeleccionadaGlobal = Number(window.listaPrecioNodosId);
+        if (selectLista) selectLista.value = String(window.listaPrecioNodosId);
+    } else if (window.bunkerCanalComercialActivo === 'MAYORISTA' && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId)) {
+        listaSeleccionadaGlobal = Number(window.listaPrecioMayoristaDefaultId || 1);
+        if (selectLista) selectLista.value = String(listaSeleccionadaGlobal);
+    }
+
+    if (typeof window.aplicarFiltrosYOrdenamiento === 'function') {
+        window.aplicarFiltrosYOrdenamiento();
+    }
+};
+
 async function cargarListasPreciosFiltro() {
     try {
         const res = await fetch('/api/logistica/bunker/listas');
@@ -892,10 +944,20 @@ async function cargarListasPreciosFiltro() {
         
         if (res.ok && result.success && result.data.length > 0) {
             select.innerHTML = '';
+            const listaNodosObj = result.data.find(l => String(l.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS');
+            if (listaNodosObj) {
+                window.listaPrecioNodosId = Number(listaNodosObj.id);
+            }
+            const primeraMay = result.data.find(l => String(l.canal_comercial || 'MAYORISTA').toUpperCase() !== 'NODOS');
+            if (primeraMay) {
+                window.listaPrecioMayoristaDefaultId = Number(primeraMay.id);
+            }
+
             result.data.forEach(lista => {
                 const opt = document.createElement('option');
                 opt.value = lista.id;
-                opt.textContent = lista.nombre;
+                const esNodos = String(lista.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS';
+                opt.textContent = esNodos ? `🏘️ ${lista.nombre}` : lista.nombre;
                 select.appendChild(opt);
             });
 
@@ -909,15 +971,21 @@ async function cargarListasPreciosFiltro() {
             }
 
             listaSeleccionadaGlobal = parseInt(select.value) || 1;
+            if (window.listaPrecioNodosId && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId)) {
+                window.bunkerCanalComercialActivo = 'NODOS';
+            }
+            window.actualizarEstilosCanalComercialBunker();
             
             // Inicializar gp_listasFinancieras con datos base para permitir previsualizar/imprimir directamente
             gp_listasFinancieras = result.data.map(lista => ({
                 lista_id: lista.id,
-                nombre_lista: lista.nombre
+                nombre_lista: lista.nombre,
+                canal_comercial: lista.canal_comercial || 'MAYORISTA'
             }));
             window.listasCatalogoMaestras = result.data.map(lista => ({
                 lista_id: Number(lista.id),
-                nombre_lista: lista.nombre
+                nombre_lista: lista.nombre,
+                canal_comercial: lista.canal_comercial || 'MAYORISTA'
             }));
             gp_activeTabIdx = 0;
         } else {
@@ -932,6 +1000,13 @@ window.cambiarListaPreciosDataGrid = async function(nuevaListaId) {
     listaSeleccionadaGlobal = parseInt(nuevaListaId);
     localStorage.setItem('bunker_lista_seleccionada_id', listaSeleccionadaGlobal);
     console.log(`🚨 [VIGÍA DEPURADOR - AUDITORÍA F12] Preferencia de Lista de Precios guardada en localStorage: ID=${listaSeleccionadaGlobal}`);
+
+    if (window.listaPrecioNodosId && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId)) {
+        window.bunkerCanalComercialActivo = 'NODOS';
+    } else if (window.bunkerCanalComercialActivo === 'NODOS') {
+        window.bunkerCanalComercialActivo = 'MAYORISTA';
+    }
+    window.actualizarEstilosCanalComercialBunker();
     
     // Sincronizar el tab activo del gestor financiero
     if (gp_listasFinancieras && gp_listasFinancieras.length > 0) {
@@ -1742,6 +1817,15 @@ function renderizarGrid(articulos) {
         const ldnInfo = window.determinarLineaDeNegocio(art);
         const badgeLDN = `<span class="badge-ldn" title="${ldnInfo.nombre}" style="display: inline-block; font-size: 0.70em; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-left: 6px; vertical-align: middle; border: 1px solid ${ldnInfo.borderColor}; background: ${ldnInfo.bgColor}; color: ${ldnInfo.color}; cursor: default; letter-spacing: 0.5px;">${ldnInfo.tag}</span>`;
         const badgeExcluido = disponibleActiva ? '' : ' <span class="badge badge-excluido-row" style="background-color: #64748b; color: white; padding: 2px 6px; font-size: 0.75em; border-radius: 4px; vertical-align: middle; margin-left: 5px;">🚫 Excluido</span>';
+        const aliasVecino = (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object')
+            ? art.propiedades_dinamicas.alias_comercial_vecino
+            : null;
+        const presNodo = (art.propiedades_dinamicas && typeof art.propiedades_dinamicas === 'object')
+            ? art.propiedades_dinamicas.presentacion_etiqueta_nodo
+            : null;
+        const badgeAliasVecino = aliasVecino
+            ? `<div style="margin-top: 3px; font-family: sans-serif; font-size: 0.76em; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 1px 6px; display: inline-block; font-weight: 700;" title="Alias Comercial amigable que ven el Gestor y el Vecino en la Tienda del Nodo Barrial y en la etiqueta térmica">🏘️ Vecino: "${aliasVecino}"${presNodo ? ` · ${presNodo}` : ''}</div>`
+            : '';
 
         trMain.innerHTML = `
             <td style="text-align: center; width: 40px;">
@@ -1752,7 +1836,7 @@ function renderizarGrid(articulos) {
                 <strong>${art.descripcion}</strong>${badgeLDN}${badgeExcluido}<br>
                 <span style="font-size: 0.8em; color: #64748b;">${art.rubro || 'Sin Rubro'} > ${art.sub_rubro || ''}</span>
             </td>
-            <td class="td-art-nomenclatura" style="font-family: monospace; font-size: 0.9em;"><span class="nom-text">${art.descripcion_generada || '-'}</span>${badgeExcluido}</td>
+            <td class="td-art-nomenclatura" style="font-family: monospace; font-size: 0.9em;"><span class="nom-text">${art.descripcion_generada || '-'}</span>${badgeExcluido}${badgeAliasVecino ? `<br>${badgeAliasVecino}` : ''}</td>
             <td>${propSummary}</td>
             <td style="text-align: center; color: #475569;">${ivaStr}</td>
             <td style="text-align: right; color: #0f172a;">${costoSivaStr}</td>
@@ -7947,6 +8031,42 @@ window.aplicarFiltrosYOrdenamiento = function() {
 
         let articulosFiltrados = Array.isArray(articulosBunkerGlobal) ? [...articulosBunkerGlobal] : [];
 
+        // 1.1. Actualizar contadores por Canal Comercial y filtrar según canal activo (Mayorista vs. Nodos vs. Todos)
+        if (typeof window.calcularResumenDisponibilidadArticulo === 'function') {
+            let countMay = 0;
+            let countNodos = 0;
+            const todosCount = articulosFiltrados.length;
+
+            articulosFiltrados.forEach(art => {
+                const resD = window.calcularResumenDisponibilidadArticulo(art);
+                if (!resD.esExclusivoNodos) countMay++;
+                if (resD.disponibleEnNodos) countNodos++;
+            });
+
+            const bMay = document.getElementById('badge-canal-bunker-mayorista');
+            const bNod = document.getElementById('badge-canal-bunker-nodos');
+            const bTod = document.getElementById('badge-canal-bunker-todos');
+            if (bMay) bMay.textContent = String(countMay);
+            if (bNod) bNod.textContent = String(countNodos);
+            if (bTod) bTod.textContent = String(todosCount);
+
+            const canalActivo = window.bunkerCanalComercialActivo || 'MAYORISTA';
+            if (!window.filtroRadarLdn1) {
+                if (canalActivo === 'MAYORISTA') {
+                    // Ocultar fracciones exclusivas de Nodos (0/6 en Mayorista y activas en Nodos) para no ensuciar la grilla mayorista
+                    articulosFiltrados = articulosFiltrados.filter(art => {
+                        const resD = window.calcularResumenDisponibilidadArticulo(art);
+                        return !resD.esExclusivoNodos;
+                    });
+                } else if (canalActivo === 'NODOS') {
+                    articulosFiltrados = articulosFiltrados.filter(art => {
+                        const resD = window.calcularResumenDisponibilidadArticulo(art);
+                        return resD.disponibleEnNodos;
+                    });
+                }
+            }
+        }
+
         // 1.2. Filtrado del Radar LDN 1 (Bulto Cerrado Directo: Stock vs Oferta Activa)
         if (window.filtroRadarLdn1) {
             articulosFiltrados = articulosFiltrados.filter(art => {
@@ -8185,58 +8305,116 @@ window.obtenerListasCatalogoMaestras = function() {
 
 window.calcularResumenDisponibilidadArticulo = function(art) {
     const listas = window.obtenerListasCatalogoMaestras();
-    const totalListas = listas.length;
-    let activasCount = 0;
+    const listasMayoristas = listas.filter(l => String(l.canal_comercial || 'MAYORISTA').toUpperCase() !== 'NODOS');
+    const listasNodos = listas.filter(l => String(l.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS');
+
+    let activasMayorista = 0;
+    let disponibleEnNodos = false;
     let disponibleActiva = true;
 
     listas.forEach(l => {
+        const esListaNodos = String(l.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS';
         const m = (art && Array.isArray(art.margenes))
             ? art.margenes.find(x => Number(x.lista_id) === Number(l.lista_id))
             : null;
-        const disp = m ? (m.disponible !== false) : true;
-        if (disp) activasCount++;
+        const disp = m ? (m.disponible !== false) : !esListaNodos;
+        if (esListaNodos) {
+            if (disp) disponibleEnNodos = true;
+        } else {
+            if (disp) activasMayorista++;
+        }
         if (Number(l.lista_id) === Number(listaSeleccionadaGlobal)) {
             disponibleActiva = disp;
         }
     });
 
-    return { disponibleActiva, activasCount, totalListas, listas };
+    const totalMayorista = listasMayoristas.length || listas.length;
+    const esVistaNodos = (window.bunkerCanalComercialActivo === 'NODOS') ||
+        (window.listaPrecioNodosId && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId));
+
+    const activasCount = esVistaNodos ? (disponibleEnNodos ? 1 : 0) : activasMayorista;
+    const totalListas = esVistaNodos ? Math.max(1, listasNodos.length) : totalMayorista;
+    const esExclusivoNodos = Boolean(disponibleEnNodos && activasMayorista === 0);
+    const esCompartidoNodos = Boolean(disponibleEnNodos && activasMayorista > 0);
+
+    return {
+        disponibleActiva,
+        activasCount,
+        totalListas,
+        listas,
+        activasMayorista,
+        totalMayorista,
+        disponibleEnNodos,
+        esExclusivoNodos,
+        esCompartidoNodos,
+        esVistaNodos
+    };
 };
 
 window.generarHtmlBotonCatalogo = function(art) {
     if (!art) return '';
-    const { disponibleActiva, activasCount, totalListas } = window.calcularResumenDisponibilidadArticulo(art);
+    const {
+        disponibleActiva,
+        activasCount,
+        totalListas,
+        activasMayorista,
+        totalMayorista,
+        disponibleEnNodos,
+        esCompartidoNodos,
+        esVistaNodos
+    } = window.calcularResumenDisponibilidadArticulo(art);
     const isOpen = window._popoverListasArticuloId === art.articulo_id && !!document.getElementById('bunker-listas-popover');
     const openClase = isOpen ? 'popover-abierto' : '';
 
-    // 3 estados visuales claros:
-    // 1) estado-activo (Verde): Activo en la lista actual
-    // 2) estado-parcial (Ámbar): Oculto en la lista actual, pero SIGUE ACTIVO en otras listas (activasCount > 0)
-    // 3) estado-inactivo (Gris): Apagado en absolutamente todas las listas (0/totalListas)
     let estadoClase = 'estado-inactivo';
     let labelTexto = 'Apagado';
-    let tooltipTexto = `Apagado en todas las listas (0 de ${totalListas}) — Click para gestionar catálogos`;
+    let tooltipTexto = `Apagado en las listas mayoristas (0 de ${totalMayorista}) — Click para gestionar catálogos`;
 
-    if (disponibleActiva) {
+    if (esVistaNodos) {
+        if (disponibleEnNodos) {
+            estadoClase = 'estado-activo';
+            labelTexto = '🏘️ En Nodo';
+            tooltipTexto = esCompartidoNodos
+                ? `Activo en Lista Base Nodos Barriales + ${activasMayorista}/${totalMayorista} listas mayoristas`
+                : `Exclusivo de Lista Base Nodos Barriales (0/${totalMayorista} mayoristas)`;
+        } else {
+            estadoClase = 'estado-inactivo';
+            labelTexto = 'Fuera Nodo';
+            tooltipTexto = 'No incluido en Lista Base Nodos Barriales';
+        }
+    } else if (disponibleActiva) {
         estadoClase = 'estado-activo';
         labelTexto = 'Activo';
-        tooltipTexto = `Habilitado en la lista actual (${activasCount} de ${totalListas} listas activas) — Click para gestionar catálogos`;
+        tooltipTexto = `Habilitado en la lista actual (${activasCount} de ${totalListas} listas mayoristas activas)${disponibleEnNodos ? ' + Lista Base Nodos Barriales' : ''} — Click para gestionar catálogos`;
     } else if (activasCount > 0) {
         estadoClase = 'estado-parcial';
         labelTexto = 'En otras';
-        tooltipTexto = `Excluido de la lista actual, pero SIGUE ACTIVO en ${activasCount} de ${totalListas} listas — Click para ver o apagar`;
+        tooltipTexto = `Excluido de la lista actual, pero SIGUE ACTIVO en ${activasCount} de ${totalListas} listas mayoristas${disponibleEnNodos ? ' + Lista Base Nodos Barriales' : ''} — Click para ver o apagar`;
+    } else if (disponibleEnNodos) {
+        estadoClase = 'estado-parcial';
+        labelTexto = 'Solo Nodo';
+        tooltipTexto = `Fracción exclusiva de Lista Base Nodos Barriales (0 de ${totalListas} listas mayoristas)`;
     }
 
+    const badgeCompartidoHtml = (!esVistaNodos && disponibleEnNodos)
+        ? `<span style="display:inline-block; background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:0.70em; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle;" title="Habilitado también en Lista Base Nodos Barriales">🏘️ +Nodo</span>`
+        : (esVistaNodos && esCompartidoNodos)
+            ? `<span style="display:inline-block; background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; font-size:0.70em; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle;" title="Artículo compartido también con ${activasMayorista}/${totalMayorista} listas mayoristas">🏢 +${activasMayorista}/${totalMayorista} May.</span>`
+            : '';
+
     return `
-        <button type="button"
-            class="btn-catalogo-listas ${estadoClase} ${openClase}"
-            data-articulo-id="${art.articulo_id}"
-            onclick="window.mostrarPopoverListas(event, '${art.articulo_id}')"
-            title="${tooltipTexto}">
-            <span class="btn-catalogo-dot"></span>
-            <span class="btn-catalogo-label">${labelTexto}</span>
-            <span class="btn-catalogo-count">${activasCount}/${totalListas}</span>
-        </button>
+        <div style="display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px;">
+            <button type="button"
+                class="btn-catalogo-listas ${estadoClase} ${openClase}"
+                data-articulo-id="${art.articulo_id}"
+                onclick="window.mostrarPopoverListas(event, '${art.articulo_id}')"
+                title="${tooltipTexto}">
+                <span class="btn-catalogo-dot"></span>
+                <span class="btn-catalogo-label">${labelTexto}</span>
+                <span class="btn-catalogo-count">${activasCount}/${totalListas}</span>
+            </button>
+            ${badgeCompartidoHtml}
+        </div>
     `;
 };
 
@@ -8422,7 +8600,8 @@ window.mostrarPopoverListas = function(event, articuloId) {
         const m = Array.isArray(art.margenes)
             ? art.margenes.find(x => Number(x.lista_id) === Number(lista.lista_id))
             : null;
-        const disponible = m ? (m.disponible !== false) : true;
+        const esListaNodos = String(lista.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS';
+        const disponible = m ? (m.disponible !== false) : !esListaNodos;
         const isFocused = Number(lista.lista_id) === Number(listaSeleccionadaGlobal);
         const precioNum = m && parseFloat(m.precio_final) > 0 ? parseFloat(m.precio_final) : 0;
         const precioStr = precioNum > 0 ? fmtPrecio.format(precioNum) : '';

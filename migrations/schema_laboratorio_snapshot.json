@@ -2679,6 +2679,16 @@
         "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "canal_comercial": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'MAYORISTA'::character varying"
       }
     },
     "bunker_lotes_destinos": {
@@ -11915,6 +11925,66 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "nomenclatura_bunker": {
+        "ordinal_position": 33,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 220,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "familia_bunker_id": {
+        "ordinal_position": 34,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "familia_bunker_nombre": {
+        "ordinal_position": 35,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_principal_bunker": {
+        "ordinal_position": 36,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "compartido_mayorista": {
+        "ordinal_position": 37,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "false"
+      },
+      "listas_mayoristas_compartidas": {
+        "ordinal_position": 38,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'[]'::jsonb"
       }
     },
     "nodos_liquidaciones_lote": {
@@ -12651,6 +12721,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "lista_precio_bunker_id": {
+        "ordinal_position": 30,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_movimientos_cta_cte": {

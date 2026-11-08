@@ -89,8 +89,231 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet) {
 }
 
 /**
- * Fórmula exacta del Cotizador de Nodos LAMDA:
- * PrecioBaseNodo = ((CostoInsumoKg * KilosFraccion + CostoEnvase) * (1 + MargenLAMDA%/100) + CostoTiempoMO) * (1 + (IVA% + IIBB%)/100)
+ * Construye la taxonomía real (Familia Búnker, Artículo Principal, Nomenclatura Posicional
+ * y ejes de propiedades_dinamicas.posiciones) junto con el Alias Comercial del Vecino,
+ * garantizando que ningún artículo de Nodo use rubros o familias ficticias ("NODOS_BARRIALES").
+ */
+function construirTaxonomiaPosicionalNodo(art = {}) {
+    const sku = String(art.sku_nodo || '').trim().toUpperCase();
+    const kilos = Math.max(0.001, Number(art.kilos_unidad || 0.25));
+    const gramos = Math.round(kilos * 1000);
+    const sufijoPeso = gramos >= 1000 && gramos % 1000 === 0 ? `${gramos / 1000}kg` : `${gramos}g`;
+    const ingId = art.ingrediente_origen_id ? Number(art.ingrediente_origen_id) : null;
+    const flujo = Number(art.flujo_lamda || 2);
+    const textoRef = `${art.nombre_publico || ''} ${art.ing_origen_nombre || ''} ${art.nomenclatura_bunker || ''}`.toLowerCase();
+
+    // Mapeo determinístico de los 5 artículos semilla y reglas posicionales por familia real
+    if (sku === 'NB-ALM-250G' || ingId === 1 || textoRef.includes('almendra')) {
+        return {
+            familia_id: 1,
+            familia_nombre: 'Frutos Secos',
+            rubro: 'FRUTOS SECOS',
+            sub_rubro: 'ALMENDRAS',
+            articulo_principal: 'ALMENDRA',
+            nomenclatura_bunker: art.nomenclatura_bunker || `ALMENDRA Peladas NP 25-27 x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || 'Almendra Nonpareil')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+Californiana\s+x\s+\d+g$/i, '')
+                .trim() || 'Almendra Nonpareil',
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
+            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+            posiciones: {
+                conformacion: 'Peladas',
+                variedad: 'NP',
+                calibre: '25-27'
+            }
+        };
+    }
+
+    if (sku === 'NB-MIX-PASAS-500G' || ingId === 30 || (textoRef.includes('mix') && textoRef.includes('pasa') && !textoRef.includes('sin pasa'))) {
+        return {
+            familia_id: 1,
+            familia_nombre: 'Frutos Secos',
+            rubro: 'FRUTOS SECOS',
+            sub_rubro: 'MIX',
+            articulo_principal: 'Mix',
+            nomenclatura_bunker: art.nomenclatura_bunker || `Mix F/SCOS Con Pasas x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || 'Mix Frutos Secos con Pasas')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+Familiar\s+x\s+\d+g$/i, '')
+                .trim() || 'Mix Frutos Secos con Pasas',
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
+            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+            posiciones: {
+                conformacion: 'F/SCOS',
+                variedad: 'Con Pasas'
+            }
+        };
+    }
+
+    if (ingId === 31 || (textoRef.includes('mix') && textoRef.includes('sin pasa'))) {
+        return {
+            familia_id: 1,
+            familia_nombre: 'Frutos Secos',
+            rubro: 'FRUTOS SECOS',
+            sub_rubro: 'MIX',
+            articulo_principal: 'Mix',
+            nomenclatura_bunker: art.nomenclatura_bunker || `Mix F/SCOS Sin Pasas x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || 'Mix Premium Sin Pasas')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+x\s+\d+g$/i, '')
+                .trim() || 'Mix Premium Sin Pasas',
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
+            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+            posiciones: {
+                conformacion: 'F/SCOS',
+                variedad: 'Sin Pasas'
+            }
+        };
+    }
+
+    if (sku === 'NB-CAJU-TOST-250G' || ingId === 18 || textoRef.includes('caju') || textoRef.includes('cajú')) {
+        return {
+            familia_id: 1,
+            familia_nombre: 'Frutos Secos',
+            rubro: 'FRUTOS SECOS',
+            sub_rubro: 'CASTAÑAS',
+            articulo_principal: 'Castañas de Caju',
+            nomenclatura_bunker: art.nomenclatura_bunker || `Castañas de Caju W4 Tostado x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || 'Castaña de Cajú Tostada')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+Artesanal\s+x\s+\d+g$/i, '')
+                .trim() || 'Castaña de Cajú Tostada',
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
+            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+            posiciones: {
+                variedad: 'W4',
+                tratamiento: 'Tostado'
+            }
+        };
+    }
+
+    if (ingId === 25 || textoRef.includes('nuez')) {
+        return {
+            familia_id: 1,
+            familia_nombre: 'Frutos Secos',
+            rubro: 'FRUTOS SECOS',
+            sub_rubro: 'NUECES',
+            articulo_principal: 'NUEZ',
+            nomenclatura_bunker: art.nomenclatura_bunker || `NUEZ Peladas Mariposa Extra Light x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || 'Nuez Mariposa Extra Light')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+(Familiar\s+)?x\s+\d+g$/i, '')
+                .trim() || 'Nuez Mariposa Extra Light',
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
+            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+            posiciones: {
+                conformacion: 'Peladas',
+                variedad: 'Mariposa',
+                color: 'Extra Light'
+            }
+        };
+    }
+
+    if (sku === 'NB-BARRITA-PACK6' || ingId === 141 || flujo === 5 || textoRef.includes('barrita') || textoRef.includes('barra')) {
+        const compartido = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : true;
+        const listasComp = Array.isArray(art.listas_mayoristas_compartidas) && art.listas_mayoristas_compartidas.length > 0
+            ? art.listas_mayoristas_compartidas
+            : (compartido ? [5, 6] : []);
+        return {
+            familia_id: 27,
+            familia_nombre: 'Cereales',
+            rubro: 'CEREALES',
+            sub_rubro: 'GRANOLA',
+            articulo_principal: 'Granolas',
+            nomenclatura_bunker: art.nomenclatura_bunker || 'BARRA Flor 6 x 50g',
+            nombre_publico_limpio: (art.nombre_publico || 'Pack 6 Barritas Energéticas')
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/^Pack Familiar 6 Barritas Energéticas.*$/i, 'Pack 6 Barritas Energéticas')
+                .trim() || 'Pack 6 Barritas Energéticas',
+            presentacion_etiqueta: art.presentacion_etiqueta || 'Pack 6 u. (300g)',
+            es_pack: true,
+            pack_unidades: 6,
+            compartido_mayorista: compartido,
+            listas_mayoristas_compartidas: listasComp,
+            posiciones: {
+                conformacion: 'BARRA',
+                variedad: 'Flor'
+            }
+        };
+    }
+
+    if (sku === 'NB-GRANA-SOL-500G' || ingId === 131 || ingId === 122 || flujo === 6 || textoRef.includes('granola') || textoRef.includes('grana')) {
+        const esFlor = ingId === 122 || textoRef.includes('flor');
+        const variedadGrana = esFlor ? 'Flor' : 'Sol';
+        const compartido = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : true;
+        const listasComp = Array.isArray(art.listas_mayoristas_compartidas) && art.listas_mayoristas_compartidas.length > 0
+            ? art.listas_mayoristas_compartidas
+            : (compartido ? [5, 6] : []);
+        return {
+            familia_id: 27,
+            familia_nombre: 'Cereales',
+            rubro: 'CEREALES',
+            sub_rubro: 'GRANOLA',
+            articulo_principal: 'Granolas',
+            nomenclatura_bunker: art.nomenclatura_bunker || `GRANA ${variedadGrana} x ${sufijoPeso}`,
+            nombre_publico_limpio: (art.nombre_publico || `Granola de ${variedadGrana} Crocante`)
+                .replace(/^\[NODO\]\s*/i, '')
+                .replace(/\s+con Miel\s+x\s+\d+g$/i, '')
+                .replace(/\s+x\s+\d+g$/i, '')
+                .trim() || `Granola de ${variedadGrana} Crocante`,
+            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+            es_pack: false,
+            pack_unidades: 1,
+            compartido_mayorista: compartido,
+            listas_mayoristas_compartidas: listasComp,
+            posiciones: {
+                conformacion: 'GRANA',
+                variedad: variedadGrana
+            }
+        };
+    }
+
+    // Fallback inteligente por familia real Frutos Secos
+    const nombreBase = String(art.nombre_publico || art.ing_origen_nombre || sku)
+        .replace(/^\[NODO\]\s*/i, '')
+        .replace(/\s+x\s+\d+(g|kg)$/i, '')
+        .trim();
+    return {
+        familia_id: Number(art.familia_bunker_id || 1),
+        familia_nombre: art.familia_bunker_nombre || 'Frutos Secos',
+        rubro: 'FRUTOS SECOS',
+        sub_rubro: 'FRACCIONADOS',
+        articulo_principal: art.articulo_principal_bunker || nombreBase.split(' ')[0].toUpperCase(),
+        nomenclatura_bunker: art.nomenclatura_bunker || `${nombreBase} x ${sufijoPeso}`,
+        nombre_publico_limpio: nombreBase,
+        presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+        es_pack: false,
+        pack_unidades: 1,
+        compartido_mayorista: Boolean(art.compartido_mayorista),
+        listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
+        posiciones: {
+            conformacion: 'Enteras',
+            variedad: 'Seleccionado'
+        }
+    };
+}
+
+/**
+ * Fórmula unificada del Cotizador de Nodos LAMDA y la Calculadora Financiera del Búnker (BunkerService):
+ * PrecioBaseNodoSinIVA = (CostoInsumoKg * KilosFraccion + CostoEnvase) * (1 + MargenLAMDA%/100) + CostoTiempoMO
+ * PrecioBaseNodoFinal  = Math.round(PrecioBaseNodoSinIVA * (1 + IVA%/100))
+ * IIBB (4% sobre Neto sin IVA) se descuenta de la ganancia bruta para obtener la Ganancia Neta Real LAMDA.
  */
 function calcularEstructuraCostosNodo(params = {}) {
     const costoInsumoKg = Math.max(0, Number(params.costo_insumo_kg) || 0);
@@ -101,22 +324,26 @@ function calcularEstructuraCostosNodo(params = {}) {
     const valorHoraAplicado = Math.max(0, Number(params.valor_hora_aplicado ?? 7000));
     const margenLamdaPct = Math.max(0, Number(params.margen_lamda_pct ?? 22));
     const ivaPct = Math.max(0, Number(params.iva_pct ?? 21));
-    const iibbPct = Math.max(0, Number(params.iibb_pct ?? 3.5));
+    const iibbPct = Math.max(0, Number(params.iibb_pct ?? 4.0));
     const margenSugeridoGestorPct = Math.max(0, Number(params.margen_sugerido_gestor_pct ?? 28));
 
     const costoInsumoFraccion = Number((costoInsumoKg * kilosUnidad).toFixed(2));
     const costoEnvaseAplicado = Number((costoEnvaseUnitario * cantidadEnvases).toFixed(2));
     const costoManoObraAplicado = Number(((segundosFraccionamiento / 3600) * valorHoraAplicado).toFixed(2));
 
-    const costoMateriaYEnvase = costoInsumoFraccion + costoEnvaseAplicado;
+    const costoMateriaYEnvase = Number((costoInsumoFraccion + costoEnvaseAplicado).toFixed(2));
     const costoPuroTotal = Number((costoMateriaYEnvase + costoManoObraAplicado).toFixed(2));
 
-    const gananciaLamdaNeta = Number((costoMateriaYEnvase * (margenLamdaPct / 100)).toFixed(2));
-    const precioBaseNodoNeto = Number((costoMateriaYEnvase + gananciaLamdaNeta + costoManoObraAplicado).toFixed(2));
+    const gananciaLamdaBruta = Number((costoMateriaYEnvase * (margenLamdaPct / 100)).toFixed(2));
+    const precioBaseNodoNeto = Number((costoMateriaYEnvase + gananciaLamdaBruta + costoManoObraAplicado).toFixed(2));
 
-    const coefImpuestos = 1 + (ivaPct + iibbPct) / 100;
-    const montoImpuestos = Number((precioBaseNodoNeto * ((ivaPct + iibbPct) / 100)).toFixed(2));
-    const precioBaseNodoFinal = Math.round(precioBaseNodoNeto * coefImpuestos);
+    const coefIva = 1 + (ivaPct / 100);
+    const montoIva = Number((precioBaseNodoNeto * (ivaPct / 100)).toFixed(2));
+    const precioBaseNodoFinal = Math.round(precioBaseNodoNeto * coefIva);
+
+    // IIBB como deducción de ganancia neta (idéntico a BunkerService línea 3334)
+    const montoIibb = Number((precioBaseNodoNeto * (iibbPct / 100)).toFixed(2));
+    const gananciaLamdaNeta = Number((gananciaLamdaBruta - montoIibb).toFixed(2));
 
     // Redondeo comercial amigable para vecino (múltiplo de $50)
     const rawVecino = precioBaseNodoFinal * (1 + margenSugeridoGestorPct / 100);
@@ -133,11 +360,13 @@ function calcularEstructuraCostosNodo(params = {}) {
         costo_mano_obra_aplicado: costoManoObraAplicado,
         costo_puro_total: costoPuroTotal,
         margen_lamda_pct: Number(margenLamdaPct.toFixed(2)),
+        ganancia_lamda_bruta: gananciaLamdaBruta,
         ganancia_lamda_neta: gananciaLamdaNeta,
         precio_base_nodo_neto: precioBaseNodoNeto,
         iva_pct: Number(ivaPct.toFixed(2)),
         iibb_pct: Number(iibbPct.toFixed(2)),
-        monto_impuestos: montoImpuestos,
+        monto_impuestos: montoIva,
+        monto_iibb: montoIibb,
         precio_base_nodo_final: precioBaseNodoFinal,
         margen_sugerido_gestor_pct: Number(margenSugeridoGestorPct.toFixed(2)),
         precio_sugerido_vecino: precioSugeridoVecino,
@@ -987,6 +1216,272 @@ async function asegurarEsquemaNodosBarriales() {
             }
         }
 
+        // ------------------------------------------------------------------------------------
+        // ARQUITECTURA UNIFICADA BÚNKER <-> NODOS BARRIALES (Familias Reales, Listas y Políticas)
+        // ------------------------------------------------------------------------------------
+        await client.query(`
+            ALTER TABLE public.bunker_listas_precios
+                ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA';
+
+            UPDATE public.bunker_listas_precios
+               SET canal_comercial = 'MAYORISTA'
+             WHERE canal_comercial IS NULL;
+
+            ALTER TABLE public.nodos_maestro
+                ADD COLUMN IF NOT EXISTS lista_precio_bunker_id INTEGER REFERENCES public.bunker_listas_precios(id) ON DELETE SET NULL;
+
+            ALTER TABLE public.nodos_articulos_catalogo
+                ADD COLUMN IF NOT EXISTS nomenclatura_bunker VARCHAR(220),
+                ADD COLUMN IF NOT EXISTS familia_bunker_id INTEGER,
+                ADD COLUMN IF NOT EXISTS familia_bunker_nombre VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS articulo_principal_bunker VARCHAR(120),
+                ADD COLUMN IF NOT EXISTS compartido_mayorista BOOLEAN DEFAULT false,
+                ADD COLUMN IF NOT EXISTS listas_mayoristas_compartidas JSONB DEFAULT '[]'::jsonb;
+        `);
+
+        // Asegurar Lista Oficial de Precios para Nodos Barriales en bunker_listas_precios
+        let listaNodosId = null;
+        const checkListaNodos = await client.query(
+            `SELECT id FROM public.bunker_listas_precios
+             WHERE canal_comercial = 'NODOS' OR LOWER(nombre) LIKE '%nodos barriales%'
+             ORDER BY id ASC LIMIT 1`
+        );
+        if (checkListaNodos.rows.length > 0) {
+            listaNodosId = checkListaNodos.rows[0].id;
+            await client.query(
+                `UPDATE public.bunker_listas_precios
+                 SET nombre = 'Lista Base Nodos Barriales',
+                     canal_comercial = 'NODOS',
+                     activa = true,
+                     salvavidas_habilitado = true,
+                     salvavidas_tasa_tem = 6.50,
+                     salvavidas_dias_gracia = 5,
+                     salvavidas_dias_estandar = 7,
+                     salvavidas_dias_cortesia = 2,
+                     descripcion = 'Lista oficial de transferencia LAMDA -> Gestor de Nodo Barrial. Incluye servicio de financiación de canasto en Cta. Cte. hasta liquidación de lote.',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [listaNodosId]
+            );
+        } else {
+            const insListaNodos = await client.query(
+                `INSERT INTO public.bunker_listas_precios (
+                    nombre, descripcion, activa, canal_comercial,
+                    salvavidas_habilitado, salvavidas_tasa_tem, salvavidas_dias_gracia,
+                    salvavidas_dias_estandar, salvavidas_dias_cortesia
+                 ) VALUES (
+                    'Lista Base Nodos Barriales',
+                    'Lista oficial de transferencia LAMDA -> Gestor de Nodo Barrial. Incluye servicio de financiación de canasto en Cta. Cte. hasta liquidación de lote.',
+                    true, 'NODOS', true, 6.50, 5, 7, 2
+                 ) RETURNING id`
+            );
+            listaNodosId = insListaNodos.rows[0].id;
+        }
+
+        // Vincular cada Nodo con la Lista Base Nodos Barriales en nodos_maestro y bunker_cliente_listas_precios
+        if (listaNodosId) {
+            await client.query(
+                `UPDATE public.nodos_maestro
+                 SET lista_precio_bunker_id = $1
+                 WHERE lista_precio_bunker_id IS NULL OR lista_precio_bunker_id <> $1`,
+                [listaNodosId]
+            );
+
+            const nodosConBc = await client.query(
+                `SELECT id, bunker_cliente_id FROM public.nodos_maestro WHERE bunker_cliente_id IS NOT NULL`
+            );
+            for (const nr of nodosConBc.rows) {
+                const checkClp = await client.query(
+                    `SELECT id FROM public.bunker_cliente_listas_precios
+                     WHERE bunker_cliente_id = $1 AND bunker_lista_precio_id = $2 LIMIT 1`,
+                    [nr.bunker_cliente_id, listaNodosId]
+                );
+                if (checkClp.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO public.bunker_cliente_listas_precios (bunker_cliente_id, bunker_lista_precio_id)
+                         VALUES ($1, $2)`,
+                        [nr.bunker_cliente_id, listaNodosId]
+                    );
+                }
+            }
+
+            // Sembrar Políticas de Precio y Financiación de Nodos en bunker_politicas_descuento
+            const politicasNodos = [
+                {
+                    nombre: 'Bonificación Volumen Canasto Nodo (5%)',
+                    descripcion: 'Bonifica 5% sobre el valor base del Canasto cuando el lote consolidado del Nodo supera $120.000 y tiene el lote anterior saldado.',
+                    exige_saldo_cero: true,
+                    tolerancia_saldo: 1000.00,
+                    no_acumulable: true,
+                    monto_minimo: 120000,
+                    descuento_porcentaje: 5.00,
+                    etiqueta: 'Canasto Consolidado >= $120.000'
+                },
+                {
+                    nombre: 'Financiación Ciclo Canasto en Cta. Cte. (0% hasta Rendición)',
+                    descripcion: 'Servicio financiero LAMDA incluido en el margen base: entrega del canasto en consignación/Cta. Cte. con 0% de recargo durante la ventana de reparto barrial (5 días), aplicando TEM Salvavidas solo ante mora.',
+                    exige_saldo_cero: true,
+                    tolerancia_saldo: 1000.00,
+                    no_acumulable: false,
+                    monto_minimo: 0,
+                    descuento_porcentaje: 0.00,
+                    etiqueta: 'Ciclo Canasto 5 días (0% interés)'
+                }
+            ];
+
+            for (const pol of politicasNodos) {
+                const checkPol = await client.query(
+                    `SELECT id FROM public.bunker_politicas_descuento WHERE nombre = $1 LIMIT 1`,
+                    [pol.nombre]
+                );
+                let polId;
+                if (checkPol.rows.length > 0) {
+                    polId = checkPol.rows[0].id;
+                    await client.query(
+                        `UPDATE public.bunker_politicas_descuento
+                         SET descripcion = $1, bunker_lista_precio_id = $2, activo = true, updated_at = NOW()
+                         WHERE id = $3`,
+                        [pol.descripcion, listaNodosId, polId]
+                    );
+                } else {
+                    const insPol = await client.query(
+                        `INSERT INTO public.bunker_politicas_descuento (
+                            nombre, descripcion, bunker_lista_precio_id, activo,
+                            tipo_calculo, aplica_sobre, exige_saldo_cero, tolerancia_saldo, no_acumulable, aplica_a_todas
+                         ) VALUES ($1, $2, $3, true, 'ESCALA_DIRECTA', 'NETO', $4, $5, $6, false)
+                         RETURNING id`,
+                        [pol.nombre, pol.descripcion, listaNodosId, pol.exige_saldo_cero, pol.tolerancia_saldo, pol.no_acumulable]
+                    );
+                    polId = insPol.rows[0].id;
+                }
+
+                const checkPl = await client.query(
+                    `SELECT id FROM public.bunker_politica_listas WHERE politica_id = $1 AND bunker_lista_precio_id = $2 LIMIT 1`,
+                    [polId, listaNodosId]
+                );
+                if (checkPl.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO public.bunker_politica_listas (politica_id, bunker_lista_precio_id) VALUES ($1, $2)`,
+                        [polId, listaNodosId]
+                    );
+                }
+
+                const checkTramo = await client.query(
+                    `SELECT id FROM public.bunker_politica_descuento_tramos WHERE politica_id = $1 LIMIT 1`,
+                    [polId]
+                );
+                if (checkTramo.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO public.bunker_politica_descuento_tramos (
+                            politica_id, monto_minimo, monto_maximo, descuento_porcentaje, etiqueta, orden
+                         ) VALUES ($1, $2, NULL, $3, $4, 1)`,
+                        [polId, pol.monto_minimo, pol.descuento_porcentaje, pol.etiqueta]
+                    );
+                }
+            }
+        }
+
+        // Normalizar artículos existentes del catálogo con su Familia Real, Nomenclatura Posicional y Alias Vecino limpio
+        const catExistentes = await client.query(`
+            SELECT nac.*,
+                   COALESCE(ing.costo_patron, nac.costo_insumo_kg) AS ing_costo_db,
+                   COALESCE(env.costo_patron, nac.costo_envase_aplicado) AS env_costo_db,
+                   COALESCE(ct.valor_hora, nac.valor_hora_aplicado) AS tarifa_hora_db
+            FROM public.nodos_articulos_catalogo nac
+            LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
+            LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
+            LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
+            ORDER BY nac.id ASC
+        `);
+
+        for (const row of catExistentes.rows) {
+            const esMixtoSemilla = ['NB-BARRITA-PACK6', 'NB-GRANA-SOL-500G'].includes(String(row.sku_nodo || '').toUpperCase());
+            const listasCompActuales = Array.isArray(row.listas_mayoristas_compartidas) ? row.listas_mayoristas_compartidas : [];
+            const tax = construirTaxonomiaPosicionalNodo({
+                ...row,
+                compartido_mayorista: esMixtoSemilla && listasCompActuales.length === 0 ? true : row.compartido_mayorista,
+                listas_mayoristas_compartidas: esMixtoSemilla && listasCompActuales.length === 0 ? [5, 6] : listasCompActuales
+            });
+            const calc = calcularEstructuraCostosNodo({
+                costo_insumo_kg: Number(row.ing_costo_db || row.costo_insumo_kg),
+                kilos_unidad: Number(row.kilos_unidad || 0.25),
+                costo_envase_unitario: Number(row.env_costo_db || row.costo_envase_aplicado),
+                cantidad_envases_unidad: Number(row.cantidad_envases_unidad || 1),
+                segundos_fraccionamiento: Number(row.segundos_fraccionamiento || 35),
+                valor_hora_aplicado: Number(row.tarifa_hora_db || row.valor_hora_aplicado || 7000),
+                margen_lamda_pct: Number(row.margen_lamda_pct || 22),
+                iva_pct: Number(row.iva_pct || 21),
+                iibb_pct: 4.0,
+                margen_sugerido_gestor_pct: Number(row.margen_sugerido_gestor_pct || 28)
+            });
+
+            await client.query(
+                `UPDATE public.nodos_articulos_catalogo SET
+                    nombre_publico = $1,
+                    categoria_familiar = $2,
+                    presentacion_etiqueta = $3,
+                    nomenclatura_bunker = $4,
+                    familia_bunker_id = $5,
+                    familia_bunker_nombre = $6,
+                    articulo_principal_bunker = $7,
+                    compartido_mayorista = $8,
+                    listas_mayoristas_compartidas = $9,
+                    costo_insumo_kg = $10,
+                    costo_insumo_fraccion = $11,
+                    costo_envase_aplicado = $12,
+                    valor_hora_aplicado = $13,
+                    costo_mano_obra_aplicado = $14,
+                    iibb_pct = $15,
+                    costo_puro_total = $16,
+                    precio_base_nodo_neto = $17,
+                    precio_base_nodo_final = $18,
+                    precio_sugerido_vecino = $19,
+                    updated_at = NOW()
+                 WHERE id = $20`,
+                [
+                    tax.nombre_publico_limpio,
+                    tax.familia_nombre,
+                    tax.presentacion_etiqueta,
+                    tax.nomenclatura_bunker,
+                    tax.familia_id,
+                    tax.familia_nombre,
+                    tax.articulo_principal,
+                    tax.compartido_mayorista,
+                    JSON.stringify(tax.listas_mayoristas_compartidas),
+                    calc.costo_insumo_kg,
+                    calc.costo_insumo_fraccion,
+                    calc.costo_envase_aplicado,
+                    calc.valor_hora_aplicado,
+                    calc.costo_mano_obra_aplicado,
+                    calc.iibb_pct,
+                    calc.costo_puro_total,
+                    calc.precio_base_nodo_neto,
+                    calc.precio_base_nodo_final,
+                    calc.precio_sugerido_vecino,
+                    row.id
+                ]
+            );
+
+            await client.query(
+                `UPDATE public.nodos_ofertas_gestor SET
+                    precio_base_nodo_snapshot = $1,
+                    precio_venta_vecino = CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50,
+                    ganancia_unitaria_gestor = (CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50) - $1,
+                    updated_at = NOW()
+                 WHERE articulo_catalogo_id = $2`,
+                [calc.precio_base_nodo_final, row.id]
+            );
+
+            // Actualizar solo el alias visual en nodos_pedidos_items sin alterar los precios congelados del vecino
+            await client.query(
+                `UPDATE public.nodos_pedidos_items SET
+                    nombre_publico = $1,
+                    presentacion_etiqueta = $2
+                 WHERE articulo_catalogo_id = $3`,
+                [tax.nombre_publico_limpio, tax.presentacion_etiqueta, row.id]
+            );
+        }
+
         await client.query('COMMIT');
         esquemaInicializado = true;
 
@@ -1119,31 +1614,49 @@ async function obtenerFuentesCostoSeisFlujos() {
 async function obtenerEstadoCompletoNodos() {
     await asegurarEsquemaNodosBarriales();
 
-    const [nodosRes, catalogoRes, propuestasRes, ofertasRes, fuentes] = await Promise.all([
+    const [
+        nodosRes,
+        catalogoRes,
+        propuestasRes,
+        ofertasRes,
+        fuentes,
+        listaNodosRes,
+        listasMayoristasRes,
+        politicasRes,
+        familiasRes
+    ] = await Promise.all([
         db.query(`
             SELECT nm.*,
                    fb.banco AS banco_nombre,
                    fb.alias AS banco_alias_oficial,
                    fb.cbu AS banco_cbu_oficial,
+                   lp.nombre AS lista_precio_bunker_nombre,
+                   lp.salvavidas_tasa_tem,
+                   lp.salvavidas_dias_gracia,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
                    (SELECT COUNT(*)::int FROM public.nodos_ofertas_gestor nog WHERE nog.nodo_id = nm.id AND nog.publicado_tienda = true) AS total_ofertas_publicadas
             FROM public.nodos_maestro nm
             LEFT JOIN public.fin_cuentas_bancarias fb ON fb.id = nm.cuenta_bancaria_id
+            LEFT JOIN public.bunker_listas_precios lp ON lp.id = nm.lista_precio_bunker_id
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
             ORDER BY nm.id ASC
         `),
         db.query(`
             SELECT nac.*,
+                   COALESCE(nac.nomenclatura_bunker, nac.nombre_publico) AS bunker_descripcion_generada,
+                   COALESCE(nac.familia_bunker_nombre, 'Frutos Secos') AS bunker_familia_nombre,
                    ing.nombre AS ingrediente_origen_nombre,
                    COALESCE(ing.costo_patron, nac.costo_insumo_kg)::numeric(14,2) AS costo_insumo_kg_vivo,
                    env.nombre AS envase_nombre,
                    COALESCE(env.costo_patron, nac.costo_envase_aplicado)::numeric(14,2) AS costo_envase_vivo,
-                   COALESCE(u.nombre_completo, u.usuario, 'Operador Taller') AS colaborador_nombre
+                   COALESCE(u.nombre_completo, u.usuario, 'Operador Taller') AS colaborador_nombre,
+                   COALESCE(src.stock_consolidado, 0)::numeric(12,2) AS stock_fisico_bunker
             FROM public.nodos_articulos_catalogo nac
             LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
             LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
             LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
             LEFT JOIN public.usuarios u ON u.id = ct.usuario_id
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = nac.sku_nodo
             ORDER BY nac.flujo_lamda ASC, nac.nombre_publico ASC
         `),
         db.query(`
@@ -1170,6 +1683,9 @@ async function obtenerEstadoCompletoNodos() {
                    nm.color_primario,
                    nac.sku_nodo,
                    nac.nombre_publico,
+                   nac.nomenclatura_bunker,
+                   nac.familia_bunker_nombre,
+                   nac.compartido_mayorista,
                    nac.presentacion_etiqueta,
                    nac.flujo_lamda,
                    nac.kilos_unidad,
@@ -1179,15 +1695,66 @@ async function obtenerEstadoCompletoNodos() {
             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
             ORDER BY nog.nodo_id ASC, nac.flujo_lamda ASC, nac.nombre_publico ASC
         `),
-        obtenerFuentesCostoSeisFlujos()
+        obtenerFuentesCostoSeisFlujos(),
+        db.query(`
+            SELECT id, nombre, descripcion, activa, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial,
+                   salvavidas_habilitado, salvavidas_tasa_tem, salvavidas_dias_gracia,
+                   salvavidas_dias_estandar, salvavidas_dias_cortesia
+            FROM public.bunker_listas_precios
+            WHERE COALESCE(canal_comercial, 'MAYORISTA') = 'NODOS'
+            ORDER BY id ASC LIMIT 1
+        `),
+        db.query(`
+            SELECT id, nombre, descripcion, activa
+            FROM public.bunker_listas_precios
+            WHERE activa = true AND COALESCE(canal_comercial, 'MAYORISTA') = 'MAYORISTA'
+            ORDER BY id ASC
+        `),
+        db.query(`
+            SELECT pd.id, pd.nombre, pd.descripcion, pl.bunker_lista_precio_id, pd.activo,
+                   pd.tipo_calculo, pd.aplica_sobre, pd.exige_saldo_cero, pd.tolerancia_saldo,
+                   COALESCE(
+                       json_agg(
+                           json_build_object(
+                               'monto_minimo', pdt.monto_minimo,
+                               'descuento_porcentaje', pdt.descuento_porcentaje,
+                               'etiqueta', pdt.etiqueta
+                           ) ORDER BY pdt.orden ASC
+                       ) FILTER (WHERE pdt.id IS NOT NULL),
+                       '[]'::json
+                   ) AS tramos
+            FROM public.bunker_politicas_descuento pd
+            JOIN public.bunker_politica_listas pl ON pl.politica_id = pd.id
+            JOIN public.bunker_listas_precios lp ON lp.id = pl.bunker_lista_precio_id
+            LEFT JOIN public.bunker_politica_descuento_tramos pdt ON pdt.politica_id = pd.id
+            WHERE lp.canal_comercial = 'NODOS' AND pd.activo = true
+            GROUP BY pd.id, pl.bunker_lista_precio_id
+            ORDER BY pd.id ASC
+        `),
+        db.query(`
+            SELECT id, nombre, descripcion
+            FROM public.bunker_familias
+            WHERE activo = true
+            ORDER BY id ASC
+        `)
     ]);
+
+    if (fuentes) {
+        const lRow = listaNodosRes.rows[0] || null;
+        fuentes.lista_bunker_nodos = lRow ? { id: lRow.id, nombre_lista: lRow.nombre, canal_comercial: lRow.canal_comercial } : null;
+        fuentes.politicas_bunker_nodos = politicasRes.rows;
+    }
 
     return {
         nodos: nodosRes.rows,
         catalogo: catalogoRes.rows,
         propuestas: propuestasRes.rows,
         ofertas_gestor: ofertasRes.rows,
-        fuentes
+        fuentes,
+        lista_precios_nodos_bunker: listaNodosRes.rows[0] || null,
+        listas_mayoristas_bunker: listasMayoristasRes.rows,
+        politicas_descuento_bunker: politicasRes.rows,
+        familias_bunker: familiasRes.rows
     };
 }
 
@@ -1485,6 +2052,17 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             skuNodo = `NB-${pref}-${gramos}G`;
         }
 
+        const nomenclaturaExplicita = String(payload.nomenclatura_bunker || payload.bunker_descripcion_generada || '').trim();
+        const tax = construirTaxonomiaPosicionalNodo({
+            ...payload,
+            sku_nodo: skuNodo,
+            nombre_publico: nombrePublico,
+            nomenclatura_bunker: nomenclaturaExplicita || undefined,
+            kilos_unidad: calc.kilos_unidad,
+            compartido_mayorista: payload.compartido_mayorista,
+            listas_mayoristas_compartidas: payload.listas_mayoristas_compartidas
+        });
+
         let articuloRow;
         if (payload.catalogo_id) {
             const upd = await client.query(
@@ -1516,15 +2094,21 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     margen_sugerido_gestor_pct = $25,
                     precio_sugerido_vecino = $26,
                     notas_tecnicas = $27,
+                    nomenclatura_bunker = $28,
+                    familia_bunker_id = $29,
+                    familia_bunker_nombre = $30,
+                    articulo_principal_bunker = $31,
+                    compartido_mayorista = $32,
+                    listas_mayoristas_compartidas = $33,
                     estado = 'APROBADO',
                     updated_at = NOW()
-                WHERE id = $28
+                WHERE id = $34
                 RETURNING *`,
                 [
                     skuNodo,
-                    nombrePublico,
-                    payload.categoria_familiar || 'Frutos Secos',
-                    payload.presentacion_etiqueta || `${Math.round(calc.kilos_unidad * 1000)}g`,
+                    tax.nombre_publico_limpio || nombrePublico,
+                    tax.familia_nombre,
+                    payload.presentacion_etiqueta || tax.presentacion_etiqueta,
                     Number(payload.flujo_lamda || 2),
                     payload.origen_tipo || 'INGREDIENTE',
                     payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null,
@@ -1548,6 +2132,12 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     calc.margen_sugerido_gestor_pct,
                     calc.precio_sugerido_vecino,
                     payload.notas_tecnicas || '',
+                    payload.nomenclatura_bunker || tax.nomenclatura_bunker,
+                    tax.familia_id,
+                    tax.familia_nombre,
+                    tax.articulo_principal,
+                    tax.compartido_mayorista,
+                    JSON.stringify(tax.listas_mayoristas_compartidas),
                     Number(payload.catalogo_id)
                 ]
             );
@@ -1562,12 +2152,16 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     costo_insumo_fraccion, costo_envase_aplicado, costo_mano_obra_aplicado,
                     margen_lamda_pct, iva_pct, iibb_pct, costo_puro_total,
                     precio_base_nodo_neto, precio_base_nodo_final,
-                    margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas
+                    margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas,
+                    nomenclatura_bunker, familia_bunker_id, familia_bunker_nombre,
+                    articulo_principal_bunker, compartido_mayorista, listas_mayoristas_compartidas
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
                 )
                 ON CONFLICT (sku_nodo) DO UPDATE SET
                     nombre_publico = EXCLUDED.nombre_publico,
+                    categoria_familiar = EXCLUDED.categoria_familiar,
+                    presentacion_etiqueta = EXCLUDED.presentacion_etiqueta,
                     costo_insumo_kg = EXCLUDED.costo_insumo_kg,
                     costo_insumo_fraccion = EXCLUDED.costo_insumo_fraccion,
                     costo_envase_aplicado = EXCLUDED.costo_envase_aplicado,
@@ -1576,13 +2170,19 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     precio_base_nodo_neto = EXCLUDED.precio_base_nodo_neto,
                     precio_base_nodo_final = EXCLUDED.precio_base_nodo_final,
                     precio_sugerido_vecino = EXCLUDED.precio_sugerido_vecino,
+                    nomenclatura_bunker = EXCLUDED.nomenclatura_bunker,
+                    familia_bunker_id = EXCLUDED.familia_bunker_id,
+                    familia_bunker_nombre = EXCLUDED.familia_bunker_nombre,
+                    articulo_principal_bunker = EXCLUDED.articulo_principal_bunker,
+                    compartido_mayorista = EXCLUDED.compartido_mayorista,
+                    listas_mayoristas_compartidas = EXCLUDED.listas_mayoristas_compartidas,
                     updated_at = NOW()
                 RETURNING *`,
                 [
                     skuNodo,
-                    nombrePublico,
-                    payload.categoria_familiar || 'Frutos Secos',
-                    payload.presentacion_etiqueta || `${Math.round(calc.kilos_unidad * 1000)}g`,
+                    tax.nombre_publico_limpio || nombrePublico,
+                    tax.familia_nombre,
+                    payload.presentacion_etiqueta || tax.presentacion_etiqueta,
                     Number(payload.flujo_lamda || 2),
                     payload.origen_tipo || 'INGREDIENTE',
                     payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null,
@@ -1605,7 +2205,13 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     calc.precio_base_nodo_final,
                     calc.margen_sugerido_gestor_pct,
                     calc.precio_sugerido_vecino,
-                    payload.notas_tecnicas || ''
+                    payload.notas_tecnicas || '',
+                    payload.nomenclatura_bunker || tax.nomenclatura_bunker,
+                    tax.familia_id,
+                    tax.familia_nombre,
+                    tax.articulo_principal,
+                    tax.compartido_mayorista,
+                    JSON.stringify(tax.listas_mayoristas_compartidas)
                 ]
             );
             articuloRow = ins.rows[0];
@@ -1622,13 +2228,13 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 WHERE id = $3`,
                 [
                     articuloRow.id,
-                    payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')}`,
+                    payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} (${articuloRow.nomenclatura_bunker})`,
                     Number(payload.propuesta_id)
                 ]
             );
         }
 
-        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos
+        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar pedidos vecinales confirmados)
         const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
         for (const nodo of nodosActivos.rows) {
             const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
@@ -1650,7 +2256,12 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
+        // Sincronizar inmediatamente con bunker_articulos, bunker_lista_articulos, bunker_lista_insumos y recetas
+        await sincronizarNodosConCircuitoOperativoLamda(client, false);
+
         await client.query('COMMIT');
+        articuloRow.bunker_descripcion_generada = articuloRow.nomenclatura_bunker;
+        articuloRow.bunker_familia_nombre = articuloRow.familia_bunker_nombre;
         return { articulo: articuloRow, calculo: calc };
     } catch (err) {
         await client.query('ROLLBACK');
@@ -1750,11 +2361,208 @@ async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) 
             actualizados++;
         }
 
+        await sincronizarNodosConCircuitoOperativoLamda(client, false);
         await client.query('COMMIT');
         return { actualizados };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Sincroniza bidireccionalmente desde el Búnker de Artículos (listado-bunker.html -> 💰 Finanzas / Listas)
+ * hacia nodos_articulos_catalogo y nodos_ofertas_gestor, manteniendo congelados los pedidos vecinales ya confirmados.
+ */
+async function sincronizarCatalogoNodoDesdeBunker(articuloId) {
+    const sku = String(articuloId || '').trim().toUpperCase();
+    if (!sku) return { sincronizado: false };
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const catRes = await client.query(
+            'SELECT * FROM public.nodos_articulos_catalogo WHERE UPPER(sku_nodo) = $1 LIMIT 1',
+            [sku]
+        );
+        if (catRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { sincronizado: false };
+        }
+        const row = catRes.rows[0];
+
+        const baRes = await client.query(
+            'SELECT * FROM public.bunker_articulos WHERE UPPER(articulo_id) = $1 LIMIT 1',
+            [sku]
+        );
+        const ba = baRes.rows[0] || {};
+
+        const laNodosRes = await client.query(
+            `SELECT la.*
+             FROM public.bunker_lista_articulos la
+             JOIN public.bunker_listas_precios lp ON lp.id = la.lista_id
+             WHERE UPPER(la.articulo_numero) = $1
+               AND COALESCE(lp.canal_comercial, 'MAYORISTA') = 'NODOS'
+             ORDER BY lp.id ASC LIMIT 1`,
+            [sku]
+        );
+        const laNodos = laNodosRes.rows[0] || {};
+
+        const listasMayoristasDispRes = await client.query(
+            `SELECT la.lista_id
+             FROM public.bunker_lista_articulos la
+             JOIN public.bunker_listas_precios lp ON lp.id = la.lista_id
+             WHERE UPPER(la.articulo_numero) = $1
+               AND COALESCE(lp.canal_comercial, 'MAYORISTA') = 'MAYORISTA'
+               AND la.disponible = true
+             ORDER BY la.lista_id ASC`,
+            [sku]
+        );
+        const listasCompIds = listasMayoristasDispRes.rows.map(r => Number(r.lista_id));
+        const compartidoMayorista = listasCompIds.length > 0;
+
+        let costoEnvaseAplicado = Number(row.costo_envase_aplicado || 0);
+        let insumoEnvaseId = row.insumo_envase_id ? Number(row.insumo_envase_id) : null;
+        let cantidadEnvasesUnidad = Number(row.cantidad_envases_unidad || 1);
+
+        if (laNodos.id) {
+            const insRes = await client.query(
+                `SELECT li.*, COALESCE(ing.costo_patron, li.costo_unitario_capturado, 0) AS costo_vivo
+                 FROM public.bunker_lista_insumos li
+                 LEFT JOIN public.ingredientes ing ON ing.id::text = li.insumo_articulo_numero
+                 WHERE li.lista_articulo_id = $1 AND li.incluido = true
+                 ORDER BY li.id ASC`,
+                [laNodos.id]
+            );
+            if (insRes.rows.length > 0) {
+                costoEnvaseAplicado = insRes.rows.reduce(
+                    (acc, r) => acc + Number(r.cantidad || 1) * Number(r.costo_vivo || 0),
+                    0
+                );
+                costoEnvaseAplicado = Number(costoEnvaseAplicado.toFixed(2));
+                const firstIns = insRes.rows[0];
+                if (/^\d+$/.test(String(firstIns.insumo_articulo_numero || ''))) {
+                    insumoEnvaseId = Number(firstIns.insumo_articulo_numero);
+                }
+                cantidadEnvasesUnidad = Number(firstIns.cantidad || 1);
+            }
+        }
+
+        const kilosUnidad = Number(ba.kilos_unidad || row.kilos_unidad || 0.25);
+        let costoInsumoKg = Number(row.costo_insumo_kg || 0);
+        if (row.ingrediente_origen_id) {
+            const ingRes = await client.query(
+                'SELECT costo_patron FROM public.ingredientes WHERE id = $1 LIMIT 1',
+                [row.ingrediente_origen_id]
+            );
+            if (ingRes.rows[0]?.costo_patron) {
+                costoInsumoKg = Number(ingRes.rows[0].costo_patron);
+            }
+        }
+        const costoInsumoFraccion = laNodos.costo_base_sobrescrito !== null && laNodos.costo_base_sobrescrito !== undefined
+            ? Number((Number(laNodos.costo_base_sobrescrito) * kilosUnidad).toFixed(2))
+            : Number((costoInsumoKg * kilosUnidad).toFixed(2));
+
+        const propDin = (ba.propiedades_dinamicas && typeof ba.propiedades_dinamicas === 'object')
+            ? ba.propiedades_dinamicas
+            : {};
+        const segundosFracc = propDin.asistente_minutos
+            ? Number((Number(propDin.asistente_minutos) * 60).toFixed(2))
+            : Number(row.segundos_fraccionamiento || 35);
+        const tarifaColabId = propDin.asistente_colaborador_id
+            ? Number(propDin.asistente_colaborador_id)
+            : Number(row.tarifa_colaborador_id || 1);
+
+        const manoObraActiva = laNodos.mano_obra_activa !== false;
+        const costoManoObra = manoObraActiva
+            ? Number(laNodos.costo_tiempo ?? row.costo_mano_obra_aplicado ?? 0)
+            : 0;
+        const margenLamdaPct = Number(laNodos.margen_ganancia ?? row.margen_lamda_pct ?? 22);
+        const ivaPct = Number(laNodos.iva ?? ba.porcentaje_iva ?? row.iva_pct ?? 21);
+
+        const costoMateriaYEnvase = Number((costoInsumoFraccion + costoEnvaseAplicado).toFixed(2));
+        const costoPuroTotal = Number((costoMateriaYEnvase + costoManoObra).toFixed(2));
+        const precioBaseNodoFinal = laNodos.precio_final
+            ? Math.round(Number(laNodos.precio_final))
+            : Math.round(((costoMateriaYEnvase * (1 + margenLamdaPct / 100)) + costoManoObra) * (1 + ivaPct / 100));
+        const precioBaseNodoNeto = Number((precioBaseNodoFinal / (1 + ivaPct / 100)).toFixed(2));
+
+        const margenSugGestor = Number(row.margen_sugerido_gestor_pct || 28);
+        const precioSugeridoVecino = Math.ceil((precioBaseNodoFinal * (1 + margenSugGestor / 100)) / 50) * 50;
+
+        const nomenclaturaBunker = ba.descripcion_generada || row.nomenclatura_bunker || ba.descripcion;
+        const artPrincipalBunker = ba.descripcion || row.articulo_principal_bunker;
+        const familiaBunkerId = ba.familia_id ? Number(ba.familia_id) : row.familia_bunker_id;
+
+        await client.query(
+            `UPDATE public.nodos_articulos_catalogo SET
+                nomenclatura_bunker = $1,
+                articulo_principal_bunker = $2,
+                familia_bunker_id = $3,
+                kilos_unidad = $4,
+                insumo_envase_id = $5,
+                cantidad_envases_unidad = $6,
+                segundos_fraccionamiento = $7,
+                tarifa_colaborador_id = $8,
+                costo_insumo_kg = $9,
+                costo_insumo_fraccion = $10,
+                costo_envase_aplicado = $11,
+                costo_mano_obra_aplicado = $12,
+                margen_lamda_pct = $13,
+                iva_pct = $14,
+                costo_puro_total = $15,
+                precio_base_nodo_neto = $16,
+                precio_base_nodo_final = $17,
+                precio_sugerido_vecino = $18,
+                compartido_mayorista = $19,
+                listas_mayoristas_compartidas = $20,
+                updated_at = NOW()
+             WHERE id = $21`,
+            [
+                nomenclaturaBunker,
+                artPrincipalBunker,
+                familiaBunkerId,
+                kilosUnidad,
+                insumoEnvaseId,
+                cantidadEnvasesUnidad,
+                segundosFracc,
+                tarifaColabId,
+                costoInsumoKg,
+                costoInsumoFraccion,
+                costoEnvaseAplicado,
+                costoManoObra,
+                margenLamdaPct,
+                ivaPct,
+                costoPuroTotal,
+                precioBaseNodoNeto,
+                precioBaseNodoFinal,
+                precioSugeridoVecino,
+                compartidoMayorista,
+                JSON.stringify(listasCompIds),
+                row.id
+            ]
+        );
+
+        await client.query(
+            `UPDATE public.nodos_ofertas_gestor SET
+                alerta_cambio_costo = (precio_base_nodo_snapshot <> $1),
+                precio_base_nodo_snapshot = $1,
+                precio_venta_vecino = CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50,
+                ganancia_unitaria_gestor = (CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50) - $1,
+                updated_at = NOW()
+             WHERE articulo_catalogo_id = $2`,
+            [precioBaseNodoFinal, row.id]
+        );
+
+        await client.query('COMMIT');
+        return { sincronizado: true, sku_nodo: sku, precio_base_nodo_final: precioBaseNodoFinal };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[NodosBarriales] Error sincronizando desde Búnker:', err.message);
+        return { sincronizado: false, error: err.message };
     } finally {
         client.release();
     }
@@ -2688,11 +3496,20 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
         });
     }
 
-    // 2. Asegurar Artículos, Búnker, Stock Real Consolidado y Recetas (para Configurar Carros y Carro Personal)
+    // 2. Asegurar Artículos, Búnker (Familias Reales + Nomenclatura Posicional + Listas + Insumos), Stock Real Consolidado y Recetas
+    const listasPreciosRes = await q.query(`
+        SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial
+        FROM public.bunker_listas_precios
+        WHERE activa = true
+        ORDER BY id ASC
+    `);
+    const listasActivas = listasPreciosRes.rows;
+
     const catRes = await q.query(`
         SELECT nac.*,
                ing.nombre AS ing_origen_nombre,
-               env.nombre AS env_nombre
+               env.nombre AS env_nombre,
+               COALESCE(env.costo_patron, nac.costo_envase_aplicado) AS env_costo_unitario
         FROM public.nodos_articulos_catalogo nac
         LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
         LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
@@ -2702,35 +3519,74 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
 
     for (const art of catRes.rows) {
         const sku = String(art.sku_nodo).trim();
-        const descNodo = `[NODO] ${art.nombre_publico}`;
+        const tax = construirTaxonomiaPosicionalNodo(art);
+        const descTecnicaBunker = art.nomenclatura_bunker || tax.nomenclatura_bunker;
         const kilos = Number(art.kilos_unidad || 0.25);
+        const minutosFracc = Number((Number(art.segundos_fraccionamiento || 35) / 60).toFixed(4));
+        const listasCompIds = Array.isArray(art.listas_mayoristas_compartidas)
+            ? art.listas_mayoristas_compartidas.map(Number)
+            : tax.listas_mayoristas_compartidas.map(Number);
+
+        const propDinamicas = {
+            posiciones: tax.posiciones,
+            asistente_minutos: minutosFracc,
+            asistente_colaborador_id: Number(art.tarifa_colaborador_id || 1),
+            alias_comercial_vecino: tax.nombre_publico_limpio,
+            alias_vecino_nodo: tax.nombre_publico_limpio,
+            presentacion_etiqueta_nodo: tax.presentacion_etiqueta,
+            canal_nodos_barriales: true,
+            sku_nodo: sku,
+            compartido_mayorista: Boolean(tax.compartido_mayorista),
+            listas_mayoristas_compartidas: listasCompIds
+        };
 
         const artCheck = await q.query('SELECT numero FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1', [sku]);
         if (artCheck.rows.length === 0) {
             await q.query(
                 `INSERT INTO public.articulos (numero, codigo_barras, nombre)
                  VALUES ($1,$1,$2)`,
-                [sku, descNodo]
+                [sku, descTecnicaBunker]
             );
         } else {
             await q.query(
                 `UPDATE public.articulos SET nombre = $2, codigo_barras = $1 WHERE numero = $1 OR codigo_barras = $1`,
-                [sku, descNodo]
+                [sku, descTecnicaBunker]
             );
         }
 
         await q.query(
             `INSERT INTO public.bunker_articulos (
                 articulo_id, codigo_barras, descripcion, descripcion_generada,
-                kilos_unidad, costo_base, rubro, sub_rubro, no_producido_por_lambda, es_pack, pack_unidades
-             ) VALUES ($1,$1,$2,$2,$3,$4,'NODOS_BARRIALES',$5,false,false,1)
+                kilos_unidad, costo_base, porcentaje_iva, rubro, sub_rubro,
+                familia_id, no_producido_por_lambda, es_pack, pack_unidades, propiedades_dinamicas
+             ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,false,$10,$11,$12)
              ON CONFLICT (articulo_id) DO UPDATE SET
                 codigo_barras = EXCLUDED.codigo_barras,
                 descripcion = EXCLUDED.descripcion,
                 descripcion_generada = EXCLUDED.descripcion_generada,
                 kilos_unidad = EXCLUDED.kilos_unidad,
-                costo_base = EXCLUDED.costo_base`,
-            [sku, descNodo, kilos, Number(art.costo_puro_total || 0), art.categoria_familiar || 'Fraccionados']
+                costo_base = EXCLUDED.costo_base,
+                porcentaje_iva = EXCLUDED.porcentaje_iva,
+                rubro = EXCLUDED.rubro,
+                sub_rubro = EXCLUDED.sub_rubro,
+                familia_id = EXCLUDED.familia_id,
+                es_pack = EXCLUDED.es_pack,
+                pack_unidades = EXCLUDED.pack_unidades,
+                propiedades_dinamicas = COALESCE(public.bunker_articulos.propiedades_dinamicas, '{}'::jsonb) || EXCLUDED.propiedades_dinamicas`,
+            [
+                sku,
+                tax.articulo_principal,
+                descTecnicaBunker,
+                kilos,
+                Number(art.costo_insumo_fraccion || art.costo_puro_total || 0),
+                Number(art.iva_pct || 21),
+                tax.rubro,
+                tax.sub_rubro,
+                tax.familia_id,
+                tax.es_pack,
+                tax.pack_unidades,
+                JSON.stringify(propDinamicas)
+            ]
         );
 
         // Stock inicial en stock_real_consolidado:
@@ -2744,19 +3600,26 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
                 `INSERT INTO public.stock_real_consolidado (
                     articulo_numero, codigo_barras, descripcion, stock_lomasoft, stock_movimientos,
                     stock_ajustes, stock_consolidado, kilos_unidad, no_producido_por_lambda, solo_produccion_externa, es_pack
-                 ) VALUES ($1,$1,$2,0,$3,0,$3,$4,false,false,false)`,
-                [sku, descNodo, stockInicial, kilos]
+                 ) VALUES ($1,$1,$2,0,$3,0,$3,$4,false,false,$5)`,
+                [sku, descTecnicaBunker, stockInicial, kilos, tax.es_pack]
             );
         } else if (inicializarStockFaltantesDemo) {
             await q.query(
                 `UPDATE public.stock_real_consolidado
-                 SET descripcion = $1, kilos_unidad = $2, stock_consolidado = $3, stock_movimientos = $3
+                 SET descripcion = $1, kilos_unidad = $2, stock_consolidado = $3, stock_movimientos = $3, es_pack = $4
+                 WHERE articulo_numero = $5 OR codigo_barras = $5`,
+                [descTecnicaBunker, kilos, stockInicial, tax.es_pack, sku]
+            );
+        } else {
+            await q.query(
+                `UPDATE public.stock_real_consolidado
+                 SET descripcion = $1, kilos_unidad = $2, es_pack = $3
                  WHERE articulo_numero = $4 OR codigo_barras = $4`,
-                [descNodo, kilos, stockInicial, sku]
+                [descTecnicaBunker, kilos, tax.es_pack, sku]
             );
         }
 
-        // Asegurar Receta en public.recetas + public.receta_ingredientes para el Carro Personal
+        // Asegurar Receta en public.recetas + public.receta_ingredientes (SOLO el ingrediente alimenticio en kg; el envase vive en bunker_lista_insumos)
         if (art.ingrediente_origen_id) {
             const recCheck = await q.query('SELECT id FROM public.recetas WHERE articulo_numero = $1 LIMIT 1', [sku]);
             let recetaId;
@@ -2765,25 +3628,104 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
                     `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
                      VALUES ($1, $2, NOW(), false)
                      RETURNING id`,
-                    [sku, `Fraccionamiento Nodo: ${art.nombre_publico}`]
+                    [sku, `Fraccionamiento: ${descTecnicaBunker} (${tax.nombre_publico_limpio})`]
                 );
                 recetaId = insRec.rows[0].id;
             } else {
                 recetaId = recCheck.rows[0].id;
+                await q.query(
+                    `UPDATE public.recetas SET descripcion = $1 WHERE id = $2`,
+                    [`Fraccionamiento: ${descTecnicaBunker} (${tax.nombre_publico_limpio})`, recetaId]
+                );
             }
 
-            const riCheck = await q.query('SELECT COUNT(*)::int AS total FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
-            if (riCheck.rows[0].total === 0) {
+            // Limpiar bolsas de envase que hubieran quedado en receta_ingredientes y asegurar solo el ingrediente alimenticio
+            await q.query(
+                `DELETE FROM public.receta_ingredientes
+                 WHERE receta_id = $1
+                   AND (unidad_medida = 'u' OR ingrediente_id IN (SELECT id FROM public.ingredientes WHERE COALESCE(es_insumo, false) = true))`,
+                [recetaId]
+            );
+
+            const riCheck = await q.query(
+                'SELECT id FROM public.receta_ingredientes WHERE receta_id = $1 AND ingrediente_id = $2 LIMIT 1',
+                [recetaId, art.ingrediente_origen_id]
+            );
+            if (riCheck.rows.length === 0) {
+                await q.query('DELETE FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
                 await q.query(
                     `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
                      VALUES ($1, $2, $3, 'kg', $4)`,
-                    [recetaId, art.ingrediente_origen_id, art.ing_origen_nombre || art.nombre_publico, kilos]
+                    [recetaId, art.ingrediente_origen_id, art.ing_origen_nombre || tax.nombre_publico_limpio, kilos]
                 );
-                if (art.insumo_envase_id && art.env_nombre) {
+            } else {
+                await q.query(
+                    `UPDATE public.receta_ingredientes
+                     SET cantidad = $1, nombre_ingrediente = $2, unidad_medida = 'kg'
+                     WHERE id = $3`,
+                    [kilos, art.ing_origen_nombre || tax.nombre_publico_limpio, riCheck.rows[0].id]
+                );
+            }
+        }
+
+        // Poblar bunker_lista_articulos + bunker_lista_insumos para aislar las 6 listas mayoristas y habilitar Lista Base Nodos (+ listas compartidas si aplica)
+        for (const lp of listasActivas) {
+            const esListaNodos = String(lp.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS';
+            const disponibleEnLista = esListaNodos
+                ? true
+                : Boolean(tax.compartido_mayorista && listasCompIds.includes(Number(lp.id)));
+
+            const upLa = await q.query(
+                `INSERT INTO public.bunker_lista_articulos (
+                    lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito,
+                    costo_tiempo, iva, precio_final, modo_calculo, modo_iva,
+                    es_patron, disponible, mano_obra_activa, updated_at
+                 ) VALUES ($1,$2,$3,NULL,$4,$5,$6,'AUTOMATIC','COMPLETO',false,$7,true,NOW())
+                 ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
+                    margen_ganancia = EXCLUDED.margen_ganancia,
+                    costo_tiempo = EXCLUDED.costo_tiempo,
+                    iva = EXCLUDED.iva,
+                    precio_final = EXCLUDED.precio_final,
+                    disponible = EXCLUDED.disponible,
+                    mano_obra_activa = true,
+                    updated_at = NOW()
+                 RETURNING id`,
+                [
+                    lp.id,
+                    sku,
+                    Number(art.margen_lamda_pct || 22),
+                    Number(art.costo_mano_obra_aplicado || 0),
+                    Number(art.iva_pct || 21),
+                    Number(art.precio_base_nodo_final || 0),
+                    disponibleEnLista
+                ]
+            );
+            const listaArtId = upLa.rows[0].id;
+
+            if (art.insumo_envase_id) {
+                const insNumero = String(art.insumo_envase_id);
+                const cantEnv = Number(art.cantidad_envases_unidad || 1);
+                const costoEnvUnit = Number(art.env_costo_unitario || art.costo_envase_aplicado || 0);
+
+                const checkLi = await q.query(
+                    `SELECT id FROM public.bunker_lista_insumos
+                     WHERE lista_articulo_id = $1 AND insumo_articulo_numero = $2 LIMIT 1`,
+                    [listaArtId, insNumero]
+                );
+                if (checkLi.rows.length === 0) {
+                    await q.query('DELETE FROM public.bunker_lista_insumos WHERE lista_articulo_id = $1', [listaArtId]);
                     await q.query(
-                        `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-                         VALUES ($1, $2, $3, 'u', $4)`,
-                        [recetaId, art.insumo_envase_id, art.env_nombre, Number(art.cantidad_envases_unidad || 1)]
+                        `INSERT INTO public.bunker_lista_insumos (
+                            lista_articulo_id, insumo_articulo_numero, cantidad, costo_unitario_capturado, incluido
+                         ) VALUES ($1,$2,$3,$4,true)`,
+                        [listaArtId, insNumero, cantEnv, costoEnvUnit]
+                    );
+                } else {
+                    await q.query(
+                        `UPDATE public.bunker_lista_insumos
+                         SET cantidad = $1, costo_unitario_capturado = $2, incluido = true
+                         WHERE id = $3`,
+                        [cantEnv, costoEnvUnit, checkLi.rows[0].id]
                     );
                 }
             }
@@ -4517,12 +5459,14 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
 
 module.exports = {
     asegurarEsquemaNodosBarriales,
+    construirTaxonomiaPosicionalNodo,
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,
     guardarNodoMaestro,
     crearPropuestaFraccion,
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,
+    sincronizarCatalogoNodoDesdeBunker,
     actualizarOfertaGestor,
     calcularProximaEntregaNodo,
     obtenerDatosPortalNodo,
