@@ -20,6 +20,7 @@ app.use(cors({
     'http://localhost:3002',
     'http://localhost:3005',
     'http://127.0.0.1:3005',
+    /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|100\.\d+\.\d+\.\d+)(:\d+)?$/,
     // --- Acceso externo seguro vía Cloudflare Tunnel (Dominio Oficial LAMDA) ---
     'https://logistica.lamdaser.com',
     'http://logistica.lamdaser.com',
@@ -125,6 +126,17 @@ app.use('/pages', express.static(path.join(staticPath, 'pages')));
 // Configurar index.html como página principal
 app.get('/', (req, res) => {
   res.sendFile(path.join(staticPath, 'index.html'));
+});
+
+// 📱 [MÓVIL / GATEWAY LAN] Redirección automática si se ingresa por :3000/mobile en la red local Wi-Fi
+app.get(['/mobile', '/mobile/*'], (req, res) => {
+  const hostName = req.hostname || 'localhost';
+  res.redirect(302, `http://${hostName}:3005/mobile/home.html`);
+});
+
+app.use('/gw', (req, res) => {
+  const hostName = req.hostname || 'localhost';
+  res.redirect(307, `http://${hostName}:3005${req.originalUrl}`);
 });
 
 

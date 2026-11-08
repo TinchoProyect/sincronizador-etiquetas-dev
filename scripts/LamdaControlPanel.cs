@@ -40,6 +40,8 @@ namespace LamdaControlCenter
         private string browserExePath;
         private string browserProfileDir;
         private Process labBrowserProcess;
+        private Process mobileBrowserProcess;
+        private string mobileBrowserProfileDir;
         private List<ServiceEntry> services = new List<ServiceEntry>();
         private System.Windows.Forms.Timer uiTimer;
         private bool isStartingSequence = false;
@@ -132,6 +134,7 @@ namespace LamdaControlCenter
             if (!File.Exists(gitExePath)) gitExePath = "git";
 
             browserProfileDir = Path.Combine(Path.GetTempPath(), "LamdaLaboratorioBrowserProfile");
+            mobileBrowserProfileDir = Path.Combine(Path.GetTempPath(), "LamdaLaboratorioMobileProfile");
             string[] candidates = new string[]
             {
                 @"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -932,6 +935,8 @@ namespace LamdaControlCenter
                     title.Contains("localhost:3000") ||
                     title.Contains("localhost:3005"))
                 {
+                    RECT r;
+                    if (GetWindowRect(hWnd, out r) && (r.Right - r.Left) < 600) return true;
                     found = hWnd;
                     return false;
                 }
@@ -956,6 +961,82 @@ namespace LamdaControlCenter
             else
             {
                 labBrowserProcess = Process.Start(url);
+            }
+        }
+
+        private void LaunchMobileSimulatorWindow(string url)
+        {
+            if (!string.IsNullOrEmpty(browserExePath) && File.Exists(browserExePath))
+            {
+                try
+                {
+                    if (mobileBrowserProcess != null && !mobileBrowserProcess.HasExited)
+                    {
+                        try { mobileBrowserProcess.CloseMainWindow(); } catch { }
+                        Thread.Sleep(150);
+                        if (!mobileBrowserProcess.HasExited)
+                        {
+                            try { mobileBrowserProcess.Kill(); } catch { }
+                        }
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    Directory.CreateDirectory(mobileBrowserProfileDir);
+                    string prefsFile = Path.Combine(mobileBrowserProfileDir, @"Default\Preferences");
+                    if (File.Exists(prefsFile))
+                    {
+                        try { File.Delete(prefsFile); } catch { }
+                    }
+                }
+                catch { }
+
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = browserExePath;
+                psi.Arguments = string.Format(
+                    "--user-data-dir=\"{0}\" --app=\"{1}\" --window-size=412,915 --window-position=120,40 --no-first-run --no-default-browser-check --disable-session-crashed-bubble",
+                    mobileBrowserProfileDir,
+                    url
+                );
+                psi.UseShellExecute = false;
+                mobileBrowserProcess = Process.Start(psi);
+
+                Task.Factory.StartNew(() =>
+                {
+                    for (int i = 0; i < 15; i++)
+                    {
+                        Thread.Sleep(200);
+                        try
+                        {
+                            IntPtr targetHwnd = IntPtr.Zero;
+                            if (mobileBrowserProcess != null && !mobileBrowserProcess.HasExited)
+                            {
+                                mobileBrowserProcess.Refresh();
+                                if (mobileBrowserProcess.MainWindowHandle != IntPtr.Zero)
+                                {
+                                    targetHwnd = mobileBrowserProcess.MainWindowHandle;
+                                }
+                            }
+                            if (targetHwnd != IntPtr.Zero && IsWindowVisible(targetHwnd))
+                            {
+                                RECT r;
+                                if (GetWindowRect(targetHwnd, out r) && (r.Right - r.Left) > 520)
+                                {
+                                    ShowWindow(targetHwnd, 9);
+                                    MoveWindow(targetHwnd, 120, 40, 412, 915, true);
+                                }
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+                });
+            }
+            else
+            {
+                mobileBrowserProcess = Process.Start(url);
             }
         }
 
@@ -1003,11 +1084,25 @@ namespace LamdaControlCenter
             finally
             {
                 labBrowserProcess = null;
+                try
+                {
+                    if (mobileBrowserProcess != null && !mobileBrowserProcess.HasExited)
+                    {
+                        try { mobileBrowserProcess.CloseMainWindow(); } catch { }
+                        Thread.Sleep(150);
+                        if (!mobileBrowserProcess.HasExited)
+                        {
+                            try { mobileBrowserProcess.Kill(); } catch { }
+                        }
+                    }
+                }
+                catch { }
+                mobileBrowserProcess = null;
             }
 
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", "-NoProfile -WindowStyle Hidden -Command \"Get-CimInstance Win32_Process -Filter \\\"Name = 'chrome.exe' OR Name = 'msedge.exe'\\\" | Where-Object { $_.CommandLine -like '*LamdaLaboratorioBrowserProfile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\"");
+                ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", "-NoProfile -WindowStyle Hidden -Command \"Get-CimInstance Win32_Process -Filter \\\"Name = 'chrome.exe' OR Name = 'msedge.exe'\\\" | Where-Object { $_.CommandLine -like '*LamdaLaboratorioBrowserProfile*' -or $_.CommandLine -like '*LamdaLaboratorioMobileProfile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\"");
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
                 using (Process p = Process.Start(psi))
@@ -1061,10 +1156,10 @@ namespace LamdaControlCenter
                 MessageBox.Show("El servicio de Logística (Puerto 3005) está apagado. Tocá 'Encender Servicios' primero.", "Servicio Apagado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            AppendLog("📱 Abriendo App Móvil Operativa en http://localhost:3005/mobile/home.html...");
+            AppendLog("📱 Abriendo Simulador Móvil Vertical (412x915 Samsung) en http://localhost:3005/mobile/home.html...");
             try
             {
-                LaunchInIsolatedBrowser("http://localhost:3005/mobile/home.html", false);
+                LaunchMobileSimulatorWindow("http://localhost:3005/mobile/home.html");
             }
             catch (Exception ex)
             {
@@ -1905,6 +2000,21 @@ namespace LamdaControlCenter
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);

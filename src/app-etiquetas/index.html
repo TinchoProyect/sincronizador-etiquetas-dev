@@ -15,7 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestiones Lamda</title>
   <link rel="icon" type="image/png" href="favicon.ico?v=2" />
-  <link rel="stylesheet" href="css/style.css?v=4.7" />
+  <link rel="stylesheet" href="css/style.css?v=4.8" />
 
 </head>
 <body>
@@ -144,7 +144,7 @@
             </div>
 
             <!-- 2. Contacto / Teléfono -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div class="crm-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
               <div class="form-group" style="margin: 0;">
                 <label for="crm-contacto-select" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: block;">Contacto Registrado:</label>
                 <select id="crm-contacto-select" onchange="onCrmContactoSeleccionado()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85rem;" disabled>
@@ -168,7 +168,7 @@
               
               <div id="crm-shortcuts-container" class="crm-shortcuts-container"></div>
 
-              <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; align-items: center; margin-top: 8px;">
+              <div class="crm-form-grid-2col" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; align-items: center; margin-top: 8px;">
                 <div>
                   <label for="crm-fecha-input" style="font-size: 0.78rem; color: #64748b; display: block;">Fecha exacta:</label>
                   <input type="date" id="crm-fecha-input" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem; box-sizing: border-box;" required>
@@ -533,7 +533,7 @@
 <script src="js/modal-gestion-demanda.js?v=1.0"></script>
 <script src="js/crm-seguimientos-wa.js?v=3.1"></script>
 <script src="js/crm-whatsapp-mesa-agentes.js?v=20261107_1810"></script>
-<script src="js/crm-whatsapp-hub.js?v=20261107_1810"></script>
+<script src="js/crm-whatsapp-hub.js?v=20261107_2215"></script>
 <script src="js/retiro-mamus.js?v=5"></script>
 <script>
 window.iniciarTrasladoGlobal = async function() {

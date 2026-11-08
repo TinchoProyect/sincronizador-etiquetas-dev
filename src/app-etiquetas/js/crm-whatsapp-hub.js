@@ -685,6 +685,200 @@
                 justify-content: space-between;
                 align-items: center;
             }
+            .wa-hub-mobile-tabs {
+                display: none;
+            }
+            .wa-mob-nav-pill {
+                display: none;
+            }
+
+            @media (max-width: 768px) {
+                #modal-consola-whatsapp-lamda {
+                    padding: 0 !important;
+                }
+                #modal-consola-whatsapp-lamda .wa-hub-shell {
+                    width: 100vw !important;
+                    max-width: 100vw !important;
+                    height: 100dvh !important;
+                    max-height: 100dvh !important;
+                    border-radius: 0 !important;
+                    border: none !important;
+                }
+                .wa-hub-topbar {
+                    padding: 8px 10px !important;
+                    flex-wrap: wrap !important;
+                    gap: 6px !important;
+                }
+                .wa-hub-topbar > div:first-child {
+                    gap: 6px !important;
+                    min-width: 0;
+                    flex: 1;
+                }
+                .wa-hub-topbar > div:first-child > span {
+                    font-size: 1.15rem !important;
+                }
+                .wa-hub-topbar > div:first-child > div > div:first-child {
+                    font-size: 0.88rem !important;
+                    line-height: 1.2 !important;
+                }
+                .wa-hub-topbar > div:first-child > div > div:last-child {
+                    display: none !important;
+                }
+                .wa-hub-col-resizer-box,
+                #btn-wa-hub-maximize,
+                .wa-col-splitter {
+                    display: none !important;
+                }
+                .wa-hub-topbar > div:last-child {
+                    width: 100%;
+                    justify-content: space-between;
+                    gap: 4px !important;
+                }
+                .wa-hub-topbar > div:last-child > button {
+                    padding: 5px 8px !important;
+                    font-size: 0.74rem !important;
+                }
+                .wa-hub-mobile-tabs {
+                    display: flex !important;
+                    background: #064e3b;
+                    padding: 5px 6px;
+                    gap: 4px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+                    flex-shrink: 0;
+                }
+                .wa-hub-mob-tab {
+                    flex: 1;
+                    background: rgba(255, 255, 255, 0.1);
+                    color: #d1fae5;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    border-radius: 6px;
+                    padding: 7px 4px;
+                    font-size: 0.76rem;
+                    font-weight: 800;
+                    cursor: pointer;
+                    text-align: center;
+                    white-space: nowrap;
+                }
+                .wa-hub-mob-tab.active {
+                    background: #ffffff;
+                    color: #064e3b;
+                    border-color: #ffffff;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+                }
+                #wa-hub-grid {
+                    display: flex !important;
+                    flex-direction: column !important;
+                    flex: 1 !important;
+                    min-height: 0 !important;
+                    overflow: hidden !important;
+                }
+                #wa-hub-grid[data-mobile-tab="chats"] #wa-hub-col-chats {
+                    display: flex !important;
+                    width: 100% !important;
+                    flex: 1 !important;
+                    min-height: 0 !important;
+                }
+                #wa-hub-grid[data-mobile-tab="chats"] #wa-hub-col-conv,
+                #wa-hub-grid[data-mobile-tab="chats"] #wa-hub-col-xray {
+                    display: none !important;
+                }
+                #wa-hub-grid[data-mobile-tab="conv"] #wa-hub-col-conv {
+                    display: flex !important;
+                    width: 100% !important;
+                    flex: 1 !important;
+                    min-height: 0 !important;
+                }
+                #wa-hub-grid[data-mobile-tab="conv"] #wa-hub-col-chats,
+                #wa-hub-grid[data-mobile-tab="conv"] #wa-hub-col-xray {
+                    display: none !important;
+                }
+                #wa-hub-grid[data-mobile-tab="xray"] #wa-hub-col-xray {
+                    display: flex !important;
+                    width: 100% !important;
+                    flex: 1 !important;
+                    min-height: 0 !important;
+                }
+                #wa-hub-grid[data-mobile-tab="xray"] #wa-hub-col-chats,
+                #wa-hub-grid[data-mobile-tab="xray"] #wa-hub-col-conv {
+                    display: none !important;
+                }
+                .wa-filter-tabs {
+                    flex-wrap: wrap;
+                    padding: 6px 8px;
+                }
+                .wa-filter-tab {
+                    flex: 1 1 calc(50% - 4px);
+                    padding: 6px 4px;
+                    font-size: 0.74rem;
+                }
+                .wa-conv-header {
+                    padding: 8px 10px !important;
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                    gap: 6px !important;
+                }
+                .wa-mob-nav-pill {
+                    display: inline-flex !important;
+                    align-items: center;
+                    gap: 3px;
+                    background: #e2e8f0;
+                    border: 1px solid #cbd5e1;
+                    color: #0f172a;
+                    border-radius: 6px;
+                    padding: 3px 8px;
+                    font-size: 0.73rem;
+                    font-weight: 800;
+                    cursor: pointer;
+                }
+                .wa-conv-messages {
+                    padding: 10px 8px !important;
+                }
+                .wa-bubble {
+                    max-width: 88% !important;
+                    font-size: 0.85rem !important;
+                    padding: 7px 10px !important;
+                }
+                #wa-hub-asistente-contextual-bar {
+                    padding: 5px 8px !important;
+                    gap: 5px !important;
+                }
+                .wa-quick-bar {
+                    padding: 5px 8px !important;
+                    flex-wrap: nowrap !important;
+                    overflow-x: auto !important;
+                    -webkit-overflow-scrolling: touch !important;
+                }
+                .wa-quick-chip {
+                    flex-shrink: 0 !important;
+                    white-space: nowrap !important;
+                }
+                .wa-conv-input-area {
+                    padding: 8px !important;
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                    gap: 6px !important;
+                }
+                .wa-conv-input-area textarea {
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                    min-height: 52px !important;
+                }
+                .wa-conv-input-area > div {
+                    flex-direction: row !important;
+                    width: 100% !important;
+                    gap: 6px !important;
+                }
+                .wa-conv-input-area > div > button {
+                    flex: 1 !important;
+                    padding: 8px 6px !important;
+                    font-size: 0.8rem !important;
+                    justify-content: center;
+                }
+                .wa-col-xray {
+                    padding: 10px !important;
+                    gap: 10px !important;
+                }
+            }
         `;
         document.head.appendChild(style);
     }
@@ -986,7 +1180,7 @@
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);" title="Ajustar ancho de las 3 columnas (también podés arrastrar las barras grises divisorias ⋮ con el mouse)">
+                        <div class="wa-hub-col-resizer-box" style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);" title="Ajustar ancho de las 3 columnas (también podés arrastrar las barras grises divisorias ⋮ con el mouse)">
                             <span style="font-size: 0.72rem; font-weight: 800; color: #a7f3d0;">📐 Columnas:</span>
                             <button type="button" onclick="window.ajustarAnchoColumnaWa('TOGGLE_LEFT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 7px; border-radius: 5px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Plegar o desplegar la columna izquierda de Chats">
                                 ◀ Chats
@@ -1014,7 +1208,21 @@
                 </div>
 
                 <!-- Cuerpo en 3 Columnas Redimensionables -->
-                <div id="wa-hub-grid" class="wa-hub-grid">
+                <!-- Barra de Solapas Móvil (solo visible en <= 768px) -->
+                <div id="wa-hub-mobile-tabs" class="wa-hub-mobile-tabs">
+                    <button type="button" class="wa-hub-mob-tab active" data-wa-mob-tab="chats" onclick="window.cambiarTabMovilConsolaWa('chats')">
+                        💬 Lista de Chats
+                    </button>
+                    <button type="button" class="wa-hub-mob-tab" data-wa-mob-tab="conv" onclick="window.cambiarTabMovilConsolaWa('conv')">
+                        💭 Conversación
+                    </button>
+                    <button type="button" class="wa-hub-mob-tab" data-wa-mob-tab="xray" onclick="window.cambiarTabMovilConsolaWa('xray')">
+                        📊 Ficha / Rayos X
+                    </button>
+                </div>
+
+                <!-- Cuerpo en 3 Columnas Redimensionables -->
+                <div id="wa-hub-grid" class="wa-hub-grid" data-mobile-tab="chats">
                     <!-- COLUMNA 1: Lista de Chats y Filtros -->
                     <div id="wa-hub-col-chats" class="wa-col-chats" style="overflow: hidden;">
                         <div style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
@@ -1178,6 +1386,21 @@
     /**
      * Abre la Consola de 3 Columnas
      */
+    window.cambiarTabMovilConsolaWa = function (tab) {
+        const grid = document.getElementById('wa-hub-grid');
+        if (grid) grid.setAttribute('data-mobile-tab', tab || 'chats');
+        document.querySelectorAll('#wa-hub-mobile-tabs .wa-hub-mob-tab').forEach(btn => {
+            if (btn.getAttribute('data-wa-mob-tab') === tab) btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+        if (tab === 'conv') {
+            const scrollContainer = document.getElementById('wa-hub-messages-scroll');
+            if (scrollContainer) {
+                setTimeout(() => { scrollContainer.scrollTop = scrollContainer.scrollHeight; }, 30);
+            }
+        }
+    };
+
     window.abrirConsolaWhatsappLamda = async function (chatIdSeleccionado = null) {
         const modal = asegurarModalConsolaDom();
         modal.style.display = 'flex';
@@ -1202,6 +1425,11 @@
             await seleccionarChatConsola(estadoConsola.chatActivoId, true);
         } else if (estadoConsola.chats.length > 0) {
             await seleccionarChatConsola(estadoConsola.chats[0].id, true);
+        }
+        if (window.innerWidth <= 768 && typeof window.cambiarTabMovilConsolaWa === 'function') {
+            window.cambiarTabMovilConsolaWa(chatIdSeleccionado ? 'conv' : 'chats');
+        }
+        if (false) {
         }
 
         // Sincronización silenciosa automática al abrir la consola (trae lo enviado desde el celular sin tener que tocar "Traer Chats")
@@ -1835,6 +2063,9 @@
      * Selecciona un chat y renderiza la Columna 2 (Conversación) y Columna 3 (Rayos X del Cliente)
      */
     window.seleccionarChatConsola = async function (chatPk, scrollAlFinal = true) {
+        if (scrollAlFinal && window.innerWidth <= 768 && typeof window.cambiarTabMovilConsolaWa === 'function') {
+            window.cambiarTabMovilConsolaWa('conv');
+        }
         estadoConsola.chatActivoId = chatPk;
         document.querySelectorAll('#wa-hub-chat-list .wa-chat-item').forEach(el => {
             if (Number(el.getAttribute('data-chat-id')) === Number(chatPk)) {
@@ -1955,6 +2186,8 @@
             <div class="wa-conv-header">
                 <div>
                     <div style="font-weight: 800; font-size: 0.98rem; color: #0f172a; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+                        <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('chats')" title="Volver a la lista de chats">← Chats</button>
+                        <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('xray')" style="background:#ecfdf5; border-color:#6ee7b7; color:#065f46;" title="Ver Ficha / Rayos X del Cliente">📊 Ficha</button>
                         <span>${titulo}</span>
                         ${badgeLegacyHdr}
                         ${badgeBunkerHdr}
