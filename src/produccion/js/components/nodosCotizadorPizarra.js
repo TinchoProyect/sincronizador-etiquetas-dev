@@ -197,6 +197,12 @@
                             <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${nodosActivosCount} activos</span>
                         </button>
 
+                        <a href="/deposito-nodos" target="_blank"
+                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(167,139,250,0.5); background:rgba(167,139,250,0.16); color:#ddd6fe; display:inline-flex; align-items:center; gap:5px;"
+                            title="Abrir Mesa de Armado de Nodos y Canastos (Estación Nodos)">
+                            📦 Mesa de Armado ↗
+                        </a>
+
                         <a href="/gestor/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
                             style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.14); color:#bae6fd; display:inline-flex; align-items:center; gap:5px;"
                             title="Abrir Panel de Autogestión del Gestor del Nodo">
@@ -813,7 +819,11 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6);" onclick="event.stopPropagation();">
+                                <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6); flex-wrap:wrap;" onclick="event.stopPropagation();">
+                                    <a href="/deposito-nodos" target="_blank"
+                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.45); color:#ddd6fe;">
+                                        📦 Mesa Armado ↗
+                                    </a>
                                     <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
                                         style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
                                         🎛️ Panel Gestor ↗

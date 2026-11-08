@@ -206,6 +206,9 @@
         <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top green">
           🏪 Ver mi Tienda Vecinal ↗
         </a>
+        <a href="/deposito-nodos" target="_blank" class="btn-top">
+          📦 Mesa de Armado (Depósito) ↗
+        </a>
         <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
           📊 Pizarra LAMDA
         </a>
@@ -693,6 +696,9 @@
                     </span>
                     <strong style="font-size:1rem; margin-left:8px;">👤 ${esc(p.vecino_nombre)}</strong>
                     <span style="font-size:0.8rem; color:#64748b; margin-left:8px;">📱 ${esc(p.vecino_telefono)}</span>
+                    <span style="display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${p.estado_operativo === 'EN_PODER_GESTOR' ? '#e0f2fe' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#dcfce7' : '#fef3c7'}; color:${p.estado_operativo === 'EN_PODER_GESTOR' ? '#0369a1' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#15803d' : '#b45309'};">
+                      ${p.estado_operativo === 'EN_PODER_GESTOR' ? '🚚 En reparto / En poder del Gestor' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '🧺 Lista en Canasto Depósito' : '⏳ En preparación en Taller'}
+                    </span>
                     <div style="font-size:0.8rem; color:#334155; margin-top:5px;">
                       📅 <strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} ·
                       ${p.modalidad_entrega === 'ENVIO_BARRIAL'

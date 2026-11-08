@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesa de Armado y Estación de Nodos — Depósito LAMDA</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root {
+            --bg-main: #0b1120;
+            --bg-card: #151e2e;
+            --bg-elevated: #1e293b;
+            --border: #2e3c51;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --emerald: #10b981;
+            --sky: #38bdf8;
+            --amber: #f59e0b;
+            --violet: #8b5cf6;
+            --rose: #f43f5e;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: 48px;
+        }
+        .topbar {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.35);
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .brand-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .brand-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: rgba(16, 185, 129, 0.16);
+            border: 1px solid rgba(16, 185, 129, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.45rem;
+        }
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-top {
+            text-decoration: none;
+            padding: 8px 13px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid var(--border);
+            background: #0f172a;
+            color: #e2e8f0;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .btn-top:hover {
+            border-color: var(--sky);
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1480px;
+            margin: 0 auto;
+            padding: 18px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        /* Barra visual de los 4 sectores conceptuales del depósito */
+        .depositos-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 14px;
+        }
+        .dep-pill {
+            padding: 9px 12px;
+            border-radius: 9px;
+            background: rgba(30, 41, 59, 0.55);
+            border: 1px solid #263244;
+            color: #64748b;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .dep-pill.active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 78, 59, 0.45));
+            border: 1px solid #10b981;
+            color: #ecfdf5;
+            font-weight: 700;
+            box-shadow: 0 0 18px rgba(16, 185, 129, 0.15);
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 13px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .kpi-val {
+            font-size: 1.55rem;
+            font-weight: 900;
+            line-height: 1.1;
+        }
+        .kpi-lbl {
+            font-size: 0.76rem;
+            color: var(--text-secondary);
+            margin-top: 3px;
+        }
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 18px;
+            align-items: start;
+        }
+        @media (max-width: 1100px) {
+            .workspace-grid {
+                grid-template-columns: 1fr;
+            }
+            .depositos-strip, .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .panel-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+        }
+        .canasto-item {
+            padding: 13px;
+            border-radius: 11px;
+            background: #0f172a;
+            border: 1px solid #263244;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .canasto-item:hover {
+            border-color: #475569;
+        }
+        .canasto-item.selected {
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid #10b981;
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.14);
+        }
+        .progress-track {
+            width: 100%;
+            height: 9px;
+            background: #1e293b;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.25s ease;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 800;
+        }
+        .table-consolidado {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .table-consolidado th {
+            text-align: left;
+            padding: 9px 10px;
+            background: #0f172a;
+            color: #94a3b8;
+            font-size: 0.73rem;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+        }
+        .table-consolidado td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(46, 60, 81, 0.55);
+        }
+        .pedido-card {
+            background: #0f172a;
+            border: 1px solid #2e3c51;
+            border-radius: 11px;
+            padding: 13px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .pedido-card.armada {
+            border-color: rgba(16, 185, 129, 0.55);
+            background: linear-gradient(90deg, rgba(16, 185, 129, 0.09), rgba(15, 23, 42, 0.95));
+        }
+        .pedido-card.despachada {
+            border-color: rgba(56, 189, 248, 0.55);
+            background: linear-gradient(90deg, rgba(56, 189, 248, 0.09), rgba(15, 23, 42, 0.95));
+        }
+        .btn-action {
+            padding: 9px 14px;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: transform 0.1s ease, opacity 0.15s ease;
+        }
+        .btn-action:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- BARRA SUPERIOR -->
+    <header class="topbar">
+        <div class="brand-row">
+            <div class="brand-icon">📦</div>
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h1 style="font-size:1.12rem; font-weight:800; color:#f8fafc;">Mesa de Armado de Nodos y Estación de Canastos</h1>
+                    <span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4);">
+                        4° Sector de Depósito
+                    </span>
+                </div>
+                <p style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">
+                    Fraccionamiento consolidado por lote, etiquetado térmico de bolsas individuales y entrega del Canasto al Gestor con QR Maestro.
+                </p>
+            </div>
+        </div>
+
+        <div class="nav-actions">
+            <select id="filtro-nodo-select" onchange="cambiarFiltroNodo(this.value)"
+                style="padding:8px 12px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
+                <option value="0">🏘️ Todos los Nodos Barriales</option>
+            </select>
+
+            <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
+                🧮 Cotizador Pizarra
+            </a>
+            <a href="/gestor/almacen-verde-city-bell" target="_blank" id="link-panel-gestor" class="btn-top" style="border-color:rgba(56,189,248,0.45); color:#bae6fd;">
+                🎛️ Panel del Gestor ↗
+            </a>
+            <a href="/tienda/almacen-verde-city-bell" target="_blank" id="link-tienda-vecino" class="btn-top" style="border-color:rgba(16,185,129,0.45); color:#6ee7b7;">
+                🏪 Tienda del Vecino ↗
+            </a>
+            <button type="button" onclick="cargarTableroDeposito()" class="btn-top">
+                🔄 Actualizar
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- ESQUEMA DE LOS 4 DEPÓSITOS CONCEPTUALES DE LAMDA -->
+        <div class="depositos-strip">
+            <div class="dep-pill">
+                <span>1. 📦 Artículos Comerciales (B2B)</span>
+                <span style="font-size:0.7rem;">Mayorista</span>
+            </div>
+            <div class="dep-pill">
+                <span>2. 🌾 Ingredientes y Granel</span>
+                <span style="font-size:0.7rem;">Insumos</span>
+            </div>
+            <div class="dep-pill">
+                <span>3. 🛡️ Mantenimiento y Tratamientos</span>
+                <span style="font-size:0.7rem;">Control</span>
+            </div>
+            <div class="dep-pill active">
+                <span>4. 🏘️ Estación de Nodos (Canastos Listos)</span>
+                <span class="badge" style="background:#10b981; color:#052e16;">ACTIVO</span>
+            </div>
+        </div>
+
+        <!-- KPIS EN VIVO DEL SECTOR -->
+        <div class="kpi-grid" id="kpi-container"></div>
+
+        <!-- GRILLA PRINCIPAL: CANASTOS A LA IZQUIERDA + MESA DE ARMADO Y ENTREGA A LA DERECHA -->
+        <div class="workspace-grid">
+            <!-- COLUMNA IZQUIERDA: LOTES / CANASTOS POR VENTANA DE ENTREGA -->
+            <div style="display:flex; flex-direction:column; gap:14px;">
+                <div class="panel-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div>
+                            <div style="font-weight:800; font-size:0.95rem; color:#f8fafc;">🧺 Canastos por Fecha de Entrega</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccioná un canasto para armar sus bolsas o entregarlo al gestor</div>
+                        </div>
+                    </div>
+                    <div id="lista-canastos-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+                </div>
+
+                <!-- ÚLTIMOS MOVIMIENTOS DE CUENTA CORRIENTE POR RETIRO DE LOTES -->
+                <div class="panel-card">
+                    <div style="font-weight:800; font-size:0.88rem; color:#f8fafc; margin-bottom:8px;">
+                        📒 Movimientos en Cuenta Corriente del Nodo
+                    </div>
+                    <div style="font-size:0.73rem; color:#94a3b8; margin-bottom:10px;">
+                        Cada vez que el gestor retira un canasto del depósito, se registra el débito por el Costo Base LAMDA del lote.
+                    </div>
+                    <div id="lista-movimientos-cc" style="display:flex; flex-direction:column; gap:8px;"></div>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: DETALLE DEL CANASTO ACTIVO -->
+            <div id="detalle-canasto-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
+        </div>
+    </main>
+
+    <script>
+        const ESTADO = {
+            nodoFiltroId: 0,
+            canastoSeleccionadoId: null,
+            tablero: null,
+            ultimaEtiquetaMostrada: null
+        };
+
+        function fmtMoneda(val) {
+            return '$' + Number(val || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function fmtKilos(val) {
+            return Number(val || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kg';
+        }
+
+        function esc(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function cargarTableroDeposito(preservarSeleccion = true) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/tablero?nodo_id=${ESTADO.nodoFiltroId}`);
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error cargando Mesa de Armado');
+
+                ESTADO.tablero = data;
+                poblarSelectorNodos(data.nodos || []);
+
+                const canastos = data.canastos || [];
+                if (!preservarSeleccion || !ESTADO.canastoSeleccionadoId || !canastos.some(c => Number(c.id) === Number(ESTADO.canastoSeleccionadoId))) {
+                    ESTADO.canastoSeleccionadoId = canastos[0]?.id || null;
+                }
+
+                renderizarTodo();
+            } catch (err) {
+                console.error(err);
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function poblarSelectorNodos(nodos) {
+            const sel = document.getElementById('filtro-nodo-select');
+            if (!sel) return;
+            const actual = String(ESTADO.nodoFiltroId || 0);
+            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos Barriales</option>` +
+                nodos.map(n => `<option value="${n.id}" ${String(n.id) === actual ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`).join('');
+        }
+
+        function cambiarFiltroNodo(val) {
+            ESTADO.nodoFiltroId = Number(val || 0);
+            cargarTableroDeposito(false);
+        }
+
+        function seleccionarCanasto(id) {
+            ESTADO.canastoSeleccionadoId = Number(id);
+            renderizarTodo();
+        }
+
+        function renderizarTodo() {
+            if (!ESTADO.tablero) return;
+            renderizarKpis();
+            renderizarListaCanastos();
+            renderizarMovimientosCc();
+            renderizarWorkspaceCanastoActivo();
+        }
+
+        function renderizarKpis() {
+            const r = ESTADO.tablero.resumen_deposito || {};
+            const el = document.getElementById('kpi-container');
+            if (!el) return;
+
+            el.innerHTML = `
+                <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                    <div>
+                        <div class="kpi-val" style="color:#fbbf24;">${r.bolsas_pendientes_armar || 0}</div>
+                        <div class="kpi-lbl">Bolsas por armar en Taller</div>
+                    </div>
+                    <div style="font-size:1.7rem;">⏳</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                    <div>
+                        <div class="kpi-val" style="color:#34d399;">${r.bolsas_en_estacion_nodos || 0}</div>
+                        <div class="kpi-lbl">Bolsas listas en Canasto (Estación Nodos)</div>
+                    </div>
+                    <div style="font-size:1.7rem;">🧺</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #8b5cf6;">
+                    <div>
+                        <div class="kpi-val" style="color:#c4b5fd;">${r.canastos_listos_retiro || 0}</div>
+                        <div class="kpi-lbl">Canastos completos para retiro del Gestor</div>
+                    </div>
+                    <div style="font-size:1.7rem;">📲</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+                    <div>
+                        <div class="kpi-val" style="color:#7dd3fc;">${r.bolsas_en_poder_gestor || 0}</div>
+                        <div class="kpi-lbl">Bolsas entregadas / En reparto del Gestor</div>
+                    </div>
+                    <div style="font-size:1.7rem;">🚚</div>
+                </div>
+            `;
+        }
+
+        function obtenerMetaEstadoCanasto(c) {
+            if (c.estado_canasto === 'ENTREGADO_AL_GESTOR') {
+                return {
+                    texto: '🚚 En reparto / En poder del Gestor',
+                    bg: 'rgba(56,189,248,0.18)',
+                    color: '#7dd3fc',
+                    border: '#38bdf8',
+                    barColor: '#38bdf8'
+                };
+            }
+            if (c.estado_canasto === 'LISTO_ESTACION_NODOS' || (c.total_bolsas > 0 && c.bolsas_armadas === c.total_bolsas)) {
+                return {
+                    texto: '✅ Canasto Completo en Estación Nodos',
+                    bg: 'rgba(16,185,129,0.2)',
+                    color: '#6ee7b7',
+                    border: '#10b981',
+                    barColor: '#10b981'
+                };
+            }
+            return {
+                texto: '⏳ En armado en Taller',
+                bg: 'rgba(245,158,11,0.18)',
+                color: '#fcd34d',
+                border: '#f59e0b',
+                barColor: '#f59e0b'
+            };
+        }
+
+        function renderizarListaCanastos() {
+            const cont = document.getElementById('lista-canastos-container');
+            if (!cont) return;
+            const canastos = ESTADO.tablero.canastos || [];
+
+            if (canastos.length === 0) {
+                cont.innerHTML = `<div style="padding:18px; text-align:center; color:#64748b; font-size:0.84rem;">No hay canastos activos.</div>`;
+                return;
+            }
+
+            cont.innerHTML = canastos.map(c => {
+                const sel = Number(c.id) === Number(ESTADO.canastoSeleccionadoId);
+                const meta = obtenerMetaEstadoCanasto(c);
+                const pct = c.total_bolsas > 0 ? Math.round((c.bolsas_armadas / c.total_bolsas) * 100) : 0;
+
+                return `
+                    <div class="canasto-item ${sel ? 'selected' : ''}" onclick="seleccionarCanasto(${c.id})">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                            <div>
+                                <div style="font-weight:800; font-size:0.9rem; color:#f8fafc;">${esc(c.nombre_marca)}</div>
+                                <div style="font-size:0.74rem; color:#94a3b8;">👤 Gestor: ${esc(c.gestor_nombre)}</div>
+                            </div>
+                            <span style="font-family:monospace; font-size:0.7rem; background:rgba(255,255,255,0.07); color:#cbd5e1; padding:2px 7px; border-radius:5px;">
+                                ${esc(c.codigo_canasto)}
+                            </span>
+                        </div>
+
+                        <div style="padding:6px 9px; border-radius:7px; background:rgba(255,255,255,0.03); border:1px solid #1e293b; font-size:0.78rem; color:#e2e8f0; font-weight:700;">
+                            📅 Entrega: <span style="color:#38bdf8;">${esc(c.fecha_entrega_label)}</span>
+                        </div>
+
+                        <div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:4px;">
+                                <span style="font-weight:800; color:${meta.color};">
+                                    🧺 ${c.bolsas_armadas} de ${c.total_bolsas} bolsas listas en Canasto
+                                </span>
+                                <span style="color:#94a3b8;">${pct}%</span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width:${pct}%; background:${meta.barColor};"></div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.73rem; color:#94a3b8; padding-top:2px;">
+                            <span class="badge" style="background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border};">
+                                ${meta.texto}
+                            </span>
+                            <span>⚖️ ${fmtKilos(c.total_kilos_lote)} · Base: <strong style="color:#f8fafc;">${fmtMoneda(c.total_base_lamda)}</strong></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderizarMovimientosCc() {
+            const cont = document.getElementById('lista-movimientos-cc');
+            if (!cont) return;
+            const movs = ESTADO.tablero.movimientos_cta_cte || [];
+
+            if (movs.length === 0) {
+                cont.innerHTML = `
+                    <div style="padding:12px; border-radius:8px; background:#0f172a; border:1px dashed #334155; color:#64748b; font-size:0.77rem; text-align:center;">
+                        Aún no se registraron retiros de canastos en esta sesión. Al confirmar la entrega de un canasto al gestor, verás aquí el impacto contable automático.
+                    </div>
+                `;
+                return;
+            }
+
+            cont.innerHTML = movs.map(m => `
+                <div style="padding:10px 12px; border-radius:9px; background:#0f172a; border:1px solid #263244; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <div>
+                        <div style="font-size:0.78rem; font-weight:700; color:#f8fafc;">${esc(m.nombre_marca)} · ${esc(m.codigo_canasto || '')}</div>
+                        <div style="font-size:0.72rem; color:#94a3b8;">${esc(m.concepto)}</div>
+                    </div>
+                    <div style="text-align:right; flex-shrink:0;">
+                        <div style="font-size:0.86rem; font-weight:900; color:#fb7185;">-${fmtMoneda(m.monto)}</div>
+                        <div style="font-size:0.69rem; color:#64748b;">Saldo Cta. Cte: ${fmtMoneda(m.saldo_resultante)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderizarWorkspaceCanastoActivo() {
+            const ws = document.getElementById('detalle-canasto-workspace');
+            if (!ws) return;
+
+            const canasto = (ESTADO.tablero.canastos || []).find(c => Number(c.id) === Number(ESTADO.canastoSeleccionadoId));
+            if (!canasto) {
+                ws.innerHTML = `<div class="panel-card">Seleccioná un canasto de la columna izquierda.</div>`;
+                return;
+            }
+
+            // Actualizar links superiores con el slug del nodo activo
+            const linkGestor = document.getElementById('link-panel-gestor');
+            const linkTienda = document.getElementById('link-tienda-vecino');
+            if (linkGestor && canasto.nodo_slug) linkGestor.href = `/gestor/${canasto.nodo_slug}`;
+            if (linkTienda && canasto.nodo_slug) linkTienda.href = `/tienda/${canasto.nodo_slug}`;
+
+            const meta = obtenerMetaEstadoCanasto(canasto);
+            const pct = canasto.total_bolsas > 0 ? Math.round((canasto.bolsas_armadas / canasto.total_bolsas) * 100) : 0;
+            const todasListas = canasto.total_bolsas > 0 && canasto.bolsas_armadas === canasto.total_bolsas;
+            const yaEntregado = canasto.estado_canasto === 'ENTREGADO_AL_GESTOR';
+
+            const filasConsolidado = (canasto.consolidado_mercaderia || []).map(item => {
+                const completo = item.bolsas_pendientes === 0;
+                const vecinosStr = item.vecinos_detalle.map(v => `${esc(v.vecino_nombre)} (${v.cantidad})`).join(', ');
+                return `
+                    <tr>
+                        <td>
+                            <div style="font-weight:800; color:#f8fafc;">${esc(item.nombre_publico)}</div>
+                            <div style="font-size:0.72rem; color:#94a3b8;">Código: <code>${esc(item.sku_nodo)}</code> · Vecinos: ${vecinosStr}</div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1;">
+                                ${esc(item.presentacion_etiqueta || (item.kilos_unidad * 1000 + 'g'))}
+                            </span>
+                        </td>
+                        <td style="font-weight:900; font-size:0.95rem; color:#38bdf8;">
+                            ${item.bolsas_totales} u.
+                        </td>
+                        <td style="font-weight:700; color:#cbd5e1;">
+                            ${fmtKilos(item.kilos_totales)}
+                        </td>
+                        <td>
+                            ${completo
+                                ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">✅ ${item.bolsas_listas}/${item.bolsas_totales} fraccionadas</span>`
+                                : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fcd34d; border:1px solid #f59e0b;">⏳ Faltan ${item.bolsas_pendientes} de ${item.bolsas_totales} u.</span>`}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tarjetasPedidos = (canasto.pedidos_vecinos || []).map(p => {
+                const esEfectivo = p.medio_pago === 'EFECTIVO' || String(p.estado_pago).includes('COBRAR');
+                const itemsResumen = (p.items || []).map(i => `<strong>${i.cantidad}x</strong> ${esc(i.nombre_publico)}`).join(' · ');
+
+                let badgeUbicacion = `<span class="badge" style="background:rgba(245,158,11,0.16); color:#fcd34d; border:1px solid rgba(245,158,11,0.4);">⏳ Pendiente en Mesa de Armado</span>`;
+                if (p.despachado_gestor) {
+                    badgeUbicacion = `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8;">🚚 En reparto / En poder del Gestor</span>`;
+                } else if (p.bolsa_lista) {
+                    badgeUbicacion = `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">🧺 Alojada en Canasto (Estación Nodos)</span>`;
+                }
+
+                return `
+                    <div class="pedido-card ${p.despachado_gestor ? 'despachada' : p.bolsa_lista ? 'armada' : ''}">
+                        <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:6px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-family:monospace; font-weight:900; font-size:0.86rem; background:#1e293b; color:#38bdf8; padding:3px 8px; border-radius:6px;">
+                                    #${esc(p.codigo_pedido)}
+                                </span>
+                                <span style="font-weight:800; font-size:0.98rem; color:#f8fafc;">
+                                    👤 ${esc(p.vecino_nombre)}
+                                </span>
+                                ${badgeUbicacion}
+                                <span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.16)'}; color:${esEfectivo ? '#fcd34d' : '#6ee7b7'};">
+                                    ${esEfectivo ? `💵 Cobrar Efectivo: ${fmtMoneda(p.total_vecino)}` : `🏦 Transferencia (${fmtMoneda(p.total_vecino)})`}
+                                </span>
+                            </div>
+
+                            <div style="font-size:0.82rem; color:#e2e8f0; line-height:1.4;">
+                                📦 ${itemsResumen}
+                            </div>
+
+                            <div style="font-size:0.74rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
+                                <span>📍 ${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `🛵 Envío Barrial: ${esc(p.direccion_entrega)}` : `🏠 Retiro en Nodo (${esc(p.ventana_horaria_label || '')})`}</span>
+                                <span>📱 WhatsApp: ${esc(p.vecino_telefono)}</span>
+                                <span>🏭 Costo Base LAMDA: <strong style="color:#cbd5e1;">${fmtMoneda(p.total_base_lamda)}</strong></span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            ${!p.bolsa_lista && !yaEntregado ? `
+                                <button type="button" class="btn-action"
+                                    onclick="armarBolsaIndividual(${p.id}, false)"
+                                    style="background:linear-gradient(135deg, #10b981, #059669); color:#052e16;">
+                                    ✅ Marcar Bolsa Lista + Etiqueta Zebra
+                                </button>
+                            ` : `
+                                <button type="button" class="btn-action"
+                                    onclick="verEtiquetaBolsaVecino(${p.id})"
+                                    style="background:rgba(56,189,248,0.16); color:#bae6fd; border:1px solid rgba(56,189,248,0.45);">
+                                    🖨️ Ver Etiqueta Zebra
+                                </button>
+                                ${!yaEntregado ? `
+                                    <button type="button" class="btn-action"
+                                        onclick="armarBolsaIndividual(${p.id}, true)"
+                                        style="background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:8px 10px;"
+                                        title="Volver a estado pendiente de armado">
+                                        ↩️ Reabrir
+                                    </button>
+                                ` : ''}
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            ws.innerHTML = `
+                <!-- CABECERA DEL CANASTO SELECCIONADO -->
+                <div class="panel-card" style="background:linear-gradient(135deg, #151e2e 0%, #0f172a 100%); border-color:${meta.border};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:14px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <span style="font-size:1.18rem; font-weight:900; color:#f8fafc;">
+                                    🧺 Canasto ${esc(canasto.codigo_canasto)} — ${esc(canasto.nombre_marca)}
+                                </span>
+                                <span class="badge" style="background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border}; font-size:0.76rem;">
+                                    ${meta.texto}
+                                </span>
+                            </div>
+                            <div style="font-size:0.82rem; color:#94a3b8; margin-top:4px;">
+                                📅 Ventana de entrega: <strong style="color:#38bdf8;">${esc(canasto.fecha_entrega_label)}</strong> ·
+                                👤 Gestor responsable: <strong style="color:#e2e8f0;">${esc(canasto.gestor_nombre)}</strong> ·
+                                📍 Ubicación física/virtual: <strong style="color:#34d399;">${esc(canasto.ubicacion_deposito)}</strong>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="btn-action" onclick="verEtiquetaQrMaestroCanasto(${canasto.id})"
+                                style="background:rgba(139,92,246,0.18); color:#ddd6fe; border:1px solid rgba(139,92,246,0.5);">
+                                🏷️ Etiqueta y QR Maestro del Canasto
+                            </button>
+                            ${!yaEntregado ? `
+                                <button type="button" class="btn-action" onclick="abrirModalRetiroGestorQr(${canasto.id})"
+                                    style="background:linear-gradient(135deg, #38bdf8, #0284c7); color:#082f49;">
+                                    📲 Entregar Canasto al Gestor (QR Maestro)
+                                </button>
+                            ` : `
+                                <button type="button" class="btn-action" onclick="reabrirCanastoPrueba(${canasto.id})"
+                                    style="background:rgba(245,158,11,0.16); color:#fcd34d; border:1px solid rgba(245,158,11,0.45);">
+                                    🔄 Reabrir Canasto (Repetir prueba Lab)
+                                </button>
+                            `}
+                        </div>
+                    </div>
+
+                    <!-- BARRA DE AVANCE EN VIVO DEL CANASTO -->
+                    <div style="padding:12px 14px; border-radius:10px; background:rgba(15,23,42,0.8); border:1px solid #263244;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-size:0.88rem; font-weight:800; color:${meta.color};">
+                                📊 Avance del Canasto en Estación Nodos: ${canasto.bolsas_armadas} de ${canasto.total_bolsas} bolsas listas en Canasto
+                            </span>
+                            <span style="font-size:0.84rem; font-weight:800; color:#f8fafc;">${pct}% completado</span>
+                        </div>
+                        <div class="progress-track" style="height:12px;">
+                            <div class="progress-fill" style="width:${pct}%; background:${meta.barColor};"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PASO 1: CONSOLIDADO DE MERCADERÍA A FRACCIONAR PARA ESTE LOTE -->
+                <div class="panel-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <div style="font-weight:800; font-size:0.96rem; color:#f8fafc;">
+                                1️⃣ Resumen Consolidado de Mercadería a Fraccionar (${fmtKilos(canasto.total_kilos_lote)} totales)
+                            </div>
+                            <div style="font-size:0.76rem; color:#94a3b8;">
+                                Total de bolsas por producto que el equipo de depósito necesita preparar para completar este canasto.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                        <table class="table-consolidado">
+                            <thead>
+                                <tr>
+                                    <th>Producto Familiar</th>
+                                    <th>Presentación</th>
+                                    <th>Bolsas Totales</th>
+                                    <th>Peso Total</th>
+                                    <th>Estado de Fraccionado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filasConsolidado}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PASO 2: ARMADO DE BOLSAS INDIVIDUALES POR VECINO Y ETIQUETA TÉRMICA -->
+                <div class="panel-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="font-weight:800; font-size:0.96rem; color:#f8fafc;">
+                                2️⃣ Armado de Bolsas Individuales por Vecino y Etiqueta Térmica Zebra
+                            </div>
+                            <div style="font-size:0.76rem; color:#94a3b8;">
+                                Al marcar cada pedido como preparado se imprime su etiqueta en doble columna (Portada con logo del Nodo + Checklist) y la bolsa ingresa al Canasto.
+                            </div>
+                        </div>
+                        ${!todasListas && !yaEntregado ? `
+                            <button type="button" class="btn-action" onclick="armarTodasLasBolsas(${canasto.id})"
+                                style="background:rgba(16,185,129,0.18); color:#6ee7b7; border:1px solid #10b981;">
+                                ⚡ Marcar las ${canasto.total_bolsas - canasto.bolsas_armadas} bolsas restantes como listas
+                            </button>
+                        ` : ''}
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        ${tarjetasPedidos}
+                    </div>
+                </div>
+
+                <!-- PASO 3: ENTREGA DEL LOTE AL GESTOR CON QR MAESTRO E IMPACTO EN CUENTA CORRIENTE -->
+                <div class="panel-card" style="border-color:rgba(56,189,248,0.4);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                        <div style="flex:1; min-width:280px;">
+                            <div style="font-weight:800; font-size:0.96rem; color:#f8fafc;">
+                                3️⃣ Retiro del Canasto por el Gestor (QR Maestro) e Impacto en Cuenta Corriente
+                            </div>
+                            <div style="font-size:0.78rem; color:#94a3b8; margin-top:4px; line-height:1.45;">
+                                Cuando <strong>${esc(canasto.gestor_nombre)}</strong> retira el canasto <code>${esc(canasto.codigo_canasto)}</code> del depósito, se escanea el QR Maestro (<code>${esc(canasto.qr_maestro_payload)}</code>). Todos los pedidos pasan a <strong>"En reparto / En poder del Gestor"</strong> y se debita automáticamente el <strong>Costo Base LAMDA del lote (${fmtMoneda(canasto.total_base_lamda)})</strong> en la Cuenta Corriente del Nodo.
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <div style="padding:10px 14px; border-radius:10px; background:#0f172a; border:1px solid #2e3c51; text-align:right;">
+                                <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Débito Base LAMDA del Lote</div>
+                                <div style="font-size:1.2rem; font-weight:900; color:#fbbf24;">${fmtMoneda(canasto.total_base_lamda)}</div>
+                                <div style="font-size:0.69rem; color:#6ee7b7;">Venta a vecinos: ${fmtMoneda(canasto.total_venta_vecinos)} (Margen gestor: +${fmtMoneda(canasto.ganancia_estimada_gestor)})</div>
+                            </div>
+
+                            <div style="padding:10px 14px; border-radius:10px; background:#0f172a; border:1px solid #2e3c51; text-align:right;">
+                                <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Saldo Actual Cta. Cte. Nodo</div>
+                                <div style="font-size:1.2rem; font-weight:900; color:${Number(canasto.saldo_cuenta_corriente) < 0 ? '#fb7185' : '#34d399'};">
+                                    ${fmtMoneda(canasto.saldo_cuenta_corriente)}
+                                </div>
+                                <div style="font-size:0.69rem; color:#94a3b8;">
+                                    ${yaEntregado ? `✅ Retirado por ${esc(canasto.retirado_por_gestor || canasto.gestor_nombre)}` : 'Pendiente de retiro'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function armarBolsaIndividual(pedidoId, desmarcar = false) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/pedidos/${pedidoId}/armar-bolsa`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ desmarcar, operario: 'Equipo Depósito' })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar la bolsa');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                if (!desmarcar && data.etiqueta) {
+                    const c = data.canasto;
+                    const progresoTxt = c ? `${c.bolsas_armadas} de ${c.total_bolsas} bolsas listas en Canasto` : 'Bolsa alojada en Canasto';
+                    mostrarModalEtiquetaZebra(
+                        `✅ Bolsa #${data.codigo_pedido} (${data.vecino_nombre}) alojada en Canasto`,
+                        `Avance en Estación Nodos: <strong>${progresoTxt}</strong>`,
+                        data.etiqueta
+                    );
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function verEtiquetaBolsaVecino(pedidoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/pedidos/${pedidoId}/etiqueta`);
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error generando etiqueta');
+
+                mostrarModalEtiquetaZebra(
+                    `🖨️ Etiqueta Térmica Zebra — Pedido #${data.pedido_codigo || pedidoId}`,
+                    `Par gemelo en doble columna (Portada con marca del Nodo + Checklist con gramaje protegido)`,
+                    data
+                );
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function armarTodasLasBolsas(canastoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/canastos/${canastoId}/armar-todo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ operario: 'Equipo Depósito' })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error armando bolsas del canasto');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                if (data.etiqueta_canasto) {
+                    mostrarModalEtiquetaZebra(
+                        `🧺 Canasto Completo en Estación Nodos`,
+                        `Todas las bolsas fueron preparadas. Aquí tenés la <strong>Etiqueta con el QR Maestro del Canasto</strong> lista para el retiro del Gestor.`,
+                        data.etiqueta_canasto
+                    );
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function verEtiquetaQrMaestroCanasto(canastoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/canastos/${canastoId}/etiqueta-qr`);
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error generando QR Maestro del Canasto');
+
+                mostrarModalEtiquetaZebra(
+                    `🏷️ Etiqueta de Canasto y QR Maestro (${data.codigo_canasto})`,
+                    `Código QR Maestro: <code>${esc(data.qr_maestro_payload)}</code> · Se pega en el frente del canasto físico en Estación Nodos.`,
+                    data
+                );
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function mostrarModalEtiquetaZebra(titulo, subtituloHtml, etiquetaData) {
+            Swal.fire({
+                title: titulo,
+                width: '920px',
+                background: '#151e2e',
+                color: '#f8fafc',
+                html: `
+                    <div style="display:flex; flex-direction:column; gap:12px; text-align:left;">
+                        <div style="font-size:0.84rem; color:#cbd5e1;">${subtituloHtml}</div>
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:12px; text-align:center; overflow:auto;">
+                            <img src="${etiquetaData.preview_rollo_base64}" alt="Preview Etiqueta Zebra" style="max-width:100%; height:auto; border-radius:6px;">
+                        </div>
+                        <details style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:8px 12px;">
+                            <summary style="cursor:pointer; font-size:0.75rem; color:#64748b; font-weight:700;">
+                                🔧 Ver código técnico ZPL de impresora (opcional)
+                            </summary>
+                            <textarea readonly rows="5" style="width:100%; margin-top:8px; padding:8px; border-radius:6px; background:#090d16; color:#38bdf8; border:1px solid #334155; font-family:monospace; font-size:0.72rem;">${esc(etiquetaData.zpl || '')}</textarea>
+                        </details>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '🖨️ Enviar a Impresora Zebra',
+                cancelButtonText: 'Cerrar vista previa',
+                confirmButtonColor: '#10b981'
+            }).then(async (r) => {
+                if (r.isConfirmed && etiquetaData.zpl) {
+                    try {
+                        await fetch('http://localhost:3099/imprimir', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ zpl: etiquetaData.zpl })
+                        });
+                        Swal.fire({ icon: 'success', title: 'Enviado a Zebra', timer: 1400, showConfirmButton: false, background: '#151e2e', color: '#f8fafc' });
+                    } catch (_) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Simulación en Modo Laboratorio',
+                            text: 'La etiqueta fue previsualizada correctamente en el Laboratorio (el puente físico Zebra :3099 es opcional en pruebas).',
+                            background: '#151e2e',
+                            color: '#f8fafc'
+                        });
+                    }
+                }
+            });
+        }
+
+        async function abrirModalRetiroGestorQr(canastoId) {
+            const canasto = (ESTADO.tablero.canastos || []).find(c => Number(c.id) === Number(canastoId));
+            if (!canasto) return;
+
+            // Cargar vista previa de la etiqueta con el QR Maestro para mostrarla en el modal de retiro
+            let etiquetaQr = null;
+            try {
+                const r = await fetch(`/api/produccion/nodos/deposito/canastos/${canastoId}/etiqueta-qr`);
+                const d = await r.json();
+                if (d.ok) etiquetaQr = d;
+            } catch (_) {}
+
+            const faltanBolsas = canasto.total_bolsas - canasto.bolsas_armadas;
+
+            const { value: formValues } = await Swal.fire({
+                title: `📲 Entrega de Canasto al Gestor (${canasto.codigo_canasto})`,
+                width: '820px',
+                background: '#151e2e',
+                color: '#f8fafc',
+                html: `
+                    <div style="text-align:left; display:flex; flex-direction:column; gap:12px; font-size:0.85rem;">
+                        ${faltanBolsas > 0 ? `
+                            <div style="padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.16); border:1px solid #f59e0b; color:#fde68a;">
+                                ⚠️ Atención: Quedan <strong>${faltanBolsas} bolsa(s)</strong> sin marcar como listas. Al confirmar el retiro del canasto, todas las bolsas del lote quedarán marcadas como entregadas al gestor.
+                            </div>
+                        ` : `
+                            <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#a7f3d0;">
+                                ✅ El canasto tiene las <strong>${canasto.total_bolsas} de ${canasto.total_bolsas} bolsas listas</strong> en Estación Nodos.
+                            </div>
+                        `}
+
+                        ${etiquetaQr ? `
+                            <div style="background:#0f172a; border:1px solid #334155; border-radius:9px; padding:10px; text-align:center;">
+                                <img src="${etiquetaQr.preview_rollo_base64}" alt="QR Maestro Canasto" style="max-width:100%; max-height:240px; border-radius:6px;">
+                            </div>
+                        ` : ''}
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Lectura de QR Maestro del Canasto</label>
+                                <input id="swal-qr-input" type="text" value="${esc(canasto.qr_maestro_payload)}"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-family:monospace; font-weight:700;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Retirado por (Gestor / Autorizado)</label>
+                                <input id="swal-retirado-por" type="text" value="${esc(canasto.gestor_nombre)}"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700;">
+                            </div>
+                        </div>
+
+                        <div style="padding:12px; border-radius:9px; background:#0f172a; border:1px solid rgba(56,189,248,0.4); display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-weight:800; color:#f8fafc;">Impacto Automático en Cuenta Corriente del Nodo</div>
+                                <div style="font-size:0.76rem; color:#94a3b8;">Se debitará el Costo Base LAMDA de las ${canasto.total_bolsas} bolsas retiradas</div>
+                            </div>
+                            <div style="font-size:1.3rem; font-weight:900; color:#fb7185;">
+                                -${fmtMoneda(canasto.total_base_lamda)}
+                            </div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Confirmar Escaneo QR y Entregar Lote al Gestor',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#0284c7',
+                preConfirm: () => ({
+                    qr_escaneado: document.getElementById('swal-qr-input').value,
+                    retirado_por: document.getElementById('swal-retirado-por').value
+                })
+            });
+
+            if (!formValues) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/canastos/${canastoId}/entregar-gestor`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formValues)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo registrar la entrega del canasto');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: '🚚 Canasto Entregado al Gestor',
+                    background: '#151e2e',
+                    color: '#f8fafc',
+                    html: `
+                        <div style="text-align:left; font-size:0.9rem; line-height:1.5;">
+                            <p>✅ <strong>Estado de los ${data.canasto?.total_bolsas || ''} pedidos:</strong> En reparto / En poder del Gestor</p>
+                            <p>📒 <strong>Débito Base LAMDA registrado en Cta. Cte.:</strong> <span style="color:#fb7185; font-weight:800;">-${fmtMoneda(data.canasto?.total_base_lamda)}</span></p>
+                            <p>💰 <strong>Nuevo Saldo Cta. Cte. del Nodo:</strong> <strong>${fmtMoneda(data.canasto?.saldo_cuenta_corriente)}</strong></p>
+                        </div>
+                    `
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function reabrirCanastoPrueba(canastoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/canastos/${canastoId}/reabrir-prueba`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error reabriendo canasto');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarTableroDeposito(false);
+        });
+    </script>
+</body>
+</html>

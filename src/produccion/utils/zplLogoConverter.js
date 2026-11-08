@@ -521,10 +521,228 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
     };
 }
 
+/**
+ * Genera el ZPL II y el preview visual de la Etiqueta de Canasto Maestro (ESTACION_NODOS)
+ * con el QR Maestro para el retiro del lote completo por parte del Gestor del Nodo.
+ */
+async function generarPreviewVisualCanastoQrMaestro(params = {}) {
+    const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
+    const codigoCanasto = limpiarTextoZpl(params.codigo_canasto || 'CAN-N001-20261111');
+    const qrPayload = limpiarTextoZpl(params.qr_maestro_payload || `LAMDA-CANASTO|${codigoCanasto}`);
+    const gestorNombre = limpiarTextoZpl(params.gestor_nombre || 'Carolina Mendez');
+    const fechaEntregaLabel = limpiarTextoZpl(params.fecha_entrega_label || 'Miercoles 11/11 (17:00 a 20:00 hs)');
+    const totalBolsas = Number(params.total_bolsas || 0);
+    const bolsasArmadas = Number(params.bolsas_armadas || 0);
+    const totalBaseLamda = Number(params.total_base_lamda || 0);
+    const estadoCanasto = limpiarTextoZpl(params.estado_canasto || 'LISTO_ESTACION_NODOS');
+    const pedidos = Array.isArray(params.pedidos) ? params.pedidos : [];
+
+    let logoGfa = params.logo_zpl_gfa;
+    let logoPreviewB64 = params.logo_mono_preview_base64;
+    if (!logoGfa || !logoPreviewB64) {
+        const conv = await convertirLogoAZplGfa({ nombreMarca });
+        logoGfa = conv.logo_zpl_gfa;
+        logoPreviewB64 = conv.logo_mono_preview_base64;
+    }
+
+    const leftX = 23;
+    const rightX = 443;
+
+    const lineasPedidosZpl = pedidos.slice(0, 6).map((p, idx) => {
+        const rowY = 74 + idx * 31;
+        const cobroTxt = String(p.estado_pago || '').includes('COBRAR')
+            ? `Cobrar $${Number(p.total_vecino || 0).toLocaleString('es-AR')}`
+            : 'Pagado';
+        const linea = limpiarTextoZpl(`${idx + 1}. [${p.codigo_pedido}] ${String(p.vecino_nombre || '').substring(0, 16)} (${cobroTxt})`);
+        return [
+            `^FO${rightX + 10},${rowY}^GB16,16,2^FS`,
+            `^FO${rightX + 34},${rowY + 1}^A0N,18,17^FD${linea.substring(0, 38)}^FS`
+        ].join('\n');
+    }).join('\n');
+
+    const zpl = [
+        '^XA',
+        '^CI28',
+        '^PW840',
+        '^LL280',
+        '^LH0,0',
+        // Etiqueta Izquierda: QR Maestro del Canasto en ESTACION_NODOS
+        `^FO${leftX + 8},10${logoGfa}`,
+        `^FO${leftX + 128},14^A0N,22,20^FD${nombreMarca.substring(0, 30)}^FS`,
+        `^FO${leftX + 128},40^A0N,16,16^FDCANASTO ESTACION NODOS (${codigoCanasto})^FS`,
+        `^FO${leftX + 8},72^GB378,2,2^FS`,
+        `^FO${leftX + 8},80^A0N,20,20^FDGESTOR: ${gestorNombre.substring(0, 26)}^FS`,
+        `^FO${leftX + 8},104^A0N,17,17^FDENTREGA: ${fechaEntregaLabel.substring(0, 34)}^FS`,
+        `^FO${leftX + 8},125^A0N,16,16^FDUBICACION: 4TO DEPOSITO (ESTACION_NODOS)^FS`,
+        `^FO${leftX + 8},145^GB378,2,2^FS`,
+        `^FO${leftX + 10},152^BQN,2,4^FDQA,${qrPayload}^FS`,
+        `^FO${leftX + 104},154^GB282,96,96^FS`,
+        `^FO${leftX + 112},164^FR^A0N,20,19^FDQR MAESTRO: ${bolsasArmadas}/${totalBolsas} BOLSAS^FS`,
+        `^FO${leftX + 112},192^FR^A0N,19,18^FDBASE LOTE: $${totalBaseLamda.toLocaleString('es-AR')}^FS`,
+        `^FO${leftX + 112},220^FR^A0N,16,16^FD${estadoCanasto === 'ENTREGADO_AL_GESTOR' ? 'RETIRADO POR GESTOR' : 'ESCANEAR AL RETIRAR LOTE'}^FS`,
+        // Etiqueta Derecha: Manifiesto de Bolsas del Canasto
+        `^FO${rightX + 10},14^A0N,21,20^FDMANIFIESTO CANASTO (${totalBolsas} PEDIDOS)^FS`,
+        `^FO${rightX + 10},38^A0N,16,16^FDLOTE: ${codigoCanasto} | ${gestorNombre.substring(0, 18)}^FS`,
+        `^FO${rightX + 10},58^GB378,2,2^FS`,
+        lineasPedidosZpl,
+        '^XZ'
+    ].join('\n');
+
+    const labelW = 405;
+    const labelH = 266;
+    const gapX = 16;
+    const padOuter = 14;
+    const canvasW = padOuter * 2 + labelW * 2 + gapX;
+    const canvasH = padOuter * 2 + labelH;
+
+    const canvas = createCanvas(canvasW, canvasH);
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    let logoImg = null;
+    try {
+        logoImg = await loadImage(logoPreviewB64);
+    } catch (_) {
+        logoImg = null;
+    }
+
+    const lxLeft = padOuter;
+    const lxRight = padOuter + labelW + gapX;
+    const rowY = padOuter;
+
+    for (const lx of [lxLeft, lxRight]) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(lx, rowY, labelW, labelH);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(lx, rowY, labelW, labelH);
+    }
+
+    if (logoImg) {
+        ctx.drawImage(logoImg, lxLeft + 10, rowY + 10, 112, 56);
+    } else {
+        dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+    }
+
+    ctx.fillStyle = '#0f172a';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
+    ctx.fillText(nombreMarca.substring(0, 32), lxLeft + 128, rowY + 14);
+
+    ctx.font = 'bold 11px Arial';
+    ctx.fillStyle = '#0284c7';
+    ctx.fillText(`CANASTO ESTACION NODOS (${codigoCanasto})`, lxLeft + 128, rowY + 38);
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(lxLeft + 10, rowY + 72, labelW - 20, 2);
+
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText(`GESTOR: ${gestorNombre.substring(0, 26)}`, lxLeft + 10, rowY + 80);
+
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`ENTREGA: ${fechaEntregaLabel.substring(0, 36)}`, lxLeft + 10, rowY + 102);
+
+    ctx.font = '10.5px Arial';
+    ctx.fillText('UBICACION: 4TO DEPOSITO (ESTACION_NODOS)', lxLeft + 10, rowY + 122);
+
+    ctx.fillRect(lxLeft + 10, rowY + 144, labelW - 20, 2);
+
+    // QR Maestro simulado
+    const qrX = lxLeft + 12;
+    const qrY = rowY + 154;
+    const qrSize = 82;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(qrX + 6, qrY + 6, 20, 20);
+    ctx.fillRect(qrX + qrSize - 26, qrY + 6, 20, 20);
+    ctx.fillRect(qrX + 6, qrY + qrSize - 26, 20, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(qrX + 10, qrY + 10, 12, 12);
+    ctx.fillRect(qrX + qrSize - 22, qrY + 10, 12, 12);
+    ctx.fillRect(qrX + 10, qrY + qrSize - 22, 12, 12);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(qrX + 13, qrY + 13, 6, 6);
+    ctx.fillRect(qrX + qrSize - 19, qrY + 13, 6, 6);
+    ctx.fillRect(qrX + 13, qrY + qrSize - 19, 6, 6);
+    for (let r = 0; r < 6; r++) {
+        for (let c = 0; c < 6; c++) {
+            if ((r * 3 + c) % 2 === 0) {
+                ctx.fillRect(qrX + 30 + c * 7, qrY + 30 + r * 7, 5, 5);
+            }
+        }
+    }
+    ctx.font = 'bold 8.5px monospace';
+    ctx.fillText(codigoCanasto.substring(0, 16), qrX + 4, qrY + qrSize + 4);
+
+    // Banda invertida negra
+    const bandX = lxLeft + 104;
+    const bandY = rowY + 154;
+    const bandW = labelW - 114;
+    const bandH = 96;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(bandX, bandY, bandW, bandH);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText(`QR MAESTRO: ${bolsasArmadas}/${totalBolsas} BOLSAS`, bandX + 10, bandY + 14);
+    ctx.font = 'bold 12.5px Arial';
+    ctx.fillText(`BASE LOTE: $${totalBaseLamda.toLocaleString('es-AR')}`, bandX + 10, bandY + 42);
+    ctx.font = 'bold 10.5px monospace';
+    ctx.fillText(
+        estadoCanasto === 'ENTREGADO_AL_GESTOR' ? 'RETIRADO POR GESTOR' : 'ESCANEAR AL RETIRAR LOTE',
+        bandX + 10,
+        bandY + 68
+    );
+
+    // Etiqueta derecha: Manifiesto de Bolsas
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 13.5px Arial';
+    ctx.fillText(`MANIFIESTO CANASTO (${totalBolsas} BOLSAS VECINOS)`, lxRight + 12, rowY + 14);
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`LOTE: ${codigoCanasto} | GESTOR: ${gestorNombre.substring(0, 18)}`, lxRight + 12, rowY + 36);
+    ctx.fillRect(lxRight + 10, rowY + 54, labelW - 20, 2);
+
+    pedidos.slice(0, 6).forEach((p, idx) => {
+        const itemY = rowY + 64 + idx * 31;
+        const armada = p.estado_operativo === 'ARMADO_EN_CANASTO' || p.estado_operativo === 'EN_PODER_GESTOR' || p.estado_operativo === 'ENTREGADO_VECINO';
+
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(lxRight + 12, itemY, 15, 15);
+        if (armada) {
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('✓', lxRight + 14, itemY + 1);
+        }
+
+        const cobroTxt = String(p.estado_pago || '').includes('COBRAR')
+            ? `Efvo $${Number(p.total_vecino || 0).toLocaleString('es-AR')}`
+            : 'Pagado Transf.';
+        const linea = limpiarTextoZpl(`${idx + 1}. [${p.codigo_pedido}] ${String(p.vecino_nombre || '').substring(0, 16)} (${cobroTxt})`);
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 11.5px Arial';
+        ctx.fillText(linea.substring(0, 38), lxRight + 34, itemY + 2);
+    });
+
+    return {
+        zpl,
+        total_hojas: 1,
+        codigo_canasto: codigoCanasto,
+        qr_maestro_payload: qrPayload,
+        preview_rollo_base64: canvas.toDataURL('image/png')
+    };
+}
+
 module.exports = {
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,
+    generarPreviewVisualCanastoQrMaestro,
     formatearLineaChecklistSegura,
     limpiarTextoZpl,
     ITEMS_POR_ETIQUETA_DERECHA

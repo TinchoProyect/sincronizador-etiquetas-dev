@@ -55,12 +55,15 @@ app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
-// 🏘️ Rutas amigables Etapa 2: Tienda Marca Blanca del Vecino y Panel del Gestor
+// 🏘️ Rutas amigables Etapas 2 y 3: Tienda Marca Blanca del Vecino, Panel del Gestor y Mesa de Armado Depósito
 app.get(['/tienda', '/tienda/:nodoSlug'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-tienda-vecino.html'));
 });
 app.get(['/gestor', '/gestor/:nodoSlug'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-panel-gestor.html'));
+});
+app.get(['/deposito-nodos', '/deposito-nodos/:nodoSlug'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'pages', 'nodo-mesa-armado.html'));
 });
 
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)

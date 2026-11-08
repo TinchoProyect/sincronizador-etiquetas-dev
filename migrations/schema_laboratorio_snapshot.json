@@ -1,5 +1,5 @@
 {
-  "tableCount": 155,
+  "tableCount": 157,
   "tables": {
     "articulos": {
       "numero": {
@@ -11825,6 +11825,238 @@
         "column_default": "now()"
       }
     },
+    "nodos_lotes_estacion": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_lotes_estacion_id_seq'::regclass)"
+      },
+      "codigo_canasto": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "qr_maestro_payload": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 140,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_id": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "fecha_entrega_iso": {
+        "ordinal_position": 5,
+        "data_type": "date",
+        "udt_name": "date",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "fecha_entrega_label": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 140,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "ventana_horaria_label": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ubicacion_deposito": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'ESTACION_NODOS'::character varying"
+      },
+      "estado_canasto": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'EN_ARMADO'::character varying"
+      },
+      "total_bolsas": {
+        "ordinal_position": 10,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "bolsas_armadas": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "total_kilos_lote": {
+        "ordinal_position": 12,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 3,
+        "is_nullable": "NO",
+        "column_default": "0.000"
+      },
+      "total_base_lamda": {
+        "ordinal_position": 13,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "total_venta_vecinos": {
+        "ordinal_position": 14,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "ganancia_estimada_gestor": {
+        "ordinal_position": 15,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "debito_cta_cte_registrado": {
+        "ordinal_position": 16,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "movimiento_cc_id": {
+        "ordinal_position": 17,
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "preparado_por": {
+        "ordinal_position": 18,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "retirado_por_gestor": {
+        "ordinal_position": 19,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "fecha_listo_estacion": {
+        "ordinal_position": 20,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "fecha_retiro_gestor": {
+        "ordinal_position": 21,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 22,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 23,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
     "nodos_maestro": {
       "id": {
         "ordinal_position": 1,
@@ -12108,6 +12340,118 @@
       },
       "updated_at": {
         "ordinal_position": 29,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
+    "nodos_movimientos_cta_cte": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_movimientos_cta_cte_id_seq'::regclass)"
+      },
+      "nodo_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "lote_canasto_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "pedido_vecino_id": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tipo_movimiento": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "signo": {
+        "ordinal_position": 6,
+        "data_type": "smallint",
+        "udt_name": "int2",
+        "character_maximum_length": null,
+        "numeric_precision": 16,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "'-1'::integer"
+      },
+      "monto": {
+        "ordinal_position": 7,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "saldo_resultante": {
+        "ordinal_position": 8,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "concepto": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 240,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "referencia_externa": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 11,
         "data_type": "timestamp without time zone",
         "udt_name": "timestamp",
         "character_maximum_length": null,
@@ -12591,6 +12935,66 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "lote_canasto_id": {
+        "ordinal_position": 25,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ubicacion_deposito": {
+        "ordinal_position": 26,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE_TALLER'::character varying"
+      },
+      "etiqueta_impresa": {
+        "ordinal_position": 27,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "fecha_armado_bolsa": {
+        "ordinal_position": 28,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "fecha_entrega_gestor": {
+        "ordinal_position": 29,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "operario_armado": {
+        "ordinal_position": 30,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_propuestas_fracciones": {

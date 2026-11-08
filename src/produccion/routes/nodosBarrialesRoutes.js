@@ -215,4 +215,96 @@ router.get('/pedidos/:pedidoId/etiqueta', async (req, res) => {
     }
 });
 
+// ============================================================================
+// ENDPOINTS ETAPA 3: MESA DE ARMADO, 4° DEPÓSITO (ESTACION_NODOS) Y QR MAESTRO
+// ============================================================================
+
+/**
+ * GET /api/produccion/nodos/deposito/tablero
+ * Devuelve los Canastos de ESTACION_NODOS, el resumen consolidado a fraccionar y las bolsas por vecino
+ */
+router.get('/deposito/tablero', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerTableroMesaArmadoDeposito({
+            nodo_id: req.query.nodo_id || 0
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /deposito/tablero:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/pedidos/:pedidoId/armar-bolsa
+ * Marca el pedido de un vecino como preparado, lo aloja en el Canasto de ESTACION_NODOS
+ * y devuelve su par gemelo de etiquetas térmicas Zebra.
+ */
+router.post('/deposito/pedidos/:pedidoId/armar-bolsa', async (req, res) => {
+    try {
+        const resultado = await nodosService.armarBolsaPedidoVecino(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/pedidos/:pedidoId/armar-bolsa:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/canastos/:canastoId/armar-todo
+ * Marca todas las bolsas pendientes del Canasto como listas en ESTACION_NODOS
+ */
+router.post('/deposito/canastos/:canastoId/armar-todo', async (req, res) => {
+    try {
+        const resultado = await nodosService.armarTodasBolsasDeCanasto(req.params.canastoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/canastos/:canastoId/armar-todo:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/deposito/canastos/:canastoId/etiqueta-qr
+ * Genera la Etiqueta Maestra del Canasto con su QR Maestro y manifiesto de bolsas
+ */
+router.get('/deposito/canastos/:canastoId/etiqueta-qr', async (req, res) => {
+    try {
+        const etiqueta = await nodosService.generarEtiquetaQrMaestroCanasto(req.params.canastoId);
+        res.json({ ok: true, ...etiqueta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /deposito/canastos/:canastoId/etiqueta-qr:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/canastos/:canastoId/entregar-gestor
+ * Confirma el retiro del Canasto por el Gestor (escaneo QR Maestro), pasa los pedidos
+ * a "En reparto / En poder del Gestor" e impacta el Débito por Costo Base LAMDA en Cta. Cte.
+ */
+router.post('/deposito/canastos/:canastoId/entregar-gestor', async (req, res) => {
+    try {
+        const resultado = await nodosService.confirmarRetiroCanastoPorGestor(req.params.canastoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/canastos/:canastoId/entregar-gestor:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/canastos/:canastoId/reabrir-prueba
+ * Permite en Modo Laboratorio reabrir un Canasto entregado para volver a probar el flujo
+ */
+router.post('/deposito/canastos/:canastoId/reabrir-prueba', async (req, res) => {
+    try {
+        const tablero = await nodosService.reabrirCanastoParaPruebaLaboratorio(req.params.canastoId);
+        res.json({ ok: true, tablero });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/canastos/:canastoId/reabrir-prueba:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 module.exports = router;
