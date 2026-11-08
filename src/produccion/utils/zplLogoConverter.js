@@ -522,6 +522,46 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
 }
 
 /**
+ * Formatea una línea del manifiesto del canasto protegiendo SIEMPRE el estado e importe
+ * entre paréntesis al final del renglón (abreviando el nombre intermedio del vecino si es largo).
+ * Ejemplo:
+ *   "María Laura Gómez" -> "1. [NB-1041] Maria Laura G. (Pagado Transf.)"
+ *   "Valeria Sánchez"   -> "2. [NB-1042] Valeria S. (Efvo $24.950)"
+ */
+function formatearLineaManifiestoCanastoSegura(p, numeroOrden, maxCharsTotal = 42) {
+    const prefijo = `${numeroOrden}. [${limpiarTextoZpl(p.codigo_pedido || '')}]`;
+    const estadoUpper = String(p.estado_pago || '').toUpperCase();
+    const esEfectivo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || estadoUpper.includes('COBRAR') || estadoUpper.includes('EFECTIVO');
+    const cobroTxt = esEfectivo
+        ? `Efvo $${Number(p.total_vecino || 0).toLocaleString('es-AR')}`
+        : 'Pagado Transf.';
+    const sufijo = `(${cobroTxt})`;
+
+    const espacioNombre = Math.max(7, maxCharsTotal - prefijo.length - sufijo.length - 2);
+    let nombre = limpiarTextoZpl(p.vecino_nombre || 'Vecino');
+
+    if (nombre.length > espacioNombre) {
+        const partes = nombre.split(/\s+/).filter(Boolean);
+        if (partes.length >= 2) {
+            // Intentar dejar primer nombre completo e iniciales de apellidos/segundos nombres
+            const conInicialFinal = `${partes.slice(0, -1).join(' ')} ${partes[partes.length - 1].charAt(0)}.`;
+            if (conInicialFinal.length <= espacioNombre) {
+                nombre = conInicialFinal;
+            } else {
+                const soloPrimeroEIniciales = `${partes[0]} ${partes.slice(1).map(w => w.charAt(0) + '.').join(' ')}`;
+                nombre = soloPrimeroEIniciales.length <= espacioNombre
+                    ? soloPrimeroEIniciales
+                    : `${nombre.substring(0, Math.max(4, espacioNombre - 1)).trim()}.`;
+            }
+        } else {
+            nombre = `${nombre.substring(0, Math.max(4, espacioNombre - 1)).trim()}.`;
+        }
+    }
+
+    return `${prefijo} ${nombre} ${sufijo}`;
+}
+
+/**
  * Genera el ZPL II y el preview visual de la Etiqueta de Canasto Maestro (ESTACION_NODOS)
  * con el QR Maestro para el retiro del lote completo por parte del Gestor del Nodo.
  */
@@ -550,13 +590,10 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
 
     const lineasPedidosZpl = pedidos.slice(0, 6).map((p, idx) => {
         const rowY = 74 + idx * 31;
-        const cobroTxt = String(p.estado_pago || '').includes('COBRAR')
-            ? `Cobrar $${Number(p.total_vecino || 0).toLocaleString('es-AR')}`
-            : 'Pagado';
-        const linea = limpiarTextoZpl(`${idx + 1}. [${p.codigo_pedido}] ${String(p.vecino_nombre || '').substring(0, 16)} (${cobroTxt})`);
+        const lineaSegura = formatearLineaManifiestoCanastoSegura(p, idx + 1, 42);
         return [
             `^FO${rightX + 10},${rowY}^GB16,16,2^FS`,
-            `^FO${rightX + 34},${rowY + 1}^A0N,18,17^FD${linea.substring(0, 38)}^FS`
+            `^FO${rightX + 34},${rowY + 1}^A0N,17,16^FD${lineaSegura}^FS`
         ].join('\n');
     }).join('\n');
 
@@ -720,13 +757,10 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
             ctx.fillText('✓', lxRight + 14, itemY + 1);
         }
 
-        const cobroTxt = String(p.estado_pago || '').includes('COBRAR')
-            ? `Efvo $${Number(p.total_vecino || 0).toLocaleString('es-AR')}`
-            : 'Pagado Transf.';
-        const linea = limpiarTextoZpl(`${idx + 1}. [${p.codigo_pedido}] ${String(p.vecino_nombre || '').substring(0, 16)} (${cobroTxt})`);
+        const lineaSegura = formatearLineaManifiestoCanastoSegura(p, idx + 1, 42);
         ctx.fillStyle = '#000000';
-        ctx.font = 'bold 11.5px Arial';
-        ctx.fillText(linea.substring(0, 38), lxRight + 34, itemY + 2);
+        ctx.font = 'bold 11px Arial';
+        ctx.fillText(lineaSegura, lxRight + 34, itemY + 2);
     });
 
     return {
@@ -744,6 +778,7 @@ module.exports = {
     generarPreviewVisualEtiquetaPar,
     generarPreviewVisualCanastoQrMaestro,
     formatearLineaChecklistSegura,
+    formatearLineaManifiestoCanastoSegura,
     limpiarTextoZpl,
     ITEMS_POR_ETIQUETA_DERECHA
 };

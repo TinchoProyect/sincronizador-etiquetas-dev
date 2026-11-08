@@ -209,6 +209,9 @@
         <a href="/deposito-nodos" target="_blank" class="btn-top">
           📦 Mesa de Armado (Depósito) ↗
         </a>
+        <a id="btn-abrir-liquidacion" href="/liquidacion-nodos" target="_blank" class="btn-top" style="background:#0284c7; border-color:#0284c7;">
+          💳 Cobros y Liquidación ↗
+        </a>
         <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
           📊 Pizarra LAMDA
         </a>
@@ -234,6 +237,9 @@
       <button type="button" class="tab-btn" id="gtab-pedidos" onclick="cambiarTabGestor('pedidos')">
         📋 Pedidos de Vecinos
       </button>
+      <button type="button" class="tab-btn" id="gtab-liquidacion" onclick="cambiarTabGestor('liquidacion')">
+        💰 Cuenta Corriente y Liquidación
+      </button>
     </div>
 
     <div id="gestor-tab-content"></div>
@@ -249,7 +255,8 @@
       ofertas: [],
       propuestas: [],
       pedidos: [],
-      ingredientesSugeribles: []
+      ingredientesSugeribles: [],
+      liquidacionTablero: null
     };
 
     function fmt(n) {
@@ -270,9 +277,16 @@
     }
 
     async function cargarPanelGestor() {
-      const resp = await fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`);
+      const [resp, respLiq] = await Promise.all([
+        fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`),
+        fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`)
+      ]);
       const data = await resp.json();
       if (!data.ok) return;
+      try {
+        const dataLiq = await respLiq.json();
+        if (dataLiq && dataLiq.ok) GSTATE.liquidacionTablero = dataLiq;
+      } catch (_) {}
 
       GSTATE.nodo = data.nodo;
       GSTATE.slug = data.nodo.slug;
@@ -292,6 +306,8 @@
 
       const btnTienda = document.getElementById('btn-abrir-tienda');
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
+      const btnLiq = document.getElementById('btn-abrir-liquidacion');
+      if (btnLiq) btnLiq.href = `/liquidacion-nodos/${encodeURIComponent(GSTATE.slug)}`;
 
       renderKpis();
       renderTabActiva();
@@ -311,7 +327,7 @@
 
     function cambiarTabGestor(tab) {
       GSTATE.tab = tab;
-      ['ofertas', 'logistica', 'propuestas', 'pedidos'].forEach(t => {
+      ['ofertas', 'logistica', 'propuestas', 'pedidos', 'liquidacion'].forEach(t => {
         const el = document.getElementById(`gtab-${t}`);
         if (el) el.classList.toggle('active', t === tab);
       });
@@ -361,6 +377,7 @@
       if (GSTATE.tab === 'ofertas') box.innerHTML = renderTabOfertas();
       else if (GSTATE.tab === 'logistica') box.innerHTML = renderTabLogistica();
       else if (GSTATE.tab === 'propuestas') box.innerHTML = renderTabPropuestas();
+      else if (GSTATE.tab === 'liquidacion') box.innerHTML = renderTabLiquidacionGestor();
       else box.innerHTML = renderTabPedidos();
     }
 
@@ -748,6 +765,124 @@
             <img src="${data.preview_rollo_base64}" style="max-width:100%; border-radius:6px;" alt="Etiqueta del pedido">
           </div>
         `;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // TAB 5: CUENTA CORRIENTE Y LIQUIDACIÓN DEL LOTE DEL GESTOR
+    // -------------------------------------------------------------------------
+    function renderTabLiquidacionGestor() {
+      const liqData = GSTATE.liquidacionTablero;
+      const canastos = (liqData?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
+      const nodoResumen = (liqData?.nodos || []).find(n => Number(n.id) === Number(GSTATE.nodo?.id));
+      const saldoActual = Number(nodoResumen?.saldo_cuenta_corriente ?? canastos[0]?.saldo_cuenta_corriente ?? 0);
+
+      return `
+        <div class="card" style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-size:0.74rem; color:#94a3b8; font-weight:800; text-transform:uppercase;">Resumen Financiero de tu Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_cliente_bunker || '')})</div>
+              <div style="font-size:1.25rem; font-weight:900; margin-top:4px;">
+                Saldo Actual de tu Cuenta Corriente:
+                <span style="color:${saldoActual < 0 ? '#f87171' : saldoActual > 0 ? '#4ade80' : '#38bdf8'};">
+                  ${saldoActual < 0 ? '-' + fmt(Math.abs(saldoActual)) : fmt(saldoActual)}
+                </span>
+              </div>
+              <div style="font-size:0.8rem; color:#cbd5e1; margin-top:4px;">
+                Las transferencias de tus vecinos en la cuenta recaudadora (${esc(GSTATE.nodo?.alias_bancario_display || '')}) se acreditan a tu favor y se compensan con el efectivo que cobrás en mano.
+              </div>
+            </div>
+            <a href="/liquidacion-nodos/${encodeURIComponent(GSTATE.slug)}" target="_blank"
+              style="padding:10px 16px; border-radius:10px; background:#16a34a; color:#fff; text-decoration:none; font-weight:900; font-size:0.84rem;">
+              💳 Abrir Mesa Completa de Liquidación ↗
+            </a>
+          </div>
+        </div>
+
+        ${canastos.map(c => {
+          const liq = c.cuadro_liquidacion || {};
+          return `
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:14px;">
+                <div>
+                  <span style="background:#0f172a; color:#fff; padding:3px 9px; border-radius:6px; font-family:monospace; font-size:0.78rem; font-weight:800;">
+                    Lote ${esc(c.codigo_canasto)}
+                  </span>
+                  <strong style="font-size:1.05rem; margin-left:8px;">📅 Entrega: ${esc(c.fecha_entrega_label)}</strong>
+                </div>
+                <span style="padding:4px 12px; border-radius:999px; font-size:0.76rem; font-weight:800; background:${c.liquidacion_cerrada ? '#dcfce7' : '#fef3c7'}; color:${c.liquidacion_cerrada ? '#15803d' : '#b45309'};">
+                  ${c.liquidacion_cerrada ? '🏁 Lote Liquidado (Saldo Cta. Cte. en $0)' : `⏳ ${liq.pedidos_pagos_confirmados || 0} de ${liq.total_pedidos || 0} cobros vecinales confirmados`}
+                </span>
+              </div>
+
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:14px;">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
+                  <div style="font-size:0.74rem; color:#64748b; font-weight:800; text-transform:uppercase;">Total Vendido a Vecinos</div>
+                  <div style="font-size:1.3rem; font-weight:900; color:#0f172a; margin-top:4px;">${fmt(liq.total_venta_vecinos)}</div>
+                  <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">Incluye ${fmt(liq.total_envios_barriales_gestor)} de envíos barriales (100% tuyo)</div>
+                </div>
+                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:12px;">
+                  <div style="font-size:0.74rem; color:#991b1b; font-weight:800; text-transform:uppercase;">Menos Costo Base del Lote</div>
+                  <div style="font-size:1.3rem; font-weight:900; color:#dc2626; margin-top:4px;">-${fmt(liq.total_base_lamda)}</div>
+                  <div style="font-size:0.75rem; color:#991b1b; margin-top:3px;">Valor mayorista del canasto retirado</div>
+                </div>
+                <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:12px;">
+                  <div style="font-size:0.74rem; color:#166534; font-weight:800; text-transform:uppercase;">Tu Ganancia Neta en este Lote</div>
+                  <div style="font-size:1.3rem; font-weight:900; color:#16a34a; margin-top:4px;">+${fmt(liq.ganancia_neta_gestor)}</div>
+                  <div style="font-size:0.75rem; color:#15803d; margin-top:3px;">Margen productos + 100% envíos</div>
+                </div>
+              </div>
+
+              <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:14px; margin-bottom:14px;">
+                <div style="font-weight:900; font-size:0.95rem; color:#1e3a8a; margin-bottom:6px;">
+                  ⚖️ ${esc(liq.titulo_resultado || 'Compensación entre Transferencias y Efectivo en Mano')}
+                </div>
+                <div style="font-size:0.84rem; color:#1e40af; line-height:1.5;">
+                  • Transferencias de vecinos en cuenta recaudadora (a tu favor): <strong>+${fmt(liq.transferencias_esperadas)}</strong> (${liq.cant_transferencias_conciliadas || 0}/${liq.cant_transferencias_totales || 0} conciliadas)<br>
+                  • Efectivo cobrado en mano por vos en el reparto: <strong>${fmt(liq.efectivo_esperado)}</strong> (${liq.cant_efectivo_cobrados || 0}/${liq.cant_efectivo_totales || 0} cobrados)<br>
+                  👉 <strong>${esc(liq.explicacion_compensacion || '')}</strong>
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                ${(c.pedidos_vecinos || []).map(p => {
+                  const pagado = Boolean(p.pago_confirmado);
+                  return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid ${pagado ? '#86efac' : '#e2e8f0'}; background:${pagado ? '#f0fdf4' : '#fff'}; border-radius:9px;">
+                      <div style="font-size:0.84rem;">
+                        <strong>#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</strong>
+                        <span style="margin-left:8px; color:#475569;">(${p.medio_pago === 'EFECTIVO' ? '💵 Efectivo en entrega' : '🏦 Transferencia'}: <strong>${fmt(p.total_vecino)}</strong>)</span>
+                      </div>
+                      <div>
+                        ${pagado
+                          ? `<span style="font-size:0.76rem; font-weight:800; color:#15803d;">✅ Cobro registrado (${fmt(p.monto_pagado_real || p.total_vecino)})</span>`
+                          : `<button type="button" onclick="registrarCobroRapidoGestor(${p.id}, '${esc(p.medio_pago)}')"
+                              style="padding:6px 12px; border-radius:7px; border:none; background:#16a34a; color:#fff; font-weight:800; font-size:0.76rem; cursor:pointer;">
+                              ${p.medio_pago === 'EFECTIVO' ? '💵 Marcar Efectivo Cobrado' : '🏦 Confirmar Transferencia'}
+                            </button>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      `;
+    }
+
+    async function registrarCobroRapidoGestor(pedidoId, medioPago) {
+      const resp = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medio_pago: medioPago })
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        await cargarPanelGestor();
+      } else {
+        alert('⚠️ ' + (data.error || 'No se pudo registrar el cobro'));
       }
     }
 

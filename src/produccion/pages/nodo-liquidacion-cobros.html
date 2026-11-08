@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conciliación de Cobros y Liquidación de Cuenta Corriente — Nodos Barriales</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root {
+            --bg-main: #0b1120;
+            --bg-card: #151e2e;
+            --border: #2e3c51;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --emerald: #10b981;
+            --sky: #38bdf8;
+            --amber: #f59e0b;
+            --violet: #8b5cf6;
+            --rose: #f43f5e;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+        .topbar {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .brand-row { display: flex; align-items: center; gap: 14px; }
+        .brand-icon {
+            width: 46px; height: 46px; border-radius: 12px;
+            background: rgba(56, 189, 248, 0.16);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.45rem;
+        }
+        .nav-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn-top {
+            text-decoration: none;
+            padding: 8px 13px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid var(--border);
+            background: #0f172a;
+            color: #e2e8f0;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-top:hover { border-color: var(--sky); color: #ffffff; }
+        .container {
+            max-width: 1480px;
+            margin: 0 auto;
+            padding: 18px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .kpi-val { font-size: 1.5rem; font-weight: 900; line-height: 1.1; }
+        .kpi-lbl { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 370px 1fr;
+            gap: 18px;
+            align-items: start;
+        }
+        @media (max-width: 1100px) {
+            .workspace-grid { grid-template-columns: 1fr; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .panel-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+        }
+        .lote-item {
+            padding: 13px;
+            border-radius: 11px;
+            background: #0f172a;
+            border: 1px solid #263244;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: all 0.15s ease;
+        }
+        .lote-item.selected {
+            background: rgba(56, 189, 248, 0.1);
+            border: 2px solid #38bdf8;
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.14);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 0.71rem;
+            font-weight: 800;
+        }
+        .cobro-card {
+            background: #0f172a;
+            border: 1px solid #2e3c51;
+            border-radius: 11px;
+            padding: 13px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .cobro-card.confirmado {
+            border-color: rgba(16, 185, 129, 0.55);
+            background: linear-gradient(90deg, rgba(16, 185, 129, 0.09), rgba(15, 23, 42, 0.95));
+        }
+        .btn-action {
+            padding: 9px 14px;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .liq-box-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        @media (max-width: 900px) {
+            .liq-box-grid { grid-template-columns: 1fr; }
+        }
+        .liq-metric {
+            padding: 14px;
+            border-radius: 11px;
+            background: #0f172a;
+            border: 1px solid #263244;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="topbar">
+        <div class="brand-row">
+            <div class="brand-icon">💳</div>
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h1 style="font-size:1.12rem; font-weight:800; color:#f8fafc;">Conciliación de Cobros y Liquidación de Cuenta Corriente</h1>
+                    <span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4);">
+                        Etapa 4 · Finanzas Nodos
+                    </span>
+                </div>
+                <p style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">
+                    Conciliación de transferencias vecinales en cuenta LAMDA, rendición de efectivo cobrado por el Gestor y compensación automática del lote.
+                </p>
+            </div>
+        </div>
+
+        <div class="nav-actions">
+            <select id="filtro-nodo-select" onchange="cambiarFiltroNodo(this.value)"
+                style="padding:8px 12px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
+                <option value="0">🏘️ Todos los Nodos Barriales</option>
+            </select>
+
+            <a href="/deposito-nodos" class="btn-top" style="border-color:rgba(167,139,250,0.45); color:#ddd6fe;">
+                📦 Mesa de Armado
+            </a>
+            <a href="/gestor/almacen-verde-city-bell" target="_blank" id="link-panel-gestor" class="btn-top" style="border-color:rgba(56,189,248,0.45); color:#bae6fd;">
+                🎛️ Panel del Gestor ↗
+            </a>
+            <a href="/tienda/almacen-verde-city-bell" target="_blank" id="link-tienda-vecino" class="btn-top" style="border-color:rgba(16,185,129,0.45); color:#6ee7b7;">
+                🏪 Tienda del Vecino ↗
+            </a>
+            <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
+                🧮 Pizarra LAMDA
+            </a>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- KPIS EN VIVO DEL LOTE Y CUENTA CORRIENTE -->
+        <div class="kpi-grid" id="kpi-container"></div>
+
+        <div class="workspace-grid">
+            <!-- COLUMNA IZQUIERDA: LOTES, TITULARES APRENDIDOS Y LIBRO MAYOR CTA CTE -->
+            <div style="display:flex; flex-direction:column; gap:14px;">
+                <div class="panel-card">
+                    <div style="font-weight:800; font-size:0.95rem; color:#f8fafc; margin-bottom:4px;">
+                        🧺 Lotes / Canastos a Liquidar
+                    </div>
+                    <div style="font-size:0.74rem; color:#94a3b8; margin-bottom:12px;">
+                        Seleccioná un lote para conciliar los pagos de sus vecinos y cerrar la liquidación con el Gestor.
+                    </div>
+                    <div id="lista-lotes-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+                </div>
+
+                <!-- TITULARES BANCARIOS APRENDIDOS -->
+                <div class="panel-card">
+                    <div style="font-weight:800; font-size:0.88rem; color:#f8fafc; margin-bottom:4px;">
+                        🧠 Titulares de Transferencia Aprendidos
+                    </div>
+                    <div style="font-size:0.73rem; color:#94a3b8; margin-bottom:10px;">
+                        Al conciliar el primer pago de un vecino, el sistema memoriza el titular de su billetera/banco para conciliar automáticamente sus futuros pedidos.
+                    </div>
+                    <div id="lista-alias-aprendidos" style="display:flex; flex-direction:column; gap:7px;"></div>
+                </div>
+
+                <!-- LIBRO MAYOR DE CUENTA CORRIENTE DEL NODO -->
+                <div class="panel-card">
+                    <div style="font-weight:800; font-size:0.88rem; color:#f8fafc; margin-bottom:4px;">
+                        📒 Historial de Cuenta Corriente del Nodo
+                    </div>
+                    <div style="font-size:0.73rem; color:#94a3b8; margin-bottom:10px;">
+                        Trazabilidad completa de débitos por retiro de canasto, créditos por transferencias y cierres de liquidación.
+                    </div>
+                    <div id="lista-movimientos-cc" style="display:flex; flex-direction:column; gap:8px; max-height:380px; overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: CONCILIACIÓN DE COBROS + CUADRO DE LIQUIDACIÓN Y COMPENSACIÓN -->
+            <div id="detalle-lote-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
+        </div>
+    </main>
+
+    <script>
+        const ESTADO = {
+            nodoFiltroId: 0,
+            loteSeleccionadoId: null,
+            tablero: null
+        };
+
+        function fmtMoneda(val) {
+            const num = Number(val || 0);
+            const signo = num < 0 ? '-' : '';
+            return signo + '$' + Math.abs(num).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function esc(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function cargarTableroLiquidacion(preservar = true) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_id=${ESTADO.nodoFiltroId}`);
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error cargando tablero de liquidación');
+
+                ESTADO.tablero = data;
+                poblarSelectorNodos(data.nodos || []);
+
+                const lotes = data.lotes || [];
+                if (!preservar || !ESTADO.loteSeleccionadoId || !lotes.some(l => Number(l.id) === Number(ESTADO.loteSeleccionadoId))) {
+                    ESTADO.loteSeleccionadoId = lotes[0]?.id || null;
+                }
+
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function poblarSelectorNodos(nodos) {
+            const sel = document.getElementById('filtro-nodo-select');
+            if (!sel) return;
+            const actual = String(ESTADO.nodoFiltroId || 0);
+            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos Barriales</option>` +
+                nodos.map(n => `<option value="${n.id}" ${String(n.id) === actual ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`).join('');
+        }
+
+        function cambiarFiltroNodo(val) {
+            ESTADO.nodoFiltroId = Number(val || 0);
+            cargarTableroLiquidacion(false);
+        }
+
+        function seleccionarLote(id) {
+            ESTADO.loteSeleccionadoId = Number(id);
+            renderizarTodo();
+        }
+
+        function renderizarTodo() {
+            if (!ESTADO.tablero) return;
+            renderizarKpis();
+            renderizarListaLotes();
+            renderizarAliasAprendidos();
+            renderizarMovimientosCc();
+            renderizarWorkspaceLoteActivo();
+        }
+
+        function obtenerLoteActivo() {
+            return (ESTADO.tablero?.lotes || []).find(l => Number(l.id) === Number(ESTADO.loteSeleccionadoId)) || null;
+        }
+
+        function renderizarKpis() {
+            const el = document.getElementById('kpi-container');
+            if (!el) return;
+            const lote = obtenerLoteActivo();
+            const c = lote?.cuadro_liquidacion || {};
+            const saldoCc = Number(lote?.saldo_cuenta_corriente || 0);
+
+            el.innerHTML = `
+                <div class="kpi-card" style="border-left: 4px solid ${saldoCc < 0 ? '#f43f5e' : '#10b981'};">
+                    <div>
+                        <div class="kpi-val" style="color:${saldoCc < 0 ? '#fb7185' : '#34d399'};">${fmtMoneda(saldoCc)}</div>
+                        <div class="kpi-lbl">Saldo Actual Cuenta Corriente del Nodo</div>
+                    </div>
+                    <div style="font-size:1.7rem;">📒</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+                    <div>
+                        <div class="kpi-val" style="color:#7dd3fc;">${fmtMoneda(c.total_venta_vecinos || 0)}</div>
+                        <div class="kpi-lbl">Total Vendido a Vecinos en Lote (${c.total_pedidos || 0} pedidos)</div>
+                    </div>
+                    <div style="font-size:1.7rem;">🛍️</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                    <div>
+                        <div class="kpi-val" style="color:#6ee7b7;">+${fmtMoneda(c.ganancia_neta_gestor || 0)}</div>
+                        <div class="kpi-lbl">Ganancia Neta del Gestor en el Lote</div>
+                    </div>
+                    <div style="font-size:1.7rem;">💰</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                    <div>
+                        <div class="kpi-val" style="color:#fcd34d;">${fmtMoneda(c.monto_compensacion_final || 0)}</div>
+                        <div class="kpi-lbl">${c.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR' ? 'Saldo a Transferir LAMDA → Gestor' : 'Saldo Neto a Rendir Gestor → LAMDA'}</div>
+                    </div>
+                    <div style="font-size:1.7rem;">🤝</div>
+                </div>
+            `;
+        }
+
+        function renderizarListaLotes() {
+            const cont = document.getElementById('lista-lotes-container');
+            if (!cont) return;
+            const lotes = ESTADO.tablero.lotes || [];
+
+            cont.innerHTML = lotes.map(l => {
+                const sel = Number(l.id) === Number(ESTADO.loteSeleccionadoId);
+                const c = l.cuadro_liquidacion;
+                const cerrado = Boolean(l.liquidacion_cerrada);
+
+                return `
+                    <div class="lote-item ${sel ? 'selected' : ''}" onclick="seleccionarLote(${l.id})">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong style="font-size:0.9rem; color:#f8fafc;">${esc(l.nombre_marca)}</strong>
+                            <span style="font-family:monospace; font-size:0.72rem; background:#1e293b; color:#7dd3fc; padding:2px 7px; border-radius:5px;">
+                                ${esc(l.codigo_canasto)}
+                            </span>
+                        </div>
+                        <div style="font-size:0.76rem; color:#cbd5e1;">
+                            📅 ${esc(l.fecha_entrega_label)} · 👤 ${esc(l.gestor_nombre)}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; padding-top:4px; border-top:1px solid #1e293b;">
+                            ${cerrado
+                                ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">✅ Liquidación Saldada ($0)</span>`
+                                : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fcd34d; border:1px solid #f59e0b;">💳 Cobros: ${c.pedidos_pagos_confirmados}/${c.total_pedidos} confirmados</span>`
+                            }
+                            <span style="color:#94a3b8;">Venta: <strong style="color:#f8fafc;">${fmtMoneda(c.total_venta_vecinos)}</strong></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderizarAliasAprendidos() {
+            const cont = document.getElementById('lista-alias-aprendidos');
+            if (!cont) return;
+            const lista = ESTADO.tablero.alias_aprendidos || [];
+
+            if (lista.length === 0) {
+                cont.innerHTML = `
+                    <div style="padding:10px; border-radius:8px; background:#0f172a; border:1px dashed #334155; color:#64748b; font-size:0.76rem;">
+                        Conciliá la transferencia de María Laura Gómez (#NB-1041) para ver cómo el sistema aprende automáticamente su titular bancario.
+                    </div>
+                `;
+                return;
+            }
+
+            cont.innerHTML = lista.map(a => `
+                <div style="padding:9px 11px; border-radius:8px; background:#0f172a; border:1px solid rgba(16,185,129,0.35); display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-size:0.78rem; font-weight:800; color:#34d399;">🏦 ${esc(a.titular_normalizado)}</div>
+                        <div style="font-size:0.72rem; color:#cbd5e1;">Vecino vinculado: <strong>${esc(a.vecino_nombre)}</strong> (${esc(a.billetera_banco_origen)})</div>
+                    </div>
+                    <span class="badge" style="background:rgba(16,185,129,0.18); color:#6ee7b7;">
+                        ✓ Auto (${a.usos_confirmados})
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function renderizarMovimientosCc() {
+            const cont = document.getElementById('lista-movimientos-cc');
+            if (!cont) return;
+            const movs = ESTADO.tablero.movimientos_cta_cte || [];
+
+            if (movs.length === 0) {
+                cont.innerHTML = `<div style="padding:12px; color:#64748b; font-size:0.78rem;">Sin movimientos registrados.</div>`;
+                return;
+            }
+
+            cont.innerHTML = movs.map(m => {
+                const esCredito = Number(m.signo) > 0;
+                const esNeutro = Number(m.signo) === 0;
+                const colorMonto = esNeutro ? '#fcd34d' : esCredito ? '#34d399' : '#fb7185';
+                const prefijo = esNeutro ? 'Efvo Gestor: ' : esCredito ? '+' : '-';
+
+                return `
+                    <div style="padding:10px 12px; border-radius:9px; background:#0f172a; border:1px solid #263244; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                        <div>
+                            <div style="font-size:0.76rem; font-weight:700; color:#f8fafc;">${esc(m.concepto)}</div>
+                            <div style="font-size:0.69rem; color:#64748b; margin-top:2px;">Ref: ${esc(m.referencia_externa || m.codigo_canasto || '-')}</div>
+                        </div>
+                        <div style="text-align:right; flex-shrink:0;">
+                            <div style="font-size:0.84rem; font-weight:900; color:${colorMonto};">${prefijo}${fmtMoneda(m.monto)}</div>
+                            <div style="font-size:0.69rem; color:#94a3b8;">Saldo Cta. Cte: <strong>${fmtMoneda(m.saldo_resultante)}</strong></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderizarWorkspaceLoteActivo() {
+            const ws = document.getElementById('detalle-lote-workspace');
+            if (!ws) return;
+            const lote = obtenerLoteActivo();
+            if (!lote) {
+                ws.innerHTML = `<div class="panel-card">Seleccioná un lote a la izquierda.</div>`;
+                return;
+            }
+
+            const c = lote.cuadro_liquidacion;
+            const cerrado = Boolean(lote.liquidacion_cerrada);
+
+            const filasPedidos = (lote.pedidos_vecinos || []).map(p => {
+                const esEfectivo = String(p.medio_pago).toUpperCase() === 'EFECTIVO';
+                const confirmado = Boolean(p.pago_confirmado);
+                const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(i.nombre_publico)}`).join(' · ');
+
+                return `
+                    <div class="cobro-card ${confirmado ? 'confirmado' : ''}">
+                        <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-family:monospace; font-weight:900; font-size:0.84rem; background:#1e293b; color:#38bdf8; padding:3px 8px; border-radius:6px;">
+                                    #${esc(p.codigo_pedido)}
+                                </span>
+                                <strong style="font-size:0.96rem; color:#f8fafc;">👤 ${esc(p.vecino_nombre)}</strong>
+                                <span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.18)' : 'rgba(56,189,248,0.18)'}; color:${esEfectivo ? '#fcd34d' : '#7dd3fc'};">
+                                    ${esEfectivo ? '💵 Pago en Efectivo al Gestor' : `🏦 Transferencia a Alias ${esc(lote.alias_bancario_display || 'LAMDA')}`}
+                                </span>
+                                ${confirmado
+                                    ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
+                                        ${esEfectivo ? '✅ Efectivo cobrado en mano por Gestor' : `✅ Transferencia conciliada en Banco (${esc(p.titular_transferencia || p.titular_sugerido)})`}
+                                       </span>`
+                                    : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente de registrar</span>`
+                                }
+                            </div>
+
+                            <div style="font-size:0.8rem; color:#cbd5e1;">📦 ${itemsTxt}</div>
+
+                            <div style="font-size:0.75rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
+                                <span>Total abonado por vecino: <strong style="color:#f8fafc;">${fmtMoneda(p.total_vecino)}</strong></span>
+                                <span>Costo Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong></span>
+                                <span style="color:#34d399;">Ganancia Gestor en este pedido: <strong>+${fmtMoneda(p.ganancia_total_gestor)}</strong> ${Number(p.cargo_envio_barrial) > 0 ? `(incluye ${fmtMoneda(p.cargo_envio_barrial)} envío barrial)` : ''}</span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${!confirmado ? `
+                                ${!esEfectivo ? `
+                                    <button type="button" class="btn-action"
+                                        onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.total_vecino)})"
+                                        style="background:linear-gradient(135deg, #38bdf8, #0284c7); color:#082f49;">
+                                        🏦 Conciliar Transferencia (+${fmtMoneda(p.total_vecino)})
+                                    </button>
+                                ` : `
+                                    <button type="button" class="btn-action"
+                                        onclick="registrarCobroEfectivoGestor(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', ${Number(p.total_vecino)})"
+                                        style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#0f172a;">
+                                        💵 Registrar Efectivo Cobrado (${fmtMoneda(p.total_vecino)})
+                                    </button>
+                                `}
+                            ` : `
+                                <button type="button" class="btn-action"
+                                    onclick="verReciboVecinoMarcaBlanca(${p.id})"
+                                    style="background:#1e293b; color:#cbd5e1; border:1px solid #334155;">
+                                    🧾 Ver Recibo del Vecino
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            ws.innerHTML = `
+                <!-- BLOQUE 1: CONCILIACIÓN DE TRANSFERENCIAS Y RENDICIÓN DE EFECTIVO -->
+                <div class="panel-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="font-size:1rem; font-weight:800; color:#f8fafc;">
+                                1️⃣ Conciliación de Transferencias Vecinales y Cobros en Efectivo (${esc(lote.codigo_canasto)})
+                            </div>
+                            <div style="font-size:0.77rem; color:#94a3b8; margin-top:2px;">
+                                Las transferencias entran al banco de LAMDA (acreditándose a favor del Nodo) y el efectivo queda en mano de <strong>${esc(lote.gestor_nombre)}</strong> a cuenta de su comisión.
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            ${!c.todos_pagos_confirmados && !cerrado ? `
+                                <button type="button" class="btn-action" onclick="conciliarTodosLosPagos(${lote.id})"
+                                    style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;">
+                                    ⚡ Confirmar los ${c.total_pedidos - c.pedidos_pagos_confirmados} cobros pendientes en 1 clic
+                                </button>
+                            ` : ''}
+                            ${(c.pedidos_pagos_confirmados > 0 || cerrado) ? `
+                                <button type="button" class="btn-action" onclick="reabrirLiquidacionPrueba(${lote.id})"
+                                    style="background:rgba(245,158,11,0.16); color:#fcd34d; border:1px solid rgba(245,158,11,0.45);">
+                                    🔄 Reiniciar Cobros y Liquidación (Repetir prueba Lab)
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        ${filasPedidos}
+                    </div>
+                </div>
+
+                <!-- BLOQUE 2: CUADRO DE LIQUIDACIÓN DEL LOTE Y COMPENSACIÓN AUTOMÁTICA -->
+                <div class="panel-card" style="border: 2px solid ${cerrado ? '#10b981' : '#38bdf8'}; background:linear-gradient(135deg, #151e2e 0%, #0f172a 100%);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <span style="font-size:1.08rem; font-weight:900; color:#f8fafc;">
+                                    2️⃣ Cuadro de Liquidación del Lote y Compensación Automática en Cuenta Corriente
+                                </span>
+                                ${cerrado
+                                    ? `<span class="badge" style="background:rgba(16,185,129,0.22); color:#34d399; border:1px solid #10b981; font-size:0.76rem;">✅ LOTE LIQUIDADO Y SALDADO EN $0</span>`
+                                    : `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8; font-size:0.76rem;">📊 CÁLCULO EN TIEMPO REAL</span>`
+                                }
+                            </div>
+                            <div style="font-size:0.78rem; color:#94a3b8; margin-top:3px;">
+                                Resumen transparente compartido entre la administración de LAMDA y el Gestor del Nodo (${esc(lote.gestor_nombre)}).
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FILA A: VENTA TOTAL, COSTO BASE LAMDA Y GANANCIA NETA DEL GESTOR -->
+                    <div class="liq-box-grid">
+                        <div class="liq-metric">
+                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">A. Total Vendido a Vecinos</div>
+                            <div style="font-size:1.45rem; font-weight:900; color:#f8fafc; margin-top:4px;">${fmtMoneda(c.total_venta_vecinos)}</div>
+                            <div style="font-size:0.73rem; color:#cbd5e1; margin-top:4px;">
+                                Productos: ${fmtMoneda(c.total_subtotal_productos)}
+                                ${c.total_envios_barriales_gestor > 0 ? ` + Envíos barriales: ${fmtMoneda(c.total_envios_barriales_gestor)} (100% Gestor)` : ''}
+                            </div>
+                        </div>
+
+                        <div class="liq-metric">
+                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">B. Menos Costo Base LAMDA del Lote</div>
+                            <div style="font-size:1.45rem; font-weight:900; color:#fb7185; margin-top:4px;">-${fmtMoneda(c.total_base_lamda)}</div>
+                            <div style="font-size:0.73rem; color:#cbd5e1; margin-top:4px;">
+                                Valor mayorista debitado al retirar el canasto (${c.total_pedidos} pedidos)
+                            </div>
+                        </div>
+
+                        <div class="liq-metric" style="border-color:rgba(16,185,129,0.5); background:rgba(16,185,129,0.08);">
+                            <div style="font-size:0.73rem; color:#6ee7b7; text-transform:uppercase; font-weight:800;">C. (=) Ganancia Neta Total del Gestor</div>
+                            <div style="font-size:1.45rem; font-weight:900; color:#34d399; margin-top:4px;">+${fmtMoneda(c.ganancia_neta_gestor)}</div>
+                            <div style="font-size:0.73rem; color:#a7f3d0; margin-top:4px;">
+                                Comisión limpia de ${esc(lote.gestor_nombre)} en esta entrega
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FILA B: DÓNDE ESTÁ EL DINERO Y COMPENSACIÓN AUTOMÁTICA -->
+                    <div class="liq-box-grid">
+                        <div class="liq-metric">
+                            <div style="font-size:0.73rem; color:#7dd3fc; text-transform:uppercase; font-weight:700;">🏦 1. Cobrado por Transferencia (En Banco LAMDA)</div>
+                            <div style="font-size:1.3rem; font-weight:900; color:#38bdf8; margin-top:4px;">
+                                ${fmtMoneda(c.transferencias_esperadas)}
+                            </div>
+                            <div style="font-size:0.72rem; color:#94a3b8; margin-top:4px;">
+                                Conciliado hoy: <strong style="color:#f8fafc;">${fmtMoneda(c.transferencias_conciliadas_lamda)}</strong> (${c.cant_transferencias_conciliadas}/${c.cant_transferencias_totales} transf.) · Se acredita a favor del Nodo
+                            </div>
+                        </div>
+
+                        <div class="liq-metric">
+                            <div style="font-size:0.73rem; color:#fcd34d; text-transform:uppercase; font-weight:700;">💵 2. Cobrado en Efectivo (En Mano del Gestor)</div>
+                            <div style="font-size:1.3rem; font-weight:900; color:#fbbf24; margin-top:4px;">
+                                ${fmtMoneda(c.efectivo_esperado)}
+                            </div>
+                            <div style="font-size:0.72rem; color:#94a3b8; margin-top:4px;">
+                                Rendido en app: <strong style="color:#f8fafc;">${fmtMoneda(c.efectivo_cobrado_mano_gestor)}</strong> (${c.cant_efectivo_cobrados}/${c.cant_efectivo_totales} efvo.) · El Gestor retiene de aquí su ganancia (${fmtMoneda(c.ganancia_neta_gestor)})
+                            </div>
+                        </div>
+
+                        <div class="liq-metric" style="border-color:#38bdf8; background:rgba(56,189,248,0.12);">
+                            <div style="font-size:0.73rem; color:#bae6fd; text-transform:uppercase; font-weight:800;">🤝 3. Saldo Neto de Compensación Final</div>
+                            <div style="font-size:1.35rem; font-weight:900; color:#f8fafc; margin-top:4px;">
+                                ${esc(c.titulo_resultado)}
+                            </div>
+                            <div style="font-size:0.72rem; color:#e0f2fe; margin-top:4px;">
+                                Al saldar este monto, la Cuenta Corriente del lote queda en <strong>$0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EXPLICACIÓN CLARA Y BOTÓN DE CIERRE DE LIQUIDACIÓN -->
+                    <div style="padding:13px 16px; border-radius:11px; background:#0f172a; border:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                        <div style="flex:1; min-width:280px; font-size:0.82rem; color:#cbd5e1; line-height:1.45;">
+                            💡 <strong>Detalle de Compensación:</strong> ${esc(c.explicacion_compensacion)}
+                        </div>
+
+                        ${!cerrado ? `
+                            <button type="button" class="btn-action"
+                                onclick="confirmarCierreLiquidacionLote(${lote.id})"
+                                style="background:linear-gradient(135deg, #10b981, #059669); color:#052e16; padding:12px 20px; font-size:0.88rem;">
+                                ✅ Confirmar Compensación (${fmtMoneda(c.monto_compensacion_final)}) y Saldar Cta. Cte. en $0
+                            </button>
+                        ` : `
+                            <div style="padding:10px 16px; border-radius:9px; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; font-weight:800; font-size:0.84rem;">
+                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')}) · Saldo Cta. Cte.: ${fmtMoneda(lote.saldo_cuenta_corriente)}
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function abrirModalConciliarTransferencia(pedidoId, codigoPedido, vecinoNombre, titularSugerido, monto) {
+            const { value: formValues } = await Swal.fire({
+                title: `🏦 Conciliar Transferencia #${codigoPedido}`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '560px',
+                html: `
+                    <div style="text-align:left; display:flex; flex-direction:column; gap:12px; font-size:0.85rem;">
+                        <div style="padding:10px 12px; border-radius:8px; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
+                            Al confirmar esta transferencia de <strong>${esc(vecinoNombre)}</strong> por <strong>${fmtMoneda(monto)}</strong>:
+                            <ul style="margin:6px 0 0 18px;">
+                                <li>Se acredita <strong>+${fmtMoneda(monto)}</strong> a favor del Nodo en su Cuenta Corriente con LAMDA.</li>
+                                <li>El sistema memoriza el titular bancario para conciliar automáticamente sus próximas compras.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Titular que figura en el movimiento bancario / Mercado Pago</label>
+                            <input id="swal-titular" type="text" value="${esc(titularSugerido)}"
+                                style="width:100%; padding:9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-weight:700;">
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Billetera / Banco de origen</label>
+                                <input id="swal-billetera" type="text" value="Mercado Pago"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">N° Operación / Referencia</label>
+                                <input id="swal-ref" type="text" value="MP-${codigoPedido}-9821"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace;">
+                            </div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: `✅ Conciliar y Acreditar +${fmtMoneda(monto)}`,
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#0284c7',
+                preConfirm: () => ({
+                    titular_transferencia: document.getElementById('swal-titular').value,
+                    billetera_origen: document.getElementById('swal-billetera').value,
+                    comprobante_referencia: document.getElementById('swal-ref').value
+                })
+            });
+
+            if (!formValues) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formValues)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error conciliando transferencia');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function registrarCobroEfectivoGestor(pedidoId, codigoPedido, vecinoNombre, monto) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comprobante_referencia: `REC-EFVO-${codigoPedido}` })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error registrando cobro en efectivo');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function conciliarTodosLosPagos(canastoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/canastos/${canastoId}/conciliar-todo`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error conciliando cobros');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function confirmarCierreLiquidacionLote(canastoId) {
+            const lote = obtenerLoteActivo();
+            if (!lote) return;
+            const c = lote.cuadro_liquidacion;
+
+            const confirm = await Swal.fire({
+                title: `🏁 Cerrar Liquidación de Lote ${lote.codigo_canasto}`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '620px',
+                html: `
+                    <div style="text-align:left; font-size:0.88rem; line-height:1.55; display:flex; flex-direction:column; gap:10px;">
+                        <p>Se registrará el cierre contable del lote de <strong>${esc(lote.nombre_marca)}</strong> (${esc(lote.gestor_nombre)}):</p>
+                        <div style="padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
+                            <div>🛍️ <strong>Total vendido a vecinos:</strong> ${fmtMoneda(c.total_venta_vecinos)}</div>
+                            <div>🏭 <strong>Costo Base LAMDA:</strong> -${fmtMoneda(c.total_base_lamda)}</div>
+                            <div style="color:#34d399;">💰 <strong>Ganancia Neta del Gestor (retenida de su efectivo):</strong> +${fmtMoneda(c.ganancia_neta_gestor)}</div>
+                            <hr style="border:none; border-top:1px dashed #334155; margin:8px 0;">
+                            <div>🏦 <strong>Transferencias en cuenta LAMDA:</strong> ${fmtMoneda(c.transferencias_esperadas)}</div>
+                            <div>💵 <strong>Efectivo cobrado en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
+                            <div style="margin-top:6px; font-size:0.98rem; color:#38bdf8; font-weight:900;">
+                                🤝 ${esc(c.titulo_resultado)} → Saldo Cta. Cte. resultante: $0
+                            </div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Asentar Liquidación y Saldar Cuenta Corriente',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#10b981'
+            });
+
+            if (!confirm.isConfirmed) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/canastos/${canastoId}/cerrar-liquidacion`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ responsable: lote.gestor_nombre })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error cerrando liquidación');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ Lote Liquidado y Cuenta Corriente en $0',
+                    text: 'Quedaron conciliados todos los pagos y asentada la compensación final en la Cuenta Corriente del Nodo.',
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function reabrirLiquidacionPrueba(canastoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/canastos/${canastoId}/reabrir-prueba`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error reabriendo liquidación');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function verReciboVecinoMarcaBlanca(pedidoId) {
+            const lote = obtenerLoteActivo();
+            const p = (lote?.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
+            if (!lote || !p) return;
+
+            const itemsHtml = (p.items || []).map(i => `
+                <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #e2e8f0;">
+                    <span>${i.cantidad}x ${esc(i.nombre_publico)}</span>
+                    <strong>${fmtMoneda(i.subtotal_vecino)}</strong>
+                </div>
+            `).join('');
+
+            Swal.fire({
+                title: `🧾 Recibo Digital — ${esc(lote.nombre_marca)}`,
+                background: '#ffffff',
+                color: '#0f172a',
+                width: '460px',
+                html: `
+                    <div style="text-align:left; font-size:0.86rem; color:#1e293b; border:1px solid #cbd5e1; border-radius:10px; padding:14px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; border-bottom:2px solid #16a34a; padding-bottom:8px; margin-bottom:10px;">
+                            <div>
+                                <div style="font-weight:900; font-size:0.96rem; color:#15803d;">${esc(lote.nombre_marca)}</div>
+                                <div style="font-size:0.75rem; color:#64748b;">Comprobante de Pago Vecinal</div>
+                            </div>
+                            <div style="text-align:right; font-family:monospace; font-weight:800;">
+                                #${esc(p.codigo_pedido)}
+                            </div>
+                        </div>
+                        <div style="margin-bottom:8px;">
+                            <div><strong>Vecino:</strong> ${esc(p.vecino_nombre)}</div>
+                            <div><strong>Entrega:</strong> ${esc(p.fecha_entrega_label)}</div>
+                            <div><strong>Medio de pago:</strong> ${p.medio_pago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia (${esc(p.titular_transferencia || p.titular_sugerido)})`}</div>
+                        </div>
+                        <div style="margin:10px 0;">
+                            ${itemsHtml}
+                            ${Number(p.cargo_envio_barrial) > 0 ? `
+                                <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                                    <span>🛵 Envío barrial a domicilio</span>
+                                    <strong>${fmtMoneda(p.cargo_envio_barrial)}</strong>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:1.05rem; font-weight:900; color:#15803d; padding-top:8px; border-top:2px solid #cbd5e1;">
+                            <span>TOTAL PAGADO</span>
+                            <span>${fmtMoneda(p.total_vecino)}</span>
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Cerrar Recibo',
+                confirmButtonColor: '#16a34a'
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarTableroLiquidacion(false);
+        });
+    </script>
+</body>
+</html>

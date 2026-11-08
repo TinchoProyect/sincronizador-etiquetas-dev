@@ -307,4 +307,82 @@ router.post('/deposito/canastos/:canastoId/reabrir-prueba', async (req, res) => 
     }
 });
 
+// ============================================================================
+// ENDPOINTS ETAPA 4: CONCILIACIÓN DE COBROS Y LIQUIDACIÓN DE CUENTA CORRIENTE
+// ============================================================================
+
+/**
+ * GET /api/produccion/nodos/liquidacion/tablero
+ * Devuelve los lotes, el cuadro de liquidación y compensación automática,
+ * los titulares bancarios aprendidos y el libro mayor de Cuenta Corriente del Nodo.
+ */
+router.get('/liquidacion/tablero', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerTableroLiquidacionCobros({
+            nodo_id: req.query.nodo_id || 0
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /liquidacion/tablero:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/pedidos/:pedidoId/conciliar-pago
+ * Concilia una transferencia vecinal en Banco LAMDA (acreditando a favor del Nodo y
+ * aprendiendo el titular) o registra el cobro en efectivo en mano del Gestor.
+ */
+router.post('/liquidacion/pedidos/:pedidoId/conciliar-pago', async (req, res) => {
+    try {
+        const tablero = await nodosService.conciliarPagoPedidoVecino(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, tablero });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/conciliar-pago:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/canastos/:canastoId/conciliar-todo
+ * Concilia todos los cobros pendientes del lote (transferencias + efectivo)
+ */
+router.post('/liquidacion/canastos/:canastoId/conciliar-todo', async (req, res) => {
+    try {
+        const tablero = await nodosService.conciliarTodosLosPagosPendientesCanasto(req.params.canastoId);
+        res.json({ ok: true, tablero });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/canastos/:canastoId/conciliar-todo:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/canastos/:canastoId/cerrar-liquidacion
+ * Ejecuta la compensación automática y deja saldada la Cuenta Corriente del lote
+ */
+router.post('/liquidacion/canastos/:canastoId/cerrar-liquidacion', async (req, res) => {
+    try {
+        const tablero = await nodosService.cerrarLiquidacionCanasto(req.params.canastoId, req.body || {});
+        res.json({ ok: true, tablero });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/canastos/:canastoId/cerrar-liquidacion:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/canastos/:canastoId/reabrir-prueba
+ * Permite en Modo Laboratorio reabrir los cobros y la liquidación del lote para repetir la prueba
+ */
+router.post('/liquidacion/canastos/:canastoId/reabrir-prueba', async (req, res) => {
+    try {
+        const tablero = await nodosService.reabrirLiquidacionCanastoPrueba(req.params.canastoId);
+        res.json({ ok: true, tablero });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/canastos/:canastoId/reabrir-prueba:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 module.exports = router;

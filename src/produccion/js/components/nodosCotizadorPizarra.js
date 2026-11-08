@@ -203,6 +203,12 @@
                             📦 Mesa de Armado ↗
                         </a>
 
+                        <a href="/liquidacion-nodos" target="_blank"
+                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(245,158,11,0.5); background:rgba(245,158,11,0.16); color:#fcd34d; display:inline-flex; align-items:center; gap:5px;"
+                            title="Abrir Conciliación de Cobros y Liquidación de Cuenta Corriente">
+                            💳 Cobros y Liquidación ↗
+                        </a>
+
                         <a href="/gestor/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
                             style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.14); color:#bae6fd; display:inline-flex; align-items:center; gap:5px;"
                             title="Abrir Panel de Autogestión del Gestor del Nodo">
