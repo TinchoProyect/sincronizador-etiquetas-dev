@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Artículos - Datos Transaccionales</title>
     <link rel="icon" type="image/x-icon" href="../favicon.ico?v=2">
-    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/dashboard.css?v=3_etapa4">
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <!-- AG Grid Community CDN -->
@@ -861,6 +861,91 @@
         }
         .bunker-switch input:checked + .bunker-switch-slider:before {
             transform: translateX(16px);
+        }
+        /* Etapa 4: Adaptación móvil vertical para Gestión de Artículos Búnker */
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+            .header-left {
+                justify-content: space-between !important;
+            }
+            .header-right {
+                width: 100% !important;
+                gap: 6px !important;
+            }
+            .header-right > div {
+                width: 100% !important;
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 6px !important;
+            }
+            .header-btn-primary,
+            .header-btn-secondary,
+            .header-btn-ghost {
+                width: 100% !important;
+                justify-content: center !important;
+                font-size: 0.78em !important;
+                padding: 8px 10px !important;
+            }
+            .header-group-divider {
+                display: none !important;
+            }
+            .main-content {
+                height: auto !important;
+                overflow: visible !important;
+                padding: 10px 8px 120px 8px !important;
+            }
+            .bunker-panel > div[style*="grid-template-columns: 55% 45%"] {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 12px !important;
+            }
+            .bunker-panel > div[style*="grid-template-columns: 55% 45%"] > div:last-child {
+                border-left: none !important;
+                border-top: 1px solid #f1f5f9 !important;
+                padding-left: 0 !important;
+                padding-top: 10px !important;
+            }
+            .bunker-panel > div:nth-child(2) {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+            .bunker-panel > div:nth-child(2) > div {
+                flex-wrap: wrap !important;
+                width: 100% !important;
+                gap: 6px !important;
+            }
+            #container-combobox-cliente {
+                width: 100% !important;
+            }
+            #input-buscar-cliente-autoseleccion {
+                width: 100% !important;
+                flex: 1 !important;
+            }
+            #dropdown-clientes-autoseleccion {
+                min-width: 92vw !important;
+                max-width: 94vw !important;
+                left: 0 !important;
+                right: auto !important;
+            }
+            .settings-dropdown-content {
+                min-width: 86vw !important;
+                max-width: 92vw !important;
+                left: 0 !important;
+                right: auto !important;
+            }
+            #bunker-listas-popover {
+                width: 94vw !important;
+                max-width: 94vw !important;
+                left: 3vw !important;
+                right: 3vw !important;
+            }
         }
     </style>
 </head>

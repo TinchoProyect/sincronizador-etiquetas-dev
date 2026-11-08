@@ -943,6 +943,39 @@
     transform: translateY(-1px);
 }
 
+/* Etapa 4: Panel de Ingredientes y Mantenimiento adaptado a celular vertical */
+@media screen and (max-width: 768px) {
+    .ingredientes-container {
+        flex-direction: column !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    .panel-config {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        border-right: none !important;
+        border-bottom: 2px solid #e0e0e0 !important;
+        max-height: none !important;
+    }
+
+    .panel-resizer {
+        display: none !important;
+    }
+
+    .panel-tabla {
+        width: 100% !important;
+        padding: 10px 8px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .sector-group-content {
+        grid-template-columns: 1fr !important;
+    }
+}
+
 @media print {
     body.modo-impresion-cartel * {
         visibility: hidden;

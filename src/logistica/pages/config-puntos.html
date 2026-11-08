@@ -46,6 +46,14 @@
         .badge { padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
         .badge-active { background: #d1fae5; color: #065f46; }
         .badge-inactive { background: #fee2e2; color: #991b1b; }
+        @media (max-width: 768px) {
+            body { padding: 12px 8px !important; }
+            .header { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; margin-bottom: 14px !important; }
+            .form-row { grid-template-columns: 1fr !important; }
+            .form-row .form-group[style*="grid-column: span 2"] { grid-column: span 1 !important; }
+            .card { padding: 14px 10px !important; overflow-x: auto !important; }
+            table { min-width: 540px !important; }
+        }
     </style>
 </head>
 <body>

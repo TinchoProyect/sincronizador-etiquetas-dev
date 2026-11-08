@@ -77,6 +77,16 @@
         .traslado-card { background: transparent; border: none; box-shadow: none; padding: 0; padding-left: 1rem; border-left: 2px dashed var(--border); margin-left: 1.1rem; margin-bottom: 2rem; color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
 
         .loader { display: none; text-align: center; margin-top: 2rem; color: var(--primary); }
+        @media (max-width: 768px) {
+            body { height: auto !important; overflow: auto !important; }
+            .header { padding: 12px !important; flex-direction: column !important; align-items: stretch !important; gap: 8px !important; }
+            .header-actions { flex-wrap: wrap !important; gap: 6px !important; }
+            .header-actions .btn { flex: 1 1 calc(50% - 6px) !important; justify-content: center !important; }
+            .workspace { flex-direction: column !important; overflow: visible !important; }
+            .sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid var(--border) !important; padding: 12px !important; }
+            .dashboard { grid-template-columns: 1fr !important; overflow: visible !important; }
+            .panel-content { padding: 12px !important; }
+        }
     </style>
 </head>
 <body>

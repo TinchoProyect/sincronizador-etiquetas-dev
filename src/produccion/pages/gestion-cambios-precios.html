@@ -974,6 +974,98 @@
       cursor: pointer;
       margin: 0;
     }
+    /* ========================================================================
+       ETAPA 4: GESTIÓN DE CAMBIOS DE PRECIOS ADAPTADA A CELULAR VERTICAL
+       ======================================================================== */
+    @media (max-width: 768px) {
+      body {
+        overflow-x: hidden !important;
+      }
+
+      header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        padding: 12px !important;
+        gap: 10px !important;
+        position: static !important;
+      }
+
+      .header-title-box h1 {
+        font-size: 1.05rem !important;
+      }
+
+      .header-actions {
+        width: 100% !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+      }
+
+      .header-actions .btn {
+        flex: 1 1 auto !important;
+        justify-content: center !important;
+      }
+
+      .control-bar {
+        padding: 10px 12px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        position: static !important;
+      }
+
+      .control-group {
+        width: 100% !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+      }
+
+      .view-switcher {
+        width: 100% !important;
+      }
+
+      .view-btn {
+        flex: 1 1 50% !important;
+        justify-content: center !important;
+      }
+
+      .period-chips {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        flex-wrap: nowrap !important;
+        width: 100% !important;
+      }
+
+      .chip-btn {
+        white-space: nowrap !important;
+      }
+
+      .search-box {
+        min-width: 100% !important;
+        width: 100% !important;
+      }
+
+      .stats-strip {
+        padding: 8px 12px !important;
+        gap: 10px !important;
+      }
+
+      main {
+        padding: 12px 10px 60px 10px !important;
+      }
+
+      .item-card-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 12px !important;
+        gap: 10px !important;
+      }
+
+      .item-main-info {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+    }
   </style>
 </head>
 <body>

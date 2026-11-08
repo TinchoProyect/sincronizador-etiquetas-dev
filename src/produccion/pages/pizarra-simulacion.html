@@ -1522,6 +1522,90 @@
       background: rgba(16, 185, 129, 0.15);
       color: var(--color-success);
     }
+    /* ========================================================================
+       ETAPA 4: PIZARRA DE SIMULACIÓN DE COSTOS Y PRECIOS EN CELULAR VERTICAL
+       ======================================================================== */
+    @media (max-width: 768px) {
+      body {
+        height: auto !important;
+        min-height: 100dvh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+      }
+
+      header {
+        max-height: none !important;
+        overflow: visible !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        padding: 10px 12px !important;
+        gap: 8px !important;
+      }
+
+      header > div:first-child {
+        flex-wrap: wrap !important;
+        width: 100% !important;
+        gap: 8px !important;
+      }
+
+      header .search-box {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        order: 3 !important;
+      }
+
+      .header-actions {
+        width: 100% !important;
+        flex-wrap: wrap !important;
+        justify-content: space-between !important;
+        gap: 6px !important;
+      }
+
+      .header-actions .btn,
+      .header-actions a {
+        flex: 1 1 auto !important;
+        justify-content: center !important;
+      }
+
+      .ldn-context-bar {
+        padding: 6px 10px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        flex-wrap: nowrap !important;
+      }
+
+      .dashboard-container {
+        grid-template-columns: 100% !important;
+        padding: 10px 8px 80px 8px !important;
+        height: auto !important;
+        overflow: visible !important;
+        gap: 14px !important;
+      }
+
+      #left-panel,
+      .bunker-layout {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+      }
+
+      #left-panel .scroll-container {
+        max-height: 62dvh !important;
+        min-height: 260px !important;
+      }
+
+      #container-mixes-list,
+      .dashboard-container.layout-stacked #container-mixes-list,
+      .dashboard-container.left-maximized #container-mixes-list {
+        grid-template-columns: 1fr !important;
+      }
+
+      .swal2-popup {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        padding: 14px 10px !important;
+      }
+    }
   </style>
   <script src="/js/components/accordion-ldn1.js?v=2.0.12"></script>
   <script src="/js/components/modalGestionCostos.js?v=2.0.12"></script>
