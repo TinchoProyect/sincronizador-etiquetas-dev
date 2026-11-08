@@ -9006,6 +9006,12 @@
         });
 
         const actualizaciones = [];
+        const esListaHabilitadaPropagacion = (l, laActual) => {
+          if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS') {
+            return Boolean(laActual && laActual.disponible === true);
+          }
+          return true;
+        };
 
         fraccsAImpactar.forEach(f => {
           const cascada1 = calcularCascadaArticuloLista(f.articulo_id, (listas[0] ? listas[0].id : 1));
@@ -9014,12 +9020,13 @@
           }
 
           listas.forEach(l => {
-            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
-            if (!cascada) return;
-
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            if (!esListaHabilitadaPropagacion(l, laActual)) return;
+
+            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
+            if (!cascada) return;
 
             // Respetar estrictamente el margen: el simulado si fue editado, o el actual de la lista
             const margen = (laSim && laSim.margen_simulado !== undefined)
@@ -9824,12 +9831,13 @@
           if (cascada1) f.costo_base = cascada1.costoNetoBulto;
 
           listas.forEach(l => {
-            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
-            if (!cascada) return;
-
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
+
+            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
+            if (!cascada) return;
 
             const margen = (laSim && laSim.margen_simulado !== undefined)
               ? parseFloat(laSim.margen_simulado.toFixed(4))
@@ -10531,12 +10539,13 @@
           }
 
           listas.forEach(l => {
-            const cascada = calcularCascadaArticuloLista(sku, l.id);
-            if (!cascada) return;
-
             const key = `${l.id}_${sku}`;
             const laSim = listasArticulosSim[key];
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === sku.trim().toLowerCase());
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
+
+            const cascada = calcularCascadaArticuloLista(sku, l.id);
+            if (!cascada) return;
 
             const margen = (laSim && laSim.margen_simulado !== undefined)
               ? parseFloat(laSim.margen_simulado.toFixed(4))
@@ -10846,12 +10855,13 @@
           }
 
           listas.forEach(l => {
-            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
-            if (!cascada) return;
-
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
+
+            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
+            if (!cascada) return;
 
             // Respetar estrictamente el margen: el simulado si fue editado, o el actual de la lista
             const margen = (laSim && laSim.margen_simulado !== undefined)
@@ -10961,20 +10971,45 @@
 
       const listas = data.listasPrecios || [];
       const articulosBunker = data.articulosBunker || [];
-      const fracc = articulosBunker.find(a => (a.articulo_id || '').trim().toUpperCase() === 'BF24X50');
-      if (!fracc) {
+
+      // Identificar determinísticamente todas las presentaciones comerciales que consumen el ingrediente puente #141 (BF24X50, BF6X50, etc.)
+      const targetIngId = 141;
+      const bridgeSku = String(b.ap_codigo || 'BFX50G').trim().toUpperCase();
+      const directSkus = new Set();
+      (data.recetas || []).forEach(r => {
+        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === targetIngId)) {
+          if (r.articulo_numero) directSkus.add(String(r.articulo_numero).trim().toUpperCase());
+        }
+      });
+      (data.recetaArticulos || []).forEach(ra => {
+        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === ra.receta_id && Number(ri.ingrediente_id) === targetIngId)) {
+          if (ra.articulo_numero) directSkus.add(String(ra.articulo_numero).trim().toUpperCase());
+        }
+      });
+      directSkus.add('BF24X50');
+
+      const fraccsAImpactar = articulosBunker.filter(a => {
+        const skuUpper = String(a.articulo_id || '').trim().toUpperCase();
+        if (skuUpper === bridgeSku || skuUpper === 'MPB' || a.solo_produccion_externa === true) return false;
+        if (directSkus.has(skuUpper)) return true;
+        if (a.pack_hijo_codigo && directSkus.has(String(a.pack_hijo_codigo).trim().toUpperCase())) return true;
+        return false;
+      });
+
+      if (fraccsAImpactar.length === 0) {
         Swal.fire({
           icon: 'warning',
-          title: 'Artículo No Encontrado',
-          text: 'No se encontró la presentación comercial BF24X50 en el catálogo.',
+          title: 'Artículos No Encontrados',
+          text: 'No se encontraron presentaciones comerciales de Barritas vinculadas al Ingrediente #141.',
           background: '#151e2e',
           color: '#f3f4f6'
         });
         return;
       }
 
+      const fracc = fraccsAImpactar.find(a => String(a.articulo_id || '').trim().toUpperCase() === 'BF24X50') || fraccsAImpactar[0];
       const lista1Id = listas[0] ? listas[0].id : 1;
-      const cascada1 = calcularCascadaArticuloLista('BF24X50', lista1Id);
+      const cascada1 = calcularCascadaArticuloLista(fracc.articulo_id, lista1Id);
       const kilos = (parseFloat(fracc.kilos_unidad) > 0) ? parseFloat(fracc.kilos_unidad) : 1.20;
 
       const matPrima = cascada1 ? cascada1.costoInsumoBase : 0;
@@ -10982,65 +11017,75 @@
       const mo = cascada1 ? cascada1.moFracc : 0;
       const costoBaseTotal = cascada1 ? cascada1.costoNetoBulto : (parseFloat(fracc.costo_base) || 0);
 
-      let costoOficialBD = parseFloat(fracc.costo_base) || 0;
-      const la1 = (data.articulosListas || []).find(l => (l.articulo_numero || '').trim().toUpperCase() === 'BF24X50' && l.lista_id === lista1Id);
-      if (la1 && la1.costo_base_sobrescrito !== null && parseFloat(la1.costo_base_sobrescrito) > 0) {
-        costoOficialBD = parseFloat(la1.costo_base_sobrescrito) * kilos;
-      }
-      const diff = Math.abs(costoBaseTotal - costoOficialBD);
-      const estaSincronizado = diff < 0.05 && costoOficialBD > 0;
-
-      let hayDifPrecios = false;
-      // Generar filas por lista para la auditoría de márgenes (0.0000% de desviación)
+      let hayDifPrecios = Math.abs(b.costo_ap_simulado - b.costo_ap_oficial_bd) > 0.05;
       let filasListasHtml = '';
-      listas.forEach(l => {
-        const cascadaLista = calcularCascadaArticuloLista('BF24X50', l.id);
-        const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'BF24X50' && la.lista_id === l.id);
-        const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
-        const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
-        const mActual = laActual ? parseFloat(laActual.margen_ganancia) : (cascadaLista ? cascadaLista.margen : 0);
-        const diffPesos = pNuevo - pActual;
-        if (Math.abs(diffPesos) > 0.1) hayDifPrecios = true;
+
+      fraccsAImpactar.forEach(itemFracc => {
+        const sku = itemFracc.articulo_id;
+        const desc = itemFracc.descripcion_generada || itemFracc.descripcion || sku;
+        const kItem = parseFloat(itemFracc.kilos_unidad) || 1;
 
         filasListasHtml += `
-          <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.74rem;">
-            <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${l.nombre}</td>
-            <td style="padding: 6px 8px; text-align: right; color: #a78bfa; font-weight: 700;">${mActual.toFixed(2)}%</td>
-            <td style="padding: 6px 8px; text-align: right; color: #94a3b8;">$${pActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 6px 8px; text-align: right; color: #34d399; font-weight: 700;">$${pNuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: ${Math.abs(diffPesos) < 0.1 ? '#34d399' : (diffPesos >= 0 ? '#f87171' : '#34d399')};">
-              ${Math.abs(diffPesos) < 0.1 ? '🟢 Sin variación' : ((diffPesos >= 0 ? '+' : '') + '$' + diffPesos.toLocaleString('es-AR', {minimumFractionDigits: 2}))}
+          <tr style="background: rgba(255,255,255,0.03); border-bottom: 2px solid rgba(255,255,255,0.1);">
+            <td colspan="5" style="padding: 6px 8px; font-weight: 800; color: #fb923c; font-size: 0.78rem;">
+              🍫 [${sku}] ${desc} (${kItem.toFixed(2)} kg)
             </td>
           </tr>
         `;
+
+        listas.forEach(l => {
+          const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === sku.toUpperCase() && la.lista_id === l.id);
+          if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
+          if (laActual && laActual.disponible === false) return;
+
+          const cascadaLista = calcularCascadaArticuloLista(sku, l.id);
+          const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
+          const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
+          const mActual = laActual ? parseFloat(laActual.margen_ganancia) : (cascadaLista ? cascadaLista.margen : 0);
+          const diffPesos = pNuevo - pActual;
+          if (Math.abs(diffPesos) > 0.1) hayDifPrecios = true;
+
+          filasListasHtml += `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.74rem;">
+              <td style="padding: 5px 8px 5px 16px; font-weight: 700; color: #38bdf8;">${l.nombre}</td>
+              <td style="padding: 5px 8px; text-align: right; color: #a78bfa; font-weight: 700;">${mActual.toFixed(2)}%</td>
+              <td style="padding: 5px 8px; text-align: right; color: #94a3b8;">$${pActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+              <td style="padding: 5px 8px; text-align: right; color: #34d399; font-weight: 700;">$${pNuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: ${Math.abs(diffPesos) < 0.1 ? '#34d399' : (diffPesos >= 0 ? '#f87171' : '#34d399')};">
+                ${Math.abs(diffPesos) < 0.1 ? '🟢 Sin variación' : ((diffPesos >= 0 ? '+' : '') + '$' + diffPesos.toLocaleString('es-AR', {minimumFractionDigits: 2}))}
+              </td>
+            </tr>
+          `;
+        });
       });
-      const alDiaTotal = estaSincronizado && !hayDifPrecios;
+      const alDiaTotal = !hayDifPrecios;
+      const skusLabel = fraccsAImpactar.map(f => f.articulo_id).join(', ');
 
       const modalHtml = `
         <div style="text-align: left; font-size: 0.82rem; color: #cbd5e1; max-height: 65vh; overflow-y: auto;">
           <div style="padding: 10px; background: ${alDiaTotal ? 'rgba(16, 185, 129, 0.12)' : 'rgba(251, 146, 60, 0.12)'}; border: 1px solid ${alDiaTotal ? 'rgba(16, 185, 129, 0.35)' : 'rgba(251, 146, 60, 0.35)'}; border-radius: 6px; margin-bottom: 14px;">
             <div style="font-weight: 800; color: ${alDiaTotal ? '#34d399' : '#fb923c'}; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
               <span>${alDiaTotal ? '🟢' : '⚠️'}</span>
-              ${alDiaTotal ? 'Precios de Barritas 100% Sincronizados con la Base de Datos' : '🍫 [BF24X50] BARRA Flor 24 x 50g — Variación Pendiente de Impactar'}
+              ${alDiaTotal ? 'Precios de Barritas 100% Sincronizados con la Base de Datos' : `🍫 Presentaciones de Barritas (${skusLabel}) — Variación Pendiente de Impactar`}
             </div>
             <div style="font-size: 0.76rem; color: #cbd5e1;">
               ${alDiaTotal 
-                ? `El costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) y los precios de venta en las 6 listas comerciales ya coinciden exactamente con la base de datos oficial (Diferencia: $0.00). No hay variaciones pendientes.`
-                : `Esta actualización impactará el nuevo costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) y actualizará los precios de las 6 listas comerciales conservando con <strong>precisión absoluta (0.0000% de desviación)</strong> los márgenes de ganancia.`
+                ? `El costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) y los precios de venta de sus ${fraccsAImpactar.length} presentaciones (${skusLabel}) ya coinciden con la base de datos oficial.`
+                : `Esta actualización impactará el nuevo costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) en el Ingrediente #141 y actualizará los precios de sus ${fraccsAImpactar.length} presentaciones (${skusLabel}) conservando los márgenes de ganancia.`
               }
             </div>
           </div>
 
           <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; text-align: center;">
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="font-size: 0.68rem; color: #94a3b8;">MATERIA PRIMA (1.2kg)</div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">MATERIA PRIMA (${kilos.toFixed(1)}kg)</div>
               <div style="font-size: 0.85rem; font-weight: 700; color: #fbbf24;">$${matPrima.toFixed(2)}</div>
               <div style="font-size: 0.64rem; color: #94a3b8;">Barritas x 50g</div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="font-size: 0.68rem; color: #94a3b8;">EMPAQUE (CAJA+FLOW)</div>
               <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">$${empaque.toFixed(2)}</div>
-              <div style="font-size: 0.64rem; color: #94a3b8;">24 flowpack + 1 caja</div>
+              <div style="font-size: 0.64rem; color: #94a3b8;">Envase Primario Receta</div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="font-size: 0.68rem; color: #94a3b8;">ORIGEN COSTO BASE</div>
@@ -11048,7 +11093,7 @@
               <div style="font-size: 0.64rem; color: #94a3b8;">($${(costoBaseTotal / kilos).toFixed(2)}/kg)</div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="font-size: 0.68rem; color: #94a3b8;">MO ARMADO (5 MIN)</div>
+              <div style="font-size: 0.68rem; color: #94a3b8;">MO ARMADO</div>
               <div style="font-size: 0.85rem; font-weight: 700; color: #c084fc;">$${mo.toFixed(2)}</div>
               <div style="font-size: 0.64rem; color: #94a3b8;">Búnker Lista 1</div>
             </div>
@@ -11098,7 +11143,7 @@
       try {
         Swal.fire({
           title: 'Calculando y propagando cascada...',
-          text: 'Impactando presentación comercial BF24X50 e Ingrediente #141 en la base de datos.',
+          text: `Impactando presentaciones comerciales (${skusLabel}) e Ingrediente #141 en la base de datos.`,
           allowOutsideClick: false,
           didOpen: () => Swal.showLoading()
         });
@@ -11128,7 +11173,7 @@
           console.warn('Aviso: no se pudo actualizar costo_patron del ingrediente 141/109:', eIng);
         }
 
-        // 2. Construir array de actualizaciones para las 6 listas de precios (incluyendo Pre-Mezcla MPB para mantener LDN 2 y LDN 3 sincronizados)
+        // 2. Construir array de actualizaciones (incluyendo Pre-Mezcla MPB y todas las presentaciones que consumen #141)
         const actualizaciones = [];
         const costoKiloMPB = calcularCostoBaseKiloArticulo('MPB');
         const artMPB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'MPB');
@@ -11137,6 +11182,7 @@
           if (artMPB) artMPB.costo_base = parseFloat((costoKiloMPB * kilosMPB).toFixed(4));
           listas.forEach(l => {
             const laMPB = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'MPB' && la.lista_id === l.id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laMPB || laMPB.disponible === false)) return;
             const margenMPB = laMPB ? (parseFloat(laMPB.margen_ganancia) || 0) : 0;
             const moMPB = (laMPB && laMPB.mano_obra_activa !== false) ? (parseFloat(laMPB.costo_tiempo) || 0) : 0;
             const ivaMPB = laMPB ? (parseFloat(laMPB.iva) || 21) : 21;
@@ -11157,54 +11203,62 @@
             });
           });
         }
-        listas.forEach(l => {
-          const cascada = calcularCascadaArticuloLista('BF24X50', l.id);
-          if (!cascada) return;
 
-          const key = `${l.id}_BF24X50`;
-          const laSim = listasArticulosSim[key];
-          const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === 'BF24X50');
+        fraccsAImpactar.forEach(itemFracc => {
+          const sku = itemFracc.articulo_id;
+          const kItem = (parseFloat(itemFracc.kilos_unidad) > 0) ? parseFloat(itemFracc.kilos_unidad) : 1;
+          const c1 = calcularCascadaArticuloLista(sku, lista1Id);
+          if (c1) itemFracc.costo_base = c1.costoNetoBulto;
 
-          // Respetar estrictamente el margen: el simulado si fue editado, o el actual de la lista
-          const margen = (laSim && laSim.margen_simulado !== undefined)
-            ? parseFloat(laSim.margen_simulado.toFixed(4))
-            : (laActual && laActual.margen_ganancia !== undefined ? parseFloat(parseFloat(laActual.margen_ganancia).toFixed(4)) : (cascada ? parseFloat(cascada.margen.toFixed(4)) : 0));
+          listas.forEach(l => {
+            const key = `${l.id}_${sku}`;
+            const laSim = listasArticulosSim[key];
+            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toUpperCase() === sku.toUpperCase());
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
 
-          const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
-          const costoKilo = parseFloat((cascada.costoNetoBulto / kilos).toFixed(4));
-          const mo = parseFloat(cascada.moFracc.toFixed(4));
-          const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const cascada = calcularCascadaArticuloLista(sku, l.id);
+            if (!cascada) return;
 
-          const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
+            const margen = (laSim && laSim.margen_simulado !== undefined)
+              ? parseFloat(laSim.margen_simulado.toFixed(4))
+              : (laActual && laActual.margen_ganancia !== undefined ? parseFloat(parseFloat(laActual.margen_ganancia).toFixed(4)) : (cascada ? parseFloat(cascada.margen.toFixed(4)) : 0));
 
-          actualizaciones.push({
-            lista_id: l.id,
-            articulo_numero: 'BF24X50',
-            margen_ganancia: margen,
-            costo_base_sobrescrito: costoKilo,
-            costo_tiempo: mo,
-            iva: iva,
-            precio_final: precioCalc,
-            disponible: dispActual,
-            modo_calculo: null,
-            modo_iva: null
+            const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
+            const costoKilo = parseFloat((cascada.costoNetoBulto / kItem).toFixed(4));
+            const moVal = parseFloat(cascada.moFracc.toFixed(4));
+            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+
+            const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
+
+            actualizaciones.push({
+              lista_id: l.id,
+              articulo_numero: sku,
+              margen_ganancia: margen,
+              costo_base_sobrescrito: costoKilo,
+              costo_tiempo: moVal,
+              iva: iva,
+              precio_final: precioCalc,
+              disponible: dispActual,
+              modo_calculo: null,
+              modo_iva: null
+            });
+
+            // Sincronizar en memoria
+            if (laSim) {
+              laSim.costo_base_simulado = cascada.costoNetoBulto;
+              laSim.precio_simulado = precioCalc;
+              laSim.precio_inicial_simulado = precioCalc;
+              laSim.margen_simulado = margen;
+              laSim.margen_inicial_simulado = margen;
+            }
+
+            if (laActual) {
+              laActual.precio_final = precioCalc;
+              laActual.margen_ganancia = margen;
+              laActual.costo_base_sobrescrito = costoKilo;
+              laActual.costo_tiempo = moVal;
+            }
           });
-
-          // Sincronizar en memoria
-          if (laSim) {
-            laSim.costo_base_simulado = cascada.costoNetoBulto;
-            laSim.precio_simulado = precioCalc;
-            laSim.precio_inicial_simulado = precioCalc;
-            laSim.margen_simulado = margen;
-            laSim.margen_inicial_simulado = margen;
-          }
-
-          if (laActual) {
-            laActual.precio_final = precioCalc;
-            laActual.margen_ganancia = margen;
-            laActual.costo_base_sobrescrito = costoKilo;
-            laActual.costo_tiempo = mo;
-          }
         });
 
         // 3. Impactar masivamente en la base de datos
@@ -11233,7 +11287,7 @@
         Swal.fire({
           icon: 'success',
           title: '¡Precios de Barritas Actualizados!',
-          html: `Se actualizaron con éxito las <strong>${actualizaciones.length} listas de precios</strong> de <strong>BF24X50</strong> preservando fielmente los márgenes de ganancia.`,
+          html: `Se actualizaron con éxito <strong>${fraccsAImpactar.length} presentaciones (${skusLabel})</strong> en <strong>${actualizaciones.length} listas de precios</strong> preservando fielmente los márgenes de ganancia.`,
           timer: 2800,
           showConfirmButton: true,
           confirmButtonColor: '#0284c7',
@@ -11509,12 +11563,13 @@
 
         fraccsAImpactar.forEach(f => {
           listas.forEach(l => {
-            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
-            if (!cascada) return;
-
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
+
+            const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
+            if (!cascada) return;
 
             // Respetar estrictamente el margen: el simulado si fue editado, o el actual de la lista
             const margen = (laSim && laSim.margen_simulado !== undefined)

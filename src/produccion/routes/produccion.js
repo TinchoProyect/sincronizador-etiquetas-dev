@@ -5211,7 +5211,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                       AND (bp.pack_hijo_codigo = ba.articulo_id OR bp.pack_hijo_codigo = art.codigo_barras)
                 ) res_padres ON true
             `),
-            db.query(`SELECT id, nombre FROM public.bunker_listas_precios WHERE activa = true`),
+            db.query(`SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true`),
             db.query(`SELECT id, lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, disponible, exencion_operativa, COALESCE(mano_obra_activa, true) as mano_obra_activa FROM public.bunker_lista_articulos`),
             db.query(`
                 SELECT li.id, li.lista_articulo_id, li.insumo_articulo_numero, li.cantidad, 
@@ -5297,6 +5297,12 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
                 updated_at = CURRENT_TIMESTAMP;
         `;
 
+        const listasNodosRes = await client.query(
+            `SELECT id FROM public.bunker_listas_precios WHERE COALESCE(canal_comercial, 'MAYORISTA') = 'NODOS'`
+        );
+        const listasNodosSet = new Set(listasNodosRes.rows.map(r => Number(r.id)));
+        const articulosNodosActualizados = new Set();
+
         const cambiosHistorial = [];
 
         for (const item of actualizaciones) {
@@ -5321,6 +5327,16 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
                 `SELECT modo_calculo, modo_iva, disponible, precio_final, costo_base_sobrescrito FROM public.bunker_lista_articulos WHERE lista_id = $1 AND articulo_numero = $2`,
                 [lista_id, articulo_numero]
             );
+
+            const esListaNodos = listasNodosSet.has(Number(lista_id));
+            // Regla Variante 2: En listas con canal_comercial = 'NODOS', actualizar solo si el artículo ya existe con disponible = true;
+            // omitir/bloquear cualquier artículo mayorista que no esté habilitado en el canal Nodos.
+            if (esListaNodos) {
+                if (resExist.rows.length === 0 || resExist.rows[0].disponible === false) {
+                    continue;
+                }
+                articulosNodosActualizados.add(String(articulo_numero));
+            }
 
             let modoCalculoFinal = item.modo_calculo || 'AUTOMATIC';
             let modoIvaFinal = item.modo_iva || 'COMPLETO';
@@ -5388,7 +5404,16 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, count: actualizaciones.length });
+
+        // Sincronizar en cascada con nodos_articulos_catalogo y nodos_ofertas_gestor los artículos habilitados en Nodos
+        if (articulosNodosActualizados.size > 0) {
+            const nodosBarrialesService = require('../services/nodosBarrialesService');
+            for (const artId of articulosNodosActualizados) {
+                await nodosBarrialesService.sincronizarCatalogoNodoDesdeBunker(artId);
+            }
+        }
+
+        res.json({ success: true, count: cambiosHistorial.length });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('❌ Error en transacción POST /simulacion/aplicar-precios:', error);

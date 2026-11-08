@@ -1685,12 +1685,12 @@ class BunkerService {
      */
     static calcularCostoIngredienteEnVivo(articulo_id, pack_hijo_codigo, costo_base_manual, context, kilos_unidad = 1) {
         const { lotesMap, recetaMap, ingredientesPorReceta, resolvedCostsMap, kilosMap } = context;
-        const codigoBase = pack_hijo_codigo || articulo_id;
+        const tieneRecetaPropia = Boolean(recetaMap && recetaMap.has(articulo_id)); const codigoBase = tieneRecetaPropia ? articulo_id : (pack_hijo_codigo || articulo_id);
         const recetaId = recetaMap.get(codigoBase);
         
         // Si el código base es un hijo de pack, la receta corresponde al tamaño del hijo, NO al del pack padre
         const codigoBaseKey = String(codigoBase).trim().toLowerCase();
-        const factorReceta = (pack_hijo_codigo && kilosMap && kilosMap.has(codigoBaseKey))
+        const factorReceta = (!tieneRecetaPropia && pack_hijo_codigo && kilosMap && kilosMap.has(codigoBaseKey))
             ? (kilosMap.get(codigoBaseKey) || 1)
             : (parseFloat(kilos_unidad) > 0 ? parseFloat(kilos_unidad) : 1);
 

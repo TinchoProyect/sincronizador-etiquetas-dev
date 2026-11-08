@@ -435,7 +435,7 @@
                     <div style="display:grid; grid-template-columns: 0.9fr 1fr 1.3fr; gap:10px; margin-bottom:12px;">
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Código SKU (Búnker + Nodo)</label>
-                            <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: NB-ALM-250G)"
+                            <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: APN25/27X250G)"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace; font-size:0.82rem;">
                         </div>
                         <div>
@@ -584,7 +584,14 @@
         const costoInsumoKg = Math.max(0, Number(costoKgEl.value) || 0);
         const kilosUnidad = Math.max(0.001, Number(kilosEl.value) || 0.25);
         const envaseOpt = envaseEl?.selectedOptions?.[0];
-        const costoEnvaseUnitario = Number(envaseOpt?.getAttribute('data-costo') || 45.96);
+        const costoEnvaseContenedor = Number(envaseOpt?.getAttribute('data-costo') || 45.96);
+        const origenSelect = document.getElementById('cot-origen-select');
+        const ingSelId = Number(origenSelect?.value || 0);
+        const env181 = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === 181);
+        const costoFlowpackUnit = Number(env181?.costo_unitario || 18.16);
+        const packUnidades = ingSelId === 141 ? Math.max(1, Math.round(kilosUnidad / 0.05)) : 1;
+        const costoEnvaseExtra = ingSelId === 141 ? (packUnidades * costoFlowpackUnit) : 0;
+        const costoEnvaseUnitario = costoEnvaseContenedor + costoEnvaseExtra;
         const segundos = Math.max(0, Number(segEl.value) || 35);
         const tarifaOpt = tarifaEl?.selectedOptions?.[0];
         const valorHora = Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000);
@@ -1111,22 +1118,54 @@
         renderizarVistaNodosCompleta();
     }
 
-    function sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, flujo) {
-        const txt = String(nombreBase || '').trim();
-        const etiquetaPeso = Number(kilos) >= 1
-            ? `${Number(kilos).toFixed(Number(kilos) % 1 === 0 ? 0 : 2)}kg`
-            : `${Math.round(Number(kilos || 0.25) * 1000)}g`;
+    function derivarDesdeHermanoNativoFrontend(ingId, nombreBase, kilos, flujo) {
+        const ing = (ESTADO_NODOS.fuentes.ingredientes_por_flujo || []).find(i => Number(i.id) === Number(ingId));
+        const k = Math.max(0.001, Number(kilos) || 0.25);
+        const gramos = Math.round(k * 1000);
+        const etiquetaPeso = k >= 1
+            ? `${k.toFixed(k % 1 === 0 ? 0 : 2)}kg`
+            : `${gramos}g`;
 
-        if (/almendra/i.test(txt)) return `ALMENDRA Peladas NP 25-27 x ${etiquetaPeso}`;
-        if (/mix/i.test(txt) || Number(flujo) === 3) {
-            const sub = /pasas/i.test(txt) ? 'Con Pasas' : 'Especial';
-            return `Mix F/SCOS ${sub} x ${etiquetaPeso}`;
+        if (ing && (ing.hermano_sku_base || ing.hermano_descripcion_generada)) {
+            let skuBase = String(ing.hermano_sku_base || '').trim();
+            let descBase = String(ing.hermano_descripcion_generada || '').trim();
+
+            if (Number(ing.id) === 141) {
+                const packU = Math.max(1, Math.round(k / 0.05));
+                skuBase = skuBase.replace(/\d+X50/i, `${packU}X50`);
+                descBase = descBase.replace(/\b\d+\s*x\s*50g/i, `${packU} x 50g`);
+                return { sku: skuBase, nomenclatura: descBase };
+            }
+
+            if (skuBase) {
+                if (/X\d+G$/i.test(skuBase)) {
+                    skuBase = skuBase.replace(/X\d+G$/i, k >= 1 ? `X${Math.round(k)}` : `X${gramos}G`);
+                } else if (/x\d+$/i.test(skuBase)) {
+                    skuBase = skuBase.replace(/x\d+$/i, k >= 1 ? `x${Math.round(k)}` : `x${gramos}`);
+                }
+            }
+            if (descBase) {
+                descBase = descBase.replace(/x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)$/i, `x ${etiquetaPeso}`);
+            }
+            return { sku: skuBase, nomenclatura: descBase };
         }
-        if (/casta[ñn]a.*caju|caj[uú]/i.test(txt)) return `Castañas de Caju W4 Tostado x ${etiquetaPeso}`;
-        if (/nuez|nueces/i.test(txt)) return `NUEZ Peladas Mariposa Extra Light x ${etiquetaPeso}`;
-        if (/barrita|barra/i.test(txt) || Number(flujo) === 5) return `BARRA Flor 6 x 50g`;
-        if (/granola|grana/i.test(txt) || Number(flujo) === 6) return `GRANA Sol x ${etiquetaPeso}`;
-        return `${txt.replace(/\s+x\s+\d+.*$/i, '').trim()} x ${etiquetaPeso}`;
+
+        const txt = String(nombreBase || '').replace(/\s*\(Simple\)\s*/i, '').trim();
+        return {
+            sku: '',
+            nomenclatura: `${txt.replace(/\s+x\s+\d+.*$/i, '').trim()} x ${etiquetaPeso}`
+        };
+    }
+
+    function sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, flujo, ingId) {
+        const selectEl = document.getElementById('cot-origen-select');
+        const idTarget = ingId || (selectEl && !String(selectEl.value).startsWith('ART:') ? Number(selectEl.value) : null);
+        const res = derivarDesdeHermanoNativoFrontend(idTarget, nombreBase, kilos, flujo);
+        const skuEl = document.getElementById('cot-sku-nodo');
+        if (skuEl && res.sku && (!ESTADO_NODOS.catalogoEditandoId || /^NB-/i.test(skuEl.value))) {
+            skuEl.value = res.sku;
+        }
+        return res.nomenclatura;
     }
 
     function alCambiarOrigenSelect() {
@@ -1142,12 +1181,13 @@
             const costo = Number(opt.getAttribute('data-costo') || 0);
             const nombreBase = opt.getAttribute('data-nombre') || '';
             const kilos = Number(kilosEl?.value) || 0.25;
+            const ingId = !String(selectEl.value).startsWith('ART:') ? Number(selectEl.value) : null;
             costoEl.value = costo.toFixed(2);
             if (nombreEl && (!nombreEl.value.trim() || !ESTADO_NODOS.propuestaActivaId)) {
-                nombreEl.value = nombreBase.replace(/\s*\(Mix\)\s*/i, ' ').replace(/\s+/g, ' ').trim();
+                nombreEl.value = nombreBase.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
             }
             if (bunkerNomEl && (!bunkerNomEl.value.trim() || !ESTADO_NODOS.catalogoEditandoId)) {
-                bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, ESTADO_NODOS.flujoSeleccionadoMesa);
+                bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, ESTADO_NODOS.flujoSeleccionadoMesa, ingId);
             }
         }
         recalcularMesaCotizacionEnVivo();
