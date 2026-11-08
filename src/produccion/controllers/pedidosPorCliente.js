@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
+const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda } = require('../services/nodosBarrialesService');
 
 /**
  * Helper para detectar el modo de JOIN entre presupuestos y presupuestos_detalles
@@ -35,6 +36,7 @@ async function detectarModoJoin(pool) {
  */
 const obtenerPedidosPorCliente = async (req, res) => {
     try {
+        try { await asegurarEsquemaNodosBarriales(); await sincronizarCanastosEstacionNodos(); } catch (e) { console.warn('[PROD_PED] Nodos sync warn:', e.message); }
         await reconciliarFaltantesConStock(pool);
         console.log('🔍 [PROD_PED] Iniciando consulta de pedidos por cliente...');
         
@@ -396,7 +398,7 @@ const obtenerPedidosPorCliente = async (req, res) => {
             LEFT JOIN pedidos_listos_reservados plr_hijo ON plr_hijo.articulo_numero = COALESCE(hijo.articulo_numero, src.pack_hijo_codigo)
             LEFT JOIN public.presupuestos_snapshots ps ON ps.id_presupuesto = app.presupuesto_id_local AND ps.activo = true
             GROUP BY app.cliente_id_int, c.nombre, c.apellido
-            ORDER BY cliente_nombre;
+            ORDER BY (CASE WHEN app.cliente_id_int >= 9000 THEN 0 ELSE 1 END) ASC, cliente_nombre;
         `;
         
         const params = [estado, fecha, cliente_id ? parseInt(cliente_id) : null, ids || null];
@@ -678,6 +680,7 @@ const asignarFaltantes = async (req, res) => {
  */
 const obtenerPedidosArticulos = async (req, res) => {
     try {
+        try { await asegurarEsquemaNodosBarriales(); await sincronizarCanastosEstacionNodos(); } catch (e) { console.warn('[PROD_ART] Nodos sync warn:', e.message); }
         console.log('🔍 [PROD_ART] Iniciando consulta de artículos consolidados...');
         
         const { 
@@ -961,7 +964,7 @@ const obtenerPedidosArticulos = async (req, res) => {
             LEFT JOIN public.stock_real_consolidado hijo_sug_hijo ON (hijo_sug_hijo.codigo_barras = src_sug_hijo.pack_hijo_codigo OR hijo_sug_hijo.articulo_numero = src_sug_hijo.pack_hijo_codigo)
             LEFT JOIN public.stock_real_consolidado hijo_sug_padre ON (hijo_sug_padre.codigo_barras = src_sug_padre.pack_hijo_codigo OR hijo_sug_padre.articulo_numero = src_sug_padre.pack_hijo_codigo)
             WHERE vr.faltante_redondeado > 0
-            ORDER BY vr.articulo_numero_alfanumerico;
+            ORDER BY (CASE WHEN vr.articulo_numero_alfanumerico LIKE 'NB-%' THEN 0 ELSE 1 END) ASC, vr.articulo_numero_alfanumerico;
         `;
         
         const params = ['presupuesto/orden', fecha];
@@ -1223,7 +1226,8 @@ const actualizarPackMapping = async (req, res) => {
             
             console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
-            if (result.rowCount === 0) {
+            try { await sincronizarCambioSecuenciaDesdeLamda(presupuestos_ids, nueva_secuencia); } catch (e) { console.warn('[SECUENCIA] Nodos sync warn:', e.message); }
+        if (result.rowCount === 0) {
                 return res.status(404).json({
                     success: false,
                     error: 'padre no encontrado en stock_real_consolidado'

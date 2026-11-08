@@ -178,6 +178,9 @@ async function cargarPedidosPorCliente() {
         window.clientesPedidos = pedidos;
 
         renderPedidosCliente(pedidos);
+        if (typeof window.recargarCircuitoNodosLamda === 'function') {
+            window.recargarCircuitoNodosLamda();
+        }
 
         // Sincronizar automáticamente el resumen de faltantes y carros
         if (typeof window.actualizarResumenFaltantes === 'function') {
@@ -334,6 +337,11 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         const header = document.createElement('div');
         header.className = 'cliente-header';
         header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
+        if (Number(cliente.cliente_id) >= 9000 || String(cliente.cliente_nombre || '').includes('NODO:')) {
+            header.style.background = 'linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%)';
+            header.style.borderLeft = '5px solid #16a34a';
+            header.style.color = '#14532d';
+        }
         header.title = 'Clic izquierdo para expandir | Clic derecho para Configurar Perfil';
         
         // Pasar containerId para que toggleAcordeon busque en la sección correcta
@@ -677,6 +685,40 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                     presupuestoHeader.style.backgroundColor = '#f8f9fa';
                 }
             });
+
+            if (String(presupuesto.presupuesto_id || '').startsWith('CAN-')) {
+                const btnBolsasZebra = document.createElement('button');
+                btnBolsasZebra.textContent = '🏷️ Bolsas Vecinos y Etiquetas Zebra';
+                btnBolsasZebra.className = 'admin-button';
+                btnBolsasZebra.style.padding = '6px 12px';
+                btnBolsasZebra.style.fontSize = '12px';
+                btnBolsasZebra.style.background = '#16a34a';
+                btnBolsasZebra.style.color = '#fff';
+                btnBolsasZebra.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof window.abrirModalBolsasCanastoLamda === 'function') {
+                        window.abrirModalBolsasCanastoLamda(presupuesto.presupuesto_id);
+                    }
+                });
+                botonesPresupuesto.appendChild(btnBolsasZebra);
+
+                if (containerId === 'pedidos-listo' || containerId === 'pedidos-retira') {
+                    const btnQrGestor = document.createElement('button');
+                    btnQrGestor.textContent = '📲 Entregar Canasto QR al Gestor';
+                    btnQrGestor.className = 'admin-button';
+                    btnQrGestor.style.padding = '6px 12px';
+                    btnQrGestor.style.fontSize = '12px';
+                    btnQrGestor.style.background = '#0d9488';
+                    btnQrGestor.style.color = '#fff';
+                    btnQrGestor.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (typeof window.abrirModalEntregaQrCanastoLamda === 'function') {
+                            window.abrirModalEntregaQrCanastoLamda(presupuesto.presupuesto_id, cliente.cliente_id);
+                        }
+                    });
+                    botonesPresupuesto.appendChild(btnQrGestor);
+                }
+            }
 
             presupuestoHeader.appendChild(clickeableDiv);
             presupuestoHeader.appendChild(botonesPresupuesto);
@@ -1860,6 +1902,9 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
         modal.style.display = 'flex';
     }
 
+    if (typeof window.inyectarResumenVecinosEnModalChequeo === 'function') {
+        window.inyectarResumenVecinosEnModalChequeo(presupuestoId);
+    }
     // Verificar si ya está listo (por si solo había artículos completados/ingredientes)
     verificarEstadoCompleto();
 }
@@ -2588,6 +2633,12 @@ window.revertirRetiraDeposito = revertirRetiraDeposito;
  * Marca un presupuesto como ENTREGADO
  */
 async function marcarPresupuestoEntregado(presupuestoId, clienteId) {
+    const clienteObj = (window.clientesPedidos || []).find(c => Number(c.cliente_id) === Number(clienteId));
+    const artCanasto = clienteObj && (clienteObj.articulos || []).find(a => String(a.id_presupuesto_local) === String(presupuestoId) || String(a.presupuesto_id) === String(presupuestoId));
+    const codigoExt = artCanasto ? String(artCanasto.presupuesto_id || '') : String(presupuestoId || '');
+    if (codigoExt.startsWith('CAN-') && typeof window.abrirModalEntregaQrCanastoLamda === 'function') {
+        return window.abrirModalEntregaQrCanastoLamda(codigoExt, clienteId);
+    }
     if (!confirm(`¿Marcar el presupuesto ${presupuestoId} como ENTREGADO?`)) {
         return;
     }
@@ -3346,3 +3397,7 @@ async function ejecutarImpresionLamda(cantidad = 2) {
 window.imprimirEtiquetaLamda = ejecutarImpresionLamda;
 window.imprimirEtiquetaLamdaModal = imprimirEtiquetaLamdaModal;
 
+
+window.cargarPedidosPorCliente = cargarPedidosPorCliente;
+window.forzarExpandirSeccion = forzarExpandirSeccion;
+window.abrirAcordeonEnSeccion = abrirAcordeonEnSeccion;

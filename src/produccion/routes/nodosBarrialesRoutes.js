@@ -385,4 +385,38 @@ router.post('/liquidacion/canastos/:canastoId/reabrir-prueba', async (req, res) 
     }
 });
 
+// ============================================================================
+// ENDPOINTS INTEGRACIÓN CON EL CIRCUITO OPERATIVO HABITUAL DE LAMDA
+// (Pizarra Principal :3000 -> Producción/Carro Personal -> Imprimir -> Armar/Chequeo -> Reparto :3005)
+// ============================================================================
+
+/**
+ * GET /api/produccion/nodos/circuito-lamda/estado
+ * Devuelve el estado sincronizado de todos los Canastos de Nodos dentro del circuito operativo LAMDA
+ */
+router.get('/circuito-lamda/estado', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerEstadoCircuitoOperativoLamda();
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /circuito-lamda/estado:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/circuito-lamda/canastos/:canastoId/etapa
+ * Permite avanzar o situar un Canasto en una etapa específica del circuito habitual de LAMDA
+ */
+router.post('/circuito-lamda/canastos/:canastoId/etapa', async (req, res) => {
+    try {
+        const etapa = req.body?.etapa || 'IMPRIMIR_CON_FALTANTES';
+        const data = await nodosService.cambiarEtapaCircuitoLamdaCanasto(req.params.canastoId, etapa);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /circuito-lamda/canastos/:canastoId/etapa:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 module.exports = router;

@@ -386,6 +386,7 @@ const obtenerPendientesAgrupados = async (req, res) => {
                 p.agente,
                 p.secuencia,
                 CASE 
+                    WHEN p.agente ILIKE '%Nodo%' OR p.tipo_comprobante ILIKE '%Nodo%' THEN '🏘️ Nodo Barrial'
                     WHEN p.agente = 'Portal B2B' OR p.modificado_portal = true THEN 'Portal'
                     ELSE 'Presupuestos'
                 END as origen
@@ -401,7 +402,7 @@ const obtenerPendientesAgrupados = async (req, res) => {
                   WHERE fpc_sub.estado = 'En espera'
                     AND p_sub.activo = true
               )
-            ORDER BY p.fecha DESC
+            ORDER BY (CASE WHEN p.agente ILIKE '%Nodo%' OR p.tipo_comprobante ILIKE '%Nodo%' THEN 0 ELSE 1 END) ASC, p.fecha DESC, p.id DESC
         `;
         const listosQuery = `
             SELECT 

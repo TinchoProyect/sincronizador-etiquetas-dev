@@ -239,6 +239,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             -- NOTA: Ignoramos id_ruta para mostrar todos (incluso los ya asignados)
             
         ORDER BY 
+            CASE WHEN p.id_presupuesto_ext LIKE 'CAN-%' THEN 0 ELSE 1 END,
             p.fecha DESC,
             p.id DESC
     `;

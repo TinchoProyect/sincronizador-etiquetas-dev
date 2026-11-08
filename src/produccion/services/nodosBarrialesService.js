@@ -884,8 +884,114 @@ async function asegurarEsquemaNodosBarriales() {
             [labelMiercolesUnificado, fechaMiercolesIso]
         );
 
+        // Columnas de integración nativa con el circuito operativo habitual de LAMDA (Presupuestos / Producción / Chequeo / Logística)
+        await client.query(`
+            ALTER TABLE public.nodos_lotes_estacion
+                ADD COLUMN IF NOT EXISTS presupuesto_id_local INTEGER,
+                ADD COLUMN IF NOT EXISTS id_presupuesto_ext VARCHAR(80),
+                ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir'
+        `);
+
+        // Si el Nodo 2 (La Despensa de Gonnet) aún no tiene pedidos semilla, sembrar 2 pedidos vecinales para su Canasto
+        const n2Res = await client.query(`SELECT * FROM public.nodos_maestro WHERE codigo_nodo = 'NODO-002' LIMIT 1`);
+        if (n2Res.rows.length > 0) {
+            const n2 = n2Res.rows[0];
+            const countN2Peds = await client.query(`SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos WHERE nodo_id = $1`, [n2.id]);
+            if (countN2Peds.rows[0].total === 0) {
+                const vG1 = await client.query(
+                    `INSERT INTO public.nodos_vecinos (
+                        nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia
+                     ) VALUES ($1, 'Sofía Albornoz', '221-612-3390', 'Calle 501 N° 1920', 'e/ 14 y 15 - Gonnet')
+                     RETURNING id`,
+                    [n2.id]
+                );
+                const vG2 = await client.query(
+                    `INSERT INTO public.nodos_vecinos (
+                        nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia
+                     ) VALUES ($1, 'Federico Quiroga', '221-498-7721', 'Calle 495 N° 1650', 'e/ 11 y 12 - Gonnet')
+                     RETURNING id`,
+                    [n2.id]
+                );
+
+                const ofsN2Res = await client.query(
+                    `SELECT nog.*, nac.sku_nodo, nac.nombre_publico, nac.presentacion_etiqueta
+                     FROM public.nodos_ofertas_gestor nog
+                     JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+                     WHERE nog.nodo_id = $1
+                     ORDER BY nac.id ASC`,
+                    [n2.id]
+                );
+                const ofs2 = ofsN2Res.rows;
+                if (ofs2.length >= 2) {
+                    const oA = ofs2[0]; // Almendra 250g
+                    const oB = ofs2[4] || ofs2[1]; // Granola de Sol 500g
+                    const subV1 = Number(oA.precio_venta_vecino) + Number(oB.precio_venta_vecino) * 2;
+                    const subB1 = Number(oA.precio_base_nodo_snapshot) + Number(oB.precio_base_nodo_snapshot) * 2;
+                    const ganV1 = subV1 - subB1;
+
+                    const pG1 = await client.query(
+                        `INSERT INTO public.nodos_pedidos_vecinos (
+                            codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                            modalidad_entrega, direccion_entrega, fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
+                            medio_pago, estado_pago, estado_operativo, ubicacion_deposito, etiqueta_impresa,
+                            subtotal_productos_vecino, cargo_envio_barrial, total_vecino, total_base_lamda, ganancia_total_gestor
+                         ) VALUES ($1,$2,$3,'Sofía Albornoz','221-612-3390','RETIRO_NODO',$4,$5,$6,'17:00 a 20:00 hs','TRANSFERENCIA','PAGADO_TRANSFERENCIA','ARMADO_EN_CANASTO','ESTACION_NODOS',true,$7,0,$7,$8,$9)
+                         RETURNING id`,
+                        ['NB-1045', n2.id, vG1.rows[0].id, n2.direccion_retiro, fechaMiercolesIso, labelMiercolesUnificado, subV1, subB1, ganV1]
+                    );
+                    await client.query(
+                        `INSERT INTO public.nodos_pedidos_items (
+                            pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
+                            cantidad, precio_unitario_vecino, precio_unitario_base_lamda, subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
+                         ) VALUES
+                         ($1,$2,$3,$4,$5,1,$6,$7,$8,$9,$10),
+                         ($1,$11,$12,$13,$14,2,$15,$16,$17,$18,$19)`,
+                        [
+                            pG1.rows[0].id,
+                            oA.articulo_catalogo_id, oA.sku_nodo, oA.nombre_publico, oA.presentacion_etiqueta,
+                            oA.precio_venta_vecino, oA.precio_base_nodo_snapshot, Number(oA.precio_venta_vecino), Number(oA.precio_base_nodo_snapshot), Number(oA.ganancia_unitaria_gestor),
+                            oB.articulo_catalogo_id, oB.sku_nodo, oB.nombre_publico, oB.presentacion_etiqueta,
+                            oB.precio_venta_vecino, oB.precio_base_nodo_snapshot, Number(oB.precio_venta_vecino) * 2, Number(oB.precio_base_nodo_snapshot) * 2, Number(oB.ganancia_unitaria_gestor) * 2
+                        ]
+                    );
+
+                    const oC = ofs2[2] || ofs2[0]; // Castaña de Cajú 250g
+                    const envG2 = Number(n2.cargo_envio_barrial || 1200);
+                    const subV2 = Number(oC.precio_venta_vecino) * 2;
+                    const subB2 = Number(oC.precio_base_nodo_snapshot) * 2;
+                    const totV2 = subV2 + envG2;
+                    const ganV2 = (subV2 - subB2) + envG2;
+
+                    const pG2 = await client.query(
+                        `INSERT INTO public.nodos_pedidos_vecinos (
+                            codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                            modalidad_entrega, direccion_entrega, entrecalles_referencia, fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
+                            medio_pago, estado_pago, estado_operativo, ubicacion_deposito, etiqueta_impresa,
+                            subtotal_productos_vecino, cargo_envio_barrial, total_vecino, total_base_lamda, ganancia_total_gestor
+                         ) VALUES ($1,$2,$3,'Federico Quiroga','221-498-7721','ENVIO_BARRIAL','Calle 495 N° 1650','e/ 11 y 12 - Gonnet',$4,$5,'17:00 a 20:00 hs','EFECTIVO','COBRAR_EN_ENTREGA','ARMADO_EN_CANASTO','ESTACION_NODOS',true,$6,$7,$8,$9,$10)
+                         RETURNING id`,
+                        ['NB-1046', n2.id, vG2.rows[0].id, fechaMiercolesIso, labelMiercolesUnificado, subV2, envG2, totV2, subB2, ganV2]
+                    );
+                    await client.query(
+                        `INSERT INTO public.nodos_pedidos_items (
+                            pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
+                            cantidad, precio_unitario_vecino, precio_unitario_base_lamda, subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
+                         ) VALUES ($1,$2,$3,$4,$5,2,$6,$7,$8,$9,$10)`,
+                        [
+                            pG2.rows[0].id,
+                            oC.articulo_catalogo_id, oC.sku_nodo, oC.nombre_publico, oC.presentacion_etiqueta,
+                            oC.precio_venta_vecino, oC.precio_base_nodo_snapshot, subV2, subB2, Number(oC.ganancia_unitaria_gestor) * 2
+                        ]
+                    );
+                }
+            }
+        }
+
         await client.query('COMMIT');
         esquemaInicializado = true;
+
+        // Sincronizar canastos y el circuito operativo de LAMDA (Clientes, Artículos, Recetas, Stock y Presupuestos)
+        await sincronizarCanastosEstacionNodos();
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('❌ [NodosBarriales] Error inicializando esquema:', err);
@@ -2413,6 +2519,684 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
             [canastoId, g.nodo_id, g.fecha_entrega_label]
         );
     }
+
+    // Sincronizar automáticamente con las tablas operativas habituales de LAMDA
+    await sincronizarNodosConCircuitoOperativoLamda(q);
+}
+
+/**
+ * Sincroniza de forma nativa los Nodos, sus Fracciones aprobadas y sus Canastos/Lotes
+ * dentro del circuito operativo habitual de LAMDA:
+ * 1. public.clientes + public.bunker_clientes + public.clientes_domicilios (con coordenadas validadas para Mapa Logística :3005)
+ * 2. public.articulos + public.bunker_articulos + public.stock_real_consolidado + public.recetas + public.receta_ingredientes (para Configurar Carros y Carro Personal)
+ * 3. public.presupuestos + public.presupuestos_detalles (para Pizarra Principal :3000, Imprimir, Armar Pedido, Chequeo, Retira Depósito y Reparto :3005)
+ */
+async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
+    const q = runner || db;
+
+    // 0. Primera vinculación: si CAN-N01-MIE1111 aún no tiene presupuesto_id_local y estaba cerrado por prueba previa,
+    // dejarlo en la Etapa 1 (Imprimir + Faltantes) para que el equipo pueda probar el flujo completo de punta a punta.
+    const checkFirstLink = await q.query(`
+        SELECT id, codigo_canasto, estado_canasto, presupuesto_id_local, debito_cta_cte_registrado, movimiento_cc_id, nodo_id, total_base_lamda
+        FROM public.nodos_lotes_estacion
+        WHERE codigo_canasto = 'CAN-N01-MIE1111'
+        LIMIT 1
+    `);
+    let inicializarStockFaltantesDemo = false;
+    if (checkFirstLink.rows.length > 0 && !checkFirstLink.rows[0].presupuesto_id_local) {
+        inicializarStockFaltantesDemo = true;
+        const can1 = checkFirstLink.rows[0];
+        const nmRes = await q.query('SELECT codigo_bunker_cliente FROM public.nodos_maestro WHERE id = $1', [can1.nodo_id]);
+        const codBunker = nmRes.rows[0]?.codigo_bunker_cliente;
+
+        // Limpiar liquidación/cobros previos de prueba en CAN-N01-MIE1111 para que arranque limpio en Etapa 1
+        await q.query('DELETE FROM public.nodos_liquidaciones_lote WHERE lote_canasto_id = $1', [can1.id]);
+        await q.query('DELETE FROM public.nodos_movimientos_cta_cte WHERE lote_canasto_id = $1', [can1.id]);
+        if (codBunker) {
+            await q.query('UPDATE public.factura_cuentas_corrientes SET saldo = 0, actualizada_en = NOW() WHERE codigo_bunker_cliente = $1', [codBunker]);
+            await q.query(`DELETE FROM public.factura_cuenta_corriente_movimientos WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO')`);
+        }
+        await q.query(`
+            UPDATE public.nodos_pedidos_vecinos
+            SET estado_operativo = 'CONFIRMADO_VECINO',
+                ubicacion_deposito = 'PENDIENTE_TALLER',
+                estado_pago = CASE WHEN medio_pago = 'EFECTIVO' THEN 'COBRAR_EN_ENTREGA' ELSE 'PENDIENTE_TRANSFERENCIA' END,
+                impactado_cta_cte_pago = false,
+                movimiento_pago_cc_id = NULL,
+                fecha_conciliacion_pago = NULL
+            WHERE lote_canasto_id = $1
+        `, [can1.id]);
+        await q.query(`
+            UPDATE public.nodos_lotes_estacion
+            SET estado_canasto = 'EN_ARMADO',
+                ubicacion_deposito = 'ESTACION_NODOS',
+                bolsas_armadas = 0,
+                secuencia_operativa_lamda = 'Imprimir',
+                debito_cta_cte_registrado = false,
+                movimiento_cc_id = NULL,
+                liquidacion_cerrada = false,
+                liquidacion_id = NULL,
+                retirado_por_gestor = NULL,
+                fecha_retiro_gestor = NULL
+            WHERE id = $1
+        `, [can1.id]);
+    }
+
+    // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo
+    const nodosRes = await q.query('SELECT * FROM public.nodos_maestro ORDER BY id ASC');
+    const mapaClienteDomicilio = new Map();
+
+    for (const nodo of nodosRes.rows) {
+        const clienteIdNum = 9000 + Number(nodo.id);
+        const nombreCliente = `🏘️ NODO: ${nodo.nombre_marca}`;
+        const apellidoCliente = `(${nodo.gestor_nombre})`;
+
+        const cliCheck = await q.query('SELECT id FROM public.clientes WHERE cliente_id = $1 LIMIT 1', [clienteIdNum]);
+        let clientePkId;
+        if (cliCheck.rows.length === 0) {
+            const insCli = await q.query(
+                `INSERT INTO public.clientes (
+                    cliente_id, nombre, apellido, telefono
+                 ) VALUES ($1,$2,$3,$4)
+                 RETURNING id`,
+                [
+                    clienteIdNum,
+                    nombreCliente,
+                    apellidoCliente,
+                    nodo.gestor_telefono || '221-555-0100'
+                ]
+            );
+            clientePkId = insCli.rows[0].id;
+        } else {
+            clientePkId = cliCheck.rows[0].id;
+            await q.query(
+                `UPDATE public.clientes
+                 SET nombre = $1, apellido = $2, telefono = $3
+                 WHERE id = $4`,
+                [
+                    nombreCliente,
+                    apellidoCliente,
+                    nodo.gestor_telefono || '221-555-0100',
+                    clientePkId
+                ]
+            );
+        }
+
+        if (nodo.bunker_cliente_id) {
+            await q.query(
+                `UPDATE public.bunker_clientes
+                 SET lomas_soft_id = $1
+                 WHERE id = $2 AND (lomas_soft_id IS NULL OR lomas_soft_id <> $1)`,
+                [String(clienteIdNum), nodo.bunker_cliente_id]
+            );
+        }
+
+        // Coordenadas reales en City Bell / Gonnet para el Mapa de Logística (:3005)
+        const esGonnet = String(nodo.barrio_zona || nodo.nombre_marca || '').toLowerCase().includes('gonnet');
+        const lat = esGonnet ? -34.8812 : -34.8625;
+        const lng = esGonnet ? -58.0195 : -58.0465;
+
+        const domCheck = await q.query(
+            `SELECT id FROM public.clientes_domicilios
+             WHERE id_cliente = $1 AND activo = true
+             ORDER BY es_predeterminado DESC, id ASC LIMIT 1`,
+            [clientePkId]
+        );
+        let domicilioId;
+        if (domCheck.rows.length === 0) {
+            const insDom = await q.query(
+                `INSERT INTO public.clientes_domicilios (
+                    id_cliente, alias, direccion, localidad, provincia, codigo_postal,
+                    latitud, longitud, instrucciones_entrega, telefono_contacto,
+                    es_predeterminado, activo, coordenadas_validadas
+                 ) VALUES ($1,$2,$3,$4,'Buenos Aires','1896',$5,$6,$7,$8,true,true,true)
+                 RETURNING id`,
+                [
+                    clientePkId,
+                    `Sede ${nodo.nombre_marca}`,
+                    nodo.direccion_retiro || 'Calle Cantilo 452, City Bell',
+                    nodo.barrio_zona || 'City Bell',
+                    lat,
+                    lng,
+                    `Entrega de Canastos Nodos Barriales · Gestor: ${nodo.gestor_nombre}`,
+                    nodo.gestor_telefono || '221-555-0100'
+                ]
+            );
+            domicilioId = insDom.rows[0].id;
+        } else {
+            domicilioId = domCheck.rows[0].id;
+            await q.query(
+                `UPDATE public.clientes_domicilios
+                 SET direccion = $1, localidad = $2, latitud = COALESCE(latitud, $3), longitud = COALESCE(longitud, $4),
+                     es_predeterminado = true, activo = true, coordenadas_validadas = true
+                 WHERE id = $5`,
+                [
+                    nodo.direccion_retiro || 'Calle Cantilo 452, City Bell',
+                    nodo.barrio_zona || 'City Bell',
+                    lat,
+                    lng,
+                    domicilioId
+                ]
+            );
+        }
+
+        mapaClienteDomicilio.set(Number(nodo.id), {
+            cliente_id_num: clienteIdNum,
+            cliente_pk_id: clientePkId,
+            domicilio_id: domicilioId,
+            nodo
+        });
+    }
+
+    // 2. Asegurar Artículos, Búnker, Stock Real Consolidado y Recetas (para Configurar Carros y Carro Personal)
+    const catRes = await q.query(`
+        SELECT nac.*,
+               ing.nombre AS ing_origen_nombre,
+               env.nombre AS env_nombre
+        FROM public.nodos_articulos_catalogo nac
+        LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
+        LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
+        WHERE nac.activo = true
+        ORDER BY nac.id ASC
+    `);
+
+    for (const art of catRes.rows) {
+        const sku = String(art.sku_nodo).trim();
+        const descNodo = `[NODO] ${art.nombre_publico}`;
+        const kilos = Number(art.kilos_unidad || 0.25);
+
+        const artCheck = await q.query('SELECT numero FROM public.articulos WHERE numero = $1 OR codigo_barras = $1 LIMIT 1', [sku]);
+        if (artCheck.rows.length === 0) {
+            await q.query(
+                `INSERT INTO public.articulos (numero, codigo_barras, nombre)
+                 VALUES ($1,$1,$2)`,
+                [sku, descNodo]
+            );
+        } else {
+            await q.query(
+                `UPDATE public.articulos SET nombre = $2, codigo_barras = $1 WHERE numero = $1 OR codigo_barras = $1`,
+                [sku, descNodo]
+            );
+        }
+
+        await q.query(
+            `INSERT INTO public.bunker_articulos (
+                articulo_id, codigo_barras, descripcion, descripcion_generada,
+                kilos_unidad, costo_base, rubro, sub_rubro, no_producido_por_lambda, es_pack, pack_unidades
+             ) VALUES ($1,$1,$2,$2,$3,$4,'NODOS_BARRIALES',$5,false,false,1)
+             ON CONFLICT (articulo_id) DO UPDATE SET
+                codigo_barras = EXCLUDED.codigo_barras,
+                descripcion = EXCLUDED.descripcion,
+                descripcion_generada = EXCLUDED.descripcion_generada,
+                kilos_unidad = EXCLUDED.kilos_unidad,
+                costo_base = EXCLUDED.costo_base`,
+            [sku, descNodo, kilos, Number(art.costo_puro_total || 0), art.categoria_familiar || 'Fraccionados']
+        );
+
+        // Stock inicial en stock_real_consolidado:
+        // NB-ALM-250G = 1 (faltan 3 para las 4 pedidas en CAN-N01-MIE1111)
+        // NB-MIX-PASAS-500G = 1 (faltan 2 para las 3 pedidas en CAN-N01-MIE1111)
+        // Resto = 10 (Completos)
+        const stockInicial = (sku === 'NB-ALM-250G' || sku === 'NB-MIX-PASAS-500G') ? 1 : 10;
+        const srcCheck = await q.query('SELECT articulo_numero FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR codigo_barras = $1 LIMIT 1', [sku]);
+        if (srcCheck.rows.length === 0) {
+            await q.query(
+                `INSERT INTO public.stock_real_consolidado (
+                    articulo_numero, codigo_barras, descripcion, stock_lomasoft, stock_movimientos,
+                    stock_ajustes, stock_consolidado, kilos_unidad, no_producido_por_lambda, solo_produccion_externa, es_pack
+                 ) VALUES ($1,$1,$2,0,$3,0,$3,$4,false,false,false)`,
+                [sku, descNodo, stockInicial, kilos]
+            );
+        } else if (inicializarStockFaltantesDemo) {
+            await q.query(
+                `UPDATE public.stock_real_consolidado
+                 SET descripcion = $1, kilos_unidad = $2, stock_consolidado = $3, stock_movimientos = $3
+                 WHERE articulo_numero = $4 OR codigo_barras = $4`,
+                [descNodo, kilos, stockInicial, sku]
+            );
+        }
+
+        // Asegurar Receta en public.recetas + public.receta_ingredientes para el Carro Personal
+        if (art.ingrediente_origen_id) {
+            const recCheck = await q.query('SELECT id FROM public.recetas WHERE articulo_numero = $1 LIMIT 1', [sku]);
+            let recetaId;
+            if (recCheck.rows.length === 0) {
+                const insRec = await q.query(
+                    `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
+                     VALUES ($1, $2, NOW(), false)
+                     RETURNING id`,
+                    [sku, `Fraccionamiento Nodo: ${art.nombre_publico}`]
+                );
+                recetaId = insRec.rows[0].id;
+            } else {
+                recetaId = recCheck.rows[0].id;
+            }
+
+            const riCheck = await q.query('SELECT COUNT(*)::int AS total FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
+            if (riCheck.rows[0].total === 0) {
+                await q.query(
+                    `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+                     VALUES ($1, $2, $3, 'kg', $4)`,
+                    [recetaId, art.ingrediente_origen_id, art.ing_origen_nombre || art.nombre_publico, kilos]
+                );
+                if (art.insumo_envase_id && art.env_nombre) {
+                    await q.query(
+                        `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
+                         VALUES ($1, $2, $3, 'u', $4)`,
+                        [recetaId, art.insumo_envase_id, art.env_nombre, Number(art.cantidad_envases_unidad || 1)]
+                    );
+                }
+            }
+        }
+    }
+
+    // 3. Sincronizar cada Canasto/Lote con public.presupuestos y public.presupuestos_detalles
+    const canastosRes = await q.query(`
+        SELECT nle.*, nm.nombre_marca, nm.gestor_nombre
+        FROM public.nodos_lotes_estacion nle
+        JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+        ORDER BY nle.id ASC
+    `);
+
+    for (const canasto of canastosRes.rows) {
+        const infoCli = mapaClienteDomicilio.get(Number(canasto.nodo_id));
+        if (!infoCli) continue;
+
+        const itemsConsolidadosRes = await q.query(
+            `SELECT npi.sku_nodo,
+                    MAX(npi.nombre_publico) AS nombre_publico,
+                    SUM(npi.cantidad)::numeric(12,2) AS cantidad_total,
+                    MAX(npi.precio_unitario_base_lamda)::numeric(14,2) AS precio_base
+             FROM public.nodos_pedidos_items npi
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             WHERE npv.lote_canasto_id = $1
+             GROUP BY npi.sku_nodo
+             ORDER BY npi.sku_nodo ASC`,
+            [canasto.id]
+        );
+        if (itemsConsolidadosRes.rows.length === 0) continue;
+
+        // Verificar si ya existe el presupuesto en public.presupuestos
+        const presCheck = await q.query(
+            `SELECT * FROM public.presupuestos
+             WHERE id_presupuesto_ext = $1
+             ORDER BY id DESC LIMIT 1`,
+            [canasto.codigo_canasto]
+        );
+
+        let secuenciaTarget = canasto.secuencia_operativa_lamda || 'Imprimir';
+        let estadoTarget = 'Presupuesto/Orden';
+        let estadoLogisticoTarget = 'PENDIENTE';
+
+        if (canasto.estado_canasto === 'ENTREGADO_AL_GESTOR') {
+            secuenciaTarget = 'Entregado';
+            estadoTarget = 'Entregado';
+            estadoLogisticoTarget = 'ENTREGADO_DEPOSITO';
+        } else if (canasto.estado_canasto === 'LISTO_ESTACION_NODOS') {
+            if (secuenciaTarget === 'Retira_Deposito') {
+                estadoTarget = 'Retira por Deposito';
+                estadoLogisticoTarget = 'PENDIENTE';
+            } else {
+                secuenciaTarget = 'Pedido_Listo';
+                estadoTarget = 'Presupuesto/Orden';
+                estadoLogisticoTarget = 'PENDIENTE_ASIGNAR';
+            }
+        } else {
+            // EN_ARMADO
+            if (secuenciaTarget !== 'Armar_Pedido' && secuenciaTarget !== 'Imprimir_Modificado') {
+                secuenciaTarget = 'Imprimir';
+            }
+            estadoTarget = 'Presupuesto/Orden';
+            estadoLogisticoTarget = 'PENDIENTE';
+        }
+
+        const notaPresupuesto = `Canasto ${canasto.codigo_canasto} (${canasto.fecha_entrega_label}) · ${canasto.total_bolsas} bolsas vecinales · Base LAMDA: $${Number(canasto.total_base_lamda || 0).toLocaleString('es-AR')}`;
+        const puntoEntregaStr = `Sede ${canasto.nombre_marca} (${canasto.gestor_nombre})`;
+
+        let presupuestoIdLocal;
+        if (presCheck.rows.length === 0) {
+            const insP = await q.query(
+                `INSERT INTO public.presupuestos (
+                    id_presupuesto_ext, id_cliente, fecha, fecha_entrega,
+                    estado, secuencia, estado_logistico,
+                    agente, tipo_comprobante, punto_entrega,
+                    nota, id_domicilio_entrega, activo, archivado
+                 ) VALUES ($1,$2,CURRENT_DATE,CURRENT_DATE,$3,$4,$5,'Nodo Barrial','Canasto Nodo',$6,$7,$8,true,false)
+                 RETURNING id`,
+                [
+                    canasto.codigo_canasto,
+                    String(infoCli.cliente_id_num),
+                    estadoTarget,
+                    secuenciaTarget,
+                    estadoLogisticoTarget,
+                    puntoEntregaStr,
+                    notaPresupuesto,
+                    infoCli.domicilio_id
+                ]
+            );
+            presupuestoIdLocal = insP.rows[0].id;
+        } else {
+            const pExist = presCheck.rows[0];
+            presupuestoIdLocal = pExist.id;
+
+            // Si está asignado a una ruta activa en Logística (:3005), respetar id_ruta y estado_logistico de ruta
+            const enRutaActiva = Boolean(pExist.id_ruta) && ['ASIGNADO', 'EN_CAMINO'].includes(String(pExist.estado_logistico || '').toUpperCase());
+            const estLogFinal = enRutaActiva ? pExist.estado_logistico : estadoLogisticoTarget;
+            const secFinal = enRutaActiva ? (pExist.secuencia || 'Asignado_Ruta') : secuenciaTarget;
+
+            await q.query(
+                `UPDATE public.presupuestos
+                 SET id_cliente = $1,
+                     fecha = CURRENT_DATE,
+                     estado = $2,
+                     secuencia = $3,
+                     estado_logistico = $4,
+                     agente = 'Nodo Barrial',
+                     tipo_comprobante = 'Canasto Nodo',
+                     punto_entrega = $5,
+                     nota = $6,
+                     id_domicilio_entrega = COALESCE(id_domicilio_entrega, $7),
+                     activo = true,
+                     archivado = false
+                 WHERE id = $8`,
+                [
+                    String(infoCli.cliente_id_num),
+                    estadoTarget,
+                    secFinal,
+                    estLogFinal,
+                    puntoEntregaStr,
+                    notaPresupuesto,
+                    infoCli.domicilio_id,
+                    presupuestoIdLocal
+                ]
+            );
+        }
+
+        // Actualizar presupuestos_detalles con las cantidades consolidadas de las bolsas vecinales del Canasto
+        await q.query('DELETE FROM public.presupuestos_detalles WHERE id_presupuesto = $1 OR id_presupuesto_ext = $2', [presupuestoIdLocal, canasto.codigo_canasto]);
+        for (const item of itemsConsolidadosRes.rows) {
+            const cant = Number(item.cantidad_total || 1);
+            const precioBase = Number(item.precio_base || 0);
+            const subtotalBase = Number((cant * precioBase).toFixed(2));
+            await q.query(
+                `INSERT INTO public.presupuestos_detalles (
+                    id_presupuesto, id_presupuesto_ext, articulo, cantidad,
+                    valor1, precio1, iva1, diferencia, camp1, fecha_actualizacion
+                 ) VALUES ($1,$2,$3,$4,$5,$6,0,0,$6,NOW())`,
+                [
+                    presupuestoIdLocal,
+                    canasto.codigo_canasto,
+                    item.sku_nodo,
+                    cant,
+                    precioBase,
+                    subtotalBase
+                ]
+            );
+        }
+
+        await q.query(
+            `UPDATE public.nodos_lotes_estacion
+             SET presupuesto_id_local = $1,
+                 id_presupuesto_ext = $2,
+                 secuencia_operativa_lamda = $3
+             WHERE id = $4`,
+            [presupuestoIdLocal, canasto.codigo_canasto, secuenciaTarget, canasto.id]
+        );
+    }
+}
+
+/**
+ * Sincroniza bidireccionalmente cuando desde produccion.html (Imprimir / Armar Pedido / Chequeo / Retira por Depósito)
+ * se cambia la secuencia de un presupuesto que corresponde a un Canasto de Nodo Barrial.
+ */
+async function sincronizarCambioSecuenciaDesdeLamda(presupuestosIds = [], nuevaSecuencia = '') {
+    if (!Array.isArray(presupuestosIds) || presupuestosIds.length === 0) return;
+
+    const idsStr = presupuestosIds.map(x => String(x).trim()).filter(Boolean);
+    if (idsStr.length === 0) return;
+
+    const canRes = await db.query(
+        `SELECT * FROM public.nodos_lotes_estacion
+         WHERE codigo_canasto = ANY($1::text[])
+            OR id_presupuesto_ext = ANY($1::text[])
+            OR presupuesto_id_local::text = ANY($1::text[])`,
+        [idsStr]
+    );
+
+    if (canRes.rows.length === 0) return;
+
+    for (const canasto of canRes.rows) {
+        if (nuevaSecuencia === 'Imprimir' || nuevaSecuencia === 'Imprimir_Modificado') {
+            await db.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET estado_operativo = 'CONFIRMADO_VECINO',
+                     ubicacion_deposito = 'PENDIENTE_TALLER'
+                 WHERE lote_canasto_id = $1`,
+                [canasto.id]
+            );
+            await db.query(
+                `UPDATE public.nodos_lotes_estacion
+                 SET estado_canasto = 'EN_ARMADO',
+                     ubicacion_deposito = 'ESTACION_NODOS',
+                     bolsas_armadas = 0,
+                     secuencia_operativa_lamda = $1,
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [nuevaSecuencia, canasto.id]
+            );
+        } else if (nuevaSecuencia === 'Armar_Pedido') {
+            await db.query(
+                `UPDATE public.nodos_lotes_estacion
+                 SET estado_canasto = 'EN_ARMADO',
+                     ubicacion_deposito = 'ESTACION_NODOS',
+                     secuencia_operativa_lamda = 'Armar_Pedido',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [canasto.id]
+            );
+        } else if (nuevaSecuencia === 'Pedido_Listo' || nuevaSecuencia === 'Retira_Deposito') {
+            // Al completar el Chequeo en produccion.html (o pasar a Retira_Deposito),
+            // todas las bolsas vecinales quedan armadas en ESTACION_NODOS y el Canasto queda LISTO_ESTACION_NODOS
+            await db.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET estado_operativo = 'ARMADO_EN_CANASTO',
+                     ubicacion_deposito = 'ESTACION_NODOS',
+                     etiqueta_impresa = true,
+                     fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
+                     operario_armado = COALESCE(operario_armado, 'Chequeo Producción LAMDA'),
+                     updated_at = NOW()
+                 WHERE lote_canasto_id = $1`,
+                [canasto.id]
+            );
+            await db.query(
+                `UPDATE public.nodos_lotes_estacion
+                 SET estado_canasto = 'LISTO_ESTACION_NODOS',
+                     ubicacion_deposito = 'ESTACION_NODOS',
+                     bolsas_armadas = total_bolsas,
+                     secuencia_operativa_lamda = $1,
+                     fecha_listo_estacion = COALESCE(fecha_listo_estacion, NOW()),
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [nuevaSecuencia, canasto.id]
+            );
+        } else if (nuevaSecuencia === 'Entregado') {
+            if (canasto.estado_canasto !== 'ENTREGADO_AL_GESTOR' || !canasto.debito_cta_cte_registrado) {
+                await confirmarRetiroCanastoPorGestor(canasto.id, {
+                    retirado_por: 'Entrega / Despacho LAMDA'
+                });
+            }
+            await db.query(
+                `UPDATE public.nodos_lotes_estacion
+                 SET secuencia_operativa_lamda = 'Entregado',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [canasto.id]
+            );
+        }
+    }
+}
+
+/**
+ * Permite situar un Canasto en cualquiera de las etapas del circuito operativo habitual de LAMDA
+ * para probar el recorrido de punta a punta:
+ * - 'IMPRIMIR_CON_FALTANTES': Etapa 1 (Aparece en Pizarra :3000 con faltantes, en Configurar Carros / Carro Personal y en Bandeja Imprimir)
+ * - 'ARMAR_CHEQUEO': Etapa 2/3 (Con stock listo, en Bandeja Armar Pedido lista para 🔍 Verificar / Chequeo y Etiquetas Zebra)
+ * - 'PEDIDO_LISTO_REPARTO': Etapa 3/4 (Chequeo completado, Canasto Listo en ESTACION_NODOS y disponible en Logística :3005 para asignar a Ruta)
+ * - 'RETIRA_DEPOSITO': Etapa 4B (En Bandeja Retira por Depósito listo para escanear QR Maestro / entregar al Gestor)
+ * - 'ENTREGADO_GESTOR': Etapa 5 (Entregado al Gestor con Débito en Cuenta Corriente registrado, listo para Liquidación en /liquidacion-nodos)
+ */
+async function cambiarEtapaCircuitoLamdaCanasto(canastoIdOrCodigo, etapaDestino = 'IMPRIMIR_CON_FALTANTES') {
+    await asegurarEsquemaNodosBarriales();
+
+    const canRes = await db.query(
+        `SELECT * FROM public.nodos_lotes_estacion
+         WHERE id::text = $1 OR codigo_canasto = $1 OR id_presupuesto_ext = $1
+         LIMIT 1`,
+        [String(canastoIdOrCodigo).trim()]
+    );
+    if (canRes.rows.length === 0) {
+        throw new Error('Canasto no encontrado.');
+    }
+    const canasto = canRes.rows[0];
+
+    // Si estaba entregado o liquidado y vamos a una etapa previa, reabrir primero liquidación y retiro
+    const etapaUpper = String(etapaDestino || '').toUpperCase().trim();
+    if (etapaUpper !== 'ENTREGADO_GESTOR') {
+        if (canasto.liquidacion_cerrada) {
+            await reabrirLiquidacionCanastoPrueba(canasto.id);
+        }
+        const checkAfter = await db.query('SELECT * FROM public.nodos_lotes_estacion WHERE id = $1', [canasto.id]);
+        if (checkAfter.rows[0]?.debito_cta_cte_registrado || checkAfter.rows[0]?.estado_canasto === 'ENTREGADO_AL_GESTOR') {
+            await reabrirCanastoParaPruebaLaboratorio(canasto.id);
+        }
+        // Limpiar posible asignación de ruta previa en presupuestos
+        if (canasto.presupuesto_id_local) {
+            await db.query(
+                `UPDATE public.presupuestos
+                 SET id_ruta = NULL, orden_entrega = NULL
+                 WHERE id = $1`,
+                [canasto.presupuesto_id_local]
+            );
+        }
+    }
+
+    if (etapaUpper === 'IMPRIMIR_CON_FALTANTES') {
+        // Dejar 2 artículos del canasto con faltante real para probar Pizarra Principal + Configurar Carros + Carro Personal
+        await db.query(
+            `UPDATE public.stock_real_consolidado
+             SET stock_consolidado = 1, stock_movimientos = 1
+             WHERE articulo_numero IN ('NB-ALM-250G', 'NB-MIX-PASAS-500G')`
+        );
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET estado_operativo = 'CONFIRMADO_VECINO',
+                 ubicacion_deposito = 'PENDIENTE_TALLER',
+                 etiqueta_impresa = false
+             WHERE lote_canasto_id = $1`,
+            [canasto.id]
+        );
+        await db.query(
+            `UPDATE public.nodos_lotes_estacion
+             SET estado_canasto = 'EN_ARMADO',
+                 bolsas_armadas = 0,
+                 secuencia_operativa_lamda = 'Imprimir'
+             WHERE id = $1`,
+            [canasto.id]
+        );
+    } else if (etapaUpper === 'ARMAR_CHEQUEO') {
+        // Stock suficiente + en bandeja "Armar Pedido" listo para 🔍 Verificar (Chequeo) y Etiquetas Zebra
+        await db.query(
+            `UPDATE public.stock_real_consolidado
+             SET stock_consolidado = GREATEST(COALESCE(stock_consolidado, 0), 12),
+                 stock_movimientos = GREATEST(COALESCE(stock_movimientos, 0), 12)
+             WHERE articulo_numero LIKE 'NB-%'`
+        );
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET estado_operativo = 'CONFIRMADO_VECINO',
+                 ubicacion_deposito = 'PENDIENTE_TALLER'
+             WHERE lote_canasto_id = $1`,
+            [canasto.id]
+        );
+        await db.query(
+            `UPDATE public.nodos_lotes_estacion
+             SET estado_canasto = 'EN_ARMADO',
+                 bolsas_armadas = 0,
+                 secuencia_operativa_lamda = 'Armar_Pedido'
+             WHERE id = $1`,
+            [canasto.id]
+        );
+    } else if (etapaUpper === 'PEDIDO_LISTO_REPARTO') {
+        await db.query(
+            `UPDATE public.stock_real_consolidado
+             SET stock_consolidado = GREATEST(COALESCE(stock_consolidado, 0), 12),
+                 stock_movimientos = GREATEST(COALESCE(stock_movimientos, 0), 12)
+             WHERE articulo_numero LIKE 'NB-%'`
+        );
+        await sincronizarCambioSecuenciaDesdeLamda([canasto.codigo_canasto], 'Pedido_Listo');
+    } else if (etapaUpper === 'RETIRA_DEPOSITO') {
+        await db.query(
+            `UPDATE public.stock_real_consolidado
+             SET stock_consolidado = GREATEST(COALESCE(stock_consolidado, 0), 12),
+                 stock_movimientos = GREATEST(COALESCE(stock_movimientos, 0), 12)
+             WHERE articulo_numero LIKE 'NB-%'`
+        );
+        await sincronizarCambioSecuenciaDesdeLamda([canasto.codigo_canasto], 'Retira_Deposito');
+    } else if (etapaUpper === 'ENTREGADO_GESTOR') {
+        await sincronizarCambioSecuenciaDesdeLamda([canasto.codigo_canasto], 'Entregado');
+    }
+
+    await sincronizarCanastosEstacionNodos();
+    return obtenerEstadoCircuitoOperativoLamda();
+}
+
+/**
+ * Obtiene el resumen en vivo de los Canastos de Nodos dentro del circuito operativo de LAMDA
+ * para mostrar en la barra de integración de produccion.html y /deposito-nodos
+ */
+async function obtenerEstadoCircuitoOperativoLamda() {
+    await asegurarEsquemaNodosBarriales();
+    await sincronizarCanastosEstacionNodos();
+
+    const res = await db.query(`
+        SELECT nle.*,
+               nm.codigo_nodo,
+               nm.nombre_marca,
+               nm.gestor_nombre,
+               nm.barrio_zona,
+               nm.direccion_retiro,
+               nm.codigo_bunker_cliente,
+               COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+               p.id AS presup_id,
+               p.secuencia AS presup_secuencia,
+               p.estado AS presup_estado,
+               p.estado_logistico AS presup_estado_logistico,
+               p.id_ruta AS presup_id_ruta,
+               p.id_cliente AS presup_id_cliente
+        FROM public.nodos_lotes_estacion nle
+        JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+        LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+        LEFT JOIN public.presupuestos p ON p.id = nle.presupuesto_id_local
+        ORDER BY nle.id ASC
+    `);
+
+    await sincronizarCanastosEstacionNodos();
+    const tablero = await obtenerTableroMesaArmadoDeposito();
+    const mapaCanastosTablero = new Map((tablero.canastos || []).map(c => [Number(c.id), c]));
+
+    const canastos = res.rows.map(r => {
+        const det = mapaCanastosTablero.get(Number(r.id)) || {};
+        return {
+            ...r,
+            consolidado_mercaderia: det.consolidado_mercaderia || [],
+            pedidos_vecinos: det.pedidos_vecinos || []
+        };
+    });
+
+    return {
+        canastos,
+        resumen_deposito: tablero.resumen_deposito
+    };
 }
 
 /**
@@ -2646,6 +3430,7 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
     await sincronizarCanastosEstacionNodos();
 
     const etiqueta = !desmarcar ? await generarEtiquetaDePedidoExistente(pedidoId) : null;
+    await sincronizarCanastosEstacionNodos();
     const tablero = await obtenerTableroMesaArmadoDeposito();
     const canastoActualizado = tablero.canastos.find(c => Number(c.id) === Number(ped.lote_canasto_id)) || null;
 
@@ -2686,6 +3471,7 @@ async function armarTodasBolsasDeCanasto(canastoId, payload = {}) {
 
     await sincronizarCanastosEstacionNodos();
     const etiquetaCanasto = await generarEtiquetaQrMaestroCanasto(canastoId);
+    await sincronizarCanastosEstacionNodos();
     const tablero = await obtenerTableroMesaArmadoDeposito();
 
     return {
@@ -2892,6 +3678,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
         client.release();
     }
 
+    await sincronizarCanastosEstacionNodos();
     const tablero = await obtenerTableroMesaArmadoDeposito();
     const canastoActualizado = tablero.canastos.find(c => Number(c.id) === Number(canastoId)) || null;
 
@@ -3743,6 +4530,10 @@ module.exports = {
     crearPedidoVecinoTienda,
     generarEtiquetaDePedidoExistente,
     sincronizarCanastosEstacionNodos,
+    sincronizarNodosConCircuitoOperativoLamda,
+    sincronizarCambioSecuenciaDesdeLamda,
+    cambiarEtapaCircuitoLamdaCanasto,
+    obtenerEstadoCircuitoOperativoLamda,
     obtenerTableroMesaArmadoDeposito,
     armarBolsaPedidoVecino,
     armarTodasBolsasDeCanasto,
