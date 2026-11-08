@@ -229,7 +229,11 @@
         `;
 
         if (ESTADO_NODOS.subTabActiva === 'cotizador') {
-            recalcularMesaCotizacionEnVivo();
+            if (!ESTADO_NODOS.propuestaActivaId && !ESTADO_NODOS.catalogoEditandoId) {
+                alCambiarOrigenSelect();
+            } else {
+                recalcularMesaCotizacionEnVivo();
+            }
         }
     }
 
@@ -1024,11 +1028,8 @@
     // =========================================================================
     function seleccionarFlujoMesa(flujo) {
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(flujo);
-        const selectEl = document.getElementById('cot-origen-select');
-        if (selectEl) {
-            selectEl.innerHTML = construirOpcionesSelectorFuentePorFlujo(flujo);
-            alCambiarOrigenSelect();
-        }
+        ESTADO_NODOS.propuestaActivaId = null;
+        ESTADO_NODOS.catalogoEditandoId = null;
         renderizarVistaNodosCompleta();
     }
 
