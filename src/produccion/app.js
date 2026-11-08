@@ -55,6 +55,14 @@ app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
+// 🏘️ Rutas amigables Etapa 2: Tienda Marca Blanca del Vecino y Panel del Gestor
+app.get(['/tienda', '/tienda/:nodoSlug'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'pages', 'nodo-tienda-vecino.html'));
+});
+app.get(['/gestor', '/gestor/:nodoSlug'], (req, res) => {
+    res.sendFile(path.join(__dirname, 'pages', 'nodo-panel-gestor.html'));
+});
+
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)
 // Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
 app.get('/api/supabase/lotes', async (req, res) => {

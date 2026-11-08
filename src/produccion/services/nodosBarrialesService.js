@@ -326,6 +326,61 @@ async function asegurarEsquemaNodosBarriales() {
                 updated_at TIMESTAMP DEFAULT NOW(),
                 CONSTRAINT unq_nodo_articulo_oferta UNIQUE (nodo_id, articulo_catalogo_id)
             );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_vecinos (
+                id SERIAL PRIMARY KEY,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                nombre_completo VARCHAR(160) NOT NULL,
+                telefono_whatsapp VARCHAR(60) NOT NULL,
+                direccion_calle VARCHAR(220),
+                entrecalles_referencia VARCHAR(200),
+                notas_entrega TEXT,
+                titular_transferencia_habitual VARCHAR(180),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_pedidos_vecinos (
+                id SERIAL PRIMARY KEY,
+                codigo_pedido VARCHAR(50) UNIQUE NOT NULL,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                vecino_id INTEGER REFERENCES public.nodos_vecinos(id) ON DELETE SET NULL,
+                vecino_nombre VARCHAR(160) NOT NULL,
+                vecino_telefono VARCHAR(60) NOT NULL,
+                modalidad_entrega VARCHAR(40) NOT NULL DEFAULT 'RETIRO_NODO',
+                direccion_entrega VARCHAR(240),
+                entrecalles_referencia VARCHAR(200),
+                fecha_entrega_comprometida DATE NOT NULL DEFAULT CURRENT_DATE,
+                fecha_entrega_label VARCHAR(140) NOT NULL,
+                ventana_horaria_label VARCHAR(120),
+                entrar_en_corte_actual BOOLEAN DEFAULT true,
+                medio_pago VARCHAR(40) NOT NULL DEFAULT 'TRANSFERENCIA',
+                estado_pago VARCHAR(40) NOT NULL DEFAULT 'PENDIENTE_TRANSFERENCIA',
+                estado_operativo VARCHAR(40) NOT NULL DEFAULT 'CONFIRMADO_VECINO',
+                subtotal_productos_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                cargo_envio_barrial NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                total_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                total_base_lamda NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ganancia_total_gestor NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                observaciones_vecino TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.nodos_pedidos_items (
+                id SERIAL PRIMARY KEY,
+                pedido_id INTEGER NOT NULL REFERENCES public.nodos_pedidos_vecinos(id) ON DELETE CASCADE,
+                articulo_catalogo_id INTEGER REFERENCES public.nodos_articulos_catalogo(id) ON DELETE SET NULL,
+                sku_nodo VARCHAR(60),
+                nombre_publico VARCHAR(180) NOT NULL,
+                presentacion_etiqueta VARCHAR(80),
+                cantidad INTEGER NOT NULL DEFAULT 1,
+                precio_unitario_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                precio_unitario_base_lamda NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                subtotal_vecino NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                subtotal_base_lamda NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ganancia_item_gestor NUMERIC(14,2) NOT NULL DEFAULT 0.00
+            );
         `);
 
         // Verificar si necesitamos poblar datos iniciales de Laboratorio
@@ -621,6 +676,104 @@ async function asegurarEsquemaNodosBarriales() {
                     'PROP-NB-003', ingMap.has(122) ? 122 : null
                 ]
             );
+        }
+
+        // Sembrar pedidos vecinales de muestra para Etapa 2 si aún no existen
+        const countPedidos = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos');
+        if (countPedidos.rows[0].total === 0) {
+            const n1Res = await client.query('SELECT id, direccion_retiro, cargo_envio_barrial FROM public.nodos_maestro ORDER BY id ASC LIMIT 1');
+            if (n1Res.rows.length > 0) {
+                const n1 = n1Res.rows[0];
+                const ofRes = await client.query(
+                    `SELECT nog.*, nac.sku_nodo, nac.nombre_publico, nac.presentacion_etiqueta
+                     FROM public.nodos_ofertas_gestor nog
+                     JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+                     WHERE nog.nodo_id = $1
+                     ORDER BY nac.id ASC`,
+                    [n1.id]
+                );
+                const ofs = ofRes.rows;
+                if (ofs.length >= 3) {
+                    const v1 = await client.query(
+                        `INSERT INTO public.nodos_vecinos (nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia)
+                         VALUES ($1, 'María Laura Gómez', '221-554-8910', 'Cantilo 452', 'e/ 13c y 14') RETURNING id`,
+                        [n1.id]
+                    );
+                    const v2 = await client.query(
+                        `INSERT INTO public.nodos_vecinos (nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia)
+                         VALUES ($1, 'Valeria Sánchez', '221-509-4412', 'Calle 473 bis N° 1120', 'e/ 14b y 15 - City Bell') RETURNING id`,
+                        [n1.id]
+                    );
+
+                    // Pedido 1: Retiro en Nodo, Pagado por Transferencia
+                    const it1A = ofs[0];
+                    const it1B = ofs[1];
+                    const subVec1 = Number(it1A.precio_venta_vecino) * 2 + Number(it1B.precio_venta_vecino) * 1;
+                    const subBase1 = Number(it1A.precio_base_nodo_snapshot) * 2 + Number(it1B.precio_base_nodo_snapshot) * 1;
+                    const gan1 = subVec1 - subBase1;
+
+                    const p1 = await client.query(
+                        `INSERT INTO public.nodos_pedidos_vecinos (
+                            codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                            modalidad_entrega, direccion_entrega, fecha_entrega_label, ventana_horaria_label,
+                            medio_pago, estado_pago, estado_operativo,
+                            subtotal_productos_vecino, cargo_envio_barrial, total_vecino, total_base_lamda, ganancia_total_gestor
+                         ) VALUES ($1,$2,$3,$4,$5,'RETIRO_NODO',$6,'Miércoles (17:00 a 20:00 hs)','17:00 a 20:00 hs','TRANSFERENCIA','PAGADO_TRANSFERENCIA','CONFIRMADO_VECINO',$7,0,$7,$8,$9)
+                         RETURNING id`,
+                        ['NB-1041', n1.id, v1.rows[0].id, 'María Laura Gómez', '221-554-8910', n1.direccion_retiro, subVec1, subBase1, gan1]
+                    );
+                    await client.query(
+                        `INSERT INTO public.nodos_pedidos_items (
+                            pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
+                            cantidad, precio_unitario_vecino, precio_unitario_base_lamda, subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
+                         ) VALUES
+                         ($1,$2,$3,$4,$5,2,$6,$7,$8,$9,$10),
+                         ($1,$11,$12,$13,$14,1,$15,$16,$17,$18,$19)`,
+                        [
+                            p1.rows[0].id,
+                            it1A.articulo_catalogo_id, it1A.sku_nodo, it1A.nombre_publico, it1A.presentacion_etiqueta,
+                            it1A.precio_venta_vecino, it1A.precio_base_nodo_snapshot, Number(it1A.precio_venta_vecino) * 2, Number(it1A.precio_base_nodo_snapshot) * 2, Number(it1A.ganancia_unitaria_gestor) * 2,
+                            it1B.articulo_catalogo_id, it1B.sku_nodo, it1B.nombre_publico, it1B.presentacion_etiqueta,
+                            it1B.precio_venta_vecino, it1B.precio_base_nodo_snapshot, Number(it1B.precio_venta_vecino), Number(it1B.precio_base_nodo_snapshot), Number(it1B.ganancia_unitaria_gestor)
+                        ]
+                    );
+
+                    // Pedido 2: Envío a Domicilio Barrial (+$1.500 100% para el gestor), Cobrar en Efectivo
+                    const it2A = ofs[2];
+                    const it2B = ofs[3] || ofs[0];
+                    const envioBarrial = Number(n1.cargo_envio_barrial || 1500);
+                    const subVec2 = Number(it2A.precio_venta_vecino) * 1 + Number(it2B.precio_venta_vecino) * 2;
+                    const subBase2 = Number(it2A.precio_base_nodo_snapshot) * 1 + Number(it2B.precio_base_nodo_snapshot) * 2;
+                    const totVec2 = subVec2 + envioBarrial;
+                    const gan2 = (subVec2 - subBase2) + envioBarrial; // 100% del envío barrial corresponde al gestor
+
+                    const p2 = await client.query(
+                        `INSERT INTO public.nodos_pedidos_vecinos (
+                            codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                            modalidad_entrega, direccion_entrega, entrecalles_referencia, fecha_entrega_label, ventana_horaria_label,
+                            medio_pago, estado_pago, estado_operativo,
+                            subtotal_productos_vecino, cargo_envio_barrial, total_vecino, total_base_lamda, ganancia_total_gestor
+                         ) VALUES ($1,$2,$3,$4,$5,'ENVIO_BARRIAL','Calle 473 bis N° 1120','e/ 14b y 15 - City Bell','Miércoles (17:00 a 20:00 hs)','17:00 a 20:00 hs','EFECTIVO','COBRAR_EN_ENTREGA','CONFIRMADO_VECINO',$6,$7,$8,$9,$10)
+                         RETURNING id`,
+                        ['NB-1042', n1.id, v2.rows[0].id, 'Valeria Sánchez', '221-509-4412', subVec2, envioBarrial, totVec2, subBase2, gan2]
+                    );
+                    await client.query(
+                        `INSERT INTO public.nodos_pedidos_items (
+                            pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
+                            cantidad, precio_unitario_vecino, precio_unitario_base_lamda, subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
+                         ) VALUES
+                         ($1,$2,$3,$4,$5,1,$6,$7,$8,$9,$10),
+                         ($1,$11,$12,$13,$14,2,$15,$16,$17,$18,$19)`,
+                        [
+                            p2.rows[0].id,
+                            it2A.articulo_catalogo_id, it2A.sku_nodo, it2A.nombre_publico, it2A.presentacion_etiqueta,
+                            it2A.precio_venta_vecino, it2A.precio_base_nodo_snapshot, Number(it2A.precio_venta_vecino), Number(it2A.precio_base_nodo_snapshot), Number(it2A.ganancia_unitaria_gestor),
+                            it2B.articulo_catalogo_id, it2B.sku_nodo, it2B.nombre_publico, it2B.presentacion_etiqueta,
+                            it2B.precio_venta_vecino, it2B.precio_base_nodo_snapshot, Number(it2B.precio_venta_vecino) * 2, Number(it2B.precio_base_nodo_snapshot) * 2, Number(it2B.ganancia_unitaria_gestor) * 2
+                        ]
+                    );
+                }
+            }
         }
 
         await client.query('COMMIT');
@@ -1424,6 +1577,9 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     const publicado = payload.publicado_tienda !== undefined
         ? Boolean(payload.publicado_tienda)
         : Boolean(row.publicado_tienda);
+    const destacado = payload.destacado_tienda !== undefined
+        ? Boolean(payload.destacado_tienda)
+        : Boolean(row.destacado_tienda);
 
     const upd = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
@@ -1432,14 +1588,560 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             precio_venta_vecino = $3,
             ganancia_unitaria_gestor = $4,
             publicado_tienda = $5,
+            destacado_tienda = $6,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $6
+         WHERE id = $7
          RETURNING *`,
-        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, Number(ofertaId)]
+        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, destacado, Number(ofertaId)]
     );
 
     return upd.rows[0];
+}
+
+// ============================================================================
+// ETAPA 2: MOTOR DE CORTE HORARIO (CUTOFF), PANEL DEL GESTOR Y TIENDA VECINAL
+// ============================================================================
+
+const MAPA_DIAS_SEMANA = {
+    domingo: 0,
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    'miércoles': 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6,
+    'sábado': 6
+};
+
+const NOMBRES_DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function normalizarDiaIndex(nombreDia) {
+    const key = String(nombreDia || '').trim().toLowerCase();
+    return MAPA_DIAS_SEMANA[key] !== undefined ? MAPA_DIAS_SEMANA[key] : 3;
+}
+
+function formatearFechaCortaEs(dateObj) {
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    return `${d}/${m}`;
+}
+
+/**
+ * Calcula qué fecha y ventana de entrega corresponde hoy para un Nodo según sus
+ * días de entrega y horarios de corte (cutoff).
+ * Si el vecino entra después del horario de corte de la entrega más próxima,
+ * asigna automáticamente la siguiente fecha de entrega disponible e informa el motivo.
+ */
+function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = null) {
+    const ahora = fechaReferenciaInput ? new Date(fechaReferenciaInput) : new Date();
+    const reglas = Array.isArray(configVentanas) && configVentanas.length > 0
+        ? configVentanas
+        : [
+            { dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' },
+            { dia_entrega: 'Sábado', cierre_dia: 'Viernes', cierre_hora: '14:00', ventana_retiro: '10:00 a 13:30 hs' }
+        ];
+
+    const candidatas = [];
+
+    for (let offsetDias = 0; offsetDias <= 21; offsetDias++) {
+        const fechaEntrega = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + offsetDias, 12, 0, 0);
+        const dowEntrega = fechaEntrega.getDay();
+
+        for (const regla of reglas) {
+            const targetDowEntrega = normalizarDiaIndex(regla.dia_entrega);
+            if (dowEntrega !== targetDowEntrega) continue;
+
+            const targetDowCierre = normalizarDiaIndex(regla.cierre_dia);
+            let diffCierre = (targetDowEntrega - targetDowCierre + 7) % 7;
+            if (diffCierre === 0) diffCierre = 1;
+
+            const [hh, mm] = String(regla.cierre_hora || '14:00').split(':').map(n => Number(n) || 0);
+            const fechaCorte = new Date(
+                fechaEntrega.getFullYear(),
+                fechaEntrega.getMonth(),
+                fechaEntrega.getDate() - diffCierre,
+                hh,
+                mm,
+                0
+            );
+
+            // Solo considerar entregas futuras (desde hoy en adelante)
+            const finDiaEntrega = new Date(fechaEntrega.getFullYear(), fechaEntrega.getMonth(), fechaEntrega.getDate(), 23, 59, 59);
+            if (finDiaEntrega < ahora) continue;
+
+            const nombreDiaEntrega = NOMBRES_DIAS[dowEntrega];
+            const nombreDiaCierre = NOMBRES_DIAS[fechaCorte.getDay()];
+            const fechaCorta = formatearFechaCortaEs(fechaEntrega);
+            const fechaIso = `${fechaEntrega.getFullYear()}-${String(fechaEntrega.getMonth() + 1).padStart(2, '0')}-${String(fechaEntrega.getDate()).padStart(2, '0')}`;
+
+            candidatas.push({
+                fecha_entrega_iso: fechaIso,
+                fecha_entrega_corta: fechaCorta,
+                dia_entrega_nombre: nombreDiaEntrega,
+                ventana_retiro: regla.ventana_retiro || '17:00 a 20:00 hs',
+                cierre_dia_nombre: nombreDiaCierre,
+                cierre_hora: regla.cierre_hora || '14:00',
+                cierre_fecha_corta: formatearFechaCortaEs(fechaCorte),
+                timestamp_entrega: fechaEntrega.getTime(),
+                timestamp_corte: fechaCorte.getTime(),
+                abierta: ahora.getTime() <= fechaCorte.getTime(),
+                label_completo: `${nombreDiaEntrega} ${fechaCorta} (${regla.ventana_retiro || '17:00 a 20:00 hs'})`,
+                label_corte: `${nombreDiaCierre} ${formatearFechaCortaEs(fechaCorte)} a las ${regla.cierre_hora || '14:00'} hs`
+            });
+        }
+    }
+
+    candidatas.sort((a, b) => a.timestamp_entrega - b.timestamp_entrega);
+
+    const primeraAbierta = candidatas.find(c => c.abierta) || candidatas[0];
+    const cerradaReciente = candidatas.find(c => !c.abierta && c.timestamp_entrega < (primeraAbierta?.timestamp_entrega || Infinity));
+
+    return {
+        ahora_iso: ahora.toISOString(),
+        asignada: primeraAbierta,
+        paso_horario_corte: Boolean(cerradaReciente),
+        entrega_anterior_cerrada: cerradaReciente || null,
+        proximas_ventanas: candidatas.filter(c => c.abierta).slice(0, 4),
+        mensaje_vecino: cerradaReciente
+            ? `El cierre para la entrega del ${cerradaReciente.dia_entrega_nombre} ${cerradaReciente.fecha_entrega_corta} finalizó el ${cerradaReciente.cierre_dia_nombre} a las ${cerradaReciente.cierre_hora} hs. Tu pedido se agenda automáticamente para el ${primeraAbierta.label_completo}.`
+            : `Pedidos abiertos hasta el ${primeraAbierta.label_corte} para recibir o retirar el ${primeraAbierta.label_completo}.`
+    };
+}
+
+/**
+ * Obtiene todos los datos necesarios para la Tienda Marca Blanca del Vecino y
+ * para el Panel de Autogestión del Gestor de un Nodo específico (:slug).
+ */
+async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
+    await asegurarEsquemaNodosBarriales();
+
+    const todosNodosRes = await db.query(
+        'SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca, gestor_nombre, barrio_zona, color_primario FROM public.nodos_maestro WHERE activo = true ORDER BY id ASC'
+    );
+    const todosNodos = todosNodosRes.rows;
+
+    let nodoRes = await db.query(
+        `SELECT nm.*,
+                COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
+         FROM public.nodos_maestro nm
+         LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+         WHERE LOWER(nm.slug) = LOWER($1)
+         LIMIT 1`,
+        [String(slug || '').trim()]
+    );
+
+    if (nodoRes.rows.length === 0) {
+        nodoRes = await db.query(
+            `SELECT nm.*,
+                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
+             FROM public.nodos_maestro nm
+             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+             ORDER BY nm.id ASC
+             LIMIT 1`
+        );
+    }
+
+    if (nodoRes.rows.length === 0) {
+        throw new Error('No hay Nodos Barriales configurados.');
+    }
+
+    const nodo = nodoRes.rows[0];
+    const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
+
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, ingSugeriblesRes] = await Promise.all([
+        db.query(
+            `SELECT nog.*,
+                    nac.sku_nodo,
+                    nac.nombre_publico,
+                    nac.categoria_familiar,
+                    nac.presentacion_etiqueta,
+                    nac.kilos_unidad,
+                    nac.flujo_lamda,
+                    nac.precio_base_nodo_final
+             FROM public.nodos_ofertas_gestor nog
+             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             WHERE nog.nodo_id = $1
+               AND nac.activo = true
+             ORDER BY nog.destacado_tienda DESC, nac.categoria_familiar ASC, nac.nombre_publico ASC`,
+            [nodo.id]
+        ),
+        db.query(
+            `SELECT npf.*,
+                    ing.nombre AS ingrediente_sugerido_nombre
+             FROM public.nodos_propuestas_fracciones npf
+             LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
+             WHERE npf.nodo_solicitante_id = $1 OR npf.nodo_solicitante_id IS NULL
+             ORDER BY npf.id DESC`,
+            [nodo.id]
+        ),
+        db.query(
+            `SELECT *
+             FROM public.nodos_pedidos_vecinos
+             WHERE nodo_id = $1
+             ORDER BY id DESC
+             LIMIT 50`,
+            [nodo.id]
+        ),
+        db.query(
+            `SELECT npi.*
+             FROM public.nodos_pedidos_items npi
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             WHERE npv.nodo_id = $1
+             ORDER BY npi.id ASC`,
+            [nodo.id]
+        ),
+        db.query(
+            `SELECT id, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_kg
+             FROM public.ingredientes
+             WHERE COALESCE(es_insumo, false) = false
+               AND COALESCE(costo_patron, 0) > 0
+               AND nombre NOT ILIKE '%Fuera de Servicio%'
+             ORDER BY nombre ASC`
+        )
+    ]);
+
+    const itemsPorPedido = new Map();
+    for (const it of itemsPedidosRes.rows) {
+        const pid = Number(it.pedido_id);
+        if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
+        itemsPorPedido.get(pid).push(it);
+    }
+
+    const pedidosConItems = pedidosRes.rows.map(p => ({
+        ...p,
+        items: itemsPorPedido.get(Number(p.id)) || []
+    }));
+
+    const ofertasPublicadas = ofertasRes.rows
+        .filter(o => o.publicado_tienda)
+        .map(o => ({
+            oferta_id: o.id,
+            articulo_catalogo_id: o.articulo_catalogo_id,
+            sku_nodo: o.sku_nodo,
+            nombre_publico: o.nombre_publico,
+            categoria_familiar: o.categoria_familiar,
+            presentacion_etiqueta: o.presentacion_etiqueta,
+            kilos_unidad: Number(o.kilos_unidad),
+            precio_venta_vecino: Number(o.precio_venta_vecino),
+            destacado_tienda: Boolean(o.destacado_tienda)
+        }));
+
+    return {
+        nodo,
+        nodos_disponibles: todosNodos,
+        proxima_entrega: proximaEntrega,
+        ofertas_publicadas: ofertasPublicadas,
+        todas_ofertas_gestor: ofertasRes.rows,
+        propuestas_nodo: propuestasRes.rows,
+        pedidos_nodo: pedidosConItems,
+        ingredientes_sugeribles: ingSugeriblesRes.rows
+    };
+}
+
+/**
+ * Permite al Gestor del Nodo actualizar desde su Panel sus ventanas de entrega,
+ * puntos de corte, envío barrial (100% para el gestor) y datos de contacto.
+ */
+async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const cur = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1', [Number(nodoId)]);
+    if (cur.rows.length === 0) {
+        throw new Error('Nodo no encontrado.');
+    }
+    const actual = cur.rows[0];
+
+    const ventanas = Array.isArray(payload.config_ventanas_corte)
+        ? payload.config_ventanas_corte
+        : actual.config_ventanas_corte;
+
+    const upd = await db.query(
+        `UPDATE public.nodos_maestro SET
+            nombre_marca = COALESCE($1, nombre_marca),
+            subtitulo_marca = COALESCE($2, subtitulo_marca),
+            gestor_nombre = COALESCE($3, gestor_nombre),
+            gestor_telefono = COALESCE($4, gestor_telefono),
+            barrio_zona = COALESCE($5, barrio_zona),
+            direccion_retiro = COALESCE($6, direccion_retiro),
+            alias_bancario_display = COALESCE($7, alias_bancario_display),
+            permitir_envio_barrial = $8,
+            cargo_envio_barrial = $9,
+            config_ventanas_corte = $10,
+            color_primario = COALESCE($11, color_primario),
+            updated_at = NOW()
+         WHERE id = $12
+         RETURNING *`,
+        [
+            payload.nombre_marca || actual.nombre_marca,
+            payload.subtitulo_marca ?? actual.subtitulo_marca,
+            payload.gestor_nombre || actual.gestor_nombre,
+            payload.gestor_telefono ?? actual.gestor_telefono,
+            payload.barrio_zona ?? actual.barrio_zona,
+            payload.direccion_retiro ?? actual.direccion_retiro,
+            payload.alias_bancario_display ?? actual.alias_bancario_display,
+            payload.permitir_envio_barrial !== undefined ? Boolean(payload.permitir_envio_barrial) : actual.permitir_envio_barrial,
+            payload.cargo_envio_barrial !== undefined ? Number(payload.cargo_envio_barrial) : Number(actual.cargo_envio_barrial),
+            JSON.stringify(ventanas),
+            payload.color_primario || actual.color_primario,
+            Number(nodoId)
+        ]
+    );
+
+    return upd.rows[0];
+}
+
+/**
+ * Registra un pedido de un vecino desde la Tienda Marca Blanca (/:nodoSlug),
+ * calcula el horario de corte, los márgenes del gestor + 100% del envío barrial
+ * y devuelve el comprobante junto con la etiqueta térmica Zebra lista.
+ */
+async function crearPedidoVecinoTienda(slug, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const vecinoNombre = String(payload.vecino_nombre || '').trim();
+    const vecinoTelefono = String(payload.vecino_telefono || '').trim();
+    const itemsCarrito = Array.isArray(payload.items) ? payload.items : [];
+
+    if (!vecinoNombre || !vecinoTelefono) {
+        throw new Error('Por favor ingresá tu nombre y tu número de WhatsApp para coordinar la entrega.');
+    }
+    if (itemsCarrito.length === 0) {
+        throw new Error('Tu carrito está vacío. Agregá al menos un producto para confirmar el pedido.');
+    }
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const nodoRes = await client.query(
+            'SELECT * FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) LIMIT 1',
+            [String(slug || '').trim()]
+        );
+        if (nodoRes.rows.length === 0) {
+            throw new Error('Tienda barrial no encontrada.');
+        }
+        const nodo = nodoRes.rows[0];
+
+        const modalidad = payload.modalidad_entrega === 'ENVIO_BARRIAL' && nodo.permitir_envio_barrial
+            ? 'ENVIO_BARRIAL'
+            : 'RETIRO_NODO';
+
+        if (modalidad === 'ENVIO_BARRIAL' && !String(payload.direccion_entrega || '').trim()) {
+            throw new Error('Por favor indicá tu dirección en el barrio para el envío a domicilio.');
+        }
+
+        const proxima = calcularProximaEntregaNodo(nodo.config_ventanas_corte, payload.fecha_hora_simulada || null);
+        const entregaAsignada = proxima.asignada;
+
+        // Consultar las ofertas publicadas del Nodo
+        const ofertasRes = await client.query(
+            `SELECT nog.*, nac.sku_nodo, nac.nombre_publico, nac.presentacion_etiqueta, nac.precio_base_nodo_final
+             FROM public.nodos_ofertas_gestor nog
+             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             WHERE nog.nodo_id = $1`,
+            [nodo.id]
+        );
+        const mapaOfertas = new Map(ofertasRes.rows.map(o => [Number(o.id), o]));
+
+        let subtotalProductosVecino = 0;
+        let totalBaseLamda = 0;
+        let gananciaProductosGestor = 0;
+        const itemsValidados = [];
+
+        for (const itemReq of itemsCarrito) {
+            const cant = Math.max(1, Math.round(Number(itemReq.cantidad) || 1));
+            const of = mapaOfertas.get(Number(itemReq.oferta_id));
+            if (!of) continue;
+
+            const pUnitVecino = Number(of.precio_venta_vecino);
+            const pUnitBaseLamda = Number(of.precio_base_nodo_final || of.precio_base_nodo_snapshot);
+            const subVecino = Number((pUnitVecino * cant).toFixed(2));
+            const subBase = Number((pUnitBaseLamda * cant).toFixed(2));
+            const ganItem = Math.max(0, subVecino - subBase);
+
+            subtotalProductosVecino += subVecino;
+            totalBaseLamda += subBase;
+            gananciaProductosGestor += ganItem;
+
+            itemsValidados.push({
+                articulo_catalogo_id: of.articulo_catalogo_id,
+                sku_nodo: of.sku_nodo,
+                nombre_publico: of.nombre_publico,
+                presentacion_etiqueta: of.presentacion_etiqueta,
+                cantidad: cant,
+                precio_unitario_vecino: pUnitVecino,
+                precio_unitario_base_lamda: pUnitBaseLamda,
+                subtotal_vecino: subVecino,
+                subtotal_base_lamda: subBase,
+                ganancia_item_gestor: ganItem
+            });
+        }
+
+        if (itemsValidados.length === 0) {
+            throw new Error('No se pudieron validar los artículos seleccionados.');
+        }
+
+        // El cargo opcional de envío barrial corresponde 100% al gestor (sin costo base de LAMDA)
+        const cargoEnvioBarrial = modalidad === 'ENVIO_BARRIAL' ? Number(nodo.cargo_envio_barrial || 0) : 0;
+        const totalVecino = subtotalProductosVecino + cargoEnvioBarrial;
+        const gananciaTotalGestor = gananciaProductosGestor + cargoEnvioBarrial;
+
+        const medioPago = payload.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
+        const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
+
+        // Registrar/actualizar vecino
+        const insVec = await client.query(
+            `INSERT INTO public.nodos_vecinos (
+                nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia
+             ) VALUES ($1,$2,$3,$4,$5)
+             RETURNING id`,
+            [
+                nodo.id,
+                vecinoNombre,
+                vecinoTelefono,
+                payload.direccion_entrega || nodo.direccion_retiro || '',
+                payload.entrecalles_referencia || ''
+            ]
+        );
+        const vecinoId = insVec.rows[0].id;
+
+        const seqRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos');
+        const codigoPedido = `NB-${1041 + seqRes.rows[0].total}`;
+
+        const direccionFinal = modalidad === 'ENVIO_BARRIAL'
+            ? String(payload.direccion_entrega || '').trim()
+            : (nodo.direccion_retiro || nodo.barrio_zona || '');
+
+        const insPed = await client.query(
+            `INSERT INTO public.nodos_pedidos_vecinos (
+                codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                modalidad_entrega, direccion_entrega, entrecalles_referencia,
+                fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
+                entrar_en_corte_actual, medio_pago, estado_pago, estado_operativo,
+                subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
+                total_base_lamda, ganancia_total_gestor, observaciones_vecino
+             ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CONFIRMADO_VECINO',$15,$16,$17,$18,$19,$20
+             ) RETURNING *`,
+            [
+                codigoPedido,
+                nodo.id,
+                vecinoId,
+                vecinoNombre,
+                vecinoTelefono,
+                modalidad,
+                direccionFinal,
+                payload.entrecalles_referencia || '',
+                entregaAsignada.fecha_entrega_iso,
+                entregaAsignada.label_completo,
+                entregaAsignada.ventana_retiro,
+                !proxima.paso_horario_corte,
+                medioPago,
+                estadoPago,
+                subtotalProductosVecino,
+                cargoEnvioBarrial,
+                totalVecino,
+                totalBaseLamda,
+                gananciaTotalGestor,
+                payload.observaciones_vecino || ''
+            ]
+        );
+        const pedidoRow = insPed.rows[0];
+
+        for (const it of itemsValidados) {
+            await client.query(
+                `INSERT INTO public.nodos_pedidos_items (
+                    pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
+                    cantidad, precio_unitario_vecino, precio_unitario_base_lamda,
+                    subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                [
+                    pedidoRow.id,
+                    it.articulo_catalogo_id,
+                    it.sku_nodo,
+                    it.nombre_publico,
+                    it.presentacion_etiqueta,
+                    it.cantidad,
+                    it.precio_unitario_vecino,
+                    it.precio_unitario_base_lamda,
+                    it.subtotal_vecino,
+                    it.subtotal_base_lamda,
+                    it.ganancia_item_gestor
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
+
+        return {
+            pedido: {
+                ...pedidoRow,
+                items: itemsValidados
+            },
+            nodo_pago_info: {
+                nombre_marca: nodo.nombre_marca,
+                alias: nodo.alias_bancario_display,
+                cbu: nodo.cbu_display,
+                titular: nodo.titular_display,
+                gestor_nombre: nodo.gestor_nombre,
+                gestor_telefono: nodo.gestor_telefono,
+                direccion_retiro: nodo.direccion_retiro
+            }
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Genera el preview y el código ZPL de la etiqueta térmica de un pedido vecinal real
+ */
+async function generarEtiquetaDePedidoExistente(pedidoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const pedRes = await db.query(
+        `SELECT npv.*,
+                nm.nombre_marca, nm.subtitulo_marca, nm.logo_zpl_gfa, nm.logo_mono_preview_base64
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         WHERE npv.id = $1 LIMIT 1`,
+        [Number(pedidoId)]
+    );
+    if (pedRes.rows.length === 0) {
+        throw new Error('Pedido vecinal no encontrado.');
+    }
+    const ped = pedRes.rows[0];
+
+    const itemsRes = await db.query(
+        'SELECT * FROM public.nodos_pedidos_items WHERE pedido_id = $1 ORDER BY id ASC',
+        [ped.id]
+    );
+
+    const esEfectivo = ped.medio_pago === 'EFECTIVO' || String(ped.estado_pago).includes('COBRAR');
+    return generarPreviewVisualEtiquetaPar({
+        nombre_marca: ped.nombre_marca,
+        subtitulo_marca: ped.subtitulo_marca,
+        logo_zpl_gfa: ped.logo_zpl_gfa,
+        logo_mono_preview_base64: ped.logo_mono_preview_base64,
+        pedido_codigo: ped.codigo_pedido,
+        vecino_nombre: ped.vecino_nombre,
+        vecino_telefono: ped.vecino_telefono,
+        modalidad_entrega: `${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? 'ENVIO BARRIAL' : 'RETIRO EN NODO'} (${ped.ventana_horaria_label || ''})`,
+        direccion_barrial: ped.direccion_entrega || '',
+        estado_pago: esEfectivo ? 'COBRAR EFECTIVO' : 'PAGADO (TRANSFERENCIA)',
+        monto_cobrar: esEfectivo ? Number(ped.total_vecino) : 0,
+        bultos_texto: 'BOLSA 1/1',
+        items: itemsRes.rows.map(r => ({
+            cantidad: r.cantidad,
+            descripcion: r.nombre_publico,
+            presentacion_etiqueta: r.presentacion_etiqueta
+        }))
+    });
 }
 
 module.exports = {
@@ -1451,6 +2153,11 @@ module.exports = {
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,
     actualizarOfertaGestor,
+    calcularProximaEntregaNodo,
+    obtenerDatosPortalNodo,
+    actualizarConfiguracionGestorNodo,
+    crearPedidoVecinoTienda,
+    generarEtiquetaDePedidoExistente,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar

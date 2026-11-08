@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * CONVERSOR DE LOGOS A ZPL (^GFA) Y PREVISUALIZADOR TÉRMICO ZEBRA MARCA BLANCA
- * Unidad de Negocio: Nodos Barriales (Marca Blanca) - Etapa 1
+ * Unidad de Negocio: Nodos Barriales (Marca Blanca) - Etapas 1 y 2
  * ============================================================================
  * - Convierte imágenes PNG/JPG (base64) o genera monogramas vectoriales de marca
  *   a mapas de bits monocromáticos de 1 bit compatibles con cabezales Zebra
@@ -9,8 +9,9 @@
  * - Soporta binarización por Umbral Directo (Threshold) o Difusión de Error
  *   Floyd-Steinberg (Dithering).
  * - Genera el código ZPL en rollo de doble columna (offsetX=23 Izquierda /
- *   offsetX=443 Derecha) con paginación automática de etiquetas de continuación
- *   cuando el checklist supera la capacidad vertical de una etiqueta.
+ *   offsetX=443 Derecha) con preservación garantizada del gramaje/presentación
+ *   en cada renglón del checklist y paginación automática con etiquetas de
+ *   continuación cuando el pedido supera los 6 ítems.
  * - Renderiza una previsualización PNG de alta fidelidad del rollo térmico
  *   para validación en Modo Laboratorio sin gastar insumos físicos.
  */
@@ -33,6 +34,49 @@ function limpiarTextoZpl(texto = '') {
 }
 
 /**
+ * Formatea una línea del checklist garantizando que la cantidad y el gramaje /
+ * presentación NUNCA se trunquen aunque el nombre del artículo sea muy largo.
+ * Ejemplo:
+ *   Entrada: { cantidad: 2, descripcion: 'Almendra Nonpareil Californiana x 250g' }
+ *   Salida:  "1. 2x Almendra Nonpareil Calif. x 250g"
+ */
+function formatearLineaChecklistSegura(it = {}, numeroOrden = 1, maxCharsTotal = 37) {
+    const cant = Number(it.cantidad) || 1;
+    const rawDesc = limpiarTextoZpl(it.descripcion || it.nombre_publico || 'Articulo');
+    const rawPres = limpiarTextoZpl(it.presentacion_etiqueta || it.presentacion || '');
+
+    // Detectar sufijo de gramaje/presentación al final del nombre (ej: "x 250g", "x 500g", "(6 x 50g)", "x 1kg")
+    const regexGramajeFinal = /(\s*\(\d+\s*x\s*\d+\s*(?:g|gr|kg)\)|\s+x\s*\d+(?:[.,]\d+)?\s*(?:g|gr|kg|un|u)\b|\s+\d+(?:[.,]\d+)?\s*(?:g|gr|kg)\b)$/i;
+    let sufijoGramaje = '';
+    let nombreBase = rawDesc;
+
+    const match = rawDesc.match(regexGramajeFinal);
+    if (match) {
+        sufijoGramaje = match[1].trim();
+        nombreBase = rawDesc.slice(0, rawDesc.length - match[0].length).trim();
+    } else if (rawPres) {
+        const presLimpia = rawPres.replace(/^bolsa\s+/i, '').trim();
+        sufijoGramaje = presLimpia.toLowerCase().startsWith('x') ? presLimpia : `x ${presLimpia}`;
+    }
+
+    // Normalizar sufijo para que siempre sea compacto y legible (ej: "x 250g")
+    if (sufijoGramaje && !sufijoGramaje.startsWith('(') && !/^x\s/i.test(sufijoGramaje)) {
+        sufijoGramaje = `x ${sufijoGramaje}`;
+    }
+
+    const prefijo = `${numeroOrden}. ${cant}x `;
+    const sufijoFinal = sufijoGramaje ? ` ${sufijoGramaje}` : '';
+    const espacioParaNombre = Math.max(10, maxCharsTotal - prefijo.length - sufijoFinal.length);
+
+    let nombreAjustado = nombreBase;
+    if (nombreAjustado.length > espacioParaNombre) {
+        nombreAjustado = nombreAjustado.substring(0, Math.max(8, espacioParaNombre - 1)).trim() + '.';
+    }
+
+    return `${prefijo}${nombreAjustado}${sufijoFinal}`;
+}
+
+/**
  * Genera una imagen base en Canvas a partir de un monograma / insignia de Nodo
  * cuando el gestor aún no subió un PNG propio o desea generar un sello rápido.
  */
@@ -47,7 +91,7 @@ function dibujarMonogramaEnCanvas(ctx, width, height, textoMarca = 'NODO', inici
     ctx.lineWidth = 3;
     ctx.strokeRect(2, 2, width - 4, height - 4);
 
-    // Círculo / Sello izquierdo con siglas invertidas
+    // Sello izquierdo con siglas invertidas
     const badgeW = Math.min(46, Math.floor(width * 0.42));
     ctx.fillStyle = '#000000';
     ctx.fillRect(4, 4, badgeW, height - 8);
@@ -75,16 +119,6 @@ function dibujarMonogramaEnCanvas(ctx, width, height, textoMarca = 'NODO', inici
 /**
  * Convierte una imagen base64 (o genera un monograma) a formato ZPL ^GFA y
  * devuelve además el PNG monocromático de 1 bit en base64 para previsualización.
- *
- * @param {Object} opts
- * @param {string} [opts.imageBase64] - Data URL o base64 de imagen PNG/JPG
- * @param {string} [opts.nombreMarca] - Nombre de la marca del Nodo (para monograma)
- * @param {string} [opts.iniciales] - Iniciales opcionales para monograma
- * @param {number} [opts.width=112] - Ancho en dots (se ajusta a múltiplo de 8)
- * @param {number} [opts.height=56] - Alto en dots
- * @param {number} [opts.threshold=138] - Umbral de luminancia (0..255)
- * @param {string} [opts.mode='threshold'] - 'threshold' | 'dither' (Floyd-Steinberg)
- * @param {boolean} [opts.invert=false] - Invertir blanco/negro
  */
 async function convertirLogoAZplGfa(opts = {}) {
     const rawW = Number(opts.width) || DEFAULT_LOGO_WIDTH;
@@ -97,7 +131,6 @@ async function convertirLogoAZplGfa(opts = {}) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Fondo blanco limpio
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
 
@@ -107,7 +140,6 @@ async function convertirLogoAZplGfa(opts = {}) {
             : `data:image/png;base64,${opts.imageBase64}`;
         const img = await loadImage(cleanDataUrl);
 
-        // Escalar manteniendo proporción (contain) centrado
         const scale = Math.min((width - 4) / img.width, (height - 4) / img.height);
         const drawW = Math.max(1, Math.round(img.width * scale));
         const drawH = Math.max(1, Math.round(img.height * scale));
@@ -121,12 +153,10 @@ async function convertirLogoAZplGfa(opts = {}) {
     const imgData = ctx.getImageData(0, 0, width, height);
     const rgba = imgData.data;
 
-    // Matriz de luminancia (0 = negro, 255 = blanco)
     const lum = new Float32Array(width * height);
     for (let i = 0; i < width * height; i++) {
         const idx = i * 4;
         const alpha = rgba[idx + 3] / 255;
-        // Mezclar sobre blanco si tiene transparencia
         const r = rgba[idx] * alpha + 255 * (1 - alpha);
         const g = rgba[idx + 1] * alpha + 255 * (1 - alpha);
         const b = rgba[idx + 2] * alpha + 255 * (1 - alpha);
@@ -135,7 +165,6 @@ async function convertirLogoAZplGfa(opts = {}) {
         lum[i] = l;
     }
 
-    // Difusión de error Floyd-Steinberg opcional
     const isBlackBit = new Uint8Array(width * height);
     if (mode === 'dither') {
         for (let y = 0; y < height; y++) {
@@ -158,7 +187,6 @@ async function convertirLogoAZplGfa(opts = {}) {
         }
     }
 
-    // Construir bytes hexadecimales para ^GFA y actualizar imagen de preview 1-bit
     const bytesPerRow = width / 8;
     const totalBytes = bytesPerRow * height;
     const hexRows = [];
@@ -174,7 +202,6 @@ async function convertirLogoAZplGfa(opts = {}) {
                 if (black) {
                     byteVal |= (1 << (7 - bit));
                 }
-                // Pintar en imgData para el preview monocromático exacto
                 const pIdx = pos * 4;
                 const color = black ? 15 : 255;
                 rgba[pIdx] = color;
@@ -208,16 +235,15 @@ async function convertirLogoAZplGfa(opts = {}) {
 
 /**
  * Divide la lista de ítems del pedido de un vecino en bloques de hasta
- * ITEMS_POR_ETIQUETA_DERECHA (6 ítems por etiqueta derecha) para garantizar que
- * ningún ítem quede truncado si el pedido es largo (emitiendo etiquetas de continuación).
+ * ITEMS_POR_ETIQUETA_DERECHA (6 ítems por etiqueta derecha).
  */
 function paginarItemsEtiqueta(items = []) {
     const lista = Array.isArray(items) && items.length > 0
         ? items
         : [
-            { cantidad: 2, descripcion: 'Almendra Nonpareil x 250g' },
-            { cantidad: 1, descripcion: 'Granola de Sol x 500g' },
-            { cantidad: 1, descripcion: 'Mix Frutos Secos c/Pasas x 500g' },
+            { cantidad: 2, descripcion: 'Almendra Nonpareil Californiana x 250g' },
+            { cantidad: 1, descripcion: 'Granola de Sol Crocante x 500g' },
+            { cantidad: 1, descripcion: 'Mix Frutos Secos con Pasas x 500g' },
             { cantidad: 1, descripcion: 'Nuez Mariposa Extra Light x 250g' }
         ];
 
@@ -231,8 +257,7 @@ function paginarItemsEtiqueta(items = []) {
 /**
  * Genera el código ZPL completo del Par Gemelo en rollo de doble columna:
  * - Izquierda (X=23): Identidad Marca Blanca del Nodo + Vecino + Dirección/Ventana + QR + Estado de Pago invertido (^FR)
- * - Derecha (X=443): Checklist de armado de artículos del pedido.
- * - Si hay más de 6 ítems, emite bloques ^XA...^XZ adicionales de continuación (HOJA 2/N, etc.).
+ * - Derecha (X=443): Checklist de armado con gramaje siempre visible al final.
  */
 function generarEtiquetaZplParNodo(params = {}) {
     const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
@@ -254,6 +279,9 @@ function generarEtiquetaZplParNodo(params = {}) {
     const totalHojas = paginas.length;
     const totalItemsPedido = Array.isArray(params.items) ? params.items.length : paginas.reduce((a, p) => a + p.length, 0);
 
+    // Ajuste tipográfico dinámico del título para que entren hasta 32 caracteres sin cortarse
+    const fontTituloZpl = nombreMarca.length > 22 ? '19,18' : '22,21';
+
     const bloquesZpl = paginas.map((itemsPagina, pageIndex) => {
         const numHoja = pageIndex + 1;
         const esContinuacion = numHoja > 1;
@@ -264,11 +292,10 @@ function generarEtiquetaZplParNodo(params = {}) {
         const lineasChecklistZpl = itemsPagina.map((it, idx) => {
             const globalIdx = pageIndex * ITEMS_POR_ETIQUETA_DERECHA + idx + 1;
             const yPos = 66 + idx * 32;
-            const cant = it.cantidad || 1;
-            const desc = limpiarTextoZpl(it.descripcion || it.nombre_publico || 'Articulo').substring(0, 32);
+            const lineaSegura = formatearLineaChecklistSegura(it, globalIdx, 37);
             return [
-                `^FO448,${yPos}^GB20,20,2^FS`,
-                `^FO476,${yPos + 2}^A0N,20,20^FD${globalIdx}. ${cant}x ${desc}^FS`
+                `^FO446,${yPos}^GB18,18,2^FS`,
+                `^FO470,${yPos + 1}^A0N,18,17^FD${lineaSegura}^FS`
             ].join('\n');
         }).join('\n');
 
@@ -279,24 +306,24 @@ function generarEtiquetaZplParNodo(params = {}) {
             '^LL280',
             // ================= COLUMNA IZQUIERDA (X=23): PORTADA MARCA BLANCA =================
             logoGfa ? `^FO25,14${logoGfa}^FS` : '^FO25,14^GB108,54,3^FS^FO42,30^A0N,24,24^FDNODO^FS',
-            `^FO145,16^A0N,24,24^FD${nombreMarca.substring(0, 22)}^FS`,
-            `^FO145,44^A0N,17,17^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 28)}^FS`,
+            `^FO142,16^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 32)}^FS`,
+            `^FO142,42^A0N,15,14^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 44)}^FS`,
             '^FO23,76^GB372,2,2^FS',
-            `^FO23,84^A0N,22,22^FDVECINO: ${vecinoNombre.substring(0, 22)}^FS`,
-            `^FO23,110^A0N,18,18^FD${modalidadEntrega.substring(0, 34)}^FS`,
-            `^FO23,132^A0N,17,17^FD${direccionBarrial.substring(0, 36)} | Tel: ${vecinoTelefono}^FS`,
+            `^FO23,84^A0N,21,20^FDVECINO: ${vecinoNombre.substring(0, 26)}^FS`,
+            `^FO23,110^A0N,17,17^FD${modalidadEntrega.substring(0, 38)}^FS`,
+            `^FO23,132^A0N,16,15^FD${direccionBarrial.substring(0, 36)} | Tel: ${vecinoTelefono}^FS`,
             '^FO23,156^GB372,2,2^FS',
             // QR de Despacho en Estación Nodos (abajo a la izquierda)
             `^FO25,166^BQN,2,3^FDMA,${pedidoCodigo}-H${numHoja}^FS`,
             // Banda invertida (^FR) de Estado de Pago + Bulto/Hoja
             '^FO118,166^GB276,94,94^FS',
-            `^FO128,176^FR^A0N,21,21^FD${textoBanderaPago.substring(0, 24)}^FS`,
+            `^FO128,176^FR^A0N,20,19^FD${textoBanderaPago.substring(0, 26)}^FS`,
             `^FO128,204^FR^A0N,19,19^FDPEDIDO #${pedidoCodigo} | ${bultosTexto}^FS`,
             `^FO128,230^FR^A0N,18,18^FDHOJA ETIQUETA ${numHoja} DE ${totalHojas}^FS`,
 
             // ================= COLUMNA DERECHA (X=443): CHECKLIST DE ARMADO =================
-            `^FO443,16^A0N,22,22^FDCHECKLIST #${pedidoCodigo} (${totalItemsPedido} ITEMS)^FS`,
-            `^FO443,40^A0N,17,17^FDVECINO: ${vecinoNombre.substring(0, 20)} [HOJA ${numHoja}/${totalHojas}]^FS`,
+            `^FO443,16^A0N,21,21^FDCHECKLIST #${pedidoCodigo} (${totalItemsPedido} ITEMS)^FS`,
+            `^FO443,40^A0N,16,16^FDVECINO: ${vecinoNombre.substring(0, 24)} [HOJA ${numHoja}/${totalHojas}]^FS`,
             '^FO443,60^GB368,2,2^FS',
             lineasChecklistZpl,
             '^XZ'
@@ -319,11 +346,11 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
     const resultadoZpl = generarEtiquetaZplParNodo(params);
     const { paginas, totalHojas, totalItemsPedido } = resultadoZpl;
 
-    const labelW = 395;
+    const labelW = 405;
     const labelH = 270;
-    const gapX = 22;
+    const gapX = 20;
     const gapY = 20;
-    const padOuter = 18;
+    const padOuter = 16;
 
     const canvasW = padOuter * 2 + labelW * 2 + gapX;
     const canvasH = padOuter * 2 + totalHojas * labelH + (totalHojas - 1) * gapY;
@@ -331,11 +358,9 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
     const canvas = createCanvas(canvasW, canvasH);
     const ctx = canvas.getContext('2d');
 
-    // Fondo de soporte siliconado del rollo térmico (gris azulado suave)
     ctx.fillStyle = '#cbd5e1';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Cargar logo monocromático si fue provisto
     let logoImg = null;
     if (params.logo_mono_preview_base64) {
         try {
@@ -372,7 +397,6 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         const leftX = padOuter;
         const rightX = padOuter + labelW + gapX;
 
-        // Etiqueta blanca izquierda y derecha
         for (const lx of [leftX, rightX]) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(lx, rowY, labelW, labelH);
@@ -391,30 +415,27 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         ctx.fillStyle = '#0f172a';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.font = 'bold 15px Arial';
-        ctx.fillText(nombreMarca.substring(0, 22), leftX + 130, rowY + 15);
+        ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
+        ctx.fillText(nombreMarca.substring(0, 32), leftX + 128, rowY + 14);
 
-        ctx.font = 'bold 11px Arial';
+        const textoSub = esContinuacion
+            ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})`
+            : subtituloMarca.substring(0, 44);
+        ctx.font = textoSub.length > 30 ? 'bold 10px Arial' : 'bold 11px Arial';
         ctx.fillStyle = esContinuacion ? '#b45309' : '#334155';
-        ctx.fillText(
-            esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 30),
-            leftX + 130,
-            rowY + 38
-        );
+        ctx.fillText(textoSub, leftX + 128, rowY + 38);
 
-        // Línea divisoria
         ctx.fillStyle = '#000000';
         ctx.fillRect(leftX + 10, rowY + 72, labelW - 20, 2);
 
-        // Datos del vecino
-        ctx.font = 'bold 14px Arial';
-        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 24)}`, leftX + 10, rowY + 80);
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 26)}`, leftX + 10, rowY + 80);
 
-        ctx.font = 'bold 12px Arial';
-        ctx.fillText(modalidadEntrega.substring(0, 36), leftX + 10, rowY + 102);
+        ctx.font = 'bold 11px Arial';
+        ctx.fillText(modalidadEntrega.substring(0, 38), leftX + 10, rowY + 102);
 
-        ctx.font = '11px Arial';
-        ctx.fillText(`${direccionBarrial.substring(0, 34)} | Tel: ${vecinoTelefono}`, leftX + 10, rowY + 122);
+        ctx.font = '10.5px Arial';
+        ctx.fillText(`${direccionBarrial.substring(0, 36)} | Tel: ${vecinoTelefono}`, leftX + 10, rowY + 122);
 
         ctx.fillRect(leftX + 10, rowY + 144, labelW - 20, 2);
 
@@ -425,7 +446,6 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = 2;
         ctx.strokeRect(qrX, qrY, qrSize, qrSize);
-        // Celdas tipo QR
         ctx.fillStyle = '#000000';
         ctx.fillRect(qrX + 6, qrY + 6, 20, 20);
         ctx.fillRect(qrX + qrSize - 26, qrY + 6, 20, 20);
@@ -457,36 +477,35 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         ctx.fillRect(bandX, bandY, bandW, bandH);
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 13px Arial';
-        ctx.fillText(textoBanderaPago.substring(0, 26), bandX + 10, bandY + 14);
+        ctx.font = 'bold 12.5px Arial';
+        ctx.fillText(textoBanderaPago.substring(0, 27), bandX + 10, bandY + 14);
         ctx.font = 'bold 12px Arial';
         ctx.fillText(`PEDIDO #${pedidoCodigo} | ${bultosTexto}`, bandX + 10, bandY + 42);
         ctx.font = '11px monospace';
         ctx.fillText(`HOJA ETIQUETA ${numHoja} DE ${totalHojas}`, bandX + 10, bandY + 68);
 
-        // ================= DIBUJAR ETIQUETA DERECHA (CHECKLIST) =================
+        // ================= DIBUJAR ETIQUETA DERECHA (CHECKLIST SIN RECORTE DE GRAMAJE) =================
         ctx.fillStyle = '#000000';
         ctx.font = 'bold 14px Arial';
         ctx.fillText(`CHECKLIST #${pedidoCodigo} (${totalItemsPedido} ITEMS)`, rightX + 12, rowY + 14);
 
         ctx.font = 'bold 11px Arial';
-        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 22)} [HOJA ${numHoja}/${totalHojas}]`, rightX + 12, rowY + 36);
+        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 24)} [HOJA ${numHoja}/${totalHojas}]`, rightX + 12, rowY + 36);
 
         ctx.fillRect(rightX + 10, rowY + 54, labelW - 20, 2);
 
         itemsPagina.forEach((it, idx) => {
             const globalIdx = pageIndex * ITEMS_POR_ETIQUETA_DERECHA + idx + 1;
             const itemY = rowY + 64 + idx * 31;
-            // Checkbox térmico
+
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 2;
-            ctx.strokeRect(rightX + 12, itemY, 16, 16);
+            ctx.strokeRect(rightX + 12, itemY, 15, 15);
 
-            const cant = it.cantidad || 1;
-            const desc = limpiarTextoZpl(it.descripcion || it.nombre_publico || 'Articulo').substring(0, 34);
+            const lineaSegura = formatearLineaChecklistSegura(it, globalIdx, 37);
             ctx.fillStyle = '#000000';
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText(`${globalIdx}. ${cant}x ${desc}`, rightX + 36, itemY + 2);
+            ctx.font = 'bold 11.5px Arial';
+            ctx.fillText(lineaSegura, rightX + 34, itemY + 2);
         });
 
         if (numHoja < totalHojas) {
@@ -506,6 +525,7 @@ module.exports = {
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,
+    formatearLineaChecklistSegura,
     limpiarTextoZpl,
     ITEMS_POR_ETIQUETA_DERECHA
 };

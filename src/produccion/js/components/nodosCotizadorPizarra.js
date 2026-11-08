@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * COMPONENTE FRONTEND: COTIZADOR DE NODOS BARRIALES Y ABM MARCA BLANCA (ETAPA 1)
+ * COMPONENTE FRONTEND: COTIZADOR DE NODOS BARRIALES Y ABM MARCA BLANCA (ETAPAS 1 Y 2)
  * Integrado a los 6 Flujos de la Pizarra Inteligente LAMDA (pizarra-simulacion.html)
  * ============================================================================
  */
@@ -33,12 +33,12 @@
     };
 
     const FLUJO_META = {
-        1: { corto: 'LDN 1 · Directo', nombre: 'Flujo 1: Bulto Cerrado / Unidad Directa', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.14)' },
-        2: { corto: 'LDN 2 · Mono-Ingrediente', nombre: 'Flujo 2: Fraccionado Puro (100% Mono-Ingrediente)', color: '#34d399', bg: 'rgba(52, 211, 153, 0.14)' },
-        3: { corto: 'LDN 3 · Mixes', nombre: 'Flujo 3: Mezcla Interna (Carro Mix) a Fracción', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.14)' },
-        4: { corto: 'LDN 4 · Tostaderos UP', nombre: 'Flujo 4: Unidad Productiva Externa Simple (Tostadero)', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.14)' },
-        5: { corto: 'LDN 5 · Barritas UP', nombre: 'Flujo 5: Pre-Mezcla + UP Externa Barritas', color: '#f87171', bg: 'rgba(248, 113, 113, 0.14)' },
-        6: { corto: 'LDN 6 · Granolas Doble Mezcla', nombre: 'Flujo 6: Doble Mezcla + Horneado UP + Agregado Seco', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.14)' }
+        1: { corto: 'Flujo 1 · Directo', nombre: 'Flujo 1: Bulto Cerrado / Unidad Directa', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.14)' },
+        2: { corto: 'Flujo 2 · Puro Fraccionado', nombre: 'Flujo 2: Fraccionado Puro (100% Ingrediente Único)', color: '#34d399', bg: 'rgba(52, 211, 153, 0.14)' },
+        3: { corto: 'Flujo 3 · Mixes', nombre: 'Flujo 3: Mezcla Interna (Carro Mix) a Fracción', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.14)' },
+        4: { corto: 'Flujo 4 · Tostaderos', nombre: 'Flujo 4: Unidad Productiva Externa (Tostadero)', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.14)' },
+        5: { corto: 'Flujo 5 · Barritas', nombre: 'Flujo 5: Pre-Mezcla + Elaboración Barritas', color: '#f87171', bg: 'rgba(248, 113, 113, 0.14)' },
+        6: { corto: 'Flujo 6 · Granolas', nombre: 'Flujo 6: Doble Mezcla + Horneado + Agregado Seco', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.14)' }
     };
 
     function fmtMoneda(val, decimales = 0) {
@@ -57,10 +57,6 @@
             .replace(/"/g, '&quot;');
     }
 
-    /**
-     * Política Universal de Búsqueda LAMDA (Fase 49):
-     * Coincidencia parcial en minúsculas y filtrado acumulativo (espacios = AND)
-     */
     function cumpleBusquedaUniversalLamda(bolsaTexto, query) {
         const q = String(query || '').trim().toLowerCase();
         if (!q) return true;
@@ -69,10 +65,6 @@
         return terminos.every(t => haystack.includes(t));
     }
 
-    /**
-     * Obtiene el costo por kilo vivo de un ingrediente combinando la memoria de simulación
-     * de la Pizarra (window.pizarraSimulacionMaster) con el valor de la base de datos.
-     */
     function obtenerCostoVivoIngredientePizarra(ingId, fallbackCosto = 0) {
         const idNum = Number(ingId);
         if (window.pizarraSimulacionMaster && Array.isArray(window.pizarraSimulacionMaster.ingredientes)) {
@@ -119,7 +111,7 @@
             if (container) {
                 container.innerHTML = `
                     <div style="padding: 28px; background: #1e293b; border: 1px solid #ef4444; border-radius: 12px; color: #fecaca;">
-                        <h3 style="margin-top:0;">⚠️ Error al conectar con el motor de Nodos Barriales</h3>
+                        <h3 style="margin-top:0;">⚠️ Error al conectar con el módulo de Nodos Barriales</h3>
                         <p>${escaparHtml(err.message)}</p>
                         <button class="btn btn-primary" onclick="window.recargarModuloNodosBarriales()">🔄 Reintentar</button>
                     </div>
@@ -167,6 +159,7 @@
         const pendientesCount = ESTADO_NODOS.propuestas.filter(p => p.estado === 'PENDIENTE_COTIZACION').length;
         const catalogoCount = ESTADO_NODOS.catalogo.length;
         const nodosActivosCount = ESTADO_NODOS.nodos.filter(n => n.activo).length;
+        const nodoPrincipalSlug = ESTADO_NODOS.nodos[0]?.slug || 'almacen-verde-city-bell';
 
         container.innerHTML = `
             <div style="display:flex; flex-direction:column; gap:14px; padding: 4px 2px 30px 2px;">
@@ -176,11 +169,11 @@
                         <div style="width:42px; height:42px; border-radius:10px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); display:flex; align-items:center; justify-content:center; font-size:1.35rem;">🏘️</div>
                         <div>
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <h2 style="margin:0; font-size:1.08rem; color:#f8fafc; font-weight:700;">Unidad de Negocio: Nodos Barriales (Marca Blanca)</h2>
-                                <span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-size:0.72rem; padding:2px 8px; border-radius:999px; font-weight:700;">Padrón Aislado de B2B</span>
+                                <h2 style="margin:0; font-size:1.08rem; color:#f8fafc; font-weight:700;">Nodos Barriales (Marca Blanca)</h2>
+                                <span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-size:0.72rem; padding:2px 8px; border-radius:999px; font-weight:700;">Catálogo Exclusivo Familiar</span>
                             </div>
                             <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">
-                                Conectado en tiempo real a los <strong>6 Flujos de la Pizarra</strong>, Envases (<code>es_insumo</code>), Mano de Obra, Cuentas Corrientes y Etiquetado Térmico Zebra <code>^GFA</code>.
+                                Cotización de fracciones familiares, márgenes por gestor, cuentas corrientes y etiquetas térmicas con marca del Nodo.
                             </div>
                         </div>
                     </div>
@@ -188,26 +181,38 @@
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <button onclick="window.NodosPizarra.cambiarSubTab('cotizador')"
                             style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#10b981' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'cotizador' ? 'rgba(16,185,129,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#6ee7b7' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            🧮 Mesa Cotizadora (6 Flujos)
+                            🧮 Cotizador de Fracciones
                             ${pendientesCount > 0 ? `<span style="background:#f59e0b; color:#0f172a; padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">${pendientesCount} pend.</span>` : ''}
                         </button>
 
                         <button onclick="window.NodosPizarra.cambiarSubTab('catalogo')"
                             style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'catalogo' ? '#38bdf8' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'catalogo' ? 'rgba(56,189,248,0.2)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'catalogo' ? '#bae6fd' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            📦 Catálogo Nodos & Márgenes Gestor
-                            <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${catalogoCount} SKUs</span>
+                            📦 Catálogo y Márgenes por Nodo
+                            <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${catalogoCount} productos</span>
                         </button>
 
                         <button onclick="window.NodosPizarra.cambiarSubTab('abm_nodos')"
                             style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#a78bfa' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? 'rgba(167,139,250,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#ddd6fe' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            🏷️ ABM de Nodos & Etiqueta Zebra ^GFA
+                            🏷️ Nodos y Etiqueta Térmica
                             <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${nodosActivosCount} activos</span>
                         </button>
 
+                        <a href="/gestor/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
+                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.14); color:#bae6fd; display:inline-flex; align-items:center; gap:5px;"
+                            title="Abrir Panel de Autogestión del Gestor del Nodo">
+                            🎛️ Panel del Gestor ↗
+                        </a>
+
+                        <a href="/tienda/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
+                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.15); color:#6ee7b7; display:inline-flex; align-items:center; gap:5px;"
+                            title="Abrir Tienda Marca Blanca del Vecino">
+                            🏪 Tienda del Vecino ↗
+                        </a>
+
                         <button onclick="window.NodosPizarra.sincronizarCascadaSeisFlujos()"
-                            title="Recalcular todo el padrón de Nodos tomando los costos vivos de la Pizarra"
+                            title="Actualizar todos los precios base tomando los costos vigentes de la Pizarra"
                             style="padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; cursor:pointer; border:1px solid rgba(245,158,11,0.45); background:rgba(245,158,11,0.14); color:#fcd34d;">
-                            ⚡ Sincronizar Costos 6 Flujos
+                            ⚡ Actualizar Costos
                         </button>
                     </div>
                 </div>
@@ -269,7 +274,7 @@
                     <div style="font-size:0.77rem; color:#cbd5e1; display:flex; gap:12px; flex-wrap:wrap;">
                         <span>⚖️ Fracción: <strong>${Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000)}g</strong> (${Number(prop.kilos_sugeridos || 0.25)} kg)</span>
                         ${prop.ingrediente_sugerido_nombre ? `<span>🌾 Base: <strong>${escaparHtml(prop.ingrediente_sugerido_nombre)}</strong> (${fmtMoneda(prop.ingrediente_sugerido_costo_kg)}/kg)</span>` : ''}
-                        ${prop.precio_objetivo_vecino ? `<span>🎯 Target Vecino: <strong style="color:#38bdf8;">${fmtMoneda(prop.precio_objetivo_vecino)}</strong></span>` : ''}
+                        ${prop.precio_objetivo_vecino ? `<span>🎯 Precio estimado vecino: <strong style="color:#38bdf8;">${fmtMoneda(prop.precio_objetivo_vecino)}</strong></span>` : ''}
                     </div>
 
                     ${prop.comentario_gestor ? `<div style="font-size:0.75rem; color:#94a3b8; font-style:italic; background:rgba(0,0,0,0.25); padding:5px 8px; border-radius:6px;">"${escaparHtml(prop.comentario_gestor)}"</div>` : ''}
@@ -291,25 +296,25 @@
                     <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <div>
-                                <div style="font-weight:700; font-size:0.94rem; color:#f8fafc;">📥 Bandeja de Propuestas de Fracciones (Gestores → LAMDA)</div>
-                                <div style="font-size:0.75rem; color:#94a3b8;">Ninguna propuesta sale a la venta sin cotización y aprobación previa de LAMDA</div>
+                                <div style="font-weight:700; font-size:0.94rem; color:#f8fafc;">📥 Solicitudes de Nuevas Fracciones (Gestores → LAMDA)</div>
+                                <div style="font-size:0.75rem; color:#94a3b8;">Los pedidos de nuevas presentaciones ingresan aquí para cotizar y fijar su Precio Base Nodo</div>
                             </div>
                             <button onclick="window.NodosPizarra.abrirModalNuevaPropuesta()"
                                 style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; cursor:pointer; border:1px solid #38bdf8; background:rgba(56,189,248,0.16); color:#bae6fd;">
-                                ➕ Simular Pedido de Gestor
+                                ➕ Nueva Solicitud
                             </button>
                         </div>
 
                         <div style="display:flex; flex-direction:column; gap:9px; max-height:390px; overflow-y:auto; padding-right:4px;">
-                            ${propuestasHtml || '<div style="color:#64748b; font-size:0.82rem; padding:12px;">No hay propuestas registradas.</div>'}
+                            ${propuestasHtml || '<div style="color:#64748b; font-size:0.82rem; padding:12px;">No hay solicitudes registradas.</div>'}
                         </div>
                     </div>
 
                     <!-- EXPLORADOR DIRECTO DE INSUMOS / RECETAS POR FLUJO (1 AL 6) -->
                     <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
-                            <div style="font-weight:700; font-size:0.9rem; color:#f8fafc;">🧭 Selector Rápido desde los 6 Flujos de la Pizarra</div>
-                            <input type="text" id="nodos-search-fuentes" placeholder="🔍 Buscar insumo, mix, granola, barrita..."
+                            <div style="font-weight:700; font-size:0.9rem; color:#f8fafc;">🧭 Elegir Producto o Receta de la Pizarra</div>
+                            <input type="text" id="nodos-search-fuentes" placeholder="🔍 Buscar almendra, mix, granola, barrita..."
                                 value="${escaparHtml(ESTADO_NODOS.busquedaFuentes)}"
                                 oninput="window.NodosPizarra.filtrarFuentesRapidas(this.value)"
                                 style="padding:5px 10px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.78rem; width:220px;">
@@ -325,10 +330,10 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2e3c51; padding-bottom:10px; margin-bottom:14px;">
                         <div>
                             <div style="font-size:1rem; font-weight:800; color:#f8fafc;" id="mesa-cotizacion-titulo">
-                                🧮 Mesa de Cotización y Aprobación de Fracción para Nodos
+                                🧮 Cotizador de Fracciones Familiares
                             </div>
                             <div style="font-size:0.76rem; color:#94a3b8;" id="mesa-cotizacion-subtitulo">
-                                Seleccione cualquiera de los 6 Flujos o cargue una propuesta de la bandeja izquierda.
+                                Seleccione un flujo productivo o cargue una solicitud de la bandeja izquierda.
                             </div>
                         </div>
                         <button onclick="window.NodosPizarra.limpiarMesaCotizacion()"
@@ -340,7 +345,7 @@
                     <!-- SELECTOR DE LOS 6 FLUJOS DE LA PIZARRA -->
                     <div style="margin-bottom:12px;">
                         <label style="display:block; font-size:0.74rem; color:#94a3b8; font-weight:700; margin-bottom:6px; text-transform:uppercase;">
-                            1. Flujo Productivo de Origen en la Pizarra LAMDA (1 al 6)
+                            1. Línea / Flujo Productivo de Origen
                         </label>
                         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px;">
                             ${[1, 2, 3, 4, 5, 6].map(num => {
@@ -359,27 +364,27 @@
                     <!-- DATOS DE ORIGEN, FRACCIÓN Y ENVASE -->
                     <div style="display:grid; grid-template-columns: 1.5fr 1fr 0.9fr; gap:10px; margin-bottom:10px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Insumo / Mix / UP Origen (${FLUJO_META[flujoActual].corto})</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Producto / Receta Base (${FLUJO_META[flujoActual].corto})</label>
                             <select id="cot-origen-select" onchange="window.NodosPizarra.alCambiarOrigenSelect()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.82rem;">
                                 ${opcionesInsumoFlujo}
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Costo Base Origen ($ / Kg vivo)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Costo por Kilo ($ / Kg)</label>
                             <input type="number" id="cot-costo-kg" step="0.01" value="18109.43" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.86rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Kilos Fracción (ej: 0.25 = 250g)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Peso Fracción (Kg)</label>
                             <input type="number" id="cot-kilos-unidad" step="0.01" min="0.01" value="0.25" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; font-weight:800; font-size:0.86rem;">
                         </div>
                     </div>
 
-                    <!-- ATAJOS RÁPIDOS DE GRAMaje FAMILIAR -->
+                    <!-- ATAJOS RÁPIDOS DE GRAMAJE FAMILIAR -->
                     <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-                        <span style="font-size:0.73rem; color:#94a3b8;">Atajos presentación familiar:</span>
+                        <span style="font-size:0.73rem; color:#94a3b8;">Presentación rápida:</span>
                         ${[
                             { label: '100g', kg: 0.10 },
                             { label: '150g', kg: 0.15 },
@@ -400,17 +405,17 @@
                     <!-- IDENTIDAD COMERCIAL DEL ARTÍCULO EN EL PADRÓN DE NODOS -->
                     <div style="display:grid; grid-template-columns: 1.6fr 0.9fr 0.9fr; gap:10px; margin-bottom:12px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Nombre Público Familiar (Catálogo Nodos)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Nombre Comercial para el Vecino</label>
                             <input type="text" id="cot-nombre-publico" placeholder="Ej: Almendra Nonpareil Californiana x 250g"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">SKU Exclusivo Nodo</label>
-                            <input type="text" id="cot-sku-nodo" placeholder="Auto (ej: NB-ALM-250G)"
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Código Interno Nodo</label>
+                            <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: NB-ALM-250G)"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace; font-size:0.82rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Categoría Familiar</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Categoría en Tienda</label>
                             <input type="text" id="cot-categoria" value="Frutos Secos Puros"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.82rem;">
                         </div>
@@ -419,19 +424,19 @@
                     <!-- ENVASE, TIEMPO DE FRACCIONADO Y TARIFA HORARIA -->
                     <div style="display:grid; grid-template-columns: 1.3fr 0.8fr 1.2fr; gap:10px; margin-bottom:12px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Envase / Bolsa (<code>ingredientes.es_insumo=true</code>)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Envase / Bolsa</label>
                             <select id="cot-envase-select" onchange="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.81rem;">
                                 ${envasesOpts}
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Tiempo Fraccionado (seg)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Tiempo de Armado (seg)</label>
                             <input type="number" id="cot-segundos-mo" step="1" min="0" value="35" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Tarifa Mano de Obra (<code>colaboradores_tarifas</code>)</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Operario / Valor Hora</label>
                             <select id="cot-tarifa-select" onchange="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.81rem;">
                                 ${tarifasOpts}
@@ -442,12 +447,12 @@
                     <!-- MÁRGENES E IMPUESTOS (LAMDA + IMPUESTOS + SIMULACIÓN GESTOR) -->
                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:14px;">
                         <div>
-                            <label style="display:block; font-size:0.73rem; color:#34d399; font-weight:700; margin-bottom:4px;">Margen Mayorista LAMDA (%)</label>
+                            <label style="display:block; font-size:0.73rem; color:#34d399; font-weight:700; margin-bottom:4px;">Margen LAMDA (%)</label>
                             <input type="number" id="cot-margen-lamda" step="0.5" value="22" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:7px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#34d399; font-weight:800;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">Alícuota IVA (%)</label>
+                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">IVA (%)</label>
                             <select id="cot-iva-pct" onchange="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:7px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                                 <option value="21" selected>21.0% (General)</option>
@@ -456,12 +461,12 @@
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">Ingresos Brutos IIBB (%)</label>
+                            <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:4px;">Ingresos Brutos (%)</label>
                             <input type="number" id="cot-iibb-pct" step="0.1" value="3.5" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:7px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.73rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">Margen Sugerido Gestor (%)</label>
+                            <label style="display:block; font-size:0.73rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">Margen Sugerido Nodo (%)</label>
                             <input type="number" id="cot-margen-gestor" step="0.5" value="28" oninput="window.NodosPizarra.recalcularEnVivo()"
                                 style="width:100%; padding:7px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800;">
                         </div>
@@ -469,15 +474,14 @@
 
                     <!-- RADIOGRAFÍA DE COSTOS EN CASCADA (EN VIVO) -->
                     <div id="cot-radiografia-box" style="background:rgba(15,23,42,0.9); border:1px solid #334155; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
-                        <!-- Poblado en vivo por recalcularMesaCotizacionEnVivo -->
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                        <input type="text" id="cot-notas-tecnicas" placeholder="Notas técnicas o mensaje de respuesta al gestor del Nodo..."
+                        <input type="text" id="cot-notas-tecnicas" placeholder="Observación o nota para el gestor del Nodo..."
                             style="flex:1; padding:9px 12px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem;">
                         <button type="button" onclick="window.NodosPizarra.aprobarYPublicarEnPadronNodos()"
                             style="padding:10px 18px; border-radius:8px; font-weight:800; font-size:0.86rem; cursor:pointer; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#ffffff; box-shadow: 0 4px 12px rgba(16,185,129,0.28);">
-                            🚀 Aprobar Precio Base Nodo y Publicar en Padrón
+                            🚀 Aprobar Precio Base y Habilitar en Nodos
                         </button>
                     </div>
                 </div>
@@ -577,7 +581,7 @@
 
         box.innerHTML = `
             <div style="font-size:0.74rem; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:8px;">
-                📊 Radiografía de Costos en Cascada (${Math.round(kilosUnidad * 1000)}g)
+                📊 Desglose de Costos por Presentación (${Math.round(kilosUnidad * 1000)}g)
             </div>
             <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-bottom:10px;">
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
@@ -585,14 +589,14 @@
                     <div style="font-size:0.95rem; font-weight:800; color:#f8fafc;">${fmtMoneda(costoInsumoFraccion, 2)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
-                    <div style="font-size:0.7rem; color:#94a3b8;">2. Envase + M. Obra (${segundos}s)</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">2. Envase + Armado (${segundos}s)</div>
                     <div style="font-size:0.95rem; font-weight:800; color:#f8fafc;">${fmtMoneda(costoEnvaseUnitario + costoManoObra, 2)}</div>
                     <div style="font-size:0.66rem; color:#64748b;">Bolsa ${fmtMoneda(costoEnvaseUnitario, 1)} + MO ${fmtMoneda(costoManoObra, 1)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
-                    <div style="font-size:0.7rem; color:#94a3b8;">3. Costo Puro + Margen LAMDA</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">3. Costo + Margen LAMDA</div>
                     <div style="font-size:0.95rem; font-weight:800; color:#34d399;">${fmtMoneda(precioBaseNeto, 2)}</div>
-                    <div style="font-size:0.66rem; color:#6ee7b7;">Costo puro ${fmtMoneda(costoPuroTotal, 0)} + Gan. LAMDA ${fmtMoneda(gananciaLamda, 0)}</div>
+                    <div style="font-size:0.66rem; color:#6ee7b7;">Costo ${fmtMoneda(costoPuroTotal, 0)} + Ganancia ${fmtMoneda(gananciaLamda, 0)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
                     <div style="font-size:0.7rem; color:#94a3b8;">4. IVA (${ivaPct}%) + IIBB (${iibbPct}%)</div>
@@ -604,17 +608,17 @@
                 <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.45); display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <div style="font-size:0.72rem; color:#6ee7b7; font-weight:800; text-transform:uppercase;">Precio Base LAMDA → Nodo</div>
-                        <div style="font-size:0.7rem; color:#94a3b8;">Cargo en Cuenta Corriente del Gestor</div>
+                        <div style="font-size:0.7rem; color:#94a3b8;">Valor en Cuenta Corriente del Gestor</div>
                     </div>
                     <div style="font-size:1.35rem; font-weight:900; color:#34d399;">${fmtMoneda(precioBaseNodoFinal)}</div>
                 </div>
 
                 <div style="padding:10px 12px; border-radius:8px; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.45); display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <div style="font-size:0.72rem; color:#bae6fd; font-weight:800; text-transform:uppercase;">PVP Sugerido al Vecino (+${margenGestorPct}%)</div>
+                        <div style="font-size:0.72rem; color:#bae6fd; font-weight:800; text-transform:uppercase;">Precio Sugerido al Vecino (+${margenGestorPct}%)</div>
                         <div style="font-size:0.7rem; color:#93c5fd;">
-                            Comisión Gestor: <strong>+${fmtMoneda(gananciaGestorUnitaria)}/u.</strong>
-                            ${targetVecino ? ` · Target pedido: ${fmtMoneda(targetVecino)}` : ''}
+                            Ganancia del Gestor: <strong>+${fmtMoneda(gananciaGestorUnitaria)}/u.</strong>
+                            ${targetVecino ? ` · Pedido gestor: ${fmtMoneda(targetVecino)}` : ''}
                         </div>
                     </div>
                     <div style="font-size:1.35rem; font-weight:900; color:#38bdf8;">${fmtMoneda(precioSugeridoVecino)}</div>
@@ -639,40 +643,38 @@
 
         return `
             <div style="display:flex; flex-direction:column; gap:14px;">
-                <!-- BARRA DE FILTROS CON POLÍTICA UNIVERSAL DE BÚSQUEDA LAMDA (FASE 49) -->
                 <div class="card" style="padding:12px 16px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:280px;">
-                        <input type="text" placeholder="🔍 Búsqueda Universal LAMDA (espacios = AND): nombre, SKU, insumo, gramaje..."
+                        <input type="text" placeholder="🔍 Buscar producto por nombre, código, ingrediente o peso..."
                             value="${escaparHtml(ESTADO_NODOS.busquedaCatalogo)}"
                             oninput="window.NodosPizarra.filtrarCatalogo(this.value)"
                             style="flex:1; padding:8px 12px; border-radius:8px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
 
                         <select onchange="window.NodosPizarra.filtrarFlujoCatalogo(this.value)"
                             style="padding:8px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem;">
-                            <option value="0" ${fFlujo === 0 ? 'selected' : ''}>Todos los Flujos (1..6)</option>
+                            <option value="0" ${fFlujo === 0 ? 'selected' : ''}>Todos los Flujos (1 al 6)</option>
                             ${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${fFlujo === n ? 'selected' : ''}>${FLUJO_META[n].corto}</option>`).join('')}
                         </select>
 
                         <select onchange="window.NodosPizarra.filtrarNodoOfertas(this.value)"
                             style="padding:8px 10px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem;">
-                            <option value="0" ${fNodo === 0 ? 'selected' : ''}>Ver Márgenes de Todos los Nodos</option>
+                            <option value="0" ${fNodo === 0 ? 'selected' : ''}>Todos los Nodos</option>
                             ${ESTADO_NODOS.nodos.map(n => `<option value="${n.id}" ${fNodo === Number(n.id) ? 'selected' : ''}>Nodo: ${escaparHtml(n.nombre_marca)}</option>`).join('')}
                         </select>
                     </div>
                 </div>
 
-                <!-- GRILLA DEL PADRÓN EXCLUSIVO DE NODOS Y OFERTAS POR GESTOR -->
                 <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px; overflow-x:auto;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.81rem; color:#e2e8f0;">
                         <thead>
                             <tr style="background:#0f172a; color:#94a3b8; text-align:left; border-bottom:1px solid #334155;">
-                                <th style="padding:10px;">SKU / Flujo</th>
-                                <th style="padding:10px;">Producto Familiar (Padrón Nodos)</th>
-                                <th style="padding:10px;">Insumo Base (Vivo)</th>
-                                <th style="padding:10px;">Materia + Envase + MO</th>
+                                <th style="padding:10px;">Código / Flujo</th>
+                                <th style="padding:10px;">Producto Familiar</th>
+                                <th style="padding:10px;">Insumo Base</th>
+                                <th style="padding:10px;">Costo Total</th>
                                 <th style="padding:10px;">Margen LAMDA</th>
-                                <th style="padding:10px; color:#34d399;">Precio Base Nodo (Final)</th>
-                                <th style="padding:10px; color:#38bdf8;">Márgenes y PVP Vecino por Nodo</th>
+                                <th style="padding:10px; color:#34d399;">Precio Base Nodo</th>
+                                <th style="padding:10px; color:#38bdf8;">Márgenes y Precio al Vecino por Nodo</th>
                                 <th style="padding:10px; text-align:right;">Acción</th>
                             </tr>
                         </thead>
@@ -696,7 +698,7 @@
                                             <div style="font-weight:700; color:#f8fafc; font-size:0.88rem;">${escaparHtml(cat.nombre_publico)}</div>
                                             <div style="font-size:0.74rem; color:#94a3b8;">
                                                 Presentación: <strong>${escaparHtml(cat.presentacion_etiqueta || `${Math.round(Number(cat.kilos_unidad) * 1000)}g`)}</strong>
-                                                · Categoría: ${escaparHtml(cat.categoria_familiar)}
+                                                · ${escaparHtml(cat.categoria_familiar)}
                                             </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
@@ -706,7 +708,7 @@
                                         <td style="padding:10px; vertical-align:top;">
                                             <div>Puro: <strong>${fmtMoneda(cat.costo_puro_total, 2)}</strong></div>
                                             <div style="font-size:0.72rem; color:#94a3b8;">
-                                                MP ${fmtMoneda(cat.costo_insumo_fraccion, 0)} + Env ${fmtMoneda(cat.costo_envase_aplicado, 0)} + MO ${fmtMoneda(cat.costo_mano_obra_aplicado, 0)}
+                                                MP ${fmtMoneda(cat.costo_insumo_fraccion, 0)} + Bolsa ${fmtMoneda(cat.costo_envase_aplicado, 0)} + MO ${fmtMoneda(cat.costo_mano_obra_aplicado, 0)}
                                             </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
@@ -744,7 +746,7 @@
                                         <td style="padding:10px; vertical-align:top; text-align:right;">
                                             <button onclick="window.NodosPizarra.editarArticuloCatalogoEnMesa(${cat.id})"
                                                 style="padding:5px 9px; border-radius:6px; font-size:0.74rem; font-weight:700; border:1px solid #334155; background:#0f172a; color:#cbd5e1; cursor:pointer;">
-                                                ✏️ Recotizar
+                                                ✏️ Editar
                                             </button>
                                         </td>
                                     </tr>
@@ -758,7 +760,7 @@
     }
 
     // =========================================================================
-    // SUB-PESTAÑA 3: ABM DE NODOS BARRIALES + CONVERSOR ZPL ^GFA + PREVIEW ZEBRA
+    // SUB-PESTAÑA 3: ABM DE NODOS BARRIALES + LOGO TÉRMICO + PREVIEW ZEBRA LIMPIO
     // =========================================================================
     function renderizarSubTabAbmNodos() {
         const cuentasOpts = ESTADO_NODOS.fuentes.cuentas_bancarias.map(c =>
@@ -773,8 +775,8 @@
                 <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                         <div>
-                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales Registrados</div>
-                            <div style="font-size:0.74rem; color:#94a3b8;">Cada Nodo opera con su marca blanca, cuenta corriente y alias</div>
+                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales Activos</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo para configurar su marca, entregas o etiqueta</div>
                         </div>
                         <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
                             style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7; cursor:pointer;">
@@ -785,46 +787,58 @@
                     <div style="display:flex; flex-direction:column; gap:10px;">
                         ${ESTADO_NODOS.nodos.map(n => `
                             <div onclick="window.NodosPizarra.cargarNodoEnFormularioAbm(${n.id})"
-                                style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : '#334155'}; cursor:pointer; display:flex; gap:12px; align-items:center;">
-                                <div style="width:74px; height:40px; background:#ffffff; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
-                                    ${n.logo_mono_preview_base64
-                                        ? `<img src="${n.logo_mono_preview_base64}" style="max-width:100%; max-height:100%; image-rendering:pixelated;" alt="Logo ZPL">`
-                                        : `<span style="color:#000; font-weight:800; font-size:0.75rem;">ZPL</span>`}
+                                style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : '#334155'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
+                                <div style="display:flex; gap:12px; align-items:center;">
+                                    <div style="width:74px; height:40px; background:#ffffff; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                                        ${n.logo_mono_preview_base64
+                                            ? `<img src="${n.logo_mono_preview_base64}" style="max-width:100%; max-height:100%; image-rendering:pixelated;" alt="Logo">`
+                                            : `<span style="color:#000; font-weight:800; font-size:0.75rem;">LOGO</span>`}
+                                    </div>
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <span style="font-weight:800; color:#f8fafc; font-size:0.9rem;">${escaparHtml(n.nombre_marca)}</span>
+                                            <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
+                                        </div>
+                                        <div style="font-size:0.75rem; color:#cbd5e1; margin-top:2px;">
+                                            👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || '')}
+                                        </div>
+                                        <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
+                                            <span>📒 Saldo Cta.Cte: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
+                                            <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'S/A')}</strong></span>
+                                            <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong></span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style="flex:1; min-width:0;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <span style="font-weight:800; color:#f8fafc; font-size:0.9rem;">${escaparHtml(n.nombre_marca)}</span>
-                                        <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
-                                    </div>
-                                    <div style="font-size:0.75rem; color:#cbd5e1; margin-top:2px;">
-                                        👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || '')}
-                                    </div>
-                                    <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
-                                        <span>📒 Cta.Cte: <strong style="color:#34d399;">${escaparHtml(n.codigo_bunker_cliente || 'Auto')}</strong> (${fmtMoneda(n.saldo_cuenta_corriente)})</span>
-                                        <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'S/A')}</strong></span>
-                                        <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong> (100% Gestor)</span>
-                                    </div>
+                                <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6);" onclick="event.stopPropagation();">
+                                    <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
+                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
+                                        🎛️ Panel Gestor ↗
+                                    </a>
+                                    <a href="/tienda/${escaparHtml(n.slug)}" target="_blank"
+                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#6ee7b7;">
+                                        🏪 Tienda Vecinos ↗
+                                    </a>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 </div>
 
-                <!-- COLUMNA DERECHA: FORMULARIO ABM + CONVERSOR ZPL ^GFA + PREVISUALIZADOR ETIQUETA ZEBRA -->
+                <!-- COLUMNA DERECHA: FORMULARIO ABM + LOGO TÉRMICO + SIMULADOR ETIQUETA ZEBRA -->
                 <div style="display:flex; flex-direction:column; gap:14px;">
                     <div class="card" style="padding:16px; background:#151e2e; border:1px solid rgba(167,139,250,0.4); border-radius:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2e3c51; padding-bottom:10px; margin-bottom:12px;">
                             <div>
                                 <div style="font-size:0.98rem; font-weight:800; color:#f8fafc;" id="abm-nodo-form-title">
-                                    🏷️ Configuración de Identidad Marca Blanca, Alias Recaudador y Logo ZPL (^GFA)
+                                    🏷️ Datos del Nodo, Cobranza y Logo para Etiqueta
                                 </div>
                                 <div style="font-size:0.75rem; color:#94a3b8;">
-                                    Vinculación automática con <code>bunker_clientes</code>, <code>factura_cuentas_corrientes</code> y <code>fin_cuentas_bancarias</code>.
+                                    Cada Nodo cuenta con su propia tienda vecinal, cuenta corriente y diseño de etiqueta térmica.
                                 </div>
                             </div>
                             <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
                                 style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #8b5cf6, #6d28d9); color:#ffffff; cursor:pointer;">
-                                💾 Guardar Nodo Barrial
+                                💾 Guardar Cambios del Nodo
                             </button>
                         </div>
 
@@ -832,17 +846,17 @@
 
                         <div style="display:grid; grid-template-columns: 1.3fr 1fr 1fr; gap:10px; margin-bottom:10px;">
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre de Marca del Nodo (Visible al Vecino)</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre de la Marca del Nodo</label>
                                 <input type="text" id="abm-nombre-marca" placeholder="Ej: Almacén Verde City Bell"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Slug URL Tienda (<code>/:nodoSlug</code>)</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Dirección Web de la Tienda (Link para vecinos)</label>
                                 <input type="text" id="abm-slug" placeholder="almacen-verde-city-bell"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#38bdf8; font-family:monospace;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Subtítulo Etiqueta / Bajada</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Bajada / Subtítulo de Marca</label>
                                 <input type="text" id="abm-subtitulo" placeholder="Alimentación Consciente - Entrega Barrial"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                             </div>
@@ -850,22 +864,22 @@
 
                         <div style="display:grid; grid-template-columns: 1fr 0.9fr 1fr 1.3fr; gap:10px; margin-bottom:10px;">
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre Gestor Barrial</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre del Gestor</label>
                                 <input type="text" id="abm-gestor-nombre" placeholder="Carolina Méndez"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">WhatsApp Gestor</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">WhatsApp del Gestor</label>
                                 <input type="text" id="abm-gestor-tel" placeholder="5492215548910"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Barrio / Zona de Cobertura</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Barrio / Zona</label>
                                 <input type="text" id="abm-barrio" placeholder="City Bell / Cantilo"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Punto de Retiro Vecinal)</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Retiro de Vecinos)</label>
                                 <input type="text" id="abm-direccion" placeholder="Cantilo 452 e/ 13c y 14, City Bell"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
                             </div>
@@ -874,125 +888,131 @@
                         <!-- CONFIGURACIÓN BANCARIA Y CARGO DE ENVÍO BARRIAL (100% GESTOR) -->
                         <div style="display:grid; grid-template-columns: 1.4fr 1fr 0.8fr 0.8fr; gap:10px; margin-bottom:12px; padding:10px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244;">
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Cuenta Recaudadora LAMDA (<code>fin_cuentas_bancarias</code>)</label>
+                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Cuenta Bancaria Recaudadora</label>
                                 <select id="abm-cuenta-bancaria"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.79rem;">
                                     ${cuentasOpts}
                                 </select>
                                 <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.71rem; color:#94a3b8; margin-top:4px; cursor:pointer;">
                                     <input type="checkbox" id="abm-cuenta-compartida">
-                                    Cuenta compartida multi-Nodo (conciliación por <code>titular_normalizado</code>)
+                                    Usar cuenta recaudadora compartida (conciliación automática de vecinos)
                                 </label>
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Alias Visible al Vecino</label>
+                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Alias Bancario Visible al Vecino</label>
                                 <input type="text" id="abm-alias-display" placeholder="ALMACEN.VERDE.CB"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.81rem;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#34d399; font-weight:700; margin-bottom:3px;">Cargo Envío Barrial ($)</label>
+                                <label style="display:block; font-size:0.72rem; color:#34d399; font-weight:700; margin-bottom:3px;">Costo Envío Barrial ($)</label>
                                 <input type="number" id="abm-cargo-envio" step="100" value="1500"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #10b981; background:#0f172a; color:#34d399; font-weight:800; font-size:0.81rem;">
-                                <div style="font-size:0.66rem; color:#6ee7b7; margin-top:2px;">100% a favor del Gestor</div>
+                                <div style="font-size:0.66rem; color:#6ee7b7; margin-top:2px;">100% para el Gestor</div>
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Margen Default (%)</label>
+                                <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Margen Inicial (%)</label>
                                 <input type="number" id="abm-margen-default" step="0.5" value="28"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.81rem;">
                             </div>
                         </div>
 
-                        <!-- MOTOR CONVERSOR DE LOGO PNG/MONOGRAMA A ZPL ^GFA -->
+                        <!-- LOGO DEL NODO PARA ETIQUETA TÉRMICA -->
                         <div style="padding:12px; border-radius:10px; background:#0f172a; border:1px solid #334155;">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                                 <div>
-                                    <div style="font-weight:800; font-size:0.86rem; color:#f8fafc;">🖨️ Conversor de Logo Marca Blanca a Gráfico Térmico Zebra (<code>^GFA</code> 1-bit)</div>
-                                    <div style="font-size:0.73rem; color:#94a3b8;">Suba un PNG/JPG o genere un sello tipográfico; se convierte en matriz monocromática de 112×56 dots (784 bytes).</div>
+                                    <div style="font-weight:800; font-size:0.86rem; color:#f8fafc;">🖨️ Logo del Nodo para Etiqueta Térmica</div>
+                                    <div style="font-size:0.73rem; color:#94a3b8;">Suba una imagen PNG/JPG o genere un sello con las iniciales del Nodo para el encabezado de sus etiquetas.</div>
                                 </div>
                                 <div style="display:flex; gap:8px; align-items:center;">
                                     <label style="padding:6px 11px; border-radius:6px; font-size:0.75rem; font-weight:700; background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
-                                        📂 Subir Logo PNG/JPG
+                                        📂 Subir Imagen Logo
                                         <input type="file" accept="image/*" style="display:none;" onchange="window.NodosPizarra.subirArchivoLogo(event)">
                                     </label>
                                     <button type="button" onclick="window.NodosPizarra.regenerarLogoZplEnVivo()"
                                         style="padding:6px 11px; border-radius:6px; font-size:0.75rem; font-weight:700; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
-                                        ⚡ Generar Monograma / Actualizar ^GFA
+                                        ⚡ Actualizar Sello / Logo
                                     </button>
                                 </div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 150px 1fr 1.3fr; gap:12px; align-items:center;">
+                            <div style="display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:center;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:10px; border-radius:8px; border:1px solid #475569;">
-                                    <div style="font-size:0.68rem; color:#cbd5e1; font-weight:700;">PREVIEW 1-BIT (112×56)</div>
+                                    <div style="font-size:0.68rem; color:#cbd5e1; font-weight:700;">VISTA EN ETIQUETA</div>
                                     <div style="width:116px; height:60px; background:#ffffff; display:flex; align-items:center; justify-content:center; border:1px solid #000;">
-                                        <img id="abm-logo-preview-img" src="" alt="Preview 1-bit" style="max-width:112px; max-height:56px; image-rendering:pixelated;">
+                                        <img id="abm-logo-preview-img" src="" alt="Vista previa del logo" style="max-width:112px; max-height:56px; image-rendering:pixelated;">
                                     </div>
                                 </div>
 
-                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                                <div style="display:grid; grid-template-columns: 130px 190px 1fr; gap:10px; align-items:center;">
                                     <div>
-                                        <label style="display:block; font-size:0.7rem; color:#94a3b8;">Siglas Monograma</label>
+                                        <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Siglas del Sello</label>
                                         <input type="text" id="abm-logo-iniciales" maxlength="3" placeholder="AV" oninput="window.NodosPizarra.regenerarLogoZplEnVivo()"
-                                            style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-weight:800;">
+                                            style="width:100%; padding:6px 8px; border-radius:5px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-weight:800;">
                                     </div>
                                     <div>
-                                        <label style="display:block; font-size:0.7rem; color:#94a3b8;">Algoritmo Binarización</label>
+                                        <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Estilo de Impresión</label>
                                         <select id="abm-logo-mode" onchange="window.NodosPizarra.regenerarLogoZplEnVivo()"
-                                            style="width:100%; padding:5px; border-radius:5px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.76rem;">
-                                            <option value="threshold">Umbral Alto Contraste</option>
-                                            <option value="dither">Floyd-Steinberg Dither</option>
+                                            style="width:100%; padding:6px; border-radius:5px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.76rem;">
+                                            <option value="threshold">Trazo Nítido (Alto Contraste)</option>
+                                            <option value="dither">Sombreado Suave (Degradados)</option>
                                         </select>
                                     </div>
-                                    <div style="grid-column: span 2;">
-                                        <label style="display:block; font-size:0.7rem; color:#94a3b8;">Umbral Térmico (<span id="abm-threshold-val">138</span> / 255)</label>
+                                    <div>
+                                        <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Intensidad de Tinta Térmica (<span id="abm-threshold-val">138</span>)</label>
                                         <input type="range" id="abm-logo-threshold" min="40" max="220" value="138"
                                             oninput="document.getElementById('abm-threshold-val').textContent=this.value; window.NodosPizarra.regenerarLogoZplEnVivo()"
                                             style="width:100%;">
                                     </div>
                                 </div>
-
-                                <div>
-                                    <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Comando Nativo Zebra <code>^GFA</code> Generado:</label>
-                                    <textarea id="abm-logo-zpl-gfa" readonly rows="3"
-                                        style="width:100%; padding:6px; border-radius:6px; border:1px solid #334155; background:#090d16; color:#34d399; font-family:monospace; font-size:0.68rem; resize:none;"></textarea>
-                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- PREVISUALIZADOR EN PANTALLA DEL ROLLO TÉRMICO DE DOBLE COLUMNA (X=23 / X=443) -->
+                    <!-- PREVISUALIZADOR EN PANTALLA DE LA ETIQUETA TÉRMICA -->
                     <div class="card" style="padding:16px; background:#151e2e; border:1px solid rgba(56,189,248,0.4); border-radius:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                             <div>
                                 <div style="font-weight:800; font-size:0.94rem; color:#f8fafc;">
-                                    🎫 Simulador de Etiqueta Térmica Zebra en Rollo Doble Columna (<code>X=23</code> Portada / <code>X=443</code> Checklist)
+                                    🎫 Vista Previa de Etiqueta Térmica (Portada del Vecino + Checklist de Armado)
                                 </div>
                                 <div style="font-size:0.74rem; color:#94a3b8;">
-                                    Incluye paginación automática con <strong>Etiqueta de Continuación</strong> cuando el pedido supera los 6 renglones por etiqueta.
+                                    El peso de cada producto se preserva siempre visible al final y si hay más de 6 ítems se emite automáticamente una etiqueta de continuación.
                                 </div>
                             </div>
                             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                                 <button type="button" onclick="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                     style="padding:6px 11px; border-radius:7px; font-size:0.75rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.16); color:#6ee7b7; cursor:pointer;">
-                                    🖨️ Probar Pedido 4 Ítems (Pagado Transf.)
+                                    🖨️ Ver Ejemplo Pedido 4 Ítems (Pagado)
                                 </button>
                                 <button type="button" onclick="window.NodosPizarra.simularEtiquetaZebra('largo_continuacion')"
                                     style="padding:6px 11px; border-radius:7px; font-size:0.75rem; font-weight:700; border:1px solid #f59e0b; background:rgba(245,158,11,0.18); color:#fcd34d; cursor:pointer;">
-                                    📑 Probar Pedido Largo 9 Ítems (Con Etiqueta Continuación Hoja 1/2 y 2/2)
+                                    📑 Ver Ejemplo Pedido Largo 9 Ítems (2 Hojas)
                                 </button>
                             </div>
                         </div>
 
-                        <div id="abm-etiqueta-preview-box" style="display:grid; grid-template-columns: 1.35fr 0.65fr; gap:12px; align-items:start;">
-                            <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px; text-align:center; overflow:auto;">
-                                <img id="abm-rollo-preview-img" src="" alt="Preview Rollo Doble Columna" style="max-width:100%; height:auto; border-radius:6px;">
-                            </div>
-                            <div>
-                                <div style="font-size:0.73rem; color:#94a3b8; font-weight:700; margin-bottom:4px;">Código ZPL II Emitido al Puente Zebra (<code>:3099</code>):</div>
-                                <textarea id="abm-rollo-zpl-code" readonly rows="13"
-                                    style="width:100%; padding:8px; border-radius:8px; border:1px solid #334155; background:#090d16; color:#38bdf8; font-family:monospace; font-size:0.7rem;"></textarea>
-                            </div>
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:12px; text-align:center; overflow:auto;">
+                            <img id="abm-rollo-preview-img" src="" alt="Vista Previa de Etiqueta Térmica" style="max-width:100%; height:auto; border-radius:6px;">
                         </div>
+
+                        <!-- BLOQUE COLAPSABLE OPCIONAL PARA CÓDIGO TÉCNICO ZPL -->
+                        <details style="margin-top:10px; background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:8px 12px;">
+                            <summary style="cursor:pointer; font-size:0.76rem; color:#64748b; font-weight:700; user-select:none;">
+                                🔧 Ver código técnico ZPL de impresora (opcional)
+                            </summary>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:8px;">
+                                <div>
+                                    <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Gráfico de Logo (^GFA):</label>
+                                    <textarea id="abm-logo-zpl-gfa" readonly rows="4"
+                                        style="width:100%; padding:6px; border-radius:6px; border:1px solid #334155; background:#090d16; color:#34d399; font-family:monospace; font-size:0.68rem; resize:vertical;"></textarea>
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:0.7rem; color:#94a3b8; margin-bottom:3px;">Comandos de Impresión de Etiqueta:</label>
+                                    <textarea id="abm-rollo-zpl-code" readonly rows="4"
+                                        style="width:100%; padding:6px; border-radius:6px; border:1px solid #334155; background:#090d16; color:#38bdf8; font-family:monospace; font-size:0.68rem; resize:vertical;"></textarea>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -1088,7 +1108,7 @@
         const subEl = document.getElementById('mesa-cotizacion-subtitulo');
 
         if (titEl) titEl.innerHTML = `🧮 Cotizando Solicitud ${escaparHtml(prop.codigo_propuesta)} (${escaparHtml(prop.nodo_solicitante_nombre || 'Nodo')})`;
-        if (subEl) subEl.innerHTML = `Target solicitado por el gestor: <strong style="color:#38bdf8;">${prop.precio_objetivo_vecino ? fmtMoneda(prop.precio_objetivo_vecino) : 'Abierto'}</strong>`;
+        if (subEl) subEl.innerHTML = `Precio estimado al vecino por el gestor: <strong style="color:#38bdf8;">${prop.precio_objetivo_vecino ? fmtMoneda(prop.precio_objetivo_vecino) : 'Abierto'}</strong>`;
 
         if (prop.ingrediente_sugerido_id && selectEl) {
             selectEl.value = String(prop.ingrediente_sugerido_id);
@@ -1207,7 +1227,7 @@
                         <div style="text-align:left; font-size:0.9rem;">
                             <p><strong>${escaparHtml(data.articulo.nombre_publico)}</strong> (<code>${escaparHtml(data.articulo.sku_nodo)}</code>)</p>
                             <p>✅ <strong>Precio Base LAMDA → Nodo:</strong> ${fmtMoneda(data.calculo.precio_base_nodo_final)}</p>
-                            <p>🏘️ <strong>PVP Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)}</p>
+                            <p>🏘️ <strong>Precio Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)}</p>
                         </div>
                     `,
                     background: '#151e2e',
@@ -1230,10 +1250,10 @@
     async function abrirModalNuevaPropuesta() {
         if (!window.Swal) return;
         const nodosOpts = ESTADO_NODOS.nodos.map(n => `<option value="${n.id}">${escaparHtml(n.nombre_marca)} (${escaparHtml(n.gestor_nombre)})</option>`).join('');
-        const ingOpts = ESTADO_NODOS.fuentes.ingredientes_por_flujo.map(i => `<option value="${i.id}" data-flujo="${i.flujo}">[${FLUJO_META[i.flujo]?.corto || 'LDN'}] ${escaparHtml(i.nombre)} (${fmtMoneda(i.costo_kg)}/kg)</option>`).join('');
+        const ingOpts = ESTADO_NODOS.fuentes.ingredientes_por_flujo.map(i => `<option value="${i.id}" data-flujo="${i.flujo}">[${FLUJO_META[i.flujo]?.corto || 'Flujo'}] ${escaparHtml(i.nombre)} (${fmtMoneda(i.costo_kg)}/kg)</option>`).join('');
 
         const { value: formValues } = await Swal.fire({
-            title: '➕ Simular Solicitud de Fracción desde un Nodo',
+            title: '➕ Nueva Solicitud de Fracción de un Nodo',
             background: '#151e2e',
             color: '#f8fafc',
             width: '620px',
@@ -1244,7 +1264,7 @@
                         <select id="swal-prop-nodo" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">${nodosOpts}</select>
                     </div>
                     <div>
-                        <label>Ingrediente / Mix / UP de interés:</label>
+                        <label>Producto / Receta de interés:</label>
                         <select id="swal-prop-ing" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">${ingOpts}</select>
                     </div>
                     <div>
@@ -1257,19 +1277,19 @@
                             <input id="swal-prop-kilos" type="number" step="0.05" value="0.25" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                         </div>
                         <div>
-                            <label>Precio Target Vecino ($ opcional):</label>
+                            <label>Precio Estimado al Vecino ($ opcional):</label>
                             <input id="swal-prop-target" type="number" step="100" value="6500" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                         </div>
                     </div>
                     <div>
-                        <label>Comentario del Gestor para LAMDA:</label>
+                        <label>Comentario del Gestor:</label>
                         <input id="swal-prop-comentario" class="swal2-input" placeholder="Ej: Muy pedido en el grupo de WhatsApp del barrio" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                     </div>
                 </div>
             `,
             focusConfirm: false,
             showCancelButton: true,
-            confirmButtonText: 'Enviar a Bandeja de Cotización LAMDA',
+            confirmButtonText: 'Enviar a Bandeja de Cotización',
             cancelButtonText: 'Cancelar',
             preConfirm: () => {
                 const ingSelect = document.getElementById('swal-prop-ing');
@@ -1323,8 +1343,8 @@
             if (window.Swal) {
                 Swal.fire({
                     icon: 'success',
-                    title: 'Cascada de Nodos Sincronizada',
-                    text: `Se recalcularon ${data.actualizados} artículos del padrón de Nodos con los costos vivos de los 6 Flujos.`,
+                    title: 'Precios Base Actualizados',
+                    text: `Se actualizaron ${data.actualizados} productos del catálogo de Nodos con los costos vigentes de la Pizarra.`,
                     timer: 2200,
                     showConfirmButton: false,
                     background: '#151e2e',
@@ -1369,7 +1389,7 @@
     }
 
     // =========================================================================
-    // FUNCIONES DEL ABM DE NODOS + CONVERSOR ZPL ^GFA + SIMULADOR ETIQUETA
+    // FUNCIONES DEL ABM DE NODOS + LOGO TÉRMICO + SIMULADOR ETIQUETA
     // =========================================================================
     let logoOriginalSubidoBase64 = null;
 
@@ -1472,25 +1492,25 @@
     async function simularEtiquetaZebra(modo = 'estandar_pagado') {
         try {
             const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'ALMACEN VERDE CITY BELL';
-            const subtitulo = document.getElementById('abm-subtitulo')?.value || 'Comunidad Barrial - Entrega Fresca';
+            const subtitulo = document.getElementById('abm-subtitulo')?.value || 'Alimentacion Consciente - Entrega Barrial';
             const direccion = document.getElementById('abm-direccion')?.value || 'Cantilo 452 e/ 13c y 14 - City Bell';
             const logoGfa = document.getElementById('abm-logo-zpl-gfa')?.value || '';
             const logoMono = document.getElementById('abm-logo-preview-img')?.src || '';
 
             const itemsEstandar = [
                 { cantidad: 2, descripcion: 'Almendra Nonpareil Californiana x 250g' },
-                { cantidad: 1, descripcion: 'Mix Frutos Secos con Pasas x 500g' },
-                { cantidad: 1, descripcion: 'Castana de Caju Tostada x 250g' },
-                { cantidad: 1, descripcion: 'Granola de Sol Crocante x 500g' }
+                { cantidad: 1, descripcion: 'Mix Frutos Secos con Pasas Familiar x 500g' },
+                { cantidad: 1, descripcion: 'Castana de Caju Tostada Artesanal x 250g' },
+                { cantidad: 1, descripcion: 'Granola de Sol Crocante con Miel x 500g' }
             ];
 
             const itemsLargo = [
                 ...itemsEstandar,
-                { cantidad: 2, descripcion: 'Pack Familiar 6 Barritas Energeticas' },
-                { cantidad: 1, descripcion: 'Nuez Mariposa Extra Light x 250g' },
-                { cantidad: 1, descripcion: 'Arandanos Pasas Deshidratados x 250g' },
-                { cantidad: 2, descripcion: 'Coco en Escamas Natural x 200g' },
-                { cantidad: 1, descripcion: 'Pistacho Tostado y Salado x 200g' }
+                { cantidad: 2, descripcion: 'Pack Familiar 6 Barritas Energeticas (6 x 50g)' },
+                { cantidad: 1, descripcion: 'Nuez Mariposa Extra Light Seleccionada x 250g' },
+                { cantidad: 1, descripcion: 'Arandanos Pasas Deshidratados Premium x 250g' },
+                { cantidad: 2, descripcion: 'Coco en Escamas Natural Importado x 200g' },
+                { cantidad: 1, descripcion: 'Pistacho con Cascara Tostado y Salado x 200g' }
             ];
 
             const esLargo = modo === 'largo_continuacion';
@@ -1575,7 +1595,7 @@
                 Swal.fire({
                     icon: 'success',
                     title: 'Nodo Barrial Guardado',
-                    text: `${data.nodo.nombre_marca} (${data.nodo.codigo_bunker_cliente}) actualizado con gráfico térmico ZPL ^GFA.`,
+                    text: `${data.nodo.nombre_marca} actualizado correctamente.`,
                     timer: 2200,
                     showConfirmButton: false,
                     background: '#151e2e',
@@ -1638,7 +1658,6 @@
 
     window.recargarModuloNodosBarriales = () => cargarDatosNodosBarriales(true);
 
-    // Precargar badge de propuestas pendientes al abrir la Pizarra
     document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             fetch('/api/produccion/nodos/inicializar')
@@ -1653,7 +1672,6 @@
                         ESTADO_NODOS.inicializado = true;
                         actualizarBadgePropuestasPendientes();
 
-                        // Si se abrió con ?tab=nodos en la URL, activar directamente la pestaña 7
                         const params = new URLSearchParams(window.location.search);
                         if (params.get('tab') === 'nodos' && typeof window.cambiarContextoLDN === 'function') {
                             window.cambiarContextoLDN(7);

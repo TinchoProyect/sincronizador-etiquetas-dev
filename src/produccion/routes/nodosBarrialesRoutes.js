@@ -69,7 +69,7 @@ router.post('/preview-etiqueta', async (req, res) => {
 
 /**
  * POST /api/produccion/nodos/maestro
- * Crea un nuevo Nodo Barrial (con vínculo automático a bunker_clientes y factura_cuentas_corrientes)
+ * Crea un nuevo Nodo Barrial
  */
 router.post('/maestro', async (req, res) => {
     try {
@@ -111,8 +111,8 @@ router.post('/propuestas', async (req, res) => {
 
 /**
  * POST /api/produccion/nodos/cotizar-aprobar
- * Cotiza en Pizarra una fracción (nueva o desde propuesta), la aprueba en el catálogo aislado
- * de Nodos y propaga el Precio Base Nodo a las ofertas de los gestores.
+ * Cotiza en Pizarra una fracción, la aprueba en el catálogo aislado de Nodos
+ * y propaga el Precio Base Nodo a las ofertas de los gestores.
  */
 router.post('/cotizar-aprobar', async (req, res) => {
     try {
@@ -149,6 +149,68 @@ router.put('/ofertas-gestor/:id', async (req, res) => {
         res.json({ ok: true, oferta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error actualizando oferta gestor:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// ENDPOINTS ETAPA 2: TIENDA MARCA BLANCA DEL VECINO Y PANEL DEL GESTOR
+// ============================================================================
+
+/**
+ * GET /api/produccion/nodos/portal/:slug
+ * Devuelve el catálogo publicado, horarios de corte, próxima entrega, pedidos y ofertas del Nodo
+ */
+router.get('/portal/:slug', async (req, res) => {
+    try {
+        const fechaSimulada = req.query.fecha_simulada || null;
+        const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /portal/:slug:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * PUT /api/produccion/nodos/gestor/:nodoId/config-logistica
+ * Actualiza desde el Panel del Gestor los días de entrega, horarios de corte,
+ * ventanas de retiro y costo de envío barrial (100% para el gestor).
+ */
+router.put('/gestor/:nodoId/config-logistica', async (req, res) => {
+    try {
+        const nodo = await nodosService.actualizarConfiguracionGestorNodo(req.params.nodoId, req.body || {});
+        res.json({ ok: true, nodo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/config-logistica:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/tienda/:slug/pedido
+ * Registra el pedido de un vecino desde la Tienda Marca Blanca
+ */
+router.post('/tienda/:slug/pedido', async (req, res) => {
+    try {
+        const resultado = await nodosService.crearPedidoVecinoTienda(req.params.slug, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /tienda/:slug/pedido:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/pedidos/:pedidoId/etiqueta
+ * Devuelve la etiqueta térmica Zebra en doble columna (PNG + ZPL) de un pedido vecinal
+ */
+router.get('/pedidos/:pedidoId/etiqueta', async (req, res) => {
+    try {
+        const etiqueta = await nodosService.generarEtiquetaDePedidoExistente(req.params.pedidoId);
+        res.json({ ok: true, ...etiqueta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /pedidos/:pedidoId/etiqueta:', error);
         res.status(400).json({ ok: false, error: error.message });
     }
 });

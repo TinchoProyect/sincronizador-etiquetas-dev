@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel del Gestor Barrial</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --accent: #16a34a;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 50px;
+    }
+    .top-bar {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 14px 20px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .top-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .nodo-selector {
+      background: #1e293b;
+      color: #ffffff;
+      border: 1px solid #334155;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+    .btn-top {
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #f8fafc;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-top.green {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 18px 16px;
+    }
+
+    /* Resumen de Métricas del Gestor */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .kpi-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .kpi-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .kpi-value {
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: #0f172a;
+      margin-top: 4px;
+    }
+    .kpi-sub {
+      font-size: 0.75rem;
+      color: #059669;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Pestañas del Panel del Gestor */
+    .tabs-bar {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+      padding-bottom: 4px;
+    }
+    .tab-btn {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #334155;
+      font-weight: 800;
+      font-size: 0.86rem;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-btn.active {
+      background: #0f172a;
+      color: #ffffff;
+      border-color: #0f172a;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+    th {
+      text-align: left;
+      padding: 10px;
+      background: #f8fafc;
+      color: #475569;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 11px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+
+    .input-sm {
+      padding: 6px 9px;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .btn-primary {
+      background: #16a34a;
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 9px;
+      font-weight: 800;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }
+    .switch-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="top-bar">
+    <div class="top-inner">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span style="font-size:1.35rem;">🎛️</span>
+        <div>
+          <div style="font-size:0.74rem; color:#94a3b8; font-weight:700; text-transform:uppercase;">Panel de Autogestión del Nodo</div>
+          <select id="gestor-nodo-select" class="nodo-selector" onchange="cambiarNodoGestor(this.value)"></select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
+          🔗 Copiar Link para Vecinos
+        </button>
+        <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top green">
+          🏪 Ver mi Tienda Vecinal ↗
+        </a>
+        <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
+          📊 Pizarra LAMDA
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Tarjetas de Resumen del Gestor -->
+    <div class="kpi-grid" id="gestor-kpis"></div>
+
+    <!-- Navegación del Panel del Gestor -->
+    <div class="tabs-bar">
+      <button type="button" class="tab-btn active" id="gtab-ofertas" onclick="cambiarTabGestor('ofertas')">
+        🛍️ Mi Oferta y Márgenes
+      </button>
+      <button type="button" class="tab-btn" id="gtab-logistica" onclick="cambiarTabGestor('logistica')">
+        ⏰ Días de Entrega, Corte y Envío Barrial
+      </button>
+      <button type="button" class="tab-btn" id="gtab-propuestas" onclick="cambiarTabGestor('propuestas')">
+        ✨ Pedir Nueva Fracción
+      </button>
+      <button type="button" class="tab-btn" id="gtab-pedidos" onclick="cambiarTabGestor('pedidos')">
+        📋 Pedidos de Vecinos
+      </button>
+    </div>
+
+    <div id="gestor-tab-content"></div>
+  </main>
+
+  <script>
+    const GSTATE = {
+      slug: '',
+      tab: 'ofertas',
+      nodo: null,
+      nodosDisponibles: [],
+      proximaEntrega: null,
+      ofertas: [],
+      propuestas: [],
+      pedidos: [],
+      ingredientesSugeribles: []
+    };
+
+    function fmt(n) {
+      return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function detectarSlugInicial() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('nodo')) return params.get('nodo');
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('gestor');
+      if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+      return 'almacen-verde-city-bell';
+    }
+
+    async function cargarPanelGestor() {
+      const resp = await fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`);
+      const data = await resp.json();
+      if (!data.ok) return;
+
+      GSTATE.nodo = data.nodo;
+      GSTATE.slug = data.nodo.slug;
+      GSTATE.nodosDisponibles = data.nodos_disponibles || [];
+      GSTATE.proximaEntrega = data.proxima_entrega;
+      GSTATE.ofertas = data.todas_ofertas_gestor || [];
+      GSTATE.propuestas = data.propuestas_nodo || [];
+      GSTATE.pedidos = data.pedidos_nodo || [];
+      GSTATE.ingredientesSugeribles = data.ingredientes_sugeribles || [];
+
+      const sel = document.getElementById('gestor-nodo-select');
+      if (sel) {
+        sel.innerHTML = GSTATE.nodosDisponibles.map(n =>
+          `<option value="${esc(n.slug)}" ${n.slug === GSTATE.slug ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`
+        ).join('');
+      }
+
+      const btnTienda = document.getElementById('btn-abrir-tienda');
+      if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
+
+      renderKpis();
+      renderTabActiva();
+    }
+
+    function cambiarNodoGestor(nuevoSlug) {
+      GSTATE.slug = nuevoSlug;
+      window.history.replaceState({}, '', `/gestor/${encodeURIComponent(nuevoSlug)}`);
+      cargarPanelGestor();
+    }
+
+    function copiarLinkTiendaVecinos() {
+      const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
+      navigator.clipboard.writeText(url);
+      alert(`✅ Link de tu tienda copiado para compartir en WhatsApp:\n${url}`);
+    }
+
+    function cambiarTabGestor(tab) {
+      GSTATE.tab = tab;
+      ['ofertas', 'logistica', 'propuestas', 'pedidos'].forEach(t => {
+        const el = document.getElementById(`gtab-${t}`);
+        if (el) el.classList.toggle('active', t === tab);
+      });
+      renderTabActiva();
+    }
+
+    function renderKpis() {
+      const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
+      let totalVentasVecinos = 0;
+      let gananciaTotalGestor = 0;
+      let gananciaPorEnvios = 0;
+
+      GSTATE.pedidos.forEach(p => {
+        totalVentasVecinos += Number(p.total_vecino || 0);
+        gananciaTotalGestor += Number(p.ganancia_total_gestor || 0);
+        gananciaPorEnvios += Number(p.cargo_envio_barrial || 0);
+      });
+
+      const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Sin configurar';
+
+      document.getElementById('gestor-kpis').innerHTML = `
+        <div class="kpi-card">
+          <div class="kpi-label">Productos Publicados</div>
+          <div class="kpi-value">${publicadas} <span style="font-size:0.85rem; font-weight:600; color:#64748b;">/ ${GSTATE.ofertas.length}</span></div>
+          <div class="kpi-sub">En tu tienda marca blanca</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Pedidos de Vecinos</div>
+          <div class="kpi-value">${GSTATE.pedidos.length}</div>
+          <div class="kpi-sub">Facturación vecinal: ${fmt(totalVentasVecinos)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Tu Ganancia Acumulada</div>
+          <div class="kpi-value" style="color:#16a34a;">${fmt(gananciaTotalGestor)}</div>
+          <div class="kpi-sub">Incluye ${fmt(gananciaPorEnvios)} (100% envíos barriales)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Próxima Entrega Activa</div>
+          <div class="kpi-value" style="font-size:1rem; margin-top:8px;">${esc(proxTxt)}</div>
+          <div class="kpi-sub">Alias cobros: ${esc(GSTATE.nodo.alias_bancario_display || 'S/A')}</div>
+        </div>
+      `;
+    }
+
+    function renderTabActiva() {
+      const box = document.getElementById('gestor-tab-content');
+      if (GSTATE.tab === 'ofertas') box.innerHTML = renderTabOfertas();
+      else if (GSTATE.tab === 'logistica') box.innerHTML = renderTabLogistica();
+      else if (GSTATE.tab === 'propuestas') box.innerHTML = renderTabPropuestas();
+      else box.innerHTML = renderTabPedidos();
+    }
+
+    // -------------------------------------------------------------------------
+    // TAB 1: MI OFERTA Y MÁRGENES
+    // -------------------------------------------------------------------------
+    function renderTabOfertas() {
+      return `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <div>
+              <h3 style="margin:0; font-size:1.05rem;">🛍️ Configurá tus Márgenes y Productos Publicados</h3>
+              <p style="margin:4px 0 0 0; font-size:0.82rem; color:#64748b;">
+                Ajustá el porcentaje de margen o el precio final al vecino; el sistema calcula tu ganancia neta por unidad al instante.
+              </p>
+            </div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto Familiar</th>
+                  <th>Presentación</th>
+                  <th>Costo Base Nodo</th>
+                  <th>Mi Margen (%)</th>
+                  <th>Precio al Vecino</th>
+                  <th>Mi Ganancia / u.</th>
+                  <th>Visible en Tienda</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${GSTATE.ofertas.map(of => `
+                  <tr>
+                    <td>
+                      <div style="font-weight:800; color:#0f172a;">${esc(of.nombre_publico)}</div>
+                      <div style="font-size:0.75rem; color:#64748b;">${esc(of.categoria_familiar)}</div>
+                    </td>
+                    <td>
+                      <span style="background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.78rem;">
+                        ${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}
+                      </span>
+                    </td>
+                    <td style="font-weight:700; color:#475569;">
+                      ${fmt(of.precio_base_nodo_final)}
+                    </td>
+                    <td>
+                      <input type="number" step="0.5" class="input-sm" style="width:78px; border-color:#0284c7; color:#0284c7;"
+                        value="${Number(of.margen_gestor_pct)}"
+                        onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" /> %
+                    </td>
+                    <td>
+                      <input type="number" step="50" class="input-sm" style="width:105px; border-color:#16a34a; color:#15803d;"
+                        value="${Math.round(Number(of.precio_venta_vecino))}"
+                        onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
+                    </td>
+                    <td>
+                      <span style="font-weight:900; color:#16a34a; font-size:0.95rem;">
+                        +${fmt(of.ganancia_unitaria_gestor)}
+                      </span>
+                    </td>
+                    <td>
+                      <label class="switch-label">
+                        <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
+                          onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
+                        <span style="color:${of.publicado_tienda ? '#16a34a' : '#94a3b8'};">
+                          ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
+                        </span>
+                      </label>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    async function guardarCambioOferta(ofertaId, body) {
+      await fetch(`/api/produccion/nodos/ofertas-gestor/${ofertaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      await cargarPanelGestor();
+    }
+
+    async function guardarPrecioDirectoOferta(ofertaId, base, nuevoPrecio) {
+      const margen = base > 0 ? Number((((nuevoPrecio - base) / base) * 100).toFixed(2)) : 0;
+      await guardarCambioOferta(ofertaId, {
+        margen_gestor_pct: Math.max(0, margen),
+        precio_venta_vecino: nuevoPrecio
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // TAB 2: DÍAS DE ENTREGA, HORARIOS DE CORTE Y ENVÍO BARRIAL
+    // -------------------------------------------------------------------------
+    function renderTabLogistica() {
+      const ventanas = Array.isArray(GSTATE.nodo.config_ventanas_corte) && GSTATE.nodo.config_ventanas_corte.length > 0
+        ? GSTATE.nodo.config_ventanas_corte
+        : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
+
+      const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+      return `
+        <div class="card">
+          <h3 style="margin:0 0 6px 0; font-size:1.05rem;">⏰ Días de Entrega, Horarios de Corte y Logística Barrial</h3>
+          <p style="margin:0 0 16px 0; font-size:0.82rem; color:#64748b;">
+            Si un vecino realiza su pedido después del horario de corte configurado, la tienda le asignará automáticamente la próxima fecha de entrega disponible.
+          </p>
+
+          <div id="ventanas-editor-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+            ${ventanas.map((v, idx) => `
+              <div class="ventana-item-row" style="display:grid; grid-template-columns: 1fr 1fr 0.8fr 1.3fr auto; gap:10px; align-items:end; background:#f8fafc; border:1px solid #e2e8f0; padding:12px; border-radius:10px;">
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Día de Entrega al Vecino</label>
+                  <select class="input-sm v-dia-entrega" style="width:100%;">
+                    ${diasSemana.map(d => `<option value="${d}" ${v.dia_entrega === d ? 'selected' : ''}>${d}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Día de Cierre (Corte)</label>
+                  <select class="input-sm v-cierre-dia" style="width:100%;">
+                    ${diasSemana.map(d => `<option value="${d}" ${v.cierre_dia === d ? 'selected' : ''}>${d}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Hora de Corte</label>
+                  <input type="time" class="input-sm v-cierre-hora" style="width:100%;" value="${esc(v.cierre_hora || '14:00')}" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Ventana Horaria de Retiro / Reparto</label>
+                  <input type="text" class="input-sm v-ventana-retiro" style="width:100%;" value="${esc(v.ventana_retiro || '17:00 a 20:00 hs')}" placeholder="Ej: 17:00 a 20:00 hs" />
+                </div>
+                <button type="button" onclick="eliminarVentanaRow(${idx})" style="padding:7px 10px; border-radius:7px; border:1px solid #fca5a5; background:#fef2f2; color:#dc2626; cursor:pointer; font-weight:700;">
+                  🗑️
+                </button>
+              </div>
+            `).join('')}
+          </div>
+
+          <button type="button" onclick="agregarVentanaRow()"
+            style="padding:7px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; font-weight:700; font-size:0.8rem; cursor:pointer; margin-bottom:18px;">
+            ➕ Agregar otro día de entrega semanal
+          </button>
+
+          <hr style="border:none; border-top:1px solid #e2e8f0; margin:16px 0;" />
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:18px;">
+            <div>
+              <label style="display:block; font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:4px;">Domicilio del Nodo (Para retiro de vecinos)</label>
+              <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:4px;">Costo de Envío a Domicilio Barrial ($)</label>
+              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%; border-color:#16a34a; color:#15803d;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" />
+              <div style="font-size:0.72rem; color:#059669; font-weight:700; margin-top:3px;">
+                ✅ El 100% del envío barrial se acredita a tu favor en la liquidación.
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; padding-top:16px;">
+              <label class="switch-label" style="font-size:0.86rem;">
+                <input type="checkbox" id="cfg-permitir-envio" ${GSTATE.nodo.permitir_envio_barrial ? 'checked' : ''} />
+                Habilitar opción de reparto a domicilio en mi barrio
+              </label>
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary" onclick="guardarConfigLogisticaGestor()">
+            💾 Guardar Configuración de Entregas y Envío
+          </button>
+        </div>
+      `;
+    }
+
+    function leerVentanasDesdeDom() {
+      const rows = Array.from(document.querySelectorAll('.ventana-item-row'));
+      return rows.map(r => ({
+        dia_entrega: r.querySelector('.v-dia-entrega').value,
+        cierre_dia: r.querySelector('.v-cierre-dia').value,
+        cierre_hora: r.querySelector('.v-cierre-hora').value || '14:00',
+        ventana_retiro: r.querySelector('.v-ventana-retiro').value || '17:00 a 20:00 hs'
+      }));
+    }
+
+    function agregarVentanaRow() {
+      const actual = leerVentanasDesdeDom();
+      actual.push({ dia_entrega: 'Sábado', cierre_dia: 'Viernes', cierre_hora: '14:00', ventana_retiro: '10:00 a 13:30 hs' });
+      GSTATE.nodo.config_ventanas_corte = actual;
+      renderTabActiva();
+    }
+
+    function eliminarVentanaRow(idx) {
+      const actual = leerVentanasDesdeDom();
+      if (actual.length <= 1) {
+        alert('Tu Nodo debe tener al menos un día de entrega configurado.');
+        return;
+      }
+      actual.splice(idx, 1);
+      GSTATE.nodo.config_ventanas_corte = actual;
+      renderTabActiva();
+    }
+
+    async function guardarConfigLogisticaGestor() {
+      const payload = {
+        config_ventanas_corte: leerVentanasDesdeDom(),
+        direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
+        cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
+        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked)
+      };
+
+      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        alert('✅ Días de entrega, horarios de corte y envío barrial actualizados.');
+        await cargarPanelGestor();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // TAB 3: SOLICITAR NUEVA FRACCIÓN FAMILIAR
+    // -------------------------------------------------------------------------
+    function renderTabPropuestas() {
+      return `
+        <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px; align-items:start;">
+          <div class="card">
+            <h3 style="margin:0 0 6px 0; font-size:1.02rem;">✨ Proponer Nueva Fracción o Presentación</h3>
+            <p style="margin:0 0 14px 0; font-size:0.8rem; color:#64748b;">
+              Solicitá un nuevo producto o gramaje pensado para las familias de tu barrio. Una vez cotizado y aprobado su Precio Base, aparecerá en tu pestaña de Ofertas para que le fijes tu margen.
+            </p>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Producto o ingrediente de interés</label>
+                <select id="prop-ing-id" class="input-sm" style="width:100%;">
+                  ${GSTATE.ingredientesSugeribles.map(i => `<option value="${i.id}">${esc(i.nombre)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Nombre sugerido de la presentación familiar</label>
+                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Castaña de Pará Pelada Familiar x 200g" />
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Peso por unidad (Kg, ej 0.25 = 250g)</label>
+                  <input type="number" step="0.05" id="prop-kilos" class="input-sm" style="width:100%;" value="0.25" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Precio estimado al vecino ($)</label>
+                  <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" value="6500" />
+                </div>
+              </div>
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Comentario o motivo del pedido</label>
+                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Muy pedido por las familias del barrio para viandas" />
+              </div>
+              <button type="button" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
+                🚀 Enviar Solicitud de Cotización
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin:0 0 12px 0; font-size:1.02rem;">📋 Estado de mis Solicitudes</h3>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              ${GSTATE.propuestas.map(p => `
+                <div style="padding:12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
+                    <span style="font-size:0.72rem; font-weight:800; padding:3px 8px; border-radius:999px; background:${p.estado === 'APROBADA' ? '#dcfce7' : '#fef3c7'}; color:${p.estado === 'APROBADA' ? '#15803d' : '#b45309'};">
+                      ${p.estado === 'APROBADA' ? '✅ APROBADA' : '⏳ EN COTIZACIÓN'}
+                    </span>
+                  </div>
+                  <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
+                    Presentación: <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
+                    ${p.precio_objetivo_vecino ? ` · Precio estimado: ${fmt(p.precio_objetivo_vecino)}` : ''}
+                  </div>
+                  ${p.respuesta_lamda ? `<div style="margin-top:6px; font-size:0.76rem; color:#15803d; font-weight:700;">💬 ${esc(p.respuesta_lamda)}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function enviarNuevaPropuestaGestor() {
+      const nombre = document.getElementById('prop-nombre').value.trim();
+      if (!nombre) {
+        alert('Por favor ingresá el nombre de la presentación sugerida.');
+        return;
+      }
+      const payload = {
+        nodo_solicitante_id: GSTATE.nodo.id,
+        ingrediente_sugerido_id: Number(document.getElementById('prop-ing-id').value),
+        nombre_sugerido: nombre,
+        kilos_sugeridos: Number(document.getElementById('prop-kilos').value || 0.25),
+        precio_objetivo_vecino: Number(document.getElementById('prop-target').value || 0),
+        comentario_gestor: document.getElementById('prop-comentario').value.trim()
+      };
+      const resp = await fetch('/api/produccion/nodos/propuestas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        alert('✅ Solicitud enviada a la bandeja de cotización.');
+        await cargarPanelGestor();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // TAB 4: PEDIDOS DE MIS VECINOS Y GANANCIAS
+    // -------------------------------------------------------------------------
+    function renderTabPedidos() {
+      return `
+        <div class="card">
+          <h3 style="margin:0 0 12px 0; font-size:1.05rem;">📋 Pedidos Recibidos de Vecinos</h3>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            ${GSTATE.pedidos.map(p => `
+              <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px; background:#ffffff;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; margin-bottom:10px;">
+                  <div>
+                    <span style="font-family:monospace; font-weight:900; background:#0f172a; color:#fff; padding:3px 8px; border-radius:6px; font-size:0.8rem;">
+                      #${esc(p.codigo_pedido)}
+                    </span>
+                    <strong style="font-size:1rem; margin-left:8px;">👤 ${esc(p.vecino_nombre)}</strong>
+                    <span style="font-size:0.8rem; color:#64748b; margin-left:8px;">📱 ${esc(p.vecino_telefono)}</span>
+                    <div style="font-size:0.8rem; color:#334155; margin-top:5px;">
+                      📅 <strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} ·
+                      ${p.modalidad_entrega === 'ENVIO_BARRIAL'
+                        ? `🛵 <strong>Envío a domicilio:</strong> ${esc(p.direccion_entrega)} ${p.entrecalles_referencia ? `(${esc(p.entrecalles_referencia)})` : ''}`
+                        : `🏠 <strong>Retira por el Nodo</strong>`
+                      }
+                    </div>
+                  </div>
+
+                  <div style="text-align:right;">
+                    <span style="display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.74rem; font-weight:800; background:${p.medio_pago === 'EFECTIVO' ? '#fef3c7' : '#dcfce7'}; color:${p.medio_pago === 'EFECTIVO' ? '#b45309' : '#15803d'};">
+                      ${p.medio_pago === 'EFECTIVO' ? `💵 Cobrar Efectivo: ${fmt(p.total_vecino)}` : `🏦 Transferencia (${fmt(p.total_vecino)})`}
+                    </span>
+                    <div style="font-size:0.78rem; color:#16a34a; font-weight:800; margin-top:4px;">
+                      Tu ganancia en este pedido: +${fmt(p.ganancia_total_gestor)}
+                      ${Number(p.cargo_envio_barrial) > 0 ? ` (incluye ${fmt(p.cargo_envio_barrial)} de envío)` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                  <div style="font-size:0.82rem; color:#334155;">
+                    ${(p.items || []).map(it => `<span style="display:inline-block; background:#f1f5f9; padding:3px 9px; border-radius:6px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
+                  </div>
+                  <button type="button" onclick="mostrarEtiquetaPedidoGestor(${p.id})"
+                    style="padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-weight:700; font-size:0.78rem; cursor:pointer;">
+                    🖨️ Ver Etiqueta Térmica del Paquete
+                  </button>
+                </div>
+                <div id="preview-etiqueta-ped-${p.id}" style="margin-top:8px;"></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    async function mostrarEtiquetaPedidoGestor(pedidoId) {
+      const box = document.getElementById(`preview-etiqueta-ped-${pedidoId}`);
+      if (!box) return;
+      box.innerHTML = `<div style="font-size:0.78rem; color:#64748b;">Generando vista previa de la etiqueta...</div>`;
+      const resp = await fetch(`/api/produccion/nodos/pedidos/${pedidoId}/etiqueta`);
+      const data = await resp.json();
+      if (data.ok && data.preview_rollo_base64) {
+        box.innerHTML = `
+          <div style="background:#0f172a; padding:10px; border-radius:10px; text-align:center;">
+            <img src="${data.preview_rollo_base64}" style="max-width:100%; border-radius:6px;" alt="Etiqueta del pedido">
+          </div>
+        `;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      GSTATE.slug = detectarSlugInicial();
+      cargarPanelGestor();
+    });
+  </script>
+</body>
+</html>
