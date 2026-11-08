@@ -534,6 +534,83 @@
             transform: translateY(-1px);
         }
 
+        /* Etapa 3: Vista móvil en pantalla (sin alterar impresión A4) */
+        @media screen and (max-width: 768px) {
+            body {
+                padding: 8px 4px !important;
+                overflow-x: hidden !important;
+            }
+
+            .container {
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow-x: hidden !important;
+            }
+
+            .invoice-sheet {
+                padding: 10px 8px !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+
+            .header-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .header-left {
+                border-right: none !important;
+                border-bottom: 2px solid #000 !important;
+            }
+
+            .letter-box {
+                position: static !important;
+                transform: none !important;
+                margin: 8px auto !important;
+            }
+
+            .client-grid {
+                grid-template-columns: 1fr !important;
+                gap: 6px !important;
+            }
+
+            .items-table {
+                min-width: 560px !important;
+            }
+
+            .totals-section {
+                justify-content: stretch !important;
+            }
+
+            .totals-table {
+                width: 100% !important;
+            }
+
+            .cae-section {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 12px !important;
+            }
+
+            .cae-details {
+                align-items: flex-start !important;
+                text-align: left !important;
+            }
+
+            .actions {
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+                padding: 10px !important;
+            }
+
+            .actions .btn {
+                flex: 1 1 calc(50% - 8px) !important;
+                justify-content: center !important;
+                min-height: 40px !important;
+                font-size: 12px !important;
+                padding: 8px 10px !important;
+            }
+        }
+
         /* Optimizaciones para Impresión */
         @media print {
             body {

@@ -424,6 +424,38 @@
     display: initial; /* Ocupa su espacio normal en pantalla */
 }
 
+        /* Etapa 3: Adaptación a pantalla celular vertical (sin afectar impresión) */
+        @media screen and (max-width: 768px) {
+            body {
+                overflow: auto !important;
+            }
+            .container {
+                flex-direction: column !important;
+                height: auto !important;
+            }
+            .panel-config {
+                width: 100% !important;
+                min-width: 100% !important;
+                max-width: 100% !important;
+                max-height: none !important;
+                border-right: none !important;
+                border-bottom: 2px solid #e0e0e0 !important;
+                padding: 14px 12px !important;
+            }
+            .panel-resizer {
+                display: none !important;
+            }
+            .panel-preview {
+                padding: 10px 6px !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                justify-content: flex-start !important;
+            }
+            .hoja-a4 {
+                padding: 10mm 8mm !important;
+            }
+        }
+
         /* Estilos de impresión - VERSIÓN MEJORADA PARA MULTIPÁGINA */
         @media print {
             /* ✅ CRÍTICO: Ocultar botones de exclusión y otros controles */

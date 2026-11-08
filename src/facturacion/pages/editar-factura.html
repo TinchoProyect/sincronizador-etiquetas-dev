@@ -296,6 +296,57 @@
             color: #999;
             margin-top: 5px;
         }
+        /* Etapa 3: Edición de factura adaptada a celular vertical */
+        @media (max-width: 768px) {
+            body {
+                padding: 8px !important;
+            }
+
+            .header {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+                padding: 16px 14px !important;
+            }
+
+            .header h1 {
+                font-size: 20px !important;
+            }
+
+            .content {
+                padding: 14px 10px !important;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr !important;
+                gap: 12px !important;
+            }
+
+            .section {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+
+            .items-table {
+                min-width: 580px !important;
+            }
+
+            .totals-row.total {
+                font-size: 18px !important;
+            }
+
+            .actions {
+                flex-direction: column !important;
+                gap: 8px !important;
+                padding: 14px 12px !important;
+            }
+
+            .actions .btn {
+                width: 100% !important;
+                justify-content: center !important;
+                min-height: 42px !important;
+            }
+        }
     </style>
 </head>
 

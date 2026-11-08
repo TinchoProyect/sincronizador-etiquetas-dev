@@ -563,6 +563,141 @@
         .month-card.collapsed .month-arrow {
             transform: rotate(0deg);
         }
+        /* ====================================================================
+           ETAPA 3: GESTIÓN DE FACTURAS (3004) ADAPTADA A CELULAR VERTICAL
+           ==================================================================== */
+        @media (max-width: 768px) {
+            body {
+                overflow-x: hidden !important;
+            }
+
+            .header {
+                padding: 14px 12px !important;
+            }
+
+            .header > div {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+
+            .header h1 {
+                font-size: 20px !important;
+            }
+
+            .header > div > div:last-child {
+                flex-wrap: wrap !important;
+                justify-content: stretch !important;
+                gap: 8px !important;
+            }
+
+            .header > div > div:last-child a,
+            .header > div > div:last-child button,
+            .header > div > div:last-child div {
+                flex: 1 1 calc(50% - 8px) !important;
+                justify-content: center !important;
+                text-align: center !important;
+            }
+
+            .container {
+                margin: 12px auto !important;
+                padding: 0 8px 40px 8px !important;
+            }
+
+            .circuit-tabs {
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                padding: 6px !important;
+                gap: 6px !important;
+            }
+
+            .tab-btn {
+                padding: 10px 12px !important;
+                font-size: 13px !important;
+                white-space: nowrap !important;
+                flex: 1 0 auto !important;
+                justify-content: center !important;
+            }
+
+            .filters {
+                padding: 14px 12px !important;
+            }
+
+            .filter-grid {
+                grid-template-columns: 1fr !important;
+                gap: 10px !important;
+            }
+
+            .filter-actions {
+                flex-direction: column !important;
+                gap: 8px !important;
+            }
+
+            .filter-actions .btn {
+                width: 100% !important;
+                justify-content: center !important;
+                min-height: 40px !important;
+            }
+
+            .stats {
+                grid-template-columns: 1fr 1fr !important;
+                gap: 8px !important;
+            }
+
+            .stat-card {
+                padding: 12px !important;
+            }
+
+            .stat-card .value {
+                font-size: 20px !important;
+            }
+
+            .accordion-header,
+            .month-header {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 8px !important;
+                padding: 12px !important;
+            }
+
+            .accordion-title-box {
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+            }
+
+            .accordion-actions {
+                width: 100% !important;
+                flex-wrap: wrap !important;
+                justify-content: flex-start !important;
+                gap: 6px !important;
+            }
+
+            .accordion-body,
+            .month-body,
+            .facturas-table {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+
+            .accordion-body table,
+            .month-body table,
+            .facturas-table table {
+                min-width: 720px !important;
+            }
+
+            .pagination {
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+                padding: 12px 8px !important;
+            }
+
+            .swal2-popup {
+                width: 95vw !important;
+                max-width: 95vw !important;
+                padding: 14px 10px !important;
+            }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>

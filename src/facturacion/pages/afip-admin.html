@@ -200,6 +200,30 @@
             color: #999;
             margin-top: 5px;
         }
+        /* Etapa 3: Administración ARCA adaptada a celular vertical */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px 8px !important;
+            }
+
+            .card {
+                padding: 18px 14px !important;
+            }
+
+            h1 {
+                font-size: 22px !important;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr !important;
+                gap: 10px !important;
+            }
+
+            .btn {
+                width: 100% !important;
+                margin-right: 0 !important;
+            }
+        }
     </style>
 </head>
 <body>

@@ -875,6 +875,102 @@
         .ia-health-pill.offline .ia-pulse-dot {
             background: #f59e0b;
         }
+        /* Etapa 3: Cuentas Bancarias y Extractos adaptados a celular vertical */
+        @media (max-width: 768px) {
+            body {
+                overflow-x: hidden !important;
+            }
+
+            .header {
+                padding: 14px 12px !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+
+            .header h1 {
+                font-size: 18px !important;
+            }
+
+            .header-actions {
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+                width: 100% !important;
+            }
+
+            .header-actions .btn-back,
+            .header-actions .ia-health-pill {
+                flex: 1 1 100% !important;
+                justify-content: center !important;
+            }
+
+            .container {
+                margin: 12px auto !important;
+                padding: 0 10px 40px 10px !important;
+                flex-direction: column !important;
+                gap: 16px !important;
+            }
+
+            .sidebar {
+                width: 100% !important;
+            }
+
+            .balance-card .amount {
+                font-size: 24px !important;
+            }
+
+            .tabs-container,
+            .sub-tabs-container {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                flex-wrap: nowrap !important;
+                gap: 8px !important;
+            }
+
+            .btn-tab,
+            .btn-sub-tab {
+                white-space: nowrap !important;
+                padding: 10px 14px !important;
+                font-size: 13px !important;
+            }
+
+            .filters-container {
+                padding: 14px 12px !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+            }
+
+            .filter-group {
+                min-width: 100% !important;
+                width: 100% !important;
+            }
+
+            .segmented-control {
+                flex-wrap: wrap !important;
+            }
+
+            .btn-segment {
+                flex: 1 1 auto !important;
+                justify-content: center !important;
+            }
+
+            .btn-filter-reset {
+                width: 100% !important;
+                justify-content: center !important;
+            }
+
+            .movements-header {
+                padding: 14px 12px !important;
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+            }
+
+            .table-wrapper {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+        }
     </style>
 </head>
 <body>

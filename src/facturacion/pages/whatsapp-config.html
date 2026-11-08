@@ -227,6 +227,31 @@
             50% { transform: scale(1.05); opacity: 1; }
             100% { transform: scale(0.95); opacity: 0.5; }
         }
+        /* Etapa 3: Configuración WhatsApp adaptada a celular vertical */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px 8px !important;
+            }
+
+            .container {
+                padding: 18px 14px !important;
+            }
+
+            .status-card {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 10px !important;
+            }
+
+            #btn-logout {
+                width: 100% !important;
+            }
+
+            #qr-image {
+                width: 210px !important;
+                height: 210px !important;
+            }
+        }
     </style>
 </head>
 <body>

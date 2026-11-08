@@ -4103,4 +4103,183 @@ footer {
     margin: 0 !important;
     padding: 8px 12px !important;
   }
+
+  /* ==========================================================================
+     ETAPA 3: SUBPÁGINAS DE GESTIONES (3000) ADAPTADAS A CELULAR VERTICAL
+     ========================================================================== */
+
+  /* 9. Cabeceras Administrativas y Contenedores de Subpáginas */
+  body {
+    padding: 8px !important;
+  }
+
+  .monitor-container,
+  .dashboard-container {
+    padding: 10px 8px !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .admin-header,
+  .header-section {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 10px 0 12px !important;
+    margin-bottom: 14px !important;
+    gap: 10px !important;
+  }
+
+  .admin-header .header-left {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .admin-header .header-title,
+  .header-section h1 {
+    font-size: 1.25rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .admin-header .btn-volver,
+  .btn-nav-top,
+  .btn-back {
+    width: 100% !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    text-align: center !important;
+  }
+
+  .btn-primary-action {
+    width: 100% !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .search-box-container,
+  .search-box {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* KPIs en 2 columnas compactas en móvil */
+  .kpis-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .kpi-card {
+    padding: 10px 12px !important;
+  }
+
+  .kpi-value {
+    font-size: 1.3rem !important;
+  }
+
+  /* Toolbars y Filtros de Subpáginas (Colaboradores, CRM, Ofertas, Faltantes) */
+  .toolbar-box,
+  .filter-actions-bar {
+    padding: 12px !important;
+    margin-bottom: 14px !important;
+    gap: 10px !important;
+  }
+
+  .toolbar-row-search,
+  .toolbar-section,
+  .filters-row,
+  .actions-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .filter-group,
+  .filter-select,
+  .filter-input {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .quick-periods {
+    margin-top: 4px !important;
+  }
+
+  /* Secciones de Tablas y Formularios (Usuarios, Roles, Permisos, Tarifas) */
+  .form-section,
+  .table-section,
+  .asignacion-section,
+  .card-section {
+    padding: 14px 10px !important;
+    margin-bottom: 16px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .tarifas-layout {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+    margin-top: 14px !important;
+  }
+
+  .modal-editar-rol .modal-content,
+  .modal-editar-permiso .modal-content,
+  #printModal .modal-content {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    padding: 14px 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Informe de Demanda No Satisfecha (informe-faltantes.html) */
+  .grid-header {
+    grid-template-columns: 1.4fr 1fr 30px !important;
+    padding: 10px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .item-row {
+    grid-template-columns: 1.4fr 1fr 30px !important;
+    padding: 10px !important;
+    gap: 6px !important;
+  }
+
+  .item-qty-box {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .details-container {
+    padding: 10px 8px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Impresión de Etiquetas (impresion.html) */
+  .tab-container {
+    flex-wrap: wrap !important;
+  }
+
+  .tab-container .tab-button {
+    flex: 1 !important;
+    padding: 10px 8px !important;
+    font-size: 0.85rem !important;
+    text-align: center !important;
+  }
+
+  .tab-content {
+    padding: 12px 10px !important;
+  }
+
+  .custom-label-form {
+    padding: 10px 4px !important;
+  }
+
+  .print-button {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
 }
