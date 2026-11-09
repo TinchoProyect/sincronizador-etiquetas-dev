@@ -185,6 +185,14 @@
       font-weight: 700;
       font-size: 0.8rem;
     }
+    @media (max-width: 720px) {
+      .ventana-item-row {
+        grid-template-columns: 1fr 1fr !important;
+      }
+      .propuestas-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -200,8 +208,11 @@
       </div>
 
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn-top green" onclick="enviarLinkTiendaWhatsAppPrueba()" style="background:#15803d; border-color:#16a34a;">
+          📲 Enviar Link por WhatsApp (Prueba: 221 661 5746)
+        </button>
         <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
-          🔗 Copiar Link para Vecinos
+          🔗 Copiar Link Tienda
         </button>
         <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top green">
           🏪 Ver mi Tienda Vecinal ↗
@@ -282,7 +293,24 @@
         fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`)
       ]);
       const data = await resp.json();
-      if (!data.ok) return;
+      if (!data.ok) {
+        const box = document.getElementById('gestor-tab-content');
+        if (box) {
+          box.innerHTML = `
+            <div class="card" style="text-align:center; padding:32px;">
+              <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
+              <h3 style="margin:0 0 8px 0;">Entorno de Pruebas Puesto a Cero (0 Nodos Creados)</h3>
+              <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto 16px auto;">
+                Todavía no hay ningún Nodo Barrial configurado en la base de pruebas. Creá el primer Nodo desde la Pizarra de LAMDA (Paso 1) para habilitar el Panel del Gestor y la Tienda Vecinal.
+              </p>
+              <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-primary" style="display:inline-block; text-decoration:none;">
+                📊 Ir a Pizarra LAMDA para Crear el Primer Nodo
+              </a>
+            </div>
+          `;
+        }
+        return;
+      }
       try {
         const dataLiq = await respLiq.json();
         if (dataLiq && dataLiq.ok) GSTATE.liquidacionTablero = dataLiq;
@@ -323,6 +351,64 @@
       const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
       navigator.clipboard.writeText(url);
       alert(`✅ Link de tu tienda copiado para compartir en WhatsApp:\n${url}`);
+    }
+
+    async function enviarLinkTiendaWhatsAppPrueba() {
+      if (!GSTATE.nodo) {
+        alert('Primero debe existir un Nodo activo.');
+        return;
+      }
+      const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
+      const prox = GSTATE.proximaEntrega?.asignada?.label_completo || 'próxima ventana semanal';
+      const corte = GSTATE.proximaEntrega?.asignada?.label_corte || '';
+      const mensaje = [
+        `🌿 *${GSTATE.nodo.nombre_marca}* (${GSTATE.nodo.subtitulo_marca || 'Comunidad Barrial'})`,
+        `¡Hola! Te comparto el link de nuestra tienda barrial para encargar productos frescos:`,
+        `👉 ${url}`,
+        `📅 *Próxima entrega:* ${prox}`,
+        corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
+        `Podés elegir retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío a domicilio en el barrio.`
+      ].filter(Boolean).join('\n');
+
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: `Vecinos de ${GSTATE.nodo.nombre_marca}`,
+          telefono_original: '5492216615746',
+          mensaje
+        })
+      });
+      const data = await resp.json();
+      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
+      window.open(targetUrl, '_blank', 'noopener');
+    }
+
+    async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico} (${fmt(it.subtotal_vecino)})`).join('\n');
+      const mensaje = [
+        `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
+        `¡Hola ${p.vecino_nombre}! Te confirmamos el detalle de tu pedido:`,
+        itemsTxt,
+        Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro por el Nodo: ${GSTATE.nodo.direccion_retiro || ''}`,
+        `💰 *Total:* ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : `Transferencia al alias ${GSTATE.nodo.alias_bancario_display || ''}`})`,
+        `📅 *Entrega:* ${p.fecha_entrega_label}`
+      ].filter(Boolean).join('\n');
+
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: p.vecino_nombre,
+          telefono_original: p.vecino_telefono,
+          mensaje
+        })
+      });
+      const data = await resp.json();
+      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
+      window.open(targetUrl, '_blank', 'noopener');
     }
 
     function cambiarTabGestor(tab) {
@@ -608,7 +694,7 @@
     // -------------------------------------------------------------------------
     function renderTabPropuestas() {
       return `
-        <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px; align-items:start;">
+        <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px; align-items:start;">
           <div class="card">
             <h3 style="margin:0 0 6px 0; font-size:1.02rem;">✨ Proponer Nueva Fracción o Presentación</h3>
             <p style="margin:0 0 14px 0; font-size:0.8rem; color:#64748b;">
@@ -740,10 +826,16 @@
                   <div style="font-size:0.82rem; color:#334155;">
                     ${(p.items || []).map(it => `<span style="display:inline-block; background:#f1f5f9; padding:3px 9px; border-radius:6px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
                   </div>
-                  <button type="button" onclick="mostrarEtiquetaPedidoGestor(${p.id})"
-                    style="padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-weight:700; font-size:0.78rem; cursor:pointer;">
-                    🖨️ Ver Etiqueta Térmica del Paquete
-                  </button>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})"
+                      style="padding:6px 12px; border-radius:8px; border:1px solid #86efac; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.78rem; cursor:pointer;">
+                      📲 WhatsApp al Vecino (Lab → 221 661 5746)
+                    </button>
+                    <button type="button" onclick="mostrarEtiquetaPedidoGestor(${p.id})"
+                      style="padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-weight:700; font-size:0.78rem; cursor:pointer;">
+                      🖨️ Ver Etiqueta Térmica del Paquete
+                    </button>
+                  </div>
                 </div>
                 <div id="preview-etiqueta-ped-${p.id}" style="margin-top:8px;"></div>
               </div>

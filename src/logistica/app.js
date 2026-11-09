@@ -8,7 +8,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 console.log('[LOGISTICA] 🚀 Iniciando servidor del módulo de logística...');
 
 const app = express();
-const PORT = process.env.PORT_LOGISTICA || 3005;
+const PORT = process.env.LOGISTICA_PORT || process.env.PORT_LOGISTICA || 3005;
 
 // Importar configuraciones y middleware
 const { dbMiddleware } = require('./config/database');

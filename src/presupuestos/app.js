@@ -6,7 +6,7 @@ const path = require('path');
 console.log('[PRESUPUESTOS-BACK] 🚀 Iniciando servidor del módulo de presupuestos CON LOGS COMPLETOS...');
 
 const app = express();
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PRESUPUESTOS_PORT || 3003;
 
 // Importar configuraciones y middleware
 const { dbMiddleware } = require('./config/database');

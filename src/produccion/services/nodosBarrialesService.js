@@ -735,8 +735,9 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
  * Crea las 4 tablas de Etapa 1 en etiquetas_pruebas y siembra datos iniciales
  * realistas vinculados a los ingredientes y cuentas reales del Laboratorio.
  */
-async function asegurarEsquemaNodosBarriales() {
-    if (esquemaInicializado) return;
+async function asegurarEsquemaNodosBarriales(opciones = {}) {
+    const forzarSemillaDemo = Boolean(opciones && opciones.sembrarDemo === true);
+    if (esquemaInicializado && !forzarSemillaDemo) return;
 
     const client = await db.connect();
     try {
@@ -992,9 +993,9 @@ async function asegurarEsquemaNodosBarriales() {
                 ADD COLUMN IF NOT EXISTS fecha_liquidacion TIMESTAMP;
         `);
 
-        // Verificar si necesitamos poblar datos iniciales de Laboratorio
+        // Verificar si necesitamos poblar datos iniciales de Laboratorio (solo cuando se pide sembrarDemo explícitamente)
         const countNodos = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_maestro');
-        if (countNodos.rows[0].total === 0) {
+        if (forzarSemillaDemo && countNodos.rows[0].total === 0) {
             // Buscar cuenta bancaria activa y tarifa activa
             const ctaRes = await client.query('SELECT id, alias, cbu, titular FROM public.fin_cuentas_bancarias WHERE estado = $1 ORDER BY id LIMIT 1', ['ACTIVA']);
             const ctaDefault = ctaRes.rows[0] || { id: null, alias: 'LAMDA.SER.MARTIN', cbu: '0070373230004007844141', titular: 'MARTIN IGNACIO SERRANO' };
@@ -1289,9 +1290,9 @@ async function asegurarEsquemaNodosBarriales() {
             );
         }
 
-        // Sembrar pedidos vecinales de muestra para Etapa 2 si aún no existen
+        // Sembrar pedidos vecinales de muestra para Etapa 2 solo si se solicita sembrarDemo explícitamente
         const countPedidos = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos');
-        if (countPedidos.rows[0].total === 0) {
+        if (forzarSemillaDemo && countPedidos.rows[0].total === 0) {
             const n1Res = await client.query('SELECT id, direccion_retiro, cargo_envio_barrial FROM public.nodos_maestro ORDER BY id ASC LIMIT 1');
             if (n1Res.rows.length > 0) {
                 const n1 = n1Res.rows[0];
@@ -1412,9 +1413,9 @@ async function asegurarEsquemaNodosBarriales() {
                 ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir'
         `);
 
-        // Si el Nodo 2 (La Despensa de Gonnet) aún no tiene pedidos semilla, sembrar 2 pedidos vecinales para su Canasto
+        // Si el Nodo 2 (La Despensa de Gonnet) aún no tiene pedidos semilla y se pidió sembrarDemo, sembrar 2 pedidos vecinales para su Canasto
         const n2Res = await client.query(`SELECT * FROM public.nodos_maestro WHERE codigo_nodo = 'NODO-002' LIMIT 1`);
-        if (n2Res.rows.length > 0) {
+        if (forzarSemillaDemo && n2Res.rows.length > 0) {
             const n2 = n2Res.rows[0];
             const countN2Peds = await client.query(`SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos WHERE nodo_id = $1`, [n2.id]);
             if (countN2Peds.rows[0].total === 0) {
@@ -2404,7 +2405,34 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
             }
         }
 
+        // Vincular el Nodo con la Lista Base Nodos Barriales en nodos_maestro y bunker_cliente_listas_precios
+        const listaNodosRes = await client.query(
+            `SELECT id FROM public.bunker_listas_precios WHERE canal_comercial = 'NODOS' OR LOWER(nombre) LIKE '%nodos barriales%' ORDER BY id ASC LIMIT 1`
+        );
+        if (listaNodosRes.rows.length > 0 && nodoGuardado) {
+            const listaNodosId = listaNodosRes.rows[0].id;
+            await client.query(
+                `UPDATE public.nodos_maestro SET lista_precio_bunker_id = $1 WHERE id = $2`,
+                [listaNodosId, nodoGuardado.id]
+            );
+            nodoGuardado.lista_precio_bunker_id = listaNodosId;
+
+            if (nodoGuardado.bunker_cliente_id) {
+                const checkClp = await client.query(
+                    `SELECT id FROM public.bunker_cliente_listas_precios WHERE bunker_cliente_id = $1 AND bunker_lista_precio_id = $2 LIMIT 1`,
+                    [nodoGuardado.bunker_cliente_id, listaNodosId]
+                );
+                if (checkClp.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO public.bunker_cliente_listas_precios (bunker_cliente_id, bunker_lista_precio_id) VALUES ($1, $2)`,
+                        [nodoGuardado.bunker_cliente_id, listaNodosId]
+                    );
+                }
+            }
+        }
+
         await client.query('COMMIT');
+        await sincronizarNodosConCircuitoOperativoLamda();
         return nodoGuardado;
     } catch (err) {
         await client.query('ROLLBACK');
@@ -3526,24 +3554,50 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         const medioPago = payload.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
 
-        // Registrar/actualizar vecino
-        const insVec = await client.query(
-            `INSERT INTO public.nodos_vecinos (
-                nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia
-             ) VALUES ($1,$2,$3,$4,$5)
-             RETURNING id`,
-            [
-                nodo.id,
-                vecinoNombre,
-                vecinoTelefono,
-                payload.direccion_entrega || nodo.direccion_retiro || '',
-                payload.entrecalles_referencia || ''
-            ]
+        // Registrar o actualizar el vecino en el padrón separado de clientes particulares del Nodo (public.nodos_vecinos)
+        const dirVecino = payload.direccion_entrega || nodo.direccion_retiro || '';
+        const entrecallesVecino = payload.entrecalles_referencia || '';
+        const checkVec = await client.query(
+            `SELECT id FROM public.nodos_vecinos
+             WHERE nodo_id = $1
+               AND (LOWER(TRIM(nombre_completo)) = LOWER(TRIM($2)) OR REGEXP_REPLACE(telefono_whatsapp, '[^0-9]', '', 'g') = REGEXP_REPLACE($3, '[^0-9]', '', 'g'))
+             ORDER BY id ASC LIMIT 1`,
+            [nodo.id, vecinoNombre, vecinoTelefono]
         );
-        const vecinoId = insVec.rows[0].id;
+        let vecinoId;
+        if (checkVec.rows.length > 0) {
+            vecinoId = checkVec.rows[0].id;
+            await client.query(
+                `UPDATE public.nodos_vecinos
+                 SET nombre_completo = $1,
+                     telefono_whatsapp = $2,
+                     direccion_calle = COALESCE(NULLIF($3, ''), direccion_calle),
+                     entrecalles_referencia = COALESCE(NULLIF($4, ''), entrecalles_referencia),
+                     notas_entrega = COALESCE(NULLIF($5, ''), notas_entrega),
+                     updated_at = NOW()
+                 WHERE id = $6`,
+                [vecinoNombre, vecinoTelefono, dirVecino, entrecallesVecino, payload.observaciones_vecino || '', vecinoId]
+            );
+        } else {
+            const insVec = await client.query(
+                `INSERT INTO public.nodos_vecinos (
+                    nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia, notas_entrega
+                 ) VALUES ($1,$2,$3,$4,$5,$6)
+                 RETURNING id`,
+                [
+                    nodo.id,
+                    vecinoNombre,
+                    vecinoTelefono,
+                    dirVecino,
+                    entrecallesVecino,
+                    payload.observaciones_vecino || ''
+                ]
+            );
+            vecinoId = insVec.rows[0].id;
+        }
 
         const seqRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos');
-        const codigoPedido = `NB-${1041 + seqRes.rows[0].total}`;
+        const codigoPedido = `NB-${1001 + seqRes.rows[0].total}`;
 
         const direccionFinal = modalidad === 'ENVIO_BARRIAL'
             ? String(payload.direccion_entrega || '').trim()
@@ -5475,15 +5529,19 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
 
     const nodoIdFiltro = filtros.nodo_id ? Number(filtros.nodo_id) : 0;
 
-    const [nodosRes, canastosRes, pedidosRes, itemsRes, aliasRes, liqRes, movsRes] = await Promise.all([
+    const [nodosRes, canastosRes, pedidosRes, itemsRes, aliasRes, liqRes, movsRes, vecinosRes] = await Promise.all([
         db.query(`
             SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.subtitulo_marca,
                    nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                    nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
-                   nm.color_primario, nm.codigo_bunker_cliente,
+                   nm.color_primario, nm.codigo_bunker_cliente, nm.bunker_cliente_id,
+                   nm.lista_precio_bunker_id,
+                   COALESCE(lp.nombre, 'Lista Base Nodos Barriales') AS lista_precio_nombre,
+                   (9000 + nm.id) AS cliente_id_logistica,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
             FROM public.nodos_maestro nm
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+            LEFT JOIN public.bunker_listas_precios lp ON lp.id = nm.lista_precio_bunker_id
             WHERE nm.activo = true
             ORDER BY nm.id ASC
         `),
@@ -5546,6 +5604,18 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
             WHERE ($1::int = 0 OR nmc.nodo_id = $1::int)
             ORDER BY nmc.id DESC
             LIMIT 40
+        `, [nodoIdFiltro]),
+        db.query(`
+            SELECT nv.*,
+                   nm.codigo_nodo,
+                   nm.slug AS nodo_slug,
+                   nm.nombre_marca,
+                   nm.gestor_nombre,
+                   nm.color_primario
+            FROM public.nodos_vecinos nv
+            JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
+            WHERE ($1::int = 0 OR nv.nodo_id = $1::int)
+            ORDER BY nv.nodo_id ASC, nv.nombre_completo ASC, nv.id ASC
         `, [nodoIdFiltro])
     ]);
 
@@ -5557,6 +5627,9 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
     }
 
     const pedidosPorCanasto = new Map();
+    const pedidosPorVecinoId = new Map();
+    const pedidosPorVecinoNombre = new Map();
+
     for (const p of pedidosRes.rows) {
         const cid = Number(p.lote_canasto_id);
         const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
@@ -5571,7 +5644,62 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         };
         if (!pedidosPorCanasto.has(cid)) pedidosPorCanasto.set(cid, []);
         pedidosPorCanasto.get(cid).push(enriched);
+
+        if (p.vecino_id) {
+            const vid = Number(p.vecino_id);
+            if (!pedidosPorVecinoId.has(vid)) pedidosPorVecinoId.set(vid, []);
+            pedidosPorVecinoId.get(vid).push(enriched);
+        }
+        const keyNombre = `${p.nodo_id}::${String(p.vecino_nombre || '').trim().toLowerCase()}`;
+        if (!pedidosPorVecinoNombre.has(keyNombre)) pedidosPorVecinoNombre.set(keyNombre, []);
+        pedidosPorVecinoNombre.get(keyNombre).push(enriched);
     }
+
+    const aliasPorVecinoId = new Map();
+    const aliasPorVecinoNombre = new Map();
+    for (const al of aliasRes.rows) {
+        if (al.vecino_id) {
+            const vid = Number(al.vecino_id);
+            if (!aliasPorVecinoId.has(vid)) aliasPorVecinoId.set(vid, []);
+            aliasPorVecinoId.get(vid).push(al);
+        }
+        const keyN = `${al.nodo_id}::${String(al.vecino_nombre || '').trim().toLowerCase()}`;
+        if (!aliasPorVecinoNombre.has(keyN)) aliasPorVecinoNombre.set(keyN, []);
+        aliasPorVecinoNombre.get(keyN).push(al);
+    }
+
+    const vecinosPadron = vecinosRes.rows.map(v => {
+        const keyNombre = `${v.nodo_id}::${String(v.nombre_completo || '').trim().toLowerCase()}`;
+        const pedsId = pedidosPorVecinoId.get(Number(v.id)) || [];
+        const pedsNom = pedidosPorVecinoNombre.get(keyNombre) || [];
+        const mapaUnicos = new Map();
+        [...pedsId, ...pedsNom].forEach(p => mapaUnicos.set(Number(p.id), p));
+        const pedidosHistorial = Array.from(mapaUnicos.values()).sort((a, b) => Number(b.id) - Number(a.id));
+
+        const aliasList = aliasPorVecinoId.get(Number(v.id)) || aliasPorVecinoNombre.get(keyNombre) || [];
+        let totalComprado = 0;
+        let totalPagado = 0;
+        let totalPendiente = 0;
+        for (const ph of pedidosHistorial) {
+            const monto = Number(ph.total_vecino || 0);
+            totalComprado += monto;
+            if (ph.pago_confirmado) totalPagado += monto;
+            else totalPendiente += monto;
+        }
+        const ultimoPedido = pedidosHistorial[0] || null;
+        return {
+            ...v,
+            titulares_aprendidos: aliasList,
+            titular_habitual_efectivo: v.titular_transferencia_habitual || (aliasList[0] ? aliasList[0].titular_normalizado : ''),
+            cantidad_pedidos: pedidosHistorial.length,
+            total_comprado: Number(totalComprado.toFixed(2)),
+            total_pagado: Number(totalPagado.toFixed(2)),
+            total_pendiente_pago: Number(totalPendiente.toFixed(2)),
+            ultimo_pedido_codigo: ultimoPedido ? ultimoPedido.codigo_pedido : null,
+            ultima_fecha_entrega: ultimoPedido ? ultimoPedido.fecha_entrega_label : null,
+            pedidos_historial: pedidosHistorial
+        };
+    });
 
     const liqPorCanasto = new Map(liqRes.rows.map(l => [Number(l.lote_canasto_id), l]));
 
@@ -5590,8 +5718,11 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
     return {
         nodos: nodosRes.rows,
         lotes,
+        vecinos_padron: vecinosPadron,
         alias_aprendidos: aliasRes.rows,
-        movimientos_cta_cte: movsRes.rows
+        movimientos_cta_cte: movsRes.rows,
+        telefono_whatsapp_pruebas: '5492216615746',
+        telefono_whatsapp_pruebas_display: '221 661 5746'
     };
 }
 
@@ -5704,6 +5835,16 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                     updated_at = NOW()`,
                 [ped.nodo_id, ped.vecino_id, ped.vecino_nombre, titularNorm, billetera]
             );
+
+            if (ped.vecino_id) {
+                await client.query(
+                    `UPDATE public.nodos_vecinos
+                     SET titular_transferencia_habitual = $1,
+                         updated_at = NOW()
+                     WHERE id = $2`,
+                    [titularNorm, ped.vecino_id]
+                );
+            }
 
             await client.query(
                 `INSERT INTO public.nodos_movimientos_cta_cte (
@@ -6086,8 +6227,183 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
     return obtenerTableroLiquidacionCobros();
 }
 
+/**
+ * Herramienta de Laboratorio (Fase 0):
+ * Limpia el 100% de los Nodos, pedidos, vecinos, canastos, propuestas, clientes Nodos (Búnker + Lomas),
+ * cuentas corrientes de Nodos y presupuestos/canastos de prueba en etiquetas_pruebas,
+ * manteniendo intactos todos los datos mayoristas habituales.
+ * Por defecto conserva 2 artículos base preexistentes en Lista Base Nodos Barriales (APN25/27X250G y GSX500G)
+ * para permitir probar tanto la publicación de un artículo preexistente como la solicitud de cotización de una fracción nueva.
+ */
+async function ponerACeroDatosNodosBarriales(opciones = {}) {
+    await asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+    const conservarArticulosBase = opciones.conservarArticulosBase !== false;
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Limpiar presupuestos y detalles de Canastos Nodos del circuito operativo general LAMDA
+        await client.query(`
+            DELETE FROM public.presupuestos_detalles
+            WHERE id_presupuesto IN (
+                SELECT id FROM public.presupuestos
+                WHERE id_presupuesto_ext LIKE 'CAN-%'
+                   OR tipo_comprobante = 'Canasto Nodo'
+                   OR agente = 'Nodo Barrial'
+            )
+            OR id_presupuesto_ext LIKE 'CAN-%'
+        `);
+        await client.query(`
+            DELETE FROM public.presupuestos
+            WHERE id_presupuesto_ext LIKE 'CAN-%'
+               OR tipo_comprobante = 'Canasto Nodo'
+               OR agente = 'Nodo Barrial'
+        `);
+
+        // 2. Limpiar movimientos y cuentas corrientes de Nodos en factura_cuentas_corrientes
+        await client.query(`
+            DELETE FROM public.factura_cuenta_corriente_movimientos
+            WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO')
+               OR cuenta_corriente_id IN (
+                   SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
+               )
+        `);
+        await client.query(`
+            DELETE FROM public.factura_cuentas_corrientes
+            WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
+        `);
+
+        // 3. Limpiar clientes Nodos en Búnker y en Lomas/Logística (cliente_id >= 9000)
+        await client.query(`
+            DELETE FROM public.bunker_cliente_listas_precios
+            WHERE bunker_cliente_id IN (
+                SELECT id FROM public.bunker_clientes WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
+            )
+        `);
+        await client.query(`
+            DELETE FROM public.bunker_clientes
+            WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
+        `);
+        await client.query(`
+            DELETE FROM public.clientes_domicilios
+            WHERE id_cliente IN (
+                SELECT id FROM public.clientes WHERE cliente_id >= 9000 OR nombre ILIKE '%NODO:%'
+            )
+        `);
+        await client.query(`
+            DELETE FROM public.clientes
+            WHERE cliente_id >= 9000 OR nombre ILIKE '%NODO:%'
+        `);
+
+        // 4. Vaciar todas las tablas operativas de Nodos y reiniciar sus secuencias a 1
+        await client.query(`
+            TRUNCATE TABLE
+                public.nodos_liquidaciones_lote,
+                public.nodos_movimientos_cta_cte,
+                public.nodos_alias_vecinos_aprendidos,
+                public.nodos_pedidos_items,
+                public.nodos_pedidos_vecinos,
+                public.nodos_vecinos,
+                public.nodos_lotes_estacion,
+                public.nodos_ofertas_gestor,
+                public.nodos_propuestas_fracciones,
+                public.nodos_maestro
+            RESTART IDENTITY CASCADE
+        `);
+
+        // 5. Configurar el estado inicial de Lista Base Nodos Barriales y nodos_articulos_catalogo
+        const skusExclusivosMuestra = conservarArticulosBase
+            ? ['MFSX500G', 'CCTSX250', 'BF6X50']
+            : ['APN25/27X250G', 'MFSX500G', 'CCTSX250', 'BF6X50'];
+
+        // Limpiar del Búnker las fracciones creadas exclusivamente como muestra de Nodos (sin tocar artículos mayoristas nativos como GSX500G o GDFX500G)
+        await client.query(
+            `DELETE FROM public.bunker_lista_insumos
+             WHERE lista_articulo_id IN (
+                 SELECT id FROM public.bunker_lista_articulos WHERE UPPER(articulo_numero) = ANY($1)
+             )`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.bunker_lista_articulos WHERE UPPER(articulo_numero) = ANY($1)`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.receta_ingredientes
+             WHERE receta_id IN (
+                 SELECT id FROM public.recetas WHERE UPPER(articulo_numero) = ANY($1)
+             )`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.recetas WHERE UPPER(articulo_numero) = ANY($1)`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.stock_real_consolidado WHERE UPPER(articulo_numero) = ANY($1) OR UPPER(codigo_barras) = ANY($1)`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.bunker_articulos WHERE UPPER(articulo_id) = ANY($1) OR UPPER(codigo_barras) = ANY($1)`,
+            [skusExclusivosMuestra]
+        );
+        await client.query(
+            `DELETE FROM public.articulos WHERE UPPER(numero) = ANY($1) OR UPPER(codigo_barras) = ANY($1)`,
+            [skusExclusivosMuestra]
+        );
+
+        if (conservarArticulosBase) {
+            await client.query(
+                `DELETE FROM public.nodos_articulos_catalogo
+                 WHERE UPPER(sku_nodo) NOT IN ('APN25/27X250G', 'GSX500G')`
+            );
+            await client.query(
+                `DELETE FROM public.bunker_lista_articulos
+                 WHERE lista_id IN (
+                     SELECT id FROM public.bunker_listas_precios WHERE COALESCE(canal_comercial, 'MAYORISTA') = 'NODOS'
+                 )
+                 AND UPPER(articulo_numero) NOT IN ('APN25/27X250G', 'GSX500G')`
+            );
+        } else {
+            await client.query(`TRUNCATE TABLE public.nodos_articulos_catalogo RESTART IDENTITY CASCADE`);
+            await client.query(
+                `DELETE FROM public.bunker_lista_articulos
+                 WHERE lista_id IN (
+                     SELECT id FROM public.bunker_listas_precios WHERE COALESCE(canal_comercial, 'MAYORISTA') = 'NODOS'
+                 )`
+            );
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    await sincronizarNodosConCircuitoOperativoLamda();
+
+    const catRes = await db.query(
+        'SELECT id, sku_nodo, nombre_publico, presentacion_etiqueta, flujo_lamda, precio_base_nodo_final FROM public.nodos_articulos_catalogo WHERE activo = true ORDER BY id ASC'
+    );
+    return {
+        ok: true,
+        nodos_activos: 0,
+        pedidos_vecinos: 0,
+        canastos_estacion: 0,
+        propuestas_pendientes: 0,
+        clientes_nodos_padron: 0,
+        presupuestos_canastos: 0,
+        conservar_articulos_base: conservarArticulosBase,
+        articulos_base_lista_nodos: catRes.rows
+    };
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
+    ponerACeroDatosNodosBarriales,
     construirTaxonomiaPosicionalNodo,
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,

@@ -255,7 +255,10 @@
             </div>
 
             <!-- COLUMNA DERECHA: CONCILIACIÓN DE COBROS + CUADRO DE LIQUIDACIÓN Y COMPENSACIÓN -->
-            <div id="detalle-lote-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                <div id="detalle-lote-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
+                <div id="padron-clientes-nodos-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
+            </div>
         </div>
     </main>
 
@@ -325,6 +328,7 @@
             renderizarAliasAprendidos();
             renderizarMovimientosCc();
             renderizarWorkspaceLoteActivo();
+            renderizarPadronDobleLamda();
         }
 
         function obtenerLoteActivo() {
@@ -839,8 +843,19 @@
 
         function verReciboVecinoMarcaBlanca(pedidoId) {
             const lote = obtenerLoteActivo();
-            const p = (lote?.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
-            if (!lote || !p) return;
+            let p = (lote?.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
+            let nombreMarca = lote?.nombre_marca || 'Nodo Barrial';
+            if (!p) {
+                for (const v of (ESTADO.tablero?.vecinos_padron || [])) {
+                    const found = (v.pedidos_historial || []).find(x => Number(x.id) === Number(pedidoId));
+                    if (found) {
+                        p = found;
+                        nombreMarca = v.nombre_marca || nombreMarca;
+                        break;
+                    }
+                }
+            }
+            if (!p) return;
 
             const itemsHtml = (p.items || []).map(i => `
                 <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #e2e8f0;">
@@ -850,15 +865,15 @@
             `).join('');
 
             Swal.fire({
-                title: `🧾 Recibo Digital — ${esc(lote.nombre_marca)}`,
+                title: `🧾 Recibo Digital — ${esc(nombreMarca)}`,
                 background: '#ffffff',
                 color: '#0f172a',
-                width: '460px',
+                width: '480px',
                 html: `
                     <div style="text-align:left; font-size:0.86rem; color:#1e293b; border:1px solid #cbd5e1; border-radius:10px; padding:14px; background:#f8fafc;">
                         <div style="display:flex; justify-content:space-between; border-bottom:2px solid #16a34a; padding-bottom:8px; margin-bottom:10px;">
                             <div>
-                                <div style="font-weight:900; font-size:0.96rem; color:#15803d;">${esc(lote.nombre_marca)}</div>
+                                <div style="font-weight:900; font-size:0.96rem; color:#15803d;">${esc(nombreMarca)}</div>
                                 <div style="font-size:0.75rem; color:#64748b;">Comprobante de Pago Vecinal</div>
                             </div>
                             <div style="text-align:right; font-family:monospace; font-weight:800;">
@@ -866,7 +881,7 @@
                             </div>
                         </div>
                         <div style="margin-bottom:8px;">
-                            <div><strong>Vecino:</strong> ${esc(p.vecino_nombre)}</div>
+                            <div><strong>Vecino:</strong> ${esc(p.vecino_nombre)} (${esc(p.vecino_telefono || '')})</div>
                             <div><strong>Entrega:</strong> ${esc(p.fecha_entrega_label)}</div>
                             <div><strong>Medio de pago:</strong> ${p.medio_pago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia (${esc(p.titular_transferencia || p.titular_sugerido)})`}</div>
                         </div>
@@ -883,11 +898,205 @@
                             <span>TOTAL PAGADO</span>
                             <span>${fmtMoneda(p.total_vecino)}</span>
                         </div>
+                        <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #cbd5e1; text-align:center;">
+                            <button type="button" onclick="enviarReciboVecinoWhatsAppPrueba(${p.id})"
+                                style="width:100%; padding:9px 14px; border-radius:8px; border:none; background:#15803d; color:#fff; font-weight:800; font-size:0.82rem; cursor:pointer;">
+                                📲 Enviar Recibo por WhatsApp al Vecino (Lab → 221 661 5746)
+                            </button>
+                        </div>
                     </div>
                 `,
                 confirmButtonText: 'Cerrar Recibo',
                 confirmButtonColor: '#16a34a'
             });
+        }
+
+        async function enviarReciboVecinoWhatsAppPrueba(pedidoId) {
+            let p = null;
+            let nombreMarca = 'Nodo Barrial';
+            for (const l of (ESTADO.tablero?.lotes || [])) {
+                const f = (l.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
+                if (f) { p = f; nombreMarca = l.nombre_marca || nombreMarca; break; }
+            }
+            if (!p) {
+                for (const v of (ESTADO.tablero?.vecinos_padron || [])) {
+                    const f = (v.pedidos_historial || []).find(x => Number(x.id) === Number(pedidoId));
+                    if (f) { p = f; nombreMarca = v.nombre_marca || nombreMarca; break; }
+                }
+            }
+            if (!p) return;
+
+            const itemsTxt = (p.items || []).map(i => `• ${i.cantidad}x ${i.nombre_publico}: ${fmtMoneda(i.subtotal_vecino)}`).join('\n');
+            const mensaje = [
+                `🧾 *RECIBO DE PAGO — ${nombreMarca}*`,
+                `Pedido: *#${p.codigo_pedido}*`,
+                `Cliente: *${p.vecino_nombre}*`,
+                itemsTxt,
+                Number(p.cargo_envio_barrial) > 0 ? `• Envío barrial: ${fmtMoneda(p.cargo_envio_barrial)}` : '',
+                `✅ *TOTAL ABONADO: ${fmtMoneda(p.total_vecino)}*`,
+                `Medio: ${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : `Transferencia (${p.titular_transferencia || p.titular_sugerido || ''})`}`,
+                `¡Muchas gracias por tu compra en ${nombreMarca}!`
+            ].filter(Boolean).join('\n');
+
+            const res = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    destinatario_nombre: p.vecino_nombre,
+                    telefono_original: p.vecino_telefono,
+                    mensaje
+                })
+            });
+            const data = await res.json();
+            const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
+            window.open(targetUrl, '_blank', 'noopener');
+        }
+
+        function renderizarPadronDobleLamda() {
+            const box = document.getElementById('padron-clientes-nodos-workspace');
+            if (!box || !ESTADO.tablero) return;
+
+            const nodos = ESTADO.tablero.nodos || [];
+            const vecinos = ESTADO.tablero.vecinos_padron || [];
+
+            box.innerHTML = `
+                <div class="panel-box" style="border-color:#0284c7;">
+                    <div class="panel-header" style="margin-bottom:14px;">
+                        <div>
+                            <div class="panel-title">👥 Administración LAMDA: Padrón de Clientes Directos (Nodos) vs. Padrón Separado de Vecinos</div>
+                            <div style="font-size:0.77rem; color:#94a3b8; margin-top:2px;">
+                                Visualización desdoblada: 1) El Nodo como cliente mayorista directo de LAMDA y 2) El padrón particular de vecinos vinculados a cada Nodo (con envíos de WhatsApp protegidos al <strong>221 661 5746</strong>).
+                            </div>
+                        </div>
+                        <span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
+                            📲 Desvío WA Activo: 221 661 5746
+                        </span>
+                    </div>
+
+                    <!-- 1. NODOS COMO CLIENTES DIRECTOS DE LAMDA -->
+                    <div style="margin-bottom:18px;">
+                        <div style="font-size:0.8rem; font-weight:900; color:#38bdf8; text-transform:uppercase; margin-bottom:8px;">
+                            1️⃣ Padrón de Nodos (Clientes Directos de LAMDA en Búnker, Lomas y Cta. Cte.)
+                        </div>
+                        ${nodos.length === 0 ? `
+                            <div style="padding:14px; border-radius:9px; background:#0f172a; border:1px dashed #334155; color:#94a3b8; font-size:0.82rem;">
+                                No hay Nodos creados actualmente (Puesta a Cero activa). Al crear un Nodo en el Paso 1 aparecerá aquí su ficha de cliente directo LAMDA.
+                            </div>
+                        ` : `
+                            <div style="overflow-x:auto;">
+                                <table class="tbl">
+                                    <thead>
+                                        <tr>
+                                            <th>Código Nodo</th>
+                                            <th>Marca Blanca / Gestor</th>
+                                            <th>Ficha Búnker / Logística</th>
+                                            <th>Lista Asignada</th>
+                                            <th>Alias Recaudación</th>
+                                            <th>Saldo Cta. Cte.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${nodos.map(n => `
+                                            <tr>
+                                                <td><strong style="font-family:monospace; color:#38bdf8;">${esc(n.codigo_nodo)}</strong></td>
+                                                <td>
+                                                    <div style="font-weight:800; color:#f8fafc;">${esc(n.nombre_marca)}</div>
+                                                    <div style="font-size:0.75rem; color:#94a3b8;">👤 ${esc(n.gestor_nombre)} · 📱 ${esc(n.gestor_telefono || 'S/T')}</div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge" style="background:#1e293b; color:#e2e8f0;">Búnker: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
+                                                    <span class="badge" style="background:#1e293b; color:#7dd3fc; margin-left:4px;">ID Logística: #${n.cliente_id_logistica || (9000 + Number(n.id))}</span>
+                                                </td>
+                                                <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos Barriales')}</td>
+                                                <td style="font-family:monospace; font-size:0.78rem; color:#fcd34d;">${esc(n.alias_bancario_display || 'S/A')}</td>
+                                                <td style="font-weight:900; color:${Number(n.saldo_cuenta_corriente) < 0 ? '#fb7185' : '#34d399'};">
+                                                    ${fmtMoneda(n.saldo_cuenta_corriente)}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- 2. PADRÓN SEPARADO DE CLIENTES PARTICULARES (VECINOS) VINCULADOS AL NODO -->
+                    <div>
+                        <div style="font-size:0.8rem; font-weight:900; color:#34d399; text-transform:uppercase; margin-bottom:8px;">
+                            2️⃣ Padrón Separado de Clientes Particulares del Nodo (Vecinos, Titulares Aprendidos, Pagos y Recibos)
+                        </div>
+                        ${vecinos.length === 0 ? `
+                            <div style="padding:14px; border-radius:9px; background:#0f172a; border:1px dashed #334155; color:#94a3b8; font-size:0.82rem;">
+                                Todavía no hay vecinos empadronados. Cuando un vecino cargue su primer pedido desde el celular en el Paso 4, quedará registrado automáticamente en este padrón separado vinculado a su Nodo.
+                            </div>
+                        ` : `
+                            <div style="overflow-x:auto;">
+                                <table class="tbl">
+                                    <thead>
+                                        <tr>
+                                            <th>Vecino / Contacto</th>
+                                            <th>Nodo Vinculado</th>
+                                            <th>Dirección Barrial</th>
+                                            <th>Titular Bancario Aprendido</th>
+                                            <th>Historial y Pagos</th>
+                                            <th>Acciones / Recibos WA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${vecinos.map(v => {
+                                            const ultPed = (v.pedidos_historial || [])[0] || null;
+                                            return `
+                                                <tr>
+                                                    <td>
+                                                        <div style="font-weight:800; color:#f8fafc;">👤 ${esc(v.nombre_completo)}</div>
+                                                        <div style="font-size:0.74rem; color:#94a3b8;">📱 WA Vecino: ${esc(v.telefono_whatsapp)} <span style="color:#34d399;">(→ Lab: 221 661 5746)</span></div>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge" style="background:rgba(14,165,233,0.16); color:#7dd3fc; border:1px solid rgba(14,165,233,0.35);">
+                                                            ${esc(v.nombre_marca)}
+                                                        </span>
+                                                    </td>
+                                                    <td style="font-size:0.78rem; color:#cbd5e1;">
+                                                        ${esc(v.direccion_calle || 'Retiro en Nodo')}
+                                                        ${v.entrecalles_referencia ? `<div style="font-size:0.71rem; color:#64748b;">(${esc(v.entrecalles_referencia)})</div>` : ''}
+                                                    </td>
+                                                    <td>
+                                                        ${v.titular_habitual_efectivo
+                                                            ? `<span class="badge" style="background:rgba(16,185,129,0.16); color:#6ee7b7; border:1px solid rgba(16,185,129,0.35);">🏦 ${esc(v.titular_habitual_efectivo)}</span>`
+                                                            : `<span style="font-size:0.74rem; color:#64748b;">Sin transferencia conciliada aún</span>`
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <div style="font-size:0.8rem; font-weight:800; color:#f8fafc;">
+                                                            ${v.cantidad_pedidos} ${v.cantidad_pedidos === 1 ? 'pedido' : 'pedidos'} · Total: ${fmtMoneda(v.total_comprado)}
+                                                        </div>
+                                                        <div style="font-size:0.73rem; margin-top:2px;">
+                                                            <span style="color:#34d399;">Pagado: ${fmtMoneda(v.total_pagado)}</span> ·
+                                                            <span style="color:${v.total_pendiente_pago > 0 ? '#fcd34d' : '#94a3b8'};">Pendiente: ${fmtMoneda(v.total_pendiente_pago)}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        ${ultPed ? `
+                                                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                                                <button type="button" class="btn-top" onclick="verReciboVecinoMarcaBlanca(${ultPed.id})">
+                                                                    🧾 Recibo #${esc(ultPed.codigo_pedido)}
+                                                                </button>
+                                                                <button type="button" class="btn-top primary" onclick="enviarReciboVecinoWhatsAppPrueba(${ultPed.id})">
+                                                                    📲 Enviar WA (221 661 5746)
+                                                                </button>
+                                                            </div>
+                                                        ` : `<span style="font-size:0.74rem; color:#64748b;">—</span>`}
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
         }
 
         document.addEventListener('DOMContentLoaded', () => {

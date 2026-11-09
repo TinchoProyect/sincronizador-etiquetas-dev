@@ -419,4 +419,45 @@ router.post('/circuito-lamda/canastos/:canastoId/etapa', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/produccion/nodos/reset-pruebas
+ * Pone a cero todos los datos de muestra de Nodos (tablas nodos_* + clientes + cuentas corrientes + presupuestos canastos)
+ */
+router.post('/reset-pruebas', async (req, res) => {
+    try {
+        const conservarArticulosBase = req.body?.conservar_articulos_base !== false;
+        const resultado = await nodosService.ponerACeroDatosNodosBarriales({ conservarArticulosBase });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /reset-pruebas:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/whatsapp-prueba
+ * Garantiza que todo mensaje saliente de WhatsApp en Modo Laboratorio apunte exclusivamente al 221 661 5746 (5492216615746)
+ */
+router.post('/whatsapp-prueba', async (req, res) => {
+    try {
+        const telefonoPrueba = '5492216615746';
+        const telefonoOriginal = String(req.body?.telefono_original || '').trim();
+        const destinatarioNombre = String(req.body?.destinatario_nombre || 'Cliente / Vecino').trim();
+        const mensaje = String(req.body?.mensaje || '').trim();
+        const urlWaMe = `https://wa.me/${telefonoPrueba}?text=${encodeURIComponent(mensaje)}`;
+        console.log(`🧪 [MODO LABORATORIO - NODOS WA] Redirigiendo envío de "${destinatarioNombre}" (${telefonoOriginal || 'S/T'}) -> ${telefonoPrueba} (221 661 5746)`);
+        res.json({
+            ok: true,
+            modo_laboratorio: true,
+            telefono_destino_forzado: telefonoPrueba,
+            telefono_destino_display: '221 661 5746',
+            telefono_original: telefonoOriginal,
+            destinatario_nombre: destinatarioNombre,
+            url_wa_me: urlWaMe
+        });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
 module.exports = router;

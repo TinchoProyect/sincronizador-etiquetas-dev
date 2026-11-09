@@ -1307,7 +1307,7 @@ io.on('connection', (socket) => {
 });
 
 // Puerto
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PRODUCCION_PORT || 3002;
 
 httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor de producción corriendo en puerto ${PORT}`);

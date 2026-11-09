@@ -25,7 +25,7 @@ console.log('🚀 [FACTURACION] Sistema LAMDA - Facturación Electrónica');
 console.log('🚀 [FACTURACION] =====================================');
 
 const app = express();
-const PORT = process.env.PORT || 3004;
+const PORT = process.env.FACTURACION_PORT || 3004;
 
 // Importar configuraciones
 const { dbMiddleware, verificarTablas } = require('./config/database');

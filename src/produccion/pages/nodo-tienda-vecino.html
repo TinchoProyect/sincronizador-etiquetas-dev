@@ -513,7 +513,24 @@
       const q = fechaSimuladaIso ? `?fecha_simulada=${encodeURIComponent(fechaSimuladaIso)}` : '';
       const resp = await fetch(`/api/produccion/nodos/portal/${encodeURIComponent(STATE.slug)}${q}`);
       const data = await resp.json();
-      if (!data.ok) return;
+      if (!data.ok) {
+        const grid = document.getElementById('products-grid');
+        if (grid) {
+          grid.innerHTML = `
+            <div style="grid-column: 1/-1; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:32px; text-align:center;">
+              <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
+              <h3 style="margin:0 0 8px 0;">Tienda Vecinal en Puesta a Cero (0 Nodos Creados)</h3>
+              <p style="color:#64748b; font-size:0.9rem; max-width:500px; margin:0 auto 14px auto;">
+                Creá el primer Nodo desde la Pizarra de LAMDA (Paso 1) para activar la Tienda Marca Blanca del Vecino.
+              </p>
+              <a href="/pages/pizarra-simulacion.html?tab=nodos" style="display:inline-block; padding:10px 18px; border-radius:9px; background:#16a34a; color:#fff; font-weight:800; text-decoration:none;">
+                📊 Ir a Pizarra LAMDA
+              </a>
+            </div>
+          `;
+        }
+        return;
+      }
 
       STATE.nodo = data.nodo;
       STATE.slug = data.nodo.slug;
@@ -771,8 +788,8 @@
             <input type="text" id="chk-nombre" placeholder="Ej: María Laura Gómez" value="${esc(window._savedVecinoNombre || '')}" oninput="window._savedVecinoNombre=this.value">
           </div>
           <div class="form-group">
-            <label>Tu WhatsApp *</label>
-            <input type="text" id="chk-telefono" placeholder="Ej: 221 554 8910" value="${esc(window._savedVecinoTel || '')}" oninput="window._savedVecinoTel=this.value">
+            <label>Tu WhatsApp * <span style="font-size:0.7rem; color:#15803d;">(Pruebas: 221 661 5746)</span></label>
+            <input type="text" id="chk-telefono" placeholder="221 661 5746" value="${esc(window._savedVecinoTel || '221 661 5746')}" oninput="window._savedVecinoTel=this.value">
           </div>
         </div>
 
@@ -913,6 +930,10 @@
           <div id="etiqueta-confirmacion-preview" style="margin-bottom:12px;"></div>
 
           <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+            <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}')"
+              style="padding:9px 14px; border-radius:9px; border:1px solid #16a34a; background:#15803d; color:#ffffff; font-weight:800; font-size:0.8rem; cursor:pointer;">
+              📲 Enviar mi Pedido por WhatsApp (Prueba: 221 661 5746)
+            </button>
             <button type="button" onclick="verEtiquetaDeMiPedido(${ped.id})"
               style="padding:9px 14px; border-radius:9px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.8rem; cursor:pointer;">
               🖨️ Ver Etiqueta Térmica Generada (Modo Prueba)
@@ -924,6 +945,27 @@
           </div>
         </div>
       `;
+    }
+
+    async function enviarComprobanteWhatsAppPrueba(codigoPedido, vecinoNombre, nombreMarca, fechaEntrega, totalVecino, medioPago, aliasBancario) {
+      const mensaje = [
+        `🌿 *${nombreMarca}* — Nuevo Pedido #${codigoPedido}`,
+        `👤 Vecino/a: *${vecinoNombre}*`,
+        `📅 Entrega: ${fechaEntrega}`,
+        `💰 Total: *${fmt(totalVecino)}* (${medioPago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia al alias ${aliasBancario}`})`
+      ].join('\n');
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: nombreMarca,
+          telefono_original: '5492216615746',
+          mensaje
+        })
+      });
+      const data = await resp.json();
+      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
+      window.open(targetUrl, '_blank', 'noopener');
     }
 
     async function verEtiquetaDeMiPedido(pedidoId) {

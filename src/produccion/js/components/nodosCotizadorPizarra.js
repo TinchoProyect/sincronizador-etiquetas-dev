@@ -226,6 +226,12 @@
                             style="padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; cursor:pointer; border:1px solid rgba(245,158,11,0.45); background:rgba(245,158,11,0.14); color:#fcd34d;">
                             ⚡ Actualizar Costos
                         </button>
+
+                        <button onclick="window.NodosPizarra.ponerACeroPruebas()"
+                            title="Limpiar todos los Nodos, pedidos, canastos y clientes de prueba para iniciar desde cero"
+                            style="padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; cursor:pointer; border:1px solid rgba(244,63,94,0.5); background:rgba(244,63,94,0.16); color:#fda4af;">
+                            🧹 Puesta a Cero Pruebas
+                        </button>
                     </div>
                 </div>
 
@@ -1773,11 +1779,64 @@
         }
     }
 
+    async function ponerACeroDatosPruebasNodos() {
+        let conservarBase = true;
+        if (window.Swal) {
+            const conf = await Swal.fire({
+                title: '🧹 Puesta a Cero Integral de Pruebas (Nodos Barriales)',
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '580px',
+                html: `
+                    <div style="text-align:left; font-size:0.86rem; line-height:1.5;">
+                        <p>Esta acción limpia de <code>etiquetas_pruebas</code> todos los Nodos, pedidos vecinales, canastos, propuestas, clientes Nodos (Búnker + Lomas), cuentas corrientes de Nodos y presupuestos Canasto, manteniendo intactos los datos mayoristas.</p>
+                        <label style="display:flex; align-items:center; gap:8px; margin-top:12px; padding:10px; border-radius:8px; background:#0f172a; border:1px solid #334155; cursor:pointer;">
+                            <input type="checkbox" id="swal-reset-conservar-base" checked style="width:16px; height:16px;">
+                            <span><strong>Conservar 2 artículos base en Lista Base Nodos Barriales</strong> (<code>APN25/27X250G</code> Almendra x 250g y <code>GSX500G</code> Granola de Sol x 500g) para probar tanto publicar un artículo preexistente como pedir cotización de uno nuevo.</span>
+                        </label>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '🧹 Ejecutar Puesta a Cero',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#e11d48',
+                preConfirm: () => {
+                    return Boolean(document.getElementById('swal-reset-conservar-base')?.checked);
+                }
+            });
+            if (!conf.isConfirmed) return;
+            conservarBase = Boolean(conf.value);
+        }
+
+        const resp = await fetch('/api/produccion/nodos/reset-pruebas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conservar_articulos_base: conservarBase })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            ESTADO_NODOS.nodoEditandoId = null;
+            ESTADO_NODOS.propuestaActivaId = null;
+            ESTADO_NODOS.catalogoEditandoId = null;
+            await cargarDatosNodosBarriales(true);
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ Entorno Puesto a Cero',
+                    text: `0 Nodos, 0 pedidos, 0 canastos y ${data.articulos_base_lista_nodos?.length || 0} artículos base en Lista Base Nodos Barriales.`,
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+            }
+        }
+    }
+
     // =========================================================================
     // API PÚBLICA EN WINDOW
     // =========================================================================
     window.NodosPizarra = {
         inicializar: cargarDatosNodosBarriales,
+        ponerACeroPruebas: ponerACeroDatosPruebasNodos,
         cambiarSubTab: cambiarSubTabNodos,
         seleccionarFlujoMesa,
         alCambiarOrigenSelect,
