@@ -1032,7 +1032,7 @@ function confirmarEntrega(presupuestoId, tipoPedido = 'entrega') {
 }
 
 function finalizarRutaDelDia() {
-    import('../modules/ruta.js').then(module => {
+    import('../modules/ruta.js?v=2').then(module => {
         module.finalizarRutaDelDia();
     }).catch(error => {
         console.error('[RUTA] Error al cargar módulo:', error);

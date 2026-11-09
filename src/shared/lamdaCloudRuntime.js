@@ -608,7 +608,7 @@ const CLIENT_RUNTIME_SCRIPT = `
                 renderSubtleEnvironmentWatermark(data);
                 renderZebraBanner(data.zebraQueue);
                 if (data.canProbeLocalBridge) {
-                    pollLocalZebraPresence(false);
+                    pollLocalZebraPresence(!hasActivePhysicalPresence());
                 }
             })
             .catch(function() {});

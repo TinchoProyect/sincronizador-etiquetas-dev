@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializa cargando datos de sesión
     (async function initSession() {
         try {
-            const baseUrl = window.PUBLIC_BASE_URL || window.location.origin;
+            const baseUrl = window.location.origin;
             const res = await fetch(`${baseUrl}/api/logistica/tratamientos/sesion/${sessionHash}`);
             const data = await res.json();
 
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // El fallback busca la URL pública si env-config.js fallase
-            const baseUrl = window.PUBLIC_BASE_URL || window.location.origin;
+            const baseUrl = window.location.origin;
             const fullEndpoint = `${baseUrl}/api/logistica/tratamientos/precheckin/${sessionHash}`;
 
             const networkResponse = await fetch(fullEndpoint, {

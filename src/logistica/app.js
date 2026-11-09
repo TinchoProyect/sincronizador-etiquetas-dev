@@ -435,10 +435,9 @@ app.get('/', (req, res) => {
 
 // Solución dinámica para inyección de IP Pública en Frontend
 app.get('/env-config.js', (req, res) => {
-    // Configuración que se inyecta nativamente en el window del frontend
-    const publicUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:3005';
     res.type('.js');
-    res.send(`window.PUBLIC_BASE_URL = "${publicUrl}";`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.send('window.PUBLIC_BASE_URL = window.location.origin;');
 });
 
 // Rutas API

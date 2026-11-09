@@ -3,6 +3,38 @@
  * Módulo de Logística
  */
 
+const { verificarTokenOExtraerUsuario } = require('../../shared/lamdaCloudAuthGuard');
+
+/**
+ * Extrae el ID numérico del chofer desde req.lamdaUser, JWT Cloud o token base64(id:timestamp)
+ */
+function extraerChoferIdDeRequest(req) {
+    if (req.lamdaUser && Number.isInteger(Number(req.lamdaUser.id)) && Number(req.lamdaUser.id) > 0) {
+        return Number(req.lamdaUser.id);
+    }
+
+    const authHeader = req.headers.authorization || req.headers['x-access-token'] || req.headers['x-chofer-token'];
+    if (!authHeader) return null;
+
+    const userExtraido = verificarTokenOExtraerUsuario(authHeader);
+    if (userExtraido && Number.isInteger(Number(userExtraido.id)) && Number(userExtraido.id) > 0) {
+        return Number(userExtraido.id);
+    }
+
+    try {
+        const rawToken = String(authHeader).startsWith('Bearer ')
+            ? String(authHeader).substring(7).trim()
+            : String(authHeader).trim();
+        const decoded = Buffer.from(rawToken, 'base64').toString('utf-8');
+        const choferId = parseInt(decoded.split(':')[0], 10);
+        if (Number.isInteger(choferId) && choferId > 0) {
+            return choferId;
+        }
+    } catch (_) {}
+
+    return null;
+}
+
 /**
  * Valida que el usuario tenga el permiso especificado
  * Por ahora es un placeholder - se integrará con el sistema de usuarios existente
@@ -58,24 +90,21 @@ function validateSession(req, res, next) {
  * Middleware para verificar token móvil de chofer (sin DB)
  */
 function verificarTokenChofer(req, res, next) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, error: 'Token no proporcionado' });
+    const choferId = extraerChoferIdDeRequest(req);
+    if (!choferId) {
+        const tieneHeader = Boolean(req.headers.authorization || req.headers['x-access-token'] || req.headers['x-chofer-token']);
+        return res.status(401).json({
+            success: false,
+            error: tieneHeader ? 'Token inválido' : 'Token no proporcionado'
+        });
     }
-    const token = authHeader.substring(7);
-    try {
-        const decoded = Buffer.from(token, 'base64').toString('utf-8');
-        const choferId = parseInt(decoded.split(':')[0]);
-        if (isNaN(choferId)) throw new Error("ID inválido");
-        req.choferId = choferId;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, error: 'Token inválido' });
-    }
+    req.choferId = choferId;
+    next();
 }
 
 module.exports = {
     validatePermissions,
     validateSession,
-    verificarTokenChofer
+    verificarTokenChofer,
+    extraerChoferIdDeRequest
 };

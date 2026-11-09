@@ -2266,10 +2266,32 @@ function crearNuevaRuta() {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(8, 0, 0, 0);
+    const localIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
     const fechaInput = document.getElementById('fecha_salida');
+    const nombreInput = document.getElementById('nombre_ruta_nueva');
     if (fechaInput) {
-        fechaInput.value = tomorrow.toISOString().slice(0, 16);
+        fechaInput.value = localIso;
+        const nombreAuto = generarNombreRuta(fechaInput.value);
+        if (nombreInput) {
+            nombreInput.value = nombreAuto;
+            nombreInput.dataset.ultimoNombreAuto = nombreAuto;
+        }
+        if (!fechaInput.dataset.listenerAutoNombre) {
+            const actualizarNombreAuto = () => {
+                if (!fechaInput.value || !nombreInput) return;
+                const actual = (nombreInput.value || '').trim();
+                const ultimoAuto = nombreInput.dataset.ultimoNombreAuto || '';
+                if (!actual || actual === ultimoAuto || actual.startsWith('Logística - ') || /^(Domingo|Lunes|Martes|Miércoles|Jueves|Viernes|Sábado)\s+\d+/i.test(actual)) {
+                    const nuevoAuto = generarNombreRuta(fechaInput.value);
+                    nombreInput.value = nuevoAuto;
+                    nombreInput.dataset.ultimoNombreAuto = nuevoAuto;
+                }
+            };
+            fechaInput.addEventListener('change', actualizarNombreAuto);
+            fechaInput.addEventListener('input', actualizarNombreAuto);
+            fechaInput.dataset.listenerAutoNombre = '1';
+        }
     }
 
     // Pre-seleccionar vehículo LYU622
@@ -2335,8 +2357,11 @@ async function guardarNuevaRuta(event) {
         console.log('[DASHBOARD] Usuario confirmó creación de ruta en el pasado');
     }
 
-    // Generar nombre automático
-    const nombreRuta = generarNombreRuta(fechaSalida);
+    // Usar nombre ingresado (actualizado automáticamente con la fecha) o generar fallback
+    const nombreInput = document.getElementById('nombre_ruta_nueva');
+    const nombreRuta = (nombreInput && nombreInput.value && nombreInput.value.trim())
+        ? nombreInput.value.trim()
+        : generarNombreRuta(fechaSalida);
 
     const formData = {
         nombre_ruta: nombreRuta,

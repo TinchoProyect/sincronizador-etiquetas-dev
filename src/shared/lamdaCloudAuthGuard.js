@@ -348,11 +348,11 @@ function lamdaCloudAuthGuard(req, res, next) {
 
     if (validUser) {
         req.lamdaUser = validUser;
-        if (!req.headers.authorization && validUser.id) {
-            const p = String(req.path || req.url || '');
-            if (p.startsWith('/api/logistica/movil')) {
+        if (validUser.id) {
+            const p = String(req.originalUrl || req.path || req.url || '');
+            if (p.startsWith('/api/logistica/movil') || String(req.path || '').startsWith('/api/logistica/movil')) {
                 req.headers.authorization = 'Bearer ' + Buffer.from(validUser.id + ':' + Date.now()).toString('base64');
-            } else {
+            } else if (!req.headers.authorization) {
                 req.headers.authorization = 'Bearer ' + firmarJwtSesion(validUser);
             }
         }

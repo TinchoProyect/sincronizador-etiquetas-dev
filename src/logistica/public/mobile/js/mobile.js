@@ -197,6 +197,12 @@ async function cargarRutaActiva(rutaIdForzada = null) {
             return;
         }
 
+        // Mostrar inmediatamente el nombre del chofer en el encabezado
+        const choferNombreInit = document.getElementById('chofer-nombre');
+        if (choferNombreInit) {
+            choferNombreInit.textContent = sesion.nombre || sesion.nombre_completo || sesion.usuario || 'Chofer';
+        }
+
         // Paso 1: Obtener listado de TODAS las rutas activas del chofer
         const resRutas = await fetch(`${API_BASE_URL}/api/logistica/movil/mis-rutas`, {
             cache: 'no-store',
@@ -229,6 +235,7 @@ async function cargarRutaActiva(rutaIdForzada = null) {
         if (state.rutasDisponibles.length === 0 && !rutaIdACargar) {
             state.ruta = null;
             state.entregas = [];
+            actualizarHeader();
             // Renderizar selector vacío (mostrará solo el botón de crear)
             if (typeof renderizarSelectorRuta === 'function') renderizarSelectorRuta();
             container.innerHTML = `
@@ -349,6 +356,7 @@ async function cargarRutaActiva(rutaIdForzada = null) {
         // Resetear estado local
         state.ruta = null;
         state.entregas = [];
+        actualizarHeader();
 
         // Renderizar selector (puede haber rutas disponibles aunque la seleccionada falló)
         if (typeof renderizarSelectorRuta === 'function') renderizarSelectorRuta();
@@ -375,14 +383,16 @@ function actualizarHeader() {
 
     // Nombre del chofer
     const choferNombre = document.getElementById('chofer-nombre');
-    if (choferNombre) {
-        choferNombre.textContent = sesion.nombre || sesion.usuario;
+    if (choferNombre && sesion) {
+        choferNombre.textContent = sesion.nombre || sesion.nombre_completo || sesion.usuario || 'Chofer';
     }
 
     // Nombre de la ruta
     const rutaNombre = document.getElementById('ruta-nombre');
-    if (rutaNombre && state.ruta) {
-        rutaNombre.textContent = state.ruta.nombre_ruta || `Ruta #${state.ruta.id}`;
+    if (rutaNombre) {
+        rutaNombre.textContent = state.ruta
+            ? (state.ruta.nombre_ruta || `Ruta #${state.ruta.id}`)
+            : 'Sin ruta activa';
     }
 
     // Estadísticas
@@ -419,7 +429,7 @@ function actualizarHeader() {
  * Refrescar ruta (delega a módulo de ruta)
  */
 async function refrescarRuta() {
-    import('./modules/ruta.js').then(module => {
+    import('./modules/ruta.js?v=2').then(module => {
         module.refrescarRuta();
     }).catch(error => {
         console.error('[RUTA] Error al cargar módulo:', error);

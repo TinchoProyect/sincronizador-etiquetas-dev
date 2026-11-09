@@ -3,7 +3,7 @@
  * Maneja la carga y finalización de rutas
  */
 
-import { obtenerRutaActiva, finalizarRuta, API_BASE_URL } from './api.js';
+import { obtenerRutaActiva, finalizarRuta, API_BASE_URL } from './api.js?v=2';
 
 /**
  * Finalizar ruta del día

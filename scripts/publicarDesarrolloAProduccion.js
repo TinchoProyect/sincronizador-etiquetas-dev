@@ -75,6 +75,7 @@ async function main() {
         runCmd('git fetch origin --prune');
         const currentBranch = runCmd('git rev-parse --abbrev-ref HEAD').trim();
         if (currentBranch === 'desarrollo') {
+            runCmd('git merge origin/main --no-edit');
             runCmd('git push origin desarrollo');
             runCmd('git push origin desarrollo:main');
         } else {
