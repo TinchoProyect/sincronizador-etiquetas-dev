@@ -4,7 +4,7 @@
  */
 
 // Configuración (inyectada desde backend vía env-config.js)
-const API_BASE_URL = window.PUBLIC_BASE_URL || window.location.origin;
+const API_BASE_URL = window.location.origin;
 
 /**
  * Realizar petición con autenticación

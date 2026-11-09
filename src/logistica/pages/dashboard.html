@@ -189,6 +189,15 @@
             </div>
             <form id="form-nueva-ruta" onsubmit="guardarNuevaRuta(event)" style="padding: 1.5rem;">
                 <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="nombre_ruta_nueva" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1e293b;">
+                        🛣️ Nombre de la Ruta *
+                    </label>
+                    <input type="text" 
+                           id="nombre_ruta_nueva" 
+                           required 
+                           style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 1rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.25rem;">
                     <label for="fecha_salida" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1e293b;">
                         📅 Fecha y Hora de Salida *
                     </label>
@@ -197,7 +206,7 @@
                            required 
                            style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.375rem; font-size: 1rem;">
                     <small style="display: block; margin-top: 0.25rem; color: #64748b; font-size: 0.875rem;">
-                        El nombre de la ruta se generará automáticamente
+                        Al cambiar la fecha u hora, el nombre predeterminado se actualiza automáticamente
                     </small>
                 </div>
                 <div class="form-group" style="margin-bottom: 1.25rem;">

@@ -13,6 +13,7 @@ const { obtenerClienteUnificado, resolverDestinatariosAlertaEntrega } = require(
 const { obtenerDestinatariosInicioRuta, despacharNotificacionesInicioRuta } = require('../services/notificacionInicioRutaService.js');
 const PagosEfectivoService = require('../services/pagosEfectivoService.js');
 const { emitirCookieSesionCloud } = require('../../shared/lamdaCloudAuthGuard');
+const { extraerChoferIdDeRequest } = require('../middleware/auth.js');
 
 /**
  * Helper: envía un aviso corto por WhatsApp al cliente confirmando que su sobre fue retirado por el chofer.
@@ -353,17 +354,9 @@ router.post('/login', async (req, res) => {
 router.get('/mis-rutas', async (req, res) => {
     console.log('🔍 [MOVIL] Ruta GET /mis-rutas - Listando rutas del chofer');
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ success: false, error: 'Token no proporcionado' });
-        }
-        const token = authHeader.substring(7);
-        let choferId;
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('utf-8');
-            choferId = parseInt(decoded.split(':')[0]);
-        } catch (error) {
-            return res.status(401).json({ success: false, error: 'Token inválido' });
+        const choferId = extraerChoferIdDeRequest(req);
+        if (!choferId) {
+            return res.status(401).json({ success: false, error: req.headers.authorization ? 'Token inválido' : 'Token no proporcionado' });
         }
 
         // Obtener todas las rutas activas (ARMANDO o EN_CAMINO) del chofer con conteo de entregas
@@ -417,27 +410,11 @@ router.get('/ruta-activa', async (req, res) => {
     console.log('🔍 [MOVIL] Ruta GET /ruta-activa - Obteniendo ruta del chofer');
 
     try {
-        // Obtener token del header
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const choferId = extraerChoferIdDeRequest(req);
+        if (!choferId) {
             return res.status(401).json({
                 success: false,
-                error: 'Token no proporcionado'
-            });
-        }
-
-        const token = authHeader.substring(7);
-
-        // Decodificar token simple (en producción validar JWT)
-        let choferId;
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('utf-8');
-            choferId = parseInt(decoded.split(':')[0]);
-        } catch (error) {
-            return res.status(401).json({
-                success: false,
-                error: 'Token inválido'
+                error: req.headers.authorization ? 'Token inválido' : 'Token no proporcionado'
             });
         }
 
@@ -1783,11 +1760,9 @@ router.post('/retiros/:id/validar', async (req, res) => {
             if (getOrden.rowCount === 0) throw new Error('Orden no encontrada');
             
             let choferNombre = req.body?.chofer_nombre || null;
-            if (!choferNombre && req.headers.authorization) {
+            if (!choferNombre) {
                 try {
-                    const token = req.headers.authorization.substring(7);
-                    const decoded = Buffer.from(token, 'base64').toString('utf-8');
-                    const choferId = parseInt(decoded.split(':')[0]);
+                    const choferId = extraerChoferIdDeRequest(req);
                     if (choferId) {
                         const uRes = await client.query('SELECT nombre_completo FROM usuarios WHERE id = $1', [choferId]);
                         if (uRes.rows.length > 0) choferNombre = uRes.rows[0].nombre_completo;
@@ -1920,27 +1895,11 @@ router.post('/rutas/finalizar', async (req, res) => {
     console.log('🔍 [MOVIL] Ruta POST /rutas/finalizar - Finalizando ruta');
 
     try {
-        // Obtener token del header
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const choferId = extraerChoferIdDeRequest(req);
+        if (!choferId) {
             return res.status(401).json({
                 success: false,
-                error: 'Token no proporcionado'
-            });
-        }
-
-        const token = authHeader.substring(7);
-
-        // Decodificar token
-        let choferId;
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('utf-8');
-            choferId = parseInt(decoded.split(':')[0]);
-        } catch (error) {
-            return res.status(401).json({
-                success: false,
-                error: 'Token inválido'
+                error: req.headers.authorization ? 'Token inválido' : 'Token no proporcionado'
             });
         }
 
@@ -2410,11 +2369,9 @@ router.post('/sobres-efectivo/:id/retirar', async (req, res) => {
         const { chofer_nombre, notificar } = req.body || {};
 
         let choferResuelto = chofer_nombre || null;
-        if (!choferResuelto && req.headers.authorization) {
+        if (!choferResuelto) {
             try {
-                const token = req.headers.authorization.substring(7);
-                const decoded = Buffer.from(token, 'base64').toString('utf-8');
-                const choferId = parseInt(decoded.split(':')[0]);
+                const choferId = extraerChoferIdDeRequest(req);
                 if (choferId) {
                     const uRes = await req.db.query('SELECT nombre_completo FROM usuarios WHERE id = $1', [choferId]);
                     if (uRes.rows.length > 0) choferResuelto = uRes.rows[0].nombre_completo;
@@ -2499,18 +2456,9 @@ router.get('/rutas-historial', async (req, res) => {
     console.log('🔍 [MOVIL] Ruta GET /rutas-historial - Obteniendo historial');
 
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ success: false, error: 'Token no proporcionado' });
-        }
-        const token = authHeader.substring(7);
-
-        let choferId;
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('utf-8');
-            choferId = parseInt(decoded.split(':')[0]);
-        } catch (error) {
-            return res.status(401).json({ success: false, error: 'Token inválido' });
+        const choferId = extraerChoferIdDeRequest(req);
+        if (!choferId) {
+            return res.status(401).json({ success: false, error: req.headers.authorization ? 'Token inválido' : 'Token no proporcionado' });
         }
 
         const query = `
@@ -2541,8 +2489,7 @@ router.get('/pedidos-pendientes', async (req, res) => {
     console.log('🔍 [MOVIL] Ruta GET /pedidos-pendientes - Listando pendientes (Vía Modelo Central)');
 
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!extraerChoferIdDeRequest(req) && (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer '))) {
             return res.status(401).json({ success: false, error: 'Token no proporcionado' });
         }
 
@@ -2565,8 +2512,7 @@ router.get('/pedidos-pendientes', async (req, res) => {
 // ==========================================
 
 const validarTokenMovil = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!extraerChoferIdDeRequest(req) && (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer '))) {
         return res.status(401).json({ success: false, error: 'Token denegado' });
     }
     next();

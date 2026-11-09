@@ -253,6 +253,20 @@ function actualizarBotonAsignar() {
     }
 }
 
+function generarNombreSugeridoRutaMovil(fechaInput, segundosFijos = '00') {
+    const fechaParsed = fechaInput ? new Date(fechaInput) : new Date();
+    const f = isNaN(fechaParsed.getTime()) ? new Date() : fechaParsed;
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const diaSemana = diasSemana[f.getDay()];
+    const dd = String(f.getDate()).padStart(2, '0');
+    const mm = String(f.getMonth() + 1).padStart(2, '0');
+    const yyyy = f.getFullYear();
+    const hh = String(f.getHours()).padStart(2, '0');
+    const min = String(f.getMinutes()).padStart(2, '0');
+    const ss = String(segundosFijos).padStart(2, '0');
+    return `Logística - ${diaSemana} ${dd}/${mm}/${yyyy} - ${hh}:${min}:${ss}`;
+}
+
 async function abrirModalNuevaRuta() {
     let choferesHtml = '<option value="">Cargando choferes...</option>';
     try {
@@ -270,17 +284,12 @@ async function abrirModalNuevaRuta() {
         }
     } catch(e) { console.error(e); }
 
-    // Generar nombre sugerido: "Logística - [Día] DD/MM/YYYY - HH:MM:SS"
+    // Pre-popular fecha de salida con la hora actual y generar nombre sugerido: "Logística - [Día] DD/MM/YYYY - HH:MM:SS"
     const hoy = new Date();
-    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const diaSemana = diasSemana[hoy.getDay()];
-    const dd = String(hoy.getDate()).padStart(2, '0');
-    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-    const yyyy = hoy.getFullYear();
-    const hh = String(hoy.getHours()).padStart(2, '0');
-    const min = String(hoy.getMinutes()).padStart(2, '0');
-    const ss = String(hoy.getSeconds()).padStart(2, '0');
-    const nombreSugerido = `Logística - ${diaSemana} ${dd}/${mm}/${yyyy} - ${hh}:${min}:${ss}`;
+    const ssInicial = String(hoy.getSeconds()).padStart(2, '0');
+    const nowLocal = new Date(hoy.getTime() - hoy.getTimezoneOffset() * 60000);
+    const fechaIsoLocal = nowLocal.toISOString().slice(0, 16);
+    const nombreSugerido = generarNombreSugeridoRutaMovil(fechaIsoLocal, ssInicial);
 
     const modalHtml = `
     <div id="modal-dinamico-ruta" class="modal-mobile" style="display: flex;">
@@ -301,17 +310,32 @@ async function abrirModalNuevaRuta() {
             </div>
             <div class="form-group">
                 <label style="font-weight:bold; margin-bottom:0.5rem; display:block;">Fecha de Salida</label>
-                <input type="datetime-local" id="nueva-ruta-fecha" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1.5rem; font-size:1rem;">
+                <input type="datetime-local" id="nueva-ruta-fecha" value="${fechaIsoLocal}" style="width:100%; padding:0.75rem; border:1px solid #cbd5e1; border-radius:0.5rem; margin-bottom:1.5rem; font-size:1rem;">
             </div>
             <button onclick="ejecutarCrearRuta(event)" style="width:100%; padding:1rem; background:#2563eb; color:white; border:none; border-radius:0.5rem; font-weight:bold; font-size:1.1rem; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">Guardar y Crear</button>
         </div>
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    // Pre-popular fecha de salida con la hora actual
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    document.getElementById('nueva-ruta-fecha').value = now.toISOString().slice(0,16);
+
+    const inputFecha = document.getElementById('nueva-ruta-fecha');
+    const inputNombre = document.getElementById('nueva-ruta-nombre');
+    if (inputFecha && inputNombre) {
+        inputFecha.value = fechaIsoLocal;
+        inputNombre.dataset.ultimoNombreAuto = nombreSugerido;
+        const sincronizarNombreConFecha = () => {
+            if (!inputFecha.value) return;
+            const actual = (inputNombre.value || '').trim();
+            const ultimoAuto = inputNombre.dataset.ultimoNombreAuto || '';
+            // Actualizar si el usuario mantiene el formato predeterminado ("Logística - ...") o no lo personalizó manualmente
+            if (!actual || actual === ultimoAuto || actual.startsWith('Logística - ')) {
+                const nuevoNombre = generarNombreSugeridoRutaMovil(inputFecha.value, ssInicial);
+                inputNombre.value = nuevoNombre;
+                inputNombre.dataset.ultimoNombreAuto = nuevoNombre;
+            }
+        };
+        inputFecha.addEventListener('change', sincronizarNombreConFecha);
+        inputFecha.addEventListener('input', sincronizarNombreConFecha);
+    }
 }
 
 async function ejecutarCrearRuta(event) {
@@ -339,6 +363,11 @@ async function ejecutarCrearRuta(event) {
         if(result.success) {
             document.getElementById('modal-dinamico-ruta').remove();
 
+            const nuevaRutaId = result.data?.id || result.ruta?.id;
+            if (nuevaRutaId) {
+                sessionStorage.setItem('activeRouteId', String(nuevaRutaId));
+            }
+
             // Notificar éxito con SweetAlert (no bloqueante)
             await Swal.fire({
                 icon: 'success',
@@ -351,7 +380,7 @@ async function ejecutarCrearRuta(event) {
 
             // Navegar a Mi Ruta y forzar re-fetch del estado con la nueva ruta
             switchTab('ruta');
-            await cargarRutaActiva(result.data.id);
+            await cargarRutaActiva(nuevaRutaId);
         } else {
             alert(result.error || 'No se pudo crear la ruta.');
         }

@@ -470,6 +470,173 @@ async function mostrarDiagnosticoPreVuelo() {
     return { dnsInfo, localHealth, cloudHealth };
 }
 
+function extraerExpMsTa(rawStr) {
+    try {
+        const obj = typeof rawStr === 'string' ? JSON.parse(rawStr) : rawStr;
+        const expHeader =
+            (Array.isArray(obj?.header) && obj.header[1] && obj.header[1].expirationtime) ||
+            obj?.header?.expirationtime ||
+            obj?.credentials?.expirationtime ||
+            obj?.expira_en ||
+            null;
+        if (!expHeader) return 0;
+        const ms = new Date(expHeader).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    } catch (_) {
+        return 0;
+    }
+}
+
+function sincronizarTicketsTaLocalHaciaNube() {
+    try {
+        const dirs = [
+            path.join(ROOT_DIR, 'src/facturacion/node_modules/@afipsdk/afip.js/src/Afip_res'),
+            path.join(ROOT_DIR, 'src/facturacion/certs')
+        ];
+        const mapTas = {};
+        const now = Date.now();
+        const doceHorasMs = 12 * 3600 * 1000;
+
+        for (const d of dirs) {
+            if (!fs.existsSync(d)) continue;
+            for (const name of fs.readdirSync(d)) {
+                if (!/^TA-.*\.json$/i.test(name)) continue;
+                const full = path.join(d, name);
+                try {
+                    const st = fs.statSync(full);
+                    if (!st.isFile()) continue;
+                    const raw = fs.readFileSync(full, 'utf8');
+                    const expMs = extraerExpMsTa(raw);
+                    const recienGenerado = (now - st.mtimeMs) <= doceHorasMs;
+                    if (expMs > now || recienGenerado) {
+                        if (!mapTas[name] || expMs > mapTas[name].expMs) {
+                            mapTas[name] = { raw, expMs };
+                        }
+                    }
+                } catch (_) {}
+            }
+        }
+
+        const entries = Object.entries(mapTas);
+        if (entries.length === 0) return 0;
+
+        const payloadB64 = Buffer.from(JSON.stringify(mapTas), 'utf8').toString('base64');
+        const remoteNodeScript = `
+const fs = require('fs');
+const path = require('path');
+const mapTas = JSON.parse(Buffer.from('${payloadB64}', 'base64').toString('utf8'));
+const targetDirs = [
+    '/opt/lamda/sincronizador-etiquetas/src/facturacion/node_modules/@afipsdk/afip.js/src/Afip_res',
+    '/opt/lamda/sincronizador-etiquetas/src/facturacion/certs'
+];
+function getExp(raw) {
+    try {
+        const o = JSON.parse(raw);
+        const e = (Array.isArray(o.header) && o.header[1] && o.header[1].expirationtime) || (o.header && o.header.expirationtime) || o.expira_en;
+        return e ? (new Date(e).getTime() || 0) : 0;
+    } catch (_) { return 0; }
+}
+for (const [name, item] of Object.entries(mapTas)) {
+    for (const dir of targetDirs) {
+        if (!fs.existsSync(dir)) continue;
+        const dst = path.join(dir, name);
+        let curExp = 0;
+        if (fs.existsSync(dst)) {
+            try { curExp = getExp(fs.readFileSync(dst, 'utf8')); } catch (_) {}
+        }
+        if (item.expMs >= curExp) {
+            fs.writeFileSync(dst, item.raw, 'utf8');
+        }
+    }
+}
+`.trim().replace(/\r?\n/g, ' ');
+
+        const scriptB64 = Buffer.from(remoteNodeScript, 'utf8').toString('base64');
+        execSync(
+            `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "node -e \\"eval(Buffer.from('${scriptB64}','base64').toString('utf8'))\\""`,
+            { stdio: 'ignore', windowsHide: true, timeout: 15000 }
+        );
+        return entries.length;
+    } catch (e) {
+        console.warn('⚠️  Aviso sincronizando TA (Local -> Nube):', e.message);
+        return 0;
+    }
+}
+
+function sincronizarTicketsTaNubeHaciaLocal() {
+    try {
+        const remoteReadScript = `
+const fs = require('fs');
+const path = require('path');
+const dirs = [
+    '/opt/lamda/sincronizador-etiquetas/src/facturacion/node_modules/@afipsdk/afip.js/src/Afip_res',
+    '/opt/lamda/sincronizador-etiquetas/src/facturacion/certs'
+];
+function getExp(raw) {
+    try {
+        const o = JSON.parse(raw);
+        const e = (Array.isArray(o.header) && o.header[1] && o.header[1].expirationtime) || (o.header && o.header.expirationtime) || o.expira_en;
+        return e ? (new Date(e).getTime() || 0) : 0;
+    } catch (_) { return 0; }
+}
+const out = {};
+const now = Date.now();
+const win12h = 12 * 3600 * 1000;
+for (const d of dirs) {
+    if (!fs.existsSync(d)) continue;
+    for (const name of fs.readdirSync(d)) {
+        if (!/^TA-.*\\.json$/i.test(name)) continue;
+        const full = path.join(d, name);
+        try {
+            const st = fs.statSync(full);
+            if (!st.isFile()) continue;
+            const raw = fs.readFileSync(full, 'utf8');
+            const expMs = getExp(raw);
+            if (expMs > now || (now - st.mtimeMs) <= win12h) {
+                if (!out[name] || expMs > out[name].expMs) {
+                    out[name] = { raw, expMs };
+                }
+            }
+        } catch (_) {}
+    }
+}
+console.log(JSON.stringify(out));
+`;
+        const scriptB64 = Buffer.from(remoteReadScript, 'utf8').toString('base64');
+        const stdout = execSync(
+            `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=8 ${CLOUD_USER}@${CLOUD_HOST} "node -e \\"eval(Buffer.from('${scriptB64}','base64').toString('utf8'))\\""`,
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 15000 }
+        );
+        const lines = String(stdout || '').trim().split(/\r?\n/);
+        const lastJson = lines[lines.length - 1] || '{}';
+        const mapTas = JSON.parse(lastJson);
+        const localDirs = [
+            path.join(ROOT_DIR, 'src/facturacion/node_modules/@afipsdk/afip.js/src/Afip_res'),
+            path.join(ROOT_DIR, 'src/facturacion/certs')
+        ];
+        let count = 0;
+        for (const [name, item] of Object.entries(mapTas)) {
+            if (!item || !item.raw) continue;
+            for (const dir of localDirs) {
+                if (!fs.existsSync(dir)) continue;
+                const dst = path.join(dir, name);
+                let curExp = 0;
+                if (fs.existsSync(dst)) {
+                    try { curExp = extraerExpMsTa(fs.readFileSync(dst, 'utf8')); } catch (_) {}
+                }
+                if ((item.expMs || 0) >= curExp) {
+                    fs.writeFileSync(dst, item.raw, 'utf8');
+                }
+            }
+            count++;
+        }
+        return count;
+    } catch (e) {
+        console.warn('⚠️  Aviso sincronizando TA (Nube -> Local):', e.message);
+        return 0;
+    }
+}
+
 async function ejecutarSwitchHaciaNube() {
     const { localHealth, cloudHealth } = await mostrarDiagnosticoPreVuelo();
     if (!cloudHealth.reachable || !cloudHealth.db?.ok || !cloudHealth.portsOk) {
@@ -495,11 +662,12 @@ async function ejecutarSwitchHaciaNube() {
         stdio: ['ignore', 'ignore', 'inherit'],
         windowsHide: true
     });
+    sincronizarTicketsTaLocalHaciaNube();
     console.log('   ✅ Base de datos y Tickets ARCA sincronizados al 100% en la Nube.');
 
-    console.log('🟢 [PASO 2/4] Activando Nube como Nodo Titular de Producción...');
+    console.log('🟢 [PASO 2/4] Activando Nube como Nodo Titular de Producción (AFIP_ENV=PROD)...');
     execSync(
-        `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env"`,
+        `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^AFIP_ENV=.*/AFIP_ENV=PROD/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env && sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/\\r$//' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS FACTURACION LOGISTICA --update-env"`,
         { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true }
     );
 
@@ -542,7 +710,7 @@ async function ejecutarSwitchHaciaLocal(esEmergencia = false) {
 
     const cloudHealth = !esEmergencia ? verificarSaludNube() : { reachable: false };
     if (cloudHealth.reachable) {
-        console.log('🛡️  [PASO 2/4] Sincronizando base actualizada desde la Nube hacia PcAlmacen y pasando Nube a Standby (Read-Only: on)...');
+        console.log('🛡️  [PASO 2/4] Sincronizando base actualizada + Tickets ARCA desde la Nube hacia PcAlmacen y pasando Nube a Standby (Read-Only: on)...');
         try {
             const { detectarBinarioPostgres } = require('./syncEspejoDesdeNube');
             const psqlBin = detectarBinarioPostgres('psql');
@@ -553,11 +721,12 @@ async function ejecutarSwitchHaciaLocal(esEmergencia = false) {
                 windowsHide: true,
                 timeout: 120000
             });
+            sincronizarTicketsTaNubeHaciaLocal();
             execSync(
-                `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=true/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=true/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS LOGISTICA --update-env && sudo -u postgres psql -d postgres -c 'ALTER DATABASE etiquetas SET default_transaction_read_only = on;'"`,
+                `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=true/' /opt/lamda/sincronizador-etiquetas/.env && sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=true/' /opt/lamda/sincronizador-etiquetas/.env && cd /opt/lamda/sincronizador-etiquetas && pm2 restart ETIQUETAS PRODUCCION PRESUPUESTOS FACTURACION LOGISTICA --update-env && sudo -u postgres psql -d postgres -c 'ALTER DATABASE etiquetas SET default_transaction_read_only = on;'"`,
                 { stdio: 'ignore', windowsHide: true, timeout: 25000 }
             );
-            console.log('   ✅ Base sincronizada y Nube protegida en Read-Only.');
+            console.log('   ✅ Base y Tickets ARCA sincronizados; Nube protegida en Read-Only.');
         } catch (eSync) {
             console.warn('⚠️  Aviso durante sincronización final desde Nube:', eSync.message);
         }
@@ -612,5 +781,7 @@ module.exports = {
     consultarEstadoDetallado5Puertos,
     mostrarDiagnosticoPreVuelo,
     ejecutarSwitchHaciaNube,
-    ejecutarSwitchHaciaLocal
+    ejecutarSwitchHaciaLocal,
+    sincronizarTicketsTaLocalHaciaNube,
+    sincronizarTicketsTaNubeHaciaLocal
 };

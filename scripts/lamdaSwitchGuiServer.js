@@ -32,7 +32,9 @@ const {
     conmutarDnsCloudflareHaciaTunel,
     detenerCincoServiciosLocales,
     asegurarCincoServiciosLocalesEncendidos,
-    consultarEstadoDetallado5Puertos
+    consultarEstadoDetallado5Puertos,
+    sincronizarTicketsTaLocalHaciaNube,
+    sincronizarTicketsTaNubeHaciaLocal
 } = require('./orquestadorSwitchLocalNube');
 
 const {
@@ -262,12 +264,13 @@ async function flujoSwitchHaciaNube() {
             windowsHide: true,
             timeout: 120000
         });
-        updateStep(1, 'done', `Base sincronizada al 100% (${st.local.db.facturas} facturas en Nube)`, 62);
+        sincronizarTicketsTaLocalHaciaNube();
+        updateStep(1, 'done', `Base y Tickets ARCA sincronizados al 100% (${st.local.db.facturas} facturas en Nube)`, 62);
 
-        updateStep(2, 'running', 'Activando emisión en Nube y conmutando Cloudflare a tunel-nube...', 72);
+        updateStep(2, 'running', 'Activando emisión en Nube (AFIP_ENV=PROD) y conmutando Cloudflare a tunel-nube...', 72);
         execSync(
-            `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true; sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true"`,
-            { stdio: 'ignore', windowsHide: true, timeout: 15000 }
+            `ssh -n -o StrictHostKeyChecking=no ${CLOUD_USER}@${CLOUD_HOST} "sed -i 's/^AFIP_ENV=.*/AFIP_ENV=PROD/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true; sed -i 's/^LAMDA_MODO_PRUEBA_NUBE=.*/LAMDA_MODO_PRUEBA_NUBE=false/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true; sed -i 's/^SAFE_DELIVERY_REDIRECT=.*/SAFE_DELIVERY_REDIRECT=false/' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true; sed -i 's/\\r$//' /opt/lamda/sincronizador-etiquetas/.env /opt/lamda/sincronizador-etiquetas/src/facturacion/.env 2>/dev/null || true; cd /opt/lamda/sincronizador-etiquetas && pm2 restart FACTURACION --update-env"`,
+            { stdio: 'ignore', windowsHide: true, timeout: 20000 }
         );
         await conmutarDnsCloudflareHaciaTunel(TUNNEL_NUBE_ID, `NUBE (${CLOUD_HOST})`);
         updateStep(2, 'done', 'Tráfico conmutado a NUBE (Sello activo: N · Nube)', 84);
@@ -377,11 +380,12 @@ async function flujoSwitchHaciaLocal(esEmergencia = false) {
                     windowsHide: true,
                     timeout: 120000
                 });
+                sincronizarTicketsTaNubeHaciaLocal();
                 execSync(
                     `ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${CLOUD_USER}@${CLOUD_HOST} "sudo -u postgres psql -d postgres -c 'ALTER DATABASE etiquetas SET default_transaction_read_only = on;'"`,
                     { stdio: 'ignore', windowsHide: true, timeout: 15000 }
                 );
-                updateStep(1, 'done', 'Datos sincronizados a PcAlmacen y Nube en Standby (Read-Only: ON)', 52);
+                updateStep(1, 'done', 'Datos y Tickets ARCA sincronizados a PcAlmacen y Nube en Standby (Read-Only: ON)', 52);
             } catch (eSync) {
                 updateStep(1, 'done', 'Nube sin respuesta; se conserva el último espejo local en PcAlmacen', 52);
             }
