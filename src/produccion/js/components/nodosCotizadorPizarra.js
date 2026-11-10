@@ -2648,28 +2648,50 @@
             const data = await resp.json();
             if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo generar el envío de WhatsApp.');
 
-            if (data.url_wa_me) {
-                window.open(data.url_wa_me, '_blank', 'noopener');
-            }
+            const linksDetectados = Array.isArray(data.links_detectados) ? data.links_detectados : [];
+            const qrCardsHtml = linksDetectados.length > 0 ? `
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:10px; margin-top:10px;">
+                    ${linksDetectados.map(lk => `
+                        <div style="padding:10px; border-radius:10px; background:#0f172a; border:1px solid #334155; text-align:center;">
+                            <div style="font-size:0.76rem; font-weight:800; color:#38bdf8; margin-bottom:6px;">${escaparHtml(lk.label)}</div>
+                            ${lk.qr_data_url ? `<img src="${lk.qr_data_url}" alt="QR" style="width:130px; height:130px; border-radius:8px; background:#fff; padding:4px; margin-bottom:6px;">` : ''}
+                            <div style="font-size:0.68rem; color:#cbd5e1; word-break:break-all; margin-bottom:6px; font-family:monospace;">${escaparHtml(lk.url)}</div>
+                            <div style="display:flex; gap:5px; justify-content:center;">
+                                <a href="${escaparHtml(lk.url)}" target="_blank" rel="noopener"
+                                    style="padding:5px 9px; border-radius:6px; background:#0284c7; color:#fff; text-decoration:none; font-weight:800; font-size:0.7rem;">
+                                    Abrir ↗
+                                </a>
+                                <button type="button" onclick="navigator.clipboard.writeText('${escaparHtml(lk.url)}')"
+                                    style="padding:5px 9px; border-radius:6px; border:1px solid #475569; background:#1e293b; color:#e2e8f0; font-weight:700; font-size:0.7rem; cursor:pointer;">
+                                    Copiar Link
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '';
 
             if (window.Swal) {
                 Swal.fire({
                     icon: 'success',
-                    title: '📲 Links del Nodo Listos para Enviar',
+                    width: 620,
+                    title: '✅ WhatsApp Despachado por Conexión Interna LAMDA',
                     html: `
-                        <div style="text-align:left; font-size:0.84rem; line-height:1.5;">
-                            <p>Se preparó el mensaje con los links del <strong>Panel del Gestor</strong> y de la <strong>Tienda Vecinal</strong> de <strong>${escaparHtml(nodo.nombre_marca)}</strong>.</p>
-                            <div style="padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem; color:#fde68a; margin-bottom:10px;">
-                                🛡️ Redirigido al WhatsApp de prueba seguro: <strong>${escaparHtml(data.telefono_destino_display || '221 661 5746')}</strong>
+                        <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
+                            <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.12); border:1px solid #059669; color:#a7f3d0; margin-bottom:10px;">
+                                📲 <strong>Despacho directo completado (sin abrir ventanas externas):</strong><br>
+                                Destinatario original: <strong>${escaparHtml(nodo.gestor_nombre || nodo.nombre_marca)} (${escaparHtml(nodo.gestor_telefono || 'S/T')})</strong><br>
+                                🛡️ Redirigido en Modo Laboratorio a: <strong>${escaparHtml(data.telefono_destino_display || '221 661 5746')}</strong>
                             </div>
-                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                <a href="${escaparHtml(data.url_wa_me || '#')}" target="_blank" rel="noopener"
-                                    style="padding:7px 12px; border-radius:7px; background:#16a34a; color:#fff; text-decoration:none; font-weight:800; font-size:0.78rem;">
-                                    📲 Abrir en WhatsApp (221 661 5746) ↗
-                                </a>
+                            <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
+                                Mensaje enviado con links optimizados para celular en red Wi-Fi (<strong>${escaparHtml(data.base_url_movil || '')}</strong>):
                             </div>
+                            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; font-family:inherit; margin:0 0 8px 0; max-height:170px; overflow-y:auto;">${escaparHtml(data.mensaje_enviado || mensaje)}</pre>
+                            ${qrCardsHtml}
                         </div>
                     `,
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#16a34a',
                     background: '#151e2e',
                     color: '#f8fafc'
                 });

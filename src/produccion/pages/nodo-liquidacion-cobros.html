@@ -961,8 +961,25 @@
                 })
             });
             const data = await res.json();
-            const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
-            window.open(targetUrl, '_blank', 'noopener');
+            if (!res.ok || !data.ok) {
+                Swal.fire({ icon: 'error', title: 'Error WhatsApp', text: data.error || 'No se pudo despachar el mensaje.' });
+                return;
+            }
+            Swal.fire({
+                icon: 'success',
+                title: '✅ Recibo Despachado por WhatsApp',
+                html: `
+                    <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
+                        <div style="padding:10px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
+                            📲 Despachado directamente por el servicio interno de WhatsApp de LAMDA (sin abrir pestañas externas).<br>
+                            🛡️ Redirigido en Modo Laboratorio a: <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>
+                        </div>
+                        <pre style="white-space:pre-wrap; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; font-size:0.75rem; font-family:inherit; color:#0f172a;">${esc(data.mensaje_enviado || mensaje)}</pre>
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#16a34a'
+            });
         }
 
         function renderizarPadronDobleLamda() {

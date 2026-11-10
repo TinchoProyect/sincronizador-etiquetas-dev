@@ -964,8 +964,20 @@
         })
       });
       const data = await resp.json();
-      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
-      window.open(targetUrl, '_blank', 'noopener');
+      const box = document.getElementById('etiqueta-confirmacion-preview');
+      if (!resp.ok || !data.ok) {
+        alert('Error al despachar el pedido por WhatsApp: ' + (data.error || 'Error interno'));
+        return;
+      }
+      if (box) {
+        box.innerHTML = `
+          <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:12px; text-align:left; font-size:0.8rem; color:#166534; margin-top:8px;">
+            📲 <strong>¡Comprobante despachado directamente por WhatsApp!</strong><br>
+            🛡️ Redirigido en Modo Laboratorio a: <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>
+            <pre style="white-space:pre-wrap; margin:8px 0 0 0; padding:8px; background:#ffffff; border:1px solid #bbf7d0; border-radius:6px; font-family:inherit; font-size:0.75rem; color:#0f172a;">${esc(data.mensaje_enviado || mensaje)}</pre>
+          </div>
+        `;
+      }
     }
 
     async function verEtiquetaDeMiPedido(pedidoId) {

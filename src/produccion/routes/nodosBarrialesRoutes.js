@@ -1,6 +1,43 @@
 const express = require('express');
+const os = require('os');
+const QRCode = require('qrcode');
 const router = express.Router();
 const nodosService = require('../services/nodosBarrialesService');
+
+function detectarIpLanWifiLocal() {
+    try {
+        const nets = os.networkInterfaces();
+        let fallbackIp = null;
+        for (const name of Object.keys(nets)) {
+            for (const net of (nets[name] || [])) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    const addr = String(net.address || '').trim();
+                    if (!addr || addr.startsWith('169.254.')) continue;
+                    if (/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(addr)) {
+                        if (/wi-?fi|wlan|wireless|ethernet/i.test(name)) {
+                            return addr;
+                        }
+                        if (!fallbackIp) fallbackIp = addr;
+                    }
+                }
+            }
+        }
+        return fallbackIp || 'localhost';
+    } catch (_) {
+        return 'localhost';
+    }
+}
+
+function obtenerBaseUrlAccesibleCelular(req) {
+    const hostHeader = String(req?.headers?.host || '').trim();
+    const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
+    const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    if (isPublicCloud) {
+        return `${proto}://${hostHeader}`;
+    }
+    const lanIp = detectarIpLanWifiLocal();
+    return `http://${lanIp}:3002`;
+}
 
 /**
  * GET /api/produccion/nodos/inicializar
@@ -451,26 +488,83 @@ router.post('/reset-pruebas', async (req, res) => {
 
 /**
  * POST /api/produccion/nodos/whatsapp-prueba
- * Garantiza que todo mensaje saliente de WhatsApp en Modo Laboratorio apunte exclusivamente al 221 661 5746 (5492216615746)
+ * Despacha el mensaje directamente por el servicio interno de WhatsApp de LAMDA (:3004/facturacion/whatsapp/enviar-mensaje)
+ * sin abrir ventanas externas wa.me en el navegador, y normaliza las URLs de /gestor y /tienda a la IP LAN Wi-Fi
+ * para que puedan tocarse y abrirse directamente desde el celular.
  */
 router.post('/whatsapp-prueba', async (req, res) => {
     try {
         const telefonoPrueba = '5492216615746';
         const telefonoOriginal = String(req.body?.telefono_original || '').trim();
         const destinatarioNombre = String(req.body?.destinatario_nombre || 'Cliente / Vecino').trim();
-        const mensaje = String(req.body?.mensaje || '').trim();
-        const urlWaMe = `https://wa.me/${telefonoPrueba}?text=${encodeURIComponent(mensaje)}`;
-        console.log(`🧪 [MODO LABORATORIO - NODOS WA] Redirigiendo envío de "${destinatarioNombre}" (${telefonoOriginal || 'S/T'}) -> ${telefonoPrueba} (221 661 5746)`);
+        const baseUrlMovil = obtenerBaseUrlAccesibleCelular(req);
+
+        let mensajeNormalizado = String(req.body?.mensaje || '').trim();
+        mensajeNormalizado = mensajeNormalizado
+            .replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/gw\/3002)?(?=\/(gestor|tienda|deposito-nodos|liquidacion-nodos))/gi, baseUrlMovil)
+            .replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/gi, baseUrlMovil);
+
+        console.log(`🧪 [MODO LABORATORIO - NODOS WA INTERNO] Despachando vía servicio interno (:3004) para "${destinatarioNombre}" (${telefonoOriginal || 'S/T'}) -> ${telefonoPrueba} (221 661 5746) | Base Móvil: ${baseUrlMovil}`);
+
+        let estadoWa = null;
+        try {
+            const stRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/status');
+            if (stRes.ok) {
+                const stJson = await stRes.json();
+                estadoWa = stJson?.data || null;
+            }
+        } catch (_) {}
+
+        const wpRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                destinatarios: telefonoOriginal || telefonoPrueba,
+                mensajeTexto: mensajeNormalizado
+            })
+        });
+
+        const wpJson = await wpRes.json();
+        if (!wpRes.ok || !wpJson.success) {
+            throw new Error(wpJson.error || wpJson.message || 'No se pudo despachar el mensaje por el servicio interno de WhatsApp (:3004).');
+        }
+
+        const resultados = Array.isArray(wpJson?.data?.resultados) ? wpJson.data.resultados : [];
+        const primerResultado = resultados[0] || {};
+
+        const urlRegex = /https?:\/\/[^\s)]+\/(gestor|tienda)\/[^\s)]+/gi;
+        const rawUrls = [...new Set(mensajeNormalizado.match(urlRegex) || [])];
+        const linksDetectados = [];
+        for (const u of rawUrls) {
+            let qrDataUrl = null;
+            try {
+                qrDataUrl = await QRCode.toDataURL(u, { margin: 1, width: 180 });
+            } catch (_) {}
+            linksDetectados.push({
+                tipo: /\/gestor\//i.test(u) ? 'GESTOR' : 'TIENDA',
+                label: /\/gestor\//i.test(u) ? '🎛️ Panel del Gestor' : '🛒 Tienda del Vecino',
+                url: u,
+                qr_data_url: qrDataUrl
+            });
+        }
+
         res.json({
             ok: true,
+            enviado_directo: true,
             modo_laboratorio: true,
+            simulated: Boolean(primerResultado.simulated),
+            step_text_wa: estadoWa?.stepText || '',
             telefono_destino_forzado: telefonoPrueba,
             telefono_destino_display: '221 661 5746',
             telefono_original: telefonoOriginal,
             destinatario_nombre: destinatarioNombre,
-            url_wa_me: urlWaMe
+            base_url_movil: baseUrlMovil,
+            mensaje_enviado: mensajeNormalizado,
+            links_detectados: linksDetectados,
+            resultados_wa: resultados
         });
     } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /whatsapp-prueba:', error.message);
         res.status(500).json({ ok: false, error: error.message });
     }
 });

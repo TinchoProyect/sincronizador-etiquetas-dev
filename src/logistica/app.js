@@ -382,6 +382,21 @@ app.use('/api/produccion', createProxyMiddleware({
     }
 }));
 
+// Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002)
+['/tienda', '/gestor', '/deposito-nodos', '/liquidacion-nodos'].forEach((nodoPrefix) => {
+    app.use(nodoPrefix, createProxyMiddleware({
+        target: 'http://127.0.0.1:3002',
+        changeOrigin: true,
+        pathRewrite: (pathUrl, req) => {
+            return nodoPrefix + (req.url === '/' ? '' : req.url);
+        },
+        onError: (err, req, res) => {
+            console.error(`[LOGISTICA] ❌ Error en Proxy de Nodos (${nodoPrefix}):`, err.message);
+            res.status(503).send('Módulo de Nodos Barriales fuera de línea.');
+        }
+    }));
+});
+
 // Proxy para las transacciones API de Tiempos y Métricas de Producción (puerto 3002)
 app.use('/api/tiempos', createProxyMiddleware({
     target: 'http://127.0.0.1:3002',

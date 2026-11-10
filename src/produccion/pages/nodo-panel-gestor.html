@@ -363,6 +363,42 @@
       alert(`✅ Link de tu tienda copiado para compartir en WhatsApp:\n${url}`);
     }
 
+    function mostrarConfirmacionWhatsAppGestor(data, titulo, subtitulo) {
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) {
+        alert(`✅ ${titulo}\nDespachado por el servicio interno de WhatsApp de LAMDA (redirigido en Laboratorio a ${data?.telefono_destino_display || '221 661 5746'}).`);
+        return;
+      }
+      const links = Array.isArray(data?.links_detectados) ? data.links_detectados : [];
+      body.innerHTML = `
+        <div style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:#fff; padding:16px 20px;">
+          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Conexión Interna de WhatsApp LAMDA</div>
+          <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">✅ ${esc(titulo)}</div>
+          <div style="font-size:0.78rem; margin-top:2px; opacity:0.92;">${esc(subtitulo || '')}</div>
+        </div>
+        <div style="padding:18px 20px; background:#fff; color:#0f172a; font-size:0.84rem;">
+          <div style="padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
+            📲 <strong>Mensaje despachado directamente desde el sistema</strong> (sin abrir pestañas externas).<br>
+            🛡️ Destino de prueba en Laboratorio: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
+          </div>
+          <div style="font-size:0.75rem; color:#64748b; margin-bottom:4px; font-weight:700;">Contenido despachado:</div>
+          <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; color:#0f172a; font-size:0.76rem; font-family:inherit; margin:0 0 12px 0; max-height:180px; overflow-y:auto;">${esc(data?.mensaje_enviado || '')}</pre>
+          ${links.length > 0 ? `
+            <div style="text-align:center; padding:10px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; margin-bottom:12px;">
+              <div style="font-size:0.75rem; font-weight:800; color:#0f172a; margin-bottom:6px;">📱 Link listo para abrir desde el celular (${esc(links[0].url)})</div>
+              ${links[0].qr_data_url ? `<img src="${links[0].qr_data_url}" alt="QR Tienda" style="width:130px; height:130px; border-radius:8px;">` : ''}
+            </div>
+          ` : ''}
+          <button type="button" onclick="cerrarModalReciboGestor()"
+            style="width:100%; padding:10px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
+            Listo
+          </button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
     async function enviarLinkTiendaWhatsAppPrueba() {
       if (!GSTATE.nodo) {
         alert('Primero debe existir un Nodo activo.');
@@ -374,7 +410,7 @@
       const mensaje = [
         `🌿 *${GSTATE.nodo.nombre_marca}* (${GSTATE.nodo.subtitulo_marca || 'Comunidad Barrial'})`,
         `¡Hola! Te comparto el link de nuestra tienda barrial para encargar productos frescos:`,
-        `👉 ${url}`,
+        url,
         `📅 *Próxima entrega:* ${prox}`,
         corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
         `Podés elegir retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío a domicilio en el barrio.`
@@ -390,8 +426,11 @@
         })
       });
       const data = await resp.json();
-      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
-      window.open(targetUrl, '_blank', 'noopener');
+      if (!resp.ok || !data.ok) {
+        alert('Error al despachar WhatsApp: ' + (data.error || 'Error interno'));
+        return;
+      }
+      mostrarConfirmacionWhatsAppGestor(data, 'Link de Tienda Despachado por WhatsApp', `Tienda de ${GSTATE.nodo.nombre_marca}`);
     }
 
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
@@ -417,8 +456,11 @@
         })
       });
       const data = await resp.json();
-      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
-      window.open(targetUrl, '_blank', 'noopener');
+      if (!resp.ok || !data.ok) {
+        alert('Error al despachar WhatsApp: ' + (data.error || 'Error interno'));
+        return;
+      }
+      mostrarConfirmacionWhatsAppGestor(data, `Detalle de Pedido #${p.codigo_pedido} Enviado`, `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`);
     }
 
     function cambiarTabGestor(tab) {
@@ -1078,8 +1120,11 @@
         })
       });
       const data = await resp.json();
-      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
-      window.open(targetUrl, '_blank', 'noopener');
+      if (!resp.ok || !data.ok) {
+        alert('Error al despachar recibo por WhatsApp: ' + (data.error || 'Error interno'));
+        return;
+      }
+      mostrarConfirmacionWhatsAppGestor(data, `Recibo Digital ${nroRecibo} Despachado`, `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`);
     }
 
     // -------------------------------------------------------------------------
