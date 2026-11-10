@@ -15,7 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestiones Lamda</title>
   <link rel="icon" type="image/png" href="favicon.ico?v=2" />
-  <link rel="stylesheet" href="css/style.css?v=4.9_etapa3" />
+  <link rel="stylesheet" href="css/style.css?v=5.0_menu_5bloques" />
 
 </head>
 <body>
@@ -268,232 +268,49 @@
         <button class="sidebar-close" onclick="closeSidebar()">&times;</button>
       </div>
       <div class="sidebar-content">
-        <!-- Árbol de Navegación -->
+        <!-- Árbol de Navegación (5 Bloques Operativos) -->
         <ul class="nav-tree">
-          <!-- Rama 1: Administración -->
-          <li class="tree-item">
-            <a href="javascript:void(0)" onclick="abrirModalLogin(); closeSidebar();" class="tree-link">
-              <span class="tree-icon">👤</span> Administración
-            </a>
-          </li>
-
-          <!-- Acceso Directo Principal: Estadísticas de la Página Pública -->
-          <li class="tree-item">
-            <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-link" style="background: #f8f3f8; border-left: 4px solid #82467E; color: #82467E; font-weight: 700;">
-              <span class="tree-icon">📊</span> Estadísticas Página Pública & IAs
-            </a>
-          </li>
-
-          <!-- Rama: Página Pública & Estadísticas Web -->
+          <!-- 1. Costos, Precios y Catálogo -->
           <li class="tree-item branch">
             <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">🌐</span> Página Pública (Accesos y Enlaces)
-              <span class="chevron">▼</span>
-            </div>
-            <ul class="tree-submenu">
-              <li>
-                <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-sublink" style="color: #82467E; font-weight: 700;">
-                  <span class="tree-icon">📊</span> Estadísticas de Visitas, Flujo e IAs
-                </a>
-              </li>
-              <li>
-                <a href="/institucional.html" target="_blank" onclick="closeSidebar();" class="tree-sublink">
-                  <span class="tree-icon">🖥️</span> Ver Página Institucional (Local)
-                </a>
-              </li>
-              <li>
-                <a href="https://lamdaser.com" target="_blank" onclick="closeSidebar();" class="tree-sublink">
-                  <span class="tree-icon">🌍</span> Abrir Dominio Público (lamdaser.com)
-                </a>
-              </li>
-            </ul>
-          </li>
-
-          <!-- Rama: Colaboradores -->
-          <li class="tree-item branch">
-            <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">🤝</span> Colaboradores
-              <span class="chevron">▼</span>
-            </div>
-            <ul class="tree-submenu">
-              <li>
-                <a href="pages/colaboradores-jornadas.html" class="tree-sublink">
-                  <span class="tree-icon">⏱️</span> Horarios y Jornadas
-                </a>
-              </li>
-            </ul>
-          </li>
-
-          <!-- Rama: Inteligencia de Costos y Precios -->
-          <li class="tree-item branch">
-            <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">🎛️</span> Inteligencia de Costos y Precios
+              <span class="tree-icon">🎛️</span> Costos, Precios y Catálogo
               <span class="chevron">▼</span>
             </div>
             <ul class="tree-submenu">
               <li>
                 <a href="http://localhost:3002/pages/pizarra-simulacion.html" class="tree-sublink">
-                  <span class="tree-icon">📊</span> Mesa de Trabajo (Pizarra Inteligente)
+                  <span>Pizarra Inteligente (Costos y Listas)</span>
                 </a>
               </li>
               <li>
-                <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" class="tree-sublink" style="color: #059669; font-weight: 700;">
-                  <span class="tree-icon">🏘️</span> Nodos Barriales (Cotizador & Marca Blanca)
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3002/deposito-nodos" target="_blank" class="tree-sublink" style="color: #7c3aed; font-weight: 700;">
-                  <span class="tree-icon">📦</span> Mesa de Armado de Nodos (Depósito)
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3002/liquidacion-nodos" target="_blank" class="tree-sublink" style="color: #0f766e; font-weight: 700;">
-                  <span class="tree-icon">💳</span> Cobros y Liquidación de Nodos
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3002/gestor/almacen-verde-city-bell" target="_blank" class="tree-sublink" style="color: #0284c7; font-weight: 700;">
-                  <span class="tree-icon">🎛️</span> Panel del Gestor de Nodo
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3002/tienda/almacen-verde-city-bell" target="_blank" class="tree-sublink" style="color: #16a34a; font-weight: 700;">
-                  <span class="tree-icon">🏪</span> Tienda Marca Blanca del Vecino
+                <a href="http://localhost:3005/pages/listado-bunker.html" class="tree-sublink">
+                  <span>Artículos y Diccionario Búnker</span>
                 </a>
               </li>
               <li>
                 <a href="http://localhost:3002/pages/gestion-cambios-precios.html" class="tree-sublink">
-                  <span class="tree-icon">🔔</span> Gestión de Cambios y Notificaciones
+                  <span>Gestión de Cambios de Precios</span>
                 </a>
               </li>
-            </ul>
-          </li>
-          
-          <!-- Rama 2: Gestión Comercial y Financiera -->
-          <li class="tree-item branch">
-            <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">📊</span> Gestión Comercial y Financiera
-              <span class="chevron">▼</span>
-            </div>
-            <ul class="tree-submenu">
-              <!-- Sección: Comercial & CRM -->
-              <li class="tree-section-header">Comercial & CRM</li>
-              <li>
-                <a href="http://localhost:3005/pages/listado-clientes.html" class="tree-sublink">
-                  <span class="tree-icon">👥</span> Clientes Búnker
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3005/pages/prospectos.html" class="tree-sublink" style="color: #ea580c; font-weight: 600;">
-                  <span class="tree-icon">🎯</span> Preventa & Prospectos (Calle / Depósito)
-                </a>
-              </li>
-              <li>
-                <a href="javascript:void(0)" onclick="if (window.abrirConsolaWhatsappLamda) window.abrirConsolaWhatsappLamda(); closeSidebar();" class="tree-sublink" style="color: #075e54; font-weight: 800;">
-                  <span class="tree-icon">💬</span> Consola WhatsApp LAMDA (3 Cols)
-                </a>
-              </li>
-              <li>
-                <a href="javascript:void(0)" onclick="abrirModalProgramarWhatsApp(); closeSidebar();" class="tree-sublink" style="color: #16a34a; font-weight: 600;">
-                  <span class="tree-icon">📅💬</span> Programar WA (Seguimiento)
-                </a>
-              </li>
-              <li>
-                <a href="pages/crm-seguimientos.html" class="tree-sublink" style="color: #15803d; font-weight: 600;">
-                  <span class="tree-icon">📋</span> Monitor WA (Seguimientos)
-                </a>
-              </li>
-
-              <!-- Sub-rama: Ofertas Dinámicas & Cuotas -->
               <li class="tree-item branch nested-branch">
                 <div class="tree-branch-header" onclick="toggleBranch(this)">
-                  <span class="tree-icon">🏷️</span> Ofertas & Promociones
+                  <span>Ofertas y Políticas Comerciales</span>
                   <span class="chevron">▼</span>
                 </div>
                 <ul class="tree-submenu">
                   <li>
                     <a href="pages/ofertas-dinamicas.html" class="tree-sublink">
-                      <span class="tree-icon">📊</span> Monitor de Ofertas
+                      <span>Monitor de Ofertas Dinámicas</span>
                     </a>
                   </li>
                   <li>
                     <a href="pages/ofertas-dinamicas.html?nueva=true" class="tree-sublink">
-                      <span class="tree-icon">➕</span> Nueva Oferta Dinámica
+                      <span>Nueva Oferta Dinámica</span>
                     </a>
                   </li>
                   <li>
                     <a href="http://localhost:3003/pages/presupuestos.html?politicas=true" class="tree-sublink">
-                      <span class="tree-icon">📈</span> Políticas Comerciales (Volumen)
-                    </a>
-                  </li>
-                </ul>
-              </li>
-
-              <!-- Sección: Facturación & Finanzas -->
-              <li class="tree-section-header">Facturación & Finanzas</li>
-              <li>
-                <a href="http://localhost:3004" class="tree-sublink">
-                  <span class="tree-icon">🧾</span> Facturación
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="tree-sublink">
-                  <span class="tree-icon">🏦</span> Cuentas Bancarias
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3005/pages/recepcion-efectivo.html" class="tree-sublink">
-                  <span class="tree-icon">✉️</span> Recepción de Efectivo Ensobrado
-                </a>
-              </li>
-
-              <!-- Sección: Portal B2B & Cloud -->
-              <li class="tree-section-header">Portal B2B & Cloud</li>
-              <!-- Sub-rama: Portal B2B -->
-              <li class="tree-item branch nested-branch">
-                <div class="tree-branch-header" onclick="toggleBranch(this)">
-                  <span class="tree-icon">🌐</span> Portal B2B
-                  <span class="chevron">▼</span>
-                </div>
-                <ul class="tree-submenu">
-                  <li>
-                    <a href="javascript:void(0)" onclick="window.abrirPortalB2B(); closeSidebar();" class="tree-sublink">
-                      <span class="tree-icon">🔑</span> Accesos (Modo Espejo)
-                    </a>
-                  </li>
-                  <li>
-                    <a href="javascript:void(0)" onclick="window.sincronizarB2BManual(); closeSidebar();" class="tree-sublink">
-                      <span class="tree-icon">🔄</span> Sincronización Manual
-                    </a>
-                  </li>
-                  <li>
-                    <a href="http://localhost:3005/pages/configuracion-jerarquia-b2b.html" class="tree-sublink" target="_blank">
-                      <span class="tree-icon">🌿</span> Configurar Jerarquía B2B
-                    </a>
-                  </li>
-                </ul>
-              </li>
-
-              <!-- Sub-rama: Telemetría & Auditoría -->
-              <li class="tree-item branch nested-branch">
-                <div class="tree-branch-header" onclick="toggleBranch(this)">
-                  <span class="tree-icon">⚡</span> Telemetría & Auditoría
-                  <span class="chevron">▼</span>
-                </div>
-                <ul class="tree-submenu">
-                  <li>
-                    <a href="javascript:void(0)" onclick="window.abrirTelemetriaCloudflareMenu(); closeSidebar();" class="tree-sublink">
-                      <span class="tree-icon">📈</span> Telemetría Cloudflare
-                    </a>
-                  </li>
-                  <li>
-                    <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-sublink" style="color: #82467E; font-weight: 700;">
-                      <span class="tree-icon">🌐</span> Estadísticas Página Pública & IAs
-                    </a>
-                  </li>
-                  <li>
-                    <a href="javascript:void(0)" onclick="window.abrirAuditoriaEntregasQRMenu(); closeSidebar();" class="tree-sublink">
-                      <span class="tree-icon">📦</span> Auditoría Entregas y QR
+                      <span>Políticas Comerciales por Volumen</span>
                     </a>
                   </li>
                 </ul>
@@ -501,41 +318,212 @@
             </ul>
           </li>
 
-          <!-- Rama 3: Operaciones y Soporte de Depósito -->
+          <!-- 2. Comercial, Clientes y Finanzas -->
           <li class="tree-item branch">
             <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">⚙️</span> Operaciones y Soporte de Depósito
+              <span class="tree-icon">💼</span> Comercial, Clientes y Finanzas
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li class="tree-section-header">Comercial y CRM</li>
+              <li>
+                <a href="http://localhost:3005/pages/listado-clientes.html" class="tree-sublink">
+                  <span>Clientes Búnker</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3005/pages/prospectos.html" class="tree-sublink">
+                  <span>Preventa y Prospectos</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="if (window.abrirConsolaWhatsappLamda) window.abrirConsolaWhatsappLamda(); closeSidebar();" class="tree-sublink">
+                  <span>Consola WhatsApp (3 Columnas)</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="abrirModalProgramarWhatsApp(); closeSidebar();" class="tree-sublink">
+                  <span>Programar Seguimiento WA</span>
+                </a>
+              </li>
+              <li>
+                <a href="pages/crm-seguimientos.html" class="tree-sublink">
+                  <span>Monitor de Seguimientos WA</span>
+                </a>
+              </li>
+
+              <li class="tree-section-header">Facturación y Tesorería</li>
+              <li>
+                <a href="http://localhost:3004" class="tree-sublink">
+                  <span>Facturación y Cuentas Corrientes</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3004/pages/cuentas-bancarias.html" class="tree-sublink">
+                  <span>Cuentas Bancarias</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3005/pages/recepcion-efectivo.html" class="tree-sublink">
+                  <span>Recepción de Efectivo Ensobrado</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+
+          <!-- 3. Depósito, Stock y Personal -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">⚙️</span> Depósito, Stock y Personal
               <span class="chevron">▼</span>
             </div>
             <ul class="tree-submenu">
               <li>
                 <a href="http://localhost:3002/pages/recepcion-lotes.html" class="tree-sublink">
-                  <span class="tree-icon">📥</span> Recepción de Lotes
-                </a>
-              </li>
-              <li>
-                <a href="http://localhost:3005/pages/listado-bunker.html" class="tree-sublink">
-                  <span class="tree-icon">🏷️</span> Artículos Búnker
-                </a>
-              </li>
-              <li>
-                <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal(); closeSidebar();" class="tree-sublink warning-link">
-                  <span class="tree-icon">⚠️</span> Enviar a Mantenimiento
+                  <span>Recepción de Lotes</span>
                 </a>
               </li>
               <li>
                 <a href="pages/impresion.html" class="tree-sublink">
-                  <span class="tree-icon">🖨️</span> Impresión de Etiquetas
+                  <span>Impresión de Etiquetas</span>
                 </a>
               </li>
               <li>
                 <a href="pages/informe-faltantes.html" class="tree-sublink">
-                  <span class="tree-icon">📋</span> Demanda no Satisfecha
+                  <span>Demanda no Satisfecha (Faltantes)</span>
                 </a>
               </li>
               <li>
-                <a href="javascript:void(0)" onclick="if (window.abrirModalControlCreditoIaGlobal) window.abrirModalControlCreditoIaGlobal(); closeSidebar();" class="tree-sublink" style="color: #0369a1; font-weight: 700;">
-                  <span class="tree-icon">🤖</span> Control de Crédito y Consumo IA
+                <a href="pages/colaboradores-jornadas.html" class="tree-sublink">
+                  <span>Horarios y Jornadas de Colaboradores</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.iniciarTrasladoGlobal(); closeSidebar();" class="tree-sublink warning-link">
+                  <span>Enviar Mercadería a Mantenimiento</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+
+          <!-- 4. Nodos Barriales (Marca Blanca) -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">🏘️</span> Nodos Barriales (Marca Blanca)
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li class="tree-section-header">Gestión Interna LAMDA</li>
+              <li>
+                <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" class="tree-sublink">
+                  <span><span class="tree-step-num">1.</span>Alta de Nodos, Catálogo y Cotizador</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3002/deposito-nodos" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span><span class="tree-step-num">2.</span>Mesa de Armado y Etiquetado</span>
+                  <span class="tree-ext-arrow">↗</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3002/liquidacion-nodos" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span><span class="tree-step-num">3.</span>Cobros, Padrón Vecinal y Liquidación</span>
+                  <span class="tree-ext-arrow">↗</span>
+                </a>
+              </li>
+
+              <!-- Sub-rama colapsada: Modo Espejo Apps Externas -->
+              <li class="tree-item branch nested-branch espejo-branch">
+                <div class="tree-branch-header" onclick="toggleBranch(this)">
+                  <span class="tree-icon">📱</span> Modo Espejo (Apps Externas)
+                  <span class="chevron">▼</span>
+                </div>
+                <ul class="tree-submenu">
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirModoEspejoNodo('gestor'); closeSidebar();" class="tree-sublink">
+                      <span>Abrir App móvil del Gestor (/gestor)</span>
+                      <span class="tree-ext-arrow">↗</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="javascript:void(0)" onclick="window.abrirModoEspejoNodo('tienda'); closeSidebar();" class="tree-sublink">
+                      <span>Abrir Tienda pública del Vecino (/tienda)</span>
+                      <span class="tree-ext-arrow">↗</span>
+                    </a>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+
+          <!-- 5. Plataforma Digital y Sistema -->
+          <li class="tree-item branch">
+            <div class="tree-branch-header" onclick="toggleBranch(this)">
+              <span class="tree-icon">🌐</span> Plataforma Digital y Sistema
+              <span class="chevron">▼</span>
+            </div>
+            <ul class="tree-submenu">
+              <li class="tree-section-header">Portal Mayorista B2B</li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.abrirPortalB2B(); closeSidebar();" class="tree-sublink">
+                  <span>Accesos Clientes (Modo Espejo)</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.sincronizarB2BManual(); closeSidebar();" class="tree-sublink">
+                  <span>Sincronización Manual B2B</span>
+                </a>
+              </li>
+              <li>
+                <a href="http://localhost:3005/pages/configuracion-jerarquia-b2b.html" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span>Configurar Jerarquía B2B</span>
+                  <span class="tree-ext-arrow">↗</span>
+                </a>
+              </li>
+
+              <li class="tree-section-header">Web Pública y Telemetría</li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.abrirEstadisticasSitioInstitucional(); closeSidebar();" class="tree-sublink">
+                  <span>Estadísticas Web Pública e IAs</span>
+                </a>
+              </li>
+              <li>
+                <a href="/institucional.html" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span>Ver Página Institucional (Local)</span>
+                  <span class="tree-ext-arrow">↗</span>
+                </a>
+              </li>
+              <li>
+                <a href="https://lamdaser.com" target="_blank" onclick="closeSidebar();" class="tree-sublink">
+                  <span>Abrir Dominio Público (lamdaser.com)</span>
+                  <span class="tree-ext-arrow">↗</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.abrirTelemetriaCloudflareMenu(); closeSidebar();" class="tree-sublink">
+                  <span>Telemetría Cloudflare</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="window.abrirAuditoriaEntregasQRMenu(); closeSidebar();" class="tree-sublink">
+                  <span>Auditoría Entregas y QR</span>
+                </a>
+              </li>
+
+              <li class="tree-section-header">Sistema</li>
+              <li>
+                <a href="javascript:void(0)" onclick="if (window.abrirModalControlCreditoIaGlobal) window.abrirModalControlCreditoIaGlobal(); closeSidebar();" class="tree-sublink">
+                  <span>Control de Crédito y Consumo IA</span>
+                </a>
+              </li>
+              <li id="tree-item-install-lamda-prueba">
+                <a href="javascript:void(0)" onclick="if (window.instalarAccesoDirectoLamdaPrueba) window.instalarAccesoDirectoLamdaPrueba(); closeSidebar();" class="tree-sublink">
+                  <span>Instalar Acceso Directo de Escritorio</span>
+                </a>
+              </li>
+              <li>
+                <a href="javascript:void(0)" onclick="abrirModalLogin(); closeSidebar();" class="tree-sublink">
+                  <span>Acceso Administrativo (Login)</span>
                 </a>
               </li>
             </ul>
@@ -1191,6 +1179,141 @@ window.abrirPortalB2B = async function() {
             }
         }
     });
+};
+
+window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
+    const esGestor = tipoApp === 'gestor';
+    const tituloApp = esGestor ? 'App Móvil del Gestor (/gestor)' : 'Tienda Pública del Vecino (/tienda)';
+    const prefijoRuta = esGestor ? '/gestor/' : '/tienda/';
+
+    Swal.fire({
+        title: `📱 Modo Espejo — ${tituloApp}`,
+        text: 'Consultando Nodos Barriales activos...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+        const res = await fetch('http://localhost:3002/api/produccion/nodos/inicializar');
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            throw new Error(data.error || 'No se pudo obtener el listado de Nodos.');
+        }
+
+        const nodos = Array.isArray(data.nodos) ? data.nodos : [];
+
+        if (nodos.length === 0) {
+            const irAlta = await Swal.fire({
+                title: 'Sin Nodos Barriales Cargados',
+                icon: 'info',
+                html: `
+                    <div style="text-align:left; font-size:0.9rem; color:#334155; line-height:1.5;">
+                        <p style="margin:0 0 10px 0;">Actualmente hay <strong>0 nodos cargados</strong> en el sistema.</p>
+                        <p style="margin:0;">Para abrir <strong>${tituloApp}</strong> en Modo Espejo, primero debe dar de alta un Nodo desde el punto <strong>1. Alta de Nodos, Catálogo y Cotizador</strong>.</p>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Ir a 1. Alta de Nodos, Catálogo y Cotizador',
+                confirmButtonColor: '#0f766e',
+                cancelButtonText: 'Cerrar'
+            });
+            if (irAlta.isConfirmed) {
+                window.location.href = 'http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos';
+            }
+            return;
+        }
+
+        const seleccion = await Swal.fire({
+            title: `📱 Modo Espejo — ${tituloApp}`,
+            html: `
+                <div style="text-align: left; font-family: sans-serif; font-size: 13.5px; color: #334155;">
+                    <label for="swal-search-nodo-espejo" style="font-weight: 600; display: block; margin-bottom: 6px;">Seleccione el Nodo a visualizar:</label>
+                    <input type="text" id="swal-search-nodo-espejo" placeholder="🔎 Filtrar por código, marca, gestor o slug..." style="width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; outline: none; margin-bottom: 8px;">
+                    <input type="hidden" id="swal-selected-nodo-slug" value="${nodos[0].url_slug || ''}">
+                    <div id="swal-nodo-espejo-lista" style="max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc;"></div>
+                    <span style="font-size: 11px; color: #64748b; margin-top: 8px; display: block;">Se abrirá en una pestaña nueva la vista exacta que ve el ${esGestor ? 'Gestor del Nodo en su celular' : 'Vecino comprador en su teléfono'}.</span>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '📱 Abrir en Modo Espejo ↗',
+            confirmButtonColor: '#0f766e',
+            cancelButtonText: 'Cancelar',
+            didOpen: () => {
+                const searchInput = document.getElementById('swal-search-nodo-espejo');
+                const listaDiv = document.getElementById('swal-nodo-espejo-lista');
+                const selectedSlugInput = document.getElementById('swal-selected-nodo-slug');
+                const confirmButton = Swal.getConfirmButton();
+
+                function renderNodosList(filtered) {
+                    if (filtered.length === 0) {
+                        listaDiv.innerHTML = `<div style="padding: 12px; color: #64748b; font-style: italic; text-align: center; font-size: 13px;">No se encontraron Nodos coincidentes.</div>`;
+                        confirmButton.disabled = true;
+                        return;
+                    }
+                    if (!filtered.some(n => n.url_slug === selectedSlugInput.value)) {
+                        selectedSlugInput.value = filtered[0].url_slug;
+                    }
+                    confirmButton.disabled = !selectedSlugInput.value;
+
+                    listaDiv.innerHTML = filtered.map(n => {
+                        const isSelected = selectedSlugInput.value === n.url_slug;
+                        const bgStyle = isSelected ? 'background-color: #ecfdf5; border-left: 4px solid #0f766e;' : 'border-left: 4px solid transparent;';
+                        const madreTag = n.codigo_bunker_cliente_madre ? ` · Cta. Madre: ${n.codigo_bunker_cliente_madre}` : '';
+                        return `
+                            <div class="nodo-espejo-option" data-slug="${n.url_slug}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: all 0.15s; ${bgStyle}">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                                    <span style="font-weight: 700; color: #0f172a; font-size: 13px;">${n.nombre_marca}</span>
+                                    <span style="font-size: 11px; font-weight: 700; color: #0f766e; background: #ccfbf1; padding: 2px 6px; border-radius: 4px;">${n.codigo_nodo}</span>
+                                </div>
+                                <div style="font-size: 12px; color: #475569; margin-bottom: 2px;">Gestor: <strong>${n.gestor_nombre || 'S/N'}</strong> · Subcuenta: ${n.codigo_bunker_cliente || 'S/C'}${madreTag}</div>
+                                <div style="font-size: 11px; color: #64748b; font-family: monospace;">Ruta: ${prefijoRuta}${n.url_slug}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    listaDiv.querySelectorAll('.nodo-espejo-option').forEach(opt => {
+                        opt.addEventListener('click', () => {
+                            selectedSlugInput.value = opt.getAttribute('data-slug') || '';
+                            confirmButton.disabled = !selectedSlugInput.value;
+                            renderNodosList(filtered);
+                        });
+                    });
+                }
+
+                renderNodosList(nodos);
+
+                searchInput.addEventListener('input', (e) => {
+                    const term = (e.target.value || '').toLowerCase().trim();
+                    const filtered = nodos.filter(n =>
+                        (n.codigo_nodo || '').toLowerCase().includes(term) ||
+                        (n.nombre_marca || '').toLowerCase().includes(term) ||
+                        (n.gestor_nombre || '').toLowerCase().includes(term) ||
+                        (n.url_slug || '').toLowerCase().includes(term) ||
+                        (n.codigo_bunker_cliente || '').toLowerCase().includes(term) ||
+                        (n.codigo_bunker_cliente_madre || '').toLowerCase().includes(term)
+                    );
+                    renderNodosList(filtered);
+                });
+            },
+            preConfirm: () => {
+                const slug = document.getElementById('swal-selected-nodo-slug').value;
+                if (!slug) {
+                    Swal.showValidationMessage('Seleccione un Nodo de la lista');
+                    return false;
+                }
+                return slug;
+            }
+        });
+
+        if (seleccion.isConfirmed && seleccion.value) {
+            window.open(`http://localhost:3002${prefijoRuta}${encodeURIComponent(seleccion.value)}`, '_blank', 'noopener');
+        }
+    } catch (err) {
+        console.error('Error abriendo Modo Espejo de Nodo:', err);
+        Swal.fire('Error de Conexión', err.message || 'No se pudo consultar el listado de Nodos.', 'error');
+    }
 };
 
 window.abrirTelemetriaCloudflareMenu = async function() {

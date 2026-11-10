@@ -1241,12 +1241,14 @@ footer {
 .tree-sublink {
   display: flex;
   align-items: center;
-  padding: 8px 16px 8px 20px;
-  font-size: 0.88em;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px 8px 34px;
+  font-size: 0.87em;
   font-weight: 500;
-  color: var(--medium-slate);
+  color: #334155;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
   border-left: 3px solid transparent;
 }
 
@@ -1260,10 +1262,33 @@ footer {
   flex-shrink: 0;
 }
 
+.tree-sublink .tree-step-num {
+  color: #64748b;
+  font-weight: 700;
+  margin-right: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tree-sublink .tree-ext-arrow {
+  margin-left: auto;
+  font-size: 0.78em;
+  color: #94a3b8;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
 .tree-sublink:hover {
   color: var(--primary-color);
   background-color: #f1f5f9;
   border-left-color: var(--primary-color);
+}
+
+.tree-sublink:hover .tree-ext-arrow,
+.tree-sublink:hover .tree-step-num {
+  color: var(--primary-color);
+}
+
+.warning-link {
+  color: #64748b;
 }
 
 .warning-link:hover {
@@ -1279,22 +1304,33 @@ footer {
   background-color: transparent !important;
 }
 
+.nested-branch.espejo-branch {
+  border-top: 1px dashed #e2e8f0 !important;
+  margin-top: 6px;
+  padding-top: 2px;
+}
+
 .nested-branch .tree-branch-header {
-  padding: 8px 16px 8px 20px;
-  font-size: 0.88em;
-  font-weight: 550;
-  color: var(--medium-slate);
+  padding: 8px 16px 8px 34px;
+  font-size: 0.86em;
+  font-weight: 600;
+  color: #475569;
   display: flex;
   align-items: center;
 }
 
+.nested-branch.espejo-branch .tree-branch-header {
+  color: #64748b;
+  font-size: 0.83em;
+}
+
 .nested-branch .tree-branch-header .tree-icon {
-  margin-right: 10px;
-  font-size: 1.05em;
+  margin-right: 8px;
+  font-size: 0.98em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: 18px;
   flex-shrink: 0;
 }
 
@@ -1310,15 +1346,16 @@ footer {
 
 .nested-branch .tree-submenu {
   background-color: #f1f5f9;
-  border-left: 2px solid #e2e8f0;
-  margin-left: 30px;
-  padding: 2px 0 4px 0;
+  border-left: 2px solid #cbd5e1;
+  margin-left: 34px;
+  margin-right: 10px;
+  padding: 3px 0 5px 0;
   border-radius: 0 0 6px 6px;
 }
 
 .nested-branch .tree-sublink {
   padding: 7px 12px 7px 14px;
-  font-size: 0.86em;
+  font-size: 0.84em;
 }
 
 .nested-branch .tree-sublink .tree-icon {
