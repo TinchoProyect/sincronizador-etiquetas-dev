@@ -612,12 +612,47 @@ router.post('/whatsapp-prueba', async (req, res) => {
         const telefonoPrueba = '5492216615746';
         const telefonoOriginal = String(req.body?.telefono_original || '').trim();
         const destinatarioNombre = String(req.body?.destinatario_nombre || 'Cliente / Vecino').trim();
+        const soloPreview = Boolean(req.body?.solo_preview);
         const baseUrlMovil = await obtenerBaseUrlAccesibleCelular(req);
 
         let mensajeNormalizado = String(req.body?.mensaje || '').trim();
         mensajeNormalizado = mensajeNormalizado
             .replace(/https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?(\/gw\/3002)?(?=\/(gestor|tienda|deposito-nodos|liquidacion-nodos))/gi, baseUrlMovil)
             .replace(/https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/gi, baseUrlMovil);
+
+        const urlRegex = /https?:\/\/[^\s)]+\/(gestor|tienda)\/[^\s)]+/gi;
+        const rawUrls = [...new Set(mensajeNormalizado.match(urlRegex) || [])];
+        const linksDetectados = [];
+        for (const u of rawUrls) {
+            let qrDataUrl = null;
+            try {
+                qrDataUrl = await QRCode.toDataURL(u, { margin: 1, width: 180 });
+            } catch (_) {}
+            linksDetectados.push({
+                tipo: /\/gestor\//i.test(u) ? 'GESTOR' : 'TIENDA',
+                label: /\/gestor\//i.test(u) ? '🎛️ Panel del Gestor' : '🛒 Tienda del Vecino',
+                url: u,
+                qr_data_url: qrDataUrl
+            });
+        }
+
+        if (soloPreview) {
+            return res.json({
+                ok: true,
+                preview_only: true,
+                enviado_directo: false,
+                modo_laboratorio: true,
+                simulated: false,
+                telefono_destino_forzado: telefonoPrueba,
+                telefono_destino_display: '221 661 5746',
+                telefono_original: telefonoOriginal,
+                destinatario_nombre: destinatarioNombre,
+                base_url_movil: baseUrlMovil,
+                mensaje_enviado: mensajeNormalizado,
+                links_detectados: linksDetectados,
+                resultados_wa: []
+            });
+        }
 
         console.log(`🧪 [MODO LABORATORIO - NODOS WA INTERNO] Despachando vía servicio interno (:3004) para "${destinatarioNombre}" (${telefonoOriginal || 'S/T'}) -> ${telefonoPrueba} (221 661 5746) | Base Móvil: ${baseUrlMovil}`);
 
@@ -656,24 +691,9 @@ router.post('/whatsapp-prueba', async (req, res) => {
             throw new Error(primerResultado.error || `No se pudo enviar el mensaje (${primerResultado.status}).`);
         }
 
-        const urlRegex = /https?:\/\/[^\s)]+\/(gestor|tienda)\/[^\s)]+/gi;
-        const rawUrls = [...new Set(mensajeNormalizado.match(urlRegex) || [])];
-        const linksDetectados = [];
-        for (const u of rawUrls) {
-            let qrDataUrl = null;
-            try {
-                qrDataUrl = await QRCode.toDataURL(u, { margin: 1, width: 180 });
-            } catch (_) {}
-            linksDetectados.push({
-                tipo: /\/gestor\//i.test(u) ? 'GESTOR' : 'TIENDA',
-                label: /\/gestor\//i.test(u) ? '🎛️ Panel del Gestor' : '🛒 Tienda del Vecino',
-                url: u,
-                qr_data_url: qrDataUrl
-            });
-        }
-
         res.json({
             ok: true,
+            preview_only: false,
             enviado_directo: true,
             modo_laboratorio: true,
             simulated: Boolean(primerResultado.simulated),

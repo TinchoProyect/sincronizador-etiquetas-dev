@@ -2636,19 +2636,21 @@
                 urlTienda
             ].join('\n');
 
-            const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+            // Paso 1: Generar vista previa y códigos QR sin despachar aún el mensaje
+            const respPrev = await fetch('/api/produccion/nodos/whatsapp-prueba', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     destinatario_nombre: nodo.gestor_nombre || nodo.nombre_marca,
                     telefono_original: nodo.gestor_telefono || '',
-                    mensaje
+                    mensaje,
+                    solo_preview: true
                 })
             });
-            const data = await resp.json();
-            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo generar el envío de WhatsApp.');
+            const dataPrev = await respPrev.json();
+            if (!respPrev.ok || !dataPrev.ok) throw new Error(dataPrev.error || 'No se pudo preparar la vista previa de WhatsApp.');
 
-            const linksDetectados = Array.isArray(data.links_detectados) ? data.links_detectados : [];
+            const linksDetectados = Array.isArray(dataPrev.links_detectados) ? dataPrev.links_detectados : [];
             const qrCardsHtml = linksDetectados.length > 0 ? `
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:10px; margin-top:10px;">
                     ${linksDetectados.map(lk => `
@@ -2672,29 +2674,64 @@
             ` : '';
 
             if (window.Swal) {
-                Swal.fire({
-                    icon: 'success',
+                const resConfirm = await Swal.fire({
+                    icon: 'question',
                     width: 620,
-                    title: '✅ WhatsApp Despachado por Conexión Interna LAMDA',
+                    title: '📲 Despacho por Conexión Interna de WhatsApp LAMDA',
                     html: `
                         <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
                             <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.12); border:1px solid #059669; color:#a7f3d0; margin-bottom:10px;">
-                                📲 <strong>Despacho directo completado (sin abrir ventanas externas):</strong><br>
+                                📋 <strong>Listo para enviar (sin abrir ventanas externas):</strong><br>
                                 Destinatario original: <strong>${escaparHtml(nodo.gestor_nombre || nodo.nombre_marca)} (${escaparHtml(nodo.gestor_telefono || 'S/T')})</strong><br>
-                                🛡️ Redirigido en Modo Laboratorio a: <strong>${escaparHtml(data.telefono_destino_display || '221 661 5746')}</strong>
+                                🛡️ Destino protegido en Modo Laboratorio: <strong>${escaparHtml(dataPrev.telefono_destino_display || '221 661 5746')}</strong>
                             </div>
                             <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
-                                Mensaje enviado con links optimizados para celular en red Wi-Fi (<strong>${escaparHtml(data.base_url_movil || '')}</strong>):
+                                Mensaje a enviar con links para celular (<strong>${escaparHtml(dataPrev.base_url_movil || '')}</strong>):
                             </div>
-                            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; font-family:inherit; margin:0 0 8px 0; max-height:170px; overflow-y:auto;">${escaparHtml(data.mensaje_enviado || mensaje)}</pre>
+                            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; font-family:inherit; margin:0 0 8px 0; max-height:170px; overflow-y:auto;">${escaparHtml(dataPrev.mensaje_enviado || mensaje)}</pre>
                             ${qrCardsHtml}
                         </div>
                     `,
-                    confirmButtonText: 'Entendido',
+                    showCancelButton: true,
+                    confirmButtonText: '📲 Enviar',
+                    cancelButtonText: 'Cancelar',
                     confirmButtonColor: '#16a34a',
+                    cancelButtonColor: '#475569',
+                    showLoaderOnConfirm: true,
                     background: '#151e2e',
-                    color: '#f8fafc'
+                    color: '#f8fafc',
+                    preConfirm: async () => {
+                        const respEnvio = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                destinatario_nombre: nodo.gestor_nombre || nodo.nombre_marca,
+                                telefono_original: nodo.gestor_telefono || '',
+                                mensaje: dataPrev.mensaje_enviado || mensaje,
+                                solo_preview: false
+                            })
+                        });
+                        const dataEnvio = await respEnvio.json();
+                        if (!respEnvio.ok || !dataEnvio.ok) {
+                            Swal.showValidationMessage(dataEnvio.error || 'No se pudo despachar el mensaje.');
+                            return false;
+                        }
+                        return dataEnvio;
+                    },
+                    allowOutsideClick: () => !Swal.isLoading()
                 });
+
+                if (resConfirm.isConfirmed && resConfirm.value) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ Mensaje Enviado por WhatsApp',
+                        text: `Despachado correctamente al teléfono de resguardo ${resConfirm.value.telefono_destino_display || '221 661 5746'}.`,
+                        timer: 2600,
+                        showConfirmButton: false,
+                        background: '#151e2e',
+                        color: '#f8fafc'
+                    });
+                }
             }
         } catch (err) {
             if (window.Swal) {

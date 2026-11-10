@@ -374,40 +374,112 @@
       alert(`✅ Link de tu tienda copiado para compartir en WhatsApp:\n${url}`);
     }
 
-    function mostrarConfirmacionWhatsAppGestor(data, titulo, subtitulo) {
-      const modal = document.getElementById('modal-recibo-gestor');
-      const body = document.getElementById('modal-recibo-gestor-body');
-      if (!modal || !body) {
-        alert(`✅ ${titulo}\nDespachado por el servicio interno de WhatsApp de LAMDA (redirigido en Laboratorio a ${data?.telefono_destino_display || '221 661 5746'}).`);
+    let _ultimoPayloadWaGestor = null;
+
+    async function abrirModalDespachoWhatsAppGestor({ destinatario_nombre, telefono_original, mensaje, titulo, subtitulo }) {
+      const respPrev = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre,
+          telefono_original,
+          mensaje,
+          solo_preview: true
+        })
+      });
+      const data = await respPrev.json();
+      if (!respPrev.ok || !data.ok) {
+        alert('Error al preparar envío de WhatsApp: ' + (data.error || 'Error interno'));
         return;
       }
+
+      _ultimoPayloadWaGestor = {
+        destinatario_nombre,
+        telefono_original,
+        mensaje: data.mensaje_enviado || mensaje,
+        titulo,
+        subtitulo
+      };
+
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) return;
+
       const links = Array.isArray(data?.links_detectados) ? data.links_detectados : [];
       body.innerHTML = `
-        <div style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:#fff; padding:16px 20px;">
-          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Conexión Interna de WhatsApp LAMDA</div>
-          <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">✅ ${esc(titulo)}</div>
+        <div style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; padding:16px 20px;">
+          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:#38bdf8;">Conexión Interna de WhatsApp LAMDA</div>
+          <div style="font-size:1.08rem; font-weight:900; margin-top:2px;">📲 ${esc(titulo)}</div>
           <div style="font-size:0.78rem; margin-top:2px; opacity:0.92;">${esc(subtitulo || '')}</div>
         </div>
         <div style="padding:18px 20px; background:#fff; color:#0f172a; font-size:0.84rem;">
-          <div style="padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
-            📲 <strong>Mensaje despachado directamente desde el sistema</strong> (sin abrir pestañas externas).<br>
-            🛡️ Destino de prueba en Laboratorio: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
+          <div id="wa-gestor-status-banner" style="padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
+            📋 <strong>Listo para enviar desde el sistema</strong> (sin abrir pestañas externas).<br>
+            🛡️ Destino protegido en Laboratorio: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
           </div>
-          <div style="font-size:0.75rem; color:#64748b; margin-bottom:4px; font-weight:700;">Contenido despachado:</div>
+          <div style="font-size:0.75rem; color:#64748b; margin-bottom:4px; font-weight:700;">Mensaje a despachar:</div>
           <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; color:#0f172a; font-size:0.76rem; font-family:inherit; margin:0 0 12px 0; max-height:180px; overflow-y:auto;">${esc(data?.mensaje_enviado || '')}</pre>
           ${links.length > 0 ? `
             <div style="text-align:center; padding:10px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; margin-bottom:12px;">
-              <div style="font-size:0.75rem; font-weight:800; color:#0f172a; margin-bottom:6px;">📱 Link listo para abrir desde el celular (${esc(links[0].url)})</div>
+              <div style="font-size:0.75rem; font-weight:800; color:#0f172a; margin-bottom:6px;">📱 Código QR / Link directo (${esc(links[0].url)})</div>
               ${links[0].qr_data_url ? `<img src="${links[0].qr_data_url}" alt="QR Tienda" style="width:130px; height:130px; border-radius:8px;">` : ''}
             </div>
           ` : ''}
-          <button type="button" onclick="cerrarModalReciboGestor()"
-            style="width:100%; padding:10px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
-            Listo
-          </button>
+          <div id="wa-gestor-actions-box" style="display:flex; gap:8px;">
+            <button type="button" id="btn-confirmar-wa-gestor" onclick="confirmarEnvioRealWhatsAppGestor()"
+              style="flex:1; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.88rem; cursor:pointer;">
+              📲 Enviar
+            </button>
+            <button type="button" onclick="cerrarModalReciboGestor()"
+              style="padding:11px 16px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; font-weight:800; font-size:0.84rem; cursor:pointer;">
+              Cancelar
+            </button>
+          </div>
         </div>
       `;
       modal.style.display = 'flex';
+    }
+
+    async function confirmarEnvioRealWhatsAppGestor() {
+      if (!_ultimoPayloadWaGestor) return;
+      const btn = document.getElementById('btn-confirmar-wa-gestor');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Enviando...';
+      }
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: _ultimoPayloadWaGestor.destinatario_nombre,
+          telefono_original: _ultimoPayloadWaGestor.telefono_original,
+          mensaje: _ultimoPayloadWaGestor.mensaje,
+          solo_preview: false
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        alert('Error al enviar WhatsApp: ' + (data.error || 'Error interno'));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '📲 Enviar';
+        }
+        return;
+      }
+      const banner = document.getElementById('wa-gestor-status-banner');
+      if (banner) {
+        banner.style.background = '#dcfce7';
+        banner.innerHTML = `✅ <strong>¡Mensaje enviado con éxito por WhatsApp!</strong><br>🛡️ Entregado en el teléfono de resguardo <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>`;
+      }
+      const actionsBox = document.getElementById('wa-gestor-actions-box');
+      if (actionsBox) {
+        actionsBox.innerHTML = `
+          <button type="button" onclick="cerrarModalReciboGestor()"
+            style="width:100%; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
+            Cerrar
+          </button>
+        `;
+      }
     }
 
     async function enviarLinkTiendaWhatsAppPrueba() {
@@ -427,21 +499,13 @@
         `Podés elegir retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío a domicilio en el barrio.`
       ].filter(Boolean).join('\n');
 
-      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destinatario_nombre: `Vecinos de ${GSTATE.nodo.nombre_marca}`,
-          telefono_original: '5492216615746',
-          mensaje
-        })
+      await abrirModalDespachoWhatsAppGestor({
+        destinatario_nombre: `Vecinos de ${GSTATE.nodo.nombre_marca}`,
+        telefono_original: '5492216615746',
+        mensaje,
+        titulo: 'Compartir Link de Tienda por WhatsApp',
+        subtitulo: `Tienda de ${GSTATE.nodo.nombre_marca}`
       });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('Error al despachar WhatsApp: ' + (data.error || 'Error interno'));
-        return;
-      }
-      mostrarConfirmacionWhatsAppGestor(data, 'Link de Tienda Despachado por WhatsApp', `Tienda de ${GSTATE.nodo.nombre_marca}`);
     }
 
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
@@ -457,21 +521,13 @@
         `📅 *Entrega:* ${p.fecha_entrega_label}`
       ].filter(Boolean).join('\n');
 
-      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destinatario_nombre: p.vecino_nombre,
-          telefono_original: p.vecino_telefono,
-          mensaje
-        })
+      await abrirModalDespachoWhatsAppGestor({
+        destinatario_nombre: p.vecino_nombre,
+        telefono_original: p.vecino_telefono,
+        mensaje,
+        titulo: `Enviar Detalle de Pedido #${p.codigo_pedido}`,
+        subtitulo: `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`
       });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('Error al despachar WhatsApp: ' + (data.error || 'Error interno'));
-        return;
-      }
-      mostrarConfirmacionWhatsAppGestor(data, `Detalle de Pedido #${p.codigo_pedido} Enviado`, `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`);
     }
 
     function cambiarTabGestor(tab) {
@@ -1121,13 +1177,22 @@
         `¡Muchas gracias por tu compra en ${GSTATE.nodo.nombre_marca}! 🌿`
       ].filter(Boolean).join('\n');
 
+      _ultimoPayloadWaGestor = {
+        destinatario_nombre: p.vecino_nombre,
+        telefono_original: p.vecino_telefono,
+        mensaje,
+        titulo: `Recibo Digital ${nroRecibo}`,
+        subtitulo: `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`
+      };
+
       const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destinatario_nombre: p.vecino_nombre,
           telefono_original: p.vecino_telefono,
-          mensaje
+          mensaje,
+          solo_preview: false
         })
       });
       const data = await resp.json();
@@ -1135,7 +1200,27 @@
         alert('Error al despachar recibo por WhatsApp: ' + (data.error || 'Error interno'));
         return;
       }
-      mostrarConfirmacionWhatsAppGestor(data, `Recibo Digital ${nroRecibo} Despachado`, `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`);
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (body) {
+        body.innerHTML = `
+          <div style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:#fff; padding:16px 20px;">
+            <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Conexión Interna de WhatsApp LAMDA</div>
+            <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">✅ Recibo Digital ${esc(nroRecibo)} Enviado</div>
+            <div style="font-size:0.78rem; margin-top:2px; opacity:0.92;">Vecino/a: ${esc(p.vecino_nombre)} (${esc(p.vecino_telefono || 'S/T')})</div>
+          </div>
+          <div style="padding:18px 20px; background:#fff; color:#0f172a; font-size:0.84rem;">
+            <div style="padding:10px 12px; border-radius:8px; background:#dcfce7; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
+              ✅ <strong>¡Recibo despachado con éxito por WhatsApp!</strong><br>
+              🛡️ Entregado en el teléfono de resguardo: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
+            </div>
+            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; color:#0f172a; font-size:0.76rem; font-family:inherit; margin:0 0 12px 0; max-height:180px; overflow-y:auto;">${esc(data?.mensaje_enviado || mensaje)}</pre>
+            <button type="button" onclick="cerrarModalReciboGestor()"
+              style="width:100%; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
+              Cerrar
+            </button>
+          </div>
+        `;
+      }
     }
 
     // -------------------------------------------------------------------------

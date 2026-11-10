@@ -958,6 +958,8 @@
       `;
     }
 
+    let _ultimoPayloadWaTienda = null;
+
     async function enviarComprobanteWhatsAppPrueba(codigoPedido, vecinoNombre, nombreMarca, fechaEntrega, totalVecino, medioPago, aliasBancario) {
       const mensaje = [
         `🌿 *${nombreMarca}* — Nuevo Pedido #${codigoPedido}`,
@@ -971,24 +973,77 @@
         body: JSON.stringify({
           destinatario_nombre: nombreMarca,
           telefono_original: '5492216615746',
-          mensaje
+          mensaje,
+          solo_preview: true
         })
       });
       const data = await resp.json();
       const box = document.getElementById('etiqueta-confirmacion-preview');
       if (!resp.ok || !data.ok) {
-        alert('Error al despachar el pedido por WhatsApp: ' + (data.error || 'Error interno'));
+        alert('Error al preparar el pedido para WhatsApp: ' + (data.error || 'Error interno'));
         return;
       }
+      _ultimoPayloadWaTienda = {
+        destinatario_nombre: nombreMarca,
+        telefono_original: '5492216615746',
+        mensaje: data.mensaje_enviado || mensaje
+      };
       if (box) {
         box.innerHTML = `
-          <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:12px; text-align:left; font-size:0.8rem; color:#166534; margin-top:8px;">
-            📲 <strong>¡Comprobante despachado directamente por WhatsApp!</strong><br>
-            🛡️ Redirigido en Modo Laboratorio a: <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>
-            <pre style="white-space:pre-wrap; margin:8px 0 0 0; padding:8px; background:#ffffff; border:1px solid #bbf7d0; border-radius:6px; font-family:inherit; font-size:0.75rem; color:#0f172a;">${esc(data.mensaje_enviado || mensaje)}</pre>
+          <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:12px; text-align:left; font-size:0.8rem; color:#0f172a; margin-top:8px;">
+            <div id="wa-tienda-banner" style="padding:8px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; color:#166534; margin-bottom:8px;">
+              📋 <strong>Listo para enviar el comprobante por WhatsApp</strong><br>
+              🛡️ Destino protegido en Modo Laboratorio: <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>
+            </div>
+            <pre style="white-space:pre-wrap; margin:0 0 10px 0; padding:8px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; font-family:inherit; font-size:0.75rem; color:#0f172a;">${esc(data.mensaje_enviado || mensaje)}</pre>
+            <div id="wa-tienda-actions" style="display:flex; gap:8px;">
+              <button type="button" id="btn-confirmar-wa-tienda" onclick="confirmarEnvioRealWhatsAppTienda()"
+                style="flex:1; padding:10px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.84rem; cursor:pointer;">
+                📲 Enviar
+              </button>
+              <button type="button" onclick="document.getElementById('etiqueta-confirmacion-preview').innerHTML=''"
+                style="padding:10px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; color:#475569; font-weight:800; font-size:0.82rem; cursor:pointer;">
+                Cancelar
+              </button>
+            </div>
           </div>
         `;
       }
+    }
+
+    async function confirmarEnvioRealWhatsAppTienda() {
+      if (!_ultimoPayloadWaTienda) return;
+      const btn = document.getElementById('btn-confirmar-wa-tienda');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Enviando...';
+      }
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: _ultimoPayloadWaTienda.destinatario_nombre,
+          telefono_original: _ultimoPayloadWaTienda.telefono_original,
+          mensaje: _ultimoPayloadWaTienda.mensaje,
+          solo_preview: false
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        alert('Error al despachar el pedido por WhatsApp: ' + (data.error || 'Error interno'));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '📲 Enviar';
+        }
+        return;
+      }
+      const banner = document.getElementById('wa-tienda-banner');
+      if (banner) {
+        banner.style.background = '#dcfce7';
+        banner.innerHTML = `✅ <strong>¡Comprobante enviado con éxito por WhatsApp!</strong><br>🛡️ Entregado en <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>`;
+      }
+      const actions = document.getElementById('wa-tienda-actions');
+      if (actions) actions.innerHTML = '';
     }
 
     async function verEtiquetaDeMiPedido(pedidoId) {

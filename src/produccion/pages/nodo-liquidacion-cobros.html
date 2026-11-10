@@ -951,35 +951,69 @@
                 `¡Muchas gracias por tu compra en ${nombreMarca}!`
             ].filter(Boolean).join('\n');
 
-            const res = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+            const resPrev = await fetch('/api/produccion/nodos/whatsapp-prueba', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     destinatario_nombre: p.vecino_nombre,
                     telefono_original: p.vecino_telefono,
-                    mensaje
+                    mensaje,
+                    solo_preview: true
                 })
             });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-                Swal.fire({ icon: 'error', title: 'Error WhatsApp', text: data.error || 'No se pudo despachar el mensaje.' });
+            const dataPrev = await resPrev.json();
+            if (!resPrev.ok || !dataPrev.ok) {
+                Swal.fire({ icon: 'error', title: 'Error WhatsApp', text: dataPrev.error || 'No se pudo preparar el mensaje.' });
                 return;
             }
-            Swal.fire({
-                icon: 'success',
-                title: '✅ Recibo Despachado por WhatsApp',
+            const resConfirm = await Swal.fire({
+                icon: 'question',
+                title: '📲 Enviar Recibo por Conexión Interna WhatsApp LAMDA',
                 html: `
                     <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
                         <div style="padding:10px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
-                            📲 Despachado directamente por el servicio interno de WhatsApp de LAMDA (sin abrir pestañas externas).<br>
-                            🛡️ Redirigido en Modo Laboratorio a: <strong>${esc(data.telefono_destino_display || '221 661 5746')}</strong>
+                            📋 <strong>Listo para enviar desde el sistema</strong> (sin abrir pestañas externas).<br>
+                            Destinatario original: <strong>${esc(p.vecino_nombre)} (${esc(p.vecino_telefono || 'S/T')})</strong><br>
+                            🛡️ Destino protegido en Modo Laboratorio: <strong>${esc(dataPrev.telefono_destino_display || '221 661 5746')}</strong>
                         </div>
-                        <pre style="white-space:pre-wrap; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; font-size:0.75rem; font-family:inherit; color:#0f172a;">${esc(data.mensaje_enviado || mensaje)}</pre>
+                        <pre style="white-space:pre-wrap; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; font-size:0.75rem; font-family:inherit; color:#0f172a;">${esc(dataPrev.mensaje_enviado || mensaje)}</pre>
                     </div>
                 `,
-                confirmButtonText: 'Entendido',
-                confirmButtonColor: '#16a34a'
+                showCancelButton: true,
+                confirmButtonText: '📲 Enviar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#16a34a',
+                cancelButtonColor: '#64748b',
+                showLoaderOnConfirm: true,
+                preConfirm: async () => {
+                    const resEnv = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            destinatario_nombre: p.vecino_nombre,
+                            telefono_original: p.vecino_telefono,
+                            mensaje: dataPrev.mensaje_enviado || mensaje,
+                            solo_preview: false
+                        })
+                    });
+                    const dataEnv = await resEnv.json();
+                    if (!resEnv.ok || !dataEnv.ok) {
+                        Swal.showValidationMessage(dataEnv.error || 'No se pudo despachar el mensaje.');
+                        return false;
+                    }
+                    return dataEnv;
+                },
+                allowOutsideClick: () => !Swal.isLoading()
             });
+            if (resConfirm.isConfirmed && resConfirm.value) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ Recibo Enviado por WhatsApp',
+                    text: `Entregado en el teléfono de resguardo ${resConfirm.value.telefono_destino_display || '221 661 5746'}.`,
+                    timer: 2400,
+                    showConfirmButton: false
+                });
+            }
         }
 
         function renderizarPadronDobleLamda() {
