@@ -96,6 +96,21 @@ router.put('/maestro/:id', async (req, res) => {
 });
 
 /**
+ * PUT /api/produccion/nodos/config-cuenta-canal
+ * Actualiza el Alias/CBU/Titular compartido del Canal Nodos (Marca Blanca)
+ * y lo propaga automáticamente a todos los Nodos que usan la cuenta recaudadora compartida.
+ */
+router.put('/config-cuenta-canal', async (req, res) => {
+    try {
+        const resultado = await nodosService.actualizarConfiguracionCuentaCanalNodos(req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /config-cuenta-canal:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/produccion/nodos/propuestas
  * Crea una nueva solicitud/propuesta de fracción de un gestor de Nodo hacia LAMDA
  */

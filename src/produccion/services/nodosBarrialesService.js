@@ -1091,11 +1091,41 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
             ALTER TABLE public.nodos_maestro
                 ADD COLUMN IF NOT EXISTS cliente_madre_bunker_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
-                ADD COLUMN IF NOT EXISTS codigo_bunker_cliente_madre VARCHAR(80);
+                ADD COLUMN IF NOT EXISTS codigo_bunker_cliente_madre VARCHAR(80),
+                ADD COLUMN IF NOT EXISTS latitud NUMERIC(12,8),
+                ADD COLUMN IF NOT EXISTS longitud NUMERIC(12,8);
+
+            CREATE TABLE IF NOT EXISTS public.nodos_configuracion_canal (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                cuenta_bancaria_id INTEGER REFERENCES public.fin_cuentas_bancarias(id) ON DELETE SET NULL,
+                banco_recaudador VARCHAR(160) DEFAULT 'Cuenta Recaudadora Canal Nodos (Provisoria)',
+                alias_recaudador VARCHAR(120) NOT NULL DEFAULT 'pago.canasto',
+                cbu_recaudador VARCHAR(40) DEFAULT '0000000000000000000000',
+                titular_recaudador VARCHAR(180) DEFAULT 'Recaudación Canal Nodos (Provisorio)',
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+
+            INSERT INTO public.nodos_configuracion_canal (
+                id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador
+            ) VALUES (
+                1, NULL, 'Cuenta Recaudadora Canal Nodos (Provisoria)', 'pago.canasto', '0000000000000000000000', 'Recaudación Canal Nodos (Provisorio)'
+            ) ON CONFLICT (id) DO NOTHING;
 
             ALTER TABLE public.nodos_liquidaciones_lote
                 ADD COLUMN IF NOT EXISTS movimiento_cc_madre_id BIGINT,
                 ADD COLUMN IF NOT EXISTS saldo_cta_cte_madre_post_cierre NUMERIC(14,2);
+        `);
+
+        // Si algún Nodo con cuenta compartida quedó con el alias mayorista de LAMDA, migrarlo al alias neutro del canal
+        await client.query(`
+            UPDATE public.nodos_maestro nm
+            SET alias_bancario_display = cfg.alias_recaudador,
+                cbu_display = COALESCE(NULLIF(cfg.cbu_recaudador, ''), nm.cbu_display),
+                titular_display = COALESCE(NULLIF(cfg.titular_recaudador, ''), nm.titular_display)
+            FROM public.nodos_configuracion_canal cfg
+            WHERE cfg.id = 1
+              AND COALESCE(nm.usa_cuenta_compartida, true) = true
+              AND (nm.alias_bancario_display IS NULL OR nm.alias_bancario_display = '' OR nm.alias_bancario_display ILIKE '%lamda%');
         `);
 
         // Verificar si necesitamos poblar datos iniciales de Laboratorio (solo cuando se pide sembrarDemo explícitamente)
@@ -2025,7 +2055,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
  * utilizando únicamente ingredientes simples puente y hermanos nativos deterministas.
  */
 async function obtenerFuentesCostoSeisFlujos() {
-    const [ingRes, compRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, hermanosRes] = await Promise.all([
+    const [ingRes, compRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, hermanosRes, cfgCanalRes] = await Promise.all([
         db.query(`
             SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
                    articulo_vinculado_numero, COALESCE(es_insumo, false) AS es_insumo
@@ -2079,19 +2109,39 @@ async function obtenerFuentesCostoSeisFlujos() {
                    cd.direccion AS domicilio_entrega_direccion,
                    cd.localidad AS domicilio_entrega_localidad,
                    cd.alias AS domicilio_entrega_alias,
-                   cd.telefono_contacto AS domicilio_entrega_telefono
+                   cd.telefono_contacto AS domicilio_entrega_telefono,
+                   cd.latitud AS domicilio_entrega_latitud,
+                   cd.longitud AS domicilio_entrega_longitud,
+                   COALESCE(doms.lista, '[]'::jsonb) AS domicilios_registrados
             FROM public.bunker_clientes bc
             LEFT JOIN public.factura_cuentas_corrientes cc
               ON cc.codigo_bunker_cliente = bc.codigo_bunker_cliente
              AND cc.nombre_cuenta = 'Cuenta Principal'
             LEFT JOIN LATERAL (
-                SELECT direccion, localidad, alias, telefono_contacto
+                SELECT direccion, localidad, alias, telefono_contacto, latitud, longitud
                 FROM public.clientes_domicilios d
                 WHERE d.id_cliente = bc.id
                   AND COALESCE(d.activo, true) = true
                 ORDER BY COALESCE(d.es_predeterminado, false) DESC, d.id ASC
                 LIMIT 1
             ) cd ON true
+            LEFT JOIN LATERAL (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'id', d.id,
+                        'alias', COALESCE(d.alias, 'Entrega'),
+                        'direccion', d.direccion,
+                        'localidad', d.localidad,
+                        'provincia', d.provincia,
+                        'latitud', d.latitud,
+                        'longitud', d.longitud,
+                        'es_predeterminado', COALESCE(d.es_predeterminado, false)
+                    ) ORDER BY COALESCE(d.es_predeterminado, false) DESC, d.id ASC
+                ) AS lista
+                FROM public.clientes_domicilios d
+                WHERE d.id_cliente = bc.id
+                  AND COALESCE(d.activo, true) = true
+            ) doms ON true
             WHERE bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
             ORDER BY bc.id ASC
         `),
@@ -2113,6 +2163,11 @@ async function obtenerFuentesCostoSeisFlujos() {
                          ELSE 1
                      END,
                      ba.kilos_unidad ASC
+        `),
+        db.query(`
+            SELECT id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
+            FROM public.nodos_configuracion_canal
+            WHERE id = 1
         `)
     ]);
 
@@ -2164,6 +2219,15 @@ async function obtenerFuentesCostoSeisFlujos() {
         };
     });
 
+    const cfgCanalRow = cfgCanalRes.rows[0] || {
+        id: 1,
+        cuenta_bancaria_id: null,
+        banco_recaudador: 'Cuenta Recaudadora Canal Nodos (Provisoria)',
+        alias_recaudador: 'pago.canasto',
+        cbu_recaudador: '0000000000000000000000',
+        titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+    };
+
     return {
         ingredientes_por_flujo: fuentesIngredientes,
         articulos_flujo_1: fuentesDirectosFlujo1,
@@ -2179,7 +2243,9 @@ async function obtenerFuentesCostoSeisFlujos() {
             valor_hora: Number(t.valor_hora)
         })),
         cuentas_bancarias: cuentasRes.rows,
-        clientes_bunker: clientesRes.rows
+        clientes_bunker: clientesRes.rows,
+        config_cuenta_canal: cfgCanalRow,
+        google_maps_api_key: process.env.GOOGLE_MAPS_API_KEY || ''
     };
 }
 
@@ -2400,6 +2466,35 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                 { dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }
             ];
 
+        // Consultar la configuración compartida de cuenta recaudadora del Canal Nodos
+        const cfgCanalRes = await client.query('SELECT * FROM public.nodos_configuracion_canal WHERE id = 1');
+        const cfgCanal = cfgCanalRes.rows[0] || {
+            cuenta_bancaria_id: null,
+            alias_recaudador: 'pago.canasto',
+            cbu_recaudador: '0000000000000000000000',
+            titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+        };
+
+        const usaCuentaCompartida = payload.usa_cuenta_compartida !== undefined ? Boolean(payload.usa_cuenta_compartida) : true;
+        let aliasEfectivo = String(payload.alias_bancario_display || '').trim();
+        let cbuEfectivo = String(payload.cbu_display || '').trim();
+        let titularEfectivo = String(payload.titular_display || '').trim();
+        let cuentaBancariaIdEfectiva = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : (cfgCanal.cuenta_bancaria_id || null);
+
+        if (usaCuentaCompartida || !aliasEfectivo || /lamda/i.test(aliasEfectivo)) {
+            aliasEfectivo = cfgCanal.alias_recaudador || 'pago.canasto';
+            cbuEfectivo = cfgCanal.cbu_recaudador || cbuEfectivo || '';
+            titularEfectivo = cfgCanal.titular_recaudador || titularEfectivo || '';
+            cuentaBancariaIdEfectiva = cfgCanal.cuenta_bancaria_id || null;
+        }
+
+        const latVal = payload.latitud !== undefined && payload.latitud !== null && payload.latitud !== ''
+            ? Number(payload.latitud)
+            : null;
+        const lngVal = payload.longitud !== undefined && payload.longitud !== null && payload.longitud !== ''
+            ? Number(payload.longitud)
+            : null;
+
         let nodoGuardado;
         if (idExistente) {
             const upd = await client.query(
@@ -2431,8 +2526,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     logo_zpl_gfa = $25,
                     logo_zpl_config = $26,
                     activo = COALESCE($27, activo),
+                    latitud = $28,
+                    longitud = $29,
                     updated_at = NOW()
-                WHERE id = $28
+                WHERE id = $30
                 RETURNING *`,
                 [
                     slugBase,
@@ -2447,11 +2544,11 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     vinculoContable.codigo_bunker_cliente,
                     vinculoContable.cliente_madre_bunker_id,
                     vinculoContable.codigo_bunker_cliente_madre,
-                    payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
-                    Boolean(payload.usa_cuenta_compartida),
-                    payload.alias_bancario_display || '',
-                    payload.cbu_display || '',
-                    payload.titular_display || '',
+                    cuentaBancariaIdEfectiva,
+                    usaCuentaCompartida,
+                    aliasEfectivo,
+                    cbuEfectivo,
+                    titularEfectivo,
                     payload.permitir_envio_barrial !== false,
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
@@ -2469,6 +2566,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         iniciales: zplConfig.iniciales || ''
                     }),
                     payload.activo !== undefined ? Boolean(payload.activo) : true,
+                    Number.isFinite(latVal) ? latVal : null,
+                    Number.isFinite(lngVal) ? lngVal : null,
                     Number(idExistente)
                 ]
             );
@@ -2483,9 +2582,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     alias_bancario_display, cbu_display, titular_display,
                     permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
-                    logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config
+                    logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
+                    latitud, longitud
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -2501,11 +2601,11 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     vinculoContable.codigo_bunker_cliente,
                     vinculoContable.cliente_madre_bunker_id,
                     vinculoContable.codigo_bunker_cliente_madre,
-                    payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
-                    Boolean(payload.usa_cuenta_compartida),
-                    payload.alias_bancario_display || '',
-                    payload.cbu_display || '',
-                    payload.titular_display || '',
+                    cuentaBancariaIdEfectiva,
+                    usaCuentaCompartida,
+                    aliasEfectivo,
+                    cbuEfectivo,
+                    titularEfectivo,
                     payload.permitir_envio_barrial !== false,
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
@@ -2521,7 +2621,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         mode: conversionLogo.mode,
                         invert: conversionLogo.invert,
                         iniciales: zplConfig.iniciales || ''
-                    })
+                    }),
+                    Number.isFinite(latVal) ? latVal : null,
+                    Number.isFinite(lngVal) ? lngVal : null
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -2573,6 +2675,71 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         await client.query('COMMIT');
         await sincronizarNodosConCircuitoOperativoLamda();
         return nodoGuardado;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Actualiza la Configuración Compartida de Cuenta Recaudadora del Canal Nodos (Marca Blanca)
+ * y propaga automáticamente el nuevo Alias/CBU/Titular a todos los Nodos que usan cuenta compartida.
+ */
+async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const aliasRecaudador = String(payload.alias_recaudador || '').trim();
+    if (!aliasRecaudador) {
+        throw new Error('El alias recaudador compartido del canal Nodos no puede estar vacío.');
+    }
+    if (/lamda/i.test(aliasRecaudador)) {
+        throw new Error('Por criterio de Marca Blanca, el alias para vecinos no puede contener la palabra "LAMDA". Utilice un alias neutro (ej: pago.canasto).');
+    }
+
+    const bancoRecaudador = String(payload.banco_recaudador || 'Cuenta Recaudadora Canal Nodos').trim();
+    const cbuRecaudador = String(payload.cbu_recaudador || '').trim();
+    const titularRecaudador = String(payload.titular_recaudador || 'Recaudación Canal Nodos').trim();
+    const cuentaBancariaId = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null;
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const cfgRes = await client.query(
+            `INSERT INTO public.nodos_configuracion_canal (
+                id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
+            ) VALUES (1, $1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+                cuenta_bancaria_id = EXCLUDED.cuenta_bancaria_id,
+                banco_recaudador = EXCLUDED.banco_recaudador,
+                alias_recaudador = EXCLUDED.alias_recaudador,
+                cbu_recaudador = EXCLUDED.cbu_recaudador,
+                titular_recaudador = EXCLUDED.titular_recaudador,
+                updated_at = NOW()
+            RETURNING *`,
+            [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador]
+        );
+
+        const updNodos = await client.query(
+            `UPDATE public.nodos_maestro
+             SET alias_bancario_display = $1,
+                 cbu_display = $2,
+                 titular_display = $3,
+                 cuenta_bancaria_id = $4,
+                 updated_at = NOW()
+             WHERE COALESCE(usa_cuenta_compartida, true) = true
+             RETURNING id, codigo_nodo, nombre_marca, alias_bancario_display`,
+            [aliasRecaudador, cbuRecaudador, titularRecaudador, cuentaBancariaId]
+        );
+
+        await client.query('COMMIT');
+        return {
+            config_cuenta_canal: cfgRes.rows[0],
+            nodos_actualizados: updNodos.rows.length,
+            nodos: updNodos.rows
+        };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -6682,6 +6849,7 @@ module.exports = {
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,
     guardarNodoMaestro,
+    actualizarConfiguracionCuentaCanalNodos,
     crearPropuestaFraccion,
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,

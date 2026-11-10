@@ -812,7 +812,7 @@
           <div class="opt-card ${STATE.medioPago === 'TRANSFERENCIA' ? 'active' : ''}"
                onclick="STATE.medioPago='TRANSFERENCIA'; renderContenidoModalCheckout();">
             <div class="opt-title">🏦 Transferencia Bancaria</div>
-            <div class="opt-sub">Alias: <strong>${esc(STATE.nodo.alias_bancario_display || 'ALMACEN.NODO')}</strong></div>
+            <div class="opt-sub">Alias: <strong>${esc(STATE.nodo.alias_bancario_display || 'pago.canasto')}</strong></div>
           </div>
           <div class="opt-card ${STATE.medioPago === 'EFECTIVO' ? 'active' : ''}"
                onclick="STATE.medioPago='EFECTIVO'; renderContenidoModalCheckout();">
@@ -913,10 +913,10 @@
             <div style="background:#eff6ff; border:2px solid #60a5fa; border-radius:12px; padding:14px; text-align:left; margin-bottom:14px;">
               <div style="font-size:0.78rem; font-weight:800; color:#1d4ed8; text-transform:uppercase;">🏦 Datos para Transferencia Bancaria</div>
               <div style="font-size:1.15rem; font-weight:900; color:#0f172a; margin:6px 0;">
-                Alias: <span id="alias-copy-text">${esc(pagoInfo.alias || 'ALMACEN.NODO')}</span>
+                Alias: <span id="alias-copy-text">${esc(pagoInfo.alias || 'pago.canasto')}</span>
               </div>
-              <div style="font-size:0.8rem; color:#334155;">Titular: ${esc(pagoInfo.titular || '')} · CBU: ${esc(pagoInfo.cbu || '')}</div>
-              <button type="button" onclick="navigator.clipboard.writeText('${esc(pagoInfo.alias || '')}'); this.textContent='✅ ¡Alias Copiado!';"
+              <div style="font-size:0.8rem; color:#334155;">Titular: ${esc(pagoInfo.titular || '')}${pagoInfo.cbu && pagoInfo.cbu !== '0000000000000000000000' ? ` · CBU: ${esc(pagoInfo.cbu)}` : ''}</div>
+              <button type="button" onclick="navigator.clipboard.writeText('${esc(pagoInfo.alias || 'pago.canasto')}'); this.textContent='✅ ¡Alias Copiado!';"
                 style="margin-top:8px; padding:7px 14px; border-radius:8px; border:1px solid #2563eb; background:#2563eb; color:#fff; font-weight:700; font-size:0.8rem; cursor:pointer;">
                 📋 Copiar Alias Bancario
               </button>

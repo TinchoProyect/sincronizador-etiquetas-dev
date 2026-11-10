@@ -929,26 +929,58 @@
         }
 
         const domFiscal = String(c.domicilio_fiscal || '').trim();
-        const domEntrega = String(c.domicilio_entrega_direccion || '').trim();
+        const domiciliosRegistrados = Array.isArray(c.domicilios_registrados) ? c.domicilios_registrados : [];
         const domiciliosAlternativos = [];
-        if (domFiscal && domFiscal.toUpperCase() !== 'N/A') {
-            domiciliosAlternativos.push({ etiqueta: 'Domicilio Fiscal', direccion: domFiscal });
-        }
-        if (domEntrega && domEntrega.toUpperCase() !== 'N/A' && domEntrega.toLowerCase() !== domFiscal.toLowerCase()) {
+
+        domiciliosRegistrados.forEach(d => {
+            const dirTxt = String(d.direccion || '').trim();
+            if (!dirTxt || dirTxt.toUpperCase() === 'N/A') return;
+            const lat = d.latitud !== null && d.latitud !== undefined && d.latitud !== '' ? Number(d.latitud) : null;
+            const lng = d.longitud !== null && d.longitud !== undefined && d.longitud !== '' ? Number(d.longitud) : null;
             domiciliosAlternativos.push({
-                etiqueta: c.domicilio_entrega_alias ? `Entrega (${c.domicilio_entrega_alias})` : 'Domicilio Entrega',
-                direccion: domEntrega
+                etiqueta: d.alias ? `Entrega (${d.alias})` : 'Domicilio Entrega',
+                direccion: dirTxt,
+                localidad: String(d.localidad || '').trim(),
+                latitud: Number.isFinite(lat) ? lat : null,
+                longitud: Number.isFinite(lng) ? lng : null,
+                tieneGps: Number.isFinite(lat) && Number.isFinite(lng)
             });
+        });
+
+        if (domFiscal && domFiscal.toUpperCase() !== 'N/A') {
+            const yaExiste = domiciliosAlternativos.some(x => x.direccion.toLowerCase() === domFiscal.toLowerCase());
+            if (!yaExiste) {
+                domiciliosAlternativos.push({
+                    etiqueta: 'Domicilio Fiscal',
+                    direccion: domFiscal,
+                    localidad: '',
+                    latitud: null,
+                    longitud: null,
+                    tieneGps: false
+                });
+            }
         }
 
-        const direccion = domiciliosAlternativos[0]?.direccion || '';
-        const barrio = String(c.domicilio_entrega_localidad || c.provincia || '').trim();
+        const preferido = domiciliosAlternativos.find(d => d.tieneGps) || domiciliosAlternativos[0] || null;
+        const direccionPrincipal = preferido?.direccion || '';
+        const latitud = preferido?.latitud ?? null;
+        const longitud = preferido?.longitud ?? null;
+
+        let barrioZona = String(preferido?.localidad || c.domicilio_entrega_localidad || '').trim();
+        if (/^buenos aires$/i.test(barrioZona)) {
+            barrioZona = '';
+        }
 
         return {
             gestorNombre,
+            nombreTitular: gestorNombre,
             telefono,
-            direccion,
-            barrio: barrio === 'BUENOS AIRES' ? 'La Plata / Buenos Aires' : barrio,
+            direccion: direccionPrincipal,
+            direccionPrincipal,
+            barrio: barrioZona,
+            barrioZona,
+            latitud,
+            longitud,
             domiciliosAlternativos
         };
     }
@@ -1036,11 +1068,13 @@
     }
 
     function renderizarSubTabAbmNodos() {
-        const cuentasOpts = ESTADO_NODOS.fuentes.cuentas_bancarias.map(c =>
-            `<option value="${c.id}" data-alias="${escaparHtml(c.alias || '')}" data-cbu="${escaparHtml(c.cbu || '')}" data-titular="${escaparHtml(c.titular || '')}">
-                ${escaparHtml(c.banco)} — Alias: ${escaparHtml(c.alias || 'S/A')}
-            </option>`
-        ).join('');
+        const cfgCanal = ESTADO_NODOS.fuentes.config_cuenta_canal || {
+            alias_recaudador: 'pago.canasto',
+            banco_recaudador: 'Cuenta Recaudadora Canal Nodos (Provisoria)',
+            titular_recaudador: 'Recaudación Canal Nodos (Provisorio)',
+            cbu_recaudador: '0000000000000000000000'
+        };
+        const aliasCompartido = cfgCanal.alias_recaudador || 'pago.canasto';
 
         return `
             <div style="display:grid; grid-template-columns: 34% 65%; gap:16px; align-items:start;">
@@ -1083,7 +1117,7 @@
                                         </div>
                                         <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
                                             <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
-                                            <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'S/A')}</strong></span>
+                                            <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'pago.canasto')}</strong></span>
                                             <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong></span>
                                         </div>
                                         ${n.codigo_bunker_cliente_madre ? `
@@ -1133,6 +1167,8 @@
                         <input type="hidden" id="abm-nodo-id" value="">
                         <input type="hidden" id="abm-cliente-madre-id" value="${ESTADO_NODOS.clienteMadreSeleccionadoId || ''}">
                         <input type="hidden" id="abm-cliente-madre-codigo" value="">
+                        <input type="hidden" id="abm-latitud" value="">
+                        <input type="hidden" id="abm-longitud" value="">
 
                         <!-- PASO 1: BUSCADOR EN VIVO DEL CLIENTE TITULAR EN EL PADRÓN DE LAMDA -->
                         <div style="margin-bottom:12px; padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
@@ -1163,12 +1199,19 @@
                             </div>
                         </div>
 
-                        <!-- PASO 2: DATOS DE CONTACTO Y PUNTO DE RETIRO (PRECARGADOS DEL CLIENTE Y EDITABLES) -->
+                        <!-- PASO 2: DATOS DE CONTACTO, PUNTO DE RETIRO Y HERRAMIENTA GOOGLE MAPS -->
                         <div style="margin-bottom:12px; padding:11px 12px; border-radius:9px; background:rgba(15,23,42,0.65); border:1px solid #263244;">
-                            <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800; margin-bottom:8px;">
-                                2️⃣ Datos de Contacto y Punto de Retiro del Nodo <span style="font-weight:500; color:#94a3b8;">(se precargan del Cliente Titular y pueden ajustarse para el Nodo)</span>
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800;">
+                                    2️⃣ Datos de Contacto y Punto de Retiro del Nodo <span style="font-weight:500; color:#94a3b8;">(precargados del Cliente y ajustables con Google Maps)</span>
+                                </div>
+                                <button type="button" onclick="window.NodosPizarra.togglePanelMapaAbm()"
+                                    style="padding:4px 10px; border-radius:6px; font-size:0.73rem; font-weight:800; background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
+                                    🗺️ Ver / Ubicar en Google Maps
+                                </button>
                             </div>
-                            <div style="display:grid; grid-template-columns: 1fr 0.9fr 0.9fr 1.4fr; gap:10px;">
+
+                            <div style="display:grid; grid-template-columns: 1fr 0.85fr 0.95fr 1.4fr; gap:10px;">
                                 <div>
                                     <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Nombre del Gestor / Responsable</label>
                                     <input type="text" id="abm-gestor-nombre" placeholder="Nombre y Apellido"
@@ -1180,16 +1223,46 @@
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-family:monospace; box-sizing:border-box;">
                                 </div>
                                 <div>
-                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Barrio / Localidad</label>
-                                    <input type="text" id="abm-barrio" placeholder="Barrio / Zona"
-                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                                    <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Barrio / Localidad</label>
+                                    <input type="text" id="abm-barrio" placeholder="Barrio / Localidad"
+                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
                                 </div>
                                 <div>
-                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Retiro de Vecinos)</label>
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Texto Impreso / Vecinos)</label>
                                     <input type="text" id="abm-direccion" placeholder="Calle y número de retiro"
                                         oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
-                                    <div id="abm-domicilios-sugeridos" style="display:flex; gap:5px; flex-wrap:wrap; margin-top:4px;"></div>
+                                </div>
+                            </div>
+
+                            <!-- OPCIONES DE DOMICILIOS DEL CLIENTE -->
+                            <div id="abm-domicilios-sugeridos" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px;"></div>
+
+                            <!-- PANEL DESPLEGABLE INTERACTIVO GOOGLE MAPS -->
+                            <div id="abm-mapa-panel" style="display:none; margin-top:10px; padding:10px; border-radius:9px; background:#0b1120; border:1px solid rgba(56,189,248,0.45);">
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                                    <input type="text" id="abm-mapa-search-input"
+                                        onkeydown="if(event.key==='Enter'){event.preventDefault(); window.NodosPizarra.buscarDireccionEnMapaAbm();}"
+                                        placeholder="🔎 Buscar otra dirección, esquina o localidad en Google Maps (ej: Calle 70 y 182 bis, La Plata)..."
+                                        style="flex:1; min-width:220px; padding:6px 10px; border-radius:6px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.78rem;">
+                                    <button type="button" onclick="window.NodosPizarra.buscarDireccionEnMapaAbm()"
+                                        style="padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:800; background:#0284c7; border:none; color:#fff; cursor:pointer;">
+                                        🔍 Buscar en Mapa
+                                    </button>
+                                    <button type="button" onclick="window.NodosPizarra.ubicarTextoDomicilioActualEnMapaAbm()"
+                                        style="padding:6px 11px; border-radius:6px; font-size:0.74rem; font-weight:700; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
+                                        📍 Ubicar Domicilio Escrito
+                                    </button>
+                                </div>
+
+                                <div id="abm-google-map-canvas" style="width:100%; height:265px; border-radius:8px; border:1px solid #334155; background:#0f172a; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8rem;">
+                                    ⏳ Inicializando Google Maps...
+                                </div>
+
+                                <div id="abm-mapa-info-bar" style="margin-top:8px; padding:8px 10px; border-radius:7px; background:#151e2e; border:1px solid #2e3c51; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.75rem; color:#cbd5e1;">
+                                    <div>
+                                        🗺️ Haga clic en cualquiera de los domicilios del cliente arriba, busque una calle o haga clic / arrastre el pin rojo sobre el mapa para detectar el <strong>Barrio / Localidad</strong>.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1219,24 +1292,34 @@
                             </div>
                         </div>
 
-                        <!-- CONFIGURACIÓN BANCARIA Y CARGO DE ENVÍO BARRIAL (100% GESTOR) -->
-                        <div style="display:grid; grid-template-columns: 1.4fr 1fr 0.8fr 0.8fr; gap:10px; margin-bottom:12px; padding:10px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244;">
+                        <!-- CUENTA RECAUDADORA COMPARTIDA DEL CANAL NODOS (MARCA BLANCA) Y CARGO DE ENVÍO -->
+                        <div style="display:grid; grid-template-columns: 1.55fr 1fr 0.75fr 0.7fr; gap:10px; margin-bottom:12px; padding:11px 12px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244;">
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Cuenta Bancaria Recaudadora</label>
-                                <select id="abm-cuenta-bancaria"
-                                    onchange="const al = this.selectedOptions?.[0]?.getAttribute('data-alias'); const elAl = document.getElementById('abm-alias-display'); if (al && elAl && !elAl.value) elAl.value = al;"
-                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.79rem;">
-                                    ${cuentasOpts}
-                                </select>
-                                <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.71rem; color:#94a3b8; margin-top:4px; cursor:pointer;">
-                                    <input type="checkbox" id="abm-cuenta-compartida" checked>
-                                    Usar cuenta recaudadora compartida (conciliación automática de vecinos)
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+                                    <label style="font-size:0.72rem; color:#38bdf8; font-weight:800;">
+                                        🏦 Cuenta Recaudadora del Canal Nodos (Marca Blanca)
+                                    </label>
+                                    <button type="button" onclick="window.NodosPizarra.abrirModalConfigCuentaCanal()"
+                                        style="padding:2px 8px; border-radius:5px; font-size:0.68rem; font-weight:800; background:rgba(56,189,248,0.16); border:1px solid rgba(56,189,248,0.45); color:#bae6fd; cursor:pointer;">
+                                        ⚙️ Configurar para Todos los Nodos
+                                    </button>
+                                </div>
+                                <div style="padding:6px 9px; border-radius:6px; background:#0f172a; border:1px solid #334155; font-size:0.74rem; color:#e2e8f0;">
+                                    <span style="color:#94a3b8;">Cuenta compartida:</span>
+                                    <strong id="abm-canal-banco-label" style="color:#f8fafc;">${escaparHtml(cfgCanal.banco_recaudador || 'Cuenta Recaudadora Canal Nodos')}</strong>
+                                    · <span style="color:#94a3b8;">Alias neutro:</span>
+                                    <code id="abm-canal-alias-label" style="color:#38bdf8; font-weight:800;">${escaparHtml(aliasCompartido)}</code>
+                                </div>
+                                <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.71rem; color:#94a3b8; margin-top:5px; cursor:pointer;">
+                                    <input type="checkbox" id="abm-cuenta-compartida" checked onchange="window.NodosPizarra.alCambiarToggleCuentaCompartidaAbm(this.checked)">
+                                    Usar el Alias y Cuenta Recaudadora compartida del Canal Nodos (sin mencionar LAMDA)
                                 </label>
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Alias Bancario Visible al Vecino</label>
-                                <input type="text" id="abm-alias-display" value="${escaparHtml(ESTADO_NODOS.fuentes.cuentas_bancarias?.[0]?.alias || '')}" placeholder="ALIAS.BANCARIO"
-                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.81rem; box-sizing:border-box;">
+                                <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Alias Visible al Vecino en Tienda</label>
+                                <input type="text" id="abm-alias-display" value="${escaparHtml(aliasCompartido)}" placeholder="pago.canasto"
+                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.84rem; font-family:monospace; box-sizing:border-box;">
+                                <div style="font-size:0.66rem; color:#94a3b8; margin-top:2px;">Neutro (sin LAMDA ni nombre de un Nodo)</div>
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.72rem; color:#34d399; font-weight:700; margin-bottom:3px;">Costo Envío Barrial ($)</label>
@@ -1804,6 +1887,520 @@
     // FUNCIONES DEL ABM DE NODOS + LOGO TÉRMICO + SIMULADOR ETIQUETA
     // =========================================================================
     let logoOriginalSubidoBase64 = null;
+    let abmGoogleMapInstance = null;
+    let abmGoogleMarkerMain = null;
+    let abmGoogleMarkersSecundarios = [];
+    let abmGoogleGeocoder = null;
+    let abmUltimaSugerenciaMapa = { barrio: '', calle: '', lat: null, lng: null };
+
+    async function asegurarGoogleMapsSdkAbm() {
+        if (window.google && window.google.maps) return true;
+        const apiKey = ESTADO_NODOS.fuentes?.google_maps_api_key || '';
+        if (!apiKey) {
+            console.warn('[NODOS-MAPA] google_maps_api_key no disponible en fuentes');
+            return false;
+        }
+        if (window.__cargandoGoogleMapsAbmPromise) {
+            return window.__cargandoGoogleMapsAbmPromise;
+        }
+        window.__cargandoGoogleMapsAbmPromise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=es&region=AR`;
+            script.async = true;
+            script.defer = true;
+            script.onload = () => resolve(true);
+            script.onerror = () => resolve(false);
+            document.head.appendChild(script);
+        });
+        return window.__cargandoGoogleMapsAbmPromise;
+    }
+
+    function normalizarDireccionParaGeocoder(rawDir) {
+        let txt = String(rawDir || '').trim();
+        if (!txt) return '';
+        // Convertir expresiones típicas platenses ("70 ESQ 182 BIS 4374" o "72 (e/ Esq 182 bis)") a formato claro para Google Geocoder
+        txt = txt
+            .replace(/\(\s*e\/\s*esq\.?\s*([^)]+)\)/gi, 'y Calle $1')
+            .replace(/\besq\.?\b/gi, 'y Calle')
+            .replace(/^(\d+)\b/, 'Calle $1');
+        if (!/la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|berisso|ensenada|buenos aires/i.test(txt)) {
+            txt += ', La Plata, Provincia de Buenos Aires, Argentina';
+        } else if (!/argentina/i.test(txt)) {
+            txt += ', Argentina';
+        }
+        return txt;
+    }
+
+    function extraerBarrioYLocalidadDeComponentesGoogle(components = []) {
+        const buscar = (tipos) => {
+            const comp = components.find(c => Array.isArray(c.types) && tipos.some(t => c.types.includes(t)));
+            return comp ? comp.long_name : '';
+        };
+        const barrio = buscar(['sublocality_level_1', 'sublocality', 'neighborhood']);
+        const localidad = buscar(['locality', 'administrative_area_level_3']);
+        const partido = buscar(['administrative_area_level_2']);
+
+        const partes = [];
+        if (barrio) partes.push(barrio);
+        if (localidad && !partes.some(p => p.toLowerCase() === localidad.toLowerCase())) {
+            partes.push(localidad);
+        } else if (!localidad && partido && !partes.some(p => p.toLowerCase() === partido.toLowerCase())) {
+            partes.push(partido);
+        }
+
+        const calle = buscar(['route']);
+        const altura = buscar(['street_number']);
+        const calleFormateada = [calle, altura].filter(Boolean).join(' ').trim();
+
+        return {
+            barrioLocalidad: partes.join(', ') || localidad || partido || '',
+            calleFormateada
+        };
+    }
+
+    function actualizarBarraInfoMapaAbm({ barrio, calle, direccionFormateada, lat, lng, etiquetaOrigen }) {
+        abmUltimaSugerenciaMapa = {
+            barrio: barrio || '',
+            calle: calle || direccionFormateada || '',
+            lat: Number.isFinite(Number(lat)) ? Number(lat) : null,
+            lng: Number.isFinite(Number(lng)) ? Number(lng) : null
+        };
+
+        const latEl = document.getElementById('abm-latitud');
+        const lngEl = document.getElementById('abm-longitud');
+        if (latEl) latEl.value = abmUltimaSugerenciaMapa.lat ?? '';
+        if (lngEl) lngEl.value = abmUltimaSugerenciaMapa.lng ?? '';
+
+        const bar = document.getElementById('abm-mapa-info-bar');
+        if (!bar) return;
+
+        const coordTxt = abmUltimaSugerenciaMapa.lat && abmUltimaSugerenciaMapa.lng
+            ? `${abmUltimaSugerenciaMapa.lat.toFixed(6)}, ${abmUltimaSugerenciaMapa.lng.toFixed(6)}`
+            : 'Sin coordenadas';
+
+        bar.innerHTML = `
+            <div style="flex:1; min-width:240px; line-height:1.45;">
+                ${etiquetaOrigen ? `<span style="font-size:0.7rem; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.16); padding:1px 6px; border-radius:4px; margin-right:6px;">${escaparHtml(etiquetaOrigen)}</span>` : ''}
+                <span style="color:#94a3b8;">Barrio / Localidad en Mapa:</span>
+                <strong style="color:#38bdf8; font-size:0.82rem;">${escaparHtml(barrio || 'Sin especificar')}</strong>
+                <span style="color:#64748b; margin:0 6px;">|</span>
+                <span style="color:#94a3b8;">Ref. Google:</span>
+                <span style="color:#e2e8f0;">${escaparHtml(direccionFormateada || calle || '-')}</span>
+                <span style="color:#64748b; font-family:monospace; font-size:0.7rem; margin-left:6px;">(📍 ${coordTxt})</span>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${barrio ? `
+                    <button type="button" onclick="window.NodosPizarra.aplicarBarrioSugeridoMapaAbm()"
+                        style="padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:800; background:rgba(56,189,248,0.18); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
+                        ✅ Usar Barrio "${escaparHtml(barrio)}"
+                    </button>
+                ` : ''}
+                ${(calle || direccionFormateada) ? `
+                    <button type="button" onclick="window.NodosPizarra.aplicarCalleSugeridaMapaAbm()"
+                        style="padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
+                        📝 Usar calle del mapa en Domicilio
+                    </button>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    async function resolverBarrioDesdeCoordenadasAbm(lat, lng, opciones = {}) {
+        const okSdk = await asegurarGoogleMapsSdkAbm();
+        if (!okSdk || !window.google?.maps) return null;
+        if (!abmGoogleGeocoder) abmGoogleGeocoder = new window.google.maps.Geocoder();
+
+        return new Promise((resolve) => {
+            abmGoogleGeocoder.geocode({ location: { lat: Number(lat), lng: Number(lng) } }, (results, status) => {
+                if (status === 'OK' && Array.isArray(results) && results.length > 0) {
+                    // Combinar componentes de los primeros resultados para no perder sublocality/neighborhood
+                    const todosComponentes = [];
+                    results.slice(0, 3).forEach(r => {
+                        if (Array.isArray(r.address_components)) {
+                            todosComponentes.push(...r.address_components);
+                        }
+                    });
+                    const extraido = extraerBarrioYLocalidadDeComponentesGoogle(todosComponentes);
+                    const dirFmt = results[0].formatted_address || '';
+
+                    actualizarBarraInfoMapaAbm({
+                        barrio: extraido.barrioLocalidad,
+                        calle: extraido.calleFormateada || dirFmt.split(',')[0],
+                        direccionFormateada: dirFmt,
+                        lat,
+                        lng,
+                        etiquetaOrigen: opciones.etiquetaOrigen || ''
+                    });
+
+                    // Si el campo Barrio / Localidad está vacío o se pidió autocompletar, completarlo
+                    const barrioInput = document.getElementById('abm-barrio');
+                    if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
+                        barrioInput.value = extraido.barrioLocalidad;
+                    }
+                    resolve({ ...extraido, formatted_address: dirFmt });
+                } else {
+                    actualizarBarraInfoMapaAbm({
+                        barrio: '',
+                        calle: '',
+                        direccionFormateada: 'Coordenadas seleccionadas',
+                        lat,
+                        lng,
+                        etiquetaOrigen: opciones.etiquetaOrigen || ''
+                    });
+                    resolve(null);
+                }
+            });
+        });
+    }
+
+    async function asegurarInstanciaMapaAbm(latInicial = -34.9214, lngInicial = -57.9545) {
+        const canvas = document.getElementById('abm-google-map-canvas');
+        if (!canvas) return null;
+
+        const okSdk = await asegurarGoogleMapsSdkAbm();
+        if (!okSdk || !window.google?.maps) {
+            canvas.innerHTML = '<div style="padding:14px; text-align:center; color:#f87171;">⚠️ No se pudo cargar Google Maps SDK. Verifique la conexión o GOOGLE_MAPS_API_KEY.</div>';
+            return null;
+        }
+
+        const center = {
+            lat: Number.isFinite(Number(latInicial)) && Number(latInicial) !== 0 ? Number(latInicial) : -34.9214,
+            lng: Number.isFinite(Number(lngInicial)) && Number(lngInicial) !== 0 ? Number(lngInicial) : -57.9545
+        };
+
+        if (!abmGoogleMapInstance || abmGoogleMapInstance.getDiv() !== canvas) {
+            canvas.innerHTML = '';
+            abmGoogleMapInstance = new window.google.maps.Map(canvas, {
+                center,
+                zoom: 15,
+                mapTypeControl: true,
+                streetViewControl: false,
+                fullscreenControl: true
+            });
+
+            abmGoogleMarkerMain = new window.google.maps.Marker({
+                position: center,
+                map: abmGoogleMapInstance,
+                draggable: true,
+                title: 'Punto de Retiro del Nodo (arrastre para ajustar)'
+            });
+
+            abmGoogleMarkerMain.addListener('dragend', () => {
+                const pos = abmGoogleMarkerMain.getPosition();
+                if (pos) {
+                    resolverBarrioDesdeCoordenadasAbm(pos.lat(), pos.lng(), {
+                        autocompletarBarrio: true,
+                        etiquetaOrigen: 'Pin ajustado manualmente'
+                    });
+                }
+            });
+
+            abmGoogleMapInstance.addListener('click', (e) => {
+                if (e.latLng && abmGoogleMarkerMain) {
+                    abmGoogleMarkerMain.setPosition(e.latLng);
+                    resolverBarrioDesdeCoordenadasAbm(e.latLng.lat(), e.latLng.lng(), {
+                        autocompletarBarrio: true,
+                        etiquetaOrigen: 'Punto marcado en el mapa'
+                    });
+                }
+            });
+        } else {
+            abmGoogleMapInstance.setCenter(center);
+            if (abmGoogleMarkerMain) abmGoogleMarkerMain.setPosition(center);
+        }
+
+        return abmGoogleMapInstance;
+    }
+
+    function renderizarChipsDomiciliosClienteAbm(cli, indiceActivo = 0) {
+        const domBox = document.getElementById('abm-domicilios-sugeridos');
+        if (!domBox) return;
+        if (!cli) {
+            domBox.innerHTML = '';
+            return;
+        }
+
+        const datos = extraerDatosContactoClienteBunker(cli);
+        const lista = datos.domiciliosAlternativos || [];
+        if (lista.length === 0) {
+            domBox.innerHTML = '';
+            return;
+        }
+
+        domBox.innerHTML = `
+            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700;">Domicilios en ficha del cliente (clic para ver en mapa y elegir):</span>
+            ${lista.map((d, idx) => {
+                const activo = idx === indiceActivo;
+                const badgeGps = d.tieneGps ? '🗺️ GPS' : '🔍 Mapa';
+                return `
+                    <button type="button"
+                        onclick="window.NodosPizarra.seleccionarDomicilioClienteEnAbm(${idx}, true)"
+                        style="padding:4px 10px; border-radius:999px; border:1px solid ${activo ? '#10b981' : 'rgba(56,189,248,0.45)'}; background:${activo ? 'rgba(16,185,129,0.22)' : 'rgba(56,189,248,0.12)'}; color:${activo ? '#6ee7b7' : '#bae6fd'}; font-size:0.72rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                        <span>📍 <strong>${escaparHtml(d.etiqueta)}:</strong> ${escaparHtml(d.direccion)}</span>
+                        <span style="font-size:0.65rem; padding:1px 5px; border-radius:4px; background:rgba(15,23,42,0.7); color:#38bdf8;">${badgeGps}</span>
+                    </button>
+                `;
+            }).join('')}
+        `;
+    }
+
+    async function seleccionarDomicilioClienteEnAbm(indice, abrirPanelMapa = true) {
+        const cli = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
+            c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId)
+        );
+        if (!cli) return;
+
+        const datos = extraerDatosContactoClienteBunker(cli);
+        const dom = (datos.domiciliosAlternativos || [])[indice];
+        if (!dom) return;
+
+        renderizarChipsDomiciliosClienteAbm(cli, indice);
+
+        const dirEl = document.getElementById('abm-direccion');
+        if (dirEl) dirEl.value = dom.direccion || '';
+        simularEtiquetaZebra('estandar_pagado');
+
+        if (abrirPanelMapa) {
+            const panel = document.getElementById('abm-mapa-panel');
+            if (panel) panel.style.display = 'block';
+        }
+
+        if (dom.tieneGps && Number.isFinite(dom.latitud) && Number.isFinite(dom.longitud)) {
+            await asegurarInstanciaMapaAbm(dom.latitud, dom.longitud);
+            await resolverBarrioDesdeCoordenadasAbm(dom.latitud, dom.longitud, {
+                autocompletarBarrio: true,
+                etiquetaOrigen: `${dom.etiqueta} (${dom.direccion})`
+            });
+        } else if (dom.direccion) {
+            const searchInput = document.getElementById('abm-mapa-search-input');
+            if (searchInput) searchInput.value = dom.direccion;
+            await geocodificarTextoEnMapaAbm(dom.direccion, {
+                autocompletarBarrio: true,
+                etiquetaOrigen: `${dom.etiqueta} (${dom.direccion})`
+            });
+        }
+    }
+
+    async function geocodificarTextoEnMapaAbm(rawTexto, opciones = {}) {
+        const limpio = normalizarDireccionParaGeocoder(rawTexto);
+        if (!limpio) return;
+
+        const okSdk = await asegurarGoogleMapsSdkAbm();
+        if (!okSdk || !window.google?.maps) return;
+        if (!abmGoogleGeocoder) abmGoogleGeocoder = new window.google.maps.Geocoder();
+
+        await asegurarInstanciaMapaAbm();
+
+        abmGoogleGeocoder.geocode({ address: limpio, region: 'AR' }, (results, status) => {
+            if (status === 'OK' && Array.isArray(results) && results.length > 0) {
+                const loc = results[0].geometry?.location;
+                if (!loc) return;
+                const lat = loc.lat();
+                const lng = loc.lng();
+                if (abmGoogleMapInstance) {
+                    abmGoogleMapInstance.setCenter({ lat, lng });
+                    abmGoogleMapInstance.setZoom(16);
+                }
+                if (abmGoogleMarkerMain) {
+                    abmGoogleMarkerMain.setPosition({ lat, lng });
+                }
+                const extraido = extraerBarrioYLocalidadDeComponentesGoogle(results[0].address_components || []);
+                const dirFmt = results[0].formatted_address || '';
+                actualizarBarraInfoMapaAbm({
+                    barrio: extraido.barrioLocalidad,
+                    calle: extraido.calleFormateada || dirFmt.split(',')[0],
+                    direccionFormateada: dirFmt,
+                    lat,
+                    lng,
+                    etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado por dirección'
+                });
+                const barrioInput = document.getElementById('abm-barrio');
+                if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
+                    barrioInput.value = extraido.barrioLocalidad;
+                }
+            } else {
+                const bar = document.getElementById('abm-mapa-info-bar');
+                if (bar) {
+                    bar.innerHTML = `<span style="color:#fbbf24;">⚠️ No se encontró "${escaparHtml(rawTexto)}" de forma exacta. Puede buscar la esquina/barrio arriba o mover el pin rojo directamente en el mapa.</span>`;
+                }
+            }
+        });
+    }
+
+    async function togglePanelMapaAbm() {
+        const panel = document.getElementById('abm-mapa-panel');
+        if (!panel) return;
+        const visible = panel.style.display !== 'none';
+        if (visible) {
+            panel.style.display = 'none';
+            return;
+        }
+        panel.style.display = 'block';
+
+        const latActual = Number(document.getElementById('abm-latitud')?.value || 0);
+        const lngActual = Number(document.getElementById('abm-longitud')?.value || 0);
+        const dirActual = document.getElementById('abm-direccion')?.value || '';
+
+        if (latActual && lngActual) {
+            await asegurarInstanciaMapaAbm(latActual, lngActual);
+            await resolverBarrioDesdeCoordenadasAbm(latActual, lngActual, {
+                autocompletarBarrio: false,
+                etiquetaOrigen: 'Ubicación actual del Nodo'
+            });
+        } else if (dirActual) {
+            await geocodificarTextoEnMapaAbm(dirActual, {
+                autocompletarBarrio: true,
+                etiquetaOrigen: 'Domicilio escrito'
+            });
+        } else {
+            await asegurarInstanciaMapaAbm(-34.9214, -57.9545);
+        }
+    }
+
+    async function buscarDireccionEnMapaAbm() {
+        const q = document.getElementById('abm-mapa-search-input')?.value?.trim() || '';
+        if (!q) return;
+        await geocodificarTextoEnMapaAbm(q, {
+            autocompletarBarrio: true,
+            etiquetaOrigen: `Búsqueda: ${q}`
+        });
+    }
+
+    async function ubicarTextoDomicilioActualEnMapaAbm() {
+        const dir = document.getElementById('abm-direccion')?.value?.trim() || '';
+        const bar = document.getElementById('abm-barrio')?.value?.trim() || '';
+        const q = [dir, bar].filter(Boolean).join(', ');
+        if (!q) return;
+        await geocodificarTextoEnMapaAbm(q, {
+            autocompletarBarrio: true,
+            etiquetaOrigen: `Domicilio: ${dir}`
+        });
+    }
+
+    function aplicarBarrioSugeridoMapaAbm() {
+        if (!abmUltimaSugerenciaMapa.barrio) return;
+        const el = document.getElementById('abm-barrio');
+        if (el) el.value = abmUltimaSugerenciaMapa.barrio;
+    }
+
+    function aplicarCalleSugeridaMapaAbm() {
+        if (!abmUltimaSugerenciaMapa.calle) return;
+        const el = document.getElementById('abm-direccion');
+        if (el) el.value = abmUltimaSugerenciaMapa.calle;
+        simularEtiquetaZebra('estandar_pagado');
+    }
+
+    function alCambiarToggleCuentaCompartidaAbm(checked) {
+        const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
+        const aliasEl = document.getElementById('abm-alias-display');
+        if (checked && aliasEl) {
+            aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
+        }
+    }
+
+    async function abrirModalConfigCuentaCanal() {
+        const cfg = ESTADO_NODOS.fuentes?.config_cuenta_canal || {
+            banco_recaudador: 'Cuenta Recaudadora Canal Nodos (Provisoria)',
+            alias_recaudador: 'pago.canasto',
+            titular_recaudador: 'Recaudación Canal Nodos (Provisorio)',
+            cbu_recaudador: '0000000000000000000000'
+        };
+
+        if (!window.Swal) return;
+        const res = await Swal.fire({
+            title: '🏦 Cuenta Recaudadora y Alias Compartido (Canal Nodos)',
+            background: '#151e2e',
+            color: '#f8fafc',
+            width: '580px',
+            html: `
+                <div style="text-align:left; font-size:0.82rem; line-height:1.45;">
+                    <p style="color:#cbd5e1; margin-top:0;">
+                        Esta configuración se aplica de forma unificada a <strong>todos los Nodos Barriales</strong> para recaudar transferencias de vecinos bajo esquema <strong>Marca Blanca</strong> (sin mencionar a LAMDA ni a un Nodo puntual).
+                    </p>
+                    <div style="margin-bottom:10px;">
+                        <label style="display:block; font-size:0.75rem; font-weight:800; color:#38bdf8; margin-bottom:4px;">Alias Recaudador Neutro (el que ve y copia el Vecino) *</label>
+                        <input type="text" id="swal-canal-alias" value="${escaparHtml(cfg.alias_recaudador || 'pago.canasto')}"
+                            placeholder="Ej: pago.canasto"
+                            style="width:100%; padding:8px 10px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-family:monospace; font-weight:800; font-size:0.9rem; box-sizing:border-box;">
+                        <div style="font-size:0.7rem; color:#94a3b8; margin-top:3px;">Debe ser corto, neutro y no incluir la palabra "LAMDA".</div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:4px;">Descripción / Entidad de la Cuenta Recaudadora</label>
+                        <input type="text" id="swal-canal-banco" value="${escaparHtml(cfg.banco_recaudador || '')}"
+                            placeholder="Ej: Cuenta Recaudadora Canal Nodos"
+                            style="width:100%; padding:8px 10px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:4px;">Titular Visible (opcional)</label>
+                            <input type="text" id="swal-canal-titular" value="${escaparHtml(cfg.titular_recaudador || '')}"
+                                style="width:100%; padding:8px 10px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:4px;">CBU / CVU Recaudador</label>
+                            <input type="text" id="swal-canal-cbu" value="${escaparHtml(cfg.cbu_recaudador || '')}"
+                                style="width:100%; padding:8px 10px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-family:monospace; box-sizing:border-box;">
+                        </div>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '🔄 Guardar y Actualizar en Todos los Nodos',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            preConfirm: () => {
+                const alias = document.getElementById('swal-canal-alias')?.value?.trim() || '';
+                if (!alias) {
+                    Swal.showValidationMessage('Ingrese un alias recaudador.');
+                    return false;
+                }
+                if (/lamda/i.test(alias)) {
+                    Swal.showValidationMessage('Por criterio de Marca Blanca, el alias para vecinos no puede contener la palabra "LAMDA".');
+                    return false;
+                }
+                return {
+                    alias_recaudador: alias,
+                    banco_recaudador: document.getElementById('swal-canal-banco')?.value?.trim() || '',
+                    titular_recaudador: document.getElementById('swal-canal-titular')?.value?.trim() || '',
+                    cbu_recaudador: document.getElementById('swal-canal-cbu')?.value?.trim() || ''
+                };
+            }
+        });
+
+        if (!res.isConfirmed || !res.value) return;
+
+        const resp = await fetch('/api/produccion/nodos/config-cuenta-canal', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(res.value)
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+            Swal.fire({ icon: 'error', title: 'Error', text: data.error || 'No se pudo actualizar la cuenta del canal.', background: '#151e2e', color: '#f8fafc' });
+            return;
+        }
+
+        ESTADO_NODOS.fuentes.config_cuenta_canal = data.config_cuenta_canal;
+        const bancoLbl = document.getElementById('abm-canal-banco-label');
+        if (bancoLbl) bancoLbl.textContent = data.config_cuenta_canal.banco_recaudador || '';
+        const aliasLbl = document.getElementById('abm-canal-alias-label');
+        if (aliasLbl) aliasLbl.textContent = data.config_cuenta_canal.alias_recaudador || '';
+        const chkComp = document.getElementById('abm-cuenta-compartida');
+        const aliasInput = document.getElementById('abm-alias-display');
+        if ((!chkComp || chkComp.checked) && aliasInput) {
+            aliasInput.value = data.config_cuenta_canal.alias_recaudador || 'pago.canasto';
+        }
+
+        await cargarDatosNodosBarriales(true);
+
+        Swal.fire({
+            icon: 'success',
+            title: '✅ Alias y Cuenta del Canal Nodos Actualizados',
+            text: `Nuevo alias compartido "${data.config_cuenta_canal.alias_recaudador}" aplicado automáticamente (${data.nodos_actualizados || 0} Nodos actualizados).`,
+            background: '#151e2e',
+            color: '#f8fafc'
+        });
+    }
 
     function cargarNodoEnFormularioAbm(nodoId) {
         const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
@@ -1817,6 +2414,8 @@
             if (el) el.value = val ?? '';
         };
 
+        const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
+
         setVal('abm-nodo-id', nodo.id);
         setVal('abm-nombre-marca', nodo.nombre_marca);
         setVal('abm-slug', nodo.slug);
@@ -1827,12 +2426,13 @@
         setVal('abm-gestor-tel', nodo.gestor_telefono);
         setVal('abm-barrio', nodo.barrio_zona);
         setVal('abm-direccion', nodo.direccion_retiro);
+        setVal('abm-latitud', nodo.latitud ?? '');
+        setVal('abm-longitud', nodo.longitud ?? '');
         setVal('abm-cliente-madre-id', nodo.cliente_madre_bunker_id || '');
         setVal('abm-cliente-madre-codigo', nodo.codigo_bunker_cliente_madre || '');
-        if (nodo.cuenta_bancaria_id) setVal('abm-cuenta-bancaria', nodo.cuenta_bancaria_id);
         const chkComp = document.getElementById('abm-cuenta-compartida');
-        if (chkComp) chkComp.checked = Boolean(nodo.usa_cuenta_compartida);
-        setVal('abm-alias-display', nodo.alias_bancario_display);
+        if (chkComp) chkComp.checked = nodo.usa_cuenta_compartida !== false;
+        setVal('abm-alias-display', nodo.alias_bancario_display || cfgCanal.alias_recaudador || 'pago.canasto');
         setVal('abm-cargo-envio', Number(nodo.cargo_envio_barrial || 0));
         setVal('abm-margen-default', Number(nodo.margen_gestor_default_pct || 28));
 
@@ -1852,6 +2452,7 @@
         const resBox = document.getElementById('abm-cliente-titular-resumen');
         const cliSel = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId));
         if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(cliSel);
+        if (cliSel) renderizarChipsDomiciliosClienteAbm(cliSel, 0);
 
         simularEtiquetaZebra('estandar_pagado');
     }
@@ -1861,6 +2462,7 @@
         ESTADO_NODOS.clienteMadreSeleccionadoId = null;
         ESTADO_NODOS.busquedaClienteAbm = '';
         logoOriginalSubidoBase64 = null;
+        const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
         const ids = [
             'abm-nodo-id',
             'abm-nombre-marca',
@@ -1869,7 +2471,8 @@
             'abm-gestor-tel',
             'abm-barrio',
             'abm-direccion',
-            'abm-alias-display',
+            'abm-latitud',
+            'abm-longitud',
             'abm-logo-iniciales',
             'abm-cliente-madre-id',
             'abm-cliente-madre-codigo',
@@ -1879,10 +2482,14 @@
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        const aliasEl = document.getElementById('abm-alias-display');
+        if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
+        const chkComp = document.getElementById('abm-cuenta-compartida');
+        if (chkComp) chkComp.checked = true;
         const slugEl = document.getElementById('abm-slug');
         if (slugEl) slugEl.dataset.manual = '';
         const sub = document.getElementById('abm-subtitulo');
-        if (sub) sub.value = 'Comunidad Barrial - Entrega Fresca';
+        if (sub) sub.value = 'Alimentos Naturales y Frutos Secos - Entrega Barrial';
         const domSug = document.getElementById('abm-domicilios-sugeridos');
         if (domSug) domSug.innerHTML = '';
         const listaBox = document.getElementById('abm-lista-clientes-titulares');
@@ -1903,7 +2510,7 @@
         }
     }
 
-    function seleccionarClienteTitularAbm(clienteId) {
+    async function seleccionarClienteTitularAbm(clienteId) {
         const cli = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(clienteId));
         if (!cli) return;
 
@@ -1932,32 +2539,22 @@
         const datos = extraerDatosContactoClienteBunker(cli);
         setVal('abm-gestor-nombre', datos.nombreTitular);
         if (datos.telefono) setVal('abm-gestor-tel', datos.telefono);
-        if (datos.barrioZona) setVal('abm-barrio', datos.barrioZona);
+        setVal('abm-barrio', datos.barrioZona || '');
         if (datos.direccionPrincipal) setVal('abm-direccion', datos.direccionPrincipal);
+        setVal('abm-latitud', datos.latitud ?? '');
+        setVal('abm-longitud', datos.longitud ?? '');
 
-        // Si el cliente tiene más de un domicilio registrado (ej. Domicilio Fiscal + Domicilio de Entrega), ofrecer chips 1-clic
-        const domBox = document.getElementById('abm-domicilios-sugeridos');
-        if (domBox) {
-            if (datos.domiciliosAlternativos && datos.domiciliosAlternativos.length > 1) {
-                domBox.innerHTML = datos.domiciliosAlternativos.map(d => `
-                    <button type="button" onclick="window.NodosPizarra.aplicarDomicilioSugeridoAbm('${escaparHtml(d.direccion).replace(/'/g, "\\'")}')"
-                            style="padding:2px 8px; border-radius:999px; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.12); color:#bae6fd; font-size:0.7rem; cursor:pointer;">
-                        📍 ${escaparHtml(d.etiqueta)}: ${escaparHtml(d.direccion)}
-                    </button>
-                `).join('');
-            } else {
-                domBox.innerHTML = '';
-            }
-        }
+        // Renderizar chips de domicilios con indicador GPS / Mapa
+        renderizarChipsDomiciliosClienteAbm(cli, 0);
 
-        // Si es un alta nueva (sin nodoEditandoId), sugerir nombre de marca, slug e iniciales editables
+        // Si es un alta nueva (sin nodoEditandoId), sugerir nombre de marca, slug, iniciales y alias compartido del canal
         if (!ESTADO_NODOS.nodoEditandoId) {
             const nombreMarcaInput = document.getElementById('abm-nombre-marca');
             const slugInput = document.getElementById('abm-slug');
             const iniInput = document.getElementById('abm-logo-iniciales');
 
             const primerNombre = String(datos.nombreTitular || '').trim().split(/\s+/)[0] || 'Barrial';
-            const marcaSugerida = `Almacén Natural ${primerNombre}`;
+            const marcaSugerida = `${primerNombre} Frutos Secos`;
             if (nombreMarcaInput && !nombreMarcaInput.value.trim()) {
                 nombreMarcaInput.value = marcaSugerida;
             }
@@ -1971,14 +2568,31 @@
                 iniInput.value = inicialesSug;
             }
 
-            const ctaSelect = document.getElementById('abm-cuenta-bancaria');
+            const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
             const aliasInput = document.getElementById('abm-alias-display');
-            if (aliasInput && !aliasInput.value.trim() && ctaSelect?.selectedOptions?.[0]) {
-                aliasInput.value = ctaSelect.selectedOptions[0].getAttribute('data-alias') || '';
+            if (aliasInput) {
+                aliasInput.value = cfgCanal.alias_recaudador || 'pago.canasto';
             }
         }
 
         regenerarLogoZplEnVivo();
+
+        // Resolver automáticamente el Barrio / Localidad desde Google Maps si el domicilio tiene GPS o texto
+        if (datos.latitud && datos.longitud) {
+            await resolverBarrioDesdeCoordenadasAbm(datos.latitud, datos.longitud, {
+                autocompletarBarrio: true,
+                etiquetaOrigen: 'Domicilio con GPS en ficha'
+            });
+            const mapPanel = document.getElementById('abm-mapa-panel');
+            if (mapPanel && mapPanel.style.display !== 'none') {
+                await asegurarInstanciaMapaAbm(datos.latitud, datos.longitud);
+            }
+        } else if (datos.direccionPrincipal) {
+            await geocodificarTextoEnMapaAbm(datos.direccionPrincipal, {
+                autocompletarBarrio: true,
+                etiquetaOrigen: 'Domicilio en ficha'
+            });
+        }
     }
 
     function aplicarDomicilioSugeridoAbm(direccion) {
@@ -2010,9 +2624,10 @@
             const urlGestor = `${origin}/gestor/${encodeURIComponent(nodo.slug)}`;
             const urlTienda = `${origin}/tienda/${encodeURIComponent(nodo.slug)}`;
             const mensaje = [
-                `🌱 *Bienvenido/a a Nodos Barriales LAMDA — ${nodo.nombre_marca}*`,
+                `🌱 *Bienvenido/a a Nodos Barriales — ${nodo.nombre_marca}*`,
                 `👤 Gestor/a: ${nodo.gestor_nombre}`,
                 `📍 Punto de retiro: ${nodo.direccion_retiro || nodo.barrio_zona || '-'}`,
+                `🏦 Alias recaudador vecinos: ${nodo.alias_bancario_display || 'pago.canasto'}`,
                 ``,
                 `📲 *1. Tu Panel de Gestor (Armado de Canasto, Márgenes y Cobros):*`,
                 urlGestor,
@@ -2025,23 +2640,33 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contexto: `Bienvenida y Links del Nodo (${nodo.nombre_marca})`,
-                    telefono_original_actor: nodo.gestor_telefono || '',
+                    destinatario_nombre: nodo.gestor_nombre || nodo.nombre_marca,
+                    telefono_original: nodo.gestor_telefono || '',
                     mensaje
                 })
             });
             const data = await resp.json();
-            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo enviar el WhatsApp de bienvenida.');
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo generar el envío de WhatsApp.');
+
+            if (data.url_wa_me) {
+                window.open(data.url_wa_me, '_blank', 'noopener');
+            }
 
             if (window.Swal) {
                 Swal.fire({
                     icon: 'success',
-                    title: '📲 Links del Nodo Enviados',
+                    title: '📲 Links del Nodo Listos para Enviar',
                     html: `
                         <div style="text-align:left; font-size:0.84rem; line-height:1.5;">
-                            <p>Se envió el mensaje con los links del <strong>Panel del Gestor</strong> y de la <strong>Tienda Vecinal</strong>.</p>
-                            <div style="padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem; color:#fde68a;">
-                                🛡️ Redirigido al WhatsApp de prueba seguro: <strong>${escaparHtml(data.telefono_efectivo_envio || '5492216615746')}</strong>
+                            <p>Se preparó el mensaje con los links del <strong>Panel del Gestor</strong> y de la <strong>Tienda Vecinal</strong> de <strong>${escaparHtml(nodo.nombre_marca)}</strong>.</p>
+                            <div style="padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem; color:#fde68a; margin-bottom:10px;">
+                                🛡️ Redirigido al WhatsApp de prueba seguro: <strong>${escaparHtml(data.telefono_destino_display || '221 661 5746')}</strong>
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <a href="${escaparHtml(data.url_wa_me || '#')}" target="_blank" rel="noopener"
+                                    style="padding:7px 12px; border-radius:7px; background:#16a34a; color:#fff; text-decoration:none; font-weight:800; font-size:0.78rem;">
+                                    📲 Abrir en WhatsApp (221 661 5746) ↗
+                                </a>
                             </div>
                         </div>
                     `,
@@ -2160,8 +2785,12 @@
     async function guardarNodoAbm() {
         try {
             const idExistente = document.getElementById('abm-nodo-id')?.value || null;
-            const ctaSelect = document.getElementById('abm-cuenta-bancaria');
-            const ctaOpt = ctaSelect?.selectedOptions?.[0];
+            const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || {
+                cuenta_bancaria_id: null,
+                alias_recaudador: 'pago.canasto',
+                cbu_recaudador: '0000000000000000000000',
+                titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+            };
 
             const clienteMadreIdVal = document.getElementById('abm-cliente-madre-id')?.value || ESTADO_NODOS.clienteMadreSeleccionadoId || null;
             const cliObj = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(clienteMadreIdVal));
@@ -2171,6 +2800,15 @@
                 throw new Error('Debe seleccionar primero el Cliente Titular del Nodo en el buscador del Paso 1.');
             }
 
+            const usaComp = Boolean(document.getElementById('abm-cuenta-compartida')?.checked);
+            const aliasEscrito = document.getElementById('abm-alias-display')?.value?.trim() || cfgCanal.alias_recaudador || 'pago.canasto';
+            if (/lamda/i.test(aliasEscrito)) {
+                throw new Error('Por criterio de Marca Blanca, el alias bancario para vecinos no puede mencionar a LAMDA.');
+            }
+
+            const latVal = document.getElementById('abm-latitud')?.value;
+            const lngVal = document.getElementById('abm-longitud')?.value;
+
             const payload = {
                 nombre_marca: document.getElementById('abm-nombre-marca')?.value || '',
                 slug: document.getElementById('abm-slug')?.value || '',
@@ -2179,13 +2817,15 @@
                 gestor_telefono: document.getElementById('abm-gestor-tel')?.value || '',
                 barrio_zona: document.getElementById('abm-barrio')?.value || '',
                 direccion_retiro: document.getElementById('abm-direccion')?.value || '',
+                latitud: latVal !== '' && latVal !== undefined ? Number(latVal) : null,
+                longitud: lngVal !== '' && lngVal !== undefined ? Number(lngVal) : null,
                 cliente_madre_bunker_id: Number(clienteMadreIdVal),
                 codigo_bunker_cliente_madre: codigoMadreVal,
-                cuenta_bancaria_id: ctaSelect?.value ? Number(ctaSelect.value) : null,
-                usa_cuenta_compartida: Boolean(document.getElementById('abm-cuenta-compartida')?.checked),
-                alias_bancario_display: document.getElementById('abm-alias-display')?.value || ctaOpt?.getAttribute('data-alias') || '',
-                cbu_display: ctaOpt?.getAttribute('data-cbu') || '',
-                titular_display: ctaOpt?.getAttribute('data-titular') || '',
+                cuenta_bancaria_id: cfgCanal.cuenta_bancaria_id || null,
+                usa_cuenta_compartida: usaComp,
+                alias_bancario_display: usaComp ? (cfgCanal.alias_recaudador || aliasEscrito) : aliasEscrito,
+                cbu_display: cfgCanal.cbu_recaudador || '',
+                titular_display: cfgCanal.titular_recaudador || '',
                 cargo_envio_barrial: Number(document.getElementById('abm-cargo-envio')?.value || 0),
                 margen_gestor_default_pct: Number(document.getElementById('abm-margen-default')?.value || 28),
                 logo_original_base64: logoOriginalSubidoBase64,
@@ -2212,21 +2852,30 @@
             cargarNodoEnFormularioAbm(data.nodo.id);
 
             if (window.Swal) {
-                Swal.fire({
+                const resSwal = await Swal.fire({
                     icon: 'success',
-                    title: 'Nodo Barrial Guardado',
+                    title: '✅ Nodo Barrial Guardado',
                     html: `
-                        <div style="text-align:left; font-size:0.86rem; line-height:1.5;">
-                            <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo y vinculado a la Cuenta Madre <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> con subcuenta operativa <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>.</p>
-                            <div style="margin-top:8px; padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem;">
-                                <div>📲 Panel Gestor: <code>/gestor/${escaparHtml(data.nodo.slug)}</code></div>
-                                <div>🛒 Tienda Vecino: <code>/tienda/${escaparHtml(data.nodo.slug)}</code></div>
+                        <div style="text-align:left; font-size:0.85rem; line-height:1.5;">
+                            <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo y vinculado al Cliente Titular <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> con subcuenta aislada <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>.</p>
+                            <div style="margin-top:8px; padding:10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.79rem;">
+                                <div>📍 <strong>Retiro:</strong> ${escaparHtml(data.nodo.direccion_retiro || '')} (${escaparHtml(data.nodo.barrio_zona || '')})</div>
+                                <div>🏦 <strong>Alias Vecinos (Marca Blanca):</strong> <code>${escaparHtml(data.nodo.alias_bancario_display || 'pago.canasto')}</code></div>
+                                <div>📲 <strong>Panel Gestor:</strong> <code>/gestor/${escaparHtml(data.nodo.slug)}</code></div>
+                                <div>🛒 <strong>Tienda Vecino:</strong> <code>/tienda/${escaparHtml(data.nodo.slug)}</code></div>
                             </div>
                         </div>
                     `,
+                    showCancelButton: true,
+                    confirmButtonText: '📲 Enviar Links al Celular de Prueba (221 661 5746)',
+                    cancelButtonText: 'Cerrar',
+                    confirmButtonColor: '#16a34a',
                     background: '#151e2e',
                     color: '#f8fafc'
                 });
+                if (resSwal.isConfirmed) {
+                    enviarLinksBienvenidaNodoWa(data.nodo.id);
+                }
             }
         } catch (err) {
             if (window.Swal) {
@@ -2332,6 +2981,14 @@
         nuevoNodoFormulario,
         filtrarClientesTitularesAbm,
         seleccionarClienteTitularAbm,
+        seleccionarDomicilioClienteEnAbm,
+        togglePanelMapaAbm,
+        buscarDireccionEnMapaAbm,
+        ubicarTextoDomicilioActualEnMapaAbm,
+        aplicarBarrioSugeridoMapaAbm,
+        aplicarCalleSugeridaMapaAbm,
+        alCambiarToggleCuentaCompartidaAbm,
+        abrirModalConfigCuentaCanal,
         aplicarDomicilioSugeridoAbm,
         alEditarNombreMarcaAbm,
         enviarLinksBienvenidaNodoWa,
