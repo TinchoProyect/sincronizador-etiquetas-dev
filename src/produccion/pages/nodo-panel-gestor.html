@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panel del Gestor Barrial</title>
+  <title>Panel del Gestor</title>
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
     try {
@@ -15,32 +15,49 @@
       localStorage.removeItem('lamda_prefer_mobile_home');
     } catch (_) {}
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: #0f172a;
-      --accent: #16a34a;
-      --bg: #f1f5f9;
-      --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
+      --brand: #a2553b;
+      --brand-dark: #7d3e28;
+      --brand-soft: rgba(162, 85, 59, 0.10);
+      --brand-border: rgba(162, 85, 59, 0.28);
+      --bg: #faf7f3;
+      --surface: #ffffff;
+      --surface-warm: #f5efe8;
+      --text: #3e2519;
+      --muted: #7d6a5f;
+      --border: #eae1d7;
+      --ok: #2f6f4e;
+      --ok-soft: #eaf4ee;
+      --warn: #a16207;
+      --warn-soft: #fef6e4;
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      font-family: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      padding-bottom: 50px;
+      padding-bottom: 48px;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* Encabezado claro, cálido y austero */
     .top-bar {
-      background: #0f172a;
-      color: #ffffff;
-      padding: 14px 20px;
-      border-bottom: 1px solid #1e293b;
+      background: #fffdfb;
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
     .top-inner {
-      max-width: 1120px;
+      max-width: 780px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
@@ -48,144 +65,246 @@
       flex-wrap: wrap;
       gap: 12px;
     }
-    .nodo-selector {
-      background: #1e293b;
-      color: #ffffff;
-      border: 1px solid #334155;
-      padding: 7px 12px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 0.88rem;
-    }
-    .btn-top {
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      text-decoration: none;
-      cursor: pointer;
-      border: 1px solid #334155;
-      background: #1e293b;
-      color: #f8fafc;
-      display: inline-flex;
+    .brand-identity {
+      display: flex;
       align-items: center;
-      gap: 6px;
-    }
-    .btn-top.green {
-      background: #16a34a;
-      border-color: #16a34a;
-      color: #ffffff;
-    }
-
-    .container {
-      max-width: 1120px;
-      margin: 0 auto;
-      padding: 18px 16px;
-    }
-
-    /* Resumen de Métricas del Gestor */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
-      margin-bottom: 18px;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
     }
-    .kpi-card {
-      background: #ffffff;
-      border: 1px solid var(--border);
+    .brand-emblem {
+      width: 52px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-emblem img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .brand-monogram {
+      width: 44px;
+      height: 44px;
       border-radius: 12px;
-      padding: 14px 16px;
-    }
-    .kpi-label {
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-    .kpi-value {
-      font-size: 1.45rem;
+      background: var(--brand-soft);
+      border: 1px solid var(--brand-border);
+      color: var(--brand-dark);
       font-weight: 900;
-      color: #0f172a;
-      margin-top: 4px;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    .kpi-sub {
-      font-size: 0.75rem;
-      color: #059669;
-      font-weight: 600;
+    .brand-title {
+      font-size: 1.24rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+    }
+    .brand-subtitle {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 700;
       margin-top: 2px;
     }
 
-    /* Pestañas del Panel del Gestor */
-    .tabs-bar {
+    .top-actions {
       display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      margin-bottom: 16px;
-      padding-bottom: 4px;
+      gap: 6px;
+      flex-wrap: wrap;
     }
-    .tab-btn {
-      padding: 10px 16px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      background: #ffffff;
-      color: #334155;
+    .btn-top {
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
       font-weight: 800;
-      font-size: 0.86rem;
+      font-family: inherit;
+      text-decoration: none;
       cursor: pointer;
-      white-space: nowrap;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-top:hover {
+      background: var(--surface-warm);
+    }
+    .btn-top.brand {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #ffffff;
+    }
+    .btn-top.brand:hover {
+      background: var(--brand-dark);
+    }
+
+    .container {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 20px 16px;
+    }
+
+    /* Tablero Principal Austero de 6 Bloques */
+    .board-intro {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 700;
+      margin: 0 0 14px 2px;
+    }
+    .blocks-list {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .block-btn {
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.03);
+      transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .block-btn:hover, .block-btn:active {
+      border-color: var(--brand-border);
+      box-shadow: 0 4px 14px rgba(62, 37, 25, 0.07);
+      transform: translateY(-1px);
+    }
+    .block-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+    .block-num {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      font-weight: 900;
+      font-size: 0.92rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .block-title {
+      font-size: 1.02rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .block-meta {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .block-arrow {
+      font-size: 1.35rem;
+      color: var(--brand);
+      font-weight: 800;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    /* Cabecera de Navegación Interna al abrir un Bloque */
+    .section-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .btn-back {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-    }
-    .tab-btn.active {
-      background: #0f172a;
-      color: #ffffff;
-      border-color: #0f172a;
-    }
-
-    .card {
-      background: #ffffff;
+      padding: 8px 14px;
+      border-radius: 999px;
       border: 1px solid var(--border);
-      border-radius: 14px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .btn-back:hover {
+      background: var(--surface-warm);
+    }
+    .section-heading {
+      margin: 0 0 14px 0;
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    /* Tarjetas y Controles Internos */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
       padding: 18px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.025);
     }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.86rem;
-    }
-    th {
-      text-align: left;
-      padding: 10px;
-      background: #f8fafc;
-      color: #475569;
-      border-bottom: 1px solid #e2e8f0;
-      font-size: 0.76rem;
-      text-transform: uppercase;
-    }
-    td {
-      padding: 11px 10px;
-      border-bottom: 1px solid #f1f5f9;
-      vertical-align: middle;
-    }
-
     .input-sm {
-      padding: 6px 9px;
-      border-radius: 7px;
-      border: 1px solid #cbd5e1;
-      font-size: 0.85rem;
+      padding: 8px 11px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fffdfb;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
       font-weight: 700;
+      outline: none;
+    }
+    .input-sm:focus {
+      border-color: var(--brand);
     }
     .btn-primary {
-      background: #16a34a;
+      background: var(--brand);
       color: #ffffff;
       border: none;
-      padding: 10px 18px;
-      border-radius: 9px;
+      padding: 11px 18px;
+      border-radius: 11px;
+      font-family: inherit;
       font-weight: 800;
-      font-size: 0.86rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover {
+      background: var(--brand-dark);
+    }
+    .btn-soft {
+      background: var(--surface-warm);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 7px 12px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.78rem;
       cursor: pointer;
     }
     .switch-label {
@@ -193,10 +312,41 @@
       align-items: center;
       gap: 6px;
       cursor: pointer;
-      font-weight: 700;
-      font-size: 0.8rem;
+      font-weight: 800;
+      font-size: 0.82rem;
     }
-    @media (max-width: 720px) {
+
+    /* Tarjeta de Producto en Mi Oferta (apta celular sin scroll lateral) */
+    .oferta-item {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fffdfb;
+      margin-bottom: 10px;
+    }
+    .oferta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+      align-items: end;
+    }
+
+    @media (max-width: 640px) {
+      .top-inner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .top-actions {
+        width: 100%;
+      }
+      .btn-top {
+        flex: 1;
+        justify-content: center;
+      }
+      .oferta-grid {
+        grid-template-columns: 1fr 1fr;
+      }
       .ventana-item-row {
         grid-template-columns: 1fr 1fr !important;
       }
@@ -210,58 +360,35 @@
 
   <header class="top-bar">
     <div class="top-inner">
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span style="font-size:1.35rem;">🎛️</span>
+      <div class="brand-identity" onclick="volverAlTableroGestor()" title="Volver al tablero principal">
+        <div class="brand-emblem" id="gestor-logo-box"></div>
         <div>
-          <div style="font-size:0.72rem; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">Panel de Gestión del Nodo</div>
-          <div id="gestor-nodo-title" style="font-size:1.08rem; font-weight:900; color:#ffffff; margin-top:2px;">Cargando Nodo...</div>
-          <div id="gestor-nodo-subtitle" style="font-size:0.78rem; color:#cbd5e1; font-weight:600; margin-top:2px;"></div>
+          <div class="brand-title" id="gestor-nodo-title">Cargando...</div>
+          <div class="brand-subtitle" id="gestor-nodo-subtitle">Panel del Gestor</div>
         </div>
       </div>
 
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button type="button" class="btn-top green" onclick="enviarLinkTiendaWhatsAppPrueba()" style="background:#15803d; border-color:#16a34a;">
-          📲 Compartir mi Tienda por WhatsApp
+      <div class="top-actions">
+        <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top">
+          🏪 Ver Tienda
+        </a>
+        <button type="button" class="btn-top brand" onclick="enviarLinkTiendaWhatsAppPrueba()">
+          📲 Compartir Tienda
         </button>
         <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
-          🔗 Copiar Link Tienda
+          🔗 Copiar Link
         </button>
-        <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top green">
-          🏪 Ver mi Tienda Vecinal ↗
-        </a>
       </div>
     </div>
   </header>
 
   <main class="container">
-    <!-- Tarjetas de Resumen del Gestor -->
-    <div class="kpi-grid" id="gestor-kpis"></div>
-
-    <!-- Navegación del Panel del Gestor -->
-    <div class="tabs-bar">
-      <button type="button" class="tab-btn active" id="gtab-ofertas" onclick="cambiarTabGestor('ofertas')">
-        🛍️ Mi Oferta y Márgenes
-      </button>
-      <button type="button" class="tab-btn" id="gtab-logistica" onclick="cambiarTabGestor('logistica')">
-        ⏰ Días de Entrega, Corte y Envío Barrial
-      </button>
-      <button type="button" class="tab-btn" id="gtab-propuestas" onclick="cambiarTabGestor('propuestas')">
-        ✨ Pedir Nueva Fracción
-      </button>
-      <button type="button" class="tab-btn" id="gtab-pedidos" onclick="cambiarTabGestor('pedidos')">
-        📋 Pedidos de Vecinos
-      </button>
-      <button type="button" class="tab-btn" id="gtab-liquidacion" onclick="cambiarTabGestor('liquidacion')">
-        💰 Cuenta Corriente y Liquidación
-      </button>
-    </div>
-
-    <div id="gestor-tab-content"></div>
+    <div id="gestor-main-view"></div>
   </main>
 
-  <!-- MODAL DE RECIBO DIGITAL MARCA BLANCA PARA EL VECINO (EMITIDO DESDE EL CELULAR DEL GESTOR) -->
-  <div id="modal-recibo-gestor" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.72); z-index:2000; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#ffffff; border-radius:16px; max-width:460px; width:100%; overflow:hidden; box-shadow:0 20px 45px rgba(0,0,0,0.35); border:1px solid #cbd5e1;">
+  <!-- MODAL DE WHATSAPP / RECIBO DIGITAL MARCA BLANCA -->
+  <div id="modal-recibo-gestor" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:2000; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:18px; max-width:460px; width:100%; overflow:hidden; box-shadow:0 20px 45px rgba(62,37,25,0.22); border:1px solid var(--border);">
       <div id="modal-recibo-gestor-body"></div>
     </div>
   </div>
@@ -269,16 +396,14 @@
   <script>
     const GSTATE = {
       slug: '',
-      tab: 'ofertas',
+      vista: 'inicio', // 'inicio' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion'
       filtroPagoPedidos: 'TODOS',
       nodo: null,
-      nodosDisponibles: [],
       proximaEntrega: null,
       ofertas: [],
       propuestas: [],
       pedidos: [],
       movimientosCtaCte: [],
-      ingredientesSugeribles: [],
       liquidacionTablero: null
     };
 
@@ -290,13 +415,30 @@
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    function aplicarPaletaNodo(hexColor) {
+      const clean = /^#[0-9a-fA-F]{6}$/.test(String(hexColor || '').trim()) ? String(hexColor).trim() : '#a2553b';
+      const r = parseInt(clean.slice(1, 3), 16);
+      const g = parseInt(clean.slice(3, 5), 16);
+      const b = parseInt(clean.slice(5, 7), 16);
+      const darkR = Math.max(0, Math.round(r * 0.78));
+      const darkG = Math.max(0, Math.round(g * 0.78));
+      const darkB = Math.max(0, Math.round(b * 0.78));
+      const darkHex = '#' + [darkR, darkG, darkB].map(v => v.toString(16).padStart(2, '0')).join('');
+
+      const root = document.documentElement;
+      root.style.setProperty('--brand', clean);
+      root.style.setProperty('--brand-dark', darkHex);
+      root.style.setProperty('--brand-soft', `rgba(${r}, ${g}, ${b}, 0.11)`);
+      root.style.setProperty('--brand-border', `rgba(${r}, ${g}, ${b}, 0.30)`);
+    }
+
     function detectarSlugInicial() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('nodo')) return params.get('nodo');
       const parts = window.location.pathname.split('/').filter(Boolean);
       const idx = parts.indexOf('gestor');
-      if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
-      return 'almacen-verde-city-bell';
+      if (idx !== -1 && parts[idx + 1]) return decodeURIComponent(parts[idx + 1]);
+      return 'lo-de-mati';
     }
 
     async function cargarPanelGestor() {
@@ -306,14 +448,13 @@
       ]);
       const data = await resp.json();
       if (!data.ok) {
-        const box = document.getElementById('gestor-tab-content');
+        const box = document.getElementById('gestor-main-view');
         if (box) {
           box.innerHTML = `
             <div class="card" style="text-align:center; padding:32px;">
-              <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
               <h3 style="margin:0 0 8px 0;">Panel de Gestión no disponible</h3>
-              <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto;">
-                Verificá que el enlace de tu Nodo esté activo o consultá con Administración para habilitar tu panel.
+              <p style="color:var(--muted); font-size:0.9rem; max-width:480px; margin:0 auto;">
+                Verificá que el enlace de tu Nodo esté actualizado o pedí el acceso vigente a Administración.
               </p>
             </div>
           `;
@@ -327,38 +468,200 @@
 
       GSTATE.nodo = data.nodo;
       GSTATE.slug = data.nodo.slug;
-      GSTATE.nodosDisponibles = data.nodos_disponibles || [];
       GSTATE.proximaEntrega = data.proxima_entrega;
       GSTATE.ofertas = data.todas_ofertas_gestor || [];
       GSTATE.propuestas = data.propuestas_nodo || [];
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
-      GSTATE.ingredientesSugeribles = data.ingredientes_sugeribles || [];
+
+      aplicarPaletaNodo(GSTATE.nodo.color_primario || '#a2553b');
 
       const titleEl = document.getElementById('gestor-nodo-title');
-      if (titleEl) {
-        titleEl.textContent = `${GSTATE.nodo.nombre_marca || 'Mi Nodo'}`;
-      }
+      if (titleEl) titleEl.textContent = GSTATE.nodo.nombre_marca || 'Mi Nodo';
+
       const subEl = document.getElementById('gestor-nodo-subtitle');
       if (subEl) {
-        const partes = [];
-        if (GSTATE.nodo.gestor_nombre) partes.push(`👤 ${GSTATE.nodo.gestor_nombre}`);
-        if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
+        const partes = ['Panel del Gestor'];
+        if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) {
+          partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
+        }
         subEl.textContent = partes.join(' · ');
       }
+
+      const logoBox = document.getElementById('gestor-logo-box');
+      if (logoBox) {
+        const logoSrc = GSTATE.nodo.logo_original_base64 || GSTATE.nodo.logo_mono_preview_base64 || '';
+        if (logoSrc) {
+          logoBox.innerHTML = `<img src="${logoSrc}" alt="${esc(GSTATE.nodo.nombre_marca)}">`;
+        } else {
+          const siglas = String(GSTATE.nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+          logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;
+        }
+      }
+
       document.title = `${GSTATE.nodo.nombre_marca || 'Nodo'} — Panel del Gestor`;
 
       const btnTienda = document.getElementById('btn-abrir-tienda');
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
 
-      renderKpis();
-      renderTabActiva();
+      renderVistaGestor();
     }
 
+    function abrirSeccionGestor(seccion) {
+      GSTATE.vista = seccion;
+      try {
+        window.history.pushState({ vista: seccion }, '', `#${seccion}`);
+      } catch (_) {}
+      renderVistaGestor();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function volverAlTableroGestor() {
+      GSTATE.vista = 'inicio';
+      try {
+        window.history.replaceState({ vista: 'inicio' }, '', window.location.pathname + window.location.search);
+      } catch (_) {}
+      renderVistaGestor();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    window.addEventListener('popstate', () => {
+      const hash = (window.location.hash || '').replace(/^#/, '');
+      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion'].includes(hash)) {
+        GSTATE.vista = hash;
+      } else {
+        GSTATE.vista = 'inicio';
+      }
+      renderVistaGestor();
+    });
+
+    function envolverSeccionInterna(tituloSeccion, contenidoHtml) {
+      return `
+        <div class="section-nav">
+          <button type="button" class="btn-back" onclick="volverAlTableroGestor()">
+            ← Volver al tablero
+          </button>
+        </div>
+        <h2 class="section-heading">${esc(tituloSeccion)}</h2>
+        ${contenidoHtml}
+      `;
+    }
+
+    function renderVistaGestor() {
+      const box = document.getElementById('gestor-main-view');
+      if (!box || !GSTATE.nodo) return;
+
+      if (GSTATE.vista === 'ofertas') {
+        box.innerHTML = envolverSeccionInterna('1. Mi Oferta y Márgenes', renderSeccionOfertas());
+      } else if (GSTATE.vista === 'propuestas') {
+        box.innerHTML = envolverSeccionInterna('2. Pedir Nueva Fracción', renderSeccionPropuestas());
+      } else if (GSTATE.vista === 'logistica') {
+        box.innerHTML = envolverSeccionInterna('3. Días de Entrega, Corte y Envío Barrial', renderSeccionLogistica());
+      } else if (GSTATE.vista === 'pedidos') {
+        box.innerHTML = envolverSeccionInterna('4. Pedidos de Vecinos', renderSeccionPedidos());
+      } else if (GSTATE.vista === 'ctacte') {
+        box.innerHTML = envolverSeccionInterna('5. Cuentas Corrientes', renderSeccionCuentasCorrientes());
+      } else if (GSTATE.vista === 'liquidacion') {
+        box.innerHTML = envolverSeccionInterna('6. Liquidación', renderSeccionLiquidacion());
+      } else {
+        box.innerHTML = renderTableroPrincipal();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // PANTALLA PRINCIPAL AUSTERA: TABLERO DE 6 BLOQUES
+    // -------------------------------------------------------------------------
+    function renderTableroPrincipal() {
+      const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
+      const totalOfertas = GSTATE.ofertas.length;
+      const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length;
+      const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Configurar día y horario';
+      const envioTxt = GSTATE.nodo.permitir_envio_barrial
+        ? `Envío barrial ${fmt(GSTATE.nodo.cargo_envio_barrial)}`
+        : 'Solo retiro en Nodo';
+
+      const totalPedidos = GSTATE.pedidos.length;
+      const pendCobro = GSTATE.pedidos.filter(p => !p.pago_confirmado).length;
+
+      const saldoNodo = Number(GSTATE.nodo.saldo_cuenta_corriente || 0);
+      const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
+      const lotesAbiertos = canastos.filter(c => !c.liquidacion_cerrada).length;
+
+      const bloques = [
+        {
+          num: '1',
+          id: 'ofertas',
+          titulo: 'Mi Oferta y Márgenes',
+          meta: totalOfertas === 0
+            ? 'Sin productos cargados aún'
+            : `${publicadas} de ${totalOfertas} productos publicados en tu tienda`
+        },
+        {
+          num: '2',
+          id: 'propuestas',
+          titulo: 'Pedir Nueva Fracción',
+          meta: propPendientes > 0
+            ? `${propPendientes} solicitud${propPendientes === 1 ? '' : 'es'} en cotización`
+            : 'Solicitar nuevos productos o presentaciones'
+        },
+        {
+          num: '3',
+          id: 'logistica',
+          titulo: 'Días de Entrega, Corte y Envío Barrial',
+          meta: `${proxTxt} · ${envioTxt}`
+        },
+        {
+          num: '4',
+          id: 'pedidos',
+          titulo: 'Pedidos de Vecinos',
+          meta: totalPedidos === 0
+            ? 'Aún no hay pedidos registrados'
+            : `${totalPedidos} pedido${totalPedidos === 1 ? '' : 's'}${pendCobro > 0 ? ` · ${pendCobro} pendiente${pendCobro === 1 ? '' : 's'} de cobro` : ' · todos cobrados'}`
+        },
+        {
+          num: '5',
+          id: 'ctacte',
+          titulo: 'Cuentas Corrientes',
+          meta: `Saldo operativo del Nodo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`
+        },
+        {
+          num: '6',
+          id: 'liquidacion',
+          titulo: 'Liquidación',
+          meta: canastos.length === 0
+            ? 'Sin lotes cerrados para liquidar'
+            : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : `${canastos.length} lote${canastos.length === 1 ? '' : 's'} liquidados`)
+        }
+      ];
+
+      return `
+        <div class="board-intro">
+          Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
+        </div>
+        <div class="blocks-list">
+          ${bloques.map(b => `
+            <button type="button" class="block-btn" onclick="abrirSeccionGestor('${b.id}')">
+              <div class="block-left">
+                <div class="block-num">${b.num}</div>
+                <div>
+                  <div class="block-title">${esc(b.titulo)}</div>
+                  <div class="block-meta">${esc(b.meta)}</div>
+                </div>
+              </div>
+              <div class="block-arrow">›</div>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // -------------------------------------------------------------------------
+    // WHATSAPP Y LINK DE TIENDA
+    // -------------------------------------------------------------------------
     function copiarLinkTiendaVecinos() {
       const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
       navigator.clipboard.writeText(url);
-      alert(`✅ Link de tu tienda copiado para compartir en WhatsApp:\n${url}`);
+      alert(`✅ Link de tu tienda copiado:\n${url}`);
     }
 
     let _ultimoPayloadWaGestor = null;
@@ -394,31 +697,30 @@
 
       const links = Array.isArray(data?.links_detectados) ? data.links_detectados : [];
       body.innerHTML = `
-        <div style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; padding:16px 20px;">
-          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:#38bdf8;">Conexión Interna de WhatsApp LAMDA</div>
-          <div style="font-size:1.08rem; font-weight:900; margin-top:2px;">📲 ${esc(titulo)}</div>
-          <div style="font-size:0.78rem; margin-top:2px; opacity:0.92;">${esc(subtitulo || '')}</div>
+        <div style="background:var(--surface-warm); color:var(--text); padding:16px 20px; border-bottom:1px solid var(--border);">
+          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:var(--brand-dark);">Envío por WhatsApp</div>
+          <div style="font-size:1.06rem; font-weight:900; margin-top:2px;">📲 ${esc(titulo)}</div>
+          <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">${esc(subtitulo || '')}</div>
         </div>
-        <div style="padding:18px 20px; background:#fff; color:#0f172a; font-size:0.84rem;">
-          <div id="wa-gestor-status-banner" style="padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
-            📋 <strong>Listo para enviar desde el sistema</strong> (sin abrir pestañas externas).<br>
-            🛡️ Destino protegido en Laboratorio: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
+        <div style="padding:18px 20px; background:#fff; color:var(--text); font-size:0.84rem;">
+          <div id="wa-gestor-status-banner" style="padding:10px 12px; border-radius:10px; background:var(--ok-soft); border:1px solid rgba(47,111,78,0.28); color:var(--ok); margin-bottom:10px;">
+            📋 <strong>Revisá el mensaje antes de enviar</strong><br>
+            🛡️ Destino de prueba en Laboratorio: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
           </div>
-          <div style="font-size:0.75rem; color:#64748b; margin-bottom:4px; font-weight:700;">Mensaje a despachar:</div>
-          <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; color:#0f172a; font-size:0.76rem; font-family:inherit; margin:0 0 12px 0; max-height:180px; overflow-y:auto;">${esc(data?.mensaje_enviado || '')}</pre>
+          <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:10px; background:var(--bg); border:1px solid var(--border); color:var(--text); font-size:0.78rem; font-family:inherit; margin:0 0 12px 0; max-height:170px; overflow-y:auto;">${esc(data?.mensaje_enviado || '')}</pre>
           ${links.length > 0 ? `
-            <div style="text-align:center; padding:10px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; margin-bottom:12px;">
-              <div style="font-size:0.75rem; font-weight:800; color:#0f172a; margin-bottom:6px;">📱 Código QR / Link directo (${esc(links[0].url)})</div>
-              ${links[0].qr_data_url ? `<img src="${links[0].qr_data_url}" alt="QR Tienda" style="width:130px; height:130px; border-radius:8px;">` : ''}
+            <div style="text-align:center; padding:10px; border-radius:10px; background:var(--bg); border:1px solid var(--border); margin-bottom:12px;">
+              <div style="font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:6px;">Código QR de acceso rápido</div>
+              ${links[0].qr_data_url ? `<img src="${links[0].qr_data_url}" alt="QR Tienda" style="width:124px; height:124px; border-radius:8px;">` : ''}
             </div>
           ` : ''}
           <div id="wa-gestor-actions-box" style="display:flex; gap:8px;">
             <button type="button" id="btn-confirmar-wa-gestor" onclick="confirmarEnvioRealWhatsAppGestor()"
-              style="flex:1; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.88rem; cursor:pointer;">
+              class="btn-primary" style="flex:1;">
               📲 Enviar
             </button>
             <button type="button" onclick="cerrarModalReciboGestor()"
-              style="padding:11px 16px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; font-weight:800; font-size:0.84rem; cursor:pointer;">
+              class="btn-soft" style="padding:11px 16px;">
               Cancelar
             </button>
           </div>
@@ -455,14 +757,12 @@
       }
       const banner = document.getElementById('wa-gestor-status-banner');
       if (banner) {
-        banner.style.background = '#dcfce7';
-        banner.innerHTML = `✅ <strong>¡Mensaje enviado con éxito por WhatsApp!</strong><br>🛡️ Entregado en el teléfono de resguardo <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>`;
+        banner.innerHTML = `✅ <strong>¡Mensaje enviado con éxito por WhatsApp!</strong><br>🛡️ Entregado en <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>`;
       }
       const actionsBox = document.getElementById('wa-gestor-actions-box');
       if (actionsBox) {
         actionsBox.innerHTML = `
-          <button type="button" onclick="cerrarModalReciboGestor()"
-            style="width:100%; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
+          <button type="button" onclick="cerrarModalReciboGestor()" class="btn-primary" style="width:100%;">
             Cerrar
           </button>
         `;
@@ -470,28 +770,25 @@
     }
 
     async function enviarLinkTiendaWhatsAppPrueba() {
-      if (!GSTATE.nodo) {
-        alert('Primero debe existir un Nodo activo.');
-        return;
-      }
+      if (!GSTATE.nodo) return;
       const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
       const prox = GSTATE.proximaEntrega?.asignada?.label_completo || 'próxima ventana semanal';
       const corte = GSTATE.proximaEntrega?.asignada?.label_corte || '';
       const mensaje = [
-        `🌿 *${GSTATE.nodo.nombre_marca}* (${GSTATE.nodo.subtitulo_marca || 'Comunidad Barrial'})`,
-        `¡Hola! Te comparto el link de nuestra tienda barrial para encargar productos frescos:`,
+        `🌿 *${GSTATE.nodo.nombre_marca}*`,
+        `¡Hola! Te comparto el link de nuestra tienda barrial para hacer tu pedido:`,
         url,
         `📅 *Próxima entrega:* ${prox}`,
         corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
-        `Podés elegir retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío a domicilio en el barrio.`
+        `Podés retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío en el barrio.`
       ].filter(Boolean).join('\n');
 
       await abrirModalDespachoWhatsAppGestor({
         destinatario_nombre: `Vecinos de ${GSTATE.nodo.nombre_marca}`,
         telefono_original: '5492216615746',
         mensaje,
-        titulo: 'Compartir Link de Tienda por WhatsApp',
-        subtitulo: `Tienda de ${GSTATE.nodo.nombre_marca}`
+        titulo: 'Compartir Tienda por WhatsApp',
+        subtitulo: GSTATE.nodo.nombre_marca
       });
     }
 
@@ -503,7 +800,7 @@
         `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
         `¡Hola ${p.vecino_nombre}! Te confirmamos el detalle de tu pedido:`,
         itemsTxt,
-        Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro por el Nodo: ${GSTATE.nodo.direccion_retiro || ''}`,
+        Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro: ${GSTATE.nodo.direccion_retiro || ''}`,
         `💰 *Total:* ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : `Transferencia al alias ${GSTATE.nodo.alias_bancario_display || ''}`})`,
         `📅 *Entrega:* ${p.fecha_entrega_label}`
       ].filter(Boolean).join('\n');
@@ -512,139 +809,76 @@
         destinatario_nombre: p.vecino_nombre,
         telefono_original: p.vecino_telefono,
         mensaje,
-        titulo: `Enviar Detalle de Pedido #${p.codigo_pedido}`,
-        subtitulo: `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`
+        titulo: `Detalle Pedido #${p.codigo_pedido}`,
+        subtitulo: `Vecino/a: ${p.vecino_nombre}`
       });
-    }
-
-    function cambiarTabGestor(tab) {
-      GSTATE.tab = tab;
-      ['ofertas', 'logistica', 'propuestas', 'pedidos', 'liquidacion'].forEach(t => {
-        const el = document.getElementById(`gtab-${t}`);
-        if (el) el.classList.toggle('active', t === tab);
-      });
-      renderTabActiva();
-    }
-
-    function renderKpis() {
-      const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
-      let totalVentasVecinos = 0;
-      let gananciaTotalGestor = 0;
-      let gananciaPorEnvios = 0;
-
-      GSTATE.pedidos.forEach(p => {
-        totalVentasVecinos += Number(p.total_vecino || 0);
-        gananciaTotalGestor += Number(p.ganancia_total_gestor || 0);
-        gananciaPorEnvios += Number(p.cargo_envio_barrial || 0);
-      });
-
-      const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Sin configurar';
-
-      document.getElementById('gestor-kpis').innerHTML = `
-        <div class="kpi-card">
-          <div class="kpi-label">Productos Publicados</div>
-          <div class="kpi-value">${publicadas} <span style="font-size:0.85rem; font-weight:600; color:#64748b;">/ ${GSTATE.ofertas.length}</span></div>
-          <div class="kpi-sub">En tu tienda marca blanca</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Pedidos de Vecinos</div>
-          <div class="kpi-value">${GSTATE.pedidos.length}</div>
-          <div class="kpi-sub">Facturación vecinal: ${fmt(totalVentasVecinos)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Tu Ganancia Acumulada</div>
-          <div class="kpi-value" style="color:#16a34a;">${fmt(gananciaTotalGestor)}</div>
-          <div class="kpi-sub">Incluye ${fmt(gananciaPorEnvios)} (100% envíos barriales)</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Próxima Entrega Activa</div>
-          <div class="kpi-value" style="font-size:1rem; margin-top:8px;">${esc(proxTxt)}</div>
-          <div class="kpi-sub">Alias cobros: ${esc(GSTATE.nodo.alias_bancario_display || 'S/A')}</div>
-        </div>
-      `;
-    }
-
-    function renderTabActiva() {
-      const box = document.getElementById('gestor-tab-content');
-      if (GSTATE.tab === 'ofertas') box.innerHTML = renderTabOfertas();
-      else if (GSTATE.tab === 'logistica') box.innerHTML = renderTabLogistica();
-      else if (GSTATE.tab === 'propuestas') box.innerHTML = renderTabPropuestas();
-      else if (GSTATE.tab === 'liquidacion') box.innerHTML = renderTabLiquidacionGestor();
-      else box.innerHTML = renderTabPedidos();
     }
 
     // -------------------------------------------------------------------------
-    // TAB 1: MI OFERTA Y MÁRGENES
+    // 1. MI OFERTA Y MÁRGENES
     // -------------------------------------------------------------------------
-    function renderTabOfertas() {
+    function renderSeccionOfertas() {
+      if (GSTATE.ofertas.length === 0) {
+        return `
+          <div class="card" style="text-align:center; padding:28px 20px;">
+            <div style="font-size:1rem; font-weight:800; margin-bottom:6px;">Todavía no tenés productos cargados en tu oferta</div>
+            <p style="font-size:0.86rem; color:var(--muted); max-width:440px; margin:0 auto 16px auto;">
+              Solicitá los productos y gramajes que quieras vender en tu barrio para que tengan su Precio Base y puedas definirles tu ganancia.
+            </p>
+            <button type="button" class="btn-primary" onclick="abrirSeccionGestor('propuestas')">
+              Ir a Pedir Nueva Fracción →
+            </button>
+          </div>
+        `;
+      }
+
       return `
         <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-            <div>
-              <h3 style="margin:0; font-size:1.05rem;">🛍️ Configurá tus Márgenes y Productos Publicados</h3>
-              <p style="margin:4px 0 0 0; font-size:0.82rem; color:#64748b;">
-                Ajustá el porcentaje de margen o el precio final al vecino; el sistema calcula tu ganancia neta por unidad al instante.
-              </p>
-            </div>
-          </div>
+          <p style="margin:0 0 14px 0; font-size:0.84rem; color:var(--muted);">
+            Ajustá tu porcentaje de margen o el precio final al vecino. Tu ganancia por unidad se actualiza al instante.
+          </p>
+          ${GSTATE.ofertas.map(of => `
+            <div class="oferta-item">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                <div>
+                  <div style="font-weight:900; font-size:0.98rem;">${esc(of.nombre_publico)}</div>
+                  <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
+                    ${esc(of.categoria_familiar || 'Almacén')} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
+                  </div>
+                </div>
+                <label class="switch-label">
+                  <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
+                    onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
+                  <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
+                    ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
+                  </span>
+                </label>
+              </div>
 
-          <div style="overflow-x:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Producto Familiar</th>
-                  <th>Presentación</th>
-                  <th>Costo Base Nodo</th>
-                  <th>Mi Margen (%)</th>
-                  <th>Precio al Vecino</th>
-                  <th>Mi Ganancia / u.</th>
-                  <th>Visible en Tienda</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${GSTATE.ofertas.map(of => `
-                  <tr>
-                    <td>
-                      <div style="font-weight:800; color:#0f172a;">${esc(of.nombre_publico)}</div>
-                      <div style="font-size:0.75rem; color:#64748b;">${esc(of.categoria_familiar)}</div>
-                    </td>
-                    <td>
-                      <span style="background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.78rem;">
-                        ${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}
-                      </span>
-                    </td>
-                    <td style="font-weight:700; color:#475569;">
-                      ${fmt(of.precio_base_nodo_final)}
-                    </td>
-                    <td>
-                      <input type="number" step="0.5" class="input-sm" style="width:78px; border-color:#0284c7; color:#0284c7;"
-                        value="${Number(of.margen_gestor_pct)}"
-                        onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" /> %
-                    </td>
-                    <td>
-                      <input type="number" step="50" class="input-sm" style="width:105px; border-color:#16a34a; color:#15803d;"
-                        value="${Math.round(Number(of.precio_venta_vecino))}"
-                        onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
-                    </td>
-                    <td>
-                      <span style="font-weight:900; color:#16a34a; font-size:0.95rem;">
-                        +${fmt(of.ganancia_unitaria_gestor)}
-                      </span>
-                    </td>
-                    <td>
-                      <label class="switch-label">
-                        <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
-                          onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
-                        <span style="color:${of.publicado_tienda ? '#16a34a' : '#94a3b8'};">
-                          ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
-                        </span>
-                      </label>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
+              <div class="oferta-grid">
+                <div>
+                  <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
+                  <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
+                  <input type="number" step="0.5" class="input-sm" style="width:100%;"
+                    value="${Number(of.margen_gestor_pct)}"
+                    onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
+                  <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
+                    value="${Math.round(Number(of.precio_venta_vecino))}"
+                    onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
+                </div>
+                <div>
+                  <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
+                  <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
         </div>
       `;
     }
@@ -667,149 +901,20 @@
     }
 
     // -------------------------------------------------------------------------
-    // TAB 2: DÍAS DE ENTREGA, HORARIOS DE CORTE Y ENVÍO BARRIAL
+    // 2. PEDIR NUEVA FRACCIÓN
     // -------------------------------------------------------------------------
-    function renderTabLogistica() {
-      const ventanas = Array.isArray(GSTATE.nodo.config_ventanas_corte) && GSTATE.nodo.config_ventanas_corte.length > 0
-        ? GSTATE.nodo.config_ventanas_corte
-        : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
-
-      const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-
+    function renderSeccionPropuestas() {
       return `
-        <div class="card">
-          <h3 style="margin:0 0 6px 0; font-size:1.05rem;">⏰ Días de Entrega, Horarios de Corte y Logística Barrial</h3>
-          <p style="margin:0 0 16px 0; font-size:0.82rem; color:#64748b;">
-            Si un vecino realiza su pedido después del horario de corte configurado, la tienda le asignará automáticamente la próxima fecha de entrega disponible.
-          </p>
-
-          <div id="ventanas-editor-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
-            ${ventanas.map((v, idx) => `
-              <div class="ventana-item-row" style="display:grid; grid-template-columns: 1fr 1fr 0.8fr 1.3fr auto; gap:10px; align-items:end; background:#f8fafc; border:1px solid #e2e8f0; padding:12px; border-radius:10px;">
-                <div>
-                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Día de Entrega al Vecino</label>
-                  <select class="input-sm v-dia-entrega" style="width:100%;">
-                    ${diasSemana.map(d => `<option value="${d}" ${v.dia_entrega === d ? 'selected' : ''}>${d}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Día de Cierre (Corte)</label>
-                  <select class="input-sm v-cierre-dia" style="width:100%;">
-                    ${diasSemana.map(d => `<option value="${d}" ${v.cierre_dia === d ? 'selected' : ''}>${d}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Hora de Corte</label>
-                  <input type="time" class="input-sm v-cierre-hora" style="width:100%;" value="${esc(v.cierre_hora || '14:00')}" />
-                </div>
-                <div>
-                  <label style="display:block; font-size:0.75rem; font-weight:700; color:#334155; margin-bottom:4px;">Ventana Horaria de Retiro / Reparto</label>
-                  <input type="text" class="input-sm v-ventana-retiro" style="width:100%;" value="${esc(v.ventana_retiro || '17:00 a 20:00 hs')}" placeholder="Ej: 17:00 a 20:00 hs" />
-                </div>
-                <button type="button" onclick="eliminarVentanaRow(${idx})" style="padding:7px 10px; border-radius:7px; border:1px solid #fca5a5; background:#fef2f2; color:#dc2626; cursor:pointer; font-weight:700;">
-                  🗑️
-                </button>
-              </div>
-            `).join('')}
-          </div>
-
-          <button type="button" onclick="agregarVentanaRow()"
-            style="padding:7px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#0f172a; font-weight:700; font-size:0.8rem; cursor:pointer; margin-bottom:18px;">
-            ➕ Agregar otro día de entrega semanal
-          </button>
-
-          <hr style="border:none; border-top:1px solid #e2e8f0; margin:16px 0;" />
-
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:18px;">
-            <div>
-              <label style="display:block; font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:4px;">Domicilio del Nodo (Para retiro de vecinos)</label>
-              <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:4px;">Costo de Envío a Domicilio Barrial ($)</label>
-              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%; border-color:#16a34a; color:#15803d;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" />
-              <div style="font-size:0.72rem; color:#059669; font-weight:700; margin-top:3px;">
-                ✅ El 100% del envío barrial se acredita a tu favor en la liquidación.
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; padding-top:16px;">
-              <label class="switch-label" style="font-size:0.86rem;">
-                <input type="checkbox" id="cfg-permitir-envio" ${GSTATE.nodo.permitir_envio_barrial ? 'checked' : ''} />
-                Habilitar opción de reparto a domicilio en mi barrio
-              </label>
-            </div>
-          </div>
-
-          <button type="button" class="btn-primary" onclick="guardarConfigLogisticaGestor()">
-            💾 Guardar Configuración de Entregas y Envío
-          </button>
-        </div>
-      `;
-    }
-
-    function leerVentanasDesdeDom() {
-      const rows = Array.from(document.querySelectorAll('.ventana-item-row'));
-      return rows.map(r => ({
-        dia_entrega: r.querySelector('.v-dia-entrega').value,
-        cierre_dia: r.querySelector('.v-cierre-dia').value,
-        cierre_hora: r.querySelector('.v-cierre-hora').value || '14:00',
-        ventana_retiro: r.querySelector('.v-ventana-retiro').value || '17:00 a 20:00 hs'
-      }));
-    }
-
-    function agregarVentanaRow() {
-      const actual = leerVentanasDesdeDom();
-      actual.push({ dia_entrega: 'Sábado', cierre_dia: 'Viernes', cierre_hora: '14:00', ventana_retiro: '10:00 a 13:30 hs' });
-      GSTATE.nodo.config_ventanas_corte = actual;
-      renderTabActiva();
-    }
-
-    function eliminarVentanaRow(idx) {
-      const actual = leerVentanasDesdeDom();
-      if (actual.length <= 1) {
-        alert('Tu Nodo debe tener al menos un día de entrega configurado.');
-        return;
-      }
-      actual.splice(idx, 1);
-      GSTATE.nodo.config_ventanas_corte = actual;
-      renderTabActiva();
-    }
-
-    async function guardarConfigLogisticaGestor() {
-      const payload = {
-        config_ventanas_corte: leerVentanasDesdeDom(),
-        direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
-        cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
-        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked)
-      };
-
-      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        alert('✅ Días de entrega, horarios de corte y envío barrial actualizados.');
-        await cargarPanelGestor();
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // TAB 3: SOLICITAR NUEVA FRACCIÓN FAMILIAR
-    // -------------------------------------------------------------------------
-    function renderTabPropuestas() {
-      return `
-        <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px; align-items:start;">
+        <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
-            <h3 style="margin:0 0 6px 0; font-size:1.02rem;">✨ Pedir Nueva Fracción o Presentación</h3>
-            <p style="margin:0 0 14px 0; font-size:0.8rem; color:#64748b;">
-              Solicitá un nuevo producto o gramaje pensado para las familias de tu barrio. Cuando Administración cotice y apruebe su Precio Base, aparecerá en tu pestaña de <strong>Mi Oferta y Márgenes</strong> para que le definas tu ganancia y lo publiques en tu tienda.
+            <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Producto o Presentación</h3>
+            <p style="margin:0 0 14px 0; font-size:0.8rem; color:var(--muted);">
+              Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que le definas tu ganancia y lo publiques.
             </p>
 
             <div style="display:flex; flex-direction:column; gap:10px;">
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Categoría en tu Tienda Vecinal</label>
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Categoría</label>
                 <select id="prop-categoria" class="input-sm" style="width:100%;">
                   <option value="Frutos Secos">Frutos Secos</option>
                   <option value="Mixes y Mezclas">Mixes y Mezclas</option>
@@ -821,60 +926,59 @@
                 </select>
               </div>
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Nombre de la presentación solicitada</label>
-                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Nuez Mariposa Extra Light x 250g / Mix Estudiantil x 500g" />
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Producto solicitado</label>
+                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Nuez Mariposa Extra Light x 250g" />
               </div>
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Gramaje / Peso por unidad</label>
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Gramaje</label>
                 <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.10'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">100g</button>
-                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.20'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">200g</button>
-                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.25'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">250g</button>
-                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.50'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">500g</button>
-                  <button type="button" onclick="document.getElementById('prop-kilos').value='1.00'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">1 kg</button>
+                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.10'">100g</button>
+                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.20'">200g</button>
+                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.25'">250g</button>
+                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.50'">500g</button>
+                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='1.00'">1 kg</button>
                 </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                   <div>
-                    <label style="display:block; font-size:0.72rem; color:#64748b; font-weight:700; margin-bottom:2px;">Peso en Kg (ej. 0.25 = 250g)</label>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Peso en Kg (0.25 = 250g)</label>
                     <input type="number" step="0.05" id="prop-kilos" class="input-sm" style="width:100%;" value="0.25" />
                   </div>
                   <div>
-                    <label style="display:block; font-size:0.72rem; color:#64748b; font-weight:700; margin-bottom:2px;">Precio estimado al vecino ($ opc.)</label>
-                    <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" placeholder="Ej: 6500" />
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
+                    <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" placeholder="Opcional" />
                   </div>
                 </div>
               </div>
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Comentario o detalle para cotización</label>
-                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Me lo piden varias familias del barrio en bolsita de 250g" />
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Comentario (opcional)</label>
+                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Bolsita familiar para el barrio" />
               </div>
               <button type="button" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
-                🚀 Enviar Solicitud de Nueva Fracción
+                Enviar Solicitud
               </button>
             </div>
           </div>
 
           <div class="card">
-            <h3 style="margin:0 0 12px 0; font-size:1.02rem;">📋 Estado de mis Solicitudes</h3>
+            <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes</h3>
             <div style="display:flex; flex-direction:column; gap:10px;">
               ${GSTATE.propuestas.length === 0 ? `
-                <div style="padding:18px; border-radius:10px; border:1px dashed #cbd5e1; color:#64748b; font-size:0.84rem; text-align:center;">
-                  Aún no enviaste solicitudes de nuevas fracciones desde este Nodo.
+                <div style="padding:18px; border-radius:12px; border:1px dashed var(--border); color:var(--muted); font-size:0.84rem; text-align:center;">
+                  Todavía no enviaste solicitudes de fracciones.
                 </div>
               ` : GSTATE.propuestas.map(p => `
-                <div style="padding:12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
+                <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
                   <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
-                    <span style="font-size:0.72rem; font-weight:800; padding:3px 8px; border-radius:999px; background:${p.estado === 'APROBADA' ? '#dcfce7' : '#fef3c7'}; color:${p.estado === 'APROBADA' ? '#15803d' : '#b45309'};">
-                      ${p.estado === 'APROBADA' ? '✅ APROBADA EN TU OFERTA' : '⏳ EN COTIZACIÓN'}
+                    <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${p.estado === 'APROBADA' ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${p.estado === 'APROBADA' ? 'var(--ok)' : 'var(--warn)'};">
+                      ${p.estado === 'APROBADA' ? 'Aprobada' : 'En cotización'}
                     </span>
                   </div>
-                  <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
-                    Categoría: <strong>${esc(p.categoria_sugerida || 'Frutos Secos')}</strong> · Presentación: <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
-                    ${p.precio_objetivo_vecino ? ` · Precio estimado: ${fmt(p.precio_objetivo_vecino)}` : ''}
+                  <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
+                    ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
+                    ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
                   </div>
-                  ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:#64748b;">📝 ${esc(p.comentario_gestor)}</div>` : ''}
-                  ${p.respuesta_lamda ? `<div style="margin-top:6px; font-size:0.76rem; color:#15803d; font-weight:700;">💬 ${esc(p.respuesta_lamda)}</div>` : ''}
+                  ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
                 </div>
               `).join('')}
             </div>
@@ -886,7 +990,7 @@
     async function enviarNuevaPropuestaGestor() {
       const nombre = document.getElementById('prop-nombre').value.trim();
       if (!nombre) {
-        alert('Por favor ingresá el nombre del producto o presentación que querés solicitar.');
+        alert('Por favor ingresá el nombre del producto que querés solicitar.');
         return;
       }
       const categoria = document.getElementById('prop-categoria')?.value || 'Frutos Secos';
@@ -906,26 +1010,146 @@
       });
       const data = await resp.json();
       if (data.ok) {
-        alert('✅ Solicitud enviada. Cuando Administración apruebe su Precio Base aparecerá en tu pestaña de Mi Oferta y Márgenes.');
+        alert('✅ Solicitud enviada correctamente.');
         await cargarPanelGestor();
       }
     }
 
     // -------------------------------------------------------------------------
-    // TAB 4: PEDIDOS DE MIS VECINOS, ESTADO DE PAGO Y EMISIÓN DE RECIBO EN EFECTIVO
+    // 3. DÍAS DE ENTREGA, CORTE Y ENVÍO BARRIAL
+    // -------------------------------------------------------------------------
+    function renderSeccionLogistica() {
+      const ventanas = Array.isArray(GSTATE.nodo.config_ventanas_corte) && GSTATE.nodo.config_ventanas_corte.length > 0
+        ? GSTATE.nodo.config_ventanas_corte
+        : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
+
+      const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+      return `
+        <div class="card">
+          <p style="margin:0 0 14px 0; font-size:0.84rem; color:var(--muted);">
+            Los pedidos que ingresen después del horario de corte pasan automáticamente a la siguiente fecha de entrega.
+          </p>
+
+          <div id="ventanas-editor-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+            ${ventanas.map((v, idx) => `
+              <div class="ventana-item-row" style="display:grid; grid-template-columns: 1fr 1fr 0.8fr 1.3fr auto; gap:10px; align-items:end; background:#fffdfb; border:1px solid var(--border); padding:12px; border-radius:12px;">
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Día de Entrega</label>
+                  <select class="input-sm v-dia-entrega" style="width:100%;">
+                    ${diasSemana.map(d => `<option value="${d}" ${v.dia_entrega === d ? 'selected' : ''}>${d}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Día de Corte</label>
+                  <select class="input-sm v-cierre-dia" style="width:100%;">
+                    ${diasSemana.map(d => `<option value="${d}" ${v.cierre_dia === d ? 'selected' : ''}>${d}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Hora Corte</label>
+                  <input type="time" class="input-sm v-cierre-hora" style="width:100%;" value="${esc(v.cierre_hora || '14:00')}" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Horario Retiro / Reparto</label>
+                  <input type="text" class="input-sm v-ventana-retiro" style="width:100%;" value="${esc(v.ventana_retiro || '17:00 a 20:00 hs')}" />
+                </div>
+                <button type="button" class="btn-soft" onclick="eliminarVentanaRow(${idx})" title="Quitar día">✕</button>
+              </div>
+            `).join('')}
+          </div>
+
+          <button type="button" class="btn-soft" onclick="agregarVentanaRow()" style="margin-bottom:16px;">
+            + Agregar otro día de entrega
+          </button>
+
+          <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;">
+            <div>
+              <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Domicilio de retiro</label>
+              <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Costo de envío barrial ($)</label>
+              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" />
+              <div style="font-size:0.72rem; color:var(--ok); font-weight:700; margin-top:3px;">100% acreditado a tu favor</div>
+            </div>
+            <div style="display:flex; align-items:center; padding-top:10px;">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-permitir-envio" ${GSTATE.nodo.permitir_envio_barrial ? 'checked' : ''} />
+                Habilitar envío a domicilio en el barrio
+              </label>
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary" onclick="guardarConfigLogisticaGestor()">
+            Guardar Configuración
+          </button>
+        </div>
+      `;
+    }
+
+    function leerVentanasDesdeDom() {
+      const rows = Array.from(document.querySelectorAll('.ventana-item-row'));
+      return rows.map(r => ({
+        dia_entrega: r.querySelector('.v-dia-entrega').value,
+        cierre_dia: r.querySelector('.v-cierre-dia').value,
+        cierre_hora: r.querySelector('.v-cierre-hora').value || '14:00',
+        ventana_retiro: r.querySelector('.v-ventana-retiro').value || '17:00 a 20:00 hs'
+      }));
+    }
+
+    function agregarVentanaRow() {
+      const actual = leerVentanasDesdeDom();
+      actual.push({ dia_entrega: 'Sábado', cierre_dia: 'Viernes', cierre_hora: '14:00', ventana_retiro: '10:00 a 13:30 hs' });
+      GSTATE.nodo.config_ventanas_corte = actual;
+      renderVistaGestor();
+    }
+
+    function eliminarVentanaRow(idx) {
+      const actual = leerVentanasDesdeDom();
+      if (actual.length <= 1) {
+        alert('Debe quedar al menos un día de entrega configurado.');
+        return;
+      }
+      actual.splice(idx, 1);
+      GSTATE.nodo.config_ventanas_corte = actual;
+      renderVistaGestor();
+    }
+
+    async function guardarConfigLogisticaGestor() {
+      const payload = {
+        config_ventanas_corte: leerVentanasDesdeDom(),
+        direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
+        cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
+        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked)
+      };
+
+      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        alert('✅ Configuración guardada.');
+        await cargarPanelGestor();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. PEDIDOS DE VECINOS
     // -------------------------------------------------------------------------
     function filtrarEstadoPagoPedidosGestor(filtro) {
       GSTATE.filtroPagoPedidos = filtro;
-      renderTabActiva();
+      renderVistaGestor();
     }
 
-    function renderTabPedidos() {
+    function renderSeccionPedidos() {
       const todos = GSTATE.pedidos || [];
       const pagados = todos.filter(p => Boolean(p.pago_confirmado));
       const pendientes = todos.filter(p => !p.pago_confirmado);
-
-      const montoPagado = pagados.reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
-      const montoPendiente = pendientes.reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
 
       const listaFiltrada = GSTATE.filtroPagoPedidos === 'PAGADOS'
         ? pagados
@@ -935,32 +1159,24 @@
 
       return `
         <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-            <div>
-              <h3 style="margin:0; font-size:1.05rem;">📋 Pedidos de Vecinos, Estado de Cobros y Recibos en Efectivo</h3>
-              <p style="margin:4px 0 0 0; font-size:0.8rem; color:#64748b;">
-                Verificá qué pedidos ya están pagos y cuáles siguen pendientes. Cuando un vecino te paga en efectivo, registrá el cobro y enviale el recibo digital por WhatsApp.
-              </p>
-            </div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
-                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'TODOS' ? '#0f172a' : '#cbd5e1'}; background:${GSTATE.filtroPagoPedidos === 'TODOS' ? '#0f172a' : '#fff'}; color:${GSTATE.filtroPagoPedidos === 'TODOS' ? '#fff' : '#334155'};">
-                Todos (${todos.length})
-              </button>
-              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
-                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#d97706' : '#fcd34d'}; background:${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#d97706' : '#fffbeb'}; color:${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#fff' : '#b45309'};">
-                ⏳ Pendientes de Pago (${pendientes.length} · ${fmt(montoPendiente)})
-              </button>
-              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
-                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#16a34a' : '#86efac'}; background:${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#16a34a' : '#f0fdf4'}; color:${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#fff' : '#15803d'};">
-                ✅ Pagados (${pagados.length} · ${fmt(montoPagado)})
-              </button>
-            </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+            <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
+              style="${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              Todos (${todos.length})
+            </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
+              style="${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              Pendientes (${pendientes.length})
+            </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
+              style="${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              Pagados (${pagados.length})
+            </button>
           </div>
 
           ${listaFiltrada.length === 0 ? `
-            <div style="text-align:center; padding:24px; color:#64748b; font-size:0.88rem; background:#f8fafc; border-radius:10px; border:1px dashed #cbd5e1;">
-              No hay pedidos en este filtro (${GSTATE.filtroPagoPedidos}).
+            <div style="text-align:center; padding:24px; color:var(--muted); font-size:0.88rem; background:#fffdfb; border-radius:12px; border:1px dashed var(--border);">
+              No hay pedidos registrados en esta vista.
             </div>
           ` : ''}
 
@@ -968,101 +1184,52 @@
             ${listaFiltrada.map(p => {
               const pagado = Boolean(p.pago_confirmado);
               const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-              const refRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `TRF-${p.codigo_pedido}`);
               return `
-              <div style="border:2px solid ${pagado ? '#86efac' : '#fde68a'}; border-radius:12px; padding:14px; background:${pagado ? '#fafffe' : '#ffffff'};">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; margin-bottom:10px;">
-                  <div>
-                    <span style="font-family:monospace; font-weight:900; background:#0f172a; color:#fff; padding:3px 8px; border-radius:6px; font-size:0.8rem;">
-                      #${esc(p.codigo_pedido)}
-                    </span>
-                    <strong style="font-size:1rem; margin-left:8px;">👤 ${esc(p.vecino_nombre)}</strong>
-                    <span style="font-size:0.8rem; color:#64748b; margin-left:8px;">📱 ${esc(p.vecino_telefono)}</span>
-                    <span style="display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#dcfce7' : p.estado_operativo === 'EN_PODER_GESTOR' ? '#e0f2fe' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#dcfce7' : '#fef3c7'}; color:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#15803d' : p.estado_operativo === 'EN_PODER_GESTOR' ? '#0369a1' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#15803d' : '#b45309'};">
-                      ${p.estado_operativo === 'ENTREGADO_VECINO' ? '✅ Entregado al Vecino' : p.estado_operativo === 'EN_PODER_GESTOR' ? '🚚 En poder del Gestor' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '🧺 Lista en Canasto Depósito' : '⏳ En preparación en Taller'}
-                    </span>
-                    <div style="font-size:0.8rem; color:#334155; margin-top:5px;">
-                      📅 <strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} ·
-                      ${p.modalidad_entrega === 'ENVIO_BARRIAL'
-                        ? `🛵 <strong>Envío a domicilio:</strong> ${esc(p.direccion_entrega)} ${p.entrecalles_referencia ? `(${esc(p.entrecalles_referencia)})` : ''}`
-                        : `🏠 <strong>Retira por el Nodo</strong>`
-                      }
-                    </div>
-                  </div>
-
-                  <div style="text-align:right;">
-                    ${pagado ? `
-                      <span style="display:inline-block; padding:5px 11px; border-radius:999px; font-size:0.76rem; font-weight:900; background:#dcfce7; color:#15803d; border:1px solid #86efac;">
-                        ${esEfvo ? `✅ PAGADO EN EFECTIVO (${fmt(p.total_vecino)})` : `✅ PAGADO TRANSFERENCIA (${fmt(p.total_vecino)})`}
-                      </span>
-                      <div style="font-size:0.72rem; color:#059669; font-weight:700; margin-top:3px;">
-                        Comprobante: ${esc(refRecibo)}
+                <div style="border:1px solid ${pagado ? 'rgba(47,111,78,0.35)' : 'var(--border)'}; border-radius:14px; padding:14px; background:#fffdfb;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                    <div>
+                      <span style="font-weight:900; font-size:0.95rem;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
+                      <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
+                        ${esc(p.fecha_entrega_label)} · ${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío: ${esc(p.direccion_entrega)}` : 'Retira en Nodo'}
                       </div>
-                    ` : `
-                      <span style="display:inline-block; padding:5px 11px; border-radius:999px; font-size:0.76rem; font-weight:900; background:#fef3c7; color:#b45309; border:1px solid #fde68a;">
-                        ⏳ PENDIENTE DE PAGO · ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : 'Transferencia / Efectivo'})
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-weight:900; font-size:1rem;">${fmt(p.total_vecino)}</div>
+                      <span style="font-size:0.72rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
+                        ${pagado ? (esEfvo ? 'Pagado en efectivo' : 'Transferencia acreditada') : 'Pendiente de cobro'}
                       </span>
-                    `}
-                    <div style="font-size:0.78rem; color:#16a34a; font-weight:800; margin-top:4px;">
-                      Tu ganancia en este pedido: +${fmt(p.ganancia_total_gestor)}
-                      ${Number(p.cargo_envio_barrial) > 0 ? ` (incluye ${fmt(p.cargo_envio_barrial)} de envío)` : ''}
+                    </div>
+                  </div>
+
+                  <div style="font-size:0.82rem; color:var(--text); margin-bottom:10px;">
+                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 9px; border-radius:8px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
+                  </div>
+
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:10px;">
+                    <span style="font-size:0.78rem; font-weight:800; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                      ${!pagado ? `
+                        <button type="button" class="btn-primary" style="padding:7px 12px; font-size:0.78rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
+                          💵 Cobrar Efectivo
+                        </button>
+                      ` : `
+                        <button type="button" class="btn-soft" onclick="abrirModalReciboVecinoGestor(${p.id})">
+                          🧾 Recibo Digital
+                        </button>
+                      `}
+                      <button type="button" class="btn-soft" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
+                        📲 Detalle WA
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                  <div style="font-size:0.82rem; color:#334155;">
-                    ${(p.items || []).map(it => `<span style="display:inline-block; background:#f1f5f9; padding:3px 9px; border-radius:6px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
-                  </div>
-                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    ${!pagado ? `
-                      <button type="button" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})"
-                        style="padding:7px 13px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.79rem; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25);">
-                        💵 Cobrar en Efectivo y Emitir Recibo (${fmt(p.total_vecino)})
-                      </button>
-                    ` : `
-                      <button type="button" onclick="abrirModalReciboVecinoGestor(${p.id})"
-                        style="padding:7px 13px; border-radius:8px; border:1px solid #16a34a; background:#dcfce7; color:#15803d; font-weight:900; font-size:0.79rem; cursor:pointer;">
-                        🧾 Ver / Enviar Recibo Digital (Lab → 221 661 5746)
-                      </button>
-                    `}
-                    <button type="button" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})"
-                      style="padding:6px 12px; border-radius:8px; border:1px solid #86efac; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.78rem; cursor:pointer;">
-                      📲 Detalle por WhatsApp (221 661 5746)
-                    </button>
-                    <button type="button" onclick="mostrarEtiquetaPedidoGestor(${p.id})"
-                      style="padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-weight:700; font-size:0.78rem; cursor:pointer;">
-                      🖨️ Ver Etiqueta Térmica
-                    </button>
-                  </div>
-                </div>
-                <div id="preview-etiqueta-ped-${p.id}" style="margin-top:8px;"></div>
-              </div>
-            `;
+              `;
             }).join('')}
           </div>
         </div>
       `;
     }
 
-    async function mostrarEtiquetaPedidoGestor(pedidoId) {
-      const box = document.getElementById(`preview-etiqueta-ped-${pedidoId}`);
-      if (!box) return;
-      box.innerHTML = `<div style="font-size:0.78rem; color:#64748b;">Generando vista previa de la etiqueta...</div>`;
-      const resp = await fetch(`/api/produccion/nodos/pedidos/${pedidoId}/etiqueta`);
-      const data = await resp.json();
-      if (data.ok && data.preview_rollo_base64) {
-        box.innerHTML = `
-          <div style="background:#0f172a; padding:10px; border-radius:10px; text-align:center;">
-            <img src="${data.preview_rollo_base64}" style="max-width:100%; border-radius:6px;" alt="Etiqueta del pedido">
-          </div>
-        `;
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // COBRO EN EFECTIVO DESDE EL CELULAR DEL GESTOR + RECIBO DIGITAL MARCA BLANCA
-    // -------------------------------------------------------------------------
     async function cobrarEnEfectivoYEmitirReciboGestor(pedidoId) {
       const ped = (GSTATE.pedidos || []).find(p => Number(p.id) === Number(pedidoId));
       if (!ped) return;
@@ -1094,78 +1261,50 @@
       if (!p || !GSTATE.nodo) return;
       const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
       const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
-      const fechaHoy = p.fecha_conciliacion_pago
-        ? new Date(p.fecha_conciliacion_pago).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-        : new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
       const modal = document.getElementById('modal-recibo-gestor');
       const body = document.getElementById('modal-recibo-gestor-body');
       if (!modal || !body) return;
 
       body.innerHTML = `
-        <div style="background:${esc(GSTATE.nodo.color_primario || '#16a34a')}; color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="background:var(--brand); color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Comprobante Digital de Pago Vecinal</div>
-            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">🌿 ${esc(GSTATE.nodo.nombre_marca)}</div>
-            <div style="font-size:0.76rem; opacity:0.92;">Atendido por ${esc(GSTATE.nodo.gestor_nombre)} · ${esc(GSTATE.nodo.barrio_zona || '')}</div>
+            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Comprobante de Pago</div>
+            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">${esc(GSTATE.nodo.nombre_marca)}</div>
           </div>
-          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.18); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
         </div>
-
-        <div style="padding:18px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
-            <div>
-              <div style="font-size:0.72rem; color:#15803d; font-weight:800; text-transform:uppercase;">Estado del Pedido #${esc(p.codigo_pedido)}</div>
-              <div style="font-size:0.95rem; font-weight:900; color:#166534;">✅ PAGADO (${esEfvo ? 'Efectivo en Mano' : 'Transferencia Bancaria'})</div>
-            </div>
-            <div style="text-align:right; font-family:monospace; font-size:0.76rem; color:#15803d; font-weight:800;">
-              <div>${esc(nroRecibo)}</div>
-              <div>${esc(fechaHoy)}</div>
-            </div>
+        <div style="padding:18px; color:var(--text);">
+          <div style="font-size:0.85rem; margin-bottom:12px;">
+            <div><strong>Vecino/a:</strong> ${esc(p.vecino_nombre)} · <strong>Pedido #${esc(p.codigo_pedido)}</strong></div>
+            <div style="color:var(--muted); font-size:0.78rem; margin-top:2px;">Recibo ${esc(nroRecibo)} · ${esEfvo ? 'Efectivo' : 'Transferencia'}</div>
           </div>
-
-          <div style="font-size:0.84rem; color:#334155; margin-bottom:12px; line-height:1.5;">
-            <div><strong>Cliente / Vecino:</strong> ${esc(p.vecino_nombre)} (${esc(p.vecino_telefono)})</div>
-            <div><strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} (${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a ${esc(p.direccion_entrega)}` : `Retiro en ${esc(GSTATE.nodo.direccion_retiro || 'Nodo')}`})</div>
-          </div>
-
-          <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:14px;">
-            <div style="background:#f8fafc; padding:8px 12px; font-size:0.74rem; font-weight:800; color:#475569; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">
-              Detalle de Productos
-            </div>
-            <div style="padding:10px 12px; display:flex; flex-direction:column; gap:6px; font-size:0.83rem;">
-              ${(p.items || []).map(it => `
-                <div style="display:flex; justify-content:space-between;">
-                  <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
-                  <strong>${fmt(it.subtotal_vecino)}</strong>
-                </div>
-              `).join('')}
-              ${Number(p.cargo_envio_barrial) > 0 ? `
-                <div style="display:flex; justify-content:space-between; color:#475569; border-top:1px dashed #e2e8f0; padding-top:6px;">
-                  <span>🛵 Envío a domicilio barrial</span>
-                  <strong>${fmt(p.cargo_envio_barrial)}</strong>
-                </div>
-              ` : ''}
-              <div style="display:flex; justify-content:space-between; font-size:1rem; font-weight:900; color:#0f172a; border-top:2px solid #cbd5e1; padding-top:8px; margin-top:4px;">
-                <span>TOTAL ABONADO</span>
-                <span style="color:#16a34a;">${fmt(p.total_vecino)}</span>
+          <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fffdfb; font-size:0.84rem;">
+            ${(p.items || []).map(it => `
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
+                <strong>${fmt(it.subtotal_vecino)}</strong>
               </div>
+            `).join('')}
+            ${Number(p.cargo_envio_barrial) > 0 ? `
+              <div style="display:flex; justify-content:space-between; color:var(--muted); border-top:1px dashed var(--border); padding-top:6px;">
+                <span>Envío barrial</span>
+                <strong>${fmt(p.cargo_envio_barrial)}</strong>
+              </div>
+            ` : ''}
+            <div style="display:flex; justify-content:space-between; font-size:1rem; font-weight:900; border-top:1px solid var(--border); padding-top:8px; margin-top:6px;">
+              <span>TOTAL PAGADO</span>
+              <span style="color:var(--ok);">${fmt(p.total_vecino)}</span>
             </div>
           </div>
-
           <div style="display:flex; flex-direction:column; gap:8px;">
-            <button type="button" onclick="enviarReciboWhatsAppVecinoGestor(${p.id})"
-              style="width:100%; padding:12px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-              📲 Enviar Recibo por WhatsApp al Vecino (Lab → 221 661 5746)
+            <button type="button" class="btn-primary" onclick="enviarReciboWhatsAppVecinoGestor(${p.id})">
+              📲 Enviar Recibo por WhatsApp
             </button>
-            <button type="button" onclick="cerrarModalReciboGestor()"
-              style="width:100%; padding:9px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; font-weight:700; font-size:0.82rem; cursor:pointer;">
-              Cerrar
-            </button>
+            <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cerrar</button>
           </div>
         </div>
       `;
-
       modal.style.display = 'flex';
     }
 
@@ -1179,209 +1318,150 @@
       const mensaje = [
         `🧾 *RECIBO DE PAGO — ${GSTATE.nodo.nombre_marca}*`,
         `Comprobante: *${nroRecibo}* · Pedido *#${p.codigo_pedido}*`,
-        `Hola *${p.vecino_nombre}*, registramos tu pago correctamente:`,
+        `Hola *${p.vecino_nombre}*, registramos tu pago:`,
         itemsTxt,
         Number(p.cargo_envio_barrial) > 0 ? `• Envío barrial: ${fmt(p.cargo_envio_barrial)}` : '',
-        `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}*`,
-        `Medio de pago: *${esEfvo ? 'Efectivo recibido en mano' : 'Transferencia Bancaria'}*`,
-        `¡Muchas gracias por tu compra en ${GSTATE.nodo.nombre_marca}! 🌿`
+        `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}* (${esEfvo ? 'Efectivo' : 'Transferencia'})`,
+        `¡Muchas gracias!`
       ].filter(Boolean).join('\n');
 
-      _ultimoPayloadWaGestor = {
+      await abrirModalDespachoWhatsAppGestor({
         destinatario_nombre: p.vecino_nombre,
         telefono_original: p.vecino_telefono,
         mensaje,
-        titulo: `Recibo Digital ${nroRecibo}`,
-        subtitulo: `Vecino/a: ${p.vecino_nombre} (${p.vecino_telefono || 'S/T'})`
-      };
-
-      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destinatario_nombre: p.vecino_nombre,
-          telefono_original: p.vecino_telefono,
-          mensaje,
-          solo_preview: false
-        })
+        titulo: `Recibo ${nroRecibo}`,
+        subtitulo: `Vecino/a: ${p.vecino_nombre}`
       });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('Error al despachar recibo por WhatsApp: ' + (data.error || 'Error interno'));
-        return;
-      }
-      const body = document.getElementById('modal-recibo-gestor-body');
-      if (body) {
-        body.innerHTML = `
-          <div style="background:linear-gradient(135deg, #16a34a 0%, #15803d 100%); color:#fff; padding:16px 20px;">
-            <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Conexión Interna de WhatsApp LAMDA</div>
-            <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">✅ Recibo Digital ${esc(nroRecibo)} Enviado</div>
-            <div style="font-size:0.78rem; margin-top:2px; opacity:0.92;">Vecino/a: ${esc(p.vecino_nombre)} (${esc(p.vecino_telefono || 'S/T')})</div>
-          </div>
-          <div style="padding:18px 20px; background:#fff; color:#0f172a; font-size:0.84rem;">
-            <div style="padding:10px 12px; border-radius:8px; background:#dcfce7; border:1px solid #86efac; color:#166534; margin-bottom:10px;">
-              ✅ <strong>¡Recibo despachado con éxito por WhatsApp!</strong><br>
-              🛡️ Entregado en el teléfono de resguardo: <strong>${esc(data?.telefono_destino_display || '221 661 5746')}</strong>
-            </div>
-            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#f8fafc; border:1px solid #cbd5e1; color:#0f172a; font-size:0.76rem; font-family:inherit; margin:0 0 12px 0; max-height:180px; overflow-y:auto;">${esc(data?.mensaje_enviado || mensaje)}</pre>
-            <button type="button" onclick="cerrarModalReciboGestor()"
-              style="width:100%; padding:11px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-weight:800; font-size:0.86rem; cursor:pointer;">
-              Cerrar
-            </button>
-          </div>
-        `;
-      }
     }
 
     // -------------------------------------------------------------------------
-    // TAB 5: CUENTA CORRIENTE Y LIQUIDACIÓN DEL LOTE DEL GESTOR
+    // 5. CUENTAS CORRIENTES
     // -------------------------------------------------------------------------
-    function renderTabLiquidacionGestor() {
+    function renderSeccionCuentasCorrientes() {
       const liqData = GSTATE.liquidacionTablero;
-      const canastos = (liqData?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
       const nodoResumen = (liqData?.nodos || []).find(n => Number(n.id) === Number(GSTATE.nodo?.id)) || GSTATE.nodo || {};
-      const saldoActual = Number(nodoResumen?.saldo_cuenta_corriente ?? canastos[0]?.saldo_cuenta_corriente ?? 0);
+      const saldoActual = Number(nodoResumen?.saldo_cuenta_corriente ?? GSTATE.nodo?.saldo_cuenta_corriente ?? 0);
       const codMadre = nodoResumen?.codigo_bunker_cliente_madre || GSTATE.nodo?.codigo_bunker_cliente_madre || null;
       const nomMadre = nodoResumen?.cliente_madre_razon_social || nodoResumen?.cliente_madre_nombre || GSTATE.nodo?.cliente_madre_razon_social || '';
       const saldoMadre = Number(nodoResumen?.saldo_cuenta_corriente_madre ?? GSTATE.nodo?.saldo_cuenta_corriente_madre ?? 0);
 
       return `
-        <div class="card" style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border:none;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <div style="flex:1; min-width:260px;">
-              <div style="font-size:0.74rem; color:#94a3b8; font-weight:800; text-transform:uppercase;">
-                Subcuenta Operativa del Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_bunker_cliente || 'CB-NODO')})
-              </div>
-              <div style="font-size:1.25rem; font-weight:900; margin-top:4px;">
-                Saldo Operativo del Canasto:
-                <span style="color:${saldoActual < 0 ? '#f87171' : saldoActual > 0 ? '#4ade80' : '#38bdf8'};">
-                  ${saldoActual < 0 ? '-' + fmt(Math.abs(saldoActual)) : fmt(saldoActual)}
-                </span>
-              </div>
-              <div style="font-size:0.8rem; color:#cbd5e1; margin-top:4px;">
-                Las transferencias de tus vecinos en la cuenta recaudadora (${esc(GSTATE.nodo?.alias_bancario_display || '')}) se acreditan a tu favor y se compensan con el efectivo que cobrás en mano.
-              </div>
-              ${codMadre ? `
-                <div style="margin-top:10px; padding:9px 12px; border-radius:9px; background:rgba(245,158,11,0.16); border:1px solid rgba(245,158,11,0.45); font-size:0.8rem; color:#fef3c7;">
-                  🔗 <strong>Cuenta Madre Vinculada en LAMDA: ${esc(codMadre)} (${esc(nomMadre)})</strong> ·
-                  Saldo Cuenta Principal B2B:
-                  <strong style="color:#4ade80;">
-                    ${saldoMadre < 0 ? `${fmt(Math.abs(saldoMadre))} a tu favor (${fmt(saldoMadre)})` : fmt(saldoMadre)}
-                  </strong>
-                  <div style="font-size:0.73rem; color:#fde68a; margin-top:2px;">
-                    Al cerrar la liquidación del lote, el resultado neto impacta automáticamente como un asiento limpio (<code>LIQUIDACION_NODO</code>) en tu Cuenta Principal <code>${esc(codMadre)}</code> y en tu Portal B2B.
-                  </div>
-                </div>
-              ` : ''}
-            </div>
+        <div class="card">
+          <div style="font-size:0.74rem; color:var(--muted); font-weight:800; text-transform:uppercase;">
+            Subcuenta Operativa del Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_bunker_cliente || 'CB-NODO')})
           </div>
+          <div style="font-size:1.45rem; font-weight:900; margin-top:4px; color:${saldoActual < 0 ? 'var(--brand-dark)' : 'var(--ok)'};">
+            ${saldoActual < 0 ? '-' + fmt(Math.abs(saldoActual)) : fmt(saldoActual)}
+          </div>
+          <p style="margin:6px 0 0 0; font-size:0.82rem; color:var(--muted);">
+            Alias de recaudación para transferencias de vecinos: <strong>${esc(GSTATE.nodo?.alias_bancario_display || 'pago.canasto')}</strong>
+          </p>
+
+          ${codMadre ? `
+            <div style="margin-top:14px; padding:12px 14px; border-radius:12px; background:var(--surface-warm); border:1px solid var(--border); font-size:0.83rem;">
+              <div><strong>Cuenta Principal Vinculada (${esc(codMadre)}):</strong> ${esc(nomMadre)}</div>
+              <div style="margin-top:3px; color:var(--muted);">
+                Saldo actual Cuenta Principal:
+                <strong style="color:var(--text);">
+                  ${saldoMadre < 0 ? `${fmt(Math.abs(saldoMadre))} a favor` : fmt(saldoMadre)}
+                </strong>
+              </div>
+            </div>
+          ` : ''}
         </div>
 
-        ${canastos.length === 0 ? `
-          <div class="card" style="text-align:center; padding:24px; color:#64748b;">
-            Aún no hay lotes/canastos con pedidos de vecinos para liquidar en este Nodo.
-          </div>
-        ` : ''}
-
-        ${canastos.map(c => {
-          const liq = c.cuadro_liquidacion || {};
-          return `
-            <div class="card">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:14px;">
-                <div>
-                  <span style="background:#0f172a; color:#fff; padding:3px 9px; border-radius:6px; font-family:monospace; font-size:0.78rem; font-weight:800;">
-                    Lote ${esc(c.codigo_canasto)}
-                  </span>
-                  <strong style="font-size:1.05rem; margin-left:8px;">📅 Entrega: ${esc(c.fecha_entrega_label)}</strong>
-                </div>
-                <span style="padding:4px 12px; border-radius:999px; font-size:0.76rem; font-weight:800; background:${c.liquidacion_cerrada ? '#dcfce7' : '#fef3c7'}; color:${c.liquidacion_cerrada ? '#15803d' : '#b45309'};">
-                  ${c.liquidacion_cerrada ? '🏁 Lote Liquidado (Subcuenta Nodo en $0)' : `⏳ ${liq.pedidos_pagos_confirmados || 0} de ${liq.total_pedidos || 0} cobros vecinales confirmados`}
-                </span>
-              </div>
-
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:14px;">
-                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
-                  <div style="font-size:0.74rem; color:#64748b; font-weight:800; text-transform:uppercase;">Total Vendido a Vecinos</div>
-                  <div style="font-size:1.3rem; font-weight:900; color:#0f172a; margin-top:4px;">${fmt(liq.total_venta_vecinos)}</div>
-                  <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">Incluye ${fmt(liq.total_envios_barriales_gestor)} de envíos barriales (100% tuyo)</div>
-                </div>
-                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:12px;">
-                  <div style="font-size:0.74rem; color:#991b1b; font-weight:800; text-transform:uppercase;">Menos Costo Base del Lote</div>
-                  <div style="font-size:1.3rem; font-weight:900; color:#dc2626; margin-top:4px;">-${fmt(liq.total_base_lamda)}</div>
-                  <div style="font-size:0.75rem; color:#991b1b; margin-top:3px;">Valor mayorista del canasto retirado</div>
-                </div>
-                <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:12px;">
-                  <div style="font-size:0.74rem; color:#166534; font-weight:800; text-transform:uppercase;">Tu Ganancia Neta en este Lote</div>
-                  <div style="font-size:1.3rem; font-weight:900; color:#16a34a; margin-top:4px;">+${fmt(liq.ganancia_neta_gestor)}</div>
-                  <div style="font-size:0.75rem; color:#15803d; margin-top:3px;">Margen productos + 100% envíos</div>
-                </div>
-              </div>
-
-              <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:14px; margin-bottom:14px;">
-                <div style="font-weight:900; font-size:0.95rem; color:#1e3a8a; margin-bottom:6px;">
-                  ⚖️ ${esc(liq.titulo_resultado || 'Compensación entre Transferencias y Efectivo en Mano')}
-                </div>
-                <div style="font-size:0.84rem; color:#1e40af; line-height:1.5;">
-                  • Transferencias de vecinos en cuenta recaudadora (a tu favor): <strong>+${fmt(liq.transferencias_esperadas)}</strong> (${liq.cant_transferencias_conciliadas || 0}/${liq.cant_transferencias_totales || 0} conciliadas)<br>
-                  • Efectivo cobrado en mano por vos en el reparto: <strong>${fmt(liq.efectivo_esperado)}</strong> (${liq.cant_efectivo_cobrados || 0}/${liq.cant_efectivo_totales || 0} cobrados)<br>
-                  👉 <strong>${esc(liq.explicacion_compensacion || '')}</strong>
-                </div>
-              </div>
-
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                ${(c.pedidos_vecinos || []).map(p => {
-                  const pagado = Boolean(p.pago_confirmado);
-                  const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-                  return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid ${pagado ? '#86efac' : '#fde68a'}; background:${pagado ? '#f0fdf4' : '#fffbeb'}; border-radius:9px;">
-                      <div style="font-size:0.84rem;">
-                        <strong>#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</strong>
-                        <span style="margin-left:8px; color:#475569;">(${esEfvo ? '💵 Efectivo' : '🏦 Transferencia'}: <strong>${fmt(p.total_vecino)}</strong>)</span>
-                      </div>
-                      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                        ${pagado
-                          ? `
-                            <span style="font-size:0.76rem; font-weight:800; color:#15803d;">✅ ${esEfvo ? 'Cobrado en Efectivo' : 'Transferencia Acreditada'} (${fmt(p.total_vecino)})</span>
-                            <button type="button" onclick="abrirModalReciboVecinoGestor(${p.id})"
-                              style="padding:5px 10px; border-radius:7px; border:1px solid #16a34a; background:#ffffff; color:#15803d; font-weight:800; font-size:0.74rem; cursor:pointer;">
-                              🧾 Recibo Digital / WhatsApp
-                            </button>
-                          `
-                          : `
-                            <span style="font-size:0.74rem; font-weight:800; color:#b45309;">⏳ Pendiente de pago</span>
-                            <button type="button" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})"
-                              style="padding:6px 12px; border-radius:7px; border:none; background:#16a34a; color:#fff; font-weight:800; font-size:0.76rem; cursor:pointer;">
-                              💵 Cobrar en Efectivo y Emitir Recibo
-                            </button>
-                          `
-                        }
+        <div class="card">
+          <h3 style="margin:0 0 10px 0; font-size:0.98rem;">Movimientos de la Subcuenta del Nodo</h3>
+          ${GSTATE.movimientosCtaCte.length === 0 ? `
+            <div style="text-align:center; padding:20px; color:var(--muted); font-size:0.85rem;">
+              Aún no hay movimientos registrados en la subcuenta de este Nodo.
+            </div>
+          ` : `
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              ${GSTATE.movimientosCtaCte.map(m => {
+                const monto = Number(m.monto || 0);
+                return `
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#fffdfb;">
+                    <div>
+                      <div style="font-weight:800; font-size:0.86rem;">${esc(m.concepto || m.tipo_movimiento || 'Movimiento')}</div>
+                      <div style="font-size:0.75rem; color:var(--muted);">
+                        ${m.codigo_canasto ? `Lote ${esc(m.codigo_canasto)} · ` : ''}${m.created_at ? new Date(m.created_at).toLocaleDateString('es-AR') : ''}
                       </div>
                     </div>
-                  `;
-                }).join('')}
-              </div>
+                    <strong style="font-size:0.92rem; color:${monto < 0 ? 'var(--brand-dark)' : 'var(--ok)'};">
+                      ${monto < 0 ? '-' + fmt(Math.abs(monto)) : '+' + fmt(monto)}
+                    </strong>
+                  </div>
+                `;
+              }).join('')}
             </div>
-          `;
-        }).join('')}
+          `}
+        </div>
       `;
     }
 
-    async function registrarCobroRapidoGestor(pedidoId, medioPago) {
-      const resp = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ medio_pago: medioPago })
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        await cargarPanelGestor();
-      } else {
-        alert('⚠️ ' + (data.error || 'No se pudo registrar el cobro'));
+    // -------------------------------------------------------------------------
+    // 6. LIQUIDACIÓN
+    // -------------------------------------------------------------------------
+    function renderSeccionLiquidacion() {
+      const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
+
+      if (canastos.length === 0) {
+        return `
+          <div class="card" style="text-align:center; padding:28px 20px; color:var(--muted);">
+            Aún no hay lotes de pedidos cerrados para liquidar en este Nodo.
+          </div>
+        `;
       }
+
+      return canastos.map(c => {
+        const liq = c.cuadro_liquidacion || {};
+        return `
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+              <div>
+                <strong>Lote ${esc(c.codigo_canasto)}</strong>
+                <div style="font-size:0.8rem; color:var(--muted);">Entrega: ${esc(c.fecha_entrega_label)}</div>
+              </div>
+              <span style="padding:4px 10px; border-radius:999px; font-size:0.74rem; font-weight:800; background:${c.liquidacion_cerrada ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${c.liquidacion_cerrada ? 'var(--ok)' : 'var(--warn)'};">
+                ${c.liquidacion_cerrada ? 'Liquidado' : `${liq.pedidos_pagos_confirmados || 0}/${liq.total_pedidos || 0} cobros confirmados`}
+              </span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:12px;">
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Ventas a Vecinos</div>
+                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">${fmt(liq.total_venta_vecinos)}</div>
+              </div>
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Canasto</div>
+                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">-${fmt(liq.total_base_lamda)}</div>
+              </div>
+              <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.25); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Neta</div>
+                <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">+${fmt(liq.ganancia_neta_gestor)}</div>
+              </div>
+            </div>
+
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; font-size:0.83rem; line-height:1.5;">
+              <div><strong>${esc(liq.titulo_resultado || 'Compensación del Lote')}</strong></div>
+              <div style="color:var(--muted); margin-top:4px;">
+                Transferencias acreditadas: <strong>${fmt(liq.transferencias_esperadas)}</strong> ·
+                Efectivo cobrado en mano: <strong>${fmt(liq.efectivo_esperado)}</strong>
+              </div>
+              ${liq.explicacion_compensacion ? `<div style="margin-top:4px; font-weight:800;">${esc(liq.explicacion_compensacion)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       GSTATE.slug = detectarSlugInicial();
+      const hash = (window.location.hash || '').replace(/^#/, '');
+      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion'].includes(hash)) {
+        GSTATE.vista = hash;
+      }
       cargarPanelGestor();
     });
   </script>

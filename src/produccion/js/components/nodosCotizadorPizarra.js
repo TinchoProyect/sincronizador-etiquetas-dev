@@ -1102,14 +1102,19 @@
                             <div onclick="window.NodosPizarra.cargarNodoEnFormularioAbm(${n.id})"
                                 style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : '#334155'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; gap:12px; align-items:center;">
-                                    <div style="width:74px; height:40px; background:#ffffff; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
-                                        ${n.logo_mono_preview_base64
-                                            ? `<img src="${n.logo_mono_preview_base64}" style="max-width:100%; max-height:100%; image-rendering:pixelated;" alt="Logo">`
-                                            : `<span style="color:#000; font-weight:800; font-size:0.75rem;">LOGO</span>`}
+                                    <div style="width:74px; height:44px; background:#faf7f3; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; padding:3px;">
+                                        ${n.logo_original_base64
+                                            ? `<img src="${n.logo_original_base64}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="Logo">`
+                                            : (n.logo_mono_preview_base64
+                                                ? `<img src="${n.logo_mono_preview_base64}" style="max-width:100%; max-height:100%; image-rendering:pixelated;" alt="Logo">`
+                                                : `<span style="color:#000; font-weight:800; font-size:0.75rem;">LOGO</span>`)}
                                     </div>
                                     <div style="flex:1; min-width:0;">
                                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                                            <span style="font-weight:800; color:#f8fafc; font-size:0.9rem;">${escaparHtml(n.nombre_marca)}</span>
+                                            <span style="font-weight:800; color:#f8fafc; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;">
+                                                <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${escaparHtml(n.color_primario || '#a2553b')}; border:1px solid rgba(255,255,255,0.4);"></span>
+                                                ${escaparHtml(n.nombre_marca)}
+                                            </span>
                                             <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
                                         </div>
                                         <div style="font-size:0.75rem; color:#cbd5e1; margin-top:2px;">
@@ -1269,18 +1274,25 @@
 
                         <!-- PASO 3: IDENTIDAD DE MARCA BLANCA Y CONDICIONES DEL NODO -->
                         <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800; margin-bottom:6px;">
-                            3️⃣ Identidad de la Tienda Vecinal (Marca Blanca) y Condiciones Operativas
+                            3️⃣ Identidad de la Tienda Vecinal (Marca Blanca), Estética y Condiciones Operativas
                         </div>
-                        <div style="display:grid; grid-template-columns: 1.3fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                        <div style="display:grid; grid-template-columns: 1.25fr 1.1fr 1.15fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre de la Marca del Nodo</label>
-                                <input type="text" id="abm-nombre-marca" placeholder="Nombre comercial de la tienda barrial"
+                                <input type="text" id="abm-nombre-marca" placeholder="Ej: Lo de Mati"
                                     oninput="window.NodosPizarra.alEditarNombreMarcaAbm(this.value)"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Dirección Web de la Tienda (Link corto)</label>
-                                <input type="text" id="abm-slug" placeholder="identificador-web-del-nodo"
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                                    <label style="font-size:0.73rem; color:#cbd5e1;">Dirección Web (Link corto)</label>
+                                    <button type="button" onclick="window.NodosPizarra.sincronizarSlugDesdeNombreAbm()"
+                                        title="Generar link a partir del nombre de la marca"
+                                        style="padding:1px 6px; border-radius:4px; font-size:0.66rem; font-weight:700; border:1px solid #334155; background:#1e293b; color:#38bdf8; cursor:pointer;">
+                                        🔄 Tomar del nombre
+                                    </button>
+                                </div>
+                                <input type="text" id="abm-slug" placeholder="ej: lo-de-mati"
                                     oninput="this.dataset.manual='true'"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#38bdf8; font-family:monospace; box-sizing:border-box;">
                             </div>
@@ -1289,6 +1301,33 @@
                                 <input type="text" id="abm-subtitulo" value="Alimentos Naturales y Frutos Secos - Entrega Barrial"
                                     oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                            </div>
+                        </div>
+
+                        <!-- PALETA DE COLOR PERSONALIZABLE DEL NODO (PANTALLAS MÓVILES) -->
+                        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:9px 12px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244; margin-bottom:10px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:0.73rem; color:#cbd5e1; font-weight:800;">🎨 Color de Identidad (Apps Móviles):</span>
+                                <input type="color" id="abm-color-primario" value="#a2553b"
+                                    oninput="document.getElementById('abm-color-hex-label').textContent = this.value"
+                                    style="width:32px; height:28px; padding:0; border:1px solid #475569; border-radius:6px; background:transparent; cursor:pointer;">
+                                <code id="abm-color-hex-label" style="font-size:0.74rem; color:#f8fafc; background:#0f172a; padding:2px 7px; border-radius:5px; border:1px solid #334155;">#a2553b</code>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <span style="font-size:0.7rem; color:#94a3b8;">Paletas sugeridas:</span>
+                                ${[
+                                    { label: 'Terracota Tierra', hex: '#a2553b' },
+                                    { label: 'Cacao Tostado', hex: '#6b442a' },
+                                    { label: 'Oliva Suave', hex: '#5c6f47' },
+                                    { label: 'Verde Almacén', hex: '#2f6f4e' },
+                                    { label: 'Azul Barrial', hex: '#2b5b84' }
+                                ].map(p => `
+                                    <button type="button" onclick="window.NodosPizarra.fijarColorPrimarioNodoAbm('${p.hex}')"
+                                        style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-size:0.7rem; font-weight:700; border:1px solid #334155; background:#0f172a; color:#e2e8f0; cursor:pointer;">
+                                        <span style="width:10px; height:10px; border-radius:50%; background:${p.hex}; display:inline-block;"></span>
+                                        ${p.label}
+                                    </button>
+                                `).join('')}
                             </div>
                         </div>
 
@@ -1334,30 +1373,43 @@
                             </div>
                         </div>
 
-                        <!-- LOGO DEL NODO PARA ETIQUETA TÉRMICA -->
+                        <!-- LOGO DEL NODO PARA PANTALLAS MÓVILES Y ETIQUETA TÉRMICA -->
                         <div style="padding:12px; border-radius:10px; background:#0f172a; border:1px solid #334155;">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                                 <div>
-                                    <div style="font-weight:800; font-size:0.86rem; color:#f8fafc;">🖨️ Logo del Nodo para Etiqueta Térmica</div>
-                                    <div style="font-size:0.73rem; color:#94a3b8;">Suba una imagen PNG/JPG o genere un sello con las iniciales del Nodo para el encabezado de sus etiquetas.</div>
+                                    <div style="font-weight:800; font-size:0.86rem; color:#f8fafc;">🖼️ Logo del Nodo (Pantallas Móviles + Etiqueta Térmica)</div>
+                                    <div style="font-size:0.73rem; color:#94a3b8;">Podés subir o reemplazar el logo en cualquier momento (se aplica en color en el celular y en blanco y negro en la etiqueta Zebra).</div>
                                 </div>
-                                <div style="display:flex; gap:8px; align-items:center;">
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                     <label style="padding:6px 11px; border-radius:6px; font-size:0.75rem; font-weight:700; background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
-                                        📂 Subir Imagen Logo
+                                        📂 Subir / Cambiar Logo
                                         <input type="file" accept="image/*" style="display:none;" onchange="window.NodosPizarra.subirArchivoLogo(event)">
                                     </label>
+                                    <button type="button" onclick="window.NodosPizarra.quitarLogoImagenAbm()"
+                                        style="padding:6px 10px; border-radius:6px; font-size:0.73rem; font-weight:700; background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.4); color:#fca5a5; cursor:pointer;">
+                                        🗑️ Usar Sello de Siglas
+                                    </button>
                                     <button type="button" onclick="window.NodosPizarra.regenerarLogoZplEnVivo()"
                                         style="padding:6px 11px; border-radius:6px; font-size:0.75rem; font-weight:700; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
-                                        ⚡ Actualizar Sello / Logo
+                                        ⚡ Actualizar Vista
                                     </button>
                                 </div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 160px 1fr; gap:14px; align-items:center;">
-                                <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:10px; border-radius:8px; border:1px solid #475569;">
-                                    <div style="font-size:0.68rem; color:#cbd5e1; font-weight:700;">VISTA EN ETIQUETA</div>
-                                    <div style="width:116px; height:60px; background:#ffffff; display:flex; align-items:center; justify-content:center; border:1px solid #000;">
-                                        <img id="abm-logo-preview-img" src="" alt="Vista previa del logo" style="max-width:112px; max-height:56px; image-rendering:pixelated;">
+                            <div style="display:grid; grid-template-columns: 280px 1fr; gap:14px; align-items:center;">
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                                    <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:8px; border-radius:8px; border:1px solid #475569;">
+                                        <div style="font-size:0.66rem; color:#cbd5e1; font-weight:700;">LOGO EN CELULAR</div>
+                                        <div style="width:112px; height:60px; background:#faf7f3; display:flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid #cbd5e1; padding:4px;">
+                                            <img id="abm-logo-color-preview-img" src="" alt="" style="max-width:104px; max-height:52px; object-fit:contain; display:none;">
+                                            <span id="abm-logo-color-empty" style="font-size:0.68rem; color:#64748b; font-weight:700;">Sello automático</span>
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:8px; border-radius:8px; border:1px solid #475569;">
+                                        <div style="font-size:0.66rem; color:#cbd5e1; font-weight:700;">VISTA ETIQUETA</div>
+                                        <div style="width:112px; height:60px; background:#ffffff; display:flex; align-items:center; justify-content:center; border:1px solid #000;">
+                                            <img id="abm-logo-preview-img" src="" alt="Vista previa del logo" style="max-width:108px; max-height:54px; image-rendering:pixelated;">
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2402,12 +2454,47 @@
         });
     }
 
+    let limpiarLogoOriginalPendiente = false;
+
+    function actualizarPreviewLogoColorAbm(srcBase64) {
+        const imgColor = document.getElementById('abm-logo-color-preview-img');
+        const emptyLbl = document.getElementById('abm-logo-color-empty');
+        if (imgColor && emptyLbl) {
+            if (srcBase64) {
+                imgColor.src = srcBase64;
+                imgColor.style.display = 'block';
+                emptyLbl.style.display = 'none';
+            } else {
+                imgColor.src = '';
+                imgColor.style.display = 'none';
+                emptyLbl.style.display = 'inline';
+            }
+        }
+    }
+
+    function fijarColorPrimarioNodoAbm(hex) {
+        const inp = document.getElementById('abm-color-primario');
+        const lbl = document.getElementById('abm-color-hex-label');
+        if (inp) inp.value = hex || '#a2553b';
+        if (lbl) lbl.textContent = hex || '#a2553b';
+    }
+
+    function sincronizarSlugDesdeNombreAbm() {
+        const nombre = document.getElementById('abm-nombre-marca')?.value || '';
+        const slugEl = document.getElementById('abm-slug');
+        if (slugEl && nombre.trim()) {
+            slugEl.value = normalizarTextoBusqueda(nombre).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            slugEl.dataset.manual = 'true';
+        }
+    }
+
     function cargarNodoEnFormularioAbm(nodoId) {
         const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
         if (!nodo) return;
         ESTADO_NODOS.nodoEditandoId = Number(nodo.id);
         ESTADO_NODOS.clienteMadreSeleccionadoId = nodo.cliente_madre_bunker_id ? Number(nodo.cliente_madre_bunker_id) : null;
         logoOriginalSubidoBase64 = nodo.logo_original_base64 || null;
+        limpiarLogoOriginalPendiente = false;
 
         const setVal = (id, val) => {
             const el = document.getElementById(id);
@@ -2422,6 +2509,7 @@
         const slugEl = document.getElementById('abm-slug');
         if (slugEl) slugEl.dataset.manual = 'true';
         setVal('abm-subtitulo', nodo.subtitulo_marca);
+        fijarColorPrimarioNodoAbm(nodo.color_primario || '#a2553b');
         setVal('abm-gestor-nombre', nodo.gestor_nombre);
         setVal('abm-gestor-tel', nodo.gestor_telefono);
         setVal('abm-barrio', nodo.barrio_zona);
@@ -2439,10 +2527,12 @@
         const cfg = nodo.logo_zpl_config || {};
         setVal('abm-logo-iniciales', cfg.iniciales || '');
         setVal('abm-logo-mode', cfg.mode || 'threshold');
-        setVal('abm-logo-threshold', cfg.threshold || 138);
+        const thEfectivo = cfg.threshold || (nodo.logo_original_base64 ? 180 : 138);
+        setVal('abm-logo-threshold', thEfectivo);
         const thSpan = document.getElementById('abm-threshold-val');
-        if (thSpan) thSpan.textContent = cfg.threshold || 138;
+        if (thSpan) thSpan.textContent = thEfectivo;
 
+        actualizarPreviewLogoColorAbm(nodo.logo_original_base64 || null);
         const imgPrev = document.getElementById('abm-logo-preview-img');
         if (imgPrev && nodo.logo_mono_preview_base64) imgPrev.src = nodo.logo_mono_preview_base64;
         setVal('abm-logo-zpl-gfa', nodo.logo_zpl_gfa || '');
@@ -2462,6 +2552,7 @@
         ESTADO_NODOS.clienteMadreSeleccionadoId = null;
         ESTADO_NODOS.busquedaClienteAbm = '';
         logoOriginalSubidoBase64 = null;
+        limpiarLogoOriginalPendiente = false;
         const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
         const ids = [
             'abm-nodo-id',
@@ -2482,6 +2573,8 @@
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        fijarColorPrimarioNodoAbm('#a2553b');
+        actualizarPreviewLogoColorAbm(null);
         const aliasEl = document.getElementById('abm-alias-display');
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
         const chkComp = document.getElementById('abm-cuenta-compartida');
@@ -2746,9 +2839,24 @@
         const reader = new FileReader();
         reader.onload = function (e) {
             logoOriginalSubidoBase64 = e.target.result;
+            limpiarLogoOriginalPendiente = false;
+            actualizarPreviewLogoColorAbm(logoOriginalSubidoBase64);
+            const thEl = document.getElementById('abm-logo-threshold');
+            const thSpan = document.getElementById('abm-threshold-val');
+            if (thEl && Number(thEl.value) < 160) {
+                thEl.value = 180;
+                if (thSpan) thSpan.textContent = '180';
+            }
             regenerarLogoZplEnVivo();
         };
         reader.readAsDataURL(file);
+    }
+
+    function quitarLogoImagenAbm() {
+        logoOriginalSubidoBase64 = null;
+        limpiarLogoOriginalPendiente = true;
+        actualizarPreviewLogoColorAbm(null);
+        regenerarLogoZplEnVivo();
     }
 
     async function regenerarLogoZplEnVivo() {
@@ -2887,7 +2995,9 @@
                 titular_display: cfgCanal.titular_recaudador || '',
                 cargo_envio_barrial: Number(document.getElementById('abm-cargo-envio')?.value || 0),
                 margen_gestor_default_pct: Number(document.getElementById('abm-margen-default')?.value || 28),
+                color_primario: document.getElementById('abm-color-primario')?.value || '#a2553b',
                 logo_original_base64: logoOriginalSubidoBase64,
+                limpiar_logo_original: limpiarLogoOriginalPendiente,
                 logo_zpl_config: {
                     iniciales: document.getElementById('abm-logo-iniciales')?.value || '',
                     mode: document.getElementById('abm-logo-mode')?.value || 'threshold',
@@ -3050,8 +3160,11 @@
         abrirModalConfigCuentaCanal,
         aplicarDomicilioSugeridoAbm,
         alEditarNombreMarcaAbm,
+        fijarColorPrimarioNodoAbm,
+        sincronizarSlugDesdeNombreAbm,
         enviarLinksBienvenidaNodoWa,
         subirArchivoLogo,
+        quitarLogoImagenAbm,
         regenerarLogoZplEnVivo,
         simularEtiquetaZebra,
         guardarNodoAbm

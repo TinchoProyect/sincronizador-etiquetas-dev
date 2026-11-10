@@ -818,6 +818,13 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
             ) VALUES ($1, $2, 'ARS', 0.00, 'ACTIVA', 0.00)`,
             [codigoBunker, `Cta. Cte. Nodo ${datosNodo.nombre_marca}`]
         );
+    } else {
+        await client.query(
+            `UPDATE public.factura_cuentas_corrientes
+             SET nombre_cuenta = $1
+             WHERE id = $2`,
+            [`Cta. Cte. Nodo ${datosNodo.nombre_marca}`, checkCc.rows[0].id]
+        );
     }
 
     return {
@@ -2430,15 +2437,27 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '') || `nodo-${Date.now()}`;
 
+    let existenteRow = null;
+    if (idExistente) {
+        const exRes = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [Number(idExistente)]);
+        existenteRow = exRes.rows[0] || null;
+    }
+
+    const limpiarLogoOriginal = Boolean(payload.limpiar_logo_original);
+    const logoOriginalEfectivo = limpiarLogoOriginal
+        ? null
+        : (payload.logo_original_base64 || existenteRow?.logo_original_base64 || null);
+
     // Convertir o regenerar el logo a ZPL ^GFA si se envió imagen o configuración
-    const zplConfig = payload.logo_zpl_config || {};
+    const zplConfigPrev = existenteRow?.logo_zpl_config || {};
+    const zplConfig = payload.logo_zpl_config || zplConfigPrev || {};
     const conversionLogo = await convertirLogoAZplGfa({
-        imageBase64: payload.logo_original_base64 || null,
+        imageBase64: logoOriginalEfectivo,
         nombreMarca,
         iniciales: zplConfig.iniciales || '',
         width: zplConfig.width || 112,
         height: zplConfig.height || 56,
-        threshold: zplConfig.threshold || 138,
+        threshold: zplConfig.threshold || (logoOriginalEfectivo ? 180 : 138),
         mode: zplConfig.mode || 'threshold',
         invert: Boolean(zplConfig.invert)
     });
@@ -2447,7 +2466,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     try {
         await client.query('BEGIN');
 
-        let codigoNodo = String(payload.codigo_nodo || '').trim();
+        let codigoNodo = String(payload.codigo_nodo || existenteRow?.codigo_nodo || '').trim();
         if (!codigoNodo && !idExistente) {
             const maxRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_maestro');
             codigoNodo = `NODO-${String(maxRes.rows[0].total + 1).padStart(3, '0')}`;
@@ -2455,16 +2474,17 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
 
         const vinculoContable = await asegurarVinculoContableNodo(client, {
             ...payload,
+            codigo_bunker_cliente: payload.codigo_bunker_cliente || existenteRow?.codigo_bunker_cliente || null,
             codigo_nodo: codigoNodo || `NODO-${idExistente}`,
             nombre_marca: nombreMarca,
             gestor_nombre: gestorNombre
         });
 
-        const ventanas = Array.isArray(payload.config_ventanas_corte)
+        const ventanas = Array.isArray(payload.config_ventanas_corte) && payload.config_ventanas_corte.length > 0
             ? payload.config_ventanas_corte
-            : [
-                { dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }
-            ];
+            : (Array.isArray(existenteRow?.config_ventanas_corte) && existenteRow.config_ventanas_corte.length > 0
+                ? existenteRow.config_ventanas_corte
+                : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }]);
 
         // Consultar la configuración compartida de cuenta recaudadora del Canal Nodos
         const cfgCanalRes = await client.query('SELECT * FROM public.nodos_configuracion_canal WHERE id = 1');
@@ -2521,7 +2541,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     margen_gestor_default_pct = $20,
                     config_ventanas_corte = $21,
                     color_primario = $22,
-                    logo_original_base64 = COALESCE($23, logo_original_base64),
+                    logo_original_base64 = $23,
                     logo_mono_preview_base64 = $24,
                     logo_zpl_gfa = $25,
                     logo_zpl_config = $26,
@@ -2553,8 +2573,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
                     JSON.stringify(ventanas),
-                    payload.color_primario || '#16a34a',
-                    payload.logo_original_base64 || null,
+                    payload.color_primario || existenteRow?.color_primario || '#a2553b',
+                    logoOriginalEfectivo,
                     conversionLogo.logo_mono_preview_base64,
                     conversionLogo.logo_zpl_gfa,
                     JSON.stringify({
@@ -2610,8 +2630,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
                     JSON.stringify(ventanas),
-                    payload.color_primario || '#16a34a',
-                    payload.logo_original_base64 || null,
+                    payload.color_primario || existenteRow?.color_primario || '#a2553b',
+                    logoOriginalEfectivo,
                     conversionLogo.logo_mono_preview_base64,
                     conversionLogo.logo_zpl_gfa,
                     JSON.stringify({

@@ -15,29 +15,37 @@
       localStorage.removeItem('lamda_prefer_mobile_home');
     } catch (_) {}
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root {
-      --brand: #16a34a;
-      --brand-dark: #15803d;
-      --brand-light: #dcfce7;
-      --bg: #f8fafc;
+      --brand: #a2553b;
+      --brand-dark: #7d3e28;
+      --brand-light: rgba(162, 85, 59, 0.11);
+      --brand-border: rgba(162, 85, 59, 0.28);
+      --bg: #faf7f3;
       --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
+      --surface-warm: #f5efe8;
+      --text: #3e2519;
+      --muted: #7d6a5f;
+      --border: #eae1d7;
+      --ok: #2f6f4e;
+      --ok-soft: #eaf4ee;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      font-family: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       padding-bottom: 110px;
+      -webkit-font-smoothing: antialiased;
     }
-    /* Barra superior discreta sólo para cambiar de Nodo o simular hora de corte en pruebas */
+    /* Barra superior discreta sólo en Modo Espejo local */
     .lab-bar {
-      background: #0f172a;
-      color: #cbd5e1;
+      background: #3e2519;
+      color: #f5efe8;
       padding: 7px 16px;
       font-size: 0.76rem;
       display: flex;
@@ -47,32 +55,33 @@
       gap: 8px;
     }
     .lab-bar select, .lab-bar button, .lab-bar a {
-      background: #1e293b;
-      color: #f8fafc;
-      border: 1px solid #334155;
+      background: rgba(255,255,255,0.12);
+      color: #fffdfb;
+      border: 1px solid rgba(255,255,255,0.22);
       padding: 4px 10px;
       border-radius: 6px;
       font-size: 0.75rem;
       cursor: pointer;
       text-decoration: none;
-      font-weight: 600;
+      font-weight: 700;
+      font-family: inherit;
     }
     .lab-bar button.active {
       background: #f59e0b;
-      color: #0f172a;
+      color: #3e2519;
       border-color: #f59e0b;
       font-weight: 800;
     }
 
-    /* Cabecera Marca Blanca del Nodo */
+    /* Cabecera Marca Blanca Cálida y Austera */
     .hero {
-      background: linear-gradient(135deg, var(--brand), var(--brand-dark));
-      color: #ffffff;
-      padding: 22px 18px;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+      background: #fffdfb;
+      color: var(--text);
+      padding: 20px 18px;
+      border-bottom: 1px solid var(--border);
     }
     .hero-inner {
-      max-width: 980px;
+      max-width: 920px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
@@ -86,59 +95,73 @@
       gap: 14px;
     }
     .brand-logo {
-      width: 78px;
-      height: 46px;
-      background: #ffffff;
-      border-radius: 10px;
+      width: 64px;
+      height: 54px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      overflow: hidden;
       flex-shrink: 0;
     }
     .brand-logo img {
       max-width: 100%;
       max-height: 100%;
-      image-rendering: pixelated;
+      object-fit: contain;
+    }
+    .brand-monogram {
+      width: 50px;
+      height: 50px;
+      border-radius: 14px;
+      background: var(--brand-light);
+      border: 1px solid var(--brand-border);
+      color: var(--brand-dark);
+      font-weight: 900;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .brand-title {
       margin: 0;
-      font-size: 1.45rem;
-      font-weight: 800;
+      font-size: 1.48rem;
+      font-weight: 900;
+      color: var(--text);
       letter-spacing: -0.02em;
+      line-height: 1.15;
     }
     .brand-sub {
       margin: 3px 0 0 0;
-      font-size: 0.9rem;
-      opacity: 0.92;
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-weight: 700;
     }
     .brand-meta {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
-      margin-top: 6px;
-      font-size: 0.8rem;
+      margin-top: 8px;
+      font-size: 0.78rem;
     }
     .brand-pill {
-      background: rgba(255,255,255,0.18);
+      background: var(--brand-light);
+      border: 1px solid var(--brand-border);
+      color: var(--brand-dark);
       padding: 4px 10px;
       border-radius: 999px;
-      font-weight: 600;
+      font-weight: 800;
     }
 
     .container {
-      max-width: 980px;
+      max-width: 920px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 18px 16px;
     }
 
     /* Banner de Próxima Entrega y Punto de Corte */
     .delivery-banner {
-      background: #ffffff;
-      border: 2px solid var(--brand);
-      border-radius: 14px;
+      background: var(--card);
+      border: 1px solid var(--brand-border);
+      border-left: 4px solid var(--brand);
+      border-radius: 16px;
       padding: 14px 18px;
       margin-bottom: 18px;
       display: flex;
@@ -146,35 +169,38 @@
       align-items: center;
       gap: 14px;
       flex-wrap: wrap;
-      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+      box-shadow: 0 2px 10px rgba(62, 37, 25, 0.04);
     }
     .delivery-banner.after-cutoff {
       border-color: #f59e0b;
+      border-left-color: #d97706;
       background: #fffbeb;
     }
     .delivery-badge {
       display: inline-block;
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       font-weight: 800;
       text-transform: uppercase;
-      padding: 3px 9px;
+      padding: 3px 10px;
       border-radius: 999px;
       background: var(--brand-light);
       color: var(--brand-dark);
-      margin-bottom: 4px;
+      margin-bottom: 5px;
+      letter-spacing: 0.02em;
     }
     .delivery-banner.after-cutoff .delivery-badge {
       background: #fef3c7;
       color: #b45309;
     }
     .delivery-date-main {
-      font-size: 1.08rem;
-      font-weight: 800;
-      color: #0f172a;
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: var(--text);
     }
     .delivery-note {
-      font-size: 0.84rem;
-      color: #475569;
+      font-size: 0.83rem;
+      color: var(--muted);
+      font-weight: 600;
       margin-top: 3px;
     }
 
@@ -189,14 +215,16 @@
       width: 100%;
       padding: 12px 16px;
       border-radius: 12px;
-      border: 1px solid #cbd5e1;
+      border: 1px solid var(--border);
       font-size: 0.95rem;
-      background: #ffffff;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--card);
       outline: none;
     }
     .search-input:focus {
       border-color: var(--brand);
-      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+      box-shadow: 0 0 0 3px var(--brand-light);
     }
     .cats-row {
       display: flex;
@@ -207,13 +235,15 @@
     .cat-btn {
       padding: 7px 14px;
       border-radius: 999px;
-      border: 1px solid #cbd5e1;
-      background: #ffffff;
-      color: #334155;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
       font-size: 0.83rem;
-      font-weight: 700;
+      font-weight: 800;
+      font-family: inherit;
       cursor: pointer;
       white-space: nowrap;
+      transition: all 0.15s;
     }
     .cat-btn.active {
       background: var(--brand);
@@ -224,58 +254,59 @@
     /* Grilla de Productos */
     .products-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 14px;
     }
     .prod-card {
-      background: #ffffff;
+      background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 16px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       gap: 12px;
-      transition: transform 0.15s, box-shadow 0.15s;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
     .prod-card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+      border-color: var(--brand-border);
+      box-shadow: 0 8px 20px rgba(62, 37, 25, 0.06);
     }
     .prod-cat {
       font-size: 0.72rem;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
     .prod-title {
       font-size: 1.02rem;
-      font-weight: 800;
-      color: #0f172a;
+      font-weight: 900;
+      color: var(--text);
       margin: 4px 0 6px 0;
       line-height: 1.3;
     }
     .prod-pres {
       display: inline-block;
-      background: #f1f5f9;
-      color: #334155;
+      background: var(--surface-warm);
+      color: var(--text);
       font-size: 0.78rem;
-      font-weight: 700;
-      padding: 3px 9px;
-      border-radius: 6px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 8px;
     }
     .prod-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding-top: 10px;
-      border-top: 1px solid #f1f5f9;
+      border-top: 1px solid var(--border);
     }
     .prod-price {
-      font-size: 1.25rem;
+      font-size: 1.24rem;
       font-weight: 900;
-      color: #0f172a;
+      color: var(--text);
     }
     .btn-add {
       background: var(--brand);
@@ -284,8 +315,12 @@
       padding: 9px 16px;
       border-radius: 10px;
       font-weight: 800;
+      font-family: inherit;
       font-size: 0.86rem;
       cursor: pointer;
+    }
+    .btn-add:hover {
+      background: var(--brand-dark);
     }
     .stepper {
       display: inline-flex;
@@ -294,7 +329,7 @@
       background: var(--brand-light);
       padding: 4px 8px;
       border-radius: 10px;
-      border: 1px solid var(--brand);
+      border: 1px solid var(--brand-border);
     }
     .stepper button {
       width: 28px;
@@ -304,6 +339,7 @@
       background: var(--brand);
       color: #ffffff;
       font-weight: 900;
+      font-family: inherit;
       font-size: 1rem;
       cursor: pointer;
     }
@@ -322,14 +358,14 @@
       transform: translateX(-50%);
       width: calc(100% - 32px);
       max-width: 680px;
-      background: #0f172a;
-      color: #ffffff;
+      background: #3e2519;
+      color: #fffdfb;
       padding: 14px 20px;
       border-radius: 16px;
       display: none;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+      box-shadow: 0 12px 28px rgba(62, 37, 25, 0.28);
       z-index: 90;
     }
     .cart-bar-btn {
@@ -339,6 +375,7 @@
       padding: 10px 20px;
       border-radius: 10px;
       font-weight: 800;
+      font-family: inherit;
       font-size: 0.92rem;
       cursor: pointer;
     }
@@ -347,7 +384,7 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.65);
+      background: rgba(62, 37, 25, 0.55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -356,14 +393,14 @@
       overflow-y: auto;
     }
     .modal-card {
-      background: #ffffff;
+      background: var(--card);
       width: 100%;
       max-width: 580px;
       border-radius: 18px;
       padding: 22px;
       max-height: 92vh;
       overflow-y: auto;
-      box-shadow: 0 20px 45px rgba(0,0,0,0.25);
+      box-shadow: 0 20px 45px rgba(62, 37, 25, 0.25);
     }
     .form-group {
       margin-bottom: 12px;
@@ -371,16 +408,18 @@
     .form-group label {
       display: block;
       font-size: 0.8rem;
-      font-weight: 700;
-      color: #334155;
+      font-weight: 800;
+      color: var(--muted);
       margin-bottom: 4px;
     }
     .form-group input, .form-group textarea {
       width: 100%;
       padding: 10px 12px;
-      border-radius: 9px;
-      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      border: 1px solid var(--border);
       font-size: 0.92rem;
+      font-family: inherit;
+      color: var(--text);
     }
     .option-grid {
       display: grid;
@@ -388,26 +427,33 @@
       gap: 10px;
       margin-bottom: 14px;
     }
+    @media (max-width: 520px) {
+      .option-grid {
+        grid-template-columns: 1fr;
+      }
+    }
     .opt-card {
-      border: 2px solid #cbd5e1;
+      border: 1.5px solid var(--border);
       border-radius: 12px;
       padding: 11px;
       cursor: pointer;
       text-align: left;
-      background: #ffffff;
+      background: var(--card);
+      transition: all 0.15s;
     }
     .opt-card.active {
       border-color: var(--brand);
       background: var(--brand-light);
     }
     .opt-title {
-      font-weight: 800;
+      font-weight: 900;
       font-size: 0.88rem;
-      color: #0f172a;
+      color: var(--text);
     }
     .opt-sub {
       font-size: 0.76rem;
-      color: #475569;
+      color: var(--muted);
+      font-weight: 600;
       margin-top: 2px;
     }
   </style>
@@ -448,7 +494,7 @@
         <div class="delivery-date-main" id="delivery-date-text">Calculando próxima entrega...</div>
         <div class="delivery-note" id="delivery-cutoff-note"></div>
       </div>
-      <div style="text-align:right; font-size:0.82rem; color:#334155;" id="delivery-pickup-address"></div>
+      <div style="text-align:right; font-size:0.82rem; color:var(--text);" id="delivery-pickup-address"></div>
     </div>
 
     <!-- Buscador y Filtro de Categorías -->
@@ -464,7 +510,7 @@
   <!-- Barra Flotante del Carrito -->
   <div class="cart-bar" id="cart-bar">
     <div>
-      <div style="font-size:0.78rem; color:#94a3b8;" id="cart-count-label">0 productos en tu pedido</div>
+      <div style="font-size:0.78rem; color:#d9c8bb; font-weight:700;" id="cart-count-label">0 productos en tu pedido</div>
       <div style="font-size:1.22rem; font-weight:900;" id="cart-total-label">$0</div>
     </div>
     <button type="button" class="cart-bar-btn" onclick="abrirModalCheckout()">
@@ -499,18 +545,34 @@
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    function aplicarPaletaTienda(hex) {
+      const clean = /^#[0-9a-fA-F]{6}$/.test(String(hex || '').trim()) ? String(hex).trim() : '#a2553b';
+      const r = parseInt(clean.slice(1, 3), 16);
+      const g = parseInt(clean.slice(3, 5), 16);
+      const b = parseInt(clean.slice(5, 7), 16);
+      const darkR = Math.max(0, Math.round(r * 0.78));
+      const darkG = Math.max(0, Math.round(g * 0.78));
+      const darkB = Math.max(0, Math.round(b * 0.78));
+      const darkHex = '#' + [darkR, darkG, darkB].map(v => v.toString(16).padStart(2, '0')).join('');
+
+      const root = document.documentElement;
+      root.style.setProperty('--brand', clean);
+      root.style.setProperty('--brand-dark', darkHex);
+      root.style.setProperty('--brand-light', `rgba(${r}, ${g}, ${b}, 0.11)`);
+      root.style.setProperty('--brand-border', `rgba(${r}, ${g}, ${b}, 0.28)`);
+    }
+
     function detectarSlugInicial() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('nodo')) return params.get('nodo');
       const parts = window.location.pathname.split('/').filter(Boolean);
       const idx = parts.indexOf('tienda');
-      if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
-      return 'almacen-verde-city-bell';
+      if (idx !== -1 && parts[idx + 1]) return decodeURIComponent(parts[idx + 1]);
+      return 'lo-de-mati';
     }
 
     function calcularFechaSimuladaCorte() {
       if (!STATE.simularDespuesDeCorte || !STATE.proximaEntrega?.asignada) return '';
-      // Simular 1 hora después del cierre de la entrega actual para demostrar cómo salta a la siguiente fecha
       const tsCorte = Number(STATE.proximaEntrega.asignada.timestamp_corte || Date.now());
       return new Date(tsCorte + 2 * 3600 * 1000).toISOString();
     }
@@ -533,10 +595,9 @@
         const grid = document.getElementById('products-grid');
         if (grid) {
           grid.innerHTML = `
-            <div style="grid-column: 1/-1; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:32px; text-align:center;">
-              <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
+            <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center;">
               <h3 style="margin:0 0 8px 0;">Tienda Vecinal no disponible</h3>
-              <p style="color:#64748b; font-size:0.9rem; max-width:500px; margin:0 auto;">
+              <p style="color:var(--muted); font-size:0.9rem; max-width:500px; margin:0 auto;">
                 Verificá el enlace compartido por el coordinador de tu barrio.
               </p>
             </div>
@@ -551,10 +612,8 @@
       STATE.proximaEntrega = data.proxima_entrega;
       STATE.productos = data.ofertas_publicadas || [];
 
-      // Aplicar color de marca del Nodo
-      const color = STATE.nodo.color_primario || '#16a34a';
-      document.documentElement.style.setProperty('--brand', color);
-      document.documentElement.style.setProperty('--brand-dark', color);
+      // Aplicar paleta cálida personalizada del Nodo
+      aplicarPaletaTienda(STATE.nodo.color_primario || '#a2553b');
       document.title = `${STATE.nodo.nombre_marca} — Tienda Vecinal`;
 
       // Renderizar cabecera
@@ -564,10 +623,12 @@
       document.getElementById('brand-manager').textContent = `👤 Coordina: ${STATE.nodo.gestor_nombre}`;
 
       const logoBox = document.getElementById('brand-logo-box');
-      if (STATE.nodo.logo_mono_preview_base64) {
-        logoBox.innerHTML = `<img src="${STATE.nodo.logo_mono_preview_base64}" alt="Logo">`;
+      const logoSrc = STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '';
+      if (logoSrc) {
+        logoBox.innerHTML = `<img src="${logoSrc}" alt="${esc(STATE.nodo.nombre_marca)}">`;
       } else {
-        logoBox.innerHTML = `<strong style="color:#0f172a; font-size:0.85rem;">${esc(STATE.nodo.nombre_marca.substring(0, 3).toUpperCase())}</strong>`;
+        const siglas = String(STATE.nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+        logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;
       }
 
       renderBannerEntrega();
@@ -612,7 +673,7 @@
 
       badge.textContent = pasoCorte
         ? '⏭️ Horario de corte superado · Asignado a próxima fecha'
-        : '🟢 Pedidos Abiertos para esta semana';
+        : '📅 Pedidos abiertos para esta semana';
 
       mainTxt.textContent = `Entrega: ${prox.asignada.label_completo}`;
       noteTxt.textContent = prox.mensaje_vecino;
@@ -623,7 +684,7 @@
 
       addrTxt.innerHTML = `
         <div><strong>🏠 Punto de retiro:</strong> ${esc(STATE.nodo.direccion_retiro || STATE.nodo.barrio_zona)}</div>
-        <div style="margin-top:3px; color:#059669; font-weight:700;">${envioTxt}</div>
+        <div style="margin-top:3px; color:var(--brand-dark); font-weight:800;">${envioTxt}</div>
       `;
     }
 
@@ -633,15 +694,32 @@
         if (p.categoria_familiar) catsSet.add(p.categoria_familiar);
       });
       const row = document.getElementById('cats-row');
+      if (STATE.productos.length === 0) {
+        row.innerHTML = '';
+        return;
+      }
       row.innerHTML = Array.from(catsSet).map(cat => `
         <button type="button" class="cat-btn ${STATE.categoriaActiva === cat ? 'active' : ''}"
           onclick="STATE.categoriaActiva='${esc(cat)}'; renderCategorias(); renderCatalogo();">
-          ${cat === 'TODAS' ? '✨ Todos los productos' : esc(cat)}
+          ${cat === 'TODAS' ? 'Todos los productos' : esc(cat)}
         </button>
       `).join('');
     }
 
     function renderCatalogo() {
+      const grid = document.getElementById('products-grid');
+      if (STATE.productos.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:34px 20px; text-align:center;">
+            <div style="font-size:1.02rem; font-weight:900; color:var(--text); margin-bottom:6px;">Próximamente disponibles</div>
+            <div style="font-size:0.88rem; color:var(--muted); max-width:440px; margin:0 auto;">
+              Estamos preparando la selección de productos para la próxima entrega del barrio.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
       const q = (document.getElementById('search-box')?.value || '').trim().toLowerCase();
       const terms = q.split(/\s+/).filter(Boolean);
 
@@ -652,9 +730,8 @@
         return terms.every(t => bolsa.includes(t));
       });
 
-      const grid = document.getElementById('products-grid');
       if (filtrados.length === 0) {
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:36px; color:#64748b;">No encontramos productos con ese filtro.</div>`;
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:36px; color:var(--muted); font-weight:700;">No encontramos productos con ese filtro.</div>`;
         return;
       }
 
@@ -665,7 +742,7 @@
             <div>
               <div class="prod-cat">${esc(p.categoria_familiar || 'Almacén Natural')}</div>
               <div class="prod-title">${esc(p.nombre_publico)}</div>
-              <span class="prod-pres">📦 ${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
+              <span class="prod-pres">${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
             </div>
             <div class="prod-footer">
               <div class="prod-price">${fmt(p.precio_venta_vecino)}</div>
@@ -747,20 +824,20 @@
       const box = document.getElementById('checkout-card-content');
 
       box.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:10px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
           <div>
-            <h2 style="margin:0; font-size:1.2rem;">🧺 Confirmar Pedido Vecinal</h2>
-            <div style="font-size:0.8rem; color:#15803d; font-weight:700; margin-top:2px;">
+            <h2 style="margin:0; font-size:1.2rem; font-weight:900;">🧺 Confirmar Pedido Vecinal</h2>
+            <div style="font-size:0.8rem; color:var(--brand-dark); font-weight:800; margin-top:2px;">
               📅 Entrega asignada: ${esc(prox ? prox.label_completo : 'Próxima ventana')}
             </div>
           </div>
-          <button type="button" onclick="cerrarModalCheckout()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
+          <button type="button" onclick="cerrarModalCheckout()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
         </div>
 
         <!-- Resumen de ítems -->
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
+        <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
           ${res.detalle.map(it => `
-            <div style="display:flex; justify-content:space-between; font-size:0.86rem; padding:4px 0; border-bottom:1px dashed #e2e8f0;">
+            <div style="display:flex; justify-content:space-between; font-size:0.86rem; padding:4px 0; border-bottom:1px dashed var(--border);">
               <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
               <strong>${fmt(it.subtotal)}</strong>
             </div>
@@ -768,7 +845,7 @@
         </div>
 
         <!-- Elección de Retiro o Envío Barrial -->
-        <label style="display:block; font-size:0.8rem; font-weight:800; color:#334155; margin-bottom:6px;">1. ¿Cómo preferís recibir tu pedido?</label>
+        <label style="display:block; font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:6px;">1. ¿Cómo preferís recibir tu pedido?</label>
         <div class="option-grid">
           <div class="opt-card ${STATE.modalidadEntrega === 'RETIRO_NODO' ? 'active' : ''}"
                onclick="STATE.modalidadEntrega='RETIRO_NODO'; renderContenidoModalCheckout();">
@@ -791,8 +868,8 @@
             <input type="text" id="chk-nombre" placeholder="Ej: María Laura Gómez" value="${esc(window._savedVecinoNombre || '')}" oninput="window._savedVecinoNombre=this.value">
           </div>
           <div class="form-group">
-            <label>Tu WhatsApp * <span style="font-size:0.7rem; color:#15803d;">(Pruebas: 221 661 5746)</span></label>
-            <input type="text" id="chk-telefono" placeholder="221 661 5746" value="${esc(window._savedVecinoTel || '221 661 5746')}" oninput="window._savedVecinoTel=this.value">
+            <label>Tu WhatsApp *</label>
+            <input type="text" id="chk-telefono" placeholder="Ej: 221 661 5746" value="${esc(window._savedVecinoTel || '221 661 5746')}" oninput="window._savedVecinoTel=this.value">
           </div>
         </div>
 
@@ -810,7 +887,7 @@
         ` : ''}
 
         <!-- Elección de Medio de Pago -->
-        <label style="display:block; font-size:0.8rem; font-weight:800; color:#334155; margin-bottom:6px;">2. ¿Cómo preferís abonar?</label>
+        <label style="display:block; font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:6px;">2. ¿Cómo preferís abonar?</label>
         <div class="option-grid">
           <div class="opt-card ${STATE.medioPago === 'TRANSFERENCIA' ? 'active' : ''}"
                onclick="STATE.medioPago='TRANSFERENCIA'; renderContenidoModalCheckout();">
@@ -825,26 +902,26 @@
         </div>
 
         <!-- Totalizador -->
-        <div style="background:#0f172a; color:#ffffff; border-radius:12px; padding:12px 16px; margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#cbd5e1;">
+        <div style="background:#3e2519; color:#fffdfb; border-radius:14px; padding:13px 16px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#d9c8bb; font-weight:700;">
             <span>Subtotal productos (${res.unidades} u.)</span>
             <span>${fmt(res.subtotal)}</span>
           </div>
           ${res.costoEnvio > 0 ? `
-            <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#6ee7b7; margin-top:4px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#f5d0b5; margin-top:4px; font-weight:700;">
               <span>Envío a domicilio barrial</span>
               <span>+${fmt(res.costoEnvio)}</span>
             </div>
           ` : ''}
-          <div style="display:flex; justify-content:space-between; font-size:1.2rem; font-weight:900; margin-top:8px; padding-top:8px; border-top:1px solid #334155;">
+          <div style="display:flex; justify-content:space-between; font-size:1.2rem; font-weight:900; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.16);">
             <span>Total a abonar</span>
-            <span style="color:#4ade80;">${fmt(res.total)}</span>
+            <span style="color:#fcd9bd;">${fmt(res.total)}</span>
           </div>
         </div>
 
         <button type="button" onclick="enviarPedidoVecinal()"
-          style="width:100%; padding:13px; border-radius:12px; border:none; background:var(--brand); color:#ffffff; font-weight:900; font-size:1rem; cursor:pointer;">
-          ✅ Confirmar mi Pedido
+          style="width:100%; padding:13px; border-radius:12px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+          Confirmar mi Pedido
         </button>
       `;
     }
