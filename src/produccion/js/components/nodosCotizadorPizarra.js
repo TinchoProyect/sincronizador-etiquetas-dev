@@ -399,13 +399,15 @@
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Peso Fracción (Kg)</label>
-                            <input type="number" id="cot-kilos-unidad" step="0.01" min="0.01" value="0.25" oninput="window.NodosPizarra.recalcularEnVivo()"
+                            <input type="number" id="cot-kilos-unidad" step="0.01" min="0.01" value="0.25"
+                                oninput="window.NodosPizarra.recalcularEnVivo()"
+                                onchange="window.NodosPizarra.alCambiarKilosUnidadMesa()"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; font-weight:800; font-size:0.86rem;">
                         </div>
                     </div>
 
                     <!-- ATAJOS RÁPIDOS DE GRAMAJE FAMILIAR -->
-                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
                         <span style="font-size:0.73rem; color:#94a3b8;">Presentación rápida:</span>
                         ${[
                             { label: '100g', kg: 0.10 },
@@ -424,17 +426,27 @@
                         `).join('')}
                     </div>
 
+                    <!-- CONEXIÓN EN VIVO CON RECETA DE BÚNKER / ESPACIO DE TRABAJO PERSONAL -->
+                    <div id="cot-bunker-receta-badge" style="display:none; margin-bottom:10px; padding:7px 11px; border-radius:8px; font-size:0.76rem; font-weight:700;"></div>
+
                     <!-- IDENTIDAD COMERCIAL DEL ARTÍCULO EN EL PADRÓN DE NODOS Y NOMENCLATURA BÚNKER -->
-                    <div style="display:grid; grid-template-columns: 1.4fr 1.4fr; gap:10px; margin-bottom:10px;">
+                    <div style="display:grid; grid-template-columns: 1.3fr 1.5fr; gap:10px; margin-bottom:10px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">🏛️ Nomenclatura Posicional en Búnker (Familia Real LAMDA)</label>
-                            <input type="text" id="cot-bunker-nomenclatura" placeholder="Ej: ALMENDRA Peladas NP 25-27 x 250g"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0f172a; color:#bae6fd; font-weight:700; font-size:0.82rem;">
+                            <label style="display:block; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">🏛️ Nomenclatura Interna Búnker / Depósito</label>
+                            <input type="text" id="cot-bunker-nomenclatura" placeholder="Ej: GRANA Sol x 200g"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0f172a; color:#bae6fd; font-weight:700; font-size:0.82rem; box-sizing:border-box;">
                         </div>
-                        <div>
-                            <label style="display:block; font-size:0.74rem; color:#34d399; font-weight:700; margin-bottom:4px;">🏘️ Alias Amigable para Tienda del Vecino y Etiqueta</label>
-                            <input type="text" id="cot-nombre-publico" placeholder="Ej: Almendra Nonpareil"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.83rem;">
+                        <div style="padding:7px 9px; border-radius:9px; background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.45);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+                                <label style="font-size:0.74rem; color:#34d399; font-weight:800;">🏘️ Nombre Amigable que verá el Vecino (Confirmar)</label>
+                                <button type="button" onclick="window.NodosPizarra.aplicarAliasVecinoSugeridoMesa()"
+                                    title="Restaurar nombre claro sugerido"
+                                    style="padding:1px 6px; border-radius:4px; font-size:0.66rem; font-weight:700; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; cursor:pointer;">
+                                    ↺ Sugerido
+                                </button>
+                            </div>
+                            <input type="text" id="cot-nombre-publico" placeholder="Ej: Granola de Sol"
+                                style="width:100%; padding:7px 8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#ffffff; font-weight:800; font-size:0.85rem; box-sizing:border-box;">
                         </div>
                     </div>
 
@@ -531,7 +543,7 @@
         const num = Number(flujo || 2);
         if (num === 1) {
             return ESTADO_NODOS.fuentes.articulos_flujo_1.map(a =>
-                `<option value="ART:${escaparHtml(a.articulo_id)}" data-costo="${a.costo_kg}" data-nombre="${escaparHtml(a.nombre)}">[${escaparHtml(a.articulo_id)}] ${escaparHtml(a.nombre)} (${fmtMoneda(a.costo_kg)}/kg)</option>`
+                `<option value="ART:${escaparHtml(a.articulo_id)}" data-costo="${a.costo_kg}" data-nombre="${escaparHtml(a.nombre)}" data-alias-vecino="${escaparHtml(a.nombre)}">[${escaparHtml(a.articulo_id)}] ${escaparHtml(a.nombre)} (${fmtMoneda(a.costo_kg)}/kg)</option>`
             ).join('');
         }
 
@@ -540,27 +552,30 @@
 
         return lista.map(i => {
             const costoVivo = obtenerCostoVivoIngredientePizarra(i.id, i.costo_kg);
-            return `<option value="${i.id}" data-costo="${costoVivo}" data-nombre="${escaparHtml(i.nombre)}">${escaparHtml(i.nombre)} (${fmtMoneda(costoVivo)}/kg)</option>`;
+            const labelClaro = i.nombre_claro_gestor || i.nombre;
+            const aliasVecino = i.alias_vecino_sugerido || labelClaro;
+            return `<option value="${i.id}" data-costo="${costoVivo}" data-nombre="${escaparHtml(i.nombre)}" data-alias-vecino="${escaparHtml(aliasVecino)}" data-categoria="${escaparHtml(i.categoria_gestor || '')}">${escaparHtml(labelClaro)} (${fmtMoneda(costoVivo)}/kg)</option>`;
         }).join('');
     }
 
     function renderizarListaFuentesRapidasHtml() {
         const q = ESTADO_NODOS.busquedaFuentes;
         const filtrados = ESTADO_NODOS.fuentes.ingredientes_por_flujo.filter(item => {
-            const bolsa = `${item.id} ${item.codigo || ''} ${item.nombre} ${item.flujo_nombre} ${item.articulo_vinculado_numero || ''}`;
+            const bolsa = `${item.id} ${item.codigo || ''} ${item.nombre} ${item.nombre_claro_gestor || ''} ${item.alias_vecino_sugerido || ''} ${item.categoria_gestor || ''} ${item.flujo_nombre} ${item.articulo_vinculado_numero || ''}`;
             return cumpleBusquedaUniversalLamda(bolsa, q);
         });
 
-        return filtrados.slice(0, 40).map(item => {
+        return filtrados.slice(0, 45).map(item => {
             const meta = FLUJO_META[item.flujo] || FLUJO_META[2];
             const costoVivo = obtenerCostoVivoIngredientePizarra(item.id, item.costo_kg);
+            const labelClaro = item.nombre_claro_gestor || item.nombre;
             return `
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-radius:7px; background:rgba(15,23,42,0.7); border:1px solid #263244;">
                     <div>
                         <span style="font-size:0.68rem; padding:1px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700; margin-right:6px;">
                             ${meta.corto}
                         </span>
-                        <strong style="font-size:0.8rem; color:#f1f5f9;">${escaparHtml(item.nombre)}</strong>
+                        <strong style="font-size:0.8rem; color:#f1f5f9;">${escaparHtml(labelClaro)}</strong>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span style="font-size:0.8rem; color:#38bdf8; font-weight:700;">${fmtMoneda(costoVivo)}/kg</span>
@@ -1549,27 +1564,130 @@
         return res.nomenclatura;
     }
 
+    let _ultimoAliasSugeridoMesa = '';
+
+    async function sincronizarAnatomiaMesaConBackend(opciones = {}) {
+        const selectEl = document.getElementById('cot-origen-select');
+        const kilosEl = document.getElementById('cot-kilos-unidad');
+        if (!selectEl || String(selectEl.value || '').startsWith('ART:')) return;
+
+        const ingId = Number(selectEl.value || 0);
+        if (!ingId) return;
+        const kilos = Math.max(0.001, Number(kilosEl?.value) || 0.25);
+
+        try {
+            const resp = await fetch('/api/produccion/nodos/previsualizar-anatomia', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ingrediente_origen_id: ingId,
+                    kilos_unidad: kilos,
+                    flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa,
+                    nombre_publico: document.getElementById('cot-nombre-publico')?.value || ''
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok || !data.anatomia) return;
+            const anat = data.anatomia;
+
+            _ultimoAliasSugeridoMesa = anat.alias_vecino_sugerido || anat.nombre_publico_limpio || '';
+
+            const skuEl = document.getElementById('cot-sku-nodo');
+            const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
+            const nombreEl = document.getElementById('cot-nombre-publico');
+            const catEl = document.getElementById('cot-categoria');
+            const envEl = document.getElementById('cot-envase-select');
+            const segEl = document.getElementById('cot-segundos-mo');
+            const badgeEl = document.getElementById('cot-bunker-receta-badge');
+
+            if (skuEl && anat.sku_nativo && !ESTADO_NODOS.catalogoEditandoId) {
+                skuEl.value = anat.sku_nativo;
+            }
+            if (bunkerNomEl && anat.nomenclatura_bunker && !ESTADO_NODOS.catalogoEditandoId) {
+                bunkerNomEl.value = anat.nomenclatura_bunker;
+            }
+            if (nombreEl && !opciones.preservarAliasExistente && _ultimoAliasSugeridoMesa) {
+                nombreEl.value = _ultimoAliasSugeridoMesa;
+            }
+            if (catEl && anat.categoria_gestor && !ESTADO_NODOS.catalogoEditandoId) {
+                catEl.value = anat.categoria_gestor;
+            }
+            if (envEl && anat.insumo_envase_id && !ESTADO_NODOS.catalogoEditandoId) {
+                envEl.value = String(anat.insumo_envase_id);
+            }
+            if (segEl && anat.segundos_nativos && !ESTADO_NODOS.catalogoEditandoId) {
+                segEl.value = Number(anat.segundos_nativos);
+            }
+            if (badgeEl) {
+                const envObj = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === Number(anat.insumo_envase_id));
+                const nombreBolsa = envObj ? envObj.nombre : `Envase #${anat.insumo_envase_id || ''}`;
+                badgeEl.style.display = 'block';
+                if (anat.existe_en_bunker) {
+                    badgeEl.style.background = 'rgba(16,185,129,0.14)';
+                    badgeEl.style.border = '1px solid rgba(16,185,129,0.45)';
+                    badgeEl.style.color = '#6ee7b7';
+                    badgeEl.innerHTML = `✅ Receta existente en Búnker / Espacio Personal: <code>${escaparHtml(anat.sku_nativo)}</code> · ${escaparHtml(anat.nomenclatura_bunker)} · Envase real: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                } else {
+                    badgeEl.style.background = 'rgba(56,189,248,0.12)';
+                    badgeEl.style.border = '1px solid rgba(56,189,248,0.40)';
+                    badgeEl.style.color = '#bae6fd';
+                    badgeEl.innerHTML = `✨ Nueva fracción a dar de alta en Búnker y Espacio Personal: <code>${escaparHtml(anat.sku_nativo)}</code> · Envase sugerido: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                }
+            }
+
+            recalcularMesaCotizacionEnVivo();
+        } catch (err) {
+            console.warn('[NodosPizarra] No se pudo previsualizar anatomía:', err);
+        }
+    }
+
+    function aplicarAliasVecinoSugeridoMesa() {
+        const nombreEl = document.getElementById('cot-nombre-publico');
+        const selectEl = document.getElementById('cot-origen-select');
+        const opt = selectEl?.selectedOptions?.[0];
+        const alias = _ultimoAliasSugeridoMesa || opt?.getAttribute('data-alias-vecino') || opt?.getAttribute('data-nombre') || '';
+        if (nombreEl && alias) {
+            nombreEl.value = alias;
+            nombreEl.focus();
+        }
+    }
+
+    function alCambiarKilosUnidadMesa() {
+        const kilos = Number(document.getElementById('cot-kilos-unidad')?.value || 0.25);
+        if (kilos > 0) {
+            sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: true });
+        }
+        recalcularMesaCotizacionEnVivo();
+    }
+
     function alCambiarOrigenSelect() {
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const nombreEl = document.getElementById('cot-nombre-publico');
         const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const kilosEl = document.getElementById('cot-kilos-unidad');
+        const catEl = document.getElementById('cot-categoria');
         if (!selectEl || !costoEl) return;
 
         const opt = selectEl.selectedOptions?.[0];
         if (opt) {
             const costo = Number(opt.getAttribute('data-costo') || 0);
             const nombreBase = opt.getAttribute('data-nombre') || '';
+            const aliasVecino = opt.getAttribute('data-alias-vecino') || nombreBase.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+            const catSugerida = opt.getAttribute('data-categoria') || '';
             const kilos = Number(kilosEl?.value) || 0.25;
             const ingId = !String(selectEl.value).startsWith('ART:') ? Number(selectEl.value) : null;
             costoEl.value = costo.toFixed(2);
-            if (nombreEl && (!nombreEl.value.trim() || !ESTADO_NODOS.propuestaActivaId)) {
-                nombreEl.value = nombreBase.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (nombreEl) {
+                nombreEl.value = aliasVecino;
+            }
+            if (catEl && catSugerida) {
+                catEl.value = catSugerida;
             }
             if (bunkerNomEl && (!bunkerNomEl.value.trim() || !ESTADO_NODOS.catalogoEditandoId)) {
                 bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, ESTADO_NODOS.flujoSeleccionadoMesa, ingId);
             }
+            sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
         }
         recalcularMesaCotizacionEnVivo();
     }
@@ -1592,6 +1710,7 @@
                 bunkerNomEl.value = `${bunkerNomEl.value.trim()} x ${etiquetaGramos}`;
             }
         }
+        sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: true });
         recalcularMesaCotizacionEnVivo();
     }
 
@@ -1610,24 +1729,31 @@
         const nombreEl = document.getElementById('cot-nombre-publico');
         const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const kilosEl = document.getElementById('cot-kilos-unidad');
+        const catEl = document.getElementById('cot-categoria');
 
         if (selectEl) selectEl.value = String(item.id);
         const costoVivo = obtenerCostoVivoIngredientePizarra(item.id, item.costo_kg);
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
         const kilos = Number(kilosEl?.value) || 0.25;
-        if (nombreEl) nombreEl.value = item.nombre.replace(/\s*\(Mix\)\s*/i, ' ').replace(/\s+/g, ' ').trim();
-        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(item.nombre, kilos, item.flujo);
+        if (nombreEl) nombreEl.value = item.alias_vecino_sugerido || item.nombre.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+        if (catEl && item.categoria_gestor) catEl.value = item.categoria_gestor;
+        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(item.nombre, kilos, item.flujo, item.id);
+        sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
         recalcularMesaCotizacionEnVivo();
     }
 
-    function cargarPropuestaEnMesa(propuestaId) {
+    async function cargarPropuestaEnMesa(propuestaId) {
         const prop = ESTADO_NODOS.propuestas.find(p => Number(p.id) === Number(propuestaId));
         if (!prop) return;
+
+        const itemIng = prop.ingrediente_sugerido_id
+            ? ESTADO_NODOS.fuentes.ingredientes_por_flujo.find(i => Number(i.id) === Number(prop.ingrediente_sugerido_id))
+            : null;
 
         ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = Number(prop.id);
         ESTADO_NODOS.catalogoEditandoId = prop.articulo_catalogo_id ? Number(prop.articulo_catalogo_id) : null;
-        ESTADO_NODOS.flujoSeleccionadoMesa = Number(prop.flujo_sugerido || 2);
+        ESTADO_NODOS.flujoSeleccionadoMesa = Number(itemIng?.flujo || prop.flujo_sugerido || 2);
 
         renderizarVistaNodosCompleta();
 
@@ -1643,7 +1769,7 @@
         const subEl = document.getElementById('mesa-cotizacion-subtitulo');
 
         if (titEl) titEl.innerHTML = `🧮 Cotizando Solicitud ${escaparHtml(prop.codigo_propuesta)} (${escaparHtml(prop.nodo_solicitante_nombre || 'Nodo')})`;
-        if (subEl) subEl.innerHTML = `Precio estimado al vecino por el gestor: <strong style="color:#38bdf8;">${prop.precio_objetivo_vecino ? fmtMoneda(prop.precio_objetivo_vecino) : 'Abierto'}</strong>`;
+        if (subEl) subEl.innerHTML = `Solicitado por el Gestor: <strong style="color:#f8fafc;">${escaparHtml(prop.nombre_sugerido)}</strong> · Precio estimado vecino: <strong style="color:#38bdf8;">${prop.precio_objetivo_vecino ? fmtMoneda(prop.precio_objetivo_vecino) : 'Abierto'}</strong>`;
 
         if (prop.ingrediente_sugerido_id && selectEl) {
             selectEl.value = String(prop.ingrediente_sugerido_id);
@@ -1653,15 +1779,21 @@
             : Number(prop.ingrediente_sugerido_costo_kg || 10000);
 
         const kilosSug = Number(prop.kilos_sugeridos || 0.25);
+        const aliasDelGestor = (prop.nombre_sugerido || '')
+            .replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '')
+            .trim();
+        const aliasLimpioInicial = aliasDelGestor || itemIng?.alias_vecino_sugerido || '';
+
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
         if (kilosEl) kilosEl.value = kilosSug.toFixed(2);
-        if (nombreEl) nombreEl.value = (prop.nombre_sugerido || '').replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '').trim();
-        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(prop.ingrediente_sugerido_nombre || prop.nombre_sugerido, kilosSug, prop.flujo_sugerido);
-        if (catEl) catEl.value = prop.categoria_sugerida || 'Frutos Secos';
+        if (nombreEl) nombreEl.value = aliasLimpioInicial;
+        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(prop.ingrediente_sugerido_nombre || prop.nombre_sugerido, kilosSug, ESTADO_NODOS.flujoSeleccionadoMesa, prop.ingrediente_sugerido_id);
+        if (catEl) catEl.value = prop.categoria_sugerida || itemIng?.categoria_gestor || 'Frutos Secos';
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
         if (segEl && prop.segundos_estimados) segEl.value = Number(prop.segundos_estimados);
 
         recalcularMesaCotizacionEnVivo();
+        await sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: Boolean(aliasDelGestor) });
     }
 
     function editarArticuloCatalogoEnMesa(catalogoId) {
@@ -3115,6 +3247,8 @@
         cambiarSubTab: cambiarSubTabNodos,
         seleccionarFlujoMesa,
         alCambiarOrigenSelect,
+        alCambiarKilosUnidadMesa,
+        aplicarAliasVecinoSugeridoMesa,
         fijarGramajeRapido,
         recalcularEnVivo: recalcularMesaCotizacionEnVivo,
         cargarIngredienteDirectoEnMesa,

@@ -24,14 +24,14 @@ let esquemaInicializado = false;
 function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
     const id = Number(ing.id);
     const nombreLower = String(ing.nombre || '').toLowerCase();
-    const artVinc = String(ing.articulo_vinculado_numero || '').toUpperCase();
+    const artVinc = String(ing.articulo_vinculado_numero || '').trim().toUpperCase();
 
-    // Flujo 6: Doble Mezcla / Granola Compleja
+    // Flujo 6: Doble Mezcla / Granola Compleja (excluir prefijos GSC de Garbanzo)
     if (
         [122, 131, 132, 134].includes(id) ||
         nombreLower.includes('grana') ||
-        artVinc.startsWith('GS') ||
-        artVinc.startsWith('GF')
+        /^GS(X|GN)/i.test(artVinc) ||
+        /^(GF(X|GN)|GDF)/i.test(artVinc)
     ) {
         return {
             flujo: 6,
@@ -66,15 +66,14 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
         };
     }
 
-    // Flujo 3: Mixes (Mezclas Internas a Fracciones - incluye Ingredientes Puente Simples #148..#159)
+    // Flujo 3: Mixes (Mezclas Internas a Fracciones - excluye MFB/MFQ/MFD de Maíz Frito)
     if (
         idsCompuestosSet.has(id) ||
-        [148, 149, 150, 151, 154, 155, 158, 159].includes(id) ||
+        [92, 148, 149, 150, 151, 154, 155, 158, 159].includes(id) ||
         nombreLower.includes('mix') ||
         artVinc.startsWith('MFS') ||
         artVinc.startsWith('MCT') ||
-        artVinc.startsWith('MSX') ||
-        artVinc.startsWith('MF')
+        artVinc.startsWith('MSX')
     ) {
         return {
             flujo: 3,
@@ -88,6 +87,213 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
         flujo: 2,
         flujo_nombre: '[LDN 2] Mono-Ingrediente Fraccionado',
         origen_tipo: 'INGREDIENTE'
+    };
+}
+
+/**
+ * Diccionario determinista de nombres claros para el Gestor del Nodo y Alias sugerido para el Vecino,
+ * traduciendo siglas internas de depósito (ej: Mix BK, Zapallo A / AA, Grana Sol, Barrita 20 x 50).
+ */
+const MAPA_IDENTIDAD_CLARA_INGREDIENTES = {
+    // Granolas (Línea 6)
+    131: { nombre_claro: 'Granola de Sol (Grana Sol — Avena, Miel y Semillas)', alias_vecino: 'Granola de Sol', categoria: 'Granolas' },
+    122: { nombre_claro: 'Granola de Flor (Grana de Flor — con Frutos Secos)', alias_vecino: 'Granola de Flor', categoria: 'Granolas' },
+    // Barritas (Línea 5)
+    141: { nombre_claro: 'Barrita Energética Artesanal (Unidades de 50g)', alias_vecino: 'Pack Barritas Energéticas', categoria: 'Barritas', es_pack_barritas: true },
+    // Mixes y Mezclas (Línea 3)
+    149: { nombre_claro: 'Mix de Frutos Secos con Pasas', alias_vecino: 'Mix de Frutos Secos con Pasas', categoria: 'Mixes y Mezclas' },
+    154: { nombre_claro: 'Mix de Frutos Secos sin Pasas', alias_vecino: 'Mix de Frutos Secos sin Pasas', categoria: 'Mixes y Mezclas' },
+    150: { nombre_claro: 'Mix Premium de Frutos Secos (Sin Maní ni Pasas)', alias_vecino: 'Mix Premium de Frutos Secos', categoria: 'Mixes y Mezclas' },
+    151: { nombre_claro: 'Mix Salado Tostado (Picada)', alias_vecino: 'Mix Salado Tostado', categoria: 'Mixes y Mezclas' },
+    148: { nombre_claro: 'Mix Tropical (Frutos Secos y Frutas)', alias_vecino: 'Mix Tropical', categoria: 'Mixes y Mezclas' },
+    155: { nombre_claro: 'Mix Color Tropical (Con Cubos de Fruta)', alias_vecino: 'Mix Color Tropical', categoria: 'Mixes y Mezclas' },
+    92:  { nombre_claro: 'Mix de 4 Semillas Activables', alias_vecino: 'Mix de Semillas', categoria: 'Mixes y Mezclas' },
+    158: { nombre_claro: 'Mix Puro 4 Frutos Secos con Avellana (Línea Almafrut)', alias_vecino: 'Mix Puro 4 Frutos Secos', categoria: 'Mixes y Mezclas' },
+    159: { nombre_claro: 'Mix Clásico Económico con Pasas y Maní (Línea BK)', alias_vecino: 'Mix Clásico con Pasas', categoria: 'Mixes y Mezclas' },
+    // Tostados (Línea 4)
+    57:  { nombre_claro: 'Almendra Tostada sin Sal', alias_vecino: 'Almendra Tostada sin Sal', categoria: 'Tostados' },
+    123: { nombre_claro: 'Almendra Tostada y Salada', alias_vecino: 'Almendra Tostada y Salada', categoria: 'Tostados' },
+    18:  { nombre_claro: 'Castaña de Cajú Tostada sin Sal', alias_vecino: 'Castaña de Cajú Tostada', categoria: 'Tostados' },
+    41:  { nombre_claro: 'Castaña de Cajú Tostada y Salada', alias_vecino: 'Castaña de Cajú Tostada y Salada', categoria: 'Tostados' },
+    166: { nombre_claro: 'Castaña de Cajú Tostada y Salada (Partida)', alias_vecino: 'Castaña de Cajú Tostada Partida', categoria: 'Tostados' },
+    56:  { nombre_claro: 'Pistacho con Cáscara Tostado y Salado', alias_vecino: 'Pistacho Tostado y Salado', categoria: 'Tostados' },
+    // Frutos Secos (Línea 2)
+    1:   { nombre_claro: 'Almendra Nonpareil Pelada', alias_vecino: 'Almendra Nonpareil', categoria: 'Frutos Secos' },
+    161: { nombre_claro: 'Almendra Nonpareil Pelada (Calibre Grande)', alias_vecino: 'Almendra Nonpareil Grande', categoria: 'Frutos Secos' },
+    19:  { nombre_claro: 'Almendra Carmel Pelada', alias_vecino: 'Almendra Pelada Carmel', categoria: 'Frutos Secos' },
+    117: { nombre_claro: 'Almendra Guara Pelada Entera', alias_vecino: 'Almendra Guara Entera', categoria: 'Frutos Secos' },
+    74:  { nombre_claro: 'Almendra Guara Seleccionada (Ramillada)', alias_vecino: 'Almendra Guara Seleccionada', categoria: 'Frutos Secos' },
+    33:  { nombre_claro: 'Almendra Guara Partida', alias_vecino: 'Almendra Partida', categoria: 'Frutos Secos' },
+    39:  { nombre_claro: 'Almendra Fileteada Laminada', alias_vecino: 'Almendra Fileteada', categoria: 'Frutos Secos' },
+    21:  { nombre_claro: 'Avellana Pelada Grande', alias_vecino: 'Avellana Pelada Grande', categoria: 'Frutos Secos' },
+    71:  { nombre_claro: 'Avellana Pelada Mediana/Chica', alias_vecino: 'Avellana Pelada', categoria: 'Frutos Secos' },
+    16:  { nombre_claro: 'Castaña de Cajú Natural Entera', alias_vecino: 'Castaña de Cajú Entera', categoria: 'Frutos Secos' },
+    51:  { nombre_claro: 'Castaña de Cajú Natural Partida', alias_vecino: 'Castaña de Cajú Partida', categoria: 'Frutos Secos' },
+    24:  { nombre_claro: 'Castaña de Pará (Nuez de Brasil) Pelada', alias_vecino: 'Castaña de Pará Pelada', categoria: 'Frutos Secos' },
+    55:  { nombre_claro: 'Coco en Escamas Natural', alias_vecino: 'Coco en Escamas', categoria: 'Frutos Secos' },
+    22:  { nombre_claro: 'Coco Rallado', alias_vecino: 'Coco Rallado', categoria: 'Frutos Secos' },
+    76:  { nombre_claro: 'Maní con Cáscara Tostado (Virginia)', alias_vecino: 'Maní con Cáscara', categoria: 'Frutos Secos' },
+    45:  { nombre_claro: 'Maní Repelado Tostado y Salado', alias_vecino: 'Maní Salado', categoria: 'Frutos Secos' },
+    36:  { nombre_claro: 'Maní Repelado Tostado sin Sal', alias_vecino: 'Maní sin Sal', categoria: 'Frutos Secos' },
+    185: { nombre_claro: 'Maní Repelado sin Sal (Lote Alternativo)', alias_vecino: 'Maní Repelado sin Sal', categoria: 'Frutos Secos' },
+    98:  { nombre_claro: 'Maní Pelado Crudo (Runner)', alias_vecino: 'Maní Pelado', categoria: 'Frutos Secos' },
+    53:  { nombre_claro: 'Nuez con Cáscara Estándar (Calibre 32/34)', alias_vecino: 'Nuez con Cáscara', categoria: 'Frutos Secos' },
+    162: { nombre_claro: 'Nuez con Cáscara Mediana (Calibre 34/36)', alias_vecino: 'Nuez con Cáscara Seleccionada', categoria: 'Frutos Secos' },
+    83:  { nombre_claro: 'Nuez con Cáscara Grande (Calibre 36+)', alias_vecino: 'Nuez con Cáscara Grande', categoria: 'Frutos Secos' },
+    25:  { nombre_claro: 'Nuez Pelada Mariposa Extra Light (Mitades)', alias_vecino: 'Nuez Mariposa Extra Light', categoria: 'Frutos Secos' },
+    157: { nombre_claro: 'Nuez Pelada Cuarto Extra Light', alias_vecino: 'Nuez Pelada Cuarto', categoria: 'Frutos Secos' },
+    163: { nombre_claro: 'Nuez Pelada Cuartillo Extra Light (Repostería)', alias_vecino: 'Nuez Pelada Picada', categoria: 'Frutos Secos' },
+    32:  { nombre_claro: 'Nuez Pecán Pelada', alias_vecino: 'Nuez Pecán Pelada', categoria: 'Frutos Secos' },
+    50:  { nombre_claro: 'Pistacho Pelado Natural sin Cáscara', alias_vecino: 'Pistacho Pelado', categoria: 'Frutos Secos' },
+    // Semillas
+    110: { nombre_claro: 'Semilla de Zapallo Pelada Estándar (Calidad A)', alias_vecino: 'Semilla de Zapallo Pelada', categoria: 'Semillas' },
+    42:  { nombre_claro: 'Semilla de Zapallo Pelada Grande (Calidad AA)', alias_vecino: 'Semilla de Zapallo Pelada Grande', categoria: 'Semillas' },
+    152: { nombre_claro: 'Semilla de Amapola Azul', alias_vecino: 'Semilla de Amapola', categoria: 'Semillas' },
+    147: { nombre_claro: 'Semilla de Chía Gris', alias_vecino: 'Semilla de Chía', categoria: 'Semillas' },
+    85:  { nombre_claro: 'Semilla de Chía Marrón', alias_vecino: 'Semilla de Chía Marrón', categoria: 'Semillas' },
+    43:  { nombre_claro: 'Semilla de Girasol Pelado Entero', alias_vecino: 'Semilla de Girasol Pelado', categoria: 'Semillas' },
+    184: { nombre_claro: 'Semilla de Girasol Pelado Partido', alias_vecino: 'Semilla de Girasol Partido', categoria: 'Semillas' },
+    81:  { nombre_claro: 'Semilla de Lino', alias_vecino: 'Semilla de Lino', categoria: 'Semillas' },
+    97:  { nombre_claro: 'Quinoa Blanca Lavada', alias_vecino: 'Quinoa Blanca', categoria: 'Semillas' },
+    128: { nombre_claro: 'Sésamo Blanco Pelado', alias_vecino: 'Sésamo Blanco', categoria: 'Semillas' },
+    20:  { nombre_claro: 'Sésamo Integral', alias_vecino: 'Sésamo Integral', categoria: 'Semillas' },
+    79:  { nombre_claro: 'Sésamo Negro', alias_vecino: 'Sésamo Negro', categoria: 'Semillas' },
+    // Frutas Disecadas y Deshidratados
+    26:  { nombre_claro: 'Arándanos Rojos Deshidratados (Pasas)', alias_vecino: 'Arándanos Deshidratados', categoria: 'Frutas Disecadas y Deshidratados' },
+    168: { nombre_claro: 'Damasco Turco Deshidratado', alias_vecino: 'Damasco Turco', categoria: 'Frutas Disecadas y Deshidratados' },
+    89:  { nombre_claro: 'Dátil Medjoul Grande sin Carozo', alias_vecino: 'Dátil Medjoul', categoria: 'Frutas Disecadas y Deshidratados' },
+    169: { nombre_claro: 'Dátil Deglet Noor con Carozo', alias_vecino: 'Dátil con Carozo', categoria: 'Frutas Disecadas y Deshidratados' },
+    188: { nombre_claro: 'Higo Turco Deshidratado', alias_vecino: 'Higo Turco', categoria: 'Frutas Disecadas y Deshidratados' },
+    34:  { nombre_claro: 'Pasa de Uva Negra sin Semilla', alias_vecino: 'Pasa de Uva Negra', categoria: 'Frutas Disecadas y Deshidratados' },
+    153: { nombre_claro: 'Pasa de Uva Negra Jumbo Grande', alias_vecino: 'Pasa de Uva Jumbo', categoria: 'Frutas Disecadas y Deshidratados' },
+    35:  { nombre_claro: 'Pasa de Uva Rubia sin Semilla', alias_vecino: 'Pasa de Uva Rubia', categoria: 'Frutas Disecadas y Deshidratados' },
+    59:  { nombre_claro: 'Pasa de Uva Rubia Seleccionada (Lote 2)', alias_vecino: 'Pasa de Uva Rubia', categoria: 'Frutas Disecadas y Deshidratados' },
+    46:  { nombre_claro: 'Chips de Banana Crocantes', alias_vecino: 'Chips de Banana', categoria: 'Frutas Disecadas y Deshidratados' },
+    64:  { nombre_claro: 'Ananá Amarillo Deshidratado en Cubos', alias_vecino: 'Ananá en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
+    60:  { nombre_claro: 'Ananá Multicolor Deshidratado en Cubos', alias_vecino: 'Ananá Multicolor en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
+    63:  { nombre_claro: 'Ananá Rojo Deshidratado en Cubos', alias_vecino: 'Ananá Rojo en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
+    61:  { nombre_claro: 'Ananá Deshidratado en Rodajas', alias_vecino: 'Rodajas de Ananá Deshidratado', categoria: 'Frutas Disecadas y Deshidratados' },
+    167: { nombre_claro: 'Papaya Deshidratada en Cubos Multicolor', alias_vecino: 'Papaya en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
+    91:  { nombre_claro: 'Hongos de Pino Secos', alias_vecino: 'Hongos Secos', categoria: 'Frutas Disecadas y Deshidratados' },
+    52:  { nombre_claro: 'Tomate Seco Deshidratado', alias_vecino: 'Tomate Seco', categoria: 'Frutas Disecadas y Deshidratados' },
+    193: { nombre_claro: 'Romero Seco Aromático', alias_vecino: 'Romero Seco', categoria: 'Frutas Disecadas y Deshidratados' },
+    170: { nombre_claro: 'Jengibre Deshidratado Natural', alias_vecino: 'Jengibre Deshidratado', categoria: 'Frutas Disecadas y Deshidratados' },
+    // Cereales y Harinas
+    164: { nombre_claro: 'Salvado de Avena', alias_vecino: 'Salvado de Avena', categoria: 'Cereales y Harinas' },
+    87:  { nombre_claro: 'Harina de Trigo Integral Orgánica', alias_vecino: 'Harina Integral Orgánica', categoria: 'Cereales y Harinas' },
+    187: { nombre_claro: 'Harina de Trigo Integral Fina', alias_vecino: 'Harina de Trigo Integral', categoria: 'Cereales y Harinas' },
+    82:  { nombre_claro: 'Harina de Almendras Peladas (Sin Piel)', alias_vecino: 'Harina de Almendras sin Piel', categoria: 'Cereales y Harinas' },
+    191: { nombre_claro: 'Harina de Almendras Integrales (Con Piel)', alias_vecino: 'Harina de Almendras con Piel', categoria: 'Cereales y Harinas' },
+    156: { nombre_claro: 'Harina de Maíz Fina', alias_vecino: 'Harina de Maíz', categoria: 'Cereales y Harinas' },
+    106: { nombre_claro: 'Avena Arrollada Mediana', alias_vecino: 'Avena Arrollada Mediana', categoria: 'Cereales y Harinas' },
+    37:  { nombre_claro: 'Avena Arrollada Fina', alias_vecino: 'Avena Arrollada Fina', categoria: 'Cereales y Harinas' },
+    120: { nombre_claro: 'Avena Arrollada Gruesa Tradicional', alias_vecino: 'Avena Arrollada Gruesa', categoria: 'Cereales y Harinas' },
+    75:  { nombre_claro: 'Avena Instantánea', alias_vecino: 'Avena Instantánea', categoria: 'Cereales y Harinas' },
+    95:  { nombre_claro: 'Arroz Yamaní Integral', alias_vecino: 'Arroz Yamaní', categoria: 'Cereales y Harinas' },
+    139: { nombre_claro: 'Arroz Largo Fino Integral', alias_vecino: 'Arroz Integral', categoria: 'Cereales y Harinas' },
+    102: { nombre_claro: 'Arroz Doble Carolina / Sushi', alias_vecino: 'Arroz para Sushi', categoria: 'Cereales y Harinas' },
+    72:  { nombre_claro: 'Maíz Frito Crocante Sabor Barbacoa', alias_vecino: 'Maíz Frito Barbacoa', categoria: 'Cereales y Harinas' },
+    44:  { nombre_claro: 'Maíz Frito Crocante Sabor Mostaza y Miel', alias_vecino: 'Maíz Frito Mostaza y Miel', categoria: 'Cereales y Harinas' },
+    130: { nombre_claro: 'Maíz Frito Crocante Sabor Queso', alias_vecino: 'Maíz Frito Sabor Queso', categoria: 'Cereales y Harinas' },
+    173: { nombre_claro: 'Maíz Pisado Blanco (Locro)', alias_vecino: 'Maíz Pisado Blanco', categoria: 'Cereales y Harinas' },
+    174: { nombre_claro: 'Maíz Pisingallo (Pochoclo)', alias_vecino: 'Maíz Pisingallo', categoria: 'Cereales y Harinas' },
+    165: { nombre_claro: 'Rebozador Japonés Crocante (Panko)', alias_vecino: 'Panko Crocante', categoria: 'Cereales y Harinas' },
+    // Legumbres
+    88:  { nombre_claro: 'Garbanzo Seco Seleccionado', alias_vecino: 'Garbanzo', categoria: 'Legumbres' },
+    112: { nombre_claro: 'Garbanzo Lechoso Grande', alias_vecino: 'Garbanzo Lechoso Grande', categoria: 'Legumbres' },
+    100: { nombre_claro: 'Arveja Seca Entera', alias_vecino: 'Arvejas Secas', categoria: 'Legumbres' },
+    186: { nombre_claro: 'Lenteja Nacional', alias_vecino: 'Lentejas', categoria: 'Legumbres' },
+    111: { nombre_claro: 'Lenteja Roja Turca Pelada', alias_vecino: 'Lenteja Roja Turca', categoria: 'Legumbres' },
+    113: { nombre_claro: 'Lentejón Importado Grande', alias_vecino: 'Lentejón Grande', categoria: 'Legumbres' },
+    96:  { nombre_claro: 'Lentejón Nacional', alias_vecino: 'Lentejón Nacional', categoria: 'Legumbres' },
+    105: { nombre_claro: 'Poroto Cranberry (Alubia Colorada)', alias_vecino: 'Poroto Cranberry', categoria: 'Legumbres' },
+    192: { nombre_claro: 'Poroto Colorado (Red Kidney)', alias_vecino: 'Poroto Colorado', categoria: 'Legumbres' },
+    93:  { nombre_claro: 'Poroto Aduki', alias_vecino: 'Poroto Aduki', categoria: 'Legumbres' },
+    90:  { nombre_claro: 'Poroto Alubia Blanco', alias_vecino: 'Poroto Alubia', categoria: 'Legumbres' },
+    103: { nombre_claro: 'Poroto Mung Verde', alias_vecino: 'Poroto Mung', categoria: 'Legumbres' },
+    94:  { nombre_claro: 'Poroto Negro', alias_vecino: 'Poroto Negro', categoria: 'Legumbres' },
+    104: { nombre_claro: 'Poroto Pallares Blanco Grande', alias_vecino: 'Poroto Pallares', categoria: 'Legumbres' },
+    // Repostería y Otros
+    54:  { nombre_claro: 'Azúcar Mascabo Integral', alias_vecino: 'Azúcar Mascabo', categoria: 'Repostería y Otros' },
+    171: { nombre_claro: 'Azúcar Rubia Orgánica', alias_vecino: 'Azúcar Rubia', categoria: 'Repostería y Otros' },
+    23:  { nombre_claro: 'Azúcar Negra', alias_vecino: 'Azúcar Negra', categoria: 'Repostería y Otros' },
+    99:  { nombre_claro: 'Jengibre Cristalizado en Cubos', alias_vecino: 'Jengibre en Cubos', categoria: 'Repostería y Otros' },
+    65:  { nombre_claro: 'Cereza Glaseada', alias_vecino: 'Cereza Glaseada', categoria: 'Repostería y Otros' },
+    144: { nombre_claro: 'Fruta Abrillantada Nevada', alias_vecino: 'Fruta Abrillantada', categoria: 'Repostería y Otros' },
+    195: { nombre_claro: 'Fruta Escurrida Repostería (Línea Orieta)', alias_vecino: 'Fruta Escurrida', categoria: 'Repostería y Otros' },
+    194: { nombre_claro: 'Fruta Escurrida Especial (Línea Picardía)', alias_vecino: 'Fruta Escurrida Especial', categoria: 'Repostería y Otros' },
+    172: { nombre_claro: 'Ají Molido Seleccionado', alias_vecino: 'Ají Molido', categoria: 'Repostería y Otros' },
+    84:  { nombre_claro: 'Ajo Deshidratado en Polvo', alias_vecino: 'Ajo en Polvo', categoria: 'Repostería y Otros' }
+};
+
+function formatearIdentidadClaraIngrediente(ing, familiaNombreDb = null, idsCompuestosSet = new Set()) {
+    const id = Number(ing.id);
+    const clasif = clasificarIngredienteEnFlujo(ing, idsCompuestosSet);
+    const override = MAPA_IDENTIDAD_CLARA_INGREDIENTES[id];
+
+    if (override) {
+        return {
+            nombre_claro_gestor: override.nombre_claro,
+            alias_vecino_sugerido: override.alias_vecino,
+            categoria_gestor: override.categoria,
+            flujo: clasif.flujo,
+            flujo_nombre: clasif.flujo_nombre,
+            origen_tipo: clasif.origen_tipo,
+            es_pack_barritas: Boolean(override.es_pack_barritas || id === 141 || clasif.flujo === 5)
+        };
+    }
+
+    // Normalización general automática para cualquier ingrediente nuevo agregado en el futuro
+    let limpio = String(ing.nombre || '')
+        .replace(/\s*\((Simple|Mix)\)\s*/gi, ' ')
+        .replace(/\bNonparei\b/gi, 'Nonpareil')
+        .replace(/\bDamazco\b/gi, 'Damasco')
+        .replace(/\bSalvao\b/gi, 'Salvado')
+        .replace(/\bCasacara\b/gi, 'Cáscara')
+        .replace(/\bCramberry\b/gi, 'Cranberry')
+        .replace(/\bMani\b/gi, 'Maní')
+        .replace(/\bAzucar\b/gi, 'Azúcar')
+        .replace(/\bSesamo\b/gi, 'Sésamo')
+        .replace(/\bAnana\b/gi, 'Ananá')
+        .replace(/\bAji\b/gi, 'Ají')
+        .replace(/\bChia\b/gi, 'Chía')
+        .replace(/\bCaju\b/gi, 'Cajú')
+        .replace(/\bMaiz\b/gi, 'Maíz')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    let categoria = 'Frutos Secos';
+    const low = limpio.toLowerCase();
+    const famLow = String(familiaNombreDb || '').toLowerCase();
+
+    if (clasif.flujo === 6) {
+        categoria = 'Granolas';
+    } else if (clasif.flujo === 5) {
+        categoria = 'Barritas';
+    } else if (clasif.flujo === 4) {
+        categoria = 'Tostados';
+    } else if (clasif.flujo === 3) {
+        categoria = 'Mixes y Mezclas';
+    } else if (famLow.includes('semilla') || /\b(semilla|sésamo|sesamo|quinoa|chía|lino|amapola)\b/i.test(low)) {
+        categoria = 'Semillas';
+    } else if (famLow.includes('legumbre') || /\b(poroto|lenteja|lentejon|lentejón|garbanzo|arveja)\b/i.test(low)) {
+        categoria = 'Legumbres';
+    } else if (famLow.includes('harina') || famLow.includes('cereal') || /\b(harina|avena|arroz|salvado|panko|maíz|maiz)\b/i.test(low)) {
+        categoria = 'Cereales y Harinas';
+    } else if (famLow.includes('disecad') || famLow.includes('deshidrat') || /\b(pasa|dátil|datil|damasco|higo|arándano|arandano|ananá|papaya|chip|tomate seco|hongo)\b/i.test(low)) {
+        categoria = 'Frutas Disecadas y Deshidratados';
+    } else if (famLow.includes('repost') || /\b(azúcar|azucar|cereza|fruta|jengibre|ají|ajo|leche)\b/i.test(low)) {
+        categoria = 'Repostería y Otros';
+    }
+
+    return {
+        nombre_claro_gestor: limpio,
+        alias_vecino_sugerido: limpio.replace(/\s+\d+\s*$/, '').trim() || limpio,
+        categoria_gestor: categoria,
+        flujo: clasif.flujo,
+        flujo_nombre: clasif.flujo_nombre,
+        origen_tipo: clasif.origen_tipo,
+        es_pack_barritas: Boolean(id === 141 || clasif.flujo === 5)
     };
 }
 
@@ -268,6 +474,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                AND ba.articulo_id NOT LIKE 'NB-%'
                AND UPPER(ba.articulo_id) <> 'CCTX250G'
                AND COALESCE(ba.familia_id, 0) > 0
+               AND COALESCE(ba.familia_id, 0) <> 42
              ORDER BY
                CASE WHEN ABS(COALESCE(ba.kilos_unidad, 1) - $2) < 0.0005 THEN 0 ELSE 1 END,
                CASE WHEN COALESCE(ba.kilos_unidad, 1) < 1 THEN 0 ELSE 1 END,
@@ -278,6 +485,14 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         hermanos = hermRes.rows;
     }
 
+    const recomendarEnvasePorKilos = (kgVal) => {
+        const kg = Number(kgVal || 0.25);
+        if (kg <= 0.30) return 180; // Bolsa 15 x 18
+        if (kg <= 0.60) return 179; // Bolsa 20 x 25
+        if (kg <= 1.50) return 178; // Bolsa 20 x 30
+        return 177;                 // Bolsa 30 x 40
+    };
+
     if (hermanos.length > 0) {
         const hermanoRef = hermanos[0];
         const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades);
@@ -286,6 +501,27 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         const exactoEnHermanos = hermanos.find(
             h => String(h.articulo_id).toUpperCase() === String(derivado.sku_nativo).toUpperCase()
         ) || (Math.abs(Number(hermanoRef.kilos_unidad) - kilos) < 0.0005 ? hermanoRef : null);
+
+        let insumoEnvaseRecetaId = null;
+        if (exactoEnHermanos) {
+            const envRecRes = await q.query(
+                `SELECT ri.ingrediente_id, ri.cantidad
+                 FROM public.recetas r
+                 JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                 JOIN public.ingredientes i ON i.id = ri.ingrediente_id
+                 WHERE UPPER(r.articulo_numero) = UPPER($1)
+                   AND COALESCE(i.es_insumo, false) = true
+                   AND ri.ingrediente_id <> 181
+                 ORDER BY
+                   CASE WHEN ABS(COALESCE(ri.cantidad, 1) - 1) < 0.05 THEN 0 ELSE 1 END,
+                   ri.id DESC
+                 LIMIT 1`,
+                [exactoEnHermanos.articulo_id]
+            );
+            if (envRecRes.rows[0]) {
+                insumoEnvaseRecetaId = Number(envRecRes.rows[0].ingrediente_id);
+            }
+        }
 
         const baseArt = exactoEnHermanos || hermanoRef;
         const propRef = (baseArt.propiedades_dinamicas && typeof baseArt.propiedades_dinamicas === 'object')
@@ -327,6 +563,8 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             pack_hijo_codigo: exactoEnHermanos ? (exactoEnHermanos.pack_hijo_codigo || null) : null,
             expresado_en_gramos: derivado.expresado_en_gramos,
             segundos_nativos: segundosNativos,
+            insumo_envase_id: insumoEnvaseRecetaId || recomendarEnvasePorKilos(kilos),
+            envase_origen_receta: Boolean(insumoEnvaseRecetaId),
             compartido_mayorista: fallbackTax.compartido_mayorista,
             listas_mayoristas_compartidas: fallbackTax.listas_mayoristas_compartidas,
             posiciones: Object.keys(posicionesNativas).length > 0 ? posicionesNativas : fallbackTax.posiciones
@@ -335,7 +573,9 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
 
     const fallback = construirTaxonomiaPosicionalNodo({
         ...art,
-        ingrediente_origen_id: ingId
+        ingrediente_origen_id: ingId,
+        ing_origen_nombre: ingResuelto?.nombre || art.ing_origen_nombre || '',
+        articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || ''
     });
     return {
         existe_en_bunker: false,
@@ -345,7 +585,34 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         sku_nativo: fallback.sku_nativo,
         ...fallback,
         pack_hijo_codigo: null,
-        segundos_nativos: null
+        segundos_nativos: null,
+        insumo_envase_id: recomendarEnvasePorKilos(kilos),
+        envase_origen_receta: false
+    };
+}
+
+/**
+ * Previsualiza en vivo para la Mesa Cotizadora de LAMDA la anatomía exacta en Búnker / Espacios Personales
+ * (SKU nativo, receta existente si ya existe, envase primario real de receta y Alias Amigable sugerido al vecino).
+ */
+async function previsualizarAnatomiaCotizacionNodo(payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const anatomia = await resolverAnatomiaNativaArticuloNodo(db, payload);
+    let identidadClara = null;
+    if (anatomia.ingrediente_comercial_id) {
+        const ingRes = await db.query(
+            'SELECT id, codigo, nombre, articulo_vinculado_numero FROM public.ingredientes WHERE id = $1 LIMIT 1',
+            [anatomia.ingrediente_comercial_id]
+        );
+        if (ingRes.rows[0]) {
+            identidadClara = formatearIdentidadClaraIngrediente(ingRes.rows[0], anatomia.familia_nombre);
+        }
+    }
+    return {
+        ...anatomia,
+        nombre_claro_gestor: identidadClara ? identidadClara.nombre_claro_gestor : (anatomia.ingrediente_comercial_nombre || ''),
+        alias_vecino_sugerido: identidadClara ? identidadClara.alias_vecino_sugerido : (anatomia.nombre_publico_limpio || ''),
+        categoria_gestor: identidadClara ? identidadClara.categoria_gestor : (anatomia.familia_nombre || 'Frutos Secos')
     };
 }
 
@@ -563,19 +830,23 @@ function construirTaxonomiaPosicionalNodo(art = {}) {
         };
     }
 
-    const nombreBase = String(art.nombre_publico || art.ing_origen_nombre || sku)
+    const nombreBase = String(art.nombre_publico || art.ing_origen_nombre || MAPA_IDENTIDAD_CLARA_INGREDIENTES[ingId]?.alias_vecino || sku)
         .replace(/^\[NODO\]\s*/i, '')
-        .replace(/\s*\(Simple\)\s*/i, '')
+        .replace(/\s*\((Simple|Mix)\)\s*/gi, '')
         .replace(/\s+x\s+\d+(g|kg)$/i, '')
         .trim();
-    const prefCod = nombreBase
+    const artVincPref = String(art.articulo_vinculado_numero || '')
+        .trim()
+        .toUpperCase()
+        .replace(/([xX])(\d+|K|KG)$/i, '');
+    const prefCod = artVincPref || nombreBase
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase()
         .replace(/[^A-Z0-9]+/g, '')
         .slice(0, 6) || 'FRAC';
     return {
-        sku_nativo: sku && !sku.startsWith('NB-') ? sku : `${prefCod}X${gramos}G`,
+        sku_nativo: sku && !sku.startsWith('NB-') ? sku : `${prefCod}X${sufijoPeso.toUpperCase()}`,
         familia_id: Number(art.familia_bunker_id || 1),
         familia_nombre: art.familia_bunker_nombre || 'Frutos Secos',
         rubro: 'FRUTOS SECOS',
@@ -2068,9 +2339,10 @@ async function obtenerFuentesCostoSeisFlujos() {
                    articulo_vinculado_numero, COALESCE(es_insumo, false) AS es_insumo
             FROM public.ingredientes
             WHERE COALESCE(es_insumo, false) = false
-              AND COALESCE(costo_patron, 0) > 0
+              AND id < 8000
               AND nombre NOT ILIKE '%Fuera de Servicio%'
               AND nombre NOT ILIKE '%Para Mix%'
+              AND nombre NOT ILIKE '%Test E2E%'
             ORDER BY nombre ASC
         `),
         db.query(`
@@ -2158,12 +2430,15 @@ async function obtenerFuentesCostoSeisFlujos() {
                    ba.articulo_id AS hermano_sku,
                    ba.descripcion_generada AS hermano_descripcion_generada,
                    ba.descripcion AS hermano_articulo_principal,
-                   ba.familia_id AS hermano_familia_id
+                   ba.familia_id AS hermano_familia_id,
+                   bf.nombre AS hermano_familia_nombre
             FROM public.receta_ingredientes ri
             JOIN public.recetas r ON r.id = ri.receta_id
             JOIN public.bunker_articulos ba ON ba.articulo_id = r.articulo_numero
+            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
             WHERE COALESCE(ba.es_pack, false) = false
               AND ba.familia_id IS NOT NULL
+              AND COALESCE(ba.familia_id, 0) <> 42
             ORDER BY ri.ingrediente_id,
                      CASE
                          WHEN ba.kilos_unidad BETWEEN 0.10 AND 1.00 THEN 0
@@ -2179,8 +2454,8 @@ async function obtenerFuentesCostoSeisFlujos() {
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
-    // Pre-mezclas intermedias que tienen un ingrediente puente simple terminado (ej: 109 Pre-Mezcla Barritas -> 141 Barrita 20 x 50 (1kg))
-    const idsPreMezclasIntermedias = new Set([109, 132, 133, 134, 135, 140]);
+    // Pre-mezclas e insumos internos de UP que tienen un ingrediente puente simple terminado (ej: 109 -> 141, 132/134/135/136 -> 122/131)
+    const idsPreMezclasIntermedias = new Set([109, 132, 133, 134, 135, 136, 140]);
     const mapaHermanos = new Map(hermanosRes.rows.map(r => [Number(r.ingrediente_id), r]));
 
     const fuentesIngredientes = ingRes.rows
@@ -2192,17 +2467,21 @@ async function obtenerFuentesCostoSeisFlujos() {
             return true;
         })
         .map(ing => {
-            const clasif = clasificarIngredienteEnFlujo(ing, idsCompuestosSet);
             const herm = mapaHermanos.get(Number(ing.id)) || null;
+            const ident = formatearIdentidadClaraIngrediente(ing, herm ? herm.hermano_familia_nombre : null, idsCompuestosSet);
             return {
                 id: Number(ing.id),
                 codigo: ing.codigo,
                 nombre: ing.nombre,
+                nombre_claro_gestor: ident.nombre_claro_gestor,
+                alias_vecino_sugerido: ident.alias_vecino_sugerido,
+                categoria_gestor: ident.categoria_gestor,
+                es_pack_barritas: ident.es_pack_barritas,
                 costo_kg: Number(ing.costo_patron),
                 articulo_vinculado_numero: ing.articulo_vinculado_numero,
-                flujo: clasif.flujo,
-                flujo_nombre: clasif.flujo_nombre,
-                origen_tipo: clasif.origen_tipo,
+                flujo: ident.flujo,
+                flujo_nombre: ident.flujo_nombre,
+                origen_tipo: ident.origen_tipo,
                 hermano_sku_base: herm ? herm.hermano_sku : null,
                 hermano_descripcion_generada: herm ? herm.hermano_descripcion_generada : null,
                 hermano_familia_id: herm ? Number(herm.hermano_familia_id) : null
@@ -3070,7 +3349,9 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
-        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar pedidos vecinales confirmados)
+        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar pedidos vecinales confirmados).
+        // Las fracciones nuevas ingresan en estado Oculto (publicado_tienda = false) para que cada Gestor defina su ganancia y las publique en su tienda.
+        const publicadoInicial = Boolean(payload.publicar_inmediato_tienda === true);
         const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
         for (const nodo of nodosActivos.rows) {
             const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
@@ -3081,14 +3362,14 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 `INSERT INTO public.nodos_ofertas_gestor (
                     nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
                     margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-                ) VALUES ($1,$2,$3,$4,$5,$6,true)
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7)
                 ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
                     alerta_cambio_costo = (public.nodos_ofertas_gestor.precio_base_nodo_snapshot <> EXCLUDED.precio_base_nodo_snapshot),
                     precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
                     precio_venta_vecino = CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50,
                     ganancia_unitaria_gestor = (CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50) - EXCLUDED.precio_base_nodo_snapshot,
                     updated_at = NOW()`,
-                [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia]
+                [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia, publicadoInicial]
             );
         }
 
@@ -3600,6 +3881,91 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
 }
 
 /**
+ * Devuelve el catálogo sanitizado de ingredientes activos comercializables o producibles por LAMDA
+ * para que el Gestor del Nodo solicite nuevas fracciones desde su celular sin texto libre,
+ * independientemente del stock circunstancial del momento y sin exponer costos ni fórmulas internas.
+ */
+async function obtenerCatalogoIngredientesSolicitablesGestor() {
+    const [ingRes, compRes, famRes] = await Promise.all([
+        db.query(`
+            SELECT id, nombre, articulo_vinculado_numero
+            FROM public.ingredientes
+            WHERE COALESCE(es_insumo, false) = false
+              AND id < 8000
+              AND nombre NOT ILIKE '%Fuera de Servicio%'
+              AND nombre NOT ILIKE '%Para Mix%'
+              AND nombre NOT ILIKE '%Test E2E%'
+            ORDER BY id ASC
+        `),
+        db.query(`
+            SELECT DISTINCT mix_id AS ingrediente_padre_id
+            FROM public.ingrediente_composicion
+        `),
+        db.query(`
+            SELECT DISTINCT ON (ri.ingrediente_id)
+                   ri.ingrediente_id,
+                   bf.nombre AS familia_nombre
+            FROM public.receta_ingredientes ri
+            JOIN public.recetas r ON r.id = ri.receta_id
+            JOIN public.bunker_articulos ba ON ba.articulo_id = r.articulo_numero
+            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+            WHERE COALESCE(ba.familia_id, 0) > 0
+              AND COALESCE(ba.familia_id, 0) <> 42
+            ORDER BY ri.ingrediente_id,
+                     CASE WHEN COALESCE(ba.kilos_unidad, 1) BETWEEN 0.05 AND 1.00 THEN 0 ELSE 1 END,
+                     ba.kilos_unidad ASC
+        `)
+    ]);
+
+    const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
+    // Excluir pre-mezclas e insumos internos de UP externa (se exponen sus ingredientes puente terminados: #122, #131, #141, etc.)
+    const idsIntermediosExcluidos = new Set([109, 132, 133, 134, 135, 136, 140]);
+    const mapaFamilias = new Map(famRes.rows.map(r => [Number(r.ingrediente_id), r.familia_nombre]));
+
+    const ordenCategorias = [
+        'Granolas',
+        'Frutos Secos',
+        'Tostados',
+        'Mixes y Mezclas',
+        'Barritas',
+        'Frutas Disecadas y Deshidratados',
+        'Semillas',
+        'Cereales y Harinas',
+        'Legumbres',
+        'Repostería y Otros'
+    ];
+    const pesoCat = (cat) => {
+        const idx = ordenCategorias.indexOf(cat);
+        return idx === -1 ? 99 : idx;
+    };
+
+    return ingRes.rows
+        .filter(ing => {
+            const idNum = Number(ing.id);
+            if (idsCompuestosSet.has(idNum)) return false;
+            if (idsIntermediosExcluidos.has(idNum)) return false;
+            return true;
+        })
+        .map(ing => {
+            const fam = mapaFamilias.get(Number(ing.id)) || null;
+            const ident = formatearIdentidadClaraIngrediente(ing, fam, idsCompuestosSet);
+            return {
+                id: Number(ing.id),
+                nombre_claro: ident.nombre_claro_gestor,
+                alias_vecino_sugerido: ident.alias_vecino_sugerido,
+                categoria_gestor: ident.categoria_gestor,
+                flujo: ident.flujo,
+                es_pack_barritas: ident.es_pack_barritas
+            };
+        })
+        .sort((a, b) => {
+            const diffCat = pesoCat(a.categoria_gestor) - pesoCat(b.categoria_gestor);
+            if (diffCat !== 0) return diffCat;
+            return a.nombre_claro.localeCompare(b.nombre_claro, 'es');
+        });
+}
+
+/**
  * Obtiene todos los datos necesarios para la Tienda Marca Blanca del Vecino y
  * para el Panel de Autogestión del Gestor de un Nodo específico (:slug).
  */
@@ -3650,7 +4016,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     const nodo = nodoRes.rows[0];
     const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -3659,6 +4025,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
                     nac.presentacion_etiqueta,
                     nac.kilos_unidad,
                     nac.flujo_lamda,
+                    nac.ingrediente_origen_id,
                     nac.precio_base_nodo_final
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
@@ -3669,7 +4036,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         ),
         db.query(
             `SELECT npf.id, npf.codigo_propuesta, npf.nodo_solicitante_id, npf.nombre_sugerido,
-                    npf.categoria_sugerida, npf.kilos_sugeridos, npf.precio_objetivo_vecino,
+                    npf.categoria_sugerida, npf.ingrediente_sugerido_id, npf.flujo_sugerido,
+                    npf.kilos_sugeridos, npf.precio_objetivo_vecino,
                     npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at
              FROM public.nodos_propuestas_fracciones npf
              WHERE npf.nodo_solicitante_id = $1
@@ -3700,7 +4068,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
              ORDER BY nmc.id DESC
              LIMIT 30`,
             [nodo.id]
-        )
+        ),
+        obtenerCatalogoIngredientesSolicitablesGestor()
     ]);
 
     const itemsPorPedido = new Map();
@@ -3756,7 +4125,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         movimientos_cta_cte: movsRes.rows,
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
-        ingredientes_sugeribles: []
+        ingredientes_sugeribles: ingredientesSolicitables
     };
 }
 
@@ -6864,6 +7233,7 @@ module.exports = {
     asegurarEsquemaNodosBarriales,
     ponerACeroDatosNodosBarriales,
     construirTaxonomiaPosicionalNodo,
+    previsualizarAnatomiaCotizacionNodo,
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,
     guardarNodoMaestro,
@@ -6874,6 +7244,7 @@ module.exports = {
     sincronizarCatalogoNodoDesdeBunker,
     actualizarOfertaGestor,
     calcularProximaEntregaNodo,
+    obtenerCatalogoIngredientesSolicitablesGestor,
     obtenerDatosPortalNodo,
     actualizarConfiguracionGestorNodo,
     crearPedidoVecinoTienda,

@@ -88,8 +88,10 @@ async function asegurarTunelCloudflareNodos() {
                     fs.writeFileSync(EMPTY_CF_CONFIG, '# empty config for quick tunnel\n', 'utf8');
                 } catch (_) {}
                 const proc = spawn(CLOUDFLARED_EXE, ['tunnel', '--config', EMPTY_CF_CONFIG, '--url', 'http://127.0.0.1:3002', '--no-autoupdate'], {
-                    windowsHide: true
+                    windowsHide: true,
+                    detached: true
                 });
+                proc.unref();
                 tunelCloudflareProc = proc;
 
                 const revisarSalida = (chunk) => {
@@ -178,6 +180,21 @@ router.post('/calcular-preview', async (req, res) => {
         const resultado = nodosService.calcularEstructuraCostosNodo(req.body || {});
         res.json({ ok: true, calculo: resultado });
     } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/previsualizar-anatomia
+ * Resuelve en vivo para la Mesa Cotizadora el SKU nativo en Búnker, receta/bolsa real
+ * en Espacios Personales y el Alias Amigable sugerido para el Vecino.
+ */
+router.post('/previsualizar-anatomia', async (req, res) => {
+    try {
+        const anatomia = await nodosService.previsualizarAnatomiaCotizacionNodo(req.body || {});
+        res.json({ ok: true, anatomia });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /previsualizar-anatomia:', error);
         res.status(400).json({ ok: false, error: error.message });
     }
 });

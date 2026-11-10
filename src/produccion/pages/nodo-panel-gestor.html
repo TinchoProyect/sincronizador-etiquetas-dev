@@ -404,6 +404,13 @@
       propuestas: [],
       pedidos: [],
       movimientosCtaCte: [],
+      ingredientesDisponibles: [],
+      propCategoriaSel: '',
+      propFiltroTexto: '',
+      propIngredienteIdSel: 0,
+      propKilosSel: 0.25,
+      propNombreEditadoManual: false,
+      propMensajeExito: '',
       liquidacionTablero: null
     };
 
@@ -473,6 +480,18 @@
       GSTATE.propuestas = data.propuestas_nodo || [];
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
+      GSTATE.ingredientesDisponibles = Array.isArray(data.ingredientes_sugeribles) ? data.ingredientes_sugeribles : [];
+
+      if (GSTATE.ingredientesDisponibles.length > 0) {
+        const cats = Array.from(new Set(GSTATE.ingredientesDisponibles.map(i => i.categoria_gestor)));
+        if (!GSTATE.propCategoriaSel || !cats.includes(GSTATE.propCategoriaSel)) {
+          GSTATE.propCategoriaSel = cats.includes('Frutos Secos') ? 'Frutos Secos' : cats[0];
+        }
+        const itemsCat = GSTATE.ingredientesDisponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel);
+        if (!itemsCat.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel)) && itemsCat[0]) {
+          GSTATE.propIngredienteIdSel = Number(itemsCat[0].id);
+        }
+      }
 
       aplicarPaletaNodo(GSTATE.nodo.color_primario || '#a2553b');
 
@@ -594,7 +613,9 @@
           titulo: 'Mi Oferta y Márgenes',
           meta: totalOfertas === 0
             ? 'Sin productos cargados aún'
-            : `${publicadas} de ${totalOfertas} productos publicados en tu tienda`
+            : (totalOfertas > publicadas
+                ? `${publicadas} publicados · ${totalOfertas - publicadas} listo${totalOfertas - publicadas === 1 ? '' : 's'} para definir margen y publicar`
+                : `${publicadas} de ${totalOfertas} productos publicados en tu tienda`)
         },
         {
           num: '2',
@@ -901,47 +922,265 @@
     }
 
     // -------------------------------------------------------------------------
-    // 2. PEDIR NUEVA FRACCIÓN
+    // 2. PEDIR NUEVA FRACCIÓN (CONECTADO DETERMINÍSTICAMENTE A INGREDIENTES LAMDA)
     // -------------------------------------------------------------------------
+    function normalizarTextoGestor(str) {
+      return String(str ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    }
+
+    function obtenerIngredientesFiltradosGestor(categoria, filtroTexto) {
+      const listaCat = (GSTATE.ingredientesDisponibles || []).filter(
+        i => String(i.categoria_gestor || '') === String(categoria || '')
+      );
+      const terminos = normalizarTextoGestor(filtroTexto).split(/\s+/).filter(Boolean);
+      if (terminos.length === 0) return listaCat;
+      return listaCat.filter(i => {
+        const bolsa = normalizarTextoGestor(`${i.nombre_claro} ${i.alias_vecino_sugerido} ${i.categoria_gestor}`);
+        return terminos.every(t => bolsa.includes(t));
+      });
+    }
+
+    function obtenerIngredienteSeleccionadoGestor() {
+      return (GSTATE.ingredientesDisponibles || []).find(
+        i => Number(i.id) === Number(GSTATE.propIngredienteIdSel)
+      ) || null;
+    }
+
+    function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales) {
+      const kg = Number(kilosActuales || 0.25);
+      const opciones = ingObj && ingObj.es_pack_barritas
+        ? [
+            { label: 'Pack x 3 (150g)', val: 0.15 },
+            { label: 'Pack x 6 (300g)', val: 0.30 },
+            { label: 'Pack x 12 (600g)', val: 0.60 },
+            { label: 'Caja x 20 (1 kg)', val: 1.00 }
+          ]
+        : [
+            { label: '100g', val: 0.10 },
+            { label: '150g', val: 0.15 },
+            { label: '200g', val: 0.20 },
+            { label: '250g', val: 0.25 },
+            { label: '500g', val: 0.50 },
+            { label: '1 kg', val: 1.00 }
+          ];
+
+      return opciones.map(op => {
+        const activo = Math.abs(kg - op.val) < 0.002;
+        return `
+          <button type="button" class="btn-soft"
+            onclick="fijarGramajePropuestaGestor(${op.val})"
+            style="${activo ? 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;' : ''}">
+            ${op.label}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderAvisoDuplicadoPropuestaHtml(ingId, kilos) {
+      const idNum = Number(ingId || 0);
+      const kgNum = Number(kilos || 0);
+      if (!idNum || !kgNum) return '';
+
+      const yaEnOferta = (GSTATE.ofertas || []).find(
+        o => Number(o.ingrediente_origen_id) === idNum && Math.abs(Number(o.kilos_unidad) - kgNum) < 0.003
+      );
+      if (yaEnOferta) {
+        return `
+          <div style="padding:10px 12px; border-radius:11px; background:var(--brand-soft); border:1px solid var(--brand-border); font-size:0.8rem; line-height:1.45;">
+            Ya tenés <strong>${esc(yaEnOferta.nombre_publico)} (${esc(yaEnOferta.presentacion_etiqueta || `${Math.round(kgNum * 1000)}g`)})</strong> cargada en tu Nodo con Costo Base <strong>${fmt(yaEnOferta.precio_base_nodo_final)}</strong>.
+            Podés elegir otro gramaje o ir directo a <strong>Mi Oferta y Márgenes</strong>.
+            <div style="margin-top:7px;">
+              <button type="button" class="btn-soft" style="font-size:0.76rem; padding:5px 10px;" onclick="abrirSeccionGestor('ofertas')">
+                Ir a Mi Oferta y Márgenes →
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      const yaPendiente = (GSTATE.propuestas || []).find(
+        p => p.estado !== 'APROBADA' &&
+             Number(p.ingrediente_sugerido_id) === idNum &&
+             Math.abs(Number(p.kilos_sugeridos) - kgNum) < 0.003
+      );
+      if (yaPendiente) {
+        return `
+          <div style="padding:10px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.25); color:var(--warn); font-size:0.8rem; line-height:1.45;">
+            Ya enviaste esta misma presentación (<strong>${Math.round(kgNum * 1000)}g</strong>) y se encuentra <strong>En cotización</strong>.
+          </div>
+        `;
+      }
+
+      return '';
+    }
+
+    function actualizarControlesPropuestaEnVivo() {
+      const totalCat = (GSTATE.ingredientesDisponibles || []).filter(
+        i => String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || '')
+      );
+      const filtrados = obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto);
+
+      if (!filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
+        GSTATE.propIngredienteIdSel = filtrados[0] ? Number(filtrados[0].id) : 0;
+      }
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+
+      const wrapFiltro = document.getElementById('prop-filtro-wrap');
+      if (wrapFiltro) {
+        wrapFiltro.style.display = totalCat.length > 8 ? 'block' : 'none';
+      }
+
+      const selIng = document.getElementById('prop-ingrediente');
+      if (selIng) {
+        selIng.innerHTML = filtrados.length === 0
+          ? `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`
+          : filtrados.map(i => `
+              <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
+                ${esc(i.nombre_claro)}
+              </option>
+            `).join('');
+      }
+
+      const inputNombre = document.getElementById('prop-nombre');
+      if (inputNombre && ingSel && !GSTATE.propNombreEditadoManual) {
+        inputNombre.value = ingSel.alias_vecino_sugerido || ingSel.nombre_claro;
+      }
+
+      const gramajesBox = document.getElementById('prop-gramajes-box');
+      if (gramajesBox) {
+        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
+      }
+
+      const inputKilos = document.getElementById('prop-kilos');
+      if (inputKilos && Math.abs(Number(inputKilos.value) - Number(GSTATE.propKilosSel)) >= 0.001) {
+        inputKilos.value = Number(GSTATE.propKilosSel).toFixed(2);
+      }
+
+      const avisoBox = document.getElementById('prop-aviso-existente');
+      if (avisoBox) {
+        avisoBox.innerHTML = renderAvisoDuplicadoPropuestaHtml(GSTATE.propIngredienteIdSel, GSTATE.propKilosSel);
+      }
+    }
+
+    function alCambiarCategoriaPropuestaGestor(nuevaCat) {
+      GSTATE.propCategoriaSel = nuevaCat;
+      GSTATE.propFiltroTexto = '';
+      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propMensajeExito = '';
+      const inputFiltro = document.getElementById('prop-filtro-ingrediente');
+      if (inputFiltro) inputFiltro.value = '';
+
+      const listaCat = obtenerIngredientesFiltradosGestor(nuevaCat, '');
+      GSTATE.propIngredienteIdSel = listaCat[0] ? Number(listaCat[0].id) : 0;
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (ingSel && ingSel.es_pack_barritas) {
+        GSTATE.propKilosSel = 0.30; // Pack x 6 barritas (300g) por defecto
+      } else if (nuevaCat === 'Granolas' && Math.abs(GSTATE.propKilosSel - 0.50) < 0.002) {
+        GSTATE.propKilosSel = 0.20;
+      }
+      actualizarControlesPropuestaEnVivo();
+    }
+
+    function alFiltrarIngredientesPropuestaGestor(texto) {
+      GSTATE.propFiltroTexto = texto;
+      GSTATE.propNombreEditadoManual = false;
+      actualizarControlesPropuestaEnVivo();
+    }
+
+    function alCambiarIngredientePropuestaGestor(ingId) {
+      GSTATE.propIngredienteIdSel = Number(ingId || 0);
+      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propMensajeExito = '';
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (ingSel && ingSel.es_pack_barritas && GSTATE.propKilosSel === 0.25) {
+        GSTATE.propKilosSel = 0.30;
+      }
+      actualizarControlesPropuestaEnVivo();
+    }
+
+    function fijarGramajePropuestaGestor(kilos) {
+      GSTATE.propKilosSel = Number(kilos || 0.25);
+      const inputKilos = document.getElementById('prop-kilos');
+      if (inputKilos) inputKilos.value = GSTATE.propKilosSel.toFixed(2);
+      actualizarControlesPropuestaEnVivo();
+    }
+
+    function alCambiarKilosPropuestaGestor(valor) {
+      const k = Number(valor || 0);
+      if (k > 0) GSTATE.propKilosSel = k;
+      actualizarControlesPropuestaEnVivo();
+    }
+
     function renderSeccionPropuestas() {
+      const disponibles = GSTATE.ingredientesDisponibles || [];
+      const categoriasUnicas = Array.from(new Set(disponibles.map(i => i.categoria_gestor)));
+      if (categoriasUnicas.length > 0 && (!GSTATE.propCategoriaSel || !categoriasUnicas.includes(GSTATE.propCategoriaSel))) {
+        GSTATE.propCategoriaSel = categoriasUnicas.includes('Granolas') ? 'Granolas' : categoriasUnicas[0];
+      }
+      const totalEnCat = disponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel);
+      const filtrados = obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto);
+      if (!filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
+        GSTATE.propIngredienteIdSel = filtrados[0] ? Number(filtrados[0].id) : 0;
+      }
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      const nombreInicial = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
+
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
             <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Producto o Presentación</h3>
             <p style="margin:0 0 14px 0; font-size:0.8rem; color:var(--muted);">
-              Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que le definas tu ganancia y lo publiques.
+              Elegí la categoría, el producto disponible y el gramaje. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que definas tu ganancia y lo publiques.
             </p>
 
-            <div style="display:flex; flex-direction:column; gap:10px;">
+            ${GSTATE.propMensajeExito ? `
+              <div style="margin-bottom:12px; padding:10px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-size:0.82rem; font-weight:700;">
+                ${esc(GSTATE.propMensajeExito)}
+              </div>
+            ` : ''}
+
+            <div style="display:flex; flex-direction:column; gap:11px;">
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Categoría</label>
-                <select id="prop-categoria" class="input-sm" style="width:100%;">
-                  <option value="Frutos Secos">Frutos Secos</option>
-                  <option value="Mixes y Mezclas">Mixes y Mezclas</option>
-                  <option value="Granolas">Granolas</option>
-                  <option value="Barritas">Barritas</option>
-                  <option value="Frutas Deshidratadas">Frutas Deshidratadas</option>
-                  <option value="Semillas y Legumbres">Semillas y Legumbres</option>
-                  <option value="Otros">Otros</option>
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">1. Categoría</label>
+                <select id="prop-categoria" class="input-sm" style="width:100%;" onchange="alCambiarCategoriaPropuestaGestor(this.value)">
+                  ${categoriasUnicas.map(cat => {
+                    const count = disponibles.filter(i => i.categoria_gestor === cat).length;
+                    return `<option value="${esc(cat)}" ${cat === GSTATE.propCategoriaSel ? 'selected' : ''}>${esc(cat)} (${count})</option>`;
+                  }).join('')}
                 </select>
               </div>
+
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Producto solicitado</label>
-                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Nuez Mariposa Extra Light x 250g" />
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">2. Producto / Variedad disponible</label>
+                <div id="prop-filtro-wrap" style="display:${totalEnCat.length > 8 ? 'block' : 'none'}; margin-bottom:6px;">
+                  <input type="text" id="prop-filtro-ingrediente" class="input-sm" style="width:100%; font-size:0.82rem;"
+                    value="${esc(GSTATE.propFiltroTexto)}"
+                    oninput="alFiltrarIngredientesPropuestaGestor(this.value)"
+                    placeholder="Filtrar dentro de esta categoría..." />
+                </div>
+                <select id="prop-ingrediente" class="input-sm" style="width:100%;" onchange="alCambiarIngredientePropuestaGestor(this.value)">
+                  ${filtrados.map(i => `
+                    <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
+                      ${esc(i.nombre_claro)}
+                    </option>
+                  `).join('')}
+                </select>
               </div>
+
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Gramaje</label>
-                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.10'">100g</button>
-                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.20'">200g</button>
-                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.25'">250g</button>
-                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='0.50'">500g</button>
-                  <button type="button" class="btn-soft" onclick="document.getElementById('prop-kilos').value='1.00'">1 kg</button>
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">3. Presentación / Gramaje</label>
+                <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
+                  ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel)}
                 </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                   <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Peso en Kg (0.25 = 250g)</label>
-                    <input type="number" step="0.05" id="prop-kilos" class="input-sm" style="width:100%;" value="0.25" />
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Peso en Kg (0.20 = 200g)</label>
+                    <input type="number" step="0.05" min="0.05" id="prop-kilos" class="input-sm" style="width:100%;"
+                      value="${Number(GSTATE.propKilosSel || 0.25).toFixed(2)}"
+                      oninput="alCambiarKilosPropuestaGestor(this.value)" />
                   </div>
                   <div>
                     <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
@@ -949,12 +1188,29 @@
                   </div>
                 </div>
               </div>
+
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:3px;">4. Nombre sugerido para tu tienda</label>
+                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;"
+                  value="${esc(nombreInicial)}"
+                  oninput="GSTATE.propNombreEditadoManual = true"
+                  placeholder="Ej: Granola de Sol" />
+                <div style="font-size:0.71rem; color:var(--muted); margin-top:3px;">
+                  Se completa solo al elegir el producto; podés retocar cómo te gustaría mostrarlo a tus vecinos.
+                </div>
+              </div>
+
               <div>
                 <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Comentario (opcional)</label>
-                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Bolsita familiar para el barrio" />
+                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Bolsita individual para merienda" />
               </div>
-              <button type="button" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
-                Enviar Solicitud
+
+              <div id="prop-aviso-existente">
+                ${renderAvisoDuplicadoPropuestaHtml(GSTATE.propIngredienteIdSel, GSTATE.propKilosSel)}
+              </div>
+
+              <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
+                Enviar Solicitud de Cotización
               </button>
             </div>
           </div>
@@ -966,21 +1222,33 @@
                 <div style="padding:18px; border-radius:12px; border:1px dashed var(--border); color:var(--muted); font-size:0.84rem; text-align:center;">
                   Todavía no enviaste solicitudes de fracciones.
                 </div>
-              ` : GSTATE.propuestas.map(p => `
-                <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
-                    <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${p.estado === 'APROBADA' ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${p.estado === 'APROBADA' ? 'var(--ok)' : 'var(--warn)'};">
-                      ${p.estado === 'APROBADA' ? 'Aprobada' : 'En cotización'}
-                    </span>
+              ` : GSTATE.propuestas.map(p => {
+                const gramosTxt = Number(p.kilos_sugeridos || 0.25) >= 1
+                  ? `${Number(p.kilos_sugeridos)} kg`
+                  : `${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g`;
+                return `
+                  <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                      <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
+                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${p.estado === 'APROBADA' ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${p.estado === 'APROBADA' ? 'var(--ok)' : 'var(--warn)'};">
+                        ${p.estado === 'APROBADA' ? 'Cotizada' : 'En cotización'}
+                      </span>
+                    </div>
+                    <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
+                      ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${gramosTxt}</strong>
+                      ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
+                    </div>
+                    ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
+                    ${p.estado === 'APROBADA' ? `
+                      <div style="margin-top:8px;">
+                        <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;" onclick="abrirSeccionGestor('ofertas')">
+                          Ver en Mi Oferta y Márgenes →
+                        </button>
+                      </div>
+                    ` : ''}
                   </div>
-                  <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
-                    ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
-                    ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
-                  </div>
-                  ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           </div>
         </div>
@@ -988,31 +1256,68 @@
     }
 
     async function enviarNuevaPropuestaGestor() {
-      const nombre = document.getElementById('prop-nombre').value.trim();
-      if (!nombre) {
-        alert('Por favor ingresá el nombre del producto que querés solicitar.');
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (!ingSel) {
+        alert('Seleccioná primero un producto disponible de la lista.');
         return;
       }
-      const categoria = document.getElementById('prop-categoria')?.value || 'Frutos Secos';
+      const kilos = Number(document.getElementById('prop-kilos')?.value || GSTATE.propKilosSel || 0.25);
+      if (!kilos || kilos <= 0) {
+        alert('Ingresá un peso válido mayor a 0.');
+        return;
+      }
+
+      const yaPendiente = (GSTATE.propuestas || []).find(
+        p => p.estado !== 'APROBADA' &&
+             Number(p.ingrediente_sugerido_id) === Number(ingSel.id) &&
+             Math.abs(Number(p.kilos_sugeridos) - kilos) < 0.003
+      );
+      if (yaPendiente) {
+        alert('Ya enviaste una solicitud para este mismo producto y gramaje, y está en cotización.');
+        return;
+      }
+
+      const nombreBase = (document.getElementById('prop-nombre')?.value || ingSel.alias_vecino_sugerido || ingSel.nombre_claro).trim();
+      const etiquetaPeso = kilos >= 1
+        ? `${Number(kilos.toFixed(2))}kg`
+        : `${Math.round(kilos * 1000)}g`;
+      const nombreConPeso = /\bx\s*\d+/i.test(nombreBase) ? nombreBase : `${nombreBase} x ${etiquetaPeso}`;
+
+      const btn = document.getElementById('btn-enviar-propuesta-gestor');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Enviando solicitud...';
+      }
+
       const payload = {
         nodo_solicitante_id: GSTATE.nodo.id,
-        ingrediente_sugerido_id: null,
-        categoria_sugerida: categoria,
-        nombre_sugerido: nombre,
-        kilos_sugeridos: Number(document.getElementById('prop-kilos').value || 0.25),
-        precio_objetivo_vecino: Number(document.getElementById('prop-target').value || 0),
-        comentario_gestor: document.getElementById('prop-comentario').value.trim()
+        ingrediente_sugerido_id: Number(ingSel.id),
+        flujo_sugerido: Number(ingSel.flujo || 2),
+        categoria_sugerida: ingSel.categoria_gestor || document.getElementById('prop-categoria')?.value || 'Frutos Secos',
+        nombre_sugerido: nombreConPeso,
+        kilos_sugeridos: kilos,
+        precio_objetivo_vecino: Number(document.getElementById('prop-target')?.value || 0),
+        comentario_gestor: (document.getElementById('prop-comentario')?.value || '').trim()
       };
+
       const resp = await fetch('/api/produccion/nodos/propuestas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await resp.json();
-      if (data.ok) {
-        alert('✅ Solicitud enviada correctamente.');
-        await cargarPanelGestor();
+      if (!resp.ok || !data.ok) {
+        alert('No se pudo enviar la solicitud: ' + (data.error || 'Error interno'));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Enviar Solicitud de Cotización';
+        }
+        return;
       }
+
+      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propMensajeExito = `Solicitud enviada: ${nombreConPeso}. Te avisaremos aquí cuando tenga su Precio Base listo.`;
+      await cargarPanelGestor();
     }
 
     // -------------------------------------------------------------------------
