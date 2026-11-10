@@ -8,7 +8,7 @@
     const ESTADO_NODOS = {
         inicializado: false,
         cargando: false,
-        subTabActiva: 'cotizador', // 'cotizador' | 'catalogo' | 'abm_nodos'
+        subTabActiva: 'abm_nodos', // 'abm_nodos' | 'catalogo' | 'cotizador'
         nodos: [],
         catalogo: [],
         propuestas: [],
@@ -25,6 +25,8 @@
         filtroNodoOfertas: 0,
         busquedaCatalogo: '',
         busquedaFuentes: '',
+        busquedaClienteAbm: '',
+        clienteMadreSeleccionadoId: null,
         flujoSeleccionadoMesa: 2,
         propuestaActivaId: null,
         catalogoEditandoId: null,
@@ -148,6 +150,8 @@
                 : ESTADO_NODOS.nodos[0];
             if (nodoInicial) {
                 cargarNodoEnFormularioAbm(nodoInicial.id);
+            } else {
+                regenerarLogoZplEnVivo();
             }
         }
     }
@@ -159,7 +163,6 @@
         const pendientesCount = ESTADO_NODOS.propuestas.filter(p => p.estado === 'PENDIENTE_COTIZACION').length;
         const catalogoCount = ESTADO_NODOS.catalogo.length;
         const nodosActivosCount = ESTADO_NODOS.nodos.filter(n => n.activo).length;
-        const nodoPrincipalSlug = ESTADO_NODOS.nodos[0]?.slug || 'almacen-verde-city-bell';
 
         container.innerHTML = `
             <div style="display:flex; flex-direction:column; gap:14px; padding: 4px 2px 30px 2px;">
@@ -170,31 +173,31 @@
                         <div>
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <h2 style="margin:0; font-size:1.08rem; color:#f8fafc; font-weight:700;">Nodos Barriales (Marca Blanca)</h2>
-                                <span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-size:0.72rem; padding:2px 8px; border-radius:999px; font-weight:700;">Catálogo Exclusivo Familiar</span>
+                                <span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-size:0.72rem; padding:2px 8px; border-radius:999px; font-weight:700;">1. Alta de Nodos, Catálogo y Cotizador</span>
                             </div>
                             <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">
-                                Cotización de fracciones familiares, márgenes por gestor, cuentas corrientes y etiquetas térmicas con marca del Nodo.
+                                Alta de Nodos vinculados al padrón LAMDA, publicación de catálogo por gestor y cotización de fracciones familiares.
                             </div>
                         </div>
                     </div>
 
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <button onclick="window.NodosPizarra.cambiarSubTab('cotizador')"
-                            style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#10b981' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'cotizador' ? 'rgba(16,185,129,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#6ee7b7' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            🧮 Cotizador de Fracciones
-                            ${pendientesCount > 0 ? `<span style="background:#f59e0b; color:#0f172a; padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">${pendientesCount} pend.</span>` : ''}
+                        <button onclick="window.NodosPizarra.cambiarSubTab('abm_nodos')"
+                            style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#a78bfa' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? 'rgba(167,139,250,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#ddd6fe' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
+                            🏷️ 1. Alta de Nodos y Etiqueta Térmica
+                            <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${nodosActivosCount} activos</span>
                         </button>
 
                         <button onclick="window.NodosPizarra.cambiarSubTab('catalogo')"
                             style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'catalogo' ? '#38bdf8' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'catalogo' ? 'rgba(56,189,248,0.2)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'catalogo' ? '#bae6fd' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            📦 Catálogo y Márgenes por Nodo
+                            📦 2. Catálogo y Márgenes por Nodo
                             <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${catalogoCount} productos</span>
                         </button>
 
-                        <button onclick="window.NodosPizarra.cambiarSubTab('abm_nodos')"
-                            style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#a78bfa' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? 'rgba(167,139,250,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'abm_nodos' ? '#ddd6fe' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
-                            🏷️ Nodos y Etiqueta Térmica
-                            <span style="background:rgba(255,255,255,0.12); color:#e2e8f0; padding:1px 7px; border-radius:999px; font-size:0.72rem;">${nodosActivosCount} activos</span>
+                        <button onclick="window.NodosPizarra.cambiarSubTab('cotizador')"
+                            style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#10b981' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'cotizador' ? 'rgba(16,185,129,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'cotizador' ? '#6ee7b7' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
+                            🧮 3. Cotizador de Fracciones
+                            ${pendientesCount > 0 ? `<span style="background:#f59e0b; color:#0f172a; padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">${pendientesCount} pend.</span>` : ''}
                         </button>
 
                         <a href="/deposito-nodos" target="_blank"
@@ -207,18 +210,6 @@
                             style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(245,158,11,0.5); background:rgba(245,158,11,0.16); color:#fcd34d; display:inline-flex; align-items:center; gap:5px;"
                             title="Abrir Conciliación de Cobros y Liquidación de Cuenta Corriente">
                             💳 Cobros y Liquidación ↗
-                        </a>
-
-                        <a href="/gestor/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
-                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.14); color:#bae6fd; display:inline-flex; align-items:center; gap:5px;"
-                            title="Abrir Panel de Autogestión del Gestor del Nodo">
-                            🎛️ Panel del Gestor ↗
-                        </a>
-
-                        <a href="/tienda/${escaparHtml(nodoPrincipalSlug)}" target="_blank"
-                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.15); color:#6ee7b7; display:inline-flex; align-items:center; gap:5px;"
-                            title="Abrir Tienda Marca Blanca del Vecino">
-                            🏪 Tienda del Vecino ↗
                         </a>
 
                         <button onclick="window.NodosPizarra.sincronizarCascadaSeisFlujos()"
@@ -251,6 +242,15 @@
                 alCambiarOrigenSelect();
             } else {
                 recalcularMesaCotizacionEnVivo();
+            }
+        } else if (ESTADO_NODOS.subTabActiva === 'abm_nodos') {
+            const nodoTarget = ESTADO_NODOS.nodoEditandoId
+                ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
+                : ESTADO_NODOS.nodos[0];
+            if (nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                cargarNodoEnFormularioAbm(nodoTarget.id);
+            } else if (!nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                regenerarLogoZplEnVivo();
             }
         }
     }
@@ -851,27 +851,196 @@
     }
 
     // =========================================================================
-    // SUB-PESTAÑA 3: ABM DE NODOS BARRIALES + LOGO TÉRMICO + PREVIEW ZEBRA LIMPIO
+    // SUB-PESTAÑA 1: ALTA Y GESTIÓN DE NODOS BARRIALES + ETIQUETA TÉRMICA
     // =========================================================================
+    function normalizarTextoBusqueda(str) {
+        return String(str ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    }
+
+    function obtenerBolsaBusquedaClienteBunker(c) {
+        const lomasRaw = String(c.lomas_soft_id || '').trim();
+        const lomasSinCeros = lomasRaw.replace(/^0+/, '');
+        const bunkerRaw = String(c.codigo_bunker_cliente || '').trim();
+        const bunkerNum = bunkerRaw.replace(/^CB-0*/i, '');
+        const bunkerDigits = bunkerRaw.replace(/^CB-/i, '');
+        return normalizarTextoBusqueda([
+            bunkerRaw,
+            bunkerDigits,
+            bunkerNum,
+            lomasRaw,
+            lomasSinCeros,
+            c.cliente_nombre,
+            c.razon_social,
+            c.email_portal_nombre,
+            c.cuit_cuil,
+            c.domicilio_fiscal,
+            c.domicilio_entrega_direccion,
+            c.domicilio_entrega_localidad,
+            c.email_portal
+        ].filter(Boolean).join(' '));
+    }
+
+    function extraerDatosContactoClienteBunker(c) {
+        if (!c) return { gestorNombre: '', telefono: '', direccion: '', barrio: '', domiciliosAlternativos: [] };
+
+        let telefono = '';
+        let nombreContactoWa = '';
+        const rawWa = String(c.whatsapp_facturas || '').trim();
+        if (rawWa.startsWith('[')) {
+            try {
+                const arr = JSON.parse(rawWa);
+                if (Array.isArray(arr) && arr.length > 0) {
+                    const principal = arr.find(x => x && x.default && x.numero) || arr.find(x => x && x.numero) || arr[0];
+                    if (principal) {
+                        telefono = String(principal.numero || '').replace(/[^\d+]/g, '');
+                        nombreContactoWa = String(principal.nombre || '').trim();
+                    }
+                }
+            } catch (_) {}
+        } else if (rawWa) {
+            telefono = rawWa.replace(/[^\d+]/g, '');
+        }
+        if (!telefono && c.domicilio_entrega_telefono) {
+            telefono = String(c.domicilio_entrega_telefono).replace(/[^\d+]/g, '');
+        }
+
+        const aTitulo = (txt) => String(txt || '')
+            .toLowerCase()
+            .replace(/\b\w/g, l => l.toUpperCase())
+            .trim();
+
+        let gestorNombre = '';
+        if (c.email_portal_nombre && String(c.email_portal_nombre).trim()) {
+            gestorNombre = String(c.email_portal_nombre).trim();
+        } else if (c.razon_social && String(c.razon_social).includes(',')) {
+            const partes = String(c.razon_social).split(',');
+            const apellido = aTitulo(partes[0]);
+            const nombres = aTitulo(partes.slice(1).join(' '));
+            gestorNombre = `${nombres} ${apellido}`.trim();
+        } else if (c.cliente_nombre) {
+            gestorNombre = String(c.cliente_nombre).trim();
+        } else if (nombreContactoWa) {
+            gestorNombre = nombreContactoWa;
+        } else if (c.razon_social) {
+            gestorNombre = aTitulo(c.razon_social);
+        }
+
+        const domFiscal = String(c.domicilio_fiscal || '').trim();
+        const domEntrega = String(c.domicilio_entrega_direccion || '').trim();
+        const domiciliosAlternativos = [];
+        if (domFiscal && domFiscal.toUpperCase() !== 'N/A') {
+            domiciliosAlternativos.push({ etiqueta: 'Domicilio Fiscal', direccion: domFiscal });
+        }
+        if (domEntrega && domEntrega.toUpperCase() !== 'N/A' && domEntrega.toLowerCase() !== domFiscal.toLowerCase()) {
+            domiciliosAlternativos.push({
+                etiqueta: c.domicilio_entrega_alias ? `Entrega (${c.domicilio_entrega_alias})` : 'Domicilio Entrega',
+                direccion: domEntrega
+            });
+        }
+
+        const direccion = domiciliosAlternativos[0]?.direccion || '';
+        const barrio = String(c.domicilio_entrega_localidad || c.provincia || '').trim();
+
+        return {
+            gestorNombre,
+            telefono,
+            direccion,
+            barrio: barrio === 'BUENOS AIRES' ? 'La Plata / Buenos Aires' : barrio,
+            domiciliosAlternativos
+        };
+    }
+
+    function renderizarListaClientesTitularesHtml() {
+        const clientes = ESTADO_NODOS.fuentes.clientes_bunker || [];
+        const query = normalizarTextoBusqueda(ESTADO_NODOS.busquedaClienteAbm || '').trim();
+        const terminos = query ? query.split(/\s+/).filter(Boolean) : [];
+
+        const filtrados = clientes.filter(c => {
+            if (terminos.length === 0) return true;
+            const bolsa = obtenerBolsaBusquedaClienteBunker(c);
+            return terminos.every(t => bolsa.includes(t));
+        });
+
+        if (filtrados.length === 0) {
+            return `
+                <div style="padding:12px; text-align:center; color:#94a3b8; font-size:0.78rem;">
+                    No se encontraron clientes con <strong>"${escaparHtml(ESTADO_NODOS.busquedaClienteAbm)}"</strong>.
+                    <a href="http://localhost:3005/pages/listado-clientes.html" target="_blank" style="color:#38bdf8; font-weight:700; margin-left:6px; text-decoration:underline;">➕ Dar de alta en Clientes Búnker ↗</a>
+                </div>
+            `;
+        }
+
+        return filtrados.slice(0, 35).map(c => {
+            const seleccionado = Number(ESTADO_NODOS.clienteMadreSeleccionadoId) === Number(c.id);
+            const saldoNum = Number(c.saldo_cta_cte || 0);
+            const saldoLabel = saldoNum < 0
+                ? `Saldo a favor: ${fmtMoneda(Math.abs(saldoNum))}`
+                : `Saldo CC: ${fmtMoneda(saldoNum)}`;
+            const lomasTag = c.lomas_soft_id ? `Lomas #${c.lomas_soft_id}` : 'S/Lomas';
+            const domPreview = c.domicilio_fiscal || c.domicilio_entrega_direccion || 'Sin domicilio registrado';
+            return `
+                <div onclick="window.NodosPizarra.seleccionarClienteTitularAbm(${c.id})"
+                    style="padding:8px 11px; border-bottom:1px solid #1e293b; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px; background:${seleccionado ? 'rgba(16,185,129,0.18)' : 'transparent'}; border-left:3px solid ${seleccionado ? '#10b981' : 'transparent'}; transition:background 0.15s;">
+                    <div style="min-width:0; flex:1;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            <span style="font-family:monospace; font-size:0.74rem; font-weight:800; color:#38bdf8; background:rgba(56,189,248,0.14); padding:1px 6px; border-radius:4px;">${escaparHtml(c.codigo_bunker_cliente)}</span>
+                            <span style="font-family:monospace; font-size:0.72rem; font-weight:700; color:#cbd5e1; background:#1e293b; padding:1px 6px; border-radius:4px;">${escaparHtml(lomasTag)}</span>
+                            <span style="font-weight:800; font-size:0.82rem; color:#f8fafc;">${escaparHtml(c.cliente_nombre || c.razon_social)}</span>
+                            ${c.razon_social && c.razon_social !== c.cliente_nombre ? `<span style="font-size:0.75rem; color:#94a3b8;">— ${escaparHtml(c.razon_social)}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.71rem; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                            📍 ${escaparHtml(domPreview)}
+                        </div>
+                    </div>
+                    <div style="text-align:right; flex-shrink:0;">
+                        <div style="font-size:0.73rem; font-weight:700; color:${saldoNum <= 0 ? '#34d399' : '#fbbf24'};">${saldoLabel}</div>
+                        <div style="font-size:0.68rem; color:${seleccionado ? '#6ee7b7' : '#64748b'}; font-weight:700;">${seleccionado ? '✓ Seleccionado' : 'Elegir →'}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderizarResumenClienteTitularHtml() {
+        const cli = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
+            c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId)
+        );
+        if (!cli) {
+            return `
+                <div style="padding:8px 11px; border-radius:7px; background:rgba(15,23,42,0.85); border:1px dashed #475569; color:#94a3b8; font-size:0.76rem;">
+                    👆 Busque y seleccione arriba al <strong>Cliente Titular de LAMDA</strong> para vincular su cuenta y precargar automáticamente sus datos de contacto y domicilio.
+                </div>
+            `;
+        }
+        const saldoNum = Number(cli.saldo_cta_cte || 0);
+        const saldoTxt = saldoNum < 0
+            ? `Saldo a favor: ${fmtMoneda(Math.abs(saldoNum))}`
+            : `Saldo CC Principal: ${fmtMoneda(saldoNum)}`;
+        return `
+            <div style="padding:8px 12px; border-radius:7px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.45); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:0.78rem; color:#ecfdf5;">
+                    ✅ <strong>Cliente Titular Vinculado:</strong>
+                    <code style="color:#6ee7b7; font-weight:800;">${escaparHtml(cli.codigo_bunker_cliente)}</code>
+                    ${cli.lomas_soft_id ? `<span style="color:#94a3b8;">(Lomas #${escaparHtml(cli.lomas_soft_id)})</span>` : ''}
+                    — <strong>${escaparHtml(cli.razon_social || cli.cliente_nombre)}</strong>
+                    <span style="margin-left:6px; color:#6ee7b7; font-weight:700;">(${saldoTxt})</span>
+                </div>
+                <div style="font-size:0.71rem; color:#a7f3d0;">
+                    Subcuenta operativa aislada <code>CB-NODO-xxx</code> + liquidación neta en <code>${escaparHtml(cli.codigo_bunker_cliente)}</code>
+                </div>
+            </div>
+        `;
+    }
+
     function renderizarSubTabAbmNodos() {
         const cuentasOpts = ESTADO_NODOS.fuentes.cuentas_bancarias.map(c =>
             `<option value="${c.id}" data-alias="${escaparHtml(c.alias || '')}" data-cbu="${escaparHtml(c.cbu || '')}" data-titular="${escaparHtml(c.titular || '')}">
                 ${escaparHtml(c.banco)} — Alias: ${escaparHtml(c.alias || 'S/A')}
             </option>`
         ).join('');
-
-        const clientesMadreOpts = [
-            `<option value="">🌟 Sin Cuenta Madre (Nodo Externo Puro — Solo Subcuenta Aislada CB-NODO-xxx)</option>`,
-            ...(ESTADO_NODOS.fuentes.clientes_bunker || []).map(c => {
-                const etiquetaSaldo = Number(c.saldo_cta_cte || 0) < 0
-                    ? `Saldo a favor: ${fmtMoneda(Math.abs(Number(c.saldo_cta_cte)))}`
-                    : `Saldo: ${fmtMoneda(c.saldo_cta_cte || 0)}`;
-                const dest = c.codigo_bunker_cliente === 'CB-0006' ? '⭐ ' : '';
-                return `<option value="${c.id}" data-codigo="${escaparHtml(c.codigo_bunker_cliente || '')}">
-                    ${dest}${escaparHtml(c.codigo_bunker_cliente)} — ${escaparHtml(c.razon_social || c.cliente_nombre)} (${etiquetaSaldo})
-                </option>`;
-            })
-        ].join('');
 
         return `
             <div style="display:grid; grid-template-columns: 34% 65%; gap:16px; align-items:start;">
@@ -880,26 +1049,19 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:6px; flex-wrap:wrap;">
                         <div>
                             <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales Activos</div>
-                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo o cree uno nuevo (Caso #1: Matías CB-0006)</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo para editarlo o dé de alta uno nuevo</div>
                         </div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            <button onclick="window.NodosPizarra.precargarCasoMatiasFormulario()"
-                                title="Precargar los datos reales de Matías Ferronato vinculados a su Cuenta Madre CB-0006"
-                                style="padding:6px 10px; border-radius:7px; font-size:0.74rem; font-weight:800; border:1px solid #f59e0b; background:rgba(245,158,11,0.18); color:#fcd34d; cursor:pointer;">
-                                ⚡ Caso #1: Matías (CB-0006)
-                            </button>
-                            <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
-                                style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7; cursor:pointer;">
-                                ➕ Nuevo Nodo
-                            </button>
-                        </div>
+                        <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
+                            style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7; cursor:pointer;">
+                            ➕ Nuevo Nodo
+                        </button>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:10px;">
                         ${ESTADO_NODOS.nodos.length === 0 ? `
                             <div style="padding:16px; border-radius:10px; background:rgba(15,23,42,0.7); border:1px dashed #475569; color:#cbd5e1; font-size:0.8rem; line-height:1.5;">
-                                <div style="font-weight:800; color:#fcd34d; margin-bottom:4px;">✨ Padrón de Nodos en Cero (Listo para Paso 1)</div>
-                                Haga clic en <strong>⚡ Caso #1: Matías (CB-0006)</strong> arriba o complete el formulario de la derecha y presione <strong>💾 Guardar Cambios del Nodo</strong> para dar de alta el primer Nodo con su subcuenta aislada <code>CB-NODO-001</code> vinculada a la Cuenta Madre <code>CB-0006</code>.
+                                <div style="font-weight:800; color:#38bdf8; margin-bottom:4px;">📋 Sin Nodos dados de alta actualmente</div>
+                                Para crear un Nodo, busque y seleccione primero al <strong>Cliente Titular en el Padrón de LAMDA</strong> en el paso <code>1️⃣</code> de la derecha. Sus datos de contacto y domicilio se precargarán automáticamente para que solo complete el nombre comercial del Nodo y guarde.
                             </div>
                         ` : ''}
                         ${ESTADO_NODOS.nodos.map(n => `
@@ -917,7 +1079,7 @@
                                             <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
                                         </div>
                                         <div style="font-size:0.75rem; color:#cbd5e1; margin-top:2px;">
-                                            👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || '')}
+                                            👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || n.direccion_retiro || '')}
                                         </div>
                                         <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
                                             <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
@@ -925,23 +1087,23 @@
                                             <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong></span>
                                         </div>
                                         ${n.codigo_bunker_cliente_madre ? `
-                                            <div style="font-size:0.71rem; color:#fcd34d; margin-top:4px; padding:3px 7px; border-radius:5px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); display:inline-block;">
-                                                🔗 Cuenta Madre: <strong>${escaparHtml(n.codigo_bunker_cliente_madre)}</strong> (${escaparHtml(n.cliente_madre_razon_social || n.cliente_madre_nombre || '')}) · Saldo CC Principal: <strong>${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong>
+                                            <div style="font-size:0.71rem; color:#6ee7b7; margin-top:4px; padding:3px 7px; border-radius:5px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35); display:inline-block;">
+                                                🔗 Cliente Titular LAMDA: <strong>${escaparHtml(n.codigo_bunker_cliente_madre)}</strong> (${escaparHtml(n.cliente_madre_razon_social || n.cliente_madre_nombre || '')}) · Saldo CC: <strong>${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong>
                                             </div>
                                         ` : ''}
                                     </div>
                                 </div>
-                                <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6); flex-wrap:wrap;" onclick="event.stopPropagation();">
-                                    <a href="/deposito-nodos" target="_blank"
-                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.45); color:#ddd6fe;">
-                                        📦 Mesa Armado ↗
-                                    </a>
+                                <div style="display:flex; justify-content:flex-end; gap:6px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6); flex-wrap:wrap;" onclick="event.stopPropagation();">
+                                    <button type="button" onclick="window.NodosPizarra.enviarLinksBienvenidaNodoWa(${n.id})"
+                                        style="padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
+                                        📲 Enviar Links por WA
+                                    </button>
                                     <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
-                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
-                                        🎛️ Panel Gestor ↗
+                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
+                                        🎛️ App Gestor ↗
                                     </a>
                                     <a href="/tienda/${escaparHtml(n.slug)}" target="_blank"
-                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#6ee7b7;">
+                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#6ee7b7;">
                                         🏪 Tienda Vecinos ↗
                                     </a>
                                 </div>
@@ -956,76 +1118,104 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2e3c51; padding-bottom:10px; margin-bottom:12px;">
                             <div>
                                 <div style="font-size:0.98rem; font-weight:800; color:#f8fafc;" id="abm-nodo-form-title">
-                                    🏷️ Datos del Nodo, Cobranza y Logo para Etiqueta
+                                    🏷️ Alta y Configuración del Nodo Barrial
                                 </div>
                                 <div style="font-size:0.75rem; color:#94a3b8;">
-                                    Cada Nodo cuenta con su propia tienda vecinal, cuenta corriente y diseño de etiqueta térmica.
+                                    Todo Nodo parte de un Cliente Titular en LAMDA y opera sus canastos con una subcuenta aislada (<code>CB-NODO-xxx</code>).
                                 </div>
                             </div>
                             <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
-                                style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #8b5cf6, #6d28d9); color:#ffffff; cursor:pointer;">
-                                💾 Guardar Cambios del Nodo
+                                style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
+                                💾 Guardar Nodo y Etiqueta ZPL
                             </button>
                         </div>
 
                         <input type="hidden" id="abm-nodo-id" value="">
+                        <input type="hidden" id="abm-cliente-madre-id" value="${ESTADO_NODOS.clienteMadreSeleccionadoId || ''}">
+                        <input type="hidden" id="abm-cliente-madre-codigo" value="">
 
+                        <!-- PASO 1: BUSCADOR EN VIVO DEL CLIENTE TITULAR EN EL PADRÓN DE LAMDA -->
+                        <div style="margin-bottom:12px; padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <label style="font-size:0.78rem; color:#38bdf8; font-weight:800;">
+                                    1️⃣ Seleccionar Cliente Titular en el Padrón General de LAMDA
+                                </label>
+                                <a href="http://localhost:3005/pages/listado-clientes.html" target="_blank"
+                                    style="font-size:0.74rem; color:#6ee7b7; font-weight:700; text-decoration:none; padding:3px 9px; border-radius:6px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35);">
+                                    ➕ ¿Persona nueva? Dar de alta primero en Clientes Búnker ↗
+                                </a>
+                            </div>
+
+                            <input type="text" id="abm-buscador-cliente-input"
+                                value="${escaparHtml(ESTADO_NODOS.busquedaClienteAbm || '')}"
+                                oninput="window.NodosPizarra.filtrarClientesTitularesAbm(this.value)"
+                                placeholder="🔎 Escriba N° Lomas (ej: 583 o 0583), Cód. Búnker (ej: CB-0006 o 006), Nombre, Apellido o Razón Social..."
+                                autocomplete="off"
+                                style="width:100%; padding:8px 11px; border-radius:7px; border:1px solid #38bdf8; background:#151e2e; color:#f8fafc; font-size:0.82rem; margin-bottom:8px; box-sizing:border-box;">
+
+                            <div id="abm-lista-clientes-titulares"
+                                style="max-height:165px; overflow-y:auto; border:1px solid #1e293b; border-radius:7px; background:#0b1120; margin-bottom:8px;">
+                                ${renderizarListaClientesTitularesHtml()}
+                            </div>
+
+                            <div id="abm-cliente-titular-resumen">
+                                ${renderizarResumenClienteTitularHtml()}
+                            </div>
+                        </div>
+
+                        <!-- PASO 2: DATOS DE CONTACTO Y PUNTO DE RETIRO (PRECARGADOS DEL CLIENTE Y EDITABLES) -->
+                        <div style="margin-bottom:12px; padding:11px 12px; border-radius:9px; background:rgba(15,23,42,0.65); border:1px solid #263244;">
+                            <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800; margin-bottom:8px;">
+                                2️⃣ Datos de Contacto y Punto de Retiro del Nodo <span style="font-weight:500; color:#94a3b8;">(se precargan del Cliente Titular y pueden ajustarse para el Nodo)</span>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 0.9fr 0.9fr 1.4fr; gap:10px;">
+                                <div>
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Nombre del Gestor / Responsable</label>
+                                    <input type="text" id="abm-gestor-nombre" placeholder="Nombre y Apellido"
+                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">WhatsApp del Gestor</label>
+                                    <input type="text" id="abm-gestor-tel" placeholder="549221..."
+                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-family:monospace; box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Barrio / Localidad</label>
+                                    <input type="text" id="abm-barrio" placeholder="Barrio / Zona"
+                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Retiro de Vecinos)</label>
+                                    <input type="text" id="abm-direccion" placeholder="Calle y número de retiro"
+                                        oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
+                                        style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                                    <div id="abm-domicilios-sugeridos" style="display:flex; gap:5px; flex-wrap:wrap; margin-top:4px;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PASO 3: IDENTIDAD DE MARCA BLANCA Y CONDICIONES DEL NODO -->
+                        <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800; margin-bottom:6px;">
+                            3️⃣ Identidad de la Tienda Vecinal (Marca Blanca) y Condiciones Operativas
+                        </div>
                         <div style="display:grid; grid-template-columns: 1.3fr 1fr 1fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre de la Marca del Nodo</label>
-                                <input type="text" id="abm-nombre-marca" placeholder="Ej: Almacén Verde City Bell"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700;">
+                                <input type="text" id="abm-nombre-marca" placeholder="Nombre comercial de la tienda barrial"
+                                    oninput="window.NodosPizarra.alEditarNombreMarcaAbm(this.value)"
+                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Dirección Web de la Tienda (Link para vecinos)</label>
-                                <input type="text" id="abm-slug" placeholder="almacen-verde-city-bell"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#38bdf8; font-family:monospace;">
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Dirección Web de la Tienda (Link corto)</label>
+                                <input type="text" id="abm-slug" placeholder="identificador-web-del-nodo"
+                                    oninput="this.dataset.manual='true'"
+                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#38bdf8; font-family:monospace; box-sizing:border-box;">
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Bajada / Subtítulo de Marca</label>
-                                <input type="text" id="abm-subtitulo" placeholder="Alimentación Consciente - Entrega Barrial"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
-                            </div>
-                        </div>
-
-                        <div style="display:grid; grid-template-columns: 1fr 0.9fr 1fr 1.3fr; gap:10px; margin-bottom:10px;">
-                            <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre del Gestor</label>
-                                <input type="text" id="abm-gestor-nombre" placeholder="Carolina Méndez"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">WhatsApp del Gestor</label>
-                                <input type="text" id="abm-gestor-tel" placeholder="5492215548910"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Barrio / Zona</label>
-                                <input type="text" id="abm-barrio" placeholder="City Bell / Cantilo"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Retiro de Vecinos)</label>
-                                <input type="text" id="abm-direccion" placeholder="Cantilo 452 e/ 13c y 14, City Bell"
-                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
-                            </div>
-                        </div>
-
-                        <!-- VÍNCULO CON CUENTA MADRE EN LAMDA (ESQUEMA DUAL: SUBCUENTA CB-NODO-XXX + CUENTA MADRE OPCIONAL) -->
-                        <div style="margin-bottom:10px; padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.35);">
-                            <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; align-items:center;">
-                                <div>
-                                    <label style="display:block; font-size:0.74rem; color:#fcd34d; font-weight:800; margin-bottom:4px;">
-                                        🔗 Vínculo con Cuenta Madre en LAMDA (Opcional — Ej: Matías CB-0006)
-                                    </label>
-                                    <select id="abm-cliente-madre"
-                                        style="width:100%; padding:7px 9px; border-radius:6px; border:1px solid rgba(245,158,11,0.5); background:#0f172a; color:#f8fafc; font-size:0.8rem; font-weight:700;">
-                                        ${clientesMadreOpts}
-                                    </select>
-                                </div>
-                                <div style="font-size:0.72rem; color:#cbd5e1; line-height:1.4;">
-                                    🛡️ <strong>Doble Cuenta Aislada:</strong> El Nodo opera con su propia subcuenta <code>CB-NODO-xxx</code> (<code>Lista Base Nodos Barriales</code>) sin alterar la ficha ni las listas mayoristas del cliente madre. Al cerrar la liquidación del lote, el resultado neto impacta como un único asiento limpio (<code>LIQUIDACION_NODO</code>) en la Cuenta Madre y su Portal B2B.
-                                </div>
+                                <input type="text" id="abm-subtitulo" value="Alimentos Naturales y Frutos Secos - Entrega Barrial"
+                                    oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
+                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
                             </div>
                         </div>
 
@@ -1034,29 +1224,30 @@
                             <div>
                                 <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Cuenta Bancaria Recaudadora</label>
                                 <select id="abm-cuenta-bancaria"
+                                    onchange="const al = this.selectedOptions?.[0]?.getAttribute('data-alias'); const elAl = document.getElementById('abm-alias-display'); if (al && elAl && !elAl.value) elAl.value = al;"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.79rem;">
                                     ${cuentasOpts}
                                 </select>
                                 <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.71rem; color:#94a3b8; margin-top:4px; cursor:pointer;">
-                                    <input type="checkbox" id="abm-cuenta-compartida">
+                                    <input type="checkbox" id="abm-cuenta-compartida" checked>
                                     Usar cuenta recaudadora compartida (conciliación automática de vecinos)
                                 </label>
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.72rem; color:#38bdf8; font-weight:700; margin-bottom:3px;">Alias Bancario Visible al Vecino</label>
-                                <input type="text" id="abm-alias-display" placeholder="ALMACEN.VERDE.CB"
-                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.81rem;">
+                                <input type="text" id="abm-alias-display" value="${escaparHtml(ESTADO_NODOS.fuentes.cuentas_bancarias?.[0]?.alias || '')}" placeholder="ALIAS.BANCARIO"
+                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.81rem; box-sizing:border-box;">
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.72rem; color:#34d399; font-weight:700; margin-bottom:3px;">Costo Envío Barrial ($)</label>
                                 <input type="number" id="abm-cargo-envio" step="100" value="1500"
-                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #10b981; background:#0f172a; color:#34d399; font-weight:800; font-size:0.81rem;">
+                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #10b981; background:#0f172a; color:#34d399; font-weight:800; font-size:0.81rem; box-sizing:border-box;">
                                 <div style="font-size:0.66rem; color:#6ee7b7; margin-top:2px;">100% para el Gestor</div>
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Margen Inicial (%)</label>
                                 <input type="number" id="abm-margen-default" step="0.5" value="28"
-                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.81rem;">
+                                    style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.81rem; box-sizing:border-box;">
                             </div>
                         </div>
 
@@ -1273,6 +1464,7 @@
         const item = ESTADO_NODOS.fuentes.ingredientes_por_flujo.find(i => Number(i.id) === Number(ingId));
         if (!item) return;
 
+        ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(item.flujo || 2);
@@ -1297,6 +1489,7 @@
         const prop = ESTADO_NODOS.propuestas.find(p => Number(p.id) === Number(propuestaId));
         if (!prop) return;
 
+        ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = Number(prop.id);
         ESTADO_NODOS.catalogoEditandoId = prop.articulo_catalogo_id ? Number(prop.articulo_catalogo_id) : null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(prop.flujo_sugerido || 2);
@@ -1616,6 +1809,7 @@
         const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
         if (!nodo) return;
         ESTADO_NODOS.nodoEditandoId = Number(nodo.id);
+        ESTADO_NODOS.clienteMadreSeleccionadoId = nodo.cliente_madre_bunker_id ? Number(nodo.cliente_madre_bunker_id) : null;
         logoOriginalSubidoBase64 = nodo.logo_original_base64 || null;
 
         const setVal = (id, val) => {
@@ -1626,12 +1820,15 @@
         setVal('abm-nodo-id', nodo.id);
         setVal('abm-nombre-marca', nodo.nombre_marca);
         setVal('abm-slug', nodo.slug);
+        const slugEl = document.getElementById('abm-slug');
+        if (slugEl) slugEl.dataset.manual = 'true';
         setVal('abm-subtitulo', nodo.subtitulo_marca);
         setVal('abm-gestor-nombre', nodo.gestor_nombre);
         setVal('abm-gestor-tel', nodo.gestor_telefono);
         setVal('abm-barrio', nodo.barrio_zona);
         setVal('abm-direccion', nodo.direccion_retiro);
-        setVal('abm-cliente-madre', nodo.cliente_madre_bunker_id || '');
+        setVal('abm-cliente-madre-id', nodo.cliente_madre_bunker_id || '');
+        setVal('abm-cliente-madre-codigo', nodo.codigo_bunker_cliente_madre || '');
         if (nodo.cuenta_bancaria_id) setVal('abm-cuenta-bancaria', nodo.cuenta_bancaria_id);
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = Boolean(nodo.usa_cuenta_compartida);
@@ -1650,46 +1847,213 @@
         if (imgPrev && nodo.logo_mono_preview_base64) imgPrev.src = nodo.logo_mono_preview_base64;
         setVal('abm-logo-zpl-gfa', nodo.logo_zpl_gfa || '');
 
+        const listaBox = document.getElementById('abm-lista-clientes-titulares');
+        if (listaBox) listaBox.innerHTML = renderizarListaClientesTitularesHtml(ESTADO_NODOS.busquedaClienteAbm, ESTADO_NODOS.clienteMadreSeleccionadoId);
+        const resBox = document.getElementById('abm-cliente-titular-resumen');
+        const cliSel = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId));
+        if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(cliSel);
+
         simularEtiquetaZebra('estandar_pagado');
     }
 
     function nuevoNodoFormulario() {
         ESTADO_NODOS.nodoEditandoId = null;
+        ESTADO_NODOS.clienteMadreSeleccionadoId = null;
+        ESTADO_NODOS.busquedaClienteAbm = '';
         logoOriginalSubidoBase64 = null;
-        const ids = ['abm-nodo-id', 'abm-nombre-marca', 'abm-slug', 'abm-gestor-nombre', 'abm-gestor-tel', 'abm-barrio', 'abm-direccion', 'abm-alias-display', 'abm-logo-iniciales', 'abm-cliente-madre'];
+        const ids = [
+            'abm-nodo-id',
+            'abm-nombre-marca',
+            'abm-slug',
+            'abm-gestor-nombre',
+            'abm-gestor-tel',
+            'abm-barrio',
+            'abm-direccion',
+            'abm-alias-display',
+            'abm-logo-iniciales',
+            'abm-cliente-madre-id',
+            'abm-cliente-madre-codigo',
+            'abm-buscador-cliente-input'
+        ];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        const slugEl = document.getElementById('abm-slug');
+        if (slugEl) slugEl.dataset.manual = '';
         const sub = document.getElementById('abm-subtitulo');
         if (sub) sub.value = 'Comunidad Barrial - Entrega Fresca';
+        const domSug = document.getElementById('abm-domicilios-sugeridos');
+        if (domSug) domSug.innerHTML = '';
+        const listaBox = document.getElementById('abm-lista-clientes-titulares');
+        if (listaBox) listaBox.innerHTML = renderizarListaClientesTitularesHtml('', null);
+        const resBox = document.getElementById('abm-cliente-titular-resumen');
+        if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(null);
         regenerarLogoZplEnVivo();
     }
 
-    function precargarCasoMatiasFormulario() {
-        nuevoNodoFormulario();
-        const cliMatias = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
-            c => c.codigo_bunker_cliente === 'CB-0006' || Number(c.id) === 18
-        );
+    function filtrarClientesTitularesAbm(val) {
+        ESTADO_NODOS.busquedaClienteAbm = val || '';
+        const listaBox = document.getElementById('abm-lista-clientes-titulares');
+        if (listaBox) {
+            listaBox.innerHTML = renderizarListaClientesTitularesHtml(
+                ESTADO_NODOS.busquedaClienteAbm,
+                ESTADO_NODOS.clienteMadreSeleccionadoId
+            );
+        }
+    }
+
+    function seleccionarClienteTitularAbm(clienteId) {
+        const cli = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(clienteId));
+        if (!cli) return;
+
+        ESTADO_NODOS.clienteMadreSeleccionadoId = Number(cli.id);
+
         const setVal = (id, val) => {
             const el = document.getElementById(id);
             if (el) el.value = val ?? '';
         };
-        setVal('abm-nombre-marca', 'Almacén Natural Matías');
-        setVal('abm-slug', 'nodo-matias');
-        setVal('abm-subtitulo', 'Alimentos Naturales y Frutos Secos - Entrega Barrial');
-        setVal('abm-gestor-nombre', 'Matías Ferronato');
-        setVal('abm-gestor-tel', cliMatias?.whatsapp_facturas || '5492216702981');
-        setVal('abm-barrio', 'Calle 70 esq. 182 Bis (La Plata)');
-        setVal('abm-direccion', cliMatias?.domicilio_fiscal || 'Calle 70 esq. 182 Bis N° 4374');
-        setVal('abm-cliente-madre', cliMatias ? cliMatias.id : 18);
-        setVal('abm-alias-display', 'LAMDA.SER.MARTIN');
-        setVal('abm-cargo-envio', 1500);
-        setVal('abm-margen-default', 28);
-        setVal('abm-logo-iniciales', 'MF');
-        const chkComp = document.getElementById('abm-cuenta-compartida');
-        if (chkComp) chkComp.checked = true;
+
+        setVal('abm-cliente-madre-id', cli.id);
+        setVal('abm-cliente-madre-codigo', cli.codigo_bunker_cliente || '');
+
+        const listaBox = document.getElementById('abm-lista-clientes-titulares');
+        if (listaBox) {
+            listaBox.innerHTML = renderizarListaClientesTitularesHtml(
+                ESTADO_NODOS.busquedaClienteAbm,
+                ESTADO_NODOS.clienteMadreSeleccionadoId
+            );
+        }
+        const resBox = document.getElementById('abm-cliente-titular-resumen');
+        if (resBox) {
+            resBox.innerHTML = renderizarResumenClienteTitularHtml(cli);
+        }
+
+        const datos = extraerDatosContactoClienteBunker(cli);
+        setVal('abm-gestor-nombre', datos.nombreTitular);
+        if (datos.telefono) setVal('abm-gestor-tel', datos.telefono);
+        if (datos.barrioZona) setVal('abm-barrio', datos.barrioZona);
+        if (datos.direccionPrincipal) setVal('abm-direccion', datos.direccionPrincipal);
+
+        // Si el cliente tiene más de un domicilio registrado (ej. Domicilio Fiscal + Domicilio de Entrega), ofrecer chips 1-clic
+        const domBox = document.getElementById('abm-domicilios-sugeridos');
+        if (domBox) {
+            if (datos.domiciliosAlternativos && datos.domiciliosAlternativos.length > 1) {
+                domBox.innerHTML = datos.domiciliosAlternativos.map(d => `
+                    <button type="button" onclick="window.NodosPizarra.aplicarDomicilioSugeridoAbm('${escaparHtml(d.direccion).replace(/'/g, "\\'")}')"
+                            style="padding:2px 8px; border-radius:999px; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.12); color:#bae6fd; font-size:0.7rem; cursor:pointer;">
+                        📍 ${escaparHtml(d.etiqueta)}: ${escaparHtml(d.direccion)}
+                    </button>
+                `).join('');
+            } else {
+                domBox.innerHTML = '';
+            }
+        }
+
+        // Si es un alta nueva (sin nodoEditandoId), sugerir nombre de marca, slug e iniciales editables
+        if (!ESTADO_NODOS.nodoEditandoId) {
+            const nombreMarcaInput = document.getElementById('abm-nombre-marca');
+            const slugInput = document.getElementById('abm-slug');
+            const iniInput = document.getElementById('abm-logo-iniciales');
+
+            const primerNombre = String(datos.nombreTitular || '').trim().split(/\s+/)[0] || 'Barrial';
+            const marcaSugerida = `Almacén Natural ${primerNombre}`;
+            if (nombreMarcaInput && !nombreMarcaInput.value.trim()) {
+                nombreMarcaInput.value = marcaSugerida;
+            }
+            const marcaActual = nombreMarcaInput?.value || marcaSugerida;
+            if (slugInput && slugInput.dataset.manual !== 'true') {
+                slugInput.value = normalizarTextoBusqueda(marcaActual).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            }
+            if (iniInput) {
+                const palabras = String(datos.nombreTitular || marcaActual).trim().split(/\s+/).filter(Boolean);
+                const inicialesSug = palabras.slice(0, 2).map(p => p[0]?.toUpperCase() || '').join('') || 'NB';
+                iniInput.value = inicialesSug;
+            }
+
+            const ctaSelect = document.getElementById('abm-cuenta-bancaria');
+            const aliasInput = document.getElementById('abm-alias-display');
+            if (aliasInput && !aliasInput.value.trim() && ctaSelect?.selectedOptions?.[0]) {
+                aliasInput.value = ctaSelect.selectedOptions[0].getAttribute('data-alias') || '';
+            }
+        }
+
         regenerarLogoZplEnVivo();
+    }
+
+    function aplicarDomicilioSugeridoAbm(direccion) {
+        const el = document.getElementById('abm-direccion');
+        if (el) el.value = direccion || '';
+        simularEtiquetaZebra('estandar_pagado');
+    }
+
+    function alEditarNombreMarcaAbm(nombre) {
+        const slugInput = document.getElementById('abm-slug');
+        if (!ESTADO_NODOS.nodoEditandoId && slugInput && slugInput.dataset.manual !== 'true') {
+            slugInput.value = normalizarTextoBusqueda(nombre || '')
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+        }
+        const iniInput = document.getElementById('abm-logo-iniciales');
+        if (!ESTADO_NODOS.nodoEditandoId && iniInput && nombre) {
+            const palabras = String(nombre).trim().split(/\s+/).filter(Boolean);
+            iniInput.value = palabras.slice(0, 2).map(p => p[0]?.toUpperCase() || '').join('').slice(0, 3);
+        }
+        regenerarLogoZplEnVivo();
+    }
+
+    async function enviarLinksBienvenidaNodoWa(nodoId) {
+        try {
+            const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
+            if (!nodo) return;
+            const origin = window.location.origin;
+            const urlGestor = `${origin}/gestor/${encodeURIComponent(nodo.slug)}`;
+            const urlTienda = `${origin}/tienda/${encodeURIComponent(nodo.slug)}`;
+            const mensaje = [
+                `🌱 *Bienvenido/a a Nodos Barriales LAMDA — ${nodo.nombre_marca}*`,
+                `👤 Gestor/a: ${nodo.gestor_nombre}`,
+                `📍 Punto de retiro: ${nodo.direccion_retiro || nodo.barrio_zona || '-'}`,
+                ``,
+                `📲 *1. Tu Panel de Gestor (Armado de Canasto, Márgenes y Cobros):*`,
+                urlGestor,
+                ``,
+                `🛒 *2. Tu Tienda Vecinal Marca Blanca (para compartir con tus vecinos):*`,
+                urlTienda
+            ].join('\n');
+
+            const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contexto: `Bienvenida y Links del Nodo (${nodo.nombre_marca})`,
+                    telefono_original_actor: nodo.gestor_telefono || '',
+                    mensaje
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo enviar el WhatsApp de bienvenida.');
+
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '📲 Links del Nodo Enviados',
+                    html: `
+                        <div style="text-align:left; font-size:0.84rem; line-height:1.5;">
+                            <p>Se envió el mensaje con los links del <strong>Panel del Gestor</strong> y de la <strong>Tienda Vecinal</strong>.</p>
+                            <div style="padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem; color:#fde68a;">
+                                🛡️ Redirigido al WhatsApp de prueba seguro: <strong>${escaparHtml(data.telefono_efectivo_envio || '5492216615746')}</strong>
+                            </div>
+                        </div>
+                    `,
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+            }
+        } catch (err) {
+            if (window.Swal) {
+                Swal.fire({ icon: 'error', title: 'Error WhatsApp', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
     }
 
     function subirArchivoLogo(event) {
@@ -1737,9 +2101,9 @@
 
     async function simularEtiquetaZebra(modo = 'estandar_pagado') {
         try {
-            const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'ALMACEN VERDE CITY BELL';
-            const subtitulo = document.getElementById('abm-subtitulo')?.value || 'Alimentacion Consciente - Entrega Barrial';
-            const direccion = document.getElementById('abm-direccion')?.value || 'Cantilo 452 e/ 13c y 14 - City Bell';
+            const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'ALMACEN NATURAL BARRIAL';
+            const subtitulo = document.getElementById('abm-subtitulo')?.value || 'Comunidad Barrial - Entrega Fresca';
+            const direccion = document.getElementById('abm-direccion')?.value || 'Punto de Retiro del Nodo';
             const logoGfa = document.getElementById('abm-logo-zpl-gfa')?.value || '';
             const logoMono = document.getElementById('abm-logo-preview-img')?.src || '';
 
@@ -1798,8 +2162,14 @@
             const idExistente = document.getElementById('abm-nodo-id')?.value || null;
             const ctaSelect = document.getElementById('abm-cuenta-bancaria');
             const ctaOpt = ctaSelect?.selectedOptions?.[0];
-            const madreSelect = document.getElementById('abm-cliente-madre');
-            const madreOpt = madreSelect?.selectedOptions?.[0];
+
+            const clienteMadreIdVal = document.getElementById('abm-cliente-madre-id')?.value || ESTADO_NODOS.clienteMadreSeleccionadoId || null;
+            const cliObj = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(c => Number(c.id) === Number(clienteMadreIdVal));
+            const codigoMadreVal = document.getElementById('abm-cliente-madre-codigo')?.value || cliObj?.codigo_bunker_cliente || null;
+
+            if (!clienteMadreIdVal) {
+                throw new Error('Debe seleccionar primero el Cliente Titular del Nodo en el buscador del Paso 1.');
+            }
 
             const payload = {
                 nombre_marca: document.getElementById('abm-nombre-marca')?.value || '',
@@ -1809,8 +2179,8 @@
                 gestor_telefono: document.getElementById('abm-gestor-tel')?.value || '',
                 barrio_zona: document.getElementById('abm-barrio')?.value || '',
                 direccion_retiro: document.getElementById('abm-direccion')?.value || '',
-                cliente_madre_bunker_id: madreSelect?.value ? Number(madreSelect.value) : null,
-                codigo_bunker_cliente_madre: madreOpt?.getAttribute('data-codigo') || null,
+                cliente_madre_bunker_id: Number(clienteMadreIdVal),
+                codigo_bunker_cliente_madre: codigoMadreVal,
                 cuenta_bancaria_id: ctaSelect?.value ? Number(ctaSelect.value) : null,
                 usa_cuenta_compartida: Boolean(document.getElementById('abm-cuenta-compartida')?.checked),
                 alias_bancario_display: document.getElementById('abm-alias-display')?.value || ctaOpt?.getAttribute('data-alias') || '',
@@ -1845,9 +2215,15 @@
                 Swal.fire({
                     icon: 'success',
                     title: 'Nodo Barrial Guardado',
-                    text: `${data.nodo.nombre_marca} actualizado correctamente.`,
-                    timer: 2200,
-                    showConfirmButton: false,
+                    html: `
+                        <div style="text-align:left; font-size:0.86rem; line-height:1.5;">
+                            <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo y vinculado a la Cuenta Madre <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> con subcuenta operativa <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>.</p>
+                            <div style="margin-top:8px; padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.78rem;">
+                                <div>📲 Panel Gestor: <code>/gestor/${escaparHtml(data.nodo.slug)}</code></div>
+                                <div>🛒 Tienda Vecino: <code>/tienda/${escaparHtml(data.nodo.slug)}</code></div>
+                            </div>
+                        </div>
+                    `,
                     background: '#151e2e',
                     color: '#f8fafc'
                 });
@@ -1896,6 +2272,7 @@
         const data = await resp.json();
         if (data.ok) {
             ESTADO_NODOS.nodoEditandoId = null;
+            ESTADO_NODOS.clienteMadreSeleccionadoId = null;
             ESTADO_NODOS.propuestaActivaId = null;
             ESTADO_NODOS.catalogoEditandoId = null;
             await cargarDatosNodosBarriales(true);
@@ -1953,7 +2330,11 @@
         togglePublicacionOfertaGestor,
         cargarNodoEnFormularioAbm,
         nuevoNodoFormulario,
-        precargarCasoMatiasFormulario,
+        filtrarClientesTitularesAbm,
+        seleccionarClienteTitularAbm,
+        aplicarDomicilioSugeridoAbm,
+        alEditarNombreMarcaAbm,
+        enviarLinksBienvenidaNodoWa,
         subirArchivoLogo,
         regenerarLogoZplEnVivo,
         simularEtiquetaZebra,

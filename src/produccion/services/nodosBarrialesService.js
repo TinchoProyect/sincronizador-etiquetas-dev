@@ -2073,18 +2073,27 @@ async function obtenerFuentesCostoSeisFlujos() {
         `),
         db.query(`
             SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social,
-                   bc.cuit_cuil, bc.domicilio_fiscal, bc.whatsapp_facturas, bc.email_portal,
-                   bc.lomas_soft_id, bc.usuario_id,
-                   COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cta_cte
+                   bc.cuit_cuil, bc.domicilio_fiscal, bc.provincia, bc.whatsapp_facturas,
+                   bc.email_portal, bc.email_portal_nombre, bc.lomas_soft_id, bc.usuario_id,
+                   COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cta_cte,
+                   cd.direccion AS domicilio_entrega_direccion,
+                   cd.localidad AS domicilio_entrega_localidad,
+                   cd.alias AS domicilio_entrega_alias,
+                   cd.telefono_contacto AS domicilio_entrega_telefono
             FROM public.bunker_clientes bc
             LEFT JOIN public.factura_cuentas_corrientes cc
               ON cc.codigo_bunker_cliente = bc.codigo_bunker_cliente
              AND cc.nombre_cuenta = 'Cuenta Principal'
+            LEFT JOIN LATERAL (
+                SELECT direccion, localidad, alias, telefono_contacto
+                FROM public.clientes_domicilios d
+                WHERE d.id_cliente = bc.id
+                  AND COALESCE(d.activo, true) = true
+                ORDER BY COALESCE(d.es_predeterminado, false) DESC, d.id ASC
+                LIMIT 1
+            ) cd ON true
             WHERE bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
-            ORDER BY
-              CASE WHEN bc.codigo_bunker_cliente = 'CB-0006' THEN 0 ELSE 1 END,
-              bc.id DESC
-            LIMIT 80
+            ORDER BY bc.id ASC
         `),
         db.query(`
             SELECT DISTINCT ON (ri.ingrediente_id)
@@ -2343,6 +2352,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     const gestorNombre = String(payload.gestor_nombre || '').trim();
     if (!nombreMarca || !gestorNombre) {
         throw new Error('El nombre de la marca del Nodo y el nombre del gestor son obligatorios.');
+    }
+    if (!payload.cliente_madre_bunker_id && !payload.codigo_bunker_cliente_madre) {
+        throw new Error('Todo Nodo debe partir de un Cliente registrado en el padrón general de LAMDA. Seleccione primero al cliente en el buscador (o délo de alta en Clientes Búnker).');
     }
 
     const slugBase = String(payload.slug || nombreMarca)
