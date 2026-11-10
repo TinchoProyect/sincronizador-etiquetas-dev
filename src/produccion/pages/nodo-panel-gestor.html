@@ -4,6 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Panel del Gestor Barrial</title>
+  <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
+  <script>
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.unregister(); });
+        }).catch(function(){});
+      }
+      localStorage.removeItem('lamda_prefer_mobile_home');
+    } catch (_) {}
+  </script>
   <style>
     :root {
       --primary: #0f172a;

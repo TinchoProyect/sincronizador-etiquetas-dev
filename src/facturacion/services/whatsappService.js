@@ -10,6 +10,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const crmWhatsappDb = require('../../services/crmWhatsappDbService');
 const whatsappAudioTranscriber = require('../../services/whatsappAudioTranscriberService');
+const { firmarJwtSesion, obtenerUrlNubeTitular } = require('../../shared/lamdaCloudAuthGuard');
 
 const _audiosEnTranscripcion = new Set();
 const _audiosYaTranscritos = new Set();
@@ -169,12 +170,13 @@ const killZombieChrome = () => {
  * Inicializar cliente de WhatsApp
  */
 async function inicializarWhatsApp(force = false, isFallback = false) {
-    if (esModoLaboratorioWa() && !esModoPruebaNubeWa()) {
-        console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO: Omitiendo inicio de Chromium/WhatsApp Web real (envíos simulados localmente).');
+    if (esModoLaboratorioWa() && !force) {
+        console.log('🔒 [WHATSAPP-SERVICE] MODO LABORATORIO ACTIVO (DB=etiquetas_pruebas + LAMDA_MODO_LABORATORIO=true): Sin Chromium local (no consume cupo QR ni desloguea Producción). Envíos salientes reales redirigidos exclusivamente a +' + obtenerNumeroRedireccionSeguraWa() + '.');
+        await killZombieChrome();
         connectionStatus = 'CONECTADO';
         connectionStep = 4;
-        connectionStepText = 'Modo Laboratorio (Simulado sin Chromium)';
-        return { success: true, status: 'CONECTADO', simulated: true, message: 'Modo Laboratorio (Simulado)' };
+        connectionStepText = 'Modo Laboratorio (Envío Real Protegido → 221 661 5746)';
+        return { success: true, status: 'CONECTADO', simulated: false, message: 'Modo Laboratorio (Envío Real Protegido → 221 661 5746)' };
     }
     if (connectionStatus === 'CONECTANDO' || connectionStatus === 'CONECTADO' || connectionStatus === 'ESPERANDO_QR') {
         if (!force && !isFallback) {
@@ -333,11 +335,10 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
                     } catch (eLid) {}
                 }
 
-                // 🛡️ PROTECCIÓN DE MENSAJES ENTRANTES EN PRUEBA PARALELA DE NUBE:
-                // Mientras PcAlmacen sigue siendo el servidor titular del depósito, el servidor de prueba en la nube
-                // ignora por completo los mensajes y audios entrantes de clientes reales (!msg.fromMe), evitando
-                // transcripciones duplicadas de audios o respuestas cruzadas.
-                if ((esModoPruebaNubeWa() || esModoEspejoWa()) && !msg.fromMe && !esNumeroPropioPruebaWa(chatId)) {
+                // 🛡️ PROTECCIÓN DE MENSAJES ENTRANTES EN LABORATORIO / PRUEBA PARALELA DE NUBE:
+                // En Modo Laboratorio o Prueba Nube se ignoran por completo los mensajes y audios entrantes
+                // de clientes reales (!msg.fromMe), evitando transcripciones duplicadas o interferencia con Producción.
+                if ((esModoLaboratorioWa() || esModoPruebaNubeWa() || esModoEspejoWa()) && !msg.fromMe && !esNumeroPropioPruebaWa(chatId)) {
                     return;
                 }
 
@@ -749,12 +750,6 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarMensajeTexto = async (numeros, mensajeTexto) => {
-    const simRes = interceptarEnvioEnModoSeguro(numeros, "MENSAJE_TEXTO", String(mensajeTexto || "").slice(0, 60));
-    if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
-
     if (!numeros || !numeros.trim()) {
         throw new Error('No se especificaron números telefónicos de destino.');
     }
@@ -769,6 +764,65 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
 
     if (listaNumeros.length === 0) {
         throw new Error('Ninguno de los números telefónicos provistos es válido.');
+    }
+
+    // En Modo Laboratorio: Redirección estricta al celular de prueba (5492216615746) y despacho real
+    // a través de la sesión activa de WhatsApp de LAMDA sin levantar Chromium local ni consumir QR.
+    if (esModoLaboratorioWa() && (!client || !client.pupPage)) {
+        const TELEFONO_PRUEBA_EXCLUSIVO = '5492216615746';
+        const redirLab = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, 'MENSAJE DE TEXTO / LABORATORIO');
+        const destinoUnico = String(redirLab.listaFinal?.[0] || '').replace(/[^0-9]/g, '');
+        if (redirLab.listaFinal.length !== 1 || destinoUnico !== TELEFONO_PRUEBA_EXCLUSIVO) {
+            throw new Error(`BLOQUEO DE SEGURIDAD LABORATORIO: En Modo Laboratorio solo se permite enviar a ${TELEFONO_PRUEBA_EXCLUSIVO}.`);
+        }
+
+        const cloudUrl = `${obtenerUrlNubeTitular()}/gw/3004/facturacion/whatsapp/enviar-mensaje`;
+        const jwtToken = firmarJwtSesion({ id: 1, usuario: 'laboratorio-safe-redirect', rol_id: 1 });
+        console.log(`🚀 [WHATSAPP-LAB-REAL] Despachando mensaje real redirigido exclusivamente a +${TELEFONO_PRUEBA_EXCLUSIVO} vía sesión activa LAMDA (${cloudUrl})...`);
+
+        const relayRes = await fetch(cloudUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwtToken}`,
+                'Cookie': `lamda_cloud_jwt=${jwtToken}`
+            },
+            body: JSON.stringify({
+                destinatarios: TELEFONO_PRUEBA_EXCLUSIVO,
+                mensajeTexto: redirLab.textoFinal
+            })
+        });
+
+        const relayJson = await relayRes.json().catch(() => ({}));
+        if (!relayRes.ok || !relayJson.success) {
+            throw new Error(relayJson.error || relayJson.message || `Error al despachar mensaje real a +${TELEFONO_PRUEBA_EXCLUSIVO} (HTTP ${relayRes.status}).`);
+        }
+
+        crmWhatsappDb.registrarMensajeWhatsapp({
+            msgId: `lab_real_${Date.now()}`,
+            chatId: `${TELEFONO_PRUEBA_EXCLUSIVO}@c.us`,
+            telefono: TELEFONO_PRUEBA_EXCLUSIVO,
+            fromMe: true,
+            cuerpo: redirLab.textoFinal,
+            tipoMensaje: 'chat',
+            ack: 1,
+            origenEnvio: 'lamda_laboratorio_real'
+        }).catch(() => {});
+
+        return listaNumeros.map(orig => ({
+            numero: TELEFONO_PRUEBA_EXCLUSIVO,
+            original: orig,
+            redirectedTo: TELEFONO_PRUEBA_EXCLUSIVO,
+            success: true,
+            simulated: false,
+            realDelivery: true
+        }));
+    }
+
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "MENSAJE_TEXTO", String(mensajeTexto || "").slice(0, 60));
+    if (simRes) return simRes;
+    if (connectionStatus !== 'CONECTADO') {
+        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }
 
     const redirTxt = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, 'MENSAJE DE TEXTO / AVISO RUTA');

@@ -1,8 +1,18 @@
 const express = require('express');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 const QRCode = require('qrcode');
 const router = express.Router();
 const nodosService = require('../services/nodosBarrialesService');
+
+const CLOUDFLARED_EXE = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
+const TUNNEL_CACHE_FILE = path.join(os.tmpdir(), 'lamda_nodos_cloudflare_tunnel.json');
+const EMPTY_CF_CONFIG = path.join(os.tmpdir(), 'lamda_empty_cloudflared.yml');
+let tunelCloudflareUrlActual = null;
+let tunelCloudflareProc = null;
+let tunelCloudflareIniciandoPromise = null;
 
 function detectarIpLanWifiLocal() {
     try {
@@ -28,12 +38,117 @@ function detectarIpLanWifiLocal() {
     }
 }
 
-function obtenerBaseUrlAccesibleCelular(req) {
+async function verificarTunelVivo(url) {
+    if (!url || !/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(url)) return false;
+    try {
+        const res = await fetch(`${url}/api/produccion/nodos/ping-movil`, {
+            signal: AbortSignal.timeout(3000)
+        });
+        return res.ok;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function asegurarTunelCloudflareNodos() {
+    if (tunelCloudflareUrlActual) {
+        return tunelCloudflareUrlActual;
+    }
+    if (tunelCloudflareIniciandoPromise) {
+        return tunelCloudflareIniciandoPromise;
+    }
+
+    tunelCloudflareIniciandoPromise = (async () => {
+        try {
+            if (fs.existsSync(TUNNEL_CACHE_FILE)) {
+                const cached = JSON.parse(fs.readFileSync(TUNNEL_CACHE_FILE, 'utf8'));
+                if (cached?.url && (await verificarTunelVivo(cached.url))) {
+                    tunelCloudflareUrlActual = cached.url;
+                    return tunelCloudflareUrlActual;
+                }
+            }
+        } catch (_) {}
+
+        if (!fs.existsSync(CLOUDFLARED_EXE)) {
+            return null;
+        }
+
+        return new Promise((resolve) => {
+            let resuelto = false;
+            const finalizar = (url) => {
+                if (resuelto) return;
+                resuelto = true;
+                resolve(url || null);
+            };
+
+            const timer = setTimeout(() => finalizar(tunelCloudflareUrlActual), 9000);
+
+            try {
+                try {
+                    fs.writeFileSync(EMPTY_CF_CONFIG, '# empty config for quick tunnel\n', 'utf8');
+                } catch (_) {}
+                const proc = spawn(CLOUDFLARED_EXE, ['tunnel', '--config', EMPTY_CF_CONFIG, '--url', 'http://127.0.0.1:3002', '--no-autoupdate'], {
+                    windowsHide: true
+                });
+                tunelCloudflareProc = proc;
+
+                const revisarSalida = (chunk) => {
+                    const txt = String(chunk || '');
+                    const match = txt.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+                    if (match && match[0]) {
+                        tunelCloudflareUrlActual = match[0];
+                        try {
+                            fs.writeFileSync(TUNNEL_CACHE_FILE, JSON.stringify({
+                                url: tunelCloudflareUrlActual,
+                                pid: proc.pid,
+                                updated_at: new Date().toISOString()
+                            }), 'utf8');
+                        } catch (_) {}
+                        console.log(`🌐 [NodosBarriales] Túnel HTTPS Celular activo: ${tunelCloudflareUrlActual}`);
+                        clearTimeout(timer);
+                        finalizar(tunelCloudflareUrlActual);
+                    }
+                };
+
+                proc.stdout.on('data', revisarSalida);
+                proc.stderr.on('data', revisarSalida);
+                proc.on('exit', () => {
+                    tunelCloudflareProc = null;
+                    tunelCloudflareUrlActual = null;
+                    clearTimeout(timer);
+                    finalizar(null);
+                });
+            } catch (_) {
+                clearTimeout(timer);
+                finalizar(null);
+            }
+        });
+    })().finally(() => {
+        tunelCloudflareIniciandoPromise = null;
+    });
+
+    return tunelCloudflareIniciandoPromise;
+}
+
+// Iniciar túnel en segundo plano al levantar el router de Nodos en Laboratorio
+setTimeout(() => {
+    asegurarTunelCloudflareNodos().catch(() => {});
+}, 800);
+
+router.get('/ping-movil', (req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+});
+
+async function obtenerBaseUrlAccesibleCelular(req) {
     const hostHeader = String(req?.headers?.host || '').trim();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
     const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
     if (isPublicCloud) {
         return `${proto}://${hostHeader}`;
+    }
+    const tunelHttps = await asegurarTunelCloudflareNodos();
+    if (tunelHttps) {
+        return tunelHttps;
     }
     const lanIp = detectarIpLanWifiLocal();
     return `http://${lanIp}:3002`;
@@ -497,23 +612,29 @@ router.post('/whatsapp-prueba', async (req, res) => {
         const telefonoPrueba = '5492216615746';
         const telefonoOriginal = String(req.body?.telefono_original || '').trim();
         const destinatarioNombre = String(req.body?.destinatario_nombre || 'Cliente / Vecino').trim();
-        const baseUrlMovil = obtenerBaseUrlAccesibleCelular(req);
+        const baseUrlMovil = await obtenerBaseUrlAccesibleCelular(req);
 
         let mensajeNormalizado = String(req.body?.mensaje || '').trim();
         mensajeNormalizado = mensajeNormalizado
-            .replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/gw\/3002)?(?=\/(gestor|tienda|deposito-nodos|liquidacion-nodos))/gi, baseUrlMovil)
-            .replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/gi, baseUrlMovil);
+            .replace(/https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?(\/gw\/3002)?(?=\/(gestor|tienda|deposito-nodos|liquidacion-nodos))/gi, baseUrlMovil)
+            .replace(/https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/gi, baseUrlMovil);
 
         console.log(`🧪 [MODO LABORATORIO - NODOS WA INTERNO] Despachando vía servicio interno (:3004) para "${destinatarioNombre}" (${telefonoOriginal || 'S/T'}) -> ${telefonoPrueba} (221 661 5746) | Base Móvil: ${baseUrlMovil}`);
 
         let estadoWa = null;
-        try {
-            const stRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/status');
-            if (stRes.ok) {
-                const stJson = await stRes.json();
-                estadoWa = stJson?.data || null;
-            }
-        } catch (_) {}
+        for (let intento = 0; intento < 15; intento++) {
+            try {
+                const stRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/status');
+                if (stRes.ok) {
+                    const stJson = await stRes.json();
+                    estadoWa = stJson?.data || null;
+                    if (estadoWa?.status === 'CONECTADO' || estadoWa?.status === 'ESPERANDO_QR') {
+                        break;
+                    }
+                }
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 1500));
+        }
 
         const wpRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje', {
             method: 'POST',
@@ -531,6 +652,9 @@ router.post('/whatsapp-prueba', async (req, res) => {
 
         const resultados = Array.isArray(wpJson?.data?.resultados) ? wpJson.data.resultados : [];
         const primerResultado = resultados[0] || {};
+        if (primerResultado.status && primerResultado.status !== 'enviado') {
+            throw new Error(primerResultado.error || `No se pudo enviar el mensaje (${primerResultado.status}).`);
+        }
 
         const urlRegex = /https?:\/\/[^\s)]+\/(gestor|tienda)\/[^\s)]+/gi;
         const rawUrls = [...new Set(mensajeNormalizado.match(urlRegex) || [])];
