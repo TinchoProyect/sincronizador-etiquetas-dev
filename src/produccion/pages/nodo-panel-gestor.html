@@ -213,29 +213,21 @@
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
         <span style="font-size:1.35rem;">🎛️</span>
         <div>
-          <div style="font-size:0.74rem; color:#94a3b8; font-weight:700; text-transform:uppercase;">Panel de Autogestión del Nodo</div>
-          <select id="gestor-nodo-select" class="nodo-selector" onchange="cambiarNodoGestor(this.value)"></select>
+          <div style="font-size:0.72rem; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">Panel de Gestión del Nodo</div>
+          <div id="gestor-nodo-title" style="font-size:1.08rem; font-weight:900; color:#ffffff; margin-top:2px;">Cargando Nodo...</div>
+          <div id="gestor-nodo-subtitle" style="font-size:0.78rem; color:#cbd5e1; font-weight:600; margin-top:2px;"></div>
         </div>
       </div>
 
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" class="btn-top green" onclick="enviarLinkTiendaWhatsAppPrueba()" style="background:#15803d; border-color:#16a34a;">
-          📲 Enviar Link por WhatsApp (Prueba: 221 661 5746)
+          📲 Compartir mi Tienda por WhatsApp
         </button>
         <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
           🔗 Copiar Link Tienda
         </button>
         <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top green">
           🏪 Ver mi Tienda Vecinal ↗
-        </a>
-        <a href="/deposito-nodos" target="_blank" class="btn-top">
-          📦 Mesa de Armado (Depósito) ↗
-        </a>
-        <a id="btn-abrir-liquidacion" href="/liquidacion-nodos" target="_blank" class="btn-top" style="background:#0284c7; border-color:#0284c7;">
-          💳 Cobros y Liquidación ↗
-        </a>
-        <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-top">
-          📊 Pizarra LAMDA
         </a>
       </div>
     </div>
@@ -319,13 +311,10 @@
           box.innerHTML = `
             <div class="card" style="text-align:center; padding:32px;">
               <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
-              <h3 style="margin:0 0 8px 0;">Entorno de Pruebas Puesto a Cero (0 Nodos Creados)</h3>
-              <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto 16px auto;">
-                Todavía no hay ningún Nodo Barrial configurado en la base de pruebas. Creá el primer Nodo desde la Pizarra de LAMDA (Paso 1) para habilitar el Panel del Gestor y la Tienda Vecinal.
+              <h3 style="margin:0 0 8px 0;">Panel de Gestión no disponible</h3>
+              <p style="color:#64748b; font-size:0.9rem; max-width:520px; margin:0 auto;">
+                Verificá que el enlace de tu Nodo esté activo o consultá con Administración para habilitar tu panel.
               </p>
-              <a href="/pages/pizarra-simulacion.html?tab=nodos" class="btn-primary" style="display:inline-block; text-decoration:none;">
-                📊 Ir a Pizarra LAMDA para Crear el Primer Nodo
-              </a>
             </div>
           `;
         }
@@ -346,26 +335,24 @@
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
       GSTATE.ingredientesSugeribles = data.ingredientes_sugeribles || [];
 
-      const sel = document.getElementById('gestor-nodo-select');
-      if (sel) {
-        sel.innerHTML = GSTATE.nodosDisponibles.map(n =>
-          `<option value="${esc(n.slug)}" ${n.slug === GSTATE.slug ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`
-        ).join('');
+      const titleEl = document.getElementById('gestor-nodo-title');
+      if (titleEl) {
+        titleEl.textContent = `${GSTATE.nodo.nombre_marca || 'Mi Nodo'}`;
       }
+      const subEl = document.getElementById('gestor-nodo-subtitle');
+      if (subEl) {
+        const partes = [];
+        if (GSTATE.nodo.gestor_nombre) partes.push(`👤 ${GSTATE.nodo.gestor_nombre}`);
+        if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
+        subEl.textContent = partes.join(' · ');
+      }
+      document.title = `${GSTATE.nodo.nombre_marca || 'Nodo'} — Panel del Gestor`;
 
       const btnTienda = document.getElementById('btn-abrir-tienda');
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
-      const btnLiq = document.getElementById('btn-abrir-liquidacion');
-      if (btnLiq) btnLiq.href = `/liquidacion-nodos/${encodeURIComponent(GSTATE.slug)}`;
 
       renderKpis();
       renderTabActiva();
-    }
-
-    function cambiarNodoGestor(nuevoSlug) {
-      GSTATE.slug = nuevoSlug;
-      window.history.replaceState({}, '', `/gestor/${encodeURIComponent(nuevoSlug)}`);
-      cargarPanelGestor();
     }
 
     function copiarLinkTiendaVecinos() {
@@ -815,38 +802,54 @@
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px; align-items:start;">
           <div class="card">
-            <h3 style="margin:0 0 6px 0; font-size:1.02rem;">✨ Proponer Nueva Fracción o Presentación</h3>
+            <h3 style="margin:0 0 6px 0; font-size:1.02rem;">✨ Pedir Nueva Fracción o Presentación</h3>
             <p style="margin:0 0 14px 0; font-size:0.8rem; color:#64748b;">
-              Solicitá un nuevo producto o gramaje pensado para las familias de tu barrio. Una vez cotizado y aprobado su Precio Base, aparecerá en tu pestaña de Ofertas para que le fijes tu margen.
+              Solicitá un nuevo producto o gramaje pensado para las familias de tu barrio. Cuando Administración cotice y apruebe su Precio Base, aparecerá en tu pestaña de <strong>Mi Oferta y Márgenes</strong> para que le definas tu ganancia y lo publiques en tu tienda.
             </p>
 
             <div style="display:flex; flex-direction:column; gap:10px;">
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Producto o ingrediente de interés</label>
-                <select id="prop-ing-id" class="input-sm" style="width:100%;">
-                  ${GSTATE.ingredientesSugeribles.map(i => `<option value="${i.id}">${esc(i.nombre)}</option>`).join('')}
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Categoría en tu Tienda Vecinal</label>
+                <select id="prop-categoria" class="input-sm" style="width:100%;">
+                  <option value="Frutos Secos">Frutos Secos</option>
+                  <option value="Mixes y Mezclas">Mixes y Mezclas</option>
+                  <option value="Granolas">Granolas</option>
+                  <option value="Barritas">Barritas</option>
+                  <option value="Frutas Deshidratadas">Frutas Deshidratadas</option>
+                  <option value="Semillas y Legumbres">Semillas y Legumbres</option>
+                  <option value="Otros">Otros</option>
                 </select>
               </div>
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Nombre sugerido de la presentación familiar</label>
-                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Castaña de Pará Pelada Familiar x 200g" />
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Nombre de la presentación solicitada</label>
+                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;" placeholder="Ej: Nuez Mariposa Extra Light x 250g / Mix Estudiantil x 500g" />
               </div>
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                <div>
-                  <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Peso por unidad (Kg, ej 0.25 = 250g)</label>
-                  <input type="number" step="0.05" id="prop-kilos" class="input-sm" style="width:100%;" value="0.25" />
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Gramaje / Peso por unidad</label>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.10'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">100g</button>
+                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.20'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">200g</button>
+                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.25'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">250g</button>
+                  <button type="button" onclick="document.getElementById('prop-kilos').value='0.50'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">500g</button>
+                  <button type="button" onclick="document.getElementById('prop-kilos').value='1.00'" style="padding:4px 9px; font-size:0.75rem; font-weight:700; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">1 kg</button>
                 </div>
-                <div>
-                  <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Precio estimado al vecino ($)</label>
-                  <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" value="6500" />
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:#64748b; font-weight:700; margin-bottom:2px;">Peso en Kg (ej. 0.25 = 250g)</label>
+                    <input type="number" step="0.05" id="prop-kilos" class="input-sm" style="width:100%;" value="0.25" />
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:#64748b; font-weight:700; margin-bottom:2px;">Precio estimado al vecino ($ opc.)</label>
+                    <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" placeholder="Ej: 6500" />
+                  </div>
                 </div>
               </div>
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Comentario o motivo del pedido</label>
-                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Muy pedido por las familias del barrio para viandas" />
+                <label style="display:block; font-size:0.78rem; font-weight:700; margin-bottom:4px;">Comentario o detalle para cotización</label>
+                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Me lo piden varias familias del barrio en bolsita de 250g" />
               </div>
               <button type="button" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
-                🚀 Enviar Solicitud de Cotización
+                🚀 Enviar Solicitud de Nueva Fracción
               </button>
             </div>
           </div>
@@ -854,18 +857,23 @@
           <div class="card">
             <h3 style="margin:0 0 12px 0; font-size:1.02rem;">📋 Estado de mis Solicitudes</h3>
             <div style="display:flex; flex-direction:column; gap:10px;">
-              ${GSTATE.propuestas.map(p => `
+              ${GSTATE.propuestas.length === 0 ? `
+                <div style="padding:18px; border-radius:10px; border:1px dashed #cbd5e1; color:#64748b; font-size:0.84rem; text-align:center;">
+                  Aún no enviaste solicitudes de nuevas fracciones desde este Nodo.
+                </div>
+              ` : GSTATE.propuestas.map(p => `
                 <div style="padding:12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
                     <span style="font-size:0.72rem; font-weight:800; padding:3px 8px; border-radius:999px; background:${p.estado === 'APROBADA' ? '#dcfce7' : '#fef3c7'}; color:${p.estado === 'APROBADA' ? '#15803d' : '#b45309'};">
-                      ${p.estado === 'APROBADA' ? '✅ APROBADA' : '⏳ EN COTIZACIÓN'}
+                      ${p.estado === 'APROBADA' ? '✅ APROBADA EN TU OFERTA' : '⏳ EN COTIZACIÓN'}
                     </span>
                   </div>
                   <div style="font-size:0.78rem; color:#475569; margin-top:4px;">
-                    Presentación: <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
+                    Categoría: <strong>${esc(p.categoria_sugerida || 'Frutos Secos')}</strong> · Presentación: <strong>${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g</strong>
                     ${p.precio_objetivo_vecino ? ` · Precio estimado: ${fmt(p.precio_objetivo_vecino)}` : ''}
                   </div>
+                  ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:#64748b;">📝 ${esc(p.comentario_gestor)}</div>` : ''}
                   ${p.respuesta_lamda ? `<div style="margin-top:6px; font-size:0.76rem; color:#15803d; font-weight:700;">💬 ${esc(p.respuesta_lamda)}</div>` : ''}
                 </div>
               `).join('')}
@@ -878,12 +886,14 @@
     async function enviarNuevaPropuestaGestor() {
       const nombre = document.getElementById('prop-nombre').value.trim();
       if (!nombre) {
-        alert('Por favor ingresá el nombre de la presentación sugerida.');
+        alert('Por favor ingresá el nombre del producto o presentación que querés solicitar.');
         return;
       }
+      const categoria = document.getElementById('prop-categoria')?.value || 'Frutos Secos';
       const payload = {
         nodo_solicitante_id: GSTATE.nodo.id,
-        ingrediente_sugerido_id: Number(document.getElementById('prop-ing-id').value),
+        ingrediente_sugerido_id: null,
+        categoria_sugerida: categoria,
         nombre_sugerido: nombre,
         kilos_sugeridos: Number(document.getElementById('prop-kilos').value || 0.25),
         precio_objetivo_vecino: Number(document.getElementById('prop-target').value || 0),
@@ -896,7 +906,7 @@
       });
       const data = await resp.json();
       if (data.ok) {
-        alert('✅ Solicitud enviada a la bandeja de cotización.');
+        alert('✅ Solicitud enviada. Cuando Administración apruebe su Precio Base aparecerá en tu pestaña de Mi Oferta y Márgenes.');
         await cargarPanelGestor();
       }
     }
@@ -1264,10 +1274,6 @@
                 </div>
               ` : ''}
             </div>
-            <a href="/liquidacion-nodos/${encodeURIComponent(GSTATE.slug)}" target="_blank"
-              style="padding:10px 16px; border-radius:10px; background:#16a34a; color:#fff; text-decoration:none; font-weight:900; font-size:0.84rem;">
-              💳 Abrir Mesa Completa de Liquidación ↗
-            </a>
           </div>
         </div>
 

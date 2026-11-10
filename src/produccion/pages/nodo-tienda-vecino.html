@@ -414,17 +414,12 @@
 </head>
 <body>
 
-  <!-- Barra de Pruebas (Permite alternar entre Nodos o probar qué pasa después de la hora de corte) -->
-  <div class="lab-bar">
+  <!-- Barra exclusiva para Modo Espejo en PC Local (oculta siempre en la tienda real del vecino) -->
+  <div id="tienda-espejo-bar" class="lab-bar" style="display:none;">
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span>🧪 <strong>Vista Previa Tienda del Vecino:</strong></span>
-      <select id="lab-nodo-selector" onchange="cambiarNodoTienda(this.value)"></select>
+      <span>📱 <strong>Modo Espejo LAMDA (Vista del Vecino):</strong></span>
       <button type="button" id="btn-sim-antes" class="active" onclick="simularHorarioCorte(false)">🕒 Antes del horario de corte</button>
       <button type="button" id="btn-sim-despues" onclick="simularHorarioCorte(true)">⏭️ Después del horario de corte</button>
-    </div>
-    <div style="display:flex; gap:8px;">
-      <a id="link-ir-gestor" href="#">🎛️ Ir al Panel del Gestor</a>
-      <a href="/pages/pizarra-simulacion.html?tab=nodos">📊 Volver a la Pizarra</a>
     </div>
   </div>
 
@@ -520,7 +515,17 @@
       return new Date(tsCorte + 2 * 3600 * 1000).toISOString();
     }
 
+    function esModoEspejoLocal() {
+      const params = new URLSearchParams(window.location.search);
+      const esLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      return esLocal && params.get('modo_espejo') === '1';
+    }
+
     async function cargarTienda(fechaSimuladaIso = '') {
+      const espejoBar = document.getElementById('tienda-espejo-bar');
+      if (espejoBar) {
+        espejoBar.style.display = esModoEspejoLocal() ? 'flex' : 'none';
+      }
       const q = fechaSimuladaIso ? `?fecha_simulada=${encodeURIComponent(fechaSimuladaIso)}` : '';
       const resp = await fetch(`/api/produccion/nodos/portal/${encodeURIComponent(STATE.slug)}${q}`);
       const data = await resp.json();
@@ -530,13 +535,10 @@
           grid.innerHTML = `
             <div style="grid-column: 1/-1; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:32px; text-align:center;">
               <div style="font-size:2.4rem; margin-bottom:10px;">🌱</div>
-              <h3 style="margin:0 0 8px 0;">Tienda Vecinal en Puesta a Cero (0 Nodos Creados)</h3>
-              <p style="color:#64748b; font-size:0.9rem; max-width:500px; margin:0 auto 14px auto;">
-                Creá el primer Nodo desde la Pizarra de LAMDA (Paso 1) para activar la Tienda Marca Blanca del Vecino.
+              <h3 style="margin:0 0 8px 0;">Tienda Vecinal no disponible</h3>
+              <p style="color:#64748b; font-size:0.9rem; max-width:500px; margin:0 auto;">
+                Verificá el enlace compartido por el coordinador de tu barrio.
               </p>
-              <a href="/pages/pizarra-simulacion.html?tab=nodos" style="display:inline-block; padding:10px 18px; border-radius:9px; background:#16a34a; color:#fff; font-weight:800; text-decoration:none;">
-                📊 Ir a Pizarra LAMDA
-              </a>
             </div>
           `;
         }
@@ -554,16 +556,6 @@
       document.documentElement.style.setProperty('--brand', color);
       document.documentElement.style.setProperty('--brand-dark', color);
       document.title = `${STATE.nodo.nombre_marca} — Tienda Vecinal`;
-
-      // Selector superior de pruebas
-      const sel = document.getElementById('lab-nodo-selector');
-      if (sel) {
-        sel.innerHTML = STATE.nodosDisponibles.map(n =>
-          `<option value="${esc(n.slug)}" ${n.slug === STATE.slug ? 'selected' : ''}>${esc(n.nombre_marca)}</option>`
-        ).join('');
-      }
-      const linkGestor = document.getElementById('link-ir-gestor');
-      if (linkGestor) linkGestor.href = `/gestor/${encodeURIComponent(STATE.slug)}`;
 
       // Renderizar cabecera
       document.getElementById('brand-name').textContent = STATE.nodo.nombre_marca;
@@ -943,12 +935,14 @@
           <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
             <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}')"
               style="padding:9px 14px; border-radius:9px; border:1px solid #16a34a; background:#15803d; color:#ffffff; font-weight:800; font-size:0.8rem; cursor:pointer;">
-              📲 Enviar mi Pedido por WhatsApp (Prueba: 221 661 5746)
+              📲 Recibir Comprobante por WhatsApp
             </button>
-            <button type="button" onclick="verEtiquetaDeMiPedido(${ped.id})"
-              style="padding:9px 14px; border-radius:9px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.8rem; cursor:pointer;">
-              🖨️ Ver Etiqueta Térmica Generada (Modo Prueba)
-            </button>
+            ${esModoEspejoLocal() ? `
+              <button type="button" onclick="verEtiquetaDeMiPedido(${ped.id})"
+                style="padding:9px 14px; border-radius:9px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.8rem; cursor:pointer;">
+                🖨️ Ver Etiqueta Térmica (Modo Espejo)
+              </button>
+            ` : ''}
             <button type="button" onclick="cerrarModalCheckout()"
               style="padding:9px 18px; border-radius:9px; border:none; background:var(--brand); color:#ffffff; font-weight:800; font-size:0.85rem; cursor:pointer;">
               Listo, volver a la tienda

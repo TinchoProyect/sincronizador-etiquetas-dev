@@ -3586,11 +3586,6 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
 async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     await asegurarEsquemaNodosBarriales();
 
-    const todosNodosRes = await db.query(
-        'SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca, gestor_nombre, barrio_zona, color_primario FROM public.nodos_maestro WHERE activo = true ORDER BY id ASC'
-    );
-    const todosNodos = todosNodosRes.rows;
-
     let nodoRes = await db.query(
         `SELECT nm.*,
                 COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
@@ -3635,7 +3630,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     const nodo = nodoRes.rows[0];
     const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, ingSugeriblesRes, movsRes] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -3653,11 +3648,11 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
             [nodo.id]
         ),
         db.query(
-            `SELECT npf.*,
-                    ing.nombre AS ingrediente_sugerido_nombre
+            `SELECT npf.id, npf.codigo_propuesta, npf.nodo_solicitante_id, npf.nombre_sugerido,
+                    npf.categoria_sugerida, npf.kilos_sugeridos, npf.precio_objetivo_vecino,
+                    npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at
              FROM public.nodos_propuestas_fracciones npf
-             LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
-             WHERE npf.nodo_solicitante_id = $1 OR npf.nodo_solicitante_id IS NULL
+             WHERE npf.nodo_solicitante_id = $1
              ORDER BY npf.id DESC`,
             [nodo.id]
         ),
@@ -3676,14 +3671,6 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
              WHERE npv.nodo_id = $1
              ORDER BY npi.id ASC`,
             [nodo.id]
-        ),
-        db.query(
-            `SELECT id, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_kg
-             FROM public.ingredientes
-             WHERE COALESCE(es_insumo, false) = false
-               AND COALESCE(costo_patron, 0) > 0
-               AND nombre NOT ILIKE '%Fuera de Servicio%'
-             ORDER BY nombre ASC`
         ),
         db.query(
             `SELECT nmc.*, nle.codigo_canasto
@@ -3729,7 +3716,18 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
 
     return {
         nodo,
-        nodos_disponibles: todosNodos,
+        nodos_disponibles: [
+            {
+                id: nodo.id,
+                codigo_nodo: nodo.codigo_nodo,
+                slug: nodo.slug,
+                nombre_marca: nodo.nombre_marca,
+                subtitulo_marca: nodo.subtitulo_marca,
+                gestor_nombre: nodo.gestor_nombre,
+                barrio_zona: nodo.barrio_zona,
+                color_primario: nodo.color_primario
+            }
+        ],
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasPublicadas,
         todas_ofertas_gestor: ofertasRes.rows,
@@ -3738,7 +3736,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         movimientos_cta_cte: movsRes.rows,
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
-        ingredientes_sugeribles: ingSugeriblesRes.rows
+        ingredientes_sugeribles: []
     };
 }
 

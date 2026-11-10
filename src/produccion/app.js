@@ -43,6 +43,47 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
+// 🔒 Blindaje de aislamiento para accesos móviles externos (Túnel trycloudflare.com):
+// Un Gestor o Vecino que entra desde el link externo del celular JAMÁS puede acceder
+// a la Pizarra de Costos, Mesa de Armado de Depósito, Liquidación Interna ni APIs mayoristas de LAMDA.
+app.use((req, res, next) => {
+    const host = String(req.headers.host || '').toLowerCase();
+    const esTunelMovilExterno = host.includes('.trycloudflare.com');
+    if (!esTunelMovilExterno) return next();
+
+    const p = String(req.path || '');
+    const esVistaPermitida =
+        /^\/(gestor|tienda)(\/[^/]+)?\/?$/i.test(p) ||
+        /^\/favicon\.ico$/i.test(p);
+
+    const esApiNodoPermitida =
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/config-logistica|propuestas|tienda\/[^/]+\/pedido|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
+
+    if (esVistaPermitida || esApiNodoPermitida) {
+        return next();
+    }
+
+    if (p.startsWith('/api/')) {
+        return res.status(403).json({
+            ok: false,
+            error: 'Acceso restringido exclusivamente a la administración interna de LAMDA.'
+        });
+    }
+
+    return res.status(403).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acceso Restringido</title></head>
+<body style="font-family:sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
+  <div style="max-width:420px;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:24px;">
+    <div style="font-size:2.2rem;margin-bottom:8px;">🔒</div>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Sección Interna de Administración</h2>
+    <p style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin:0;">
+      Este enlace externo corresponde únicamente al Panel del Gestor o a la Tienda Vecinal de tu Nodo. Las herramientas internas de costos y depósito no están disponibles desde este acceso.
+    </p>
+  </div>
+</body></html>`);
+});
+
 // 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
 attachLamdaCloudRuntime(app, 3002);

@@ -1231,7 +1231,7 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
                 <div style="text-align: left; font-family: sans-serif; font-size: 13.5px; color: #334155;">
                     <label for="swal-search-nodo-espejo" style="font-weight: 600; display: block; margin-bottom: 6px;">Seleccione el Nodo a visualizar:</label>
                     <input type="text" id="swal-search-nodo-espejo" placeholder="🔎 Filtrar por código, marca, gestor o slug..." style="width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; outline: none; margin-bottom: 8px;">
-                    <input type="hidden" id="swal-selected-nodo-slug" value="${nodos[0].url_slug || ''}">
+                    <input type="hidden" id="swal-selected-nodo-slug" value="${nodos[0].slug || nodos[0].url_slug || ''}">
                     <div id="swal-nodo-espejo-lista" style="max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc;"></div>
                     <span style="font-size: 11px; color: #64748b; margin-top: 8px; display: block;">Se abrirá en una pestaña nueva la vista exacta que ve el ${esGestor ? 'Gestor del Nodo en su celular' : 'Vecino comprador en su teléfono'}.</span>
                 </div>
@@ -1252,23 +1252,24 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
                         confirmButton.disabled = true;
                         return;
                     }
-                    if (!filtered.some(n => n.url_slug === selectedSlugInput.value)) {
-                        selectedSlugInput.value = filtered[0].url_slug;
+                    if (!filtered.some(n => (n.slug || n.url_slug) === selectedSlugInput.value)) {
+                        selectedSlugInput.value = filtered[0].slug || filtered[0].url_slug || '';
                     }
                     confirmButton.disabled = !selectedSlugInput.value;
 
                     listaDiv.innerHTML = filtered.map(n => {
-                        const isSelected = selectedSlugInput.value === n.url_slug;
+                        const slugNodo = n.slug || n.url_slug || '';
+                        const isSelected = selectedSlugInput.value === slugNodo;
                         const bgStyle = isSelected ? 'background-color: #ecfdf5; border-left: 4px solid #0f766e;' : 'border-left: 4px solid transparent;';
                         const madreTag = n.codigo_bunker_cliente_madre ? ` · Cta. Madre: ${n.codigo_bunker_cliente_madre}` : '';
                         return `
-                            <div class="nodo-espejo-option" data-slug="${n.url_slug}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: all 0.15s; ${bgStyle}">
+                            <div class="nodo-espejo-option" data-slug="${slugNodo}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: all 0.15s; ${bgStyle}">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                                     <span style="font-weight: 700; color: #0f172a; font-size: 13px;">${n.nombre_marca}</span>
-                                    <span style="font-size: 11px; font-weight: 700; color: #0f766e; background: #ccfbf1; padding: 2px 6px; border-radius: 4px;">${n.codigo_nodo}</span>
+                                    <span style="font-size: 11px; font-weight: 700; color: #0f766e; background: #ccfbf1; padding: 2px 6px; border-radius: 4px;">${n.codigo_nodo || ''}</span>
                                 </div>
                                 <div style="font-size: 12px; color: #475569; margin-bottom: 2px;">Gestor: <strong>${n.gestor_nombre || 'S/N'}</strong> · Subcuenta: ${n.codigo_bunker_cliente || 'S/C'}${madreTag}</div>
-                                <div style="font-size: 11px; color: #64748b; font-family: monospace;">Ruta: ${prefijoRuta}${n.url_slug}</div>
+                                <div style="font-size: 11px; color: #64748b; font-family: monospace;">Ruta: ${prefijoRuta}${slugNodo}</div>
                             </div>
                         `;
                     }).join('');
@@ -1290,7 +1291,7 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
                         (n.codigo_nodo || '').toLowerCase().includes(term) ||
                         (n.nombre_marca || '').toLowerCase().includes(term) ||
                         (n.gestor_nombre || '').toLowerCase().includes(term) ||
-                        (n.url_slug || '').toLowerCase().includes(term) ||
+                        (n.slug || n.url_slug || '').toLowerCase().includes(term) ||
                         (n.codigo_bunker_cliente || '').toLowerCase().includes(term) ||
                         (n.codigo_bunker_cliente_madre || '').toLowerCase().includes(term)
                     );
@@ -1308,7 +1309,7 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
         });
 
         if (seleccion.isConfirmed && seleccion.value) {
-            window.open(`http://localhost:3002${prefijoRuta}${encodeURIComponent(seleccion.value)}`, '_blank', 'noopener');
+            window.open(`http://localhost:3002${prefijoRuta}${encodeURIComponent(seleccion.value)}?modo_espejo=1`, '_blank', 'noopener');
         }
     } catch (err) {
         console.error('Error abriendo Modo Espejo de Nodo:', err);
