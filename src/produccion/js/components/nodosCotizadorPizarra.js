@@ -860,22 +860,48 @@
             </option>`
         ).join('');
 
+        const clientesMadreOpts = [
+            `<option value="">🌟 Sin Cuenta Madre (Nodo Externo Puro — Solo Subcuenta Aislada CB-NODO-xxx)</option>`,
+            ...(ESTADO_NODOS.fuentes.clientes_bunker || []).map(c => {
+                const etiquetaSaldo = Number(c.saldo_cta_cte || 0) < 0
+                    ? `Saldo a favor: ${fmtMoneda(Math.abs(Number(c.saldo_cta_cte)))}`
+                    : `Saldo: ${fmtMoneda(c.saldo_cta_cte || 0)}`;
+                const dest = c.codigo_bunker_cliente === 'CB-0006' ? '⭐ ' : '';
+                return `<option value="${c.id}" data-codigo="${escaparHtml(c.codigo_bunker_cliente || '')}">
+                    ${dest}${escaparHtml(c.codigo_bunker_cliente)} — ${escaparHtml(c.razon_social || c.cliente_nombre)} (${etiquetaSaldo})
+                </option>`;
+            })
+        ].join('');
+
         return `
             <div style="display:grid; grid-template-columns: 34% 65%; gap:16px; align-items:start;">
                 <!-- COLUMNA IZQUIERDA: LISTADO DE NODOS BARRIALES ACTIVOS -->
                 <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:6px; flex-wrap:wrap;">
                         <div>
                             <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales Activos</div>
-                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo para configurar su marca, entregas o etiqueta</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo o cree uno nuevo (Caso #1: Matías CB-0006)</div>
                         </div>
-                        <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
-                            style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7; cursor:pointer;">
-                            ➕ Nuevo Nodo
-                        </button>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button onclick="window.NodosPizarra.precargarCasoMatiasFormulario()"
+                                title="Precargar los datos reales de Matías Ferronato vinculados a su Cuenta Madre CB-0006"
+                                style="padding:6px 10px; border-radius:7px; font-size:0.74rem; font-weight:800; border:1px solid #f59e0b; background:rgba(245,158,11,0.18); color:#fcd34d; cursor:pointer;">
+                                ⚡ Caso #1: Matías (CB-0006)
+                            </button>
+                            <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
+                                style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7; cursor:pointer;">
+                                ➕ Nuevo Nodo
+                            </button>
+                        </div>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:10px;">
+                        ${ESTADO_NODOS.nodos.length === 0 ? `
+                            <div style="padding:16px; border-radius:10px; background:rgba(15,23,42,0.7); border:1px dashed #475569; color:#cbd5e1; font-size:0.8rem; line-height:1.5;">
+                                <div style="font-weight:800; color:#fcd34d; margin-bottom:4px;">✨ Padrón de Nodos en Cero (Listo para Paso 1)</div>
+                                Haga clic en <strong>⚡ Caso #1: Matías (CB-0006)</strong> arriba o complete el formulario de la derecha y presione <strong>💾 Guardar Cambios del Nodo</strong> para dar de alta el primer Nodo con su subcuenta aislada <code>CB-NODO-001</code> vinculada a la Cuenta Madre <code>CB-0006</code>.
+                            </div>
+                        ` : ''}
                         ${ESTADO_NODOS.nodos.map(n => `
                             <div onclick="window.NodosPizarra.cargarNodoEnFormularioAbm(${n.id})"
                                 style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : '#334155'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
@@ -894,10 +920,15 @@
                                             👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || '')}
                                         </div>
                                         <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
-                                            <span>📒 Saldo Cta.Cte: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
+                                            <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
                                             <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'S/A')}</strong></span>
                                             <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong></span>
                                         </div>
+                                        ${n.codigo_bunker_cliente_madre ? `
+                                            <div style="font-size:0.71rem; color:#fcd34d; margin-top:4px; padding:3px 7px; border-radius:5px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); display:inline-block;">
+                                                🔗 Cuenta Madre: <strong>${escaparHtml(n.codigo_bunker_cliente_madre)}</strong> (${escaparHtml(n.cliente_madre_razon_social || n.cliente_madre_nombre || '')}) · Saldo CC Principal: <strong>${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong>
+                                            </div>
+                                        ` : ''}
                                     </div>
                                 </div>
                                 <div style="display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6); flex-wrap:wrap;" onclick="event.stopPropagation();">
@@ -977,6 +1008,24 @@
                                 <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Retiro de Vecinos)</label>
                                 <input type="text" id="abm-direccion" placeholder="Cantilo 452 e/ 13c y 14, City Bell"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
+                            </div>
+                        </div>
+
+                        <!-- VÍNCULO CON CUENTA MADRE EN LAMDA (ESQUEMA DUAL: SUBCUENTA CB-NODO-XXX + CUENTA MADRE OPCIONAL) -->
+                        <div style="margin-bottom:10px; padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.35);">
+                            <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:12px; align-items:center;">
+                                <div>
+                                    <label style="display:block; font-size:0.74rem; color:#fcd34d; font-weight:800; margin-bottom:4px;">
+                                        🔗 Vínculo con Cuenta Madre en LAMDA (Opcional — Ej: Matías CB-0006)
+                                    </label>
+                                    <select id="abm-cliente-madre"
+                                        style="width:100%; padding:7px 9px; border-radius:6px; border:1px solid rgba(245,158,11,0.5); background:#0f172a; color:#f8fafc; font-size:0.8rem; font-weight:700;">
+                                        ${clientesMadreOpts}
+                                    </select>
+                                </div>
+                                <div style="font-size:0.72rem; color:#cbd5e1; line-height:1.4;">
+                                    🛡️ <strong>Doble Cuenta Aislada:</strong> El Nodo opera con su propia subcuenta <code>CB-NODO-xxx</code> (<code>Lista Base Nodos Barriales</code>) sin alterar la ficha ni las listas mayoristas del cliente madre. Al cerrar la liquidación del lote, el resultado neto impacta como un único asiento limpio (<code>LIQUIDACION_NODO</code>) en la Cuenta Madre y su Portal B2B.
+                                </div>
                             </div>
                         </div>
 
@@ -1582,6 +1631,7 @@
         setVal('abm-gestor-tel', nodo.gestor_telefono);
         setVal('abm-barrio', nodo.barrio_zona);
         setVal('abm-direccion', nodo.direccion_retiro);
+        setVal('abm-cliente-madre', nodo.cliente_madre_bunker_id || '');
         if (nodo.cuenta_bancaria_id) setVal('abm-cuenta-bancaria', nodo.cuenta_bancaria_id);
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = Boolean(nodo.usa_cuenta_compartida);
@@ -1606,13 +1656,39 @@
     function nuevoNodoFormulario() {
         ESTADO_NODOS.nodoEditandoId = null;
         logoOriginalSubidoBase64 = null;
-        const ids = ['abm-nodo-id', 'abm-nombre-marca', 'abm-slug', 'abm-gestor-nombre', 'abm-gestor-tel', 'abm-barrio', 'abm-direccion', 'abm-alias-display', 'abm-logo-iniciales'];
+        const ids = ['abm-nodo-id', 'abm-nombre-marca', 'abm-slug', 'abm-gestor-nombre', 'abm-gestor-tel', 'abm-barrio', 'abm-direccion', 'abm-alias-display', 'abm-logo-iniciales', 'abm-cliente-madre'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
         const sub = document.getElementById('abm-subtitulo');
         if (sub) sub.value = 'Comunidad Barrial - Entrega Fresca';
+        regenerarLogoZplEnVivo();
+    }
+
+    function precargarCasoMatiasFormulario() {
+        nuevoNodoFormulario();
+        const cliMatias = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
+            c => c.codigo_bunker_cliente === 'CB-0006' || Number(c.id) === 18
+        );
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val ?? '';
+        };
+        setVal('abm-nombre-marca', 'Almacén Natural Matías');
+        setVal('abm-slug', 'nodo-matias');
+        setVal('abm-subtitulo', 'Alimentos Naturales y Frutos Secos - Entrega Barrial');
+        setVal('abm-gestor-nombre', 'Matías Ferronato');
+        setVal('abm-gestor-tel', cliMatias?.whatsapp_facturas || '5492216702981');
+        setVal('abm-barrio', 'Calle 70 esq. 182 Bis (La Plata)');
+        setVal('abm-direccion', cliMatias?.domicilio_fiscal || 'Calle 70 esq. 182 Bis N° 4374');
+        setVal('abm-cliente-madre', cliMatias ? cliMatias.id : 18);
+        setVal('abm-alias-display', 'LAMDA.SER.MARTIN');
+        setVal('abm-cargo-envio', 1500);
+        setVal('abm-margen-default', 28);
+        setVal('abm-logo-iniciales', 'MF');
+        const chkComp = document.getElementById('abm-cuenta-compartida');
+        if (chkComp) chkComp.checked = true;
         regenerarLogoZplEnVivo();
     }
 
@@ -1722,6 +1798,8 @@
             const idExistente = document.getElementById('abm-nodo-id')?.value || null;
             const ctaSelect = document.getElementById('abm-cuenta-bancaria');
             const ctaOpt = ctaSelect?.selectedOptions?.[0];
+            const madreSelect = document.getElementById('abm-cliente-madre');
+            const madreOpt = madreSelect?.selectedOptions?.[0];
 
             const payload = {
                 nombre_marca: document.getElementById('abm-nombre-marca')?.value || '',
@@ -1731,6 +1809,8 @@
                 gestor_telefono: document.getElementById('abm-gestor-tel')?.value || '',
                 barrio_zona: document.getElementById('abm-barrio')?.value || '',
                 direccion_retiro: document.getElementById('abm-direccion')?.value || '',
+                cliente_madre_bunker_id: madreSelect?.value ? Number(madreSelect.value) : null,
+                codigo_bunker_cliente_madre: madreOpt?.getAttribute('data-codigo') || null,
                 cuenta_bancaria_id: ctaSelect?.value ? Number(ctaSelect.value) : null,
                 usa_cuenta_compartida: Boolean(document.getElementById('abm-cuenta-compartida')?.checked),
                 alias_bancario_display: document.getElementById('abm-alias-display')?.value || ctaOpt?.getAttribute('data-alias') || '',
@@ -1873,6 +1953,7 @@
         togglePublicacionOfertaGestor,
         cargarNodoEnFormularioAbm,
         nuevoNodoFormulario,
+        precargarCasoMatiasFormulario,
         subirArchivoLogo,
         regenerarLogoZplEnVivo,
         simularEtiquetaZebra,

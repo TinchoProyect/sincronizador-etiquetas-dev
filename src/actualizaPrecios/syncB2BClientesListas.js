@@ -264,6 +264,7 @@ async function sincronizarB2BClientesListas() {
         SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social, bc.cuit_cuil, bc.email_portal, bc.email_portal_nombre, bc.ver_stock, bc.lomas_soft_id
         FROM public.bunker_clientes bc
         WHERE bc.email_portal IS NOT NULL AND TRIM(bc.email_portal) <> ''
+          AND bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
       `);
 
       const { createClient } = require('@supabase/supabase-js');
@@ -331,7 +332,8 @@ async function sincronizarB2BClientesListas() {
       FROM public.bunker_cliente_listas_precios clp
       JOIN public.bunker_clientes bc ON bc.id = clp.bunker_cliente_id
       LEFT JOIN public.bunker_portal_b2b_listas_config cfg ON cfg.lista_id = clp.bunker_lista_precio_id
-      LEFT JOIN public.clientes c ON (bc.lomas_soft_id = TRIM(c.cliente_id::text) OR (bc.lomas_soft_id ~ '^[0-9]+$' AND c.cliente_id::text ~ '^[0-9]+$' AND bc.lomas_soft_id::integer = c.cliente_id::integer));
+      LEFT JOIN public.clientes c ON (bc.lomas_soft_id = TRIM(c.cliente_id::text) OR (bc.lomas_soft_id ~ '^[0-9]+$' AND c.cliente_id::text ~ '^[0-9]+$' AND bc.lomas_soft_id::integer = c.cliente_id::integer))
+      WHERE bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%';
     `;
 
     const resLocalLists = await localClient.query(listsQuery);

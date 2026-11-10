@@ -256,16 +256,25 @@
     <div id="gestor-tab-content"></div>
   </main>
 
+  <!-- MODAL DE RECIBO DIGITAL MARCA BLANCA PARA EL VECINO (EMITIDO DESDE EL CELULAR DEL GESTOR) -->
+  <div id="modal-recibo-gestor" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.72); z-index:2000; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:16px; max-width:460px; width:100%; overflow:hidden; box-shadow:0 20px 45px rgba(0,0,0,0.35); border:1px solid #cbd5e1;">
+      <div id="modal-recibo-gestor-body"></div>
+    </div>
+  </div>
+
   <script>
     const GSTATE = {
       slug: '',
       tab: 'ofertas',
+      filtroPagoPedidos: 'TODOS',
       nodo: null,
       nodosDisponibles: [],
       proximaEntrega: null,
       ofertas: [],
       propuestas: [],
       pedidos: [],
+      movimientosCtaCte: [],
       ingredientesSugeribles: [],
       liquidacionTablero: null
     };
@@ -323,6 +332,7 @@
       GSTATE.ofertas = data.todas_ofertas_gestor || [];
       GSTATE.propuestas = data.propuestas_nodo || [];
       GSTATE.pedidos = data.pedidos_nodo || [];
+      GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
       GSTATE.ingredientesSugeribles = data.ingredientes_sugeribles || [];
 
       const sel = document.getElementById('gestor-nodo-select');
@@ -783,15 +793,65 @@
     }
 
     // -------------------------------------------------------------------------
-    // TAB 4: PEDIDOS DE MIS VECINOS Y GANANCIAS
+    // TAB 4: PEDIDOS DE MIS VECINOS, ESTADO DE PAGO Y EMISIÓN DE RECIBO EN EFECTIVO
     // -------------------------------------------------------------------------
+    function filtrarEstadoPagoPedidosGestor(filtro) {
+      GSTATE.filtroPagoPedidos = filtro;
+      renderTabActiva();
+    }
+
     function renderTabPedidos() {
+      const todos = GSTATE.pedidos || [];
+      const pagados = todos.filter(p => Boolean(p.pago_confirmado));
+      const pendientes = todos.filter(p => !p.pago_confirmado);
+
+      const montoPagado = pagados.reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
+      const montoPendiente = pendientes.reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
+
+      const listaFiltrada = GSTATE.filtroPagoPedidos === 'PAGADOS'
+        ? pagados
+        : GSTATE.filtroPagoPedidos === 'PENDIENTES'
+          ? pendientes
+          : todos;
+
       return `
         <div class="card">
-          <h3 style="margin:0 0 12px 0; font-size:1.05rem;">📋 Pedidos Recibidos de Vecinos</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <div>
+              <h3 style="margin:0; font-size:1.05rem;">📋 Pedidos de Vecinos, Estado de Cobros y Recibos en Efectivo</h3>
+              <p style="margin:4px 0 0 0; font-size:0.8rem; color:#64748b;">
+                Verificá qué pedidos ya están pagos y cuáles siguen pendientes. Cuando un vecino te paga en efectivo, registrá el cobro y enviale el recibo digital por WhatsApp.
+              </p>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
+                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'TODOS' ? '#0f172a' : '#cbd5e1'}; background:${GSTATE.filtroPagoPedidos === 'TODOS' ? '#0f172a' : '#fff'}; color:${GSTATE.filtroPagoPedidos === 'TODOS' ? '#fff' : '#334155'};">
+                Todos (${todos.length})
+              </button>
+              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
+                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#d97706' : '#fcd34d'}; background:${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#d97706' : '#fffbeb'}; color:${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? '#fff' : '#b45309'};">
+                ⏳ Pendientes de Pago (${pendientes.length} · ${fmt(montoPendiente)})
+              </button>
+              <button type="button" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
+                style="padding:7px 12px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer; border:1px solid ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#16a34a' : '#86efac'}; background:${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#16a34a' : '#f0fdf4'}; color:${GSTATE.filtroPagoPedidos === 'PAGADOS' ? '#fff' : '#15803d'};">
+                ✅ Pagados (${pagados.length} · ${fmt(montoPagado)})
+              </button>
+            </div>
+          </div>
+
+          ${listaFiltrada.length === 0 ? `
+            <div style="text-align:center; padding:24px; color:#64748b; font-size:0.88rem; background:#f8fafc; border-radius:10px; border:1px dashed #cbd5e1;">
+              No hay pedidos en este filtro (${GSTATE.filtroPagoPedidos}).
+            </div>
+          ` : ''}
+
           <div style="display:flex; flex-direction:column; gap:12px;">
-            ${GSTATE.pedidos.map(p => `
-              <div style="border:1px solid #e2e8f0; border-radius:12px; padding:14px; background:#ffffff;">
+            ${listaFiltrada.map(p => {
+              const pagado = Boolean(p.pago_confirmado);
+              const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
+              const refRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `TRF-${p.codigo_pedido}`);
+              return `
+              <div style="border:2px solid ${pagado ? '#86efac' : '#fde68a'}; border-radius:12px; padding:14px; background:${pagado ? '#fafffe' : '#ffffff'};">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #f1f5f9; padding-bottom:10px; margin-bottom:10px;">
                   <div>
                     <span style="font-family:monospace; font-weight:900; background:#0f172a; color:#fff; padding:3px 8px; border-radius:6px; font-size:0.8rem;">
@@ -799,8 +859,8 @@
                     </span>
                     <strong style="font-size:1rem; margin-left:8px;">👤 ${esc(p.vecino_nombre)}</strong>
                     <span style="font-size:0.8rem; color:#64748b; margin-left:8px;">📱 ${esc(p.vecino_telefono)}</span>
-                    <span style="display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${p.estado_operativo === 'EN_PODER_GESTOR' ? '#e0f2fe' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#dcfce7' : '#fef3c7'}; color:${p.estado_operativo === 'EN_PODER_GESTOR' ? '#0369a1' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#15803d' : '#b45309'};">
-                      ${p.estado_operativo === 'EN_PODER_GESTOR' ? '🚚 En reparto / En poder del Gestor' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '🧺 Lista en Canasto Depósito' : '⏳ En preparación en Taller'}
+                    <span style="display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#dcfce7' : p.estado_operativo === 'EN_PODER_GESTOR' ? '#e0f2fe' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#dcfce7' : '#fef3c7'}; color:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#15803d' : p.estado_operativo === 'EN_PODER_GESTOR' ? '#0369a1' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '#15803d' : '#b45309'};">
+                      ${p.estado_operativo === 'ENTREGADO_VECINO' ? '✅ Entregado al Vecino' : p.estado_operativo === 'EN_PODER_GESTOR' ? '🚚 En poder del Gestor' : p.estado_operativo === 'ARMADO_EN_CANASTO' ? '🧺 Lista en Canasto Depósito' : '⏳ En preparación en Taller'}
                     </span>
                     <div style="font-size:0.8rem; color:#334155; margin-top:5px;">
                       📅 <strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} ·
@@ -812,9 +872,18 @@
                   </div>
 
                   <div style="text-align:right;">
-                    <span style="display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.74rem; font-weight:800; background:${p.medio_pago === 'EFECTIVO' ? '#fef3c7' : '#dcfce7'}; color:${p.medio_pago === 'EFECTIVO' ? '#b45309' : '#15803d'};">
-                      ${p.medio_pago === 'EFECTIVO' ? `💵 Cobrar Efectivo: ${fmt(p.total_vecino)}` : `🏦 Transferencia (${fmt(p.total_vecino)})`}
-                    </span>
+                    ${pagado ? `
+                      <span style="display:inline-block; padding:5px 11px; border-radius:999px; font-size:0.76rem; font-weight:900; background:#dcfce7; color:#15803d; border:1px solid #86efac;">
+                        ${esEfvo ? `✅ PAGADO EN EFECTIVO (${fmt(p.total_vecino)})` : `✅ PAGADO TRANSFERENCIA (${fmt(p.total_vecino)})`}
+                      </span>
+                      <div style="font-size:0.72rem; color:#059669; font-weight:700; margin-top:3px;">
+                        Comprobante: ${esc(refRecibo)}
+                      </div>
+                    ` : `
+                      <span style="display:inline-block; padding:5px 11px; border-radius:999px; font-size:0.76rem; font-weight:900; background:#fef3c7; color:#b45309; border:1px solid #fde68a;">
+                        ⏳ PENDIENTE DE PAGO · ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : 'Transferencia / Efectivo'})
+                      </span>
+                    `}
                     <div style="font-size:0.78rem; color:#16a34a; font-weight:800; margin-top:4px;">
                       Tu ganancia en este pedido: +${fmt(p.ganancia_total_gestor)}
                       ${Number(p.cargo_envio_barrial) > 0 ? ` (incluye ${fmt(p.cargo_envio_barrial)} de envío)` : ''}
@@ -827,19 +896,31 @@
                     ${(p.items || []).map(it => `<span style="display:inline-block; background:#f1f5f9; padding:3px 9px; border-radius:6px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
                   </div>
                   <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    ${!pagado ? `
+                      <button type="button" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})"
+                        style="padding:7px 13px; border-radius:8px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.79rem; cursor:pointer; box-shadow:0 2px 6px rgba(22,163,74,0.25);">
+                        💵 Cobrar en Efectivo y Emitir Recibo (${fmt(p.total_vecino)})
+                      </button>
+                    ` : `
+                      <button type="button" onclick="abrirModalReciboVecinoGestor(${p.id})"
+                        style="padding:7px 13px; border-radius:8px; border:1px solid #16a34a; background:#dcfce7; color:#15803d; font-weight:900; font-size:0.79rem; cursor:pointer;">
+                        🧾 Ver / Enviar Recibo Digital (Lab → 221 661 5746)
+                      </button>
+                    `}
                     <button type="button" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})"
                       style="padding:6px 12px; border-radius:8px; border:1px solid #86efac; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.78rem; cursor:pointer;">
-                      📲 WhatsApp al Vecino (Lab → 221 661 5746)
+                      📲 Detalle por WhatsApp (221 661 5746)
                     </button>
                     <button type="button" onclick="mostrarEtiquetaPedidoGestor(${p.id})"
                       style="padding:6px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; font-weight:700; font-size:0.78rem; cursor:pointer;">
-                      🖨️ Ver Etiqueta Térmica del Paquete
+                      🖨️ Ver Etiqueta Térmica
                     </button>
                   </div>
                 </div>
                 <div id="preview-etiqueta-ped-${p.id}" style="margin-top:8px;"></div>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         </div>
       `;
@@ -861,21 +942,167 @@
     }
 
     // -------------------------------------------------------------------------
+    // COBRO EN EFECTIVO DESDE EL CELULAR DEL GESTOR + RECIBO DIGITAL MARCA BLANCA
+    // -------------------------------------------------------------------------
+    async function cobrarEnEfectivoYEmitirReciboGestor(pedidoId) {
+      const ped = (GSTATE.pedidos || []).find(p => Number(p.id) === Number(pedidoId));
+      if (!ped) return;
+
+      const resp = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          medio_pago: 'EFECTIVO',
+          comprobante_referencia: `REC-EFVO-${ped.codigo_pedido}`
+        })
+      });
+      const data = await resp.json();
+      if (!data.ok) {
+        alert('⚠️ ' + (data.error || 'No se pudo registrar el cobro en efectivo.'));
+        return;
+      }
+      await cargarPanelGestor();
+      abrirModalReciboVecinoGestor(pedidoId);
+    }
+
+    function cerrarModalReciboGestor() {
+      const modal = document.getElementById('modal-recibo-gestor');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function abrirModalReciboVecinoGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
+      const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
+      const fechaHoy = p.fecha_conciliacion_pago
+        ? new Date(p.fecha_conciliacion_pago).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+        : new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) return;
+
+      body.innerHTML = `
+        <div style="background:${esc(GSTATE.nodo.color_primario || '#16a34a')}; color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Comprobante Digital de Pago Vecinal</div>
+            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">🌿 ${esc(GSTATE.nodo.nombre_marca)}</div>
+            <div style="font-size:0.76rem; opacity:0.92;">Atendido por ${esc(GSTATE.nodo.gestor_nombre)} · ${esc(GSTATE.nodo.barrio_zona || '')}</div>
+          </div>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+
+        <div style="padding:18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:10px 12px; margin-bottom:14px;">
+            <div>
+              <div style="font-size:0.72rem; color:#15803d; font-weight:800; text-transform:uppercase;">Estado del Pedido #${esc(p.codigo_pedido)}</div>
+              <div style="font-size:0.95rem; font-weight:900; color:#166534;">✅ PAGADO (${esEfvo ? 'Efectivo en Mano' : 'Transferencia Bancaria'})</div>
+            </div>
+            <div style="text-align:right; font-family:monospace; font-size:0.76rem; color:#15803d; font-weight:800;">
+              <div>${esc(nroRecibo)}</div>
+              <div>${esc(fechaHoy)}</div>
+            </div>
+          </div>
+
+          <div style="font-size:0.84rem; color:#334155; margin-bottom:12px; line-height:1.5;">
+            <div><strong>Cliente / Vecino:</strong> ${esc(p.vecino_nombre)} (${esc(p.vecino_telefono)})</div>
+            <div><strong>Entrega:</strong> ${esc(p.fecha_entrega_label)} (${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a ${esc(p.direccion_entrega)}` : `Retiro en ${esc(GSTATE.nodo.direccion_retiro || 'Nodo')}`})</div>
+          </div>
+
+          <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:14px;">
+            <div style="background:#f8fafc; padding:8px 12px; font-size:0.74rem; font-weight:800; color:#475569; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">
+              Detalle de Productos
+            </div>
+            <div style="padding:10px 12px; display:flex; flex-direction:column; gap:6px; font-size:0.83rem;">
+              ${(p.items || []).map(it => `
+                <div style="display:flex; justify-content:space-between;">
+                  <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
+                  <strong>${fmt(it.subtotal_vecino)}</strong>
+                </div>
+              `).join('')}
+              ${Number(p.cargo_envio_barrial) > 0 ? `
+                <div style="display:flex; justify-content:space-between; color:#475569; border-top:1px dashed #e2e8f0; padding-top:6px;">
+                  <span>🛵 Envío a domicilio barrial</span>
+                  <strong>${fmt(p.cargo_envio_barrial)}</strong>
+                </div>
+              ` : ''}
+              <div style="display:flex; justify-content:space-between; font-size:1rem; font-weight:900; color:#0f172a; border-top:2px solid #cbd5e1; padding-top:8px; margin-top:4px;">
+                <span>TOTAL ABONADO</span>
+                <span style="color:#16a34a;">${fmt(p.total_vecino)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" onclick="enviarReciboWhatsAppVecinoGestor(${p.id})"
+              style="width:100%; padding:12px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.9rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+              📲 Enviar Recibo por WhatsApp al Vecino (Lab → 221 661 5746)
+            </button>
+            <button type="button" onclick="cerrarModalReciboGestor()"
+              style="width:100%; padding:9px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569; font-weight:700; font-size:0.82rem; cursor:pointer;">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      `;
+
+      modal.style.display = 'flex';
+    }
+
+    async function enviarReciboWhatsAppVecinoGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
+      const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico}: ${fmt(it.subtotal_vecino)}`).join('\n');
+
+      const mensaje = [
+        `🧾 *RECIBO DE PAGO — ${GSTATE.nodo.nombre_marca}*`,
+        `Comprobante: *${nroRecibo}* · Pedido *#${p.codigo_pedido}*`,
+        `Hola *${p.vecino_nombre}*, registramos tu pago correctamente:`,
+        itemsTxt,
+        Number(p.cargo_envio_barrial) > 0 ? `• Envío barrial: ${fmt(p.cargo_envio_barrial)}` : '',
+        `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}*`,
+        `Medio de pago: *${esEfvo ? 'Efectivo recibido en mano' : 'Transferencia Bancaria'}*`,
+        `¡Muchas gracias por tu compra en ${GSTATE.nodo.nombre_marca}! 🌿`
+      ].filter(Boolean).join('\n');
+
+      const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatario_nombre: p.vecino_nombre,
+          telefono_original: p.vecino_telefono,
+          mensaje
+        })
+      });
+      const data = await resp.json();
+      const targetUrl = (data && data.url_wa_me) ? data.url_wa_me : `https://wa.me/5492216615746?text=${encodeURIComponent(mensaje)}`;
+      window.open(targetUrl, '_blank', 'noopener');
+    }
+
+    // -------------------------------------------------------------------------
     // TAB 5: CUENTA CORRIENTE Y LIQUIDACIÓN DEL LOTE DEL GESTOR
     // -------------------------------------------------------------------------
     function renderTabLiquidacionGestor() {
       const liqData = GSTATE.liquidacionTablero;
       const canastos = (liqData?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
-      const nodoResumen = (liqData?.nodos || []).find(n => Number(n.id) === Number(GSTATE.nodo?.id));
+      const nodoResumen = (liqData?.nodos || []).find(n => Number(n.id) === Number(GSTATE.nodo?.id)) || GSTATE.nodo || {};
       const saldoActual = Number(nodoResumen?.saldo_cuenta_corriente ?? canastos[0]?.saldo_cuenta_corriente ?? 0);
+      const codMadre = nodoResumen?.codigo_bunker_cliente_madre || GSTATE.nodo?.codigo_bunker_cliente_madre || null;
+      const nomMadre = nodoResumen?.cliente_madre_razon_social || nodoResumen?.cliente_madre_nombre || GSTATE.nodo?.cliente_madre_razon_social || '';
+      const saldoMadre = Number(nodoResumen?.saldo_cuenta_corriente_madre ?? GSTATE.nodo?.saldo_cuenta_corriente_madre ?? 0);
 
       return `
         <div class="card" style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#fff; border:none;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <div>
-              <div style="font-size:0.74rem; color:#94a3b8; font-weight:800; text-transform:uppercase;">Resumen Financiero de tu Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_cliente_bunker || '')})</div>
+            <div style="flex:1; min-width:260px;">
+              <div style="font-size:0.74rem; color:#94a3b8; font-weight:800; text-transform:uppercase;">
+                Subcuenta Operativa del Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_bunker_cliente || 'CB-NODO')})
+              </div>
               <div style="font-size:1.25rem; font-weight:900; margin-top:4px;">
-                Saldo Actual de tu Cuenta Corriente:
+                Saldo Operativo del Canasto:
                 <span style="color:${saldoActual < 0 ? '#f87171' : saldoActual > 0 ? '#4ade80' : '#38bdf8'};">
                   ${saldoActual < 0 ? '-' + fmt(Math.abs(saldoActual)) : fmt(saldoActual)}
                 </span>
@@ -883,6 +1110,18 @@
               <div style="font-size:0.8rem; color:#cbd5e1; margin-top:4px;">
                 Las transferencias de tus vecinos en la cuenta recaudadora (${esc(GSTATE.nodo?.alias_bancario_display || '')}) se acreditan a tu favor y se compensan con el efectivo que cobrás en mano.
               </div>
+              ${codMadre ? `
+                <div style="margin-top:10px; padding:9px 12px; border-radius:9px; background:rgba(245,158,11,0.16); border:1px solid rgba(245,158,11,0.45); font-size:0.8rem; color:#fef3c7;">
+                  🔗 <strong>Cuenta Madre Vinculada en LAMDA: ${esc(codMadre)} (${esc(nomMadre)})</strong> ·
+                  Saldo Cuenta Principal B2B:
+                  <strong style="color:#4ade80;">
+                    ${saldoMadre < 0 ? `${fmt(Math.abs(saldoMadre))} a tu favor (${fmt(saldoMadre)})` : fmt(saldoMadre)}
+                  </strong>
+                  <div style="font-size:0.73rem; color:#fde68a; margin-top:2px;">
+                    Al cerrar la liquidación del lote, el resultado neto impacta automáticamente como un asiento limpio (<code>LIQUIDACION_NODO</code>) en tu Cuenta Principal <code>${esc(codMadre)}</code> y en tu Portal B2B.
+                  </div>
+                </div>
+              ` : ''}
             </div>
             <a href="/liquidacion-nodos/${encodeURIComponent(GSTATE.slug)}" target="_blank"
               style="padding:10px 16px; border-radius:10px; background:#16a34a; color:#fff; text-decoration:none; font-weight:900; font-size:0.84rem;">
@@ -890,6 +1129,12 @@
             </a>
           </div>
         </div>
+
+        ${canastos.length === 0 ? `
+          <div class="card" style="text-align:center; padding:24px; color:#64748b;">
+            Aún no hay lotes/canastos con pedidos de vecinos para liquidar en este Nodo.
+          </div>
+        ` : ''}
 
         ${canastos.map(c => {
           const liq = c.cuadro_liquidacion || {};
@@ -903,7 +1148,7 @@
                   <strong style="font-size:1.05rem; margin-left:8px;">📅 Entrega: ${esc(c.fecha_entrega_label)}</strong>
                 </div>
                 <span style="padding:4px 12px; border-radius:999px; font-size:0.76rem; font-weight:800; background:${c.liquidacion_cerrada ? '#dcfce7' : '#fef3c7'}; color:${c.liquidacion_cerrada ? '#15803d' : '#b45309'};">
-                  ${c.liquidacion_cerrada ? '🏁 Lote Liquidado (Saldo Cta. Cte. en $0)' : `⏳ ${liq.pedidos_pagos_confirmados || 0} de ${liq.total_pedidos || 0} cobros vecinales confirmados`}
+                  ${c.liquidacion_cerrada ? '🏁 Lote Liquidado (Subcuenta Nodo en $0)' : `⏳ ${liq.pedidos_pagos_confirmados || 0} de ${liq.total_pedidos || 0} cobros vecinales confirmados`}
                 </span>
               </div>
 
@@ -939,19 +1184,29 @@
               <div style="display:flex; flex-direction:column; gap:8px;">
                 ${(c.pedidos_vecinos || []).map(p => {
                   const pagado = Boolean(p.pago_confirmado);
+                  const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
                   return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid ${pagado ? '#86efac' : '#e2e8f0'}; background:${pagado ? '#f0fdf4' : '#fff'}; border-radius:9px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid ${pagado ? '#86efac' : '#fde68a'}; background:${pagado ? '#f0fdf4' : '#fffbeb'}; border-radius:9px;">
                       <div style="font-size:0.84rem;">
                         <strong>#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</strong>
-                        <span style="margin-left:8px; color:#475569;">(${p.medio_pago === 'EFECTIVO' ? '💵 Efectivo en entrega' : '🏦 Transferencia'}: <strong>${fmt(p.total_vecino)}</strong>)</span>
+                        <span style="margin-left:8px; color:#475569;">(${esEfvo ? '💵 Efectivo' : '🏦 Transferencia'}: <strong>${fmt(p.total_vecino)}</strong>)</span>
                       </div>
-                      <div>
+                      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                         ${pagado
-                          ? `<span style="font-size:0.76rem; font-weight:800; color:#15803d;">✅ Cobro registrado (${fmt(p.monto_pagado_real || p.total_vecino)})</span>`
-                          : `<button type="button" onclick="registrarCobroRapidoGestor(${p.id}, '${esc(p.medio_pago)}')"
+                          ? `
+                            <span style="font-size:0.76rem; font-weight:800; color:#15803d;">✅ ${esEfvo ? 'Cobrado en Efectivo' : 'Transferencia Acreditada'} (${fmt(p.total_vecino)})</span>
+                            <button type="button" onclick="abrirModalReciboVecinoGestor(${p.id})"
+                              style="padding:5px 10px; border-radius:7px; border:1px solid #16a34a; background:#ffffff; color:#15803d; font-weight:800; font-size:0.74rem; cursor:pointer;">
+                              🧾 Recibo Digital / WhatsApp
+                            </button>
+                          `
+                          : `
+                            <span style="font-size:0.74rem; font-weight:800; color:#b45309;">⏳ Pendiente de pago</span>
+                            <button type="button" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})"
                               style="padding:6px 12px; border-radius:7px; border:none; background:#16a34a; color:#fff; font-weight:800; font-size:0.76rem; cursor:pointer;">
-                              ${p.medio_pago === 'EFECTIVO' ? '💵 Marcar Efectivo Cobrado' : '🏦 Confirmar Transferencia'}
-                            </button>`
+                              💵 Cobrar en Efectivo y Emitir Recibo
+                            </button>
+                          `
                         }
                       </div>
                     </div>

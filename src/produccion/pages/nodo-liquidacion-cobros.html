@@ -655,6 +655,12 @@
                     <div style="padding:13px 16px; border-radius:11px; background:#0f172a; border:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
                         <div style="flex:1; min-width:280px; font-size:0.82rem; color:#cbd5e1; line-height:1.45;">
                             💡 <strong>Detalle de Compensación:</strong> ${esc(c.explicacion_compensacion)}
+                            ${lote.codigo_bunker_cliente_madre ? `
+                                <div style="margin-top:6px; padding:7px 10px; border-radius:7px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; font-size:0.78rem;">
+                                    🔗 <strong>Cuenta Madre Vinculada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong>
+                                    Al cerrar la liquidación, la subcuenta operativa (${esc(lote.codigo_bunker_cliente)}) queda en <strong>$0,00</strong> y el neto consolidado se asienta como movimiento único (<code>LIQUIDACION_NODO</code>) en la Cuenta Principal <strong>${esc(lote.codigo_bunker_cliente_madre)}</strong> (Saldo actual: <strong>${fmtMoneda(lote.saldo_cuenta_corriente_madre)}</strong>).
+                                </div>
+                            ` : ''}
                         </div>
 
                         ${!cerrado ? `
@@ -665,7 +671,8 @@
                             </button>
                         ` : `
                             <div style="padding:10px 16px; border-radius:9px; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; font-weight:800; font-size:0.84rem;">
-                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')}) · Saldo Cta. Cte.: ${fmtMoneda(lote.saldo_cuenta_corriente)}
+                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')}) · Subcuenta Nodo: ${fmtMoneda(lote.saldo_cuenta_corriente)}
+                                ${lote.codigo_bunker_cliente_madre ? ` · Cta. Madre ${esc(lote.codigo_bunker_cliente_madre)}: ${fmtMoneda(lote.saldo_cuenta_corriente_madre)}` : ''}
                             </div>
                         `}
                     </div>
@@ -789,8 +796,14 @@
                             <div>🏦 <strong>Transferencias en cuenta LAMDA:</strong> ${fmtMoneda(c.transferencias_esperadas)}</div>
                             <div>💵 <strong>Efectivo cobrado en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
                             <div style="margin-top:6px; font-size:0.98rem; color:#38bdf8; font-weight:900;">
-                                🤝 ${esc(c.titulo_resultado)} → Saldo Cta. Cte. resultante: $0
+                                🤝 ${esc(c.titulo_resultado)} → Subcuenta ${esc(lote.codigo_bunker_cliente)} en $0
                             </div>
+                            ${lote.codigo_bunker_cliente_madre ? `
+                                <div style="margin-top:8px; padding:8px 10px; border-radius:7px; background:rgba(16,185,129,0.14); border:1px solid #10b981; color:#6ee7b7; font-size:0.8rem;">
+                                    🔗 <strong>Impacto Neto en Cuenta Madre (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong><br>
+                                    Se asentará un movimiento consolidado <code>LIQUIDACION_NODO</code> en la Cuenta Principal ${esc(lote.codigo_bunker_cliente_madre)} (Saldo previo: ${fmtMoneda(lote.saldo_cuenta_corriente_madre)}).
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 `,
@@ -1004,8 +1017,17 @@
                                                     <div style="font-size:0.75rem; color:#94a3b8;">👤 ${esc(n.gestor_nombre)} · 📱 ${esc(n.gestor_telefono || 'S/T')}</div>
                                                 </td>
                                                 <td>
-                                                    <span class="badge" style="background:#1e293b; color:#e2e8f0;">Búnker: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
-                                                    <span class="badge" style="background:#1e293b; color:#7dd3fc; margin-left:4px;">ID Logística: #${n.cliente_id_logistica || (9000 + Number(n.id))}</span>
+                                                    <div>
+                                                        <span class="badge" style="background:#1e293b; color:#e2e8f0;">Subcuenta: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
+                                                        <span class="badge" style="background:#1e293b; color:#7dd3fc; margin-left:4px;">ID Logística: #${n.cliente_id_logistica || (9000 + Number(n.id))}</span>
+                                                    </div>
+                                                    ${n.codigo_bunker_cliente_madre ? `
+                                                        <div style="margin-top:4px;">
+                                                            <span class="badge" style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;">
+                                                                🔗 Cta. Madre: ${esc(n.codigo_bunker_cliente_madre)} (${fmtMoneda(n.saldo_cuenta_corriente_madre)})
+                                                            </span>
+                                                        </div>
+                                                    ` : ''}
                                                 </td>
                                                 <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos Barriales')}</td>
                                                 <td style="font-family:monospace; font-size:0.78rem; color:#fcd34d;">${esc(n.alias_bancario_display || 'S/A')}</td>

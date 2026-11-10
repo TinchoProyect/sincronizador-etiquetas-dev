@@ -331,7 +331,7 @@ console.log('[LOGISTICA] 🔗 Inicializando Reverse Proxies para Integraciones C
 
 // Proxy para la interfaz de Usuario (HTML/CSS) de Presupuestos
 app.use('/presupuestos', createProxyMiddleware({
-    target: 'http://localhost:3003',
+    target: 'http://127.0.0.1:3003',
     changeOrigin: true,
     pathRewrite: {
         '^/presupuestos': '', // Remueve /presupuestos cuando llega al 3003
@@ -344,7 +344,7 @@ app.use('/presupuestos', createProxyMiddleware({
 
 // Proxy para las transacciones API de Presupuestos
 app.use('/api/presupuestos', createProxyMiddleware({
-    target: 'http://localhost:3003',
+    target: 'http://127.0.0.1:3003',
     changeOrigin: true,
     pathRewrite: (path, req) => {
         // Restauramos el prefijo que Express elimina para que enganche al router del 3003
@@ -358,7 +358,7 @@ app.use('/api/presupuestos', createProxyMiddleware({
 
 // Proxy para las transacciones API de Supabase (puerto 3002)
 app.use('/api/supabase', createProxyMiddleware({
-    target: 'http://localhost:3002',
+    target: 'http://127.0.0.1:3002',
     changeOrigin: true,
     pathRewrite: (path, req) => {
         return '/api/supabase' + req.url; 
@@ -371,7 +371,7 @@ app.use('/api/supabase', createProxyMiddleware({
 
 // Proxy para las transacciones API de Producción (puerto 3002)
 app.use('/api/produccion', createProxyMiddleware({
-    target: 'http://localhost:3002',
+    target: 'http://127.0.0.1:3002',
     changeOrigin: true,
     pathRewrite: (path, req) => {
         return '/api/produccion' + req.url; 
@@ -384,7 +384,7 @@ app.use('/api/produccion', createProxyMiddleware({
 
 // Proxy para las transacciones API de Tiempos y Métricas de Producción (puerto 3002)
 app.use('/api/tiempos', createProxyMiddleware({
-    target: 'http://localhost:3002',
+    target: 'http://127.0.0.1:3002',
     changeOrigin: true,
     pathRewrite: (path, req) => {
         return '/api/tiempos' + req.url; 
@@ -398,7 +398,7 @@ app.use('/api/tiempos', createProxyMiddleware({
 
 // Proxy para las transacciones API de Facturación (puerto 3004)
 app.use('/api/facturacion', createProxyMiddleware({
-    target: 'http://localhost:3004',
+    target: 'http://127.0.0.1:3004',
     changeOrigin: true,
     pathRewrite: (path, req) => {
         return '/facturacion' + req.url; 

@@ -664,28 +664,107 @@ function calcularEstructuraCostosNodo(params = {}) {
 }
 
 /**
- * Crea o asegura el vínculo de un Nodo con public.bunker_clientes y public.factura_cuentas_corrientes
+ * Recalcula cronológicamente una Cuenta Corriente Principal del Búnker (ej: CB-0006 de Matías)
+ * siguiendo la convención estándar de cuentaCorrienteService.js:
+ * saldo_apertura + SUM(DEBITO) - SUM(CREDITO)
+ */
+async function recalcularSaldosCuentaMadreBunker(client, ccId) {
+    if (!ccId) return 0;
+    const resCCInfo = await client.query(
+        'SELECT saldo_apertura FROM public.factura_cuentas_corrientes WHERE id = $1 LIMIT 1',
+        [Number(ccId)]
+    );
+    const saldoApertura = resCCInfo.rows.length > 0 ? Number(resCCInfo.rows[0].saldo_apertura || 0) : 0;
+
+    const resMovs = await client.query(
+        `SELECT id, tipo_movimiento, monto
+         FROM public.factura_cuenta_corriente_movimientos
+         WHERE cuenta_corriente_id = $1
+         ORDER BY fecha_movimiento ASC, id ASC`,
+        [Number(ccId)]
+    );
+
+    let saldoAcumulado = saldoApertura;
+    for (const mov of resMovs.rows) {
+        const m = Number(mov.monto || 0);
+        if (mov.tipo_movimiento === 'DEBITO') {
+            saldoAcumulado += m;
+        } else if (mov.tipo_movimiento === 'CREDITO') {
+            saldoAcumulado -= m;
+        }
+        saldoAcumulado = Number(saldoAcumulado.toFixed(2));
+        await client.query(
+            'UPDATE public.factura_cuenta_corriente_movimientos SET saldo_resultante = $1 WHERE id = $2',
+            [saldoAcumulado, mov.id]
+        );
+    }
+
+    await client.query(
+        'UPDATE public.factura_cuentas_corrientes SET saldo = $1, actualizada_en = NOW() WHERE id = $2',
+        [saldoAcumulado, Number(ccId)]
+    );
+    return saldoAcumulado;
+}
+
+/**
+ * Crea o asegura el vínculo de un Nodo con public.bunker_clientes y public.factura_cuentas_corrientes:
+ * - Todo Nodo opera SIEMPRE sobre su propia Subcuenta Operativa Aislada (CB-NODO-xxx) vinculada a Lista Base Nodos Barriales.
+ * - Opcionalmente puede vincularse con una Cuenta Madre preexistente en LAMDA (ej: Matías CB-0006, id = 18)
+ *   sin tocar ni alterar la ficha, listas ni lomas_soft_id de la Cuenta Madre, e impactando en ella únicamente
+ *   el asiento neto consolidado al cerrar la liquidación del canasto.
  */
 async function asegurarVinculoContableNodo(client, datosNodo) {
-    let bunkerClienteId = datosNodo.bunker_cliente_id ? Number(datosNodo.bunker_cliente_id) : null;
-    let codigoBunker = datosNodo.codigo_bunker_cliente ? String(datosNodo.codigo_bunker_cliente).trim() : '';
+    let clienteMadreBunkerId = datosNodo.cliente_madre_bunker_id ? Number(datosNodo.cliente_madre_bunker_id) : null;
+    let codigoBunkerMadre = datosNodo.codigo_bunker_cliente_madre ? String(datosNodo.codigo_bunker_cliente_madre).trim() : '';
 
-    if (bunkerClienteId) {
-        const resExist = await client.query(
+    // Si en bunker_cliente_id se seleccionó un cliente real existente que NO es CB-NODO-%, tratarlo como Cuenta Madre
+    const candidatoId = datosNodo.bunker_cliente_id ? Number(datosNodo.bunker_cliente_id) : null;
+    if (candidatoId && !clienteMadreBunkerId) {
+        const resCand = await client.query(
             'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1 LIMIT 1',
-            [bunkerClienteId]
+            [candidatoId]
         );
-        if (resExist.rows.length > 0) {
-            codigoBunker = resExist.rows[0].codigo_bunker_cliente;
+        if (resCand.rows.length > 0) {
+            const codCand = String(resCand.rows[0].codigo_bunker_cliente || '').trim();
+            if (!codCand.toUpperCase().startsWith('CB-NODO-')) {
+                clienteMadreBunkerId = resCand.rows[0].id;
+                codigoBunkerMadre = codCand;
+            }
         }
     }
 
-    if (!codigoBunker) {
-        const sufijo = String(datosNodo.codigo_nodo || 'NODO-001').replace(/[^0-9A-Z]/gi, '').slice(-4).toUpperCase();
+    if (clienteMadreBunkerId && !codigoBunkerMadre) {
+        const resMadre = await client.query(
+            'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1 LIMIT 1',
+            [clienteMadreBunkerId]
+        );
+        if (resMadre.rows.length > 0) {
+            codigoBunkerMadre = resMadre.rows[0].codigo_bunker_cliente;
+        } else {
+            clienteMadreBunkerId = null;
+        }
+    } else if (!clienteMadreBunkerId && codigoBunkerMadre && !codigoBunkerMadre.toUpperCase().startsWith('CB-NODO-')) {
+        const resMadreCod = await client.query(
+            'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
+            [codigoBunkerMadre]
+        );
+        if (resMadreCod.rows.length > 0) {
+            clienteMadreBunkerId = resMadreCod.rows[0].id;
+            codigoBunkerMadre = resMadreCod.rows[0].codigo_bunker_cliente;
+        } else {
+            codigoBunkerMadre = '';
+        }
+    }
+
+    // La Subcuenta Operativa del Nodo es SIEMPRE CB-NODO-xxx aislada
+    let codigoBunker = datosNodo.codigo_bunker_cliente ? String(datosNodo.codigo_bunker_cliente).trim().toUpperCase() : '';
+    if (!codigoBunker || !codigoBunker.startsWith('CB-NODO-')) {
+        const numMatch = String(datosNodo.codigo_nodo || 'NODO-001').match(/(\d+)$/);
+        const sufijo = numMatch ? numMatch[1].padStart(3, '0') : String(datosNodo.codigo_nodo || '001').replace(/[^0-9A-Z]/gi, '').slice(-3).toUpperCase();
         codigoBunker = `CB-NODO-${sufijo}`;
     }
 
-    // Verificar si ya existe en bunker_clientes por codigo_bunker_cliente
+    let bunkerClienteId = null;
     const checkBc = await client.query(
         'SELECT id, codigo_bunker_cliente FROM public.bunker_clientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
         [codigoBunker]
@@ -693,6 +772,19 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
 
     if (checkBc.rows.length > 0) {
         bunkerClienteId = checkBc.rows[0].id;
+        await client.query(
+            `UPDATE public.bunker_clientes
+             SET cliente_nombre = $1,
+                 razon_social = $2,
+                 domicilio_fiscal = $3
+             WHERE id = $4 AND codigo_bunker_cliente LIKE 'CB-NODO-%'`,
+            [
+                `[NODO] ${datosNodo.nombre_marca} (${datosNodo.gestor_nombre})`,
+                datosNodo.gestor_nombre || datosNodo.nombre_marca,
+                datosNodo.direccion_retiro || datosNodo.barrio_zona || 'La Plata',
+                bunkerClienteId
+            ]
+        );
     } else {
         const insBc = await client.query(
             `INSERT INTO public.bunker_clientes (
@@ -713,7 +805,7 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
         bunkerClienteId = insBc.rows[0].id;
     }
 
-    // Asegurar cuenta corriente en factura_cuentas_corrientes
+    // Asegurar subcuenta corriente operativa del Nodo en factura_cuentas_corrientes
     const checkCc = await client.query(
         'SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
         [codigoBunker]
@@ -728,7 +820,12 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
         );
     }
 
-    return { bunker_cliente_id: bunkerClienteId, codigo_bunker_cliente: codigoBunker };
+    return {
+        bunker_cliente_id: bunkerClienteId,
+        codigo_bunker_cliente: codigoBunker,
+        cliente_madre_bunker_id: clienteMadreBunkerId,
+        codigo_bunker_cliente_madre: codigoBunkerMadre || null
+    };
 }
 
 /**
@@ -991,6 +1088,14 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS liquidacion_cerrada BOOLEAN NOT NULL DEFAULT false,
                 ADD COLUMN IF NOT EXISTS liquidacion_id INTEGER REFERENCES public.nodos_liquidaciones_lote(id) ON DELETE SET NULL,
                 ADD COLUMN IF NOT EXISTS fecha_liquidacion TIMESTAMP;
+
+            ALTER TABLE public.nodos_maestro
+                ADD COLUMN IF NOT EXISTS cliente_madre_bunker_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS codigo_bunker_cliente_madre VARCHAR(80);
+
+            ALTER TABLE public.nodos_liquidaciones_lote
+                ADD COLUMN IF NOT EXISTS movimiento_cc_madre_id BIGINT,
+                ADD COLUMN IF NOT EXISTS saldo_cta_cte_madre_post_cierre NUMERIC(14,2);
         `);
 
         // Verificar si necesitamos poblar datos iniciales de Laboratorio (solo cuando se pide sembrarDemo explícitamente)
@@ -1968,12 +2073,18 @@ async function obtenerFuentesCostoSeisFlujos() {
         `),
         db.query(`
             SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social,
+                   bc.cuit_cuil, bc.domicilio_fiscal, bc.whatsapp_facturas, bc.email_portal,
+                   bc.lomas_soft_id, bc.usuario_id,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cta_cte
             FROM public.bunker_clientes bc
             LEFT JOIN public.factura_cuentas_corrientes cc
               ON cc.codigo_bunker_cliente = bc.codigo_bunker_cliente
-            ORDER BY bc.id DESC
-            LIMIT 60
+             AND cc.nombre_cuenta = 'Cuenta Principal'
+            WHERE bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
+            ORDER BY
+              CASE WHEN bc.codigo_bunker_cliente = 'CB-0006' THEN 0 ELSE 1 END,
+              bc.id DESC
+            LIMIT 80
         `),
         db.query(`
             SELECT DISTINCT ON (ri.ingrediente_id)
@@ -2089,11 +2200,20 @@ async function obtenerEstadoCompletoNodos() {
                    lp.salvavidas_tasa_tem,
                    lp.salvavidas_dias_gracia,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                   bc_madre.cliente_nombre AS cliente_madre_nombre,
+                   bc_madre.razon_social AS cliente_madre_razon_social,
+                   bc_madre.lomas_soft_id AS cliente_madre_lomas_id,
+                   bc_madre.usuario_id AS cliente_madre_usuario_id,
+                   COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente_madre,
                    (SELECT COUNT(*)::int FROM public.nodos_ofertas_gestor nog WHERE nog.nodo_id = nm.id AND nog.publicado_tienda = true) AS total_ofertas_publicadas
             FROM public.nodos_maestro nm
             LEFT JOIN public.fin_cuentas_bancarias fb ON fb.id = nm.cuenta_bancaria_id
             LEFT JOIN public.bunker_listas_precios lp ON lp.id = nm.lista_precio_bunker_id
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+            LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+            LEFT JOIN public.factura_cuentas_corrientes cc_madre
+              ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+             AND cc_madre.nombre_cuenta = 'Cuenta Principal'
             ORDER BY nm.id ASC
         `),
         db.query(`
@@ -2282,23 +2402,25 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     direccion_retiro = $8,
                     bunker_cliente_id = $9,
                     codigo_bunker_cliente = $10,
-                    cuenta_bancaria_id = $11,
-                    usa_cuenta_compartida = $12,
-                    alias_bancario_display = $13,
-                    cbu_display = $14,
-                    titular_display = $15,
-                    permitir_envio_barrial = $16,
-                    cargo_envio_barrial = $17,
-                    margen_gestor_default_pct = $18,
-                    config_ventanas_corte = $19,
-                    color_primario = $20,
-                    logo_original_base64 = COALESCE($21, logo_original_base64),
-                    logo_mono_preview_base64 = $22,
-                    logo_zpl_gfa = $23,
-                    logo_zpl_config = $24,
-                    activo = COALESCE($25, activo),
+                    cliente_madre_bunker_id = $11,
+                    codigo_bunker_cliente_madre = $12,
+                    cuenta_bancaria_id = $13,
+                    usa_cuenta_compartida = $14,
+                    alias_bancario_display = $15,
+                    cbu_display = $16,
+                    titular_display = $17,
+                    permitir_envio_barrial = $18,
+                    cargo_envio_barrial = $19,
+                    margen_gestor_default_pct = $20,
+                    config_ventanas_corte = $21,
+                    color_primario = $22,
+                    logo_original_base64 = COALESCE($23, logo_original_base64),
+                    logo_mono_preview_base64 = $24,
+                    logo_zpl_gfa = $25,
+                    logo_zpl_config = $26,
+                    activo = COALESCE($27, activo),
                     updated_at = NOW()
-                WHERE id = $26
+                WHERE id = $28
                 RETURNING *`,
                 [
                     slugBase,
@@ -2311,6 +2433,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     payload.direccion_retiro || '',
                     vinculoContable.bunker_cliente_id,
                     vinculoContable.codigo_bunker_cliente,
+                    vinculoContable.cliente_madre_bunker_id,
+                    vinculoContable.codigo_bunker_cliente_madre,
                     payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
                     Boolean(payload.usa_cuenta_compartida),
                     payload.alias_bancario_display || '',
@@ -2342,13 +2466,14 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                 `INSERT INTO public.nodos_maestro (
                     codigo_nodo, slug, nombre_marca, subtitulo_marca,
                     gestor_nombre, gestor_telefono, gestor_email, barrio_zona, direccion_retiro,
-                    bunker_cliente_id, codigo_bunker_cliente, cuenta_bancaria_id, usa_cuenta_compartida,
+                    bunker_cliente_id, codigo_bunker_cliente, cliente_madre_bunker_id, codigo_bunker_cliente_madre,
+                    cuenta_bancaria_id, usa_cuenta_compartida,
                     alias_bancario_display, cbu_display, titular_display,
                     permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -2362,6 +2487,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     payload.direccion_retiro || '',
                     vinculoContable.bunker_cliente_id,
                     vinculoContable.codigo_bunker_cliente,
+                    vinculoContable.cliente_madre_bunker_id,
+                    vinculoContable.codigo_bunker_cliente_madre,
                     payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null,
                     Boolean(payload.usa_cuenta_compartida),
                     payload.alias_bancario_display || '',
@@ -3287,9 +3414,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
 
     let nodoRes = await db.query(
         `SELECT nm.*,
-                COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
+                COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                bc_madre.cliente_nombre AS cliente_madre_nombre,
+                bc_madre.razon_social AS cliente_madre_razon_social,
+                bc_madre.lomas_soft_id AS cliente_madre_lomas_id,
+                COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente_madre
          FROM public.nodos_maestro nm
          LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+         LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+         LEFT JOIN public.factura_cuentas_corrientes cc_madre
+           ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+          AND cc_madre.nombre_cuenta = 'Cuenta Principal'
          WHERE LOWER(nm.slug) = LOWER($1)
          LIMIT 1`,
         [String(slug || '').trim()]
@@ -3298,9 +3433,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     if (nodoRes.rows.length === 0) {
         nodoRes = await db.query(
             `SELECT nm.*,
-                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
+                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                    bc_madre.cliente_nombre AS cliente_madre_nombre,
+                    bc_madre.razon_social AS cliente_madre_razon_social,
+                    bc_madre.lomas_soft_id AS cliente_madre_lomas_id,
+                    COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente_madre
              FROM public.nodos_maestro nm
              LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+             LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+             LEFT JOIN public.factura_cuentas_corrientes cc_madre
+               ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
              ORDER BY nm.id ASC
              LIMIT 1`
         );
@@ -3313,7 +3456,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     const nodo = nodoRes.rows[0];
     const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, ingSugeriblesRes] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, ingSugeriblesRes, movsRes] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -3362,6 +3505,15 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
                AND COALESCE(costo_patron, 0) > 0
                AND nombre NOT ILIKE '%Fuera de Servicio%'
              ORDER BY nombre ASC`
+        ),
+        db.query(
+            `SELECT nmc.*, nle.codigo_canasto
+             FROM public.nodos_movimientos_cta_cte nmc
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = nmc.lote_canasto_id
+             WHERE nmc.nodo_id = $1
+             ORDER BY nmc.id DESC
+             LIMIT 30`,
+            [nodo.id]
         )
     ]);
 
@@ -3372,10 +3524,15 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         itemsPorPedido.get(pid).push(it);
     }
 
-    const pedidosConItems = pedidosRes.rows.map(p => ({
-        ...p,
-        items: itemsPorPedido.get(Number(p.id)) || []
-    }));
+    const pedidosConItems = pedidosRes.rows.map(p => {
+        const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+        return {
+            ...p,
+            pago_confirmado: pagoConfirmado,
+            items: itemsPorPedido.get(Number(p.id)) || []
+        };
+    });
 
     const ofertasPublicadas = ofertasRes.rows
         .filter(o => o.publicado_tienda)
@@ -3399,6 +3556,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         todas_ofertas_gestor: ofertasRes.rows,
         propuestas_nodo: propuestasRes.rows,
         pedidos_nodo: pedidosConItems,
+        movimientos_cta_cte: movsRes.rows,
+        telefono_whatsapp_pruebas: '5492216615746',
+        telefono_whatsapp_pruebas_display: '221 661 5746',
         ingredientes_sugeribles: ingSugeriblesRes.rows
     };
 }
@@ -4001,7 +4161,9 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null) {
             await q.query(
                 `UPDATE public.bunker_clientes
                  SET lomas_soft_id = $1
-                 WHERE id = $2 AND (lomas_soft_id IS NULL OR lomas_soft_id <> $1)`,
+                 WHERE id = $2
+                   AND codigo_bunker_cliente LIKE 'CB-NODO-%'
+                   AND (lomas_soft_id IS NULL OR lomas_soft_id <> $1)`,
                 [String(clienteIdNum), nodo.bunker_cliente_id]
             );
         }
@@ -5535,12 +5697,21 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                    nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                    nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                    nm.color_primario, nm.codigo_bunker_cliente, nm.bunker_cliente_id,
+                   nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
+                   bc_madre.cliente_nombre AS cliente_madre_nombre,
+                   bc_madre.razon_social AS cliente_madre_razon_social,
+                   bc_madre.lomas_soft_id AS cliente_madre_lomas_id,
+                   COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente_madre,
                    nm.lista_precio_bunker_id,
                    COALESCE(lp.nombre, 'Lista Base Nodos Barriales') AS lista_precio_nombre,
                    (9000 + nm.id) AS cliente_id_logistica,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
             FROM public.nodos_maestro nm
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+            LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+            LEFT JOIN public.factura_cuentas_corrientes cc_madre
+              ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+             AND cc_madre.nombre_cuenta = 'Cuenta Principal'
             LEFT JOIN public.bunker_listas_precios lp ON lp.id = nm.lista_precio_bunker_id
             WHERE nm.activo = true
             ORDER BY nm.id ASC
@@ -5556,10 +5727,19 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                    nm.cbu_display,
                    nm.titular_display,
                    nm.codigo_bunker_cliente,
+                   nm.cliente_madre_bunker_id,
+                   nm.codigo_bunker_cliente_madre,
+                   bc_madre.cliente_nombre AS cliente_madre_nombre,
+                   bc_madre.razon_social AS cliente_madre_razon_social,
+                   COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente_madre,
                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente
             FROM public.nodos_lotes_estacion nle
             JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+            LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+            LEFT JOIN public.factura_cuentas_corrientes cc_madre
+              ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+             AND cc_madre.nombre_cuenta = 'Cuenta Principal'
             WHERE ($1::int = 0 OR nle.nodo_id = $1::int)
             ORDER BY
                 CASE WHEN nle.estado_canasto = 'ENTREGADO_AL_GESTOR' AND COALESCE(nle.liquidacion_cerrada, false) = false THEN 0
@@ -5762,7 +5942,8 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         }
 
         const montoTotalVecino = Number(ped.total_vecino || 0);
-        const esEfectivo = String(ped.medio_pago || '').toUpperCase() === 'EFECTIVO';
+        const forzarEfectivo = String(payload.medio_pago || '').toUpperCase() === 'EFECTIVO';
+        const esEfectivo = forzarEfectivo || String(ped.medio_pago || '').toUpperCase() === 'EFECTIVO';
 
         let saldoResultante = 0;
         let movCcFacturaId = null;
@@ -5897,7 +6078,8 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
 
             await client.query(
                 `UPDATE public.nodos_pedidos_vecinos
-                 SET estado_pago = 'COBRADO_EFECTIVO_GESTOR',
+                 SET medio_pago = 'EFECTIVO',
+                     estado_pago = 'COBRADO_EFECTIVO_GESTOR',
                      estado_operativo = CASE WHEN estado_operativo = 'EN_PODER_GESTOR' THEN 'ENTREGADO_VECINO' ELSE estado_operativo END,
                      comprobante_referencia = $1,
                      fecha_conciliacion_pago = NOW(),
@@ -5965,7 +6147,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
 
         const canRes = await client.query(
             `SELECT nle.*,
-                    nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente
+                    nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre
              FROM public.nodos_lotes_estacion nle
              JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
              WHERE nle.id = $1::int
@@ -5983,6 +6166,7 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
         );
         const cuadro = calcularCuadroLiquidacionCanasto(canasto, pedsRes.rows);
 
+        const codigoLiq = `LIQ-${canasto.codigo_canasto}-${Date.now().toString().slice(-4)}`;
         let saldoResultante = 0;
         let movCcFacturaId = null;
 
@@ -5999,7 +6183,7 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 const saldoActual = Number(ccRes.rows[0].saldo || 0);
 
                 if (cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA' && cuadro.monto_compensacion_final > 0) {
-                    // El Gestor rinde a LAMDA el excedente de efectivo -> Crédito que cancela el saldo deudor en Cta. Cte.
+                    // El Gestor rinde a LAMDA el excedente de efectivo -> Crédito que cancela el saldo deudor en la subcuenta del Nodo
                     saldoResultante = Number((saldoActual + cuadro.monto_compensacion_final).toFixed(2));
                     await client.query(
                         'UPDATE public.factura_cuentas_corrientes SET saldo = $1, actualizada_en = NOW() WHERE id = $2',
@@ -6049,15 +6233,70 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
             }
         }
 
-        const codigoLiq = `LIQ-${canasto.codigo_canasto}-${Date.now().toString().slice(-4)}`;
+        // 2. Impacto Neto Consolidado en la Cuenta Madre vinculada (ej: Matías CB-0006 -> Cuenta Principal id=20)
+        // Convención estándar de cuentaCorrienteService.js (y Portal B2B):
+        // - CREDITO resta al saldo (aumenta saldo a favor del colaborador/cliente, igual que CREDITO_HORAS y CREDITO_RENDIMIENTO)
+        // - DEBITO suma al saldo (reduce saldo a favor / genera cargo a favor de LAMDA, igual que FACTURA)
+        let movCcMadreId = null;
+        let saldoMadrePostCierre = null;
+        if (canasto.codigo_bunker_cliente_madre && payload.impactar_en_cuenta_madre !== false) {
+            const ccMadreRes = await client.query(
+                `SELECT id, saldo FROM public.factura_cuentas_corrientes
+                 WHERE codigo_bunker_cliente = $1
+                 ORDER BY CASE WHEN nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END, id ASC
+                 LIMIT 1
+                 FOR UPDATE`,
+                [canasto.codigo_bunker_cliente_madre]
+            );
+            if (ccMadreRes.rows.length > 0) {
+                const ccMadreId = ccMadreRes.rows[0].id;
+                if (cuadro.monto_compensacion_final > 0 && (cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR' || cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA')) {
+                    const esCreditoMadre = cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR';
+                    const tipoMovMadre = esCreditoMadre ? 'CREDITO' : 'DEBITO';
+                    const descMadre = esCreditoMadre
+                        ? `Liquidación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Saldo neto de comisiones a favor de ${canasto.gestor_nombre} (Transferencias en LAMDA $${cuadro.transferencias_conciliadas_lamda.toLocaleString('es-AR')} - Costo Base $${cuadro.total_base_lamda.toLocaleString('es-AR')})`
+                        : `Liquidación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Rendición neta a favor de LAMDA por cobros en efectivo en mano ($${cuadro.efectivo_cobrado_mano_gestor.toLocaleString('es-AR')} cobrados - $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} comisión retenida)`;
+
+                    const insMovMadre = await client.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                            tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                            creado_en, metadatos, origen_tipo, origen_id
+                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5, 'LIQUIDACION_NODO', $6)
+                         RETURNING id`,
+                        [
+                            ccMadreId,
+                            tipoMovMadre,
+                            cuadro.monto_compensacion_final,
+                            descMadre,
+                            JSON.stringify({
+                                ...cuadro,
+                                codigo_liquidacion: codigoLiq,
+                                codigo_canasto: canasto.codigo_canasto,
+                                codigo_bunker_subcuenta_nodo: canasto.codigo_bunker_cliente,
+                                codigo_bunker_cliente_madre: canasto.codigo_bunker_cliente_madre
+                            }),
+                            codigoLiq
+                        ]
+                    );
+                    movCcMadreId = insMovMadre.rows[0].id;
+                    saldoMadrePostCierre = await recalcularSaldosCuentaMadreBunker(client, ccMadreId);
+                } else {
+                    saldoMadrePostCierre = Number(ccMadreRes.rows[0].saldo || 0);
+                }
+            }
+        }
+
         const insLiq = await client.query(
             `INSERT INTO public.nodos_liquidaciones_lote (
                 codigo_liquidacion, nodo_id, lote_canasto_id,
                 total_venta_vecinos, total_base_lamda, ganancia_neta_gestor,
                 total_transferencias_lamda, total_efectivo_mano_gestor,
                 direccion_compensacion, monto_compensacion_final,
-                saldo_cta_cte_post_cierre, movimiento_cc_id, observaciones
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                saldo_cta_cte_post_cierre, movimiento_cc_id,
+                movimiento_cc_madre_id, saldo_cta_cte_madre_post_cierre,
+                observaciones
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING *`,
             [
                 codigoLiq,
@@ -6072,6 +6311,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 cuadro.monto_compensacion_final,
                 saldoResultante,
                 movCcFacturaId,
+                movCcMadreId,
+                saldoMadrePostCierre,
                 payload.observaciones || cuadro.explicacion_compensacion
             ]
         );
@@ -6135,7 +6376,7 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
         await client.query('BEGIN');
 
         const canRes = await client.query(
-            `SELECT nle.*, nm.codigo_bunker_cliente
+            `SELECT nle.*, nm.codigo_bunker_cliente, nm.codigo_bunker_cliente_madre
              FROM public.nodos_lotes_estacion nle
              JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
              WHERE nle.id = $1::int
@@ -6147,7 +6388,7 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
         }
         const canasto = canRes.rows[0];
 
-        // 1. Revertir liquidación final si estaba cerrada
+        // 1. Revertir liquidación final si estaba cerrada (tanto en subcuenta del Nodo como en Cuenta Madre)
         const liqRes = await client.query(
             'SELECT * FROM public.nodos_liquidaciones_lote WHERE lote_canasto_id = $1::int',
             [canasto.id]
@@ -6164,6 +6405,15 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
             }
             if (liq.movimiento_cc_id) {
                 await client.query('DELETE FROM public.factura_cuenta_corriente_movimientos WHERE id = $1', [liq.movimiento_cc_id]);
+            }
+            if (liq.movimiento_cc_madre_id) {
+                const mRes = await client.query(
+                    'DELETE FROM public.factura_cuenta_corriente_movimientos WHERE id = $1 RETURNING cuenta_corriente_id',
+                    [liq.movimiento_cc_madre_id]
+                );
+                if (mRes.rows[0]?.cuenta_corriente_id) {
+                    await recalcularSaldosCuentaMadreBunker(client, mRes.rows[0].cuenta_corriente_id);
+                }
             }
         }
         await client.query('DELETE FROM public.nodos_liquidaciones_lote WHERE lote_canasto_id = $1::int', [canasto.id]);
@@ -6262,9 +6512,16 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
         `);
 
         // 2. Limpiar movimientos y cuentas corrientes de Nodos en factura_cuentas_corrientes
+        // Si hubo movimientos LIQUIDACION_NODO en una Cuenta Madre (ej: CB-0006), eliminarlos y recalcular el saldo de la Cuenta Madre
+        const ccsMadreAfectadas = await client.query(`
+            SELECT DISTINCT cuenta_corriente_id
+            FROM public.factura_cuenta_corriente_movimientos
+            WHERE tipo_comprobante = 'LIQUIDACION_NODO' OR origen_tipo = 'LIQUIDACION_NODO'
+        `);
         await client.query(`
             DELETE FROM public.factura_cuenta_corriente_movimientos
-            WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO')
+            WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO', 'LIQUIDACION_NODO')
+               OR origen_tipo = 'LIQUIDACION_NODO'
                OR cuenta_corriente_id IN (
                    SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
                )
@@ -6273,6 +6530,11 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
             DELETE FROM public.factura_cuentas_corrientes
             WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
         `);
+        for (const rMadre of ccsMadreAfectadas.rows) {
+            if (rMadre.cuenta_corriente_id) {
+                await recalcularSaldosCuentaMadreBunker(client, rMadre.cuenta_corriente_id);
+            }
+        }
 
         // 3. Limpiar clientes Nodos en Búnker y en Lomas/Logística (cliente_id >= 9000)
         await client.query(`

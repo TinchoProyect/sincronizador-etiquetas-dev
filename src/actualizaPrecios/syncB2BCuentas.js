@@ -635,6 +635,7 @@ async function sincronizarB2BCuentas() {
       FROM public.factura_cuenta_corriente_movimientos m
       JOIN public.factura_cuentas_corrientes cc ON cc.id = m.cuenta_corriente_id
       LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = cc.codigo_bunker_cliente
+      WHERE cc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
       ORDER BY cc.codigo_bunker_cliente, m.fecha_movimiento ASC, m.id ASC;
     `;
     
@@ -665,6 +666,7 @@ async function sincronizarB2BCuentas() {
         FROM public.factura_cuentas_corrientes cc
         LEFT JOIN public.factura_cuenta_corriente_movimientos m ON m.cuenta_corriente_id = cc.id
         WHERE cc.saldo_apertura != 0
+          AND cc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
         GROUP BY cc.id, cc.codigo_bunker_cliente, cc.saldo_apertura, cc.creada_en
       `);
       console.log(`📊 Cuentas con saldo de apertura encontradas: ${ccRes.rows.length}`);
@@ -737,6 +739,7 @@ async function sincronizarB2BCuentas() {
         SELECT id, codigo_bunker_cliente, saldo
         FROM public.factura_cuentas_corrientes
         WHERE estado = 'ACTIVA'
+          AND codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
       `);
       for (const cta of ctasActivas.rows) {
         const sim = await salvavidasService.calcularSimulacionCuenta(cta.id, { persistir_sombra: false }, localClient);
