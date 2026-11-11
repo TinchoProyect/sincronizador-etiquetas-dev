@@ -24,12 +24,31 @@ if (workersToken) {
     delete env.CLOUDFLARE_API_TOKEN;
 }
 
-const result = spawnSync('npx', ['wrangler', 'deploy'], {
+let result = spawnSync('npx', ['wrangler', 'deploy'], {
     cwd: path.join(__dirname, '..', 'b2b-portal'),
     env: env,
     stdio: 'inherit',
     shell: true
 });
+
+if (result.status !== 0 && !workersToken) {
+    console.log('\n🔑 Sesión OAuth de Wrangler expirada. Abriendo autorización en el navegador...');
+    const loginRes = spawnSync('npx', ['wrangler', 'login'], {
+        cwd: path.join(__dirname, '..', 'b2b-portal'),
+        env: env,
+        stdio: 'inherit',
+        shell: true
+    });
+    if (loginRes.status === 0) {
+        console.log('🚀 Reintentando despliegue tras iniciar sesión...');
+        result = spawnSync('npx', ['wrangler', 'deploy'], {
+            cwd: path.join(__dirname, '..', 'b2b-portal'),
+            env: env,
+            stdio: 'inherit',
+            shell: true
+        });
+    }
+}
 
 if (result.status === 0) {
     console.log('🎉 Despliegue completado exitosamente en Cloudflare.');
