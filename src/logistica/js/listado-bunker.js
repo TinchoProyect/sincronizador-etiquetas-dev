@@ -2122,7 +2122,7 @@ function renderOfertasReposicion(ofertas) {
     container.innerHTML = html;
 }
 
-window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
+window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcionesPreserve = null) {
     document.getElementById('gp-producto').innerText = descripcion;
     document.getElementById('gp-articulo-id').value = articulo_id;
     gp_ivaGlobal = parseFloat(iva) || 21;
@@ -2163,15 +2163,27 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
     const linkMetricas = document.getElementById('gp-link-metricas-campo');
     if (linkMetricas) linkMetricas.style.display = 'none';
     window.gp_metricas_campo_activas = null;
-    // 🔑 DELEGACIÓN GLOBAL DE EVENTOS DE SIMULACIÓN (v5.32)
+    // 🔑 DELEGACIÓN GLOBAL DE EVENTOS DE SIMULACIÓN Y ASISTENTE DE MANO DE OBRA (v5.52)
     const modalPrecios = document.getElementById('modal-gestor-precios');
     if (modalPrecios) {
+        modalPrecios.dataset.userChangedColab = 'false';
+        modalPrecios.dataset.userChangedMinutos = 'false';
+        if (!opcionesPreserve) {
+            const minElInit = document.getElementById('gp-asistente-minutos');
+            if (minElInit) minElInit.value = '';
+        }
         modalPrecios.style.display = 'flex';
         if (!modalPrecios.dataset.listenerSimuladorActivo) {
             modalPrecios.dataset.listenerSimuladorActivo = 'true';
             const handlerSim = (e) => {
                 if (e.target && (e.target.id === 'gp-sim-descuento' || e.target.name === 'sim-descuento')) {
                     if (typeof calcularPreciosFila === 'function') calcularPreciosFila();
+                }
+                if (e.target && e.target.id === 'gp-asistente-colaborador') {
+                    modalPrecios.dataset.userChangedColab = 'true';
+                }
+                if (e.target && e.target.id === 'gp-asistente-minutos') {
+                    modalPrecios.dataset.userChangedMinutos = 'true';
                 }
             };
             modalPrecios.addEventListener('input', handlerSim);
@@ -2514,24 +2526,10 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
 
             // Poblar y reconectar campos del asistente de mano de obra y servicios desde propiedades_dinamicas
             const props = data.propiedades_dinamicas || {};
-            
-            // Garantizar que la lista de colaboradores y mapa de tarifas estén cargados
+
+            // Garantizar que la lista de colaboradores y mapa de tarifas estén cargados (sin reconstruir opciones si ya existen)
             if (typeof window.cargarColaboradoresAsistente === 'function') {
                 await window.cargarColaboradoresAsistente();
-            }
-
-            const colabSelect = document.getElementById('gp-asistente-colaborador');
-            const minutosInput = document.getElementById('gp-asistente-minutos');
-            if (colabSelect) {
-                colabSelect.value = props.asistente_colaborador_id !== undefined && props.asistente_colaborador_id !== null ? props.asistente_colaborador_id : '';
-            }
-            if (minutosInput) {
-                minutosInput.value = props.asistente_minutos !== undefined && props.asistente_minutos !== null ? props.asistente_minutos : '';
-            }
-
-            // Si hay un colaborador o minutos de servicio asignados, ejecutar el cálculo automático del asistente
-            if (typeof window.calcularCostoAsistente === 'function' && (props.asistente_colaborador_id || parseFloat(props.asistente_minutos) > 0)) {
-                window.calcularCostoAsistente();
             }
 
             // Sincronizar y consultar métricas reales de planta (Fase de Métricas de Campo)
@@ -2539,11 +2537,57 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
                 await window.consultarMetricasCampoArticulo(articulo_id);
             }
 
-            gp_listasFinancieras = data.listas_margenes;
+            // Inicializar listas financieras ANTES de aplicar el asistente para evitar que selectTab pise #gp-costo-tiempo
+            gp_listasFinancieras = data.listas_margenes || [];
+            if (opcionesPreserve && opcionesPreserve.listas_snapshot && Array.isArray(gp_listasFinancieras)) {
+                gp_listasFinancieras.forEach(l => {
+                    const snap = opcionesPreserve.listas_snapshot[String(l.lista_id)];
+                    if (snap) {
+                        Object.assign(l, snap);
+                    }
+                });
+            }
+
+            const colabSelect = document.getElementById('gp-asistente-colaborador');
+            const minutosInput = document.getElementById('gp-asistente-minutos');
+
+            let resolvedColabId = '';
+            if (opcionesPreserve && opcionesPreserve.colab_id) {
+                resolvedColabId = String(opcionesPreserve.colab_id);
+            } else if (modalPrecios && modalPrecios.dataset.userChangedColab === 'true' && colabSelect && colabSelect.value) {
+                resolvedColabId = String(colabSelect.value);
+            } else if (props.asistente_colaborador_id !== undefined && props.asistente_colaborador_id !== null && String(props.asistente_colaborador_id) !== '') {
+                resolvedColabId = String(props.asistente_colaborador_id);
+            } else if (typeof window.obtenerColaboradorDefaultTarifaId === 'function') {
+                resolvedColabId = window.obtenerColaboradorDefaultTarifaId();
+            }
+
+            let resolvedMinutos = '';
+            if (opcionesPreserve && opcionesPreserve.minutos !== undefined && opcionesPreserve.minutos !== '') {
+                resolvedMinutos = String(opcionesPreserve.minutos);
+            } else if (modalPrecios && modalPrecios.dataset.userChangedMinutos === 'true' && minutosInput && minutosInput.value !== '') {
+                resolvedMinutos = String(minutosInput.value);
+            } else if (props.asistente_minutos !== undefined && props.asistente_minutos !== null && String(props.asistente_minutos) !== '') {
+                resolvedMinutos = String(props.asistente_minutos);
+            }
+
+            if (colabSelect) {
+                colabSelect.value = resolvedColabId;
+                if (resolvedColabId && colabSelect.value !== String(resolvedColabId) && typeof window.obtenerColaboradorDefaultTarifaId === 'function') {
+                    const fallbackDefault = window.obtenerColaboradorDefaultTarifaId();
+                    if (fallbackDefault) {
+                        colabSelect.value = fallbackDefault;
+                        resolvedColabId = fallbackDefault;
+                    }
+                }
+            }
+            if (minutosInput) {
+                minutosInput.value = resolvedMinutos;
+            }
 
             // Pre-calcular flag asistente_override
-            let colabId = props.asistente_colaborador_id;
-            let minutos = parseFloat(props.asistente_minutos) || 0;
+            let colabId = resolvedColabId || props.asistente_colaborador_id;
+            let minutos = parseFloat(String(resolvedMinutos || '').replace(',', '.')) || 0;
             let tarifa = colabId ? (window.gp_colaboradores_tarifas_map[colabId] || 0) : 0;
             let calculatedCost = (tarifa * minutos) / 60;
 
@@ -2557,13 +2601,23 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva) {
             });
 
             renderTabs();
-            
-            // Sincronizar solapa con la lista activa en la grilla principal (listaSeleccionadaGlobal)
-            let targetTabIdx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaSeleccionadaGlobal));
+
+            // Sincronizar solapa con la lista preservada (si se acaba de editar receta) o la activa en la grilla principal
+            const targetListaId = (opcionesPreserve && opcionesPreserve.active_lista_id !== null && opcionesPreserve.active_lista_id !== undefined)
+                ? opcionesPreserve.active_lista_id
+                : listaSeleccionadaGlobal;
+            let targetTabIdx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(targetListaId));
             if (targetTabIdx === -1) {
                 targetTabIdx = 0;
             }
             selectTab(targetTabIdx);
+
+            // Si la lista activa aún tiene costo_tiempo en 0 pero el asistente ya posee colaborador y minutos válidos, pre-poblar el visor #gp-costo-tiempo
+            const activeListObj = gp_listasFinancieras[targetTabIdx];
+            const costoInputPostTab = document.getElementById('gp-costo-tiempo');
+            if (costoInputPostTab && calculatedCost > 0 && (!activeListObj || !(parseFloat(activeListObj.costo_tiempo) > 0))) {
+                costoInputPostTab.value = calculatedCost.toFixed(2);
+            }
 
             // FASE 20 & FASE 21: Sonda de Vínculos UP (Carro Externo / Tostadero) con Reconexión Homologada
             const cardTostaderoEl = document.getElementById('gp-card-tostadero');
@@ -4484,11 +4538,17 @@ window.guardarEstructuraFinanciera = async function() {
         window.recalcularTodasLasListasFinancieras();
     }
 
-    // Obtener campos del asistente
+    // Obtener campos del asistente de forma resiliente
     const colabSelect = document.getElementById('gp-asistente-colaborador');
     const minutosInput = document.getElementById('gp-asistente-minutos');
-    const asistente_colaborador_id = colabSelect && colabSelect.value ? parseInt(colabSelect.value) : null;
-    const asistente_minutos = minutosInput && minutosInput.value ? parseFloat(minutosInput.value) : null;
+    const colabRawVal = colabSelect
+        ? (colabSelect.value || (colabSelect.selectedIndex >= 0 && colabSelect.options[colabSelect.selectedIndex] ? colabSelect.options[colabSelect.selectedIndex].value : ''))
+        : '';
+    const asistente_colaborador_id = colabRawVal ? parseInt(colabRawVal, 10) : null;
+    const minParsed = minutosInput && minutosInput.value !== ''
+        ? parseFloat(String(minutosInput.value).replace(',', '.'))
+        : NaN;
+    const asistente_minutos = !isNaN(minParsed) ? minParsed : null;
 
     // Mapear configuraciones completas para backend
     const configsPayload = gp_listasFinancieras.map(l => {
@@ -11508,55 +11568,179 @@ window.generarPDFCotizacionAction = async function() {
 };
 
 /**
- * Carga la lista de colaboradores y sus tarifas horarias para el asistente
+ * Carga la lista de colaboradores y sus tarifas horarias para el asistente (idempotente y sin carrera asíncrona)
  */
 window.gp_colaboradores_tarifas_map = {};
 window.gp_colaboradores_list_data = [];
+window._gpColaboradoresLoadingPromise = null;
 
-window.cargarColaboradoresAsistente = async function() {
-    try {
-        const res = await fetch('/api/logistica/usuarios/tarifas');
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const result = await res.json();
-        
-        const selectAsistente = document.getElementById('gp-asistente-colaborador');
-        const selectRendimiento = document.getElementById('gp-rendimiento-colaborador');
-        
-        if (result.success && result.data && result.data.length > 0) {
-            window.gp_colaboradores_list_data = result.data;
-            
-            // 1. Poblar Asistente de Mano de Obra (Punto 3)
-            if (selectAsistente) {
-                const valActual = selectAsistente.value;
-                selectAsistente.innerHTML = '<option value="">-- Seleccionar --</option>';
-                result.data.forEach(c => {
-                    window.gp_colaboradores_tarifas_map[c.usuario_id] = parseFloat(c.valor_hora) || 0;
-                    const opt = document.createElement('option');
-                    opt.value = c.usuario_id;
-                    const tarifa = parseFloat(c.valor_hora) || 0;
-                    opt.dataset.tarifa = tarifa;
-                    opt.textContent = `${c.nombre_completo || c.usuario} ($${tarifa.toLocaleString('es-AR')}/h)`;
-                    selectAsistente.appendChild(opt);
-                });
-                if (valActual) selectAsistente.value = valActual;
-            }
-            
-            // 2. Poblar Rendimiento de Servicios (Punto 2)
-            if (selectRendimiento) {
-                const valActualRend = selectRendimiento.value;
-                selectRendimiento.innerHTML = '<option value="">-- Seleccionar --</option>';
-                result.data.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.usuario_id;
-                    opt.textContent = c.nombre_completo || c.usuario;
-                    selectRendimiento.appendChild(opt);
-                });
-                if (valActualRend) selectRendimiento.value = valActualRend;
+window.obtenerColaboradorDefaultTarifaId = function() {
+    const lista = Array.isArray(window.gp_colaboradores_list_data) ? window.gp_colaboradores_list_data : [];
+    const conTarifa = lista.filter(c => (parseFloat(c.valor_hora) || 0) > 0);
+    if (conTarifa.length > 0) {
+        return String(conTarifa[0].usuario_id);
+    }
+    return '';
+};
+
+window.resolverEstadoAsistenteManoObra = function() {
+    const colabSelect = document.getElementById('gp-asistente-colaborador');
+    const minutosInput = document.getElementById('gp-asistente-minutos');
+    const costoInput = document.getElementById('gp-costo-tiempo');
+
+    let colabId = '';
+    let selectedOpt = null;
+    if (colabSelect) {
+        selectedOpt = colabSelect.selectedIndex >= 0 ? colabSelect.options[colabSelect.selectedIndex] : null;
+        colabId = colabSelect.value || (selectedOpt ? selectedOpt.value : '');
+        if (!colabId && selectedOpt && selectedOpt.textContent && !selectedOpt.textContent.includes('-- Seleccionar')) {
+            const matchByName = (window.gp_colaboradores_list_data || []).find(c =>
+                selectedOpt.textContent.toLowerCase().includes(String(c.nombre_completo || c.usuario || '').toLowerCase())
+            );
+            if (matchByName) {
+                colabId = String(matchByName.usuario_id);
+                colabSelect.value = colabId;
+                selectedOpt = colabSelect.selectedIndex >= 0 ? colabSelect.options[colabSelect.selectedIndex] : selectedOpt;
             }
         }
-    } catch(e) {
-        console.error('Error al cargar colaboradores para asistente y rendimiento:', e);
     }
+
+    const minutos = minutosInput ? (parseFloat(String(minutosInput.value || '').replace(',', '.')) || 0) : 0;
+    let tarifaHoraria = 0;
+    if (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.tarifa !== undefined) {
+        tarifaHoraria = parseFloat(selectedOpt.dataset.tarifa) || 0;
+    }
+    if (!tarifaHoraria && colabId && window.gp_colaboradores_tarifas_map && window.gp_colaboradores_tarifas_map[colabId] !== undefined) {
+        tarifaHoraria = parseFloat(window.gp_colaboradores_tarifas_map[colabId]) || 0;
+    }
+    if (!tarifaHoraria && colabId && Array.isArray(window.gp_colaboradores_list_data)) {
+        const found = window.gp_colaboradores_list_data.find(c => String(c.usuario_id) === String(colabId));
+        if (found) tarifaHoraria = parseFloat(found.valor_hora) || 0;
+    }
+
+    const costoAsistente = (tarifaHoraria > 0 && minutos > 0) ? ((tarifaHoraria * minutos) / 60) : 0;
+    const costoInputVal = costoInput ? (parseFloat(String(costoInput.value || '').replace(',', '.')) || 0) : 0;
+    const colabNombre = selectedOpt ? selectedOpt.text : 'Colaborador';
+
+    return {
+        colabSelect,
+        minutosInput,
+        costoInput,
+        colabId: colabId ? String(colabId) : '',
+        colabNombre,
+        minutos,
+        tarifaHoraria,
+        costoAsistente,
+        costoEfectivo: costoAsistente > 0 ? costoAsistente : costoInputVal
+    };
+};
+
+window.capturarSnapshotGestorPreciosEnCaliente = function() {
+    const colabSelect = document.getElementById('gp-asistente-colaborador');
+    const minutosInput = document.getElementById('gp-asistente-minutos');
+    const listasSnapshot = {};
+    if (typeof gp_listasFinancieras !== 'undefined' && Array.isArray(gp_listasFinancieras)) {
+        gp_listasFinancieras.forEach(l => {
+            listasSnapshot[String(l.lista_id)] = {
+                margen_porcentaje: l.margen_porcentaje,
+                margen_ganancia: l.margen_ganancia,
+                costo_tiempo: l.costo_tiempo,
+                mano_obra_activa: l.mano_obra_activa,
+                disponible: l.disponible,
+                exencion_operativa: l.exencion_operativa,
+                modo_iva: l.modo_iva,
+                modo_calculo: l.modo_calculo,
+                insumos: Array.isArray(l.insumos) ? l.insumos.map(i => Object.assign({}, i)) : []
+            };
+        });
+    }
+    const activeListaId = (typeof gp_listasFinancieras !== 'undefined' && Array.isArray(gp_listasFinancieras) && gp_listasFinancieras[gp_activeTabIdx])
+        ? gp_listasFinancieras[gp_activeTabIdx].lista_id
+        : null;
+
+    return {
+        colab_id: colabSelect ? (colabSelect.value || (colabSelect.selectedIndex >= 0 ? colabSelect.options[colabSelect.selectedIndex]?.value : '')) : '',
+        minutos: minutosInput ? minutosInput.value : '',
+        active_lista_id: activeListaId,
+        listas_snapshot: listasSnapshot
+    };
+};
+
+window.cargarColaboradoresAsistente = async function(forceReload = false) {
+    const selectAsistente = document.getElementById('gp-asistente-colaborador');
+    const selectRendimiento = document.getElementById('gp-rendimiento-colaborador');
+
+    if (
+        !forceReload &&
+        Array.isArray(window.gp_colaboradores_list_data) &&
+        window.gp_colaboradores_list_data.length > 0 &&
+        (!selectAsistente || selectAsistente.options.length > 1)
+    ) {
+        return window.gp_colaboradores_list_data;
+    }
+
+    if (window._gpColaboradoresLoadingPromise) {
+        return window._gpColaboradoresLoadingPromise;
+    }
+
+    window._gpColaboradoresLoadingPromise = (async () => {
+        try {
+            const res = await fetch('/api/logistica/usuarios/tarifas');
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const result = await res.json();
+
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                // Priorizar colaboradores con tarifa activa > 0 arriba de la lista
+                const ordenados = [...result.data].sort((a, b) => {
+                    const ta = parseFloat(a.valor_hora) || 0;
+                    const tb = parseFloat(b.valor_hora) || 0;
+                    if ((tb > 0) !== (ta > 0)) return tb > 0 ? 1 : -1;
+                    return String(a.nombre_completo || a.usuario || '').localeCompare(String(b.nombre_completo || b.usuario || ''));
+                });
+                window.gp_colaboradores_list_data = ordenados;
+
+                // 1. Poblar Asistente de Mano de Obra (Punto 3)
+                if (selectAsistente) {
+                    const valPrevio = selectAsistente.value || (selectAsistente.selectedIndex >= 0 ? selectAsistente.options[selectAsistente.selectedIndex]?.value : '');
+                    selectAsistente.innerHTML = '<option value="">-- Seleccionar --</option>';
+                    ordenados.forEach(c => {
+                        const tarifa = parseFloat(c.valor_hora) || 0;
+                        window.gp_colaboradores_tarifas_map[c.usuario_id] = tarifa;
+                        window.gp_colaboradores_tarifas_map[String(c.usuario_id)] = tarifa;
+                        const opt = document.createElement('option');
+                        opt.value = String(c.usuario_id);
+                        opt.dataset.tarifa = String(tarifa);
+                        opt.textContent = `${c.nombre_completo || c.usuario} ($${tarifa.toLocaleString('es-AR')}/h)`;
+                        selectAsistente.appendChild(opt);
+                    });
+                    if (valPrevio) {
+                        selectAsistente.value = String(valPrevio);
+                    }
+                }
+
+                // 2. Poblar Rendimiento de Servicios (Punto 2)
+                if (selectRendimiento) {
+                    const valActualRend = selectRendimiento.value;
+                    selectRendimiento.innerHTML = '<option value="">-- Seleccionar --</option>';
+                    ordenados.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = String(c.usuario_id);
+                        opt.textContent = c.nombre_completo || c.usuario;
+                        selectRendimiento.appendChild(opt);
+                    });
+                    if (valActualRend) selectRendimiento.value = String(valActualRend);
+                }
+            }
+            return window.gp_colaboradores_list_data;
+        } catch (e) {
+            console.error('Error al cargar colaboradores para asistente y rendimiento:', e);
+            return window.gp_colaboradores_list_data;
+        } finally {
+            window._gpColaboradoresLoadingPromise = null;
+        }
+    })();
+
+    return window._gpColaboradoresLoadingPromise;
 };
 
 /* ==========================================================================
@@ -11826,37 +12010,28 @@ window.confirmarServicioRendimiento = async function() {
  * Realiza el cálculo del asistente e inyecta el valor en el input de costo tiempo
  */
 window.calcularCostoAsistente = function() {
-    const select = document.getElementById('gp-asistente-colaborador');
-    const inputMinutos = document.getElementById('gp-asistente-minutos');
-    const inputCostoTiempo = document.getElementById('gp-costo-tiempo');
-    
-    if (!select || !inputMinutos || !inputCostoTiempo) return;
-    
-    const selectedOpt = select.options[select.selectedIndex];
-    if (!selectedOpt || !selectedOpt.value) {
-        return; // No hay colaborador seleccionado
-    }
-    
-    const tarifaHoraria = parseFloat(selectedOpt.dataset.tarifa) || 0;
-    const minutos = parseFloat(inputMinutos.value) || 0;
-    
-    // Formula: (Tarifa Horaria * Minutos) / 60
-    const costoCalculado = (tarifaHoraria * minutos) / 60;
-    
+    const estado = window.resolverEstadoAsistenteManoObra();
+    if (!estado.colabSelect || !estado.minutosInput || !estado.costoInput) return;
+    if (!estado.colabId) return; // No hay colaborador seleccionado
+
+    const costoCalculado = (estado.tarifaHoraria * estado.minutos) / 60;
+
     // Asignar el costo calculado al input principal redondeado a 2 decimales
-    inputCostoTiempo.value = costoCalculado.toFixed(2);
-    
+    estado.costoInput.value = costoCalculado.toFixed(2);
+
     // Actualizar todas las listas en memoria que no tengan override manual
-    gp_listasFinancieras.forEach((l, idx) => {
-        if (idx === gp_activeTabIdx) {
-            l.costo_tiempo = costoCalculado;
-            l.asistente_override = false;
-        } else if (!l.exencion_operativa && !l.asistente_override) {
-            l.costo_tiempo = costoCalculado;
-            recalcularValoresDeListaEnMemoria(l);
-        }
-    });
-    
+    if (typeof gp_listasFinancieras !== 'undefined' && Array.isArray(gp_listasFinancieras)) {
+        gp_listasFinancieras.forEach((l, idx) => {
+            if (idx === gp_activeTabIdx) {
+                l.costo_tiempo = costoCalculado;
+                l.asistente_override = false;
+            } else if (!l.exencion_operativa && !l.asistente_override) {
+                l.costo_tiempo = costoCalculado;
+                recalcularValoresDeListaEnMemoria(l);
+            }
+        });
+    }
+
     propagarCostosOperativos();
     debouncedRecalcular();
 };
@@ -11874,18 +12049,20 @@ window.sincronizarManoObraUI = function() {
 /**
  * Modal interactivo para confirmar y propagar la mano de obra del asistente a la lista actual o a todas
  */
-window.confirmarManoObraAsistente = function() {
+window.confirmarManoObraAsistente = async function() {
     const colabSelect = document.getElementById('gp-asistente-colaborador');
     const minutosInput = document.getElementById('gp-asistente-minutos');
     const costoInput = document.getElementById('gp-costo-tiempo');
-    
+
     if (!colabSelect || !minutosInput || !costoInput) return;
-    
-    const colabId = colabSelect.value;
-    const minutos = parseFloat(minutosInput.value) || 0;
-    const costoCalculado = parseFloat(costoInput.value) || 0;
-    
-    if (!colabId) {
+
+    if (colabSelect.options.length <= 1 && typeof window.cargarColaboradoresAsistente === 'function') {
+        await window.cargarColaboradoresAsistente();
+    }
+
+    let estado = window.resolverEstadoAsistenteManoObra();
+
+    if (!estado.colabId) {
         Swal.fire({
             icon: 'warning',
             title: 'Seleccione un colaborador',
@@ -11893,8 +12070,8 @@ window.confirmarManoObraAsistente = function() {
         });
         return;
     }
-    
-    if (minutos <= 0) {
+
+    if (estado.minutos <= 0) {
         Swal.fire({
             icon: 'warning',
             title: 'Ingrese los minutos',
@@ -11903,16 +12080,23 @@ window.confirmarManoObraAsistente = function() {
         return;
     }
 
+    let costoCalculado = estado.costoEfectivo;
+    if (estado.costoAsistente > 0) {
+        costoCalculado = estado.costoAsistente;
+        costoInput.value = costoCalculado.toFixed(2);
+    }
+
     if (costoCalculado <= 0) {
         Swal.fire({
             icon: 'warning',
             title: 'Costo de Mano de Obra Nulo',
-            text: 'El colaborador seleccionado no posee tarifa o el costo calculado es cero. Ingrese un colaborador y minutos válidos.'
+            text: 'El colaborador seleccionado no posee tarifa horaria activa ($0/h) o el costo calculado es cero. Seleccione un colaborador con tarifa configurada.'
         });
         return;
     }
-    
-    const colabNombre = colabSelect.options[colabSelect.selectedIndex] ? colabSelect.options[colabSelect.selectedIndex].text : 'Colaborador';
+
+    const minutos = estado.minutos;
+    const colabNombre = estado.colabNombre;
 
     Swal.fire({
         title: 'Aplicar Costo de Mano de Obra / Servicios',
@@ -12177,7 +12361,14 @@ window.abrirModalMetricasCampo = function() {
 
 window.toggleManoObraActiva = async function(checked) {
     const costoInput = document.getElementById('gp-costo-tiempo');
-    const valorNumerico = costoInput ? (parseFloat(costoInput.value) || 0) : 0;
+    let valorNumerico = costoInput ? (parseFloat(costoInput.value) || 0) : 0;
+    if (checked && (!valorNumerico || valorNumerico <= 0) && typeof window.resolverEstadoAsistenteManoObra === 'function') {
+        const estadoAsist = window.resolverEstadoAsistenteManoObra();
+        if (estadoAsist.costoAsistente > 0) {
+            valorNumerico = estadoAsist.costoAsistente;
+            if (costoInput) costoInput.value = valorNumerico.toFixed(2);
+        }
+    }
     const currencyFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
     const totalTexto = currencyFormatter.format(valorNumerico);
 
@@ -12381,9 +12572,12 @@ window.eliminarRecetaBunkerDirecta = async function() {
             window.cerrarModalRecetaBunker();
         }
 
-        // Recalibrar y actualizar en caliente el Gestor de Precios
+        // Recalibrar y actualizar en caliente el Gestor de Precios preservando colaborador, minutos y márgenes no guardados
+        const snapCaliente = typeof window.capturarSnapshotGestorPreciosEnCaliente === 'function'
+            ? window.capturarSnapshotGestorPreciosEnCaliente()
+            : null;
         window.gp_receta_id_existente = null;
-        await window.abrirGestorPrecios(artId, artNombre, gp_ivaGlobal);
+        await window.abrirGestorPrecios(artId, artNombre, gp_ivaGlobal, snapCaliente);
 
     } catch (e) {
         console.error('❌ [BUNKER-RECETAS - ERROR ELIMINANDO RECETA]:', e);
@@ -12571,9 +12765,12 @@ window.guardarRecetaBunker = async function() {
         Swal.fire('Guardado Exitoso', 'La receta se ha guardado correctamente.', 'success');
         window.cerrarModalRecetaBunker();
         
-        // Sincroniza y recarga el Gestor de Precios actual en caliente
+        // Sincroniza y recarga el Gestor de Precios actual en caliente preservando colaborador, minutos y márgenes editados
+        const snapCaliente = typeof window.capturarSnapshotGestorPreciosEnCaliente === 'function'
+            ? window.capturarSnapshotGestorPreciosEnCaliente()
+            : null;
         const ivaVal = window.gp_ivaGlobal || 21;
-        await window.abrirGestorPrecios(artId, artNombre, ivaVal);
+        await window.abrirGestorPrecios(artId, artNombre, ivaVal, snapCaliente);
         
     } catch (err) {
         console.error('[RECETA-MODAL] Error al guardar receta:', err);

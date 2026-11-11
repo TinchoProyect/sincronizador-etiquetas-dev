@@ -116,7 +116,7 @@ async function crearReceta(req, res) {
     
     try {
         console.log('📥 crearReceta - Body recibido:', req.body);
-        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo } = req.body;
+        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo, upsert } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
@@ -167,14 +167,39 @@ async function crearReceta(req, res) {
         // Iniciar transacción
         await client.query('BEGIN');
 
-        // Insertar la receta
-        const recetaQuery = `
-            INSERT INTO recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
-            VALUES ($1, $2, NOW(), $3)
-            RETURNING id
-        `;
-        const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion, enlazado_externo === true]);
-        const recetaId = recetaResult.rows[0].id;
+        let recetaId = null;
+        let fueActualizada = false;
+
+        if (upsert === true) {
+            const existenteRes = await client.query(
+                `SELECT id FROM recetas
+                 WHERE articulo_numero = $1 OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+                 ORDER BY (articulo_numero = $1) DESC
+                 LIMIT 1`,
+                [articulo_numero]
+            );
+            if (existenteRes.rows.length > 0) {
+                recetaId = existenteRes.rows[0].id;
+                fueActualizada = true;
+                await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+                await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
+                await client.query(
+                    'UPDATE recetas SET descripcion = $1, enlazado_externo = $2 WHERE id = $3',
+                    [descripcion, enlazado_externo === true, recetaId]
+                );
+            }
+        }
+
+        if (!recetaId) {
+            // Insertar la receta
+            const recetaQuery = `
+                INSERT INTO recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
+                VALUES ($1, $2, NOW(), $3)
+                RETURNING id
+            `;
+            const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion, enlazado_externo === true]);
+            recetaId = recetaResult.rows[0].id;
+        }
 
         // Insertar los ingredientes si existen
         if (tieneIngredientes) {
@@ -226,9 +251,10 @@ async function crearReceta(req, res) {
         // Confirmar transacción
         await client.query('COMMIT');
 
-        res.status(201).json({
-            message: 'Receta creada exitosamente',
-            receta_id: recetaId
+        res.status(fueActualizada ? 200 : 201).json({
+            message: fueActualizada ? 'Receta actualizada exitosamente' : 'Receta creada exitosamente',
+            receta_id: recetaId,
+            actualizada: fueActualizada
         });
 
     } catch (error) {
@@ -257,14 +283,28 @@ async function obtenerReceta(numero_articulo) {
     const client = await pool.connect();
     
     try {
-        // Obtener la receta base
+        // Obtener la receta base (con coincidencia exacta prioritaria + fallback case-insensitive y por código de barras)
         const recetaBaseQuery = `
             SELECT id, articulo_numero, descripcion, fecha_creacion, COALESCE(enlazado_externo, false) as enlazado_externo
             FROM recetas
             WHERE articulo_numero = $1
+               OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (articulo_numero = $1) DESC
+            LIMIT 1
         `;
         
-        const recetaResult = await client.query(recetaBaseQuery, [numero_articulo]);
+        let recetaResult = await client.query(recetaBaseQuery, [numero_articulo]);
+
+        if (recetaResult.rows.length === 0 && numero_articulo) {
+            const fallbackBarrasQuery = `
+                SELECT r.id, r.articulo_numero, r.descripcion, r.fecha_creacion, COALESCE(r.enlazado_externo, false) as enlazado_externo
+                FROM recetas r
+                INNER JOIN articulos a ON UPPER(TRIM(a.numero)) = UPPER(TRIM(r.articulo_numero))
+                WHERE a.codigo_barras = $1
+                LIMIT 1
+            `;
+            recetaResult = await client.query(fallbackBarrasQuery, [numero_articulo]);
+        }
         
         if (recetaResult.rows.length === 0) {
             throw new Error('Receta no encontrada');
@@ -325,7 +365,7 @@ async function actualizarReceta(req, res) {
     
     try {
         console.log('📥 actualizarReceta - Body recibido:', req.body);
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo || req.body.articulo_numero;
         const { descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
@@ -376,6 +416,9 @@ async function actualizarReceta(req, res) {
         const recetaQuery = `
             SELECT id FROM recetas 
             WHERE articulo_numero = $1
+               OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (articulo_numero = $1) DESC
+            LIMIT 1
         `;
         const recetaResult = await client.query(recetaQuery, [numero_articulo]);
         
@@ -562,7 +605,7 @@ async function eliminarReceta(req, res) {
     const client = await pool.connect();
     
     try {
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo;
 
         if (!numero_articulo) {
             return res.status(400).json({ error: 'El número de artículo es requerido' });
@@ -575,6 +618,9 @@ async function eliminarReceta(req, res) {
         const recetaQuery = `
             SELECT id FROM recetas 
             WHERE articulo_numero = $1
+               OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (articulo_numero = $1) DESC
+            LIMIT 1
         `;
         const recetaResult = await client.query(recetaQuery, [numero_articulo]);
         
@@ -623,7 +669,7 @@ async function obtenerSugerencia(req, res) {
     const client = await pool.connect();
     
     try {
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo;
         
         console.log(`[SUGERENCIAS] Obteniendo sugerencia para artículo: ${numero_articulo}`);
 
@@ -633,7 +679,7 @@ async function obtenerSugerencia(req, res) {
             });
         }
 
-        // Consultar la sugerencia actual
+        // Consultar la sugerencia actual (coincidencia exacta prioritaria + fallback case-insensitive y por código de barras)
         const query = `
             SELECT 
                 r.articulo_numero,
@@ -643,15 +689,35 @@ async function obtenerSugerencia(req, res) {
             FROM recetas r
             LEFT JOIN articulos a ON a.numero = r.articulo_sugerido_numero
             WHERE r.articulo_numero = $1
+               OR UPPER(TRIM(r.articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (r.articulo_numero = $1) DESC
+            LIMIT 1
         `;
         
-        const result = await client.query(query, [numero_articulo]);
+        let result = await client.query(query, [numero_articulo]);
+
+        if (result.rows.length === 0) {
+            const fallbackBarras = await client.query(`
+                SELECT 
+                    r.articulo_numero,
+                    r.articulo_sugerido_numero,
+                    sug.nombre as articulo_sugerido_nombre,
+                    sug.codigo_barras as articulo_sugerido_codigo_barras
+                FROM recetas r
+                INNER JOIN articulos orig ON UPPER(TRIM(orig.numero)) = UPPER(TRIM(r.articulo_numero))
+                LEFT JOIN articulos sug ON sug.numero = r.articulo_sugerido_numero
+                WHERE orig.codigo_barras = $1
+                LIMIT 1
+            `, [numero_articulo]);
+            result = fallbackBarras;
+        }
         
         if (result.rows.length === 0) {
             // El artículo no tiene receta registrada
             console.log(`[SUGERENCIAS] Artículo ${numero_articulo} sin receta registrada`);
             return res.status(404).json({ 
                 error: 'Receta no encontrada para este artículo',
+                tiene_receta: false,
                 tiene_sugerencia: false
             });
         }
@@ -663,6 +729,7 @@ async function obtenerSugerencia(req, res) {
 
         res.json({
             articulo_numero: receta.articulo_numero,
+            tiene_receta: true,
             tiene_sugerencia: tieneSugerencia,
             sugerencia: tieneSugerencia ? {
                 articulo_numero: receta.articulo_sugerido_numero,
@@ -689,7 +756,7 @@ async function guardarSugerencia(req, res) {
     const client = await pool.connect();
     
     try {
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo || req.body.articulo_numero;
         const { articulo_sugerido_numero } = req.body;
 
         console.log(`[SUGERENCIAS] Guardando sugerencia para ${numero_articulo} → ${articulo_sugerido_numero}`);
@@ -711,6 +778,9 @@ async function guardarSugerencia(req, res) {
             SELECT numero, nombre 
             FROM articulos 
             WHERE numero = $1
+               OR UPPER(TRIM(numero)) = UPPER(TRIM($1))
+            ORDER BY (numero = $1) DESC
+            LIMIT 1
         `;
         const articuloResult = await client.query(verificarArticuloQuery, [articulo_sugerido_numero]);
         
@@ -722,9 +792,12 @@ async function guardarSugerencia(req, res) {
 
         // Verificar que la receta existe
         const verificarRecetaQuery = `
-            SELECT id 
+            SELECT id, articulo_numero 
             FROM recetas 
             WHERE articulo_numero = $1
+               OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (articulo_numero = $1) DESC
+            LIMIT 1
         `;
         const recetaResult = await client.query(verificarRecetaQuery, [numero_articulo]);
         
@@ -734,17 +807,20 @@ async function guardarSugerencia(req, res) {
             });
         }
 
+        const recetaId = recetaResult.rows[0].id;
+        const sugeridoExacto = articuloResult.rows[0].numero;
+
         // Actualizar la sugerencia
         const updateQuery = `
             UPDATE recetas 
             SET articulo_sugerido_numero = $1
-            WHERE articulo_numero = $2
+            WHERE id = $2
             RETURNING articulo_numero, articulo_sugerido_numero
         `;
         
-        const updateResult = await client.query(updateQuery, [articulo_sugerido_numero, numero_articulo]);
+        const updateResult = await client.query(updateQuery, [sugeridoExacto, recetaId]);
 
-        console.log(`[SUGERENCIAS] ✅ Sugerencia guardada: ${numero_articulo} → ${articulo_sugerido_numero}`);
+        console.log(`[SUGERENCIAS] ✅ Sugerencia guardada: ${numero_articulo} → ${sugeridoExacto}`);
 
         res.json({
             message: 'Sugerencia guardada exitosamente',
@@ -771,7 +847,7 @@ async function eliminarSugerencia(req, res) {
     const client = await pool.connect();
     
     try {
-        const { numero_articulo } = req.params;
+        const numero_articulo = req.params.numero_articulo || req.query.codigo;
 
         console.log(`[SUGERENCIAS] Eliminando sugerencia para artículo: ${numero_articulo}`);
 
@@ -783,9 +859,12 @@ async function eliminarSugerencia(req, res) {
 
         // Verificar que la receta existe
         const verificarRecetaQuery = `
-            SELECT id, articulo_sugerido_numero 
+            SELECT id, articulo_numero, articulo_sugerido_numero 
             FROM recetas 
             WHERE articulo_numero = $1
+               OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
+            ORDER BY (articulo_numero = $1) DESC
+            LIMIT 1
         `;
         const recetaResult = await client.query(verificarRecetaQuery, [numero_articulo]);
         
@@ -801,7 +880,7 @@ async function eliminarSugerencia(req, res) {
             console.log(`[SUGERENCIAS] Artículo ${numero_articulo} no tiene sugerencia configurada`);
             return res.json({
                 message: 'El artículo no tenía sugerencia configurada',
-                articulo_numero: numero_articulo
+                articulo_numero: receta.articulo_numero
             });
         }
 
@@ -809,17 +888,17 @@ async function eliminarSugerencia(req, res) {
         const deleteQuery = `
             UPDATE recetas 
             SET articulo_sugerido_numero = NULL
-            WHERE articulo_numero = $1
+            WHERE id = $1
             RETURNING articulo_numero
         `;
         
-        await client.query(deleteQuery, [numero_articulo]);
+        await client.query(deleteQuery, [receta.id]);
 
-        console.log(`[SUGERENCIAS] ✅ Sugerencia eliminada para: ${numero_articulo}`);
+        console.log(`[SUGERENCIAS] ✅ Sugerencia eliminada para: ${receta.articulo_numero}`);
 
         res.json({
             message: 'Sugerencia eliminada exitosamente',
-            articulo_numero: numero_articulo
+            articulo_numero: receta.articulo_numero
         });
 
     } catch (error) {

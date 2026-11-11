@@ -1503,6 +1503,63 @@ router.delete('/recetas/:numero_articulo/sugerencia', async (req, res) => {
     }
 });
 
+/**
+ * Rutas robustas por query param (?codigo=...) para SKUs con barra "/" (ej: APN25/27X250G)
+ * compatibles detrás de cualquier reverse proxy o túnel externo.
+ */
+router.get('/receta-detalle', async (req, res) => {
+    try {
+        const numero_articulo = req.query.codigo;
+        if (!numero_articulo) return res.status(400).json({ error: 'El parámetro codigo es requerido' });
+        const receta = await obtenerReceta(numero_articulo);
+        res.json(receta);
+    } catch (error) {
+        res.status(error.message === 'Receta no encontrada' ? 404 : 500).json({ error: error.message });
+    }
+});
+
+router.put('/receta-detalle', validarReceta, async (req, res) => {
+    try {
+        await actualizarReceta(req, res);
+    } catch (error) {
+        console.error('Error al actualizar receta (query):', error);
+        res.status(500).json({ error: 'Error al actualizar la receta' });
+    }
+});
+
+router.delete('/receta-detalle', async (req, res) => {
+    try {
+        await eliminarReceta(req, res);
+    } catch (error) {
+        console.error('Error al eliminar receta (query):', error);
+        res.status(500).json({ error: 'Error al eliminar la receta' });
+    }
+});
+
+router.get('/receta-sugerencia', async (req, res) => {
+    try {
+        await obtenerSugerencia(req, res);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener sugerencia', detalle: error.message });
+    }
+});
+
+router.put('/receta-sugerencia', async (req, res) => {
+    try {
+        await guardarSugerencia(req, res);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al guardar sugerencia', detalle: error.message });
+    }
+});
+
+router.delete('/receta-sugerencia', async (req, res) => {
+    try {
+        await eliminarSugerencia(req, res);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al eliminar sugerencia', detalle: error.message });
+    }
+});
+
 // Rutas para carros de producción
 router.post('/carro', async (req, res) => {
     try {

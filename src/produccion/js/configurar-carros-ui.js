@@ -364,16 +364,14 @@
             hijoInfoDiv.appendChild(hijoCodigoSpan);
             hijoInfoDiv.appendChild(hijoInfoSpan);
 
-            // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes y sugerencias para HIJO
+            // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes, receta inline y sugerencias para HIJO
             const articuloHijo = {
                 articulo_numero: packMapping.articulo_kilo_numero || packMapping.articulo_kilo_codigo,
                 codigo_barras: packMapping.articulo_kilo_codigo_barras || packMapping.articulo_kilo_codigo,
                 descripcion: packMapping.articulo_kilo_nombre || 'Sin descripción'
             };
-            const botonIngredientesHijo = await agregarBotonIngredientes(articuloHijo, hijoDiv);
-            const botonSugerenciaHijo = await agregarBotonSugerencia(articuloHijo.articulo_numero, articuloHijo.descripcion, hijoDiv);
-            hijoInfoDiv.appendChild(botonIngredientesHijo);
-            hijoInfoDiv.appendChild(botonSugerenciaHijo);
+            const filaAccionesHijo = await construirFilaAccionesReceta(articuloHijo, hijoDiv);
+            hijoInfoDiv.appendChild(filaAccionesHijo);
 
             const hijoCantidadDiv = document.createElement('div');
             hijoCantidadDiv.className = 'carros-item-cantidad';
@@ -443,15 +441,9 @@
             infoDiv.appendChild(codigoSpan);
             infoDiv.appendChild(estadoSpan);
 
-            // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes y sugerencias para SIMPLE
-            const botonIngredientes = await agregarBotonIngredientes(articulo, itemDiv);
-            const botonSugerencia = await agregarBotonSugerencia(
-                articulo.articulo_numero,
-                articulo.descripcion || articulo.articulo_numero,
-                itemDiv
-            );
-            infoDiv.appendChild(botonIngredientes);
-            infoDiv.appendChild(botonSugerencia);
+            // NUEVA FUNCIONALIDAD: Agregar botones de ingredientes, receta inline y sugerencias para SIMPLE
+            const filaAccionesSimple = await construirFilaAccionesReceta(articulo, itemDiv);
+            infoDiv.appendChild(filaAccionesSimple);
 
             const cantidadDiv = document.createElement('div');
             cantidadDiv.className = 'carros-item-cantidad';
@@ -518,7 +510,7 @@
 
         if (seleccionado) {
             if (!validarCompatibilidadLineaSeleccion(2, checkboxEl)) return;
-            const inputCant = document.querySelector(`.carros-item:not(.carros-item-sugerencia) input[type="number"][data-articulo="${articuloNumero}"]`);
+            const inputCant = document.querySelector(`.carros-item:not(.carros-item-sugerencia) input[type="number"][data-articulo="${escaparSelectorAttr(articuloNumero)}"]`);
             const faltante = inputCant ? (parseFloat(inputCant.value) || parseFloat(articulo.faltante || 0)) : parseFloat(articulo.faltante || 0);
             estadoCarros.articulosSeleccionados.set(articuloNumero, {
                 articulo: articulo,
@@ -542,7 +534,7 @@
         const codigoPadre = articuloPadre.articulo_numero;
 
         if (seleccionado) {
-            const checkboxEl = document.querySelector(`.carros-item-checkbox[data-articulo="${codigoHijo}"][data-es-hijo="true"]`);
+            const checkboxEl = document.querySelector(`.carros-item-checkbox[data-articulo="${escaparSelectorAttr(codigoHijo)}"][data-es-hijo="true"]`);
             if (!validarCompatibilidadLineaSeleccion(2, checkboxEl)) return;
             estadoCarros.articulosSeleccionados.set(codigoHijo, {
                 articulo: {
@@ -918,6 +910,18 @@
      * @param {string} articuloCodigo - Codigo alfanumerico o codigo de barras del articulo
      * @returns {Promise<Object|null>} Objeto con ingredientes o null si no tiene receta
      */
+    function escaparSelectorAttr(val) {
+        return String(val ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
+    function escaparHtmlBasico(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     async function obtenerIngredientesArticulo(articulo) {
         const cacheKey = articulo.articulo_numero;
         if (estadoCarros.cacheIngredientes.has(cacheKey)) {
@@ -930,19 +934,27 @@
             try {
                 const codigoEncoded = encodeURIComponent(codigo);
                 console.log(`[INGREDIENTES] (${tipo}) Consultando receta para ${codigo} (${codigoEncoded})`);
-                const response = await fetch(`/api/produccion/recetas/${codigoEncoded}`);
+                let response = await fetch(`/api/produccion/receta-detalle?codigo=${codigoEncoded}`);
+                if (response.status === 404) {
+                    // Verificar si la ruta nueva no está montada o si realmente es 404 de receta
+                    const errBody = await response.clone().json().catch(() => null);
+                    if (!errBody || !errBody.error) {
+                        response = await fetch(`/api/produccion/recetas/${codigoEncoded}`);
+                    }
+                }
 
                 if (response.ok) {
                     const receta = await response.json();
                     console.log(`[INGREDIENTES] (${tipo}) Receta encontrada para ${codigo}:`, receta);
                     return {
                         tieneReceta: true,
+                        descripcion: receta.descripcion || '',
                         ingredientes: receta.ingredientes || [],
                         articulos: receta.articulos || []
                     };
                 } else if (response.status === 404) {
                     console.log(`[INGREDIENTES] (${tipo}) Articulo ${codigo} sin receta (404)`);
-                    return { tieneReceta: false };
+                    return { tieneReceta: false, ingredientes: [], articulos: [] };
                 } else {
                     console.error(`[INGREDIENTES] (${tipo}) Error HTTP ${response.status} para ${codigo}`);
                     return null;
@@ -955,7 +967,7 @@
 
         let resultado = await buscarPorCodigo(articulo.articulo_numero, 'numero');
 
-        if (resultado && !resultado.tieneReceta && articulo.codigo_barras) {
+        if (resultado && !resultado.tieneReceta && articulo.codigo_barras && articulo.codigo_barras !== articulo.articulo_numero) {
             console.log(`[INGREDIENTES] Fallback: Intentando con codigo de barras ${articulo.codigo_barras}`);
             resultado = await buscarPorCodigo(articulo.codigo_barras, 'barras');
         }
@@ -968,31 +980,114 @@
     }
 
     /**
+     * Construye la fila horizontal de acciones de receta e ingredientes para un ítem de carro
+     * (permite refrescar en caliente sin perder selección ni recargar toda la lista)
+     */
+    async function construirFilaAccionesReceta(articulo, contenedorPadre) {
+        const fila = document.createElement('div');
+        fila.className = 'carros-acciones-receta-row';
+        fila.setAttribute('data-articulo', articulo.articulo_numero);
+        fila.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap;';
+
+        const infoIngredientes = await obtenerIngredientesArticulo(articulo);
+        const tieneRecetaConfirmada = Boolean(
+            infoIngredientes &&
+            infoIngredientes.tieneReceta &&
+            ((Array.isArray(infoIngredientes.ingredientes) && infoIngredientes.ingredientes.length > 0) ||
+             (Array.isArray(infoIngredientes.articulos) && infoIngredientes.articulos.length > 0))
+        );
+
+        const botonIngredientes = await agregarBotonIngredientes(articulo, contenedorPadre, infoIngredientes);
+        const botonSugerencia = await agregarBotonSugerencia(articulo, contenedorPadre, tieneRecetaConfirmada);
+
+        fila.appendChild(botonIngredientes);
+        fila.appendChild(botonSugerencia);
+
+        if (tieneRecetaConfirmada) {
+            const btnEditarReceta = document.createElement('button');
+            btnEditarReceta.type = 'button';
+            btnEditarReceta.className = 'carros-btn-editar-receta';
+            btnEditarReceta.innerHTML = '🧪 Receta';
+            btnEditarReceta.title = 'Ver o editar la receta de producción de este artículo';
+            btnEditarReceta.style.cssText = 'background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 1px 7px; border-radius: 10px; cursor: pointer; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;';
+            btnEditarReceta.addEventListener('click', (e) => {
+                e.stopPropagation();
+                abrirModalRecetaCarros(articulo, contenedorPadre);
+            });
+            fila.appendChild(btnEditarReceta);
+        }
+
+        return fila;
+    }
+
+    /**
+     * Refresca en el acto la fila de botones y el panel de ingredientes de un artículo tras guardar su receta
+     */
+    async function refrescarBotonesRecetaItem(articulo, contenedorPreferido) {
+        const codigo = articulo.articulo_numero;
+        estadoCarros.cacheIngredientes.delete(codigo);
+        cacheSugerencias.delete(codigo);
+
+        const sel = escaparSelectorAttr(codigo);
+        const contenedores = new Set();
+        if (contenedorPreferido && document.body.contains(contenedorPreferido)) {
+            contenedores.add(contenedorPreferido);
+        }
+        document.querySelectorAll(`.carros-item[data-articulo="${sel}"], .carros-item-hijo[data-articulo="${sel}"]`).forEach(el => {
+            contenedores.add(el);
+        });
+
+        for (const itemEl of contenedores) {
+            const filaActual = itemEl.querySelector('.carros-acciones-receta-row');
+            const infoDiv = itemEl.querySelector('.carros-item-info') || filaActual?.parentElement;
+            if (infoDiv) {
+                const nuevaFila = await construirFilaAccionesReceta(articulo, itemEl);
+                if (filaActual) {
+                    filaActual.replaceWith(nuevaFila);
+                } else {
+                    infoDiv.appendChild(nuevaFila);
+                }
+            }
+
+            const panelExistente = itemEl.querySelector(`.ingredientes-panel[data-articulo="${sel}"]`);
+            if (panelExistente) {
+                const estabaVisible = panelExistente.style.display !== 'none';
+                panelExistente.remove();
+                if (estabaVisible) {
+                    const nuevaInfo = await obtenerIngredientesArticulo(articulo);
+                    if (nuevaInfo && nuevaInfo.tieneReceta && nuevaInfo.ingredientes.length > 0) {
+                        toggleIngredientesPanel(articulo, itemEl, nuevaInfo);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * NUEVA FUNCIONALIDAD: Crea el boton de informacion de ingredientes
      * El boton es ACTIVO (color) si tiene receta, INACTIVO (gris) si no tiene
-     * @param {string} articuloCodigo - Codigo del articulo
-     * @param {HTMLElement} contenedorPadre - Elemento donde se agregara el boton
      */
-    async function agregarBotonIngredientes(articulo, contenedorPadre) {
-        const infoIngredientes = await obtenerIngredientesArticulo(articulo);
+    async function agregarBotonIngredientes(articulo, contenedorPadre, infoPreCargada = null) {
+        const infoIngredientes = infoPreCargada || await obtenerIngredientesArticulo(articulo);
 
         const botonInfo = document.createElement('button');
+        botonInfo.type = 'button';
         botonInfo.className = 'carros-btn-ingredientes';
         botonInfo.textContent = 'i';
-        botonInfo.title = 'Informacion de ingredientes';
+        botonInfo.title = 'Información de ingredientes de la receta';
 
         if (infoIngredientes && infoIngredientes.tieneReceta && infoIngredientes.ingredientes.length > 0) {
             // Boton ACTIVO (tiene ingredientes) - COMPACTO
-            botonInfo.style.cssText = 'background: #28a745; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+            botonInfo.style.cssText = 'background: #28a745; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
             botonInfo.setAttribute('data-tiene-receta', 'true');
 
             botonInfo.addEventListener('click', (e) => {
                 e.stopPropagation();
-                toggleIngredientesPanel(articulo.articulo_numero, contenedorPadre, infoIngredientes);
+                toggleIngredientesPanel(articulo, contenedorPadre, infoIngredientes);
             });
         } else {
             // Boton INACTIVO (sin ingredientes) - COMPACTO
-            botonInfo.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: not-allowed; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; opacity: 0.5;';
+            botonInfo.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: not-allowed; font-size: 10px; font-weight: bold; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; opacity: 0.5;';
             botonInfo.setAttribute('data-tiene-receta', 'false');
             botonInfo.disabled = true;
         }
@@ -1005,11 +1100,16 @@
      * Muestra/oculta la lista de ingredientes debajo del articulo
      * CORRECCION: Multiplica cantidad base por cantidad solicitada del articulo
      */
-    function toggleIngredientesPanel(articuloCodigo, contenedorPadre, infoIngredientes) {
+    function toggleIngredientesPanel(articuloOrCodigo, contenedorPadre, infoIngredientes) {
+        const articuloObj = typeof articuloOrCodigo === 'object' && articuloOrCodigo !== null
+            ? articuloOrCodigo
+            : { articulo_numero: String(articuloOrCodigo || ''), descripcion: String(articuloOrCodigo || '') };
+        const articuloCodigo = articuloObj.articulo_numero;
+        const sel = escaparSelectorAttr(articuloCodigo);
         console.log(`[INGREDIENTES] Toggle panel para ${articuloCodigo}`);
 
         // Buscar panel existente
-        let panel = contenedorPadre.querySelector(`.ingredientes-panel[data-articulo="${articuloCodigo}"]`);
+        let panel = contenedorPadre.querySelector(`.ingredientes-panel[data-articulo="${sel}"]`);
 
         if (panel) {
             // Si existe, toggle visibility
@@ -1024,25 +1124,12 @@
         }
 
         // CORRECCION CRITICA: Buscar el input de cantidad del articulo
-        // Para HIJOS: el input tiene data-articulo con el codigo de barras/codigo del hijo
-        // Para SIMPLES: el input tiene data-articulo con el codigo alfanumerico
-        // Buscar en el contenedor padre (hijoDiv o itemDiv) que contiene tanto el boton como el input
-        let inputCantidad = contenedorPadre.querySelector(`input[type="number"][data-articulo="${articuloCodigo}"]`);
-
-        // Si no se encuentra, puede ser que el codigo sea diferente (barras vs alfanumerico)
-        // Buscar cualquier input de numero en el contenedor
+        let inputCantidad = contenedorPadre.querySelector(`input[type="number"][data-articulo="${sel}"]`);
         if (!inputCantidad) {
             inputCantidad = contenedorPadre.querySelector(`input[type="number"]`);
-            console.log(`[INGREDIENTES] Input encontrado por selector generico para ${articuloCodigo}`);
         }
 
         const cantidadSolicitada = inputCantidad ? parseFloat(inputCantidad.value) || 1 : 1;
-
-        console.log(`[INGREDIENTES] Input encontrado:`, !!inputCantidad);
-        console.log(`[INGREDIENTES] Valor del input:`, inputCantidad?.value);
-        console.log(`[INGREDIENTES] Cantidad solicitada parseada: ${cantidadSolicitada}`);
-        console.log(`[INGREDIENTES] Codigo buscado: ${articuloCodigo}`);
-        console.log(`[INGREDIENTES] Data-articulo del input:`, inputCantidad?.getAttribute('data-articulo'));
 
         // Crear panel nuevo
         panel = document.createElement('div');
@@ -1050,29 +1137,39 @@
         panel.setAttribute('data-articulo', articuloCodigo);
         panel.style.cssText = 'width: 100%; padding: 12px; background: #e7f5f7; border: 1px solid #17a2b8; border-radius: 4px; margin-top: 8px;';
 
-        let html = '<div style="font-weight: bold; color: #17a2b8; margin-bottom: 8px;">Ingredientes:</div>';
+        let html = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+                <span style="font-weight: bold; color: #17a2b8;">Ingredientes:</span>
+                <button type="button" class="btn-editar-receta-panel" style="background: #ffffff; color: #0f766e; border: 1px solid #14b8a6; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                    ✏️ Editar receta
+                </button>
+            </div>
+        `;
         html += '<ul style="margin: 0; padding-left: 20px; list-style: disc;">';
 
         infoIngredientes.ingredientes.forEach(ing => {
-            // Cantidad base de la receta (sin modificar)
             const cantidadBase = parseFloat(ing.cantidad);
-            const cantidadBaseFormateada = cantidadBase.toFixed(2).replace(/\.00$/, '');
-
-            // Cantidad total calculada (base × cantidad solicitada)
+            const cantidadBaseFormateada = cantidadBase.toFixed(4).replace(/\.?0+$/, '');
             const cantidadTotal = cantidadBase * cantidadSolicitada;
-            const cantidadTotalFormateada = cantidadTotal.toFixed(2).replace(/\.00$/, '');
-
-            console.log(`[INGREDIENTES] ${ing.nombre_ingrediente}: Base ${cantidadBase} x Solicitada ${cantidadSolicitada} = Total ${cantidadTotal}`);
+            const cantidadTotalFormateada = cantidadTotal.toFixed(4).replace(/\.?0+$/, '');
 
             html += `
                 <li style="margin-bottom: 4px; color: #2c5f6f;">
-                    <strong>${ing.nombre_ingrediente}</strong>: ${cantidadBaseFormateada} ${ing.unidad_medida} (Base Receta) - Total: ${cantidadTotalFormateada} ${ing.unidad_medida}
+                    <strong>${escaparHtmlBasico(ing.nombre_ingrediente)}</strong>: ${cantidadBaseFormateada} ${escaparHtmlBasico(ing.unidad_medida)} (Base Receta) - Total: ${cantidadTotalFormateada} ${escaparHtmlBasico(ing.unidad_medida)}
                 </li>
             `;
         });
 
         html += '</ul>';
         panel.innerHTML = html;
+
+        const btnEditPanel = panel.querySelector('.btn-editar-receta-panel');
+        if (btnEditPanel) {
+            btnEditPanel.addEventListener('click', (e) => {
+                e.stopPropagation();
+                abrirModalRecetaCarros(articuloObj, contenedorPadre);
+            });
+        }
 
         contenedorPadre.appendChild(panel);
         console.log(`[INGREDIENTES] Panel creado y mostrado para ${articuloCodigo}`);
@@ -1086,87 +1183,127 @@
     const cacheSugerencias = new Map();
 
     /**
-     * Obtiene la sugerencia configurada para un artículo
-     * @param {string} articuloCodigo - Código del artículo
-     * @returns {Promise<Object|null>} Objeto con la sugerencia o null
+     * Obtiene la sugerencia configurada para un artículo (codificando barras "/" y validando contra receta)
      */
-    async function obtenerSugerenciaArticulo(articuloCodigo) {
-        // Verificar cache primero
+    async function obtenerSugerenciaArticulo(articuloCodigo, codigoBarras = null, tieneRecetaConfirmada = false) {
         if (cacheSugerencias.has(articuloCodigo)) {
-            console.log(`[SUGERENCIAS] Usando cache para ${articuloCodigo}`);
-            return cacheSugerencias.get(articuloCodigo);
+            const cached = cacheSugerencias.get(articuloCodigo);
+            if (tieneRecetaConfirmada && cached && cached.tiene_receta === false) {
+                cacheSugerencias.delete(articuloCodigo);
+            } else {
+                return cached;
+            }
         }
+
+        const consultarPorClave = async (clave) => {
+            if (!clave) return null;
+            const claveEncoded = encodeURIComponent(clave);
+            let response = await fetch(`/api/produccion/receta-sugerencia?codigo=${claveEncoded}`);
+            if (response.status === 404) {
+                const errJson = await response.clone().json().catch(() => null);
+                if (!errJson || errJson.tiene_sugerencia === undefined) {
+                    response = await fetch(`/api/produccion/recetas/${claveEncoded}/sugerencia`);
+                }
+            }
+            return response;
+        };
 
         try {
             console.log(`[SUGERENCIAS] Consultando sugerencia para ${articuloCodigo}`);
-            const response = await fetch(`/api/produccion/recetas/${articuloCodigo}/sugerencia`);
+            let response = await consultarPorClave(articuloCodigo);
 
-            if (response.ok) {
+            if (response && response.status === 404 && codigoBarras && codigoBarras !== articuloCodigo) {
+                response = await consultarPorClave(codigoBarras);
+            }
+
+            if (response && response.ok) {
                 const data = await response.json();
-                console.log(`[SUGERENCIAS] Sugerencia encontrada para ${articuloCodigo}:`, data);
-
-                // Guardar en cache
+                data.tiene_receta = true;
                 cacheSugerencias.set(articuloCodigo, data);
                 return data;
-            } else if (response.status === 404) {
-                console.log(`[SUGERENCIAS] Artículo ${articuloCodigo} sin receta o sin sugerencia`);
-                const resultado = { tiene_receta: false, tiene_sugerencia: false, sugerencia: null };
+            } else if (response && response.status === 404) {
+                const infoIngCache = estadoCarros.cacheIngredientes.get(articuloCodigo);
+                const recetaYaConfirmada = Boolean(tieneRecetaConfirmada || (infoIngCache && infoIngCache.tieneReceta));
+                const resultado = {
+                    tiene_receta: recetaYaConfirmada,
+                    tiene_sugerencia: false,
+                    sugerencia: null
+                };
                 cacheSugerencias.set(articuloCodigo, resultado);
                 return resultado;
             } else {
-                console.error(`[SUGERENCIAS] Error HTTP ${response.status} para ${articuloCodigo}`);
-                return null;
+                console.error(`[SUGERENCIAS] Error HTTP ${response ? response.status : 'N/A'} para ${articuloCodigo}`);
+                return tieneRecetaConfirmada ? { tiene_receta: true, tiene_sugerencia: false, sugerencia: null } : null;
             }
         } catch (error) {
             console.error(`[SUGERENCIAS] Error al consultar sugerencia de ${articuloCodigo}:`, error);
-            return null;
+            return tieneRecetaConfirmada ? { tiene_receta: true, tiene_sugerencia: false, sugerencia: null } : null;
         }
     }
 
     /**
-     * Crea el botón de sugerencia con estado dinámico
-     * @param {string} articuloCodigo - Código del artículo
-     * @param {string} articuloNombre - Nombre del artículo
-     * @param {HTMLElement} contenedorPadre - Elemento donde se agregará el botón
-     * @returns {Promise<HTMLElement>} Botón de sugerencia
+     * Crea el botón de sugerencia (o de alta rápida de receta si aún no posee receta)
      */
-    async function agregarBotonSugerencia(articuloCodigo, articuloNombre, contenedorPadre) {
-        const infoSugerencia = await obtenerSugerenciaArticulo(articuloCodigo);
+    async function agregarBotonSugerencia(articuloOrCodigo, articuloNombreOrPadre, contenedorPadreArg) {
+        let articuloObj;
+        let contenedorPadre;
+        let tieneRecetaConfirmada = false;
+
+        if (typeof articuloOrCodigo === 'object' && articuloOrCodigo !== null) {
+            articuloObj = articuloOrCodigo;
+            contenedorPadre = articuloNombreOrPadre;
+            tieneRecetaConfirmada = Boolean(contenedorPadreArg);
+        } else {
+            articuloObj = {
+                articulo_numero: articuloOrCodigo,
+                descripcion: articuloNombreOrPadre || articuloOrCodigo
+            };
+            contenedorPadre = contenedorPadreArg;
+        }
+
+        const articuloCodigo = articuloObj.articulo_numero;
+        const articuloNombre = articuloObj.descripcion || articuloCodigo;
+        const infoSugerencia = await obtenerSugerenciaArticulo(
+            articuloCodigo,
+            articuloObj.codigo_barras || null,
+            tieneRecetaConfirmada
+        );
 
         const botonSugerencia = document.createElement('button');
+        botonSugerencia.type = 'button';
         botonSugerencia.className = 'carros-btn-sugerencia';
 
         if (infoSugerencia && infoSugerencia.tiene_sugerencia) {
             // Estado 2: CON VÍNCULO (naranja, ícono de lápiz)
             botonSugerencia.innerHTML = '✏️';
             botonSugerencia.title = `Editar Sugerencia: ${infoSugerencia.sugerencia.nombre}`;
-            botonSugerencia.style.cssText = 'background: #fd7e14; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+            botonSugerencia.style.cssText = 'background: #fd7e14; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
             botonSugerencia.setAttribute('data-tiene-sugerencia', 'true');
             botonSugerencia.setAttribute('data-sugerencia-numero', infoSugerencia.sugerencia.articulo_numero);
-            
+
             botonSugerencia.addEventListener('click', (e) => {
                 e.stopPropagation();
                 abrirModalSugerencias(articuloCodigo, articuloNombre, infoSugerencia);
             });
-        } else if (infoSugerencia && infoSugerencia.tiene_receta === false) {
-            // Estado 3: SIN RECETA (rojo/gris, ícono de advertencia)
-            botonSugerencia.innerHTML = '⚠️';
-            botonSugerencia.title = 'Requiere crear receta primero';
-            botonSugerencia.style.cssText = 'background: #dc3545; color: white; border: none; padding: 0; border-radius: 50%; cursor: help; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+        } else if (!tieneRecetaConfirmada && infoSugerencia && infoSugerencia.tiene_receta === false) {
+            // Estado 3: SIN RECETA -> Botón interactivo directo para crear/completar la receta desde Producción
+            botonSugerencia.innerHTML = '⚠️ Requiere crear receta primero';
+            botonSugerencia.title = 'Haga clic aquí para crear o completar la receta directamente en Producción';
+            botonSugerencia.style.cssText = 'background: #dc2626; color: #ffffff; border: 1px solid #b91c1c; padding: 2px 9px; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; box-shadow: 0 1px 2px rgba(220,38,38,0.25);';
             botonSugerencia.setAttribute('data-tiene-sugerencia', 'false');
             botonSugerencia.setAttribute('data-tiene-receta', 'false');
-            
+
             botonSugerencia.addEventListener('click', (e) => {
                 e.stopPropagation();
-                mostrarMensaje('No existe receta para este artículo. Debe crear la receta primero.', 'error');
+                abrirModalRecetaCarros(articuloObj, contenedorPadre);
             });
         } else {
-            // Estado 1: SIN VÍNCULO (gris, ícono de link)
+            // Estado 1: CON RECETA Y SIN VÍNCULO (gris, ícono de link)
             botonSugerencia.innerHTML = '🔗';
-            botonSugerencia.title = 'Asignar Sugerencia';
-            botonSugerencia.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; margin-left: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
+            botonSugerencia.title = 'Asignar Sugerencia de Artículo Puente';
+            botonSugerencia.style.cssText = 'background: #6c757d; color: white; border: none; padding: 0; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: bold; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;';
             botonSugerencia.setAttribute('data-tiene-sugerencia', 'false');
-            
+
             botonSugerencia.addEventListener('click', (e) => {
                 e.stopPropagation();
                 abrirModalSugerencias(articuloCodigo, articuloNombre, infoSugerencia);
@@ -1392,11 +1529,22 @@
         console.log(`[SUGERENCIAS] Guardando: ${articuloOrigen} → ${articuloSugerido}`);
 
         try {
-            const response = await fetch(`/api/produccion/recetas/${articuloOrigen}/sugerencia`, {
+            const codigoEncoded = encodeURIComponent(articuloOrigen);
+            let response = await fetch(`/api/produccion/receta-sugerencia?codigo=${codigoEncoded}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ articulo_sugerido_numero: articuloSugerido })
+                body: JSON.stringify({
+                    articulo_numero: articuloOrigen,
+                    articulo_sugerido_numero: articuloSugerido
+                })
             });
+            if (response.status === 404) {
+                response = await fetch(`/api/produccion/recetas/${codigoEncoded}/sugerencia`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ articulo_sugerido_numero: articuloSugerido })
+                });
+            }
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -1412,10 +1560,8 @@
             mostrarMensaje('Sugerencia guardada exitosamente', 'exito');
             cerrarModalSugerencias();
 
-            // Refrescar la vista para actualizar el botón
-            if (typeof window.actualizarResumenFaltantes === 'function') {
-                setTimeout(() => window.actualizarResumenFaltantes(), 500);
-            }
+            await refrescarBotonesRecetaItem({ articulo_numero: articuloOrigen, descripcion: modalOverlay.getAttribute('data-articulo-nombre') || articuloOrigen }, null);
+            await procesarYRenderizarSugerencias();
 
         } catch (error) {
             console.error('[SUGERENCIAS] Error al guardar:', error);
@@ -1437,9 +1583,15 @@
         console.log(`[SUGERENCIAS] Eliminando sugerencia para: ${articuloOrigen}`);
 
         try {
-            const response = await fetch(`/api/produccion/recetas/${articuloOrigen}/sugerencia`, {
+            const codigoEncoded = encodeURIComponent(articuloOrigen);
+            let response = await fetch(`/api/produccion/receta-sugerencia?codigo=${codigoEncoded}`, {
                 method: 'DELETE'
             });
+            if (response.status === 404) {
+                response = await fetch(`/api/produccion/recetas/${codigoEncoded}/sugerencia`, {
+                    method: 'DELETE'
+                });
+            }
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -1454,10 +1606,8 @@
             mostrarMensaje('Sugerencia eliminada exitosamente', 'exito');
             cerrarModalSugerencias();
 
-            // Refrescar la vista para actualizar el botón
-            if (typeof window.actualizarResumenFaltantes === 'function') {
-                setTimeout(() => window.actualizarResumenFaltantes(), 500);
-            }
+            await refrescarBotonesRecetaItem({ articulo_numero: articuloOrigen, descripcion: modalOverlay.getAttribute('data-articulo-nombre') || articuloOrigen }, null);
+            await procesarYRenderizarSugerencias();
 
         } catch (error) {
             console.error('[SUGERENCIAS] Error al eliminar:', error);
@@ -1475,6 +1625,447 @@
             modalOverlay.innerHTML = '';
         }
         console.log('[SUGERENCIAS] Modal cerrado');
+    }
+
+    /* ============================================================
+     * MODAL INLINE DE CREACIÓN / EDICIÓN DE RECETA EN PRODUCCIÓN
+     * ============================================================ */
+    let catalogoIngredientesCache = null;
+    let estadoModalRecetaCarros = {
+        articulo: null,
+        contenedorPadre: null,
+        ingredientes: [],
+        ingredienteSeleccionado: null
+    };
+
+    function normalizarBusquedaReceta(str) {
+        if (!str) return '';
+        return String(str)
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    async function cargarCatalogoIngredientesProduccion() {
+        if (Array.isArray(catalogoIngredientesCache) && catalogoIngredientesCache.length > 0) {
+            return catalogoIngredientesCache;
+        }
+        const res = await fetch('/api/produccion/ingredientes');
+        if (!res.ok) {
+            throw new Error(`No se pudieron cargar los ingredientes (HTTP ${res.status})`);
+        }
+        const raw = await res.json();
+        catalogoIngredientesCache = Array.isArray(raw) ? raw : (raw.data || []);
+        return catalogoIngredientesCache;
+    }
+
+    function cerrarModalRecetaCarros() {
+        const overlay = document.getElementById('modal-receta-carros-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.innerHTML = '';
+        }
+    }
+
+    function renderTablaIngredientesModalCarros() {
+        const tbody = document.getElementById('carros-receta-modal-tbody');
+        if (!tbody) return;
+
+        const lista = estadoModalRecetaCarros.ingredientes || [];
+        if (lista.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 16px; color: #64748b; font-style: italic;">
+                        Aún no hay componentes cargados. Busque el ingrediente principal y la bolsa/envase abajo para añadirlos.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = lista.map((ing, idx) => `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 8px 10px; font-weight: 600; color: #1e293b;">
+                    ${escaparHtmlBasico(ing.nombre_ingrediente)}
+                </td>
+                <td style="padding: 8px 10px; text-align: center;">
+                    <input
+                        type="text"
+                        inputmode="decimal"
+                        data-idx="${idx}"
+                        class="carros-receta-row-cant"
+                        value="${escaparHtmlBasico(String(ing.cantidad))}"
+                        style="width: 92px; text-align: center; padding: 5px 6px; border: 1px solid #cbd5e1; border-radius: 5px; font-family: monospace; font-weight: 700;">
+                </td>
+                <td style="padding: 8px 10px; text-align: center; color: #475569; font-size: 12px; font-weight: 700;">
+                    ${escaparHtmlBasico(ing.unidad_medida)}
+                </td>
+                <td style="padding: 8px 10px; text-align: center;">
+                    <button
+                        type="button"
+                        data-idx="${idx}"
+                        class="carros-receta-row-del"
+                        title="Quitar componente"
+                        style="background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; border-radius: 5px; padding: 3px 8px; cursor: pointer; font-size: 12px;">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.querySelectorAll('.carros-receta-row-cant').forEach(inp => {
+            inp.addEventListener('input', (e) => {
+                const i = Number(e.target.getAttribute('data-idx'));
+                const num = parseFloat(String(e.target.value || '').replace(',', '.'));
+                if (!isNaN(num) && num > 0 && estadoModalRecetaCarros.ingredientes[i]) {
+                    estadoModalRecetaCarros.ingredientes[i].cantidad = num;
+                }
+            });
+        });
+
+        tbody.querySelectorAll('.carros-receta-row-del').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const i = Number(e.currentTarget.getAttribute('data-idx'));
+                estadoModalRecetaCarros.ingredientes.splice(i, 1);
+                renderTablaIngredientesModalCarros();
+            });
+        });
+    }
+
+    function filtrarDropdownIngredientesCarros(texto) {
+        const listEl = document.getElementById('carros-receta-resultados-dropdown');
+        if (!listEl) return;
+
+        const catalogo = catalogoIngredientesCache || [];
+        const tokens = normalizarBusquedaReceta(texto).split(/\s+/).filter(Boolean);
+
+        if (tokens.length === 0) {
+            listEl.style.display = 'none';
+            listEl.innerHTML = '';
+            return;
+        }
+
+        const coincidencias = catalogo.filter(item => {
+            const bolsaBusqueda = normalizarBusquedaReceta(
+                `${item.nombre || ''} ${item.codigo || ''} ${item.categoria || ''} ${item.rubro || ''} ${item.unidad_medida || ''} ${item.id || ''}`
+            );
+            return tokens.every(t => bolsaBusqueda.includes(t));
+        }).slice(0, 20);
+
+        if (coincidencias.length === 0) {
+            listEl.innerHTML = '<div style="padding: 8px 10px; color: #64748b; font-size: 12.5px; font-style: italic;">Sin coincidencias</div>';
+            listEl.style.display = 'block';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        coincidencias.forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding: 7px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #ffffff;';
+            row.innerHTML = `
+                <span style="font-weight: 600; color: #0f172a;">${escaparHtmlBasico(item.nombre)}</span>
+                <span style="font-size: 11px; font-family: monospace; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">
+                    ${escaparHtmlBasico(item.unidad_medida || 'Kilo')}
+                </span>
+            `;
+            row.addEventListener('mouseenter', () => { row.style.background = '#eff6ff'; });
+            row.addEventListener('mouseleave', () => { row.style.background = '#ffffff'; });
+            row.addEventListener('click', () => {
+                estadoModalRecetaCarros.ingredienteSeleccionado = {
+                    id: Number(item.id),
+                    nombre: item.nombre,
+                    unidad_medida: item.unidad_medida || 'Kilo'
+                };
+                const inputBuscar = document.getElementById('carros-receta-buscar-input');
+                const badgeUnidad = document.getElementById('carros-receta-unidad-badge');
+                const inputCant = document.getElementById('carros-receta-cantidad-input');
+                if (inputBuscar) inputBuscar.value = item.nombre;
+                if (badgeUnidad) badgeUnidad.textContent = item.unidad_medida || 'Kilo';
+                listEl.style.display = 'none';
+                listEl.innerHTML = '';
+                if (inputCant) {
+                    if (!inputCant.value && String(item.unidad_medida || '').toLowerCase().startsWith('unid')) {
+                        inputCant.value = '1';
+                    }
+                    inputCant.focus();
+                    inputCant.select();
+                }
+            });
+            listEl.appendChild(row);
+        });
+        listEl.style.display = 'block';
+    }
+
+    function agregarComponenteRecetaModalCarros() {
+        const msgBox = document.getElementById('carros-receta-modal-msg');
+        const mostrarAviso = (txt) => {
+            if (msgBox) {
+                msgBox.textContent = txt;
+                msgBox.style.display = 'block';
+            }
+        };
+        if (msgBox) msgBox.style.display = 'none';
+
+        const sel = estadoModalRecetaCarros.ingredienteSeleccionado;
+        const inputCant = document.getElementById('carros-receta-cantidad-input');
+        const inputBuscar = document.getElementById('carros-receta-buscar-input');
+        const badgeUnidad = document.getElementById('carros-receta-unidad-badge');
+
+        if (!sel || !sel.id) {
+            mostrarAviso('Seleccione primero un ingrediente o envase de la lista desplegable.');
+            if (inputBuscar) inputBuscar.focus();
+            return;
+        }
+
+        const cantNum = parseFloat(String(inputCant?.value || '').replace(',', '.'));
+        if (isNaN(cantNum) || cantNum <= 0) {
+            mostrarAviso('Ingrese una cantidad mayor a 0 (ej: 0.25 para 250g o 1 para 1 bolsa).');
+            if (inputCant) inputCant.focus();
+            return;
+        }
+
+        const idxExistente = estadoModalRecetaCarros.ingredientes.findIndex(
+            i => Number(i.ingrediente_id) === Number(sel.id)
+        );
+        if (idxExistente >= 0) {
+            estadoModalRecetaCarros.ingredientes[idxExistente].cantidad = cantNum;
+        } else {
+            estadoModalRecetaCarros.ingredientes.push({
+                ingrediente_id: Number(sel.id),
+                nombre_ingrediente: sel.nombre,
+                unidad_medida: sel.unidad_medida,
+                cantidad: cantNum
+            });
+        }
+
+        estadoModalRecetaCarros.ingredienteSeleccionado = null;
+        if (inputBuscar) inputBuscar.value = '';
+        if (inputCant) inputCant.value = '';
+        if (badgeUnidad) badgeUnidad.textContent = 'Unidad';
+
+        renderTablaIngredientesModalCarros();
+        if (inputBuscar) inputBuscar.focus();
+    }
+
+    async function guardarRecetaModalCarros() {
+        const msgBox = document.getElementById('carros-receta-modal-msg');
+        const btnGuardar = document.getElementById('carros-receta-btn-guardar');
+        const art = estadoModalRecetaCarros.articulo;
+
+        if (!art || !art.articulo_numero) return;
+
+        const ingredientesValidos = (estadoModalRecetaCarros.ingredientes || [])
+            .map(ing => ({
+                ingrediente_id: ing.ingrediente_id,
+                nombre_ingrediente: String(ing.nombre_ingrediente || '').trim(),
+                unidad_medida: String(ing.unidad_medida || 'Kilo').trim(),
+                cantidad: parseFloat(String(ing.cantidad || '').replace(',', '.'))
+            }))
+            .filter(ing => ing.nombre_ingrediente && !isNaN(ing.cantidad) && ing.cantidad > 0);
+
+        if (ingredientesValidos.length === 0) {
+            if (msgBox) {
+                msgBox.textContent = 'Agregue al menos un ingrediente con cantidad mayor a cero antes de guardar.';
+                msgBox.style.display = 'block';
+            }
+            return;
+        }
+
+        if (btnGuardar) {
+            btnGuardar.disabled = true;
+            btnGuardar.textContent = '⏳ Guardando...';
+        }
+
+        try {
+            const payload = {
+                articulo_numero: art.articulo_numero,
+                descripcion: `Receta de ${art.descripcion || art.articulo_numero}`,
+                ingredientes: ingredientesValidos,
+                articulos: [],
+                esProduccionExternaConArticuloPrincipal: false,
+                upsert: true
+            };
+
+            const res = await fetch('/api/produccion/recetas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Error HTTP ${res.status}`);
+            }
+
+            await refrescarBotonesRecetaItem(art, estadoModalRecetaCarros.contenedorPadre);
+            cerrarModalRecetaCarros();
+            mostrarMensaje(`✅ Receta guardada para "${art.descripcion || art.articulo_numero}". Estado actualizado en Configurar Carros.`, 'exito');
+        } catch (err) {
+            console.error('[RECETA-CARROS] Error al guardar receta:', err);
+            if (msgBox) {
+                msgBox.textContent = `Error al guardar: ${err.message}`;
+                msgBox.style.display = 'block';
+            }
+            if (btnGuardar) {
+                btnGuardar.disabled = false;
+                btnGuardar.textContent = '💾 Guardar Receta';
+            }
+        }
+    }
+
+    async function abrirModalRecetaCarros(articulo, contenedorPadre) {
+        const codigo = articulo?.articulo_numero || '';
+        const nombre = articulo?.descripcion || codigo;
+
+        estadoModalRecetaCarros = {
+            articulo: {
+                articulo_numero: codigo,
+                codigo_barras: articulo?.codigo_barras || null,
+                descripcion: nombre
+            },
+            contenedorPadre: contenedorPadre || null,
+            ingredientes: [],
+            ingredienteSeleccionado: null
+        };
+
+        let overlay = document.getElementById('modal-receta-carros-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'modal-receta-carros-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(15, 23, 42, 0.58); z-index: 10050; display: flex; align-items: center; justify-content: center; padding: 16px;';
+        overlay.innerHTML = `
+            <div style="background: #ffffff; width: 100%; max-width: 660px; border-radius: 12px; box-shadow: 0 20px 45px rgba(15,23,42,0.28); overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+                <div style="background: #0f172a; color: #ffffff; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                        <div style="font-size: 15px; font-weight: 700;">🧪 Configurar Receta de Producción</div>
+                        <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">
+                            ${escaparHtmlBasico(nombre)} · <span style="font-family: monospace; color: #93c5fd;">${escaparHtmlBasico(codigo)}</span>
+                        </div>
+                    </div>
+                    <button type="button" id="carros-receta-btn-cerrar-x" style="background: rgba(255,255,255,0.12); color: #ffffff; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1;">&times;</button>
+                </div>
+
+                <div style="padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+                    <div id="carros-receta-modal-msg" style="display: none; padding: 9px 12px; border-radius: 6px; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-size: 12.5px; font-weight: 600;"></div>
+
+                    <div style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; color: #475569;">
+                                    <th style="text-align: left; padding: 8px 10px;">Ingrediente / Envase</th>
+                                    <th style="text-align: center; padding: 8px 10px; width: 115px;">Cant. por Unidad</th>
+                                    <th style="text-align: center; padding: 8px 10px; width: 90px;">Unidad</th>
+                                    <th style="text-align: center; padding: 8px 10px; width: 65px;">Quitar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="carros-receta-modal-tbody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 16px; color: #64748b;">Cargando receta e ingredientes...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 8px;">
+                            ➕ Añadir ingrediente o bolsa / envase (por 1 unidad comercial del artículo)
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap;">
+                            <div style="flex: 1 1 260px; position: relative;">
+                                <input
+                                    type="text"
+                                    id="carros-receta-buscar-input"
+                                    placeholder="Buscar ej: almendra nonparei, bolsa 15 x 18..."
+                                    autocomplete="off"
+                                    style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                                <div
+                                    id="carros-receta-resultados-dropdown"
+                                    style="display: none; position: absolute; top: calc(100% + 3px); left: 0; right: 0; max-height: 210px; overflow-y: auto; background: #ffffff; border: 1px solid #94a3b8; border-radius: 6px; box-shadow: 0 10px 25px rgba(15,23,42,0.16); z-index: 30;">
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input
+                                    type="text"
+                                    inputmode="decimal"
+                                    id="carros-receta-cantidad-input"
+                                    placeholder="Ej: 0.25"
+                                    style="width: 95px; padding: 8px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: monospace; text-align: center; box-sizing: border-box;">
+                                <span id="carros-receta-unidad-badge" style="font-size: 11.5px; color: #475569; background: #e2e8f0; padding: 5px 8px; border-radius: 5px; font-weight: 700; min-width: 58px; text-align: center;">Unidad</span>
+                                <button
+                                    type="button"
+                                    id="carros-receta-btn-agregar"
+                                    style="padding: 8px 14px; background: #0284c7; color: #ffffff; border: none; border-radius: 6px; font-weight: 700; font-size: 13px; cursor: pointer;">
+                                    Añadir
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="padding: 12px 18px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" id="carros-receta-btn-cancelar" style="padding: 8px 16px; background: #ffffff; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        Cancelar
+                    </button>
+                    <button type="button" id="carros-receta-btn-guardar" style="padding: 8px 18px; background: #16a34a; color: #ffffff; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
+                        💾 Guardar Receta
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('carros-receta-btn-cerrar-x')?.addEventListener('click', cerrarModalRecetaCarros);
+        document.getElementById('carros-receta-btn-cancelar')?.addEventListener('click', cerrarModalRecetaCarros);
+        document.getElementById('carros-receta-btn-agregar')?.addEventListener('click', agregarComponenteRecetaModalCarros);
+        document.getElementById('carros-receta-btn-guardar')?.addEventListener('click', guardarRecetaModalCarros);
+
+        const inputBuscar = document.getElementById('carros-receta-buscar-input');
+        const inputCant = document.getElementById('carros-receta-cantidad-input');
+
+        if (inputBuscar) {
+            inputBuscar.addEventListener('input', (e) => {
+                estadoModalRecetaCarros.ingredienteSeleccionado = null;
+                filtrarDropdownIngredientesCarros(e.target.value);
+            });
+            inputBuscar.addEventListener('focus', (e) => {
+                if (e.target.value.trim()) filtrarDropdownIngredientesCarros(e.target.value);
+            });
+        }
+
+        if (inputCant) {
+            inputCant.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    agregarComponenteRecetaModalCarros();
+                }
+            });
+        }
+
+        try {
+            await cargarCatalogoIngredientesProduccion();
+            estadoCarros.cacheIngredientes.delete(codigo);
+            const infoActual = await obtenerIngredientesArticulo(estadoModalRecetaCarros.articulo);
+            if (infoActual && infoActual.tieneReceta && Array.isArray(infoActual.ingredientes)) {
+                estadoModalRecetaCarros.ingredientes = infoActual.ingredientes.map(ing => ({
+                    ingrediente_id: ing.ingrediente_id,
+                    nombre_ingrediente: ing.nombre_ingrediente,
+                    unidad_medida: ing.unidad_medida,
+                    cantidad: parseFloat(ing.cantidad) || 0
+                }));
+            }
+            renderTablaIngredientesModalCarros();
+            setTimeout(() => inputBuscar?.focus(), 60);
+        } catch (err) {
+            console.error('[RECETA-CARROS] Error inicializando modal de receta:', err);
+            const msgBox = document.getElementById('carros-receta-modal-msg');
+            if (msgBox) {
+                msgBox.textContent = err.message || 'Error al cargar datos de recetas';
+                msgBox.style.display = 'block';
+            }
+            renderTablaIngredientesModalCarros();
+        }
     }
 
     /**
@@ -1740,15 +2331,9 @@
         infoDiv.appendChild(origenSpan);
         infoDiv.appendChild(estadoSpan);
 
-        // Agregar botones de ingredientes y sugerencias
-        const botonIngredientes = await agregarBotonIngredientes(sugerencia, itemDiv);
-        const botonSugerencia = await agregarBotonSugerencia(
-            sugerencia.articulo_numero,
-            sugerencia.descripcion || sugerencia.articulo_numero,
-            itemDiv
-        );
-        infoDiv.appendChild(botonIngredientes);
-        infoDiv.appendChild(botonSugerencia);
+        // Agregar botones de ingredientes, receta inline y sugerencias
+        const filaAccionesSugerencia = await construirFilaAccionesReceta(sugerencia, itemDiv);
+        infoDiv.appendChild(filaAccionesSugerencia);
 
         const cantidadDiv = document.createElement('div');
         cantidadDiv.className = 'carros-item-cantidad';
@@ -1787,8 +2372,15 @@
         try {
             console.log(`[FACTOR-CONV] Consultando receta de ${articuloOrigenCodigo} para buscar ingrediente relacionado con ${articuloSugeridoCodigo}`);
 
-            // Consultar la receta del artículo ORIGEN
-            const response = await fetch(`/api/produccion/recetas/${articuloOrigenCodigo}`);
+            // Consultar la receta del artículo ORIGEN (codificando barras "/")
+            const origenEncoded = encodeURIComponent(articuloOrigenCodigo);
+            let response = await fetch(`/api/produccion/receta-detalle?codigo=${origenEncoded}`);
+            if (response.status === 404) {
+                const errBody = await response.clone().json().catch(() => null);
+                if (!errBody || !errBody.error) {
+                    response = await fetch(`/api/produccion/recetas/${origenEncoded}`);
+                }
+            }
 
             if (!response.ok) {
                 console.log(`[FACTOR-CONV] No se encontró receta para ${articuloOrigenCodigo}, usando factor 1`);
@@ -1867,7 +2459,7 @@
 
         if (seleccionado) {
             if (!validarCompatibilidadLineaSeleccion(3, checkboxEl)) return;
-            const inputCant = document.querySelector(`.carros-item-sugerencia input[type="number"][data-articulo="${articuloNumero}"]`);
+            const inputCant = document.querySelector(`.carros-item-sugerencia input[type="number"][data-articulo="${escaparSelectorAttr(articuloNumero)}"]`);
             const cantActual = inputCant ? (parseFloat(inputCant.value) || cantidadFaltante) : cantidadFaltante;
             estadoCarros.articulosSeleccionados.set(articuloNumero, {
                 articulo: {

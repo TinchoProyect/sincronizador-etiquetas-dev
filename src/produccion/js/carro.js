@@ -4402,14 +4402,15 @@ window.guardarRecetaInline = async function() {
             descripcion: `Receta de ${articuloCodigo}`,
             ingredientes: ingredientes,
             articulos: [],
-            esProduccionExternaConArticuloPrincipal: false
+            esProduccionExternaConArticuloPrincipal: false,
+            upsert: true
         };
 
         const esNueva = btnGuardar.dataset.esNueva === 'true';
         const finalMethod = esNueva ? 'POST' : 'PUT';
         const url = esNueva 
-            ? 'http://localhost:3002/api/produccion/recetas' 
-            : `http://localhost:3002/api/produccion/recetas/${articuloCodigo}`;
+            ? '/api/produccion/recetas' 
+            : `/api/produccion/recetas/${encodeURIComponent(articuloCodigo)}`;
 
         console.log(`🚀 [VIGÍA] Ejecutando ${finalMethod} a ${url}...`);
         console.log('- Payload JSON:', JSON.stringify(requestBody));
