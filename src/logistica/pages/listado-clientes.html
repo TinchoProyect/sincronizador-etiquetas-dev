@@ -1341,11 +1341,30 @@
         </div>
     </div>
 
+    <!-- MODAL ACCESO DIRECTO Y CÓDIGO QR MÓVIL (GESTOR DEL NODO / CLIENTE VECINO) -->
+    <div id="modal-qr-acceso-nodo" class="modal-subcuenta-overlay" style="z-index: 10050;">
+        <div class="modal-subcuenta-box" onclick="event.stopPropagation()" style="max-width: 540px; width: 95%; max-height: 92vh;">
+            <div id="modal-qr-acceso-header" style="padding: 15px 20px; background: linear-gradient(135deg, #0f172a 0%, #14532d 100%); color: #ffffff; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.08rem; font-weight: 800;">📱 Acceso Directo y Código QR</h3>
+                </div>
+                <button type="button" onclick="window.cerrarModalQrAccesoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+            </div>
+            <div id="modal-qr-acceso-body" style="padding: 18px 20px; overflow-y: auto; flex: 1; background: #f8fafc;">
+                Generando código QR...
+            </div>
+            <div style="padding: 10px 20px; border-top: 1px solid #e2e8f0; background: #ffffff; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span style="font-size: 11.5px; color: #64748b;">🔒 Enlace público HTTPS cifrado sobre el túnel activo (cero exposición interna).</span>
+                <button type="button" onclick="window.cerrarModalQrAccesoNodo()" class="btn-premium" style="background: #e2e8f0; color: #334155; padding: 7px 16px;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Script de configuración de variables globales -->
     <script src="/env-config.js?v=2"></script>
     <!-- Módulo de Mapa Interactivo -->
     <script src="../js/modules/mapaInteractivo.js?v=1.2.0"></script>
     <!-- Script de lógica frontend -->
-    <script src="../js/listado-clientes.js?v=1.3.2"></script>
+    <script src="../js/listado-clientes.js?v=1.3.3"></script>
 </body>
 </html>

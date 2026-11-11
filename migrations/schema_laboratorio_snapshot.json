@@ -14087,6 +14087,16 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "true"
+      },
+      "portal_token": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_vecinos_movimientos_cc": {

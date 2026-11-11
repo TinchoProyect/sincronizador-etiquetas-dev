@@ -746,6 +746,130 @@ router.get('/vecinos/:vecinoId/subcuenta', async (req, res) => {
     }
 });
 
+/**
+ * Resuelve la URL pública HTTPS accesible desde cualquier celular (túnel Cloudflare activo o dominio Cloud),
+ * garantizando que los códigos QR jamás apunten a `localhost`.
+ */
+async function obtenerUrlPublicaQrNodos(req) {
+    const hostHeader = String(req?.headers?.host || '').trim();
+    const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
+    const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    if (isPublicCloud) {
+        return `${proto}://${hostHeader}`;
+    }
+    if (tunelCloudflareUrlActual && !(await verificarTunelVivo(tunelCloudflareUrlActual))) {
+        tunelCloudflareUrlActual = null;
+    }
+    const tunelHttps = await asegurarTunelCloudflareNodos();
+    if (tunelHttps) {
+        return tunelHttps;
+    }
+    const lanIp = detectarIpLanWifiLocal();
+    return `http://${lanIp}:3002`;
+}
+
+/**
+ * GET /api/produccion/nodos/tienda/:slug/mi-cuenta/:portalToken
+ * Portal personal 100% Marca Blanca del Vecino ("Mi Cuenta / Mis Pedidos"):
+ * saldo al día / pendiente, pedido en curso con seguimiento en vivo, recibos digitales e historial.
+ */
+router.get('/tienda/:slug/mi-cuenta/:portalToken', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerPortalCuentaVecinoMarcaBlanca(
+            req.params.slug,
+            req.params.portalToken
+        );
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/accesos-qr/nodo/:idOrSlug
+ * Genera los códigos QR grandes y enlaces directos del Gestor del Nodo (/gestor/:slug)
+ * y de la Tienda Pública del Nodo (/tienda/:slug) sobre el túnel móvil activo.
+ */
+router.get('/accesos-qr/nodo/:idOrSlug', async (req, res) => {
+    try {
+        const [nodo, baseMovil] = await Promise.all([
+            nodosService.obtenerDatosQrAccesoNodo(req.params.idOrSlug),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const slugEnc = encodeURIComponent(nodo.slug);
+        const urlMovilGestor = `${baseMovil}/gestor/${slugEnc}`;
+        const urlMovilTienda = `${baseMovil}/tienda/${slugEnc}`;
+        const urlPcGestor = `http://localhost:3002/gestor/${slugEnc}`;
+        const urlPcTienda = `http://localhost:3002/tienda/${slugEnc}`;
+
+        const [qrGestorDataUrl, qrTiendaDataUrl] = await Promise.all([
+            QRCode.toDataURL(urlMovilGestor, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
+            QRCode.toDataURL(urlMovilTienda, { margin: 2, width: 360, errorCorrectionLevel: 'M' })
+        ]);
+
+        res.json({
+            ok: true,
+            tipo: 'NODO_GESTOR',
+            base_url_movil: baseMovil,
+            es_tunel_https: baseMovil.startsWith('https://'),
+            nodo,
+            url_movil_gestor: urlMovilGestor,
+            url_pc_gestor: urlPcGestor,
+            qr_gestor_data_url: qrGestorDataUrl,
+            url_movil_tienda: urlMovilTienda,
+            url_pc_tienda: urlPcTienda,
+            qr_tienda_data_url: qrTiendaDataUrl
+        });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /accesos-qr/nodo/:idOrSlug:', error.message);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/accesos-qr/vecino/:vecinoId
+ * Genera el código QR personal "Ver como Cliente" de un vecino comprador (/tienda/:slug/mi-cuenta/:portalToken)
+ * sobre el túnel móvil activo, sin exponer datos de otros vecinos ni de LAMDA.
+ */
+router.get('/accesos-qr/vecino/:vecinoId', async (req, res) => {
+    try {
+        const [datosVec, baseMovil] = await Promise.all([
+            nodosService.obtenerDatosQrAccesoVecino(req.params.vecinoId),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const slugEnc = encodeURIComponent(datosVec.nodo.slug);
+        const tokEnc = encodeURIComponent(datosVec.portal_token);
+        const urlMovilVecino = `${baseMovil}/tienda/${slugEnc}/mi-cuenta/${tokEnc}`;
+        const urlPcVecino = `http://localhost:3002/tienda/${slugEnc}/mi-cuenta/${tokEnc}`;
+        const qrVecinoDataUrl = await QRCode.toDataURL(urlMovilVecino, {
+            margin: 2,
+            width: 360,
+            errorCorrectionLevel: 'M'
+        });
+
+        res.json({
+            ok: true,
+            tipo: 'VECINO_CLIENTE',
+            base_url_movil: baseMovil,
+            es_tunel_https: baseMovil.startsWith('https://'),
+            vecino: {
+                id: datosVec.vecino_id,
+                codigo_vecino: datosVec.codigo_vecino,
+                nombre_completo: datosVec.nombre_completo,
+                telefono_whatsapp: datosVec.telefono_whatsapp,
+                saldo_actual: datosVec.saldo_actual
+            },
+            nodo: datosVec.nodo,
+            url_movil_vecino: urlMovilVecino,
+            url_pc_vecino: urlPcVecino,
+            qr_vecino_data_url: qrVecinoDataUrl
+        });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /accesos-qr/vecino/:vecinoId:', error.message);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 // ============================================================================
 // ENDPOINTS INTEGRACIÓN CON EL CIRCUITO OPERATIVO HABITUAL DE LAMDA
 // (Pizarra Principal :3000 -> Producción/Carro Personal -> Imprimir -> Armar/Chequeo -> Reparto :3005)

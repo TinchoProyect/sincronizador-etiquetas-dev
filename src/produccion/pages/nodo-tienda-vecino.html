@@ -630,6 +630,78 @@
       background: #16a34a;
       margin-right: 5px;
     }
+
+    /* Vista Personal Marca Blanca: "Mi Cuenta / Mis Pedidos" */
+    .mc-shell {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .mc-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 4px 16px rgba(62, 37, 25, 0.05);
+    }
+    .mc-balance-ok {
+      background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+      border: 1.5px solid #86efac;
+    }
+    .mc-balance-due {
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border: 1.5px solid #fcd34d;
+    }
+    .mc-kpis-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (max-width: 560px) {
+      .mc-kpis-row {
+        grid-template-columns: 1fr;
+      }
+    }
+    .mc-kpi-pill {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(62, 37, 25, 0.1);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .mc-history-item {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fffdfb;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s;
+    }
+    .mc-history-item:hover {
+      border-color: var(--brand-border);
+    }
+    .btn-header-primary {
+      background: var(--brand);
+      color: #ffffff;
+      border: 1.5px solid var(--brand);
+      padding: 9px 15px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-header-primary:hover {
+      background: var(--brand-dark);
+      border-color: var(--brand-dark);
+    }
   </style>
 </head>
 <body>
@@ -657,8 +729,11 @@
           </div>
         </div>
       </div>
-      <div>
-        <button type="button" class="btn-track-header" onclick="abrirModalBuscadorSeguimiento()">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;" id="hero-actions-box">
+        <button type="button" id="btn-toggle-mi-cuenta" class="btn-header-primary" style="display:none;" onclick="alternarVistaMiCuenta()">
+          👤 Mi Cuenta
+        </button>
+        <button type="button" id="btn-seguir-pedido-header" class="btn-track-header" onclick="abrirModalBuscadorSeguimiento()">
           📦 Seguir mi pedido
         </button>
       </div>
@@ -666,27 +741,33 @@
   </header>
 
   <main class="container">
-    <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
-    <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
+    <!-- Vista Personal Marca Blanca del Comprador ("Mi Cuenta / Mis Pedidos") -->
+    <section id="mi-cuenta-view" class="mc-shell"></section>
 
-    <!-- Aviso de Próxima Fecha de Entrega según Punto de Corte -->
-    <div class="delivery-banner" id="delivery-banner">
-      <div>
-        <span class="delivery-badge" id="delivery-badge-status">📅 Próxima Entrega</span>
-        <div class="delivery-date-main" id="delivery-date-text">Calculando próxima entrega...</div>
-        <div class="delivery-note" id="delivery-cutoff-note"></div>
+    <!-- Bloque Catálogo de la Tienda Pública -->
+    <div id="catalogo-tienda-wrapper">
+      <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
+      <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
+
+      <!-- Aviso de Próxima Fecha de Entrega según Punto de Corte -->
+      <div class="delivery-banner" id="delivery-banner">
+        <div>
+          <span class="delivery-badge" id="delivery-badge-status">📅 Próxima Entrega</span>
+          <div class="delivery-date-main" id="delivery-date-text">Calculando próxima entrega...</div>
+          <div class="delivery-note" id="delivery-cutoff-note"></div>
+        </div>
+        <div style="text-align:right; font-size:0.82rem; color:var(--text);" id="delivery-pickup-address"></div>
       </div>
-      <div style="text-align:right; font-size:0.82rem; color:var(--text);" id="delivery-pickup-address"></div>
-    </div>
 
-    <!-- Buscador y Filtro de Categorías -->
-    <div class="toolbar">
-      <input type="text" id="search-box" class="search-input" placeholder="🔍 Buscar almendras, nueces, mixes, granolas, barritas..." oninput="renderCatalogo()" />
-      <div class="cats-row" id="cats-row"></div>
-    </div>
+      <!-- Buscador y Filtro de Categorías -->
+      <div class="toolbar">
+        <input type="text" id="search-box" class="search-input" placeholder="🔍 Buscar almendras, nueces, mixes, granolas, barritas..." oninput="renderCatalogo()" />
+        <div class="cats-row" id="cats-row"></div>
+      </div>
 
-    <!-- Grilla de Productos Publicados por el Gestor -->
-    <div class="products-grid" id="products-grid"></div>
+      <!-- Grilla de Productos Publicados por el Gestor -->
+      <div class="products-grid" id="products-grid"></div>
+    </div>
   </main>
 
   <!-- Barra Flotante del Carrito -->
@@ -721,7 +802,10 @@
       carrito: {}, // { oferta_id: cantidad }
       modalidadEntrega: 'RETIRO_NODO',
       medioPago: 'TRANSFERENCIA',
-      simularDespuesDeCorte: false
+      simularDespuesDeCorte: false,
+      portalToken: '',
+      vistaMiCuentaActiva: false,
+      miCuentaData: null
     };
 
     function fmt(n) {
@@ -1230,6 +1314,12 @@
               style="padding:9px 18px; border-radius:9px; border:none; background:var(--brand); color:#ffffff; font-weight:800; font-size:0.85rem; cursor:pointer;">
               Listo, volver a la tienda
             </button>
+            ${STATE.portalToken ? `
+              <button type="button" onclick="cerrarModalCheckout(); activarVistaMiCuenta();"
+                style="padding:9px 16px; border-radius:9px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-weight:900; font-size:0.84rem; cursor:pointer;">
+                👤 Ver en Mi Cuenta
+              </button>
+            ` : ''}
           </div>
         </div>
       `;
@@ -1844,8 +1934,639 @@
           ` : ''}
           <button type="button" onclick="cerrarModalSeguimiento()"
             style="width:100%; padding:11px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
-            ← Volver a la tienda de ${esc(nodo.nombre_marca)}
+            ← ${STATE.vistaMiCuentaActiva ? 'Volver a Mi Cuenta' : `Volver a la tienda de ${esc(nodo.nombre_marca)}`}
           </button>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // PORTAL PERSONAL MARCA BLANCA: "MI CUENTA / MIS PEDIDOS" (QR CLIENTE)
+    // =========================================================================
+    let _miCuentaTimer = null;
+
+    function _storageKeyMiCuentaToken(slug) {
+      return `nodo_mi_cuenta_token_${slug || STATE.slug || 'default'}`;
+    }
+
+    function detectarPortalTokenEnUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const qTok = (params.get('mi_cuenta') || '').trim();
+      if (qTok.length >= 16) {
+        return { token: qTok, abrirDirecto: true };
+      }
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('tienda');
+      if (idx !== -1 && parts[idx + 2] && parts[idx + 2].toLowerCase() === 'mi-cuenta' && parts[idx + 3]) {
+        const pTok = decodeURIComponent(parts[idx + 3]).trim();
+        if (pTok.length >= 16) {
+          return { token: pTok, abrirDirecto: true };
+        }
+      }
+      try {
+        const saved = (localStorage.getItem(_storageKeyMiCuentaToken(STATE.slug)) || '').trim();
+        if (saved.length >= 16) {
+          return { token: saved, abrirDirecto: false };
+        }
+      } catch (_) {}
+      return { token: '', abrirDirecto: false };
+    }
+
+    function actualizarBotonesCabeceraMiCuenta() {
+      const btnToggle = document.getElementById('btn-toggle-mi-cuenta');
+      const btnSeguir = document.getElementById('btn-seguir-pedido-header');
+      if (!btnToggle) return;
+
+      if (!STATE.portalToken) {
+        btnToggle.style.display = 'none';
+        if (btnSeguir) btnSeguir.style.display = 'inline-flex';
+        return;
+      }
+
+      btnToggle.style.display = 'inline-flex';
+      if (STATE.vistaMiCuentaActiva) {
+        btnToggle.innerHTML = '🛒 Ir al Catálogo';
+        if (btnSeguir) btnSeguir.style.display = 'none';
+      } else {
+        const nombreCorto = STATE.miCuentaData?.vecino?.nombre_completo
+          ? STATE.miCuentaData.vecino.nombre_completo.split(/\s+/)[0]
+          : 'Mi Cuenta';
+        btnToggle.innerHTML = `👤 ${esc(nombreCorto)} · Mi Cuenta`;
+        if (btnSeguir) btnSeguir.style.display = 'inline-flex';
+      }
+    }
+
+    function detenerPollingMiCuenta() {
+      if (_miCuentaTimer) {
+        clearInterval(_miCuentaTimer);
+        _miCuentaTimer = null;
+      }
+    }
+
+    async function activarVistaMiCuenta() {
+      if (!STATE.portalToken) return;
+      STATE.vistaMiCuentaActiva = true;
+      const mcView = document.getElementById('mi-cuenta-view');
+      const catWrap = document.getElementById('catalogo-tienda-wrapper');
+      const cartBar = document.getElementById('cart-bar');
+      if (mcView) mcView.style.display = 'flex';
+      if (catWrap) catWrap.style.display = 'none';
+      if (cartBar) cartBar.style.display = 'none';
+
+      try {
+        window.history.replaceState({}, '', `/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(STATE.portalToken)}`);
+      } catch (_) {}
+
+      actualizarBotonesCabeceraMiCuenta();
+      await cargarPortalMiCuenta(false);
+
+      detenerPollingMiCuenta();
+      _miCuentaTimer = setInterval(() => {
+        if (STATE.vistaMiCuentaActiva && STATE.portalToken) {
+          cargarPortalMiCuenta(true);
+        }
+      }, 15000);
+    }
+
+    function irACatalogoDesdeMiCuenta() {
+      detenerPollingMiCuenta();
+      STATE.vistaMiCuentaActiva = false;
+      const mcView = document.getElementById('mi-cuenta-view');
+      const catWrap = document.getElementById('catalogo-tienda-wrapper');
+      if (mcView) mcView.style.display = 'none';
+      if (catWrap) catWrap.style.display = 'block';
+
+      try {
+        window.history.replaceState({}, '', `/tienda/${encodeURIComponent(STATE.slug)}`);
+      } catch (_) {}
+
+      actualizarBotonesCabeceraMiCuenta();
+      actualizarBarraCarrito();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function alternarVistaMiCuenta() {
+      if (STATE.vistaMiCuentaActiva) {
+        irACatalogoDesdeMiCuenta();
+      } else {
+        activarVistaMiCuenta();
+      }
+    }
+
+    async function cargarPortalMiCuenta(silencioso = false) {
+      if (!STATE.portalToken) return;
+      const mcView = document.getElementById('mi-cuenta-view');
+      if (mcView && !silencioso && !STATE.miCuentaData) {
+        mcView.innerHTML = `
+          <div class="mc-card" style="text-align:center; padding:34px 18px; color:var(--muted); font-weight:800;">
+            ⏳ Cargando tu cuenta y el estado en vivo de tus pedidos...
+          </div>
+        `;
+      }
+
+      try {
+        const resp = await fetch(
+          `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(STATE.portalToken)}`,
+          { cache: 'no-store' }
+        );
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (!silencioso && mcView) {
+            mcView.innerHTML = `
+              <div class="mc-card" style="text-align:center; padding:28px 18px;">
+                <div style="font-size:2rem; margin-bottom:6px;">🔎</div>
+                <h3 style="margin:0 0 6px 0;">Enlace personal no disponible</h3>
+                <p style="font-size:0.88rem; color:var(--muted); margin:0 0 14px 0;">${esc(data.error || 'Verificá el código QR con el coordinador de tu barrio.')}</p>
+                <button type="button" onclick="STATE.portalToken=''; irACatalogoDesdeMiCuenta();"
+                  style="padding:10px 18px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; cursor:pointer;">
+                  🛒 Ir al catálogo de la tienda
+                </button>
+              </div>
+            `;
+          }
+          return;
+        }
+
+        STATE.miCuentaData = data;
+        try {
+          localStorage.setItem(_storageKeyMiCuentaToken(data.nodo?.slug || STATE.slug), STATE.portalToken);
+        } catch (_) {}
+
+        // Pre-cargar datos del vecino para agilizar futuras compras en el catálogo
+        if (data.vecino) {
+          window._savedVecinoNombre = data.vecino.nombre_completo || window._savedVecinoNombre || '';
+          window._savedVecinoTel = data.vecino.telefono_whatsapp || window._savedVecinoTel || '';
+          if (data.vecino.direccion_calle) {
+            window._savedVecinoDir = data.vecino.direccion_calle;
+          }
+          if (data.vecino.entrecalles_referencia) {
+            window._savedVecinoRef = data.vecino.entrecalles_referencia;
+          }
+        }
+
+        if (data.nodo?.color_primario) {
+          aplicarPaletaTienda(data.nodo.color_primario);
+        }
+        if (data.nodo?.nombre_marca && STATE.vistaMiCuentaActiva) {
+          document.title = `Mi Cuenta · ${data.nodo.nombre_marca}`;
+        }
+
+        actualizarBotonesCabeceraMiCuenta();
+        if (STATE.vistaMiCuentaActiva) {
+          renderizarPortalMiCuenta(data);
+        }
+      } catch (_) {
+        if (!silencioso && mcView && !STATE.miCuentaData) {
+          mcView.innerHTML = `<div class="mc-card" style="text-align:center; color:#b91c1c; font-weight:800;">Error de conexión al consultar tu cuenta.</div>`;
+        }
+      }
+    }
+
+    function renderizarPortalMiCuenta(data) {
+      const mcView = document.getElementById('mi-cuenta-view');
+      if (!mcView) return;
+
+      const nodo = data.nodo || {};
+      const vec = data.vecino || {};
+      const res = data.resumen_cuenta || {};
+      const pedDest = data.pedido_destacado || null;
+      const historial = Array.isArray(data.historial_pedidos) ? data.historial_pedidos : [];
+
+      const alDia = Boolean(res.al_dia);
+      const saldoPend = Number(res.saldo_pendiente || 0);
+      const saldoFavor = Number(res.saldo_a_favor || 0);
+      const pendTransf = Number(res.total_pendiente_transferencia || 0);
+      const pendEfvo = Number(res.total_pendiente_efectivo || 0);
+
+      const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
+      const waGestorHref = telGestorDigits
+        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te escribo desde mi cuenta en ${nodo.nombre_marca}.`)}`
+        : '';
+
+      // Bloque contextual de pago dentro de la tarjeta principal de estado de cuenta
+      let bloqueInstruccionPagoHtml = '';
+      if (!alDia) {
+        const bloques = [];
+        if (pendTransf > 0.01) {
+          bloques.push(`
+            <div style="background:#eff6ff; border:1.5px solid #60a5fa; border-radius:13px; padding:13px 15px; margin-top:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:0.74rem; font-weight:900; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.02em;">
+                    🏦 Datos para abonar por Transferencia (${fmt(pendTransf)})
+                  </div>
+                  <div style="font-size:1.12rem; font-weight:900; color:#0f172a; margin-top:3px;">
+                    Alias: <span>${esc(nodo.alias_bancario_display || 'pago.canasto')}</span>
+                  </div>
+                  <div style="font-size:0.8rem; color:#334155; font-weight:700; margin-top:2px;">
+                    ${nodo.titular_display ? `Titular: ${esc(nodo.titular_display)}` : ''}${nodo.cbu_display && nodo.cbu_display !== '0000000000000000000000' ? ` · CBU: ${esc(nodo.cbu_display)}` : ''}
+                  </div>
+                </div>
+                <button type="button" onclick="navigator.clipboard.writeText('${esc(nodo.alias_bancario_display || 'pago.canasto')}'); this.textContent='✅ ¡Alias copiado!';"
+                  style="padding:9px 15px; border-radius:10px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
+                  📋 Copiar Alias
+                </button>
+              </div>
+            </div>
+          `);
+        }
+        if (pendEfvo > 0.01) {
+          bloques.push(`
+            <div style="background:#fffdfb; border:1.5px solid #f59e0b; border-radius:13px; padding:12px 15px; margin-top:10px; display:flex; align-items:center; gap:10px;">
+              <span style="font-size:1.35rem;">💵</span>
+              <div style="font-size:0.85rem; color:#78350f; font-weight:700; line-height:1.35;">
+                <strong>Pago en efectivo al recibir o retirar:</strong> abonás <strong>${fmt(pendEfvo)}</strong> en mano al momento de la entrega en ${esc(nodo.nombre_marca)}.
+              </div>
+            </div>
+          `);
+        }
+        bloqueInstruccionPagoHtml = bloques.join('');
+      } else if (saldoFavor > 0.01) {
+        bloqueInstruccionPagoHtml = `
+          <div style="background:#ffffff; border:1px solid #86efac; border-radius:12px; padding:10px 14px; margin-top:12px; font-size:0.84rem; color:#166534; font-weight:800;">
+            🎁 Tenés un saldo a favor de <strong>${fmt(saldoFavor)}</strong> disponible para descontar en tu próximo pedido.
+          </div>
+        `;
+      }
+
+      // Bloque de Pedido Actual / Último Pedido en Vivo
+      let pedidoVivoHtml = '';
+      if (pedDest) {
+        const seg = pedDest.seguimiento || {};
+        const pasos = Array.isArray(seg.pasos) ? seg.pasos : [];
+        const pasoAct = pasos.find(p => p.es_actual) || pasos[0] || {};
+        const esEntregado = !seg.anulado && Number(seg.hito_actual) >= 6;
+        const pct = seg.anulado
+          ? 0
+          : Math.min(100, Math.max(12, Math.round((Number(seg.paso_actual_orden || 1) / Math.max(1, Number(seg.total_pasos || 5))) * 100)));
+
+        pedidoVivoHtml = `
+          <div class="mc-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+              <div>
+                <div style="font-size:0.75rem; font-weight:900; color:var(--brand-dark); text-transform:uppercase; letter-spacing:0.03em;">
+                  ${esEntregado ? '✅ Último pedido entregado' : '📦 Estado en vivo de tu pedido actual'}
+                </div>
+                <h2 style="margin:2px 0 0 0; font-size:1.15rem; font-weight:900; color:var(--text);">
+                  Pedido #${esc(pedDest.codigo_pedido)} · ${fmt(pedDest.total_vecino)}
+                </h2>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                ${!seg.anulado && !esEntregado ? `
+                  <span style="font-size:0.76rem; font-weight:800; color:#15803d; background:#ecfdf5; border:1px solid #a7f3d0; padding:4px 10px; border-radius:999px;">
+                    <span class="trk-live-dot"></span>Actualización en vivo
+                  </span>
+                ` : ''}
+                <button type="button" onclick="cargarPortalMiCuenta(false)"
+                  style="padding:6px 11px; border-radius:9px; border:1px solid var(--border); background:#fffdfb; color:var(--text); font-family:inherit; font-size:0.78rem; font-weight:800; cursor:pointer;">
+                  🔄 Actualizar
+                </button>
+              </div>
+            </div>
+
+            <div class="trk-hero-box ${esEntregado ? 'completed' : ''}" style="${seg.anulado ? 'background:#fef2f2; border-color:#fecaca;' : ''}">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                <span style="font-size:0.73rem; font-weight:900; text-transform:uppercase; padding:3px 10px; border-radius:999px; background:${seg.anulado ? '#fee2e2' : (esEntregado ? '#dcfce7' : 'var(--brand-light)')}; color:${seg.anulado ? '#b91c1c' : (esEntregado ? '#15803d' : 'var(--brand-dark)')};">
+                  ${seg.anulado ? 'Pedido Anulado' : `Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`}
+                </span>
+                ${pedDest.pago_confirmado
+                  ? `<span style="font-size:0.75rem; font-weight:900; color:#15803d; background:#dcfce7; padding:3px 10px; border-radius:999px;">✅ Pagado</span>`
+                  : `<span style="font-size:0.75rem; font-weight:900; color:#92400e; background:#fef3c7; padding:3px 10px; border-radius:999px;">${pedDest.medio_pago === 'EFECTIVO' ? '💵 Efectivo al recibir' : '🏦 Pendiente de pago'}</span>`
+                }
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="font-size:2rem; line-height:1.1;">${seg.anulado ? '🚫' : esc(pasoAct.icono || '📦')}</div>
+                <div style="flex:1;">
+                  <div style="font-size:1.12rem; font-weight:900; color:${seg.anulado ? '#991b1b' : (esEntregado ? '#15803d' : 'var(--text)')}; line-height:1.22;">
+                    ${esc(seg.titulo_estado_actual)}
+                  </div>
+                  <div style="font-size:0.84rem; color:var(--muted); font-weight:700; margin-top:4px; line-height:1.38;">
+                    ${esc(seg.descripcion_estado_actual)}
+                  </div>
+                </div>
+              </div>
+              ${!seg.anulado ? `
+                <div class="trk-progress-track">
+                  <div class="trk-progress-fill" style="width:${pct}%;"></div>
+                </div>
+              ` : ''}
+            </div>
+
+            ${!seg.anulado ? `
+              <div class="trk-timeline">
+                ${pasos.map(p => {
+                  const cls = [
+                    'trk-step',
+                    p.completado ? 'done' : '',
+                    p.es_actual ? 'current' : '',
+                    (p.hito_numero === 6 && p.completado) ? 'final-step' : ''
+                  ].filter(Boolean).join(' ');
+                  const horaTxt = p.completado ? formatearFechaHoraHito(p.fecha_hora) : '';
+                  const dotContent = p.es_actual
+                    ? esc(p.icono)
+                    : (p.completado ? '✓' : esc(p.paso_orden));
+                  return `
+                    <div class="${cls}">
+                      <div class="trk-dot">${dotContent}</div>
+                      <div class="trk-step-body">
+                        <div class="trk-step-head">
+                          <span class="trk-step-title">${esc(p.titulo)}</span>
+                          ${horaTxt ? `<span class="trk-step-time">${esc(horaTxt)}</span>` : ''}
+                        </div>
+                        ${(p.completado || p.es_actual) ? `<div class="trk-step-desc">${esc(p.descripcion)}</div>` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : ''}
+
+            <!-- Detalle de entrega y bolsas pedidas -->
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:13px 15px; font-size:0.84rem;">
+              <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding-bottom:9px; border-bottom:1px solid var(--border); margin-bottom:9px;">
+                <div>
+                  <div style="font-size:0.73rem; font-weight:800; color:var(--muted); text-transform:uppercase;">
+                    ${pedDest.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Entrega a domicilio barrial' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`}
+                  </div>
+                  <div style="font-weight:800; color:var(--text); margin-top:2px;">
+                    ${pedDest.modalidad_entrega === 'ENVIO_BARRIAL'
+                      ? `${esc(pedDest.direccion_entrega)}${pedDest.entrecalles_referencia ? ` (${esc(pedDest.entrecalles_referencia)})` : ''}`
+                      : esc(nodo.direccion_retiro || nodo.barrio_zona || '')
+                    }
+                  </div>
+                  ${pedDest.fecha_entrega_label ? `<div style="font-size:0.79rem; color:var(--brand-dark); font-weight:800; margin-top:3px;">📅 Entrega programada: ${esc(pedDest.fecha_entrega_label)}</div>` : ''}
+                </div>
+                ${pedDest.pago_confirmado && pedDest.comprobante_digital ? `
+                  <div style="align-self:center;">
+                    <button type="button" onclick="abrirReciboDigitalPedido('${esc(pedDest.codigo_pedido)}')"
+                      style="padding:8px 13px; border-radius:10px; border:1.5px solid #16a34a; background:#ffffff; color:#15803d; font-family:inherit; font-weight:900; font-size:0.8rem; cursor:pointer;">
+                      🧾 Ver Recibo Digital
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+
+              <div style="font-size:0.74rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:5px;">
+                Bolsas y productos pedidos (${Number(pedDest.total_unidades || 0)} u.)
+              </div>
+              ${(pedDest.items || []).map(it => `
+                <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.84rem;">
+                  <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} <span style="color:var(--muted); font-size:0.76rem;">(${esc(it.presentacion_etiqueta)})</span></span>
+                  <strong>${fmt(it.subtotal_vecino)}</strong>
+                </div>
+              `).join('')}
+              ${Number(pedDest.cargo_envio_barrial) > 0 ? `
+                <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:var(--muted);">
+                  <span>Envío a domicilio barrial</span>
+                  <span>+${fmt(pedDest.cargo_envio_barrial)}</span>
+                </div>
+              ` : ''}
+              ${Number(pedDest.monto_ajuste_credito) > 0 ? `
+                <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:#15803d;">
+                  <span>Bonificación / ajuste a favor</span>
+                  <span>-${fmt(pedDest.monto_ajuste_credito)}</span>
+                </div>
+              ` : ''}
+              <div style="display:flex; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:0.96rem; font-weight:900;">
+                <span>Total del pedido</span>
+                <span>${fmt(pedDest.total_vecino)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      mcView.innerHTML = `
+        <!-- 1. Resumen de Cuenta y Pagos del Comprador -->
+        <div class="mc-card ${alDia ? 'mc-balance-ok' : 'mc-balance-due'}">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.76rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:${alDia ? '#15803d' : '#b45309'};">
+                👤 Mi Cuenta en ${esc(nodo.nombre_marca)}
+              </div>
+              <h2 style="margin:3px 0 2px 0; font-size:1.34rem; font-weight:900; color:#0f172a;">
+                Hola, ${esc(vec.nombre_completo)}
+              </h2>
+              <div style="font-size:0.82rem; color:#475569; font-weight:700;">
+                📱 ${esc(vec.telefono_whatsapp)}${vec.direccion_calle ? ` · 📍 ${esc(vec.direccion_calle)}` : ''}
+              </div>
+            </div>
+
+            <div style="text-align:right; background:rgba(255,255,255,0.88); border:1.5px solid ${alDia ? '#86efac' : '#f59e0b'}; border-radius:14px; padding:10px 16px; min-width:190px;">
+              <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; color:${alDia ? '#15803d' : '#b45309'};">
+                ${alDia ? '✅ Estado de tu cuenta' : '💳 Saldo pendiente a pagar'}
+              </div>
+              <div style="font-size:1.42rem; font-weight:900; color:${alDia ? '#15803d' : '#b45309'}; line-height:1.15; margin-top:2px;">
+                ${alDia ? 'Al día ($0)' : fmt(saldoPend)}
+              </div>
+              <div style="font-size:0.75rem; font-weight:700; color:#475569; margin-top:2px;">
+                ${alDia
+                  ? 'No tenés pagos pendientes'
+                  : `${Number(res.cantidad_pagos_pendientes || 1)} pedido${Number(res.cantidad_pagos_pendientes || 1) === 1 ? '' : 's'} pendiente${Number(res.cantidad_pagos_pendientes || 1) === 1 ? '' : 's'} de pago`
+                }
+              </div>
+            </div>
+          </div>
+
+          ${bloqueInstruccionPagoHtml}
+
+          <div class="mc-kpis-row">
+            <div class="mc-kpi-pill">
+              <div style="font-size:0.72rem; font-weight:800; color:#64748b; text-transform:uppercase;">Pedidos realizados</div>
+              <div style="font-size:1.02rem; font-weight:900; color:#0f172a; margin-top:2px;">${Number(res.cantidad_pedidos_activos || 0)} compra${Number(res.cantidad_pedidos_activos || 0) === 1 ? '' : 's'}</div>
+            </div>
+            <div class="mc-kpi-pill">
+              <div style="font-size:0.72rem; font-weight:800; color:#64748b; text-transform:uppercase;">Total abonado</div>
+              <div style="font-size:1.02rem; font-weight:900; color:#15803d; margin-top:2px;">${fmt(res.total_historico_abonado || 0)}</div>
+            </div>
+            <div class="mc-kpi-pill" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <div>
+                <div style="font-size:0.72rem; font-weight:800; color:#64748b; text-transform:uppercase;">Coordinación</div>
+                <div style="font-size:0.9rem; font-weight:900; color:#0f172a; margin-top:2px;">${esc(nodo.gestor_nombre)}</div>
+              </div>
+              ${waGestorHref ? `
+                <a href="${esc(waGestorHref)}" target="_blank" rel="noopener"
+                  style="padding:6px 10px; border-radius:8px; background:#16a34a; color:#ffffff; font-size:0.76rem; font-weight:900; text-decoration:none; white-space:nowrap;">
+                  💬 WhatsApp
+                </a>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Estado en Vivo del Pedido Actual -->
+        ${pedidoVivoHtml}
+
+        <!-- 3. Historial Cronológico de Pedidos y Acceso al Catálogo -->
+        <div class="mc-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+            <div>
+              <h3 style="margin:0; font-size:1.08rem; font-weight:900; color:var(--text);">🧾 Mis Pedidos en ${esc(nodo.nombre_marca)}</h3>
+              <div style="font-size:0.8rem; color:var(--muted); font-weight:700; margin-top:2px;">
+                Historial completo de tus compras, estado de entrega y comprobantes de pago
+              </div>
+            </div>
+            <button type="button" onclick="irACatalogoDesdeMiCuenta()"
+              style="padding:9px 15px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.84rem; cursor:pointer;">
+              🛒 Hacer nuevo pedido →
+            </button>
+          </div>
+
+          ${historial.length === 0 ? `
+            <div style="text-align:center; padding:24px 12px; color:var(--muted); font-weight:700;">
+              Todavía no registrás pedidos en ${esc(nodo.nombre_marca)}.
+            </div>
+          ` : `
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              ${historial.map(h => {
+                const resumenItems = (h.items || []).map(i => `${Number(i.cantidad)}x ${esc(i.nombre_publico)}`).join(' · ');
+                const fechaCreacionTxt = h.created_at
+                  ? new Date(h.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  : '';
+                return `
+                  <div class="mc-history-item" style="${h.anulado ? 'opacity:0.65; background:#f8fafc;' : ''}">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                      <div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                          <span style="font-size:0.98rem; font-weight:900; color:var(--text);">#${esc(h.codigo_pedido)}</span>
+                          <span style="font-size:0.75rem; font-weight:800; padding:2px 9px; border-radius:999px; background:${h.anulado ? '#fee2e2' : 'var(--brand-light)'}; color:${h.anulado ? '#b91c1c' : 'var(--brand-dark)'};">
+                            ${h.anulado ? 'Anulado' : esc(h.seguimiento?.titulo_estado_actual || 'En proceso')}
+                          </span>
+                          ${!h.anulado ? (
+                            h.pago_confirmado
+                              ? `<span style="font-size:0.74rem; font-weight:900; padding:2px 9px; border-radius:999px; background:#dcfce7; color:#15803d;">✅ Pagado</span>`
+                              : `<span style="font-size:0.74rem; font-weight:900; padding:2px 9px; border-radius:999px; background:#fef3c7; color:#92400e;">${h.medio_pago === 'EFECTIVO' ? '💵 Efectivo al recibir' : '🏦 Pago pendiente'}</span>`
+                          ) : ''}
+                        </div>
+                        <div style="font-size:0.83rem; font-weight:700; color:var(--text); margin-top:5px;">
+                          ${resumenItems || '—'}
+                        </div>
+                        <div style="font-size:0.77rem; color:var(--muted); font-weight:700; margin-top:3px;">
+                          ${fechaCreacionTxt ? `Pedido el ${esc(fechaCreacionTxt)} · ` : ''}📅 Entrega: ${esc(h.fecha_entrega_label || 'Programada')} · ${h.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : '🏠 Retiro en Nodo'}
+                        </div>
+                      </div>
+                      <div style="text-align:right;">
+                        <div style="font-size:1.08rem; font-weight:900; color:var(--text);">${fmt(h.total_vecino)}</div>
+                        <div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; margin-top:6px;">
+                          ${h.pago_confirmado && h.comprobante_digital ? `
+                            <button type="button" onclick="abrirReciboDigitalPedido('${esc(h.codigo_pedido)}')"
+                              style="padding:5px 10px; border-radius:8px; border:1px solid #86efac; background:#f0fdf4; color:#15803d; font-family:inherit; font-size:0.76rem; font-weight:900; cursor:pointer;">
+                              🧾 Recibo
+                            </button>
+                          ` : ''}
+                          ${h.tracking_token ? `
+                            <button type="button" onclick="abrirSeguimientoPorToken('${esc(h.tracking_token)}')"
+                              style="padding:5px 10px; border-radius:8px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-size:0.76rem; font-weight:900; cursor:pointer;">
+                              📍 Seguimiento
+                            </button>
+                          ` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border); text-align:center;">
+            <button type="button" onclick="irACatalogoDesdeMiCuenta()"
+              style="width:100%; padding:13px 18px; border-radius:12px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.96rem; cursor:pointer;">
+              🛒 Ir al catálogo de ${esc(nodo.nombre_marca)} para hacer un nuevo pedido →
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function abrirReciboDigitalPedido(codigoPedido) {
+      const data = STATE.miCuentaData;
+      if (!data) return;
+      const ped = (data.historial_pedidos || []).find(p => p.codigo_pedido === codigoPedido);
+      if (!ped || !ped.comprobante_digital) return;
+
+      detenerPollingSeguimiento();
+      _trackingTokenActivo = '';
+      const modal = document.getElementById('tracking-modal');
+      const box = document.getElementById('tracking-card-content');
+      if (!modal || !box) return;
+      modal.style.display = 'flex';
+
+      const nodo = data.nodo || {};
+      const vec = data.vecino || {};
+      const rec = ped.comprobante_digital;
+      const fechaPagoTxt = rec.fecha_pago
+        ? new Date(rec.fecha_pago).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+        : '';
+
+      box.innerHTML = `
+        <div style="border:2px solid #86efac; border-radius:16px; padding:18px; background:linear-gradient(180deg, #f0fdf4 0%, #ffffff 38%);">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; border-bottom:1px dashed #cbd5e1; padding-bottom:12px; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              ${nodo.logo_original_base64
+                ? `<img src="${nodo.logo_original_base64}" alt="${esc(nodo.nombre_marca)}" style="width:44px; height:44px; object-fit:contain; border-radius:10px;">`
+                : `<div class="brand-monogram" style="width:42px; height:42px;">${esc(String(nodo.nombre_marca || 'ND').slice(0, 2).toUpperCase())}</div>`
+              }
+              <div>
+                <div style="font-size:0.72rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.04em;">
+                  ✅ Comprobante Digital de Pago
+                </div>
+                <div style="font-size:1.12rem; font-weight:900; color:#0f172a;">${esc(nodo.nombre_marca)}</div>
+                <div style="font-size:0.76rem; color:#64748b; font-weight:700;">Recibo N° ${esc(rec.numero_recibo)}</div>
+              </div>
+            </div>
+            <button type="button" onclick="cerrarModalSeguimiento()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:0.82rem; margin-bottom:12px;">
+            <div>
+              <div style="color:#64748b; font-weight:700; font-size:0.74rem;">Cliente</div>
+              <div style="font-weight:900; color:#0f172a;">${esc(vec.nombre_completo)}</div>
+            </div>
+            <div>
+              <div style="color:#64748b; font-weight:700; font-size:0.74rem;">Fecha de acreditación</div>
+              <div style="font-weight:800; color:#0f172a;">${esc(fechaPagoTxt || 'Confirmado')}</div>
+            </div>
+            <div>
+              <div style="color:#64748b; font-weight:700; font-size:0.74rem;">Pedido abonado</div>
+              <div style="font-weight:900; color:#0f172a;">#${esc(ped.codigo_pedido)}</div>
+            </div>
+            <div>
+              <div style="color:#64748b; font-weight:700; font-size:0.74rem;">Medio de pago</div>
+              <div style="font-weight:800; color:#0f172a;">${esc(rec.medio_pago_label)}</div>
+            </div>
+          </div>
+
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; margin-bottom:12px;">
+            <div style="font-size:0.73rem; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:6px;">Detalle de compra</div>
+            ${(ped.items || []).map(it => `
+              <div style="display:flex; justify-content:space-between; font-size:0.83rem; padding:3px 0;">
+                <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} (${esc(it.presentacion_etiqueta)})</span>
+                <strong>${fmt(it.subtotal_vecino)}</strong>
+              </div>
+            `).join('')}
+            ${Number(ped.cargo_envio_barrial) > 0 ? `
+              <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#64748b; padding:3px 0;">
+                <span>Envío barrial</span>
+                <span>+${fmt(ped.cargo_envio_barrial)}</span>
+              </div>
+            ` : ''}
+            <div style="display:flex; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #cbd5e1; font-size:1.05rem; font-weight:900; color:#15803d;">
+              <span>Total Abonado</span>
+              <span>${fmt(rec.monto_abonado)}</span>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px;">
+            <button type="button" onclick="window.print()"
+              style="flex:1; padding:10px; border-radius:10px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
+              🖨️ Imprimir / Guardar PDF
+            </button>
+            <button type="button" onclick="cerrarModalSeguimiento()"
+              style="flex:1; padding:10px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.86rem; cursor:pointer;">
+              Listo
+            </button>
+          </div>
         </div>
       `;
     }
@@ -1854,7 +2575,19 @@
       STATE.slug = detectarSlugInicial();
       const params = new URLSearchParams(window.location.search);
       const tokInicial = (params.get('seguimiento') || '').trim();
+      const detCuenta = detectarPortalTokenEnUrl();
+      if (detCuenta.token) {
+        STATE.portalToken = detCuenta.token;
+      }
+
       await cargarTienda('');
+
+      if (detCuenta.token && detCuenta.abrirDirecto) {
+        await activarVistaMiCuenta();
+      } else if (detCuenta.token) {
+        cargarPortalMiCuenta(true);
+      }
+
       if (tokInicial) {
         abrirSeguimientoPorToken(tokInicial);
       }

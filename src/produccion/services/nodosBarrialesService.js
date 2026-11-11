@@ -2932,7 +2932,12 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS codigo_vecino VARCHAR(40),
                 ADD COLUMN IF NOT EXISTS telefono_normalizado VARCHAR(30),
                 ADD COLUMN IF NOT EXISTS saldo_actual NUMERIC(14,2) NOT NULL DEFAULT 0.00,
-                ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
+                ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true,
+                ADD COLUMN IF NOT EXISTS portal_token VARCHAR(80);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_vecinos_portal_token
+                ON public.nodos_vecinos (portal_token)
+                WHERE portal_token IS NOT NULL;
 
             ALTER TABLE public.nodos_pedidos_vecinos
                 ADD COLUMN IF NOT EXISTS monto_ajuste_credito NUMERIC(14,2) NOT NULL DEFAULT 0.00,
@@ -2966,7 +2971,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
         // 1) Normalizar teléfonos y deduplicar canónicamente por (nodo_id, telefono_normalizado)
         const allVecRes = await client.query(
-            'SELECT id, nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, codigo_vecino FROM public.nodos_vecinos ORDER BY id ASC'
+            'SELECT id, nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, codigo_vecino, portal_token FROM public.nodos_vecinos ORDER BY id ASC'
         );
         const vistosPorNodoTel = new Map();
         for (const v of allVecRes.rows) {
@@ -2978,12 +2983,16 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             if (!vistosPorNodoTel.has(clave)) {
                 vistosPorNodoTel.set(clave, v.id);
                 const codVec = v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, v.id);
+                const portalTok = (v.portal_token && String(v.portal_token).trim().length >= 16)
+                    ? String(v.portal_token).trim()
+                    : generarPortalTokenVecinoNodo();
                 await client.query(
                     `UPDATE public.nodos_vecinos
                      SET telefono_normalizado = $1,
-                         codigo_vecino = $2
-                     WHERE id = $3`,
-                    [telNorm, codVec, v.id]
+                         codigo_vecino = $2,
+                         portal_token = $3
+                     WHERE id = $4`,
+                    [telNorm, codVec, portalTok, v.id]
                 );
             } else {
                 const canonicoId = vistosPorNodoTel.get(clave);
@@ -5944,7 +5953,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 notas_entrega = COALESCE(NULLIF(EXCLUDED.notas_entrega, ''), public.nodos_vecinos.notas_entrega),
                 activo = true,
                 updated_at = NOW()
-             RETURNING id, codigo_vecino`,
+             RETURNING id, codigo_vecino, portal_token`,
             [
                 nodo.id,
                 vecinoNombre,
@@ -5957,10 +5966,13 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         );
         const vecinoId = Number(upVec.rows[0].id);
         const codigoVecino = upVec.rows[0].codigo_vecino || formatearCodigoVecinoNodo(nodo.id, vecinoId);
-        if (!upVec.rows[0].codigo_vecino) {
+        const portalTokenVecino = (upVec.rows[0].portal_token && String(upVec.rows[0].portal_token).trim().length >= 16)
+            ? String(upVec.rows[0].portal_token).trim()
+            : generarPortalTokenVecinoNodo();
+        if (!upVec.rows[0].codigo_vecino || !upVec.rows[0].portal_token) {
             await client.query(
-                'UPDATE public.nodos_vecinos SET codigo_vecino = $1 WHERE id = $2',
-                [codigoVecino, vecinoId]
+                'UPDATE public.nodos_vecinos SET codigo_vecino = $1, portal_token = $2 WHERE id = $3',
+                [codigoVecino, portalTokenVecino, vecinoId]
             );
         }
 
@@ -10058,6 +10070,7 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
         return {
             id: vid,
             codigo_vecino: codVec,
+            portal_token: v.portal_token || null,
             nombre_completo: v.nombre_completo,
             telefono_whatsapp: v.telefono_whatsapp,
             telefono_normalizado: v.telefono_normalizado || normalizarTelefonoVecinoNodo(v.telefono_whatsapp),
@@ -10270,6 +10283,7 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
             codigo_bunker_cliente: v.codigo_bunker_cliente,
             color_primario: v.color_primario || '#16a34a',
             codigo_vecino: v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, vid),
+            portal_token: v.portal_token || null,
             nombre_completo: v.nombre_completo,
             telefono_whatsapp: v.telefono_whatsapp,
             telefono_normalizado: v.telefono_normalizado || normalizarTelefonoVecinoNodo(v.telefono_whatsapp),
@@ -10596,6 +10610,371 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
     };
 }
 
+// ============================================================================
+// PORTAL PERSONAL MARCA BLANCA ("MI CUENTA / MIS PEDIDOS") Y ACCESOS QR
+// ============================================================================
+
+function generarPortalTokenVecinoNodo() {
+    return crypto.randomBytes(14).toString('hex');
+}
+
+function _sanitizarNumeroReciboMarcaBlanca(refRaw, codigoPedido, medioPago) {
+    const esEfvo = String(medioPago || '').toUpperCase() === 'EFECTIVO';
+    const fallback = `REC-${esEfvo ? 'EFVO' : 'TRF'}-${codigoPedido || 'NODO'}`;
+    const txt = String(refRaw || '').trim();
+    if (!txt || /lamda|bunker|búnker/i.test(txt)) {
+        return fallback;
+    }
+    return txt;
+}
+
+/**
+ * Resuelve metadatos del Nodo (por bunker_cliente_id, id o slug) para emitir
+ * los códigos QR de acceso móvil como Gestor y Tienda Pública.
+ */
+async function obtenerDatosQrAccesoNodo(idOrSlug) {
+    await asegurarEsquemaNodosBarriales();
+
+    const raw = String(idOrSlug || '').trim();
+    if (!raw) {
+        throw new Error('Identificador de Nodo requerido.');
+    }
+
+    const numVal = /^\d+$/.test(raw) ? Number(raw) : -1;
+    const res = await db.query(
+        `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
+                gestor_nombre, gestor_telefono, barrio_zona, direccion_retiro,
+                color_primario, bunker_cliente_id, codigo_bunker_cliente, activo
+         FROM public.nodos_maestro
+         WHERE ($1::int > 0 AND (bunker_cliente_id = $1::int OR id = $1::int))
+            OR LOWER(slug) = LOWER($2)
+            OR UPPER(codigo_nodo) = UPPER($2)
+            OR UPPER(COALESCE(codigo_bunker_cliente, '')) = UPPER($2)
+         ORDER BY CASE WHEN bunker_cliente_id = $1::int THEN 0 ELSE 1 END, id ASC
+         LIMIT 1`,
+        [numVal, raw]
+    );
+
+    if (res.rows.length === 0) {
+        throw new Error('Nodo Barrial no encontrado.');
+    }
+
+    const n = res.rows[0];
+    return {
+        id: Number(n.id),
+        bunker_cliente_id: n.bunker_cliente_id ? Number(n.bunker_cliente_id) : null,
+        codigo_nodo: n.codigo_nodo,
+        codigo_bunker_cliente: n.codigo_bunker_cliente || null,
+        slug: n.slug,
+        nombre_marca: n.nombre_marca,
+        subtitulo_marca: n.subtitulo_marca || '',
+        gestor_nombre: n.gestor_nombre || '',
+        gestor_telefono: n.gestor_telefono || '',
+        barrio_zona: n.barrio_zona || '',
+        direccion_retiro: n.direccion_retiro || '',
+        color_primario: n.color_primario || '#16a34a'
+    };
+}
+
+/**
+ * Resuelve metadatos y garantiza un `portal_token` criptográfico único por Vecino
+ * para generar su QR personal "Ver como Cliente" desde Clientes Búnker.
+ */
+async function obtenerDatosQrAccesoVecino(vecinoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const vid = Number(vecinoId || 0);
+    if (!Number.isFinite(vid) || vid <= 0) {
+        throw new Error('Identificador de vecino inválido.');
+    }
+
+    const res = await db.query(
+        `SELECT nv.id, nv.nodo_id, nv.codigo_vecino, nv.nombre_completo,
+                nv.telefono_whatsapp, nv.saldo_actual, nv.portal_token,
+                nm.codigo_nodo, nm.slug AS nodo_slug, nm.nombre_marca,
+                nm.gestor_nombre, nm.barrio_zona, nm.color_primario,
+                nm.bunker_cliente_id, nm.codigo_bunker_cliente
+         FROM public.nodos_vecinos nv
+         JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
+         WHERE nv.id = $1::int
+         LIMIT 1`,
+        [vid]
+    );
+
+    if (res.rows.length === 0) {
+        throw new Error('Vecino no encontrado en el padrón del Nodo.');
+    }
+
+    const v = res.rows[0];
+    let portalTok = String(v.portal_token || '').trim();
+    if (portalTok.length < 16) {
+        portalTok = generarPortalTokenVecinoNodo();
+        await db.query(
+            'UPDATE public.nodos_vecinos SET portal_token = $1 WHERE id = $2::int',
+            [portalTok, vid]
+        );
+    }
+
+    return {
+        vecino_id: vid,
+        codigo_vecino: v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, vid),
+        nombre_completo: v.nombre_completo,
+        telefono_whatsapp: v.telefono_whatsapp || '',
+        saldo_actual: Number(Number(v.saldo_actual || 0).toFixed(2)),
+        portal_token: portalTok,
+        nodo: {
+            id: Number(v.nodo_id),
+            bunker_cliente_id: v.bunker_cliente_id ? Number(v.bunker_cliente_id) : null,
+            codigo_nodo: v.codigo_nodo,
+            codigo_bunker_cliente: v.codigo_bunker_cliente || null,
+            slug: v.nodo_slug,
+            nombre_marca: v.nombre_marca,
+            gestor_nombre: v.gestor_nombre || '',
+            barrio_zona: v.barrio_zona || '',
+            color_primario: v.color_primario || '#16a34a'
+        }
+    };
+}
+
+/**
+ * Portal personal 100% Marca Blanca del Vecino ("Mi Cuenta / Mis Pedidos"):
+ *  - Identificado exclusivamente por `portal_token` criptográfico único del comprador.
+ *  - Expone 0% de información interna de LAMDA, Búnker, SKUs internos, costos base o márgenes.
+ */
+async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
+    await asegurarEsquemaNodosBarriales();
+
+    const cleanSlug = String(slug || '').trim();
+    const cleanToken = String(portalToken || '').trim();
+    if (!cleanToken || cleanToken.length < 16) {
+        throw new Error('Enlace personal de cuenta inválido.');
+    }
+
+    const vecRes = await db.query(
+        `SELECT nv.id, nv.nodo_id, nv.codigo_vecino, nv.nombre_completo,
+                nv.telefono_whatsapp, nv.direccion_calle, nv.entrecalles_referencia,
+                nv.saldo_actual,
+                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca,
+                nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
+                nm.color_primario, nm.logo_original_base64,
+                nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.permitir_envio_barrial, nm.cargo_envio_barrial
+         FROM public.nodos_vecinos nv
+         JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
+         WHERE nv.portal_token = $1
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND COALESCE(nv.activo, true) = true
+         LIMIT 1`,
+        [cleanToken, cleanSlug]
+    );
+
+    if (vecRes.rows.length === 0) {
+        throw new Error('No encontramos una cuenta vecinal asociada a este enlace.');
+    }
+
+    const row = vecRes.rows[0];
+    const vid = Number(row.id);
+    const nodoInfo = {
+        slug: row.nm_slug,
+        nombre_marca: row.nombre_marca,
+        subtitulo_marca: row.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+        gestor_nombre: row.gestor_nombre || '',
+        gestor_telefono: row.gestor_telefono || '',
+        barrio_zona: row.barrio_zona || '',
+        direccion_retiro: row.direccion_retiro || '',
+        color_primario: row.color_primario || '#a2553b',
+        logo_original_base64: row.logo_original_base64 || null,
+        alias_bancario_display: row.alias_bancario_display || 'pago.canasto',
+        cbu_display: row.cbu_display || '',
+        titular_display: row.titular_display || '',
+        permitir_envio_barrial: Boolean(row.permitir_envio_barrial),
+        cargo_envio_barrial: Number(row.cargo_envio_barrial || 0)
+    };
+
+    const [pedsRes, itemsRes, evsRes, pagosMovsRes] = await Promise.all([
+        db.query(
+            `SELECT id, codigo_pedido, tracking_token, vecino_nombre,
+                    modalidad_entrega, direccion_entrega, entrecalles_referencia,
+                    fecha_entrega_label, ventana_horaria_label,
+                    medio_pago, estado_pago, estado_operativo, secuencia_operativa_lamda,
+                    hito_tracking_actual, impactado_cta_cte_pago, comprobante_referencia,
+                    subtotal_productos_vecino, cargo_envio_barrial, monto_ajuste_credito,
+                    motivo_anulacion_ajuste, total_vecino, observaciones_vecino,
+                    created_at, fecha_en_preparacion, fecha_armado_bolsa,
+                    fecha_entrega_gestor, fecha_en_camino_vecino, fecha_entregado_vecino
+             FROM public.nodos_pedidos_vecinos
+             WHERE vecino_id = $1::int
+             ORDER BY id DESC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT npi.pedido_id, npi.nombre_publico, npi.presentacion_etiqueta,
+                    npi.cantidad, npi.precio_unitario_vecino, npi.subtotal_vecino
+             FROM public.nodos_pedidos_items npi
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             WHERE npv.vecino_id = $1::int
+             ORDER BY npi.id ASC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT ev.pedido_id, ev.hito_numero, ev.estado_operativo, ev.created_at
+             FROM public.nodos_pedidos_eventos_tracking ev
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = ev.pedido_id
+             WHERE npv.vecino_id = $1::int
+             ORDER BY ev.hito_numero ASC, ev.id ASC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT pedido_vecino_id, medio_pago, monto, referencia_externa, created_at
+             FROM public.nodos_vecinos_movimientos_cc
+             WHERE vecino_id = $1::int
+               AND naturaleza = 'CREDITO'
+               AND tipo_movimiento IN ('CREDITO_TRANSFERENCIA_LAMDA', 'CREDITO_EFECTIVO_GESTOR')
+             ORDER BY id DESC`,
+            [vid]
+        )
+    ]);
+
+    const itemsPorPedido = new Map();
+    for (const it of itemsRes.rows) {
+        const pid = Number(it.pedido_id);
+        if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
+        itemsPorPedido.get(pid).push({
+            nombre_publico: it.nombre_publico,
+            presentacion_etiqueta: it.presentacion_etiqueta || '',
+            cantidad: Number(it.cantidad || 1),
+            precio_unitario_vecino: Number(it.precio_unitario_vecino || 0),
+            subtotal_vecino: Number(it.subtotal_vecino || 0)
+        });
+    }
+
+    const eventosPorPedido = new Map();
+    for (const ev of evsRes.rows) {
+        const pid = Number(ev.pedido_id);
+        if (!eventosPorPedido.has(pid)) eventosPorPedido.set(pid, []);
+        eventosPorPedido.get(pid).push(ev);
+    }
+
+    const pagoMovPorPedido = new Map();
+    for (const pm of pagosMovsRes.rows) {
+        const pid = Number(pm.pedido_vecino_id || 0);
+        if (pid > 0 && !pagoMovPorPedido.has(pid)) {
+            pagoMovPorPedido.set(pid, pm);
+        }
+    }
+
+    let totalPendienteTransferencia = 0;
+    let totalPendienteEfectivo = 0;
+    let totalHistoricoComprado = 0;
+    let totalHistoricoAbonado = 0;
+    let cantidadPedidosActivos = 0;
+    let cantidadPedidosEnCurso = 0;
+    let cantidadPagosPendientes = 0;
+
+    const historialPedidos = pedsRes.rows.map(p => {
+        const pid = Number(p.id);
+        const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+        const pagoConfirmado = !esAnulado && (
+            Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
+        );
+        const totalPed = Number(p.total_vecino || 0);
+        const medioPagoNorm = String(p.medio_pago || 'TRANSFERENCIA').toUpperCase();
+        const seguimiento = construirTimelineMarcaBlancaPedido(p, nodoInfo, eventosPorPedido.get(pid) || []);
+        const items = itemsPorPedido.get(pid) || [];
+        const totalUnidades = items.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
+
+        if (!esAnulado) {
+            cantidadPedidosActivos += 1;
+            totalHistoricoComprado += totalPed;
+            if (Number(seguimiento.hito_actual || 1) < 6) {
+                cantidadPedidosEnCurso += 1;
+            }
+            if (pagoConfirmado) {
+                totalHistoricoAbonado += totalPed;
+            } else if (totalPed > 0.01) {
+                cantidadPagosPendientes += 1;
+                if (medioPagoNorm === 'EFECTIVO') {
+                    totalPendienteEfectivo += totalPed;
+                } else {
+                    totalPendienteTransferencia += totalPed;
+                }
+            }
+        }
+
+        const movPago = pagoMovPorPedido.get(pid) || null;
+        const comprobanteDigital = pagoConfirmado ? {
+            disponible: true,
+            numero_recibo: _sanitizarNumeroReciboMarcaBlanca(
+                movPago?.referencia_externa || p.comprobante_referencia,
+                p.codigo_pedido,
+                medioPagoNorm
+            ),
+            fecha_pago: movPago?.created_at || p.fecha_entregado_vecino || p.created_at,
+            medio_pago_label: medioPagoNorm === 'EFECTIVO' ? 'Efectivo al recibir / retirar' : 'Transferencia bancaria',
+            monto_abonado: Number(totalPed.toFixed(2)),
+            emitido_por: nodoInfo.nombre_marca,
+            concepto: `Pedido vecinal #${p.codigo_pedido} (${totalUnidades} ${totalUnidades === 1 ? 'unidad' : 'unidades'})`
+        } : null;
+
+        return {
+            codigo_pedido: p.codigo_pedido,
+            tracking_token: p.tracking_token,
+            created_at: p.created_at,
+            fecha_entrega_label: p.fecha_entrega_label || '',
+            ventana_horaria_label: p.ventana_horaria_label || '',
+            modalidad_entrega: p.modalidad_entrega,
+            direccion_entrega: p.direccion_entrega || '',
+            entrecalles_referencia: p.entrecalles_referencia || '',
+            medio_pago: medioPagoNorm,
+            pago_confirmado: pagoConfirmado,
+            anulado: esAnulado,
+            subtotal_productos_vecino: Number(p.subtotal_productos_vecino || 0),
+            cargo_envio_barrial: Number(p.cargo_envio_barrial || 0),
+            monto_ajuste_credito: Number(p.monto_ajuste_credito || 0),
+            total_vecino: Number(totalPed.toFixed(2)),
+            total_unidades: totalUnidades,
+            observaciones_vecino: p.observaciones_vecino || '',
+            items,
+            seguimiento,
+            comprobante_digital: comprobanteDigital
+        };
+    });
+
+    const saldoReal = Number(Number(row.saldo_actual || 0).toFixed(2));
+    const saldoPendiente = saldoReal > 0.01 ? saldoReal : 0;
+    const saldoAFavor = saldoReal < -0.01 ? Number(Math.abs(saldoReal).toFixed(2)) : 0;
+
+    const pedidoEnCurso = historialPedidos.find(p => !p.anulado && Number(p.seguimiento?.hito_actual || 1) < 6) || null;
+    const pedidoDestacado = pedidoEnCurso || historialPedidos.find(p => !p.anulado) || historialPedidos[0] || null;
+
+    return {
+        nodo: nodoInfo,
+        vecino: {
+            codigo_cliente: row.codigo_vecino || `VEC-${vid}`,
+            nombre_completo: row.nombre_completo,
+            telefono_whatsapp: row.telefono_whatsapp || '',
+            direccion_calle: row.direccion_calle || '',
+            entrecalles_referencia: row.entrecalles_referencia || ''
+        },
+        resumen_cuenta: {
+            saldo_pendiente: saldoPendiente,
+            saldo_a_favor: saldoAFavor,
+            al_dia: saldoPendiente <= 0.01,
+            total_pendiente_transferencia: Number(totalPendienteTransferencia.toFixed(2)),
+            total_pendiente_efectivo: Number(totalPendienteEfectivo.toFixed(2)),
+            total_historico_comprado: Number(totalHistoricoComprado.toFixed(2)),
+            total_historico_abonado: Number(totalHistoricoAbonado.toFixed(2)),
+            cantidad_pedidos_activos: cantidadPedidosActivos,
+            cantidad_pedidos_en_curso: cantidadPedidosEnCurso,
+            cantidad_pagos_pendientes: cantidadPagosPendientes
+        },
+        pedido_en_curso: pedidoEnCurso,
+        pedido_destacado: pedidoDestacado,
+        historial_pedidos: historialPedidos
+    };
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
     sincronizarHerenciaFiscalDesdeMadrePorId,
@@ -10648,6 +11027,9 @@ module.exports = {
     buscarSeguimientoPublicoPorTelefonoYPedido,
     confirmarRecepcionLotePorGestor,
     actualizarEstadoEntregaVecinoPorGestor,
+    obtenerDatosQrAccesoNodo,
+    obtenerDatosQrAccesoVecino,
+    obtenerPortalCuentaVecinoMarcaBlanca,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,

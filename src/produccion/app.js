@@ -53,11 +53,11 @@ app.use((req, res, next) => {
 
     const p = String(req.path || '');
     const esVistaPermitida =
-        /^\/(gestor|tienda)(\/[^/]+)?\/?$/i.test(p) ||
+        /^\/(gestor|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
         /^\/favicon\.ico$/i.test(p);
 
     const esApiNodoPermitida =
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|buscar-seguimiento)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -96,8 +96,8 @@ app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
-// 🏘️ Rutas amigables Etapas 2, 3 y 4: Tienda Vecino, Panel Gestor, Mesa de Armado y Liquidación Cta. Cte.
-app.get(['/tienda', '/tienda/:nodoSlug'], (req, res) => {
+// 🏘️ Rutas amigables Etapas 2, 3 y 4: Tienda Vecino, Mi Cuenta Vecino, Panel Gestor, Mesa de Armado y Liquidación Cta. Cte.
+app.get(['/tienda', '/tienda/:nodoSlug', '/tienda/:nodoSlug/mi-cuenta/:portalToken'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-tienda-vecino.html'));
 });
 app.get(['/gestor', '/gestor/:nodoSlug'], (req, res) => {

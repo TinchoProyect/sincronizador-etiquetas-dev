@@ -975,3 +975,46 @@ exports.aplicarNotaCreditoPedidoVecinoNodo = async (req, res) => {
     }
 };
 
+/**
+ * Obtener QR y enlaces móviles del Gestor y Tienda Pública de un Nodo Barrial (:3005 -> :3002 túnel Cloudflare)
+ * GET /api/logistica/bunker/clientes/:id/qr-nodo
+ */
+exports.obtenerQrAccesoNodo = async (req, res) => {
+    try {
+        const idEnc = encodeURIComponent(req.params.id);
+        const upstream = await fetch(`http://127.0.0.1:3002/api/produccion/nodos/accesos-qr/nodo/${idEnc}`, {
+            signal: AbortSignal.timeout(12000)
+        });
+        const data = await upstream.json();
+        if (!upstream.ok || !data.ok) {
+            throw new Error(data.error || 'No se pudo generar el acceso QR del Nodo.');
+        }
+        res.json({ success: true, ...data });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en obtenerQrAccesoNodo (${req.params.id}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+/**
+ * Obtener QR personal y enlace móvil Marca Blanca "Ver como Cliente" de un Vecino comprador (:3005 -> :3002 túnel Cloudflare)
+ * GET /api/logistica/bunker/clientes/nodos-vecinos/:vecinoId/qr-acceso
+ */
+exports.obtenerQrAccesoVecinoNodo = async (req, res) => {
+    try {
+        const vecEnc = encodeURIComponent(req.params.vecinoId);
+        const upstream = await fetch(`http://127.0.0.1:3002/api/produccion/nodos/accesos-qr/vecino/${vecEnc}`, {
+            signal: AbortSignal.timeout(12000)
+        });
+        const data = await upstream.json();
+        if (!upstream.ok || !data.ok) {
+            throw new Error(data.error || 'No se pudo generar el acceso QR del vecino.');
+        }
+        res.json({ success: true, ...data });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en obtenerQrAccesoVecinoNodo (${req.params.vecinoId}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+

@@ -2161,6 +2161,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span>${estaExpandidoNodo ? '▼' : '▶'}</span>
                                 <span>🌳 Clientes (${cantVecinos})</span>
                             </button>
+                            <button type="button" onclick="window.abrirModalQrAccesoNodo(${cliente.id})"
+                                style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; border:1px solid #0284c7; background:#e0f2fe; color:#0369a1; font-size:10.5px; font-weight:800; cursor:pointer; white-space:nowrap;"
+                                title="Código QR y acceso directo como Gestor del Nodo y Tienda Pública">
+                                📱 QR Gestor
+                            </button>
                             ${vecinosMatch > 0 && ultimaBusquedaClientes ? `<span class="badge" style="background:#fef9c3; color:#854d0e; border:1px solid #fde047; font-size:10px; font-weight:800;">🔍 ${vecinosMatch} vecino${vecinosMatch === 1 ? '' : 's'}</span>` : ''}
                         </div>
                         <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center; font-size:10.5px; color:#475569;">
@@ -2205,8 +2210,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
 
                 htmlAccionesFinal = `
-                    <div style="display:inline-flex; gap:4px; justify-content:center; flex-wrap:wrap; max-width:150px;">
+                    <div style="display:inline-flex; gap:4px; justify-content:center; flex-wrap:wrap; max-width:170px;">
                         <button type="button" class="btn-action" onclick="window.toggleArbolNodoBunker(${cliente.id})" style="background:#dcfce7; border:1px solid #86efac; color:#166534;" title="Desplegar / contraer Clientes Vecinos del Nodo">🌳</button>
+                        <button type="button" class="btn-action" onclick="window.abrirModalQrAccesoNodo(${cliente.id})" style="background:#eff6ff; border:1px solid #60a5fa; color:#1d4ed8;" title="QR Móvil y Acceso Directo como Gestor del Nodo (${escHtmlNodo(ni.nombre_marca || cliente.cliente_nombre)})">📱</button>
                         <button type="button" class="btn-action" onclick="window.open('/liquidacion-nodos', '_blank')" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1;" title="Abrir Tablero de Conciliación y Liquidación de Lotes del Nodo">⚖️</button>
                         <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver Cuenta Corriente Operativa del Nodo (${cliente.codigo_bunker_cliente})">💳</button>
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
@@ -5039,11 +5045,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td style="text-align:right; white-space:nowrap; width:112px;">
                                 ${badgeSaldoVec}
                             </td>
-                            <td style="text-align:center; width:168px;">
+                            <td style="text-align:center; width:246px;">
                                 <div style="display:inline-flex; gap:5px; align-items:center; flex-wrap:wrap; justify-content:center;">
                                     <button type="button" onclick="window.abrirModalSubcuentaVecinoNodo(${v.id}, ${numId})"
                                         style="padding:4px 8px; border-radius:6px; border:1px solid #cbd5e1; background:#ffffff; color:#1e293b; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">
                                         📄 Subcuenta
+                                    </button>
+                                    <button type="button" onclick="window.abrirModalQrAccesoVecinoNodo(${v.id})"
+                                        style="padding:4px 8px; border-radius:6px; border:1px solid #a7f3d0; background:#ecfdf5; color:#065f46; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap;"
+                                        title="QR personal y vista previa Marca Blanca de ${escHtmlNodo(v.nombre_completo)}">
+                                        📱 QR Cliente
                                     </button>
                                     ${pendPrimero ? `
                                         <button type="button"
@@ -5071,6 +5082,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex-shrink:0;">
+                        <button type="button" onclick="window.abrirModalQrAccesoNodo(${numId})"
+                            style="padding:5px 11px; border-radius:6px; border:1px solid #16a34a; background:#16a34a; color:#ffffff; font-size:11.5px; font-weight:800; cursor:pointer; white-space:nowrap;"
+                            title="Ver Código QR del Panel Móvil del Gestor y Tienda Pública">
+                            📱 QR Gestor (Ver como Nodo)
+                        </button>
                         <button type="button" onclick="window.recargarArbolNodoBunker(${numId})"
                             style="padding:5px 10px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap;">
                             🔄 Actualizar Árbol
@@ -5155,6 +5171,269 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // =========================================================================
+    // MODAL DE ACCESO DIRECTO Y CÓDIGO QR (GESTOR DEL NODO / CLIENTE VECINO)
+    // =========================================================================
+    const modalQrAccesoNodo = document.getElementById('modal-qr-acceso-nodo');
+    if (modalQrAccesoNodo) {
+        modalQrAccesoNodo.addEventListener('click', () => window.cerrarModalQrAccesoNodo());
+    }
+
+    let _ultimoPayloadQrNodo = null;
+
+    window.cerrarModalQrAccesoNodo = function() {
+        if (modalQrAccesoNodo) {
+            modalQrAccesoNodo.style.display = 'none';
+        }
+    };
+
+    window.copiarLinkQrModal = async function(urlTexto, btnEl) {
+        if (!urlTexto) return;
+        const txtOriginal = btnEl ? btnEl.innerHTML : '';
+        try {
+            await navigator.clipboard.writeText(urlTexto);
+            if (btnEl) {
+                btnEl.innerHTML = '✅ ¡Link copiado!';
+                setTimeout(() => {
+                    if (btnEl) btnEl.innerHTML = txtOriginal;
+                }, 2000);
+            }
+        } catch (_) {
+            window.prompt('Copiá el enlace móvil:', urlTexto);
+        }
+    };
+
+    function _resolverUrlAperturaPc(urlPc, urlMovil) {
+        const esLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        return (esLocalhost && urlPc) ? urlPc : urlMovil;
+    }
+
+    function _renderizarContenidoModalQrNodo(data, modoActivo = 'GESTOR') {
+        const headerEl = document.getElementById('modal-qr-acceso-header');
+        const bodyEl = document.getElementById('modal-qr-acceso-body');
+        if (!bodyEl) return;
+
+        const nodo = data.nodo || {};
+        const esGestor = modoActivo !== 'TIENDA';
+        const qrSrc = esGestor ? data.qr_gestor_data_url : data.qr_tienda_data_url;
+        const urlMovilActiva = esGestor ? data.url_movil_gestor : data.url_movil_tienda;
+        const urlPcActiva = _resolverUrlAperturaPc(
+            esGestor ? data.url_pc_gestor : data.url_pc_tienda,
+            urlMovilActiva
+        );
+        const urlPcTienda = _resolverUrlAperturaPc(data.url_pc_tienda, data.url_movil_tienda);
+
+        if (headerEl) {
+            headerEl.style.background = esGestor
+                ? 'linear-gradient(135deg, #0f172a 0%, #14532d 100%)'
+                : 'linear-gradient(135deg, #7c2d12 0%, #9a3412 100%)';
+            headerEl.innerHTML = `
+                <div>
+                    <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.88; font-weight:800;">
+                        🏘️ ${escHtmlNodo(nodo.nombre_marca)} (${escHtmlNodo(nodo.codigo_bunker_cliente || nodo.codigo_nodo)})
+                    </div>
+                    <h3 style="margin:2px 0 0 0; font-size:1.1rem; font-weight:800;">
+                        ${esGestor ? '📱 Acceso Directo como Gestor del Nodo' : '🛒 Acceso Directo a Tienda Pública del Nodo'}
+                    </h3>
+                </div>
+                <button type="button" onclick="window.cerrarModalQrAccesoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+            `;
+        }
+
+        bodyEl.innerHTML = `
+            <!-- Selector rápido entre Panel del Gestor y Tienda Pública -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; background:#e2e8f0; padding:4px; border-radius:10px; margin-bottom:14px;">
+                <button type="button" onclick="window.cambiarPestanaModalQrNodo('GESTOR')"
+                    style="padding:8px 10px; border-radius:8px; border:none; background:${esGestor ? '#ffffff' : 'transparent'}; color:${esGestor ? '#14532d' : '#475569'}; font-size:12px; font-weight:800; cursor:pointer; box-shadow:${esGestor ? '0 1px 4px rgba(15,23,42,0.12)' : 'none'};">
+                    🎛️ Panel Móvil del Gestor
+                </button>
+                <button type="button" onclick="window.cambiarPestanaModalQrNodo('TIENDA')"
+                    style="padding:8px 10px; border-radius:8px; border:none; background:${!esGestor ? '#ffffff' : 'transparent'}; color:${!esGestor ? '#9a3412' : '#475569'}; font-size:12px; font-weight:800; cursor:pointer; box-shadow:${!esGestor ? '0 1px 4px rgba(15,23,42,0.12)' : 'none'};">
+                    🛒 Tienda Pública Vecinal
+                </button>
+            </div>
+
+            <!-- Estado del túnel público celular -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:${data.es_tunel_https ? '#ecfdf5' : '#fef3c7'}; border:1px solid ${data.es_tunel_https ? '#86efac' : '#fcd34d'}; border-radius:9px; padding:7px 11px; margin-bottom:12px; font-size:11.5px;">
+                <span style="font-weight:800; color:${data.es_tunel_https ? '#166534' : '#92400e'};">
+                    ${data.es_tunel_https ? '🟢 Túnel HTTPS activo para celulares (4G/Wi-Fi)' : '📡 Red Wi-Fi local'}
+                </span>
+                <span style="font-family:monospace; font-size:11px; color:#334155; font-weight:700;">
+                    👤 ${escHtmlNodo(nodo.gestor_nombre || '')}
+                </span>
+            </div>
+
+            <!-- Código QR Grande y Nítido -->
+            <div style="background:#ffffff; border:2px solid #cbd5e1; border-radius:16px; padding:16px; text-align:center; box-shadow:0 6px 18px rgba(15,23,42,0.05);">
+                <img src="${qrSrc}" alt="QR Acceso" style="width:270px; height:270px; max-width:100%; display:block; margin:0 auto; image-rendering:crisp-edges;" />
+                <div style="margin-top:10px; font-size:12.5px; font-weight:800; color:#0f172a;">
+                    ${esGestor
+                        ? `Escaneá con el celular para operar como <strong>${escHtmlNodo(nodo.gestor_nombre)}</strong> en <strong>${escHtmlNodo(nodo.nombre_marca)}</strong>`
+                        : `Escaneá con el celular para abrir el catálogo público de <strong>${escHtmlNodo(nodo.nombre_marca)}</strong>`
+                    }
+                </div>
+                <div style="margin-top:5px; font-family:monospace; font-size:10.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:5px 8px; word-break:break-all;">
+                    ${escHtmlNodo(urlMovilActiva)}
+                </div>
+            </div>
+
+            <!-- Botones Principales de Acción -->
+            <div style="display:grid; grid-template-columns:1.25fr 0.85fr; gap:8px; margin-top:14px;">
+                <button type="button" onclick="window.open('${escHtmlNodo(urlPcActiva)}', '_blank')"
+                    style="padding:11px 14px; border-radius:10px; border:none; background:${esGestor ? '#16a34a' : '#c2410c'}; color:#ffffff; font-size:12.5px; font-weight:800; cursor:pointer;">
+                    ${esGestor ? '🖥️ Abrir Panel del Gestor en esta PC' : '🖥️ Abrir Tienda Pública en esta PC'}
+                </button>
+                <button type="button" onclick="window.copiarLinkQrModal('${escHtmlNodo(urlMovilActiva)}', this)"
+                    style="padding:11px 14px; border-radius:10px; border:1px solid #0284c7; background:#e0f2fe; color:#0369a1; font-size:12.5px; font-weight:800; cursor:pointer;">
+                    📋 Copiar link
+                </button>
+            </div>
+
+            ${esGestor ? `
+                <!-- Acceso secundario directo a la Tienda Pública sin cambiar de pestaña -->
+                <div style="margin-top:12px; padding:10px 12px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div style="font-size:11.5px; color:#334155;">
+                        <strong>🛒 Tienda Pública del Nodo:</strong> <span style="font-family:monospace; color:#64748b;">/tienda/${escHtmlNodo(nodo.slug)}</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" onclick="window.cambiarPestanaModalQrNodo('TIENDA')"
+                            style="padding:5px 9px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:11px; font-weight:700; cursor:pointer;">
+                            📱 Ver QR Tienda
+                        </button>
+                        <button type="button" onclick="window.open('${escHtmlNodo(urlPcTienda)}', '_blank')"
+                            style="padding:5px 9px; border-radius:6px; border:1px solid #fdba74; background:#fff7ed; color:#9a3412; font-size:11px; font-weight:800; cursor:pointer;">
+                            ↗ Abrir Tienda
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+    }
+
+    window.cambiarPestanaModalQrNodo = function(modo) {
+        if (!_ultimoPayloadQrNodo) return;
+        _renderizarContenidoModalQrNodo(_ultimoPayloadQrNodo, modo);
+    };
+
+    window.abrirModalQrAccesoNodo = async function(bunkerClienteId, modoInicial = 'GESTOR') {
+        const headerEl = document.getElementById('modal-qr-acceso-header');
+        const bodyEl = document.getElementById('modal-qr-acceso-body');
+        if (!modalQrAccesoNodo || !bodyEl) return;
+
+        modalQrAccesoNodo.style.display = 'flex';
+        if (headerEl) {
+            headerEl.style.background = 'linear-gradient(135deg, #0f172a 0%, #14532d 100%)';
+            headerEl.innerHTML = `
+                <div><h3 style="margin:0; font-size:1.08rem; font-weight:800;">📱 Generando Código QR del Nodo...</h3></div>
+                <button type="button" onclick="window.cerrarModalQrAccesoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+            `;
+        }
+        bodyEl.innerHTML = `<div style="padding:36px 18px; text-align:center; color:#475569; font-weight:700;">⏳ Verificando túnel móvil HTTPS y generando códigos QR...</div>`;
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/${encodeURIComponent(bunkerClienteId)}/qr-nodo`);
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                throw new Error(data.error || 'No se pudo generar el QR del Nodo.');
+            }
+            _ultimoPayloadQrNodo = data;
+            _renderizarContenidoModalQrNodo(data, modoInicial);
+        } catch (err) {
+            bodyEl.innerHTML = `<div style="padding:22px; text-align:center; color:#dc2626; font-weight:700;">⚠️ ${escHtmlNodo(err.message)}</div>`;
+        }
+    };
+
+    window.abrirModalQrAccesoVecinoNodo = async function(vecinoId) {
+        const headerEl = document.getElementById('modal-qr-acceso-header');
+        const bodyEl = document.getElementById('modal-qr-acceso-body');
+        if (!modalQrAccesoNodo || !bodyEl) return;
+
+        modalQrAccesoNodo.style.display = 'flex';
+        if (headerEl) {
+            headerEl.style.background = 'linear-gradient(135deg, #065f46 0%, #0f766e 100%)';
+            headerEl.innerHTML = `
+                <div><h3 style="margin:0; font-size:1.08rem; font-weight:800;">📱 Generando QR Personal del Cliente...</h3></div>
+                <button type="button" onclick="window.cerrarModalQrAccesoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+            `;
+        }
+        bodyEl.innerHTML = `<div style="padding:36px 18px; text-align:center; color:#475569; font-weight:700;">⏳ Generando enlace criptográfico Marca Blanca para el comprador...</div>`;
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/nodos-vecinos/${encodeURIComponent(vecinoId)}/qr-acceso`);
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                throw new Error(data.error || 'No se pudo generar el QR personal del vecino.');
+            }
+
+            const vec = data.vecino || {};
+            const nodo = data.nodo || {};
+            const saldoV = Number(vec.saldo_actual || 0);
+            const urlMovil = data.url_movil_vecino;
+            const urlPc = _resolverUrlAperturaPc(data.url_pc_vecino, urlMovil);
+
+            if (headerEl) {
+                headerEl.style.background = 'linear-gradient(135deg, #065f46 0%, #0f766e 100%)';
+                headerEl.innerHTML = `
+                    <div>
+                        <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.9; font-weight:800;">
+                            🏘️ ${escHtmlNodo(nodo.nombre_marca)} · Vista Marca Blanca del Comprador
+                        </div>
+                        <h3 style="margin:2px 0 0 0; font-size:1.1rem; font-weight:800;">
+                            👤 ${escHtmlNodo(vec.nombre_completo)} (${escHtmlNodo(vec.codigo_vecino)})
+                        </h3>
+                    </div>
+                    <button type="button" onclick="window.cerrarModalQrAccesoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+                `;
+            }
+
+            const badgeEstadoCuenta = saldoV > 0.01
+                ? `<span style="padding:3px 9px; border-radius:999px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; font-size:11px; font-weight:800;">💳 Saldo pendiente: $ ${fmtMonedaNodo(saldoV)}</span>`
+                : `<span style="padding:3px 9px; border-radius:999px; background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:11px; font-weight:800;">✅ Cuenta al día ($ 0,00)</span>`;
+
+            bodyEl.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:9px 12px; margin-bottom:12px;">
+                    <div style="font-size:12px; color:#334155;">
+                        📱 <strong>${escHtmlNodo(vec.telefono_whatsapp || 'Sin teléfono')}</strong>
+                    </div>
+                    ${badgeEstadoCuenta}
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:${data.es_tunel_https ? '#ecfdf5' : '#fef3c7'}; border:1px solid ${data.es_tunel_https ? '#86efac' : '#fcd34d'}; border-radius:9px; padding:7px 11px; margin-bottom:12px; font-size:11.5px;">
+                    <span style="font-weight:800; color:${data.es_tunel_https ? '#166534' : '#92400e'};">
+                        ${data.es_tunel_https ? '🟢 Túnel HTTPS activo para escanear desde cualquier celular' : '📡 Red Wi-Fi local'}
+                    </span>
+                    <span style="font-size:11px; color:#047857; font-weight:800;">100% Marca Blanca</span>
+                </div>
+
+                <div style="background:#ffffff; border:2px solid #a7f3d0; border-radius:16px; padding:16px; text-align:center; box-shadow:0 6px 18px rgba(15,23,42,0.05);">
+                    <img src="${data.qr_vecino_data_url}" alt="QR Cliente" style="width:270px; height:270px; max-width:100%; display:block; margin:0 auto; image-rendering:crisp-edges;" />
+                    <div style="margin-top:10px; font-size:12.5px; font-weight:800; color:#0f172a;">
+                        Escaneá para entrar como <strong>${escHtmlNodo(vec.nombre_completo)}</strong> a <em>"Mi Cuenta / Mis Pedidos"</em> en <strong>${escHtmlNodo(nodo.nombre_marca)}</strong>
+                    </div>
+                    <div style="margin-top:4px; font-size:11px; color:#64748b;">
+                        Muestra saldo y alias de pago, seguimiento en vivo, recibos digitales e historial sin rastro de LAMDA.
+                    </div>
+                    <div style="margin-top:7px; font-family:monospace; font-size:10.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:5px 8px; word-break:break-all;">
+                        ${escHtmlNodo(urlMovil)}
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1.25fr 0.85fr; gap:8px; margin-top:14px;">
+                    <button type="button" onclick="window.open('${escHtmlNodo(urlPc)}', '_blank')"
+                        style="padding:11px 14px; border-radius:10px; border:none; background:#059669; color:#ffffff; font-size:12.5px; font-weight:800; cursor:pointer;">
+                        🖥️ Abrir vista previa en esta PC
+                    </button>
+                    <button type="button" onclick="window.copiarLinkQrModal('${escHtmlNodo(urlMovil)}', this)"
+                        style="padding:11px 14px; border-radius:10px; border:1px solid #0284c7; background:#e0f2fe; color:#0369a1; font-size:12.5px; font-weight:800; cursor:pointer;">
+                        📋 Copiar link
+                    </button>
+                </div>
+            `;
+        } catch (err) {
+            bodyEl.innerHTML = `<div style="padding:22px; text-align:center; color:#dc2626; font-weight:700;">⚠️ ${escHtmlNodo(err.message)}</div>`;
+        }
+    };
+
     window.abrirModalSubcuentaVecinoNodo = async function(vecinoId, bunkerClienteNodoId) {
         const headerEl = document.getElementById('modal-subcuenta-vecino-header');
         const bodyEl = document.getElementById('modal-subcuenta-vecino-body');
@@ -5185,7 +5464,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             👤 ${escHtmlNodo(v.nombre_completo)} &nbsp;·&nbsp; <span style="font-weight:600; font-size:0.92rem;">📱 ${escHtmlNodo(v.telefono_whatsapp)} (ID canónico: ${escHtmlNodo(v.telefono_normalizado)})</span>
                         </h3>
                     </div>
-                    <button type="button" onclick="window.cerrarModalSubcuentaVecinoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button type="button" onclick="window.abrirModalQrAccesoVecinoNodo(${Number(v.id)})"
+                            style="padding:6px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.45); background:rgba(255,255,255,0.16); color:#ffffff; font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;">
+                            📱 QR Cliente
+                        </button>
+                        <button type="button" onclick="window.cerrarModalSubcuentaVecinoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+                    </div>
                 `;
             }
 
