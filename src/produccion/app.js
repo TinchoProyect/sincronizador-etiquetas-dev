@@ -1350,7 +1350,7 @@ io.on('connection', (socket) => {
 // Puerto
 const PORT = process.env.PRODUCCION_PORT || 3002;
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, () => {
     console.log(`Servidor de producción corriendo en puerto ${PORT}`);
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA

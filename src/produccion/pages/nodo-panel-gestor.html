@@ -401,6 +401,7 @@
       nodo: null,
       proximaEntrega: null,
       ofertas: [],
+      catalogoBaseDisponible: [],
       propuestas: [],
       pedidos: [],
       movimientosCtaCte: [],
@@ -408,9 +409,10 @@
       propCategoriaSel: '',
       propFiltroTexto: '',
       propIngredienteIdSel: 0,
+      propIngredienteInicializadoId: 0,
       propKilosSel: 0.25,
       propNombreEditadoManual: false,
-      propMensajeExito: '',
+      propConfirmacionReciente: '',
       liquidacionTablero: null
     };
 
@@ -448,7 +450,7 @@
       return 'lo-de-mati';
     }
 
-    async function cargarPanelGestor() {
+    async function cargarPanelGestor(opciones = {}) {
       const [resp, respLiq] = await Promise.all([
         fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`),
         fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`)
@@ -477,6 +479,7 @@
       GSTATE.slug = data.nodo.slug;
       GSTATE.proximaEntrega = data.proxima_entrega;
       GSTATE.ofertas = data.todas_ofertas_gestor || [];
+      GSTATE.catalogoBaseDisponible = Array.isArray(data.catalogo_base_disponible) ? data.catalogo_base_disponible : [];
       GSTATE.propuestas = data.propuestas_nodo || [];
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
@@ -485,11 +488,16 @@
       if (GSTATE.ingredientesDisponibles.length > 0) {
         const cats = Array.from(new Set(GSTATE.ingredientesDisponibles.map(i => i.categoria_gestor)));
         if (!GSTATE.propCategoriaSel || !cats.includes(GSTATE.propCategoriaSel)) {
-          GSTATE.propCategoriaSel = cats.includes('Frutos Secos') ? 'Frutos Secos' : cats[0];
+          GSTATE.propCategoriaSel = cats.includes('Granolas') ? 'Granolas' : cats[0];
         }
         const itemsCat = GSTATE.ingredientesDisponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel);
         if (!itemsCat.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel)) && itemsCat[0]) {
           GSTATE.propIngredienteIdSel = Number(itemsCat[0].id);
+        }
+        const ingActual = GSTATE.ingredientesDisponibles.find(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel));
+        if (ingActual && (opciones.avanzarGramajeTrasEnvio || GSTATE.propIngredienteInicializadoId !== Number(ingActual.id))) {
+          GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingActual);
+          GSTATE.propIngredienteInicializadoId = Number(ingActual.id);
         }
       }
 
@@ -839,17 +847,43 @@
     // 1. MI OFERTA Y MÁRGENES
     // -------------------------------------------------------------------------
     function renderSeccionOfertas() {
+      const disponiblesCatHtml = (GSTATE.catalogoBaseDisponible || []).length > 0 ? `
+        <div class="card" style="margin-top:14px;">
+          <h3 style="margin:0 0 4px 0; font-size:0.96rem;">Catálogo Base Disponible (${GSTATE.catalogoBaseDisponible.length})</h3>
+          <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
+            Presentaciones ya cotizadas por LAMDA listas para sumar a tu oferta en un toque:
+          </p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${GSTATE.catalogoBaseDisponible.map(c => `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:11px; border:1px solid var(--border); background:#fffdfb;">
+                <div>
+                  <div style="font-weight:800; font-size:0.9rem;">${esc(c.nombre_publico)}</div>
+                  <div style="font-size:0.76rem; color:var(--muted);">
+                    ${esc(c.presentacion_etiqueta || `${Math.round(Number(c.kilos_unidad) * 1000)}g`)} · Costo Base <strong>${fmt(c.precio_base_nodo_final)}</strong>
+                  </div>
+                </div>
+                <button type="button" class="btn-soft" style="font-size:0.78rem; padding:6px 11px;"
+                  onclick="sumarCatalogoBaseAMiOferta(${c.catalogo_id})">
+                  + Sumar
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
       if (GSTATE.ofertas.length === 0) {
         return `
           <div class="card" style="text-align:center; padding:28px 20px;">
             <div style="font-size:1rem; font-weight:800; margin-bottom:6px;">Todavía no tenés productos cargados en tu oferta</div>
             <p style="font-size:0.86rem; color:var(--muted); max-width:440px; margin:0 auto 16px auto;">
-              Solicitá los productos y gramajes que quieras vender en tu barrio para que tengan su Precio Base y puedas definirles tu ganancia.
+              Sumá productos ya cotizados del Catálogo Base o solicitá gramajes nuevos desde <strong>Pedir Nueva Fracción</strong>.
             </p>
             <button type="button" class="btn-primary" onclick="abrirSeccionGestor('propuestas')">
               Ir a Pedir Nueva Fracción →
             </button>
           </div>
+          ${disponiblesCatHtml}
         `;
       }
 
@@ -901,7 +935,26 @@
             </div>
           `).join('')}
         </div>
+        ${disponiblesCatHtml}
       `;
+    }
+
+    async function sumarCatalogoBaseAMiOferta(catalogoId, abrirOfertasDespues = false) {
+      if (!GSTATE.nodo || !catalogoId) return;
+      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/sumar-catalogo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catalogo_id: Number(catalogoId) })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        alert('No se pudo sumar el producto: ' + (data.error || 'Error interno'));
+        return;
+      }
+      await cargarPanelGestor();
+      if (abrirOfertasDespues) {
+        abrirSeccionGestor('ofertas');
+      }
     }
 
     async function guardarCambioOferta(ofertaId, body) {
@@ -931,6 +984,14 @@
         .toLowerCase();
     }
 
+    function formatearPesoCortoGestor(kilos) {
+      const kg = Number(kilos || 0);
+      const gramos = Math.round(kg * 1000);
+      if (gramos >= 1000 && gramos % 1000 === 0) return `${gramos / 1000} kg`;
+      if (gramos >= 1000) return `${Number(kg.toFixed(2))} kg`;
+      return `${gramos}g`;
+    }
+
     function obtenerIngredientesFiltradosGestor(categoria, filtroTexto) {
       const listaCat = (GSTATE.ingredientesDisponibles || []).filter(
         i => String(i.categoria_gestor || '') === String(categoria || '')
@@ -949,9 +1010,8 @@
       ) || null;
     }
 
-    function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales) {
-      const kg = Number(kilosActuales || 0.25);
-      const opciones = ingObj && ingObj.es_pack_barritas
+    function obtenerOpcionesGramajeIngrediente(ingObj) {
+      const base = ingObj && ingObj.es_pack_barritas
         ? [
             { label: 'Pack x 3 (150g)', val: 0.15 },
             { label: 'Pack x 6 (300g)', val: 0.30 },
@@ -963,42 +1023,44 @@
             { label: '150g', val: 0.15 },
             { label: '200g', val: 0.20 },
             { label: '250g', val: 0.25 },
+            { label: '400g', val: 0.40 },
             { label: '500g', val: 0.50 },
             { label: '1 kg', val: 1.00 }
           ];
 
-      return opciones.map(op => {
-        const activo = Math.abs(kg - op.val) < 0.002;
-        return `
-          <button type="button" class="btn-soft"
-            onclick="fijarGramajePropuestaGestor(${op.val})"
-            style="${activo ? 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;' : ''}">
-            ${op.label}
-          </button>
-        `;
-      }).join('');
+      const presExistentes = Array.isArray(ingObj?.presentaciones_lamda) ? ingObj.presentaciones_lamda : [];
+      for (const p of presExistentes) {
+        const kv = Number(p.kilos_unidad || 0);
+        if (kv > 0 && !base.some(b => Math.abs(b.val - kv) < 0.003)) {
+          base.push({
+            label: p.etiqueta || formatearPesoCortoGestor(kv),
+            val: kv
+          });
+        }
+      }
+      base.sort((a, b) => a.val - b.val);
+      return base;
     }
 
-    function renderAvisoDuplicadoPropuestaHtml(ingId, kilos) {
-      const idNum = Number(ingId || 0);
+    function evaluarEstadoGramajeParaGestor(ingObj, kilos) {
+      const idNum = Number(ingObj?.id || 0);
       const kgNum = Number(kilos || 0);
-      if (!idNum || !kgNum) return '';
+      if (!idNum || !kgNum) {
+        return { tipo: 'NUEVA_DISPONIBLE' };
+      }
 
-      const yaEnOferta = (GSTATE.ofertas || []).find(
+      const enOfertaNodo = (GSTATE.ofertas || []).find(
         o => Number(o.ingrediente_origen_id) === idNum && Math.abs(Number(o.kilos_unidad) - kgNum) < 0.003
       );
-      if (yaEnOferta) {
-        return `
-          <div style="padding:10px 12px; border-radius:11px; background:var(--brand-soft); border:1px solid var(--brand-border); font-size:0.8rem; line-height:1.45;">
-            Ya tenés <strong>${esc(yaEnOferta.nombre_publico)} (${esc(yaEnOferta.presentacion_etiqueta || `${Math.round(kgNum * 1000)}g`)})</strong> cargada en tu Nodo con Costo Base <strong>${fmt(yaEnOferta.precio_base_nodo_final)}</strong>.
-            Podés elegir otro gramaje o ir directo a <strong>Mi Oferta y Márgenes</strong>.
-            <div style="margin-top:7px;">
-              <button type="button" class="btn-soft" style="font-size:0.76rem; padding:5px 10px;" onclick="abrirSeccionGestor('ofertas')">
-                Ir a Mi Oferta y Márgenes →
-              </button>
-            </div>
-          </div>
-        `;
+      if (enOfertaNodo) {
+        return { tipo: 'EN_OFERTA_NODO', oferta: enOfertaNodo };
+      }
+
+      const presLamda = (ingObj?.presentaciones_lamda || []).find(
+        p => Math.abs(Number(p.kilos_unidad) - kgNum) < 0.003
+      );
+      if (presLamda && presLamda.en_catalogo_nodos) {
+        return { tipo: 'EN_CATALOGO_NODOS', pres: presLamda };
       }
 
       const yaPendiente = (GSTATE.propuestas || []).find(
@@ -1006,15 +1068,202 @@
              Number(p.ingrediente_sugerido_id) === idNum &&
              Math.abs(Number(p.kilos_sugeridos) - kgNum) < 0.003
       );
+
+      if (presLamda && presLamda.ya_produce_lamda) {
+        return { tipo: 'YA_EXISTE_LAMDA', pres: presLamda, propuestaPendiente: yaPendiente || null };
+      }
+
       if (yaPendiente) {
+        return { tipo: 'YA_SOLICITADA', propuesta: yaPendiente };
+      }
+
+      return { tipo: 'NUEVA_DISPONIBLE' };
+    }
+
+    function elegirPrimerGramajeNuevoDisponible(ingObj) {
+      if (!ingObj) return 0.25;
+      const opciones = obtenerOpcionesGramajeIngrediente(ingObj);
+      const preferidos = ingObj.es_pack_barritas
+        ? [0.30, 0.15, 0.60, 1.00]
+        : [0.25, 0.15, 0.10, 0.40, 0.20, 0.50, 1.00];
+
+      for (const pref of preferidos) {
+        const op = opciones.find(o => Math.abs(o.val - pref) < 0.003);
+        if (op && evaluarEstadoGramajeParaGestor(ingObj, op.val).tipo === 'NUEVA_DISPONIBLE') {
+          return op.val;
+        }
+      }
+      const cualquieraNueva = opciones.find(o => evaluarEstadoGramajeParaGestor(ingObj, o.val).tipo === 'NUEVA_DISPONIBLE');
+      return cualquieraNueva ? cualquieraNueva.val : (opciones[0] ? opciones[0].val : 0.25);
+    }
+
+    function renderResumenExistentesLamdaHtml(ingObj) {
+      const pres = Array.isArray(ingObj?.presentaciones_lamda) ? ingObj.presentaciones_lamda : [];
+      if (pres.length === 0) {
+        return `
+          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
+            Este artículo aún no tiene bolsitas fraccionadas estándar; podés pedir el gramaje que necesites.
+          </div>
+        `;
+      }
+      const badges = pres.map(p => {
+        const enMiOferta = (GSTATE.ofertas || []).some(
+          o => Number(o.ingrediente_origen_id) === Number(ingObj.id) && Math.abs(Number(o.kilos_unidad) - Number(p.kilos_unidad)) < 0.003
+        );
+        const sub = enMiOferta
+          ? ' (en tu oferta)'
+          : p.en_catalogo_nodos
+            ? ' (cotizada)'
+            : '';
+        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem;">✓ ${esc(p.etiqueta)}${esc(sub)}</span>`;
+      }).join(' ');
+
+      return `
+        <div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:#f8faf8; border:1px solid rgba(31,111,74,0.18); font-size:0.76rem; line-height:1.45;">
+          <div style="color:var(--text); font-weight:800; margin-bottom:4px;">Presentaciones que LAMDA ya produce:</div>
+          <div style="display:flex; flex-wrap:wrap; gap:5px;">${badges}</div>
+          <div style="color:var(--muted); font-size:0.72rem; margin-top:4px;">
+            Esas medidas ya existen; para pedir una <strong>nueva fracción</strong> elegí abajo otro gramaje distinto.
+          </div>
+        </div>
+      `;
+    }
+
+    function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales) {
+      const kg = Number(kilosActuales || 0);
+      const opciones = obtenerOpcionesGramajeIngrediente(ingObj);
+
+      return opciones.map(op => {
+        const activo = Math.abs(kg - op.val) < 0.003;
+        const est = evaluarEstadoGramajeParaGestor(ingObj, op.val);
+
+        let sufijo = '';
+        let estiloExtra = '';
+
+        if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
+          sufijo = ' · ✓ Cotizada';
+          estiloExtra = activo
+            ? 'background:var(--ok-soft); border-color:var(--ok); color:var(--ok); font-weight:800;'
+            : 'background:#f4faf6; border-color:rgba(31,111,74,0.28); color:var(--ok); opacity:0.9;';
+        } else if (est.tipo === 'YA_EXISTE_LAMDA') {
+          sufijo = est.propuestaPendiente ? ' · ⏳ Pedida' : ' · ✓ Ya existe';
+          estiloExtra = activo
+            ? 'background:#eef5f0; border-color:var(--ok); color:var(--ok); font-weight:800;'
+            : 'background:#f5f6f4; border-color:#d6d3ce; color:#57534e;';
+        } else if (est.tipo === 'YA_SOLICITADA') {
+          sufijo = ' · ⏳ Solicitada';
+          estiloExtra = activo
+            ? 'background:var(--warn-soft); border-color:rgba(180,83,9,0.45); color:var(--warn); font-weight:800;'
+            : 'background:#fffbeb; border-color:rgba(180,83,9,0.26); color:var(--warn);';
+        } else if (activo) {
+          estiloExtra = 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;';
+        }
+
+        return `
+          <button type="button" class="btn-soft"
+            onclick="fijarGramajePropuestaGestor(${op.val})"
+            style="${estiloExtra}">
+            ${esc(op.label)}${esc(sufijo)}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderAvisoEstadoGramajeHtml(ingObj, kilos) {
+      if (!ingObj || !kilos) return '';
+      const est = evaluarEstadoGramajeParaGestor(ingObj, kilos);
+      const etPeso = formatearPesoCortoGestor(kilos);
+
+      if (est.tipo === 'EN_OFERTA_NODO') {
+        const of = est.oferta;
+        return `
+          <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.30); color:var(--text); font-size:0.8rem; line-height:1.45;">
+            <strong style="color:var(--ok);">✓ Ya tenés ${esc(etPeso)} cotizada en tu Nodo</strong> (Costo Base <strong>${fmt(of.precio_base_nodo_final)}</strong>).<br>
+            No corresponde volver a pedirla: configurala o publicala desde <strong>Mi Oferta y Márgenes</strong>.
+            <div style="margin-top:8px;">
+              <button type="button" class="btn-soft" style="font-size:0.76rem; padding:5px 11px;" onclick="abrirSeccionGestor('ofertas')">
+                Ir a Mi Oferta y Márgenes →
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (est.tipo === 'EN_CATALOGO_NODOS') {
+        const pres = est.pres;
+        return `
+          <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.30); color:var(--text); font-size:0.8rem; line-height:1.45;">
+            <strong style="color:var(--ok);">✓ Esta medida (${esc(etPeso)}) ya está cotizada por LAMDA</strong> (Costo Base <strong>${fmt(pres.precio_base_nodo_final)}</strong>).<br>
+            No necesitás pedir cotización; sumala directo a tu Nodo:
+            <div style="margin-top:8px;">
+              <button type="button" class="btn-primary" style="font-size:0.78rem; padding:6px 12px;"
+                onclick="sumarCatalogoBaseAMiOferta(${pres.catalogo_id}, true)">
+                + Sumar a Mi Oferta y Márgenes
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (est.tipo === 'YA_EXISTE_LAMDA') {
+        if (est.propuestaPendiente) {
+          return `
+            <div style="padding:11px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.28); color:var(--warn); font-size:0.8rem; line-height:1.45;">
+              <strong>⏳ Habilitación ya solicitada (${esc(est.propuestaPendiente.codigo_propuesta)})</strong><br>
+              Ya pediste habilitar esta presentación existente de <strong>${esc(etPeso)}</strong> en tu Nodo. Elegí otro gramaje si querés pedir una fracción nueva.
+            </div>
+          `;
+        }
+        return `
+          <div style="padding:11px 12px; border-radius:11px; background:#f4faf6; border:1px solid rgba(31,111,74,0.28); color:var(--text); font-size:0.8rem; line-height:1.45;">
+            <strong style="color:var(--ok);">✓ LAMDA ya produce la presentación de ${esc(etPeso)}</strong><br>
+            No debe solicitarse como nueva fracción a crear. Elegí arriba otro gramaje que aún no exista (por ejemplo <strong>100g</strong>, <strong>150g</strong> o <strong>400g</strong>).
+            <div style="margin-top:8px; padding-top:7px; border-top:1px dashed rgba(31,111,74,0.22); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:0.74rem; color:var(--muted);">¿Querés vender esta medida existente de ${esc(etPeso)}?</span>
+              <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;"
+                onclick="enviarNuevaPropuestaGestor({ solicitarHabilitacionExistente: true })">
+                Pedir que la habiliten en mi Nodo
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (est.tipo === 'YA_SOLICITADA') {
         return `
           <div style="padding:10px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.25); color:var(--warn); font-size:0.8rem; line-height:1.45;">
-            Ya enviaste esta misma presentación (<strong>${Math.round(kgNum * 1000)}g</strong>) y se encuentra <strong>En cotización</strong>.
+            <strong>⏳ Solicitud en cotización (${esc(est.propuesta.codigo_propuesta)})</strong><br>
+            Esta medida de <strong>${esc(etPeso)}</strong> ya fue enviada y está pendiente de cotización. Elegí otro gramaje para pedir otra presentación.
           </div>
         `;
       }
 
       return '';
+    }
+
+    function sincronizarBotonEnvioPropuestaDom(ingObj, kilos) {
+      const btn = document.getElementById('btn-enviar-propuesta-gestor');
+      if (!btn) return;
+      const est = evaluarEstadoGramajeParaGestor(ingObj, kilos);
+      const etPeso = formatearPesoCortoGestor(kilos);
+
+      if (est.tipo === 'NUEVA_DISPONIBLE') {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.textContent = `Enviar Solicitud de Nueva Fracción (${etPeso})`;
+      } else if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = `Medida ${etPeso} ya cotizada`;
+      } else if (est.tipo === 'YA_EXISTE_LAMDA') {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = `Medida ${etPeso} ya existe en LAMDA`;
+      } else if (est.tipo === 'YA_SOLICITADA') {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = `Medida ${etPeso} ya solicitada`;
+      }
     }
 
     function actualizarControlesPropuestaEnVivo() {
@@ -1049,6 +1298,11 @@
         inputNombre.value = ingSel.alias_vecino_sugerido || ingSel.nombre_claro;
       }
 
+      const resumenExistBox = document.getElementById('prop-resumen-existentes');
+      if (resumenExistBox) {
+        resumenExistBox.innerHTML = renderResumenExistentesLamdaHtml(ingSel);
+      }
+
       const gramajesBox = document.getElementById('prop-gramajes-box');
       if (gramajesBox) {
         gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
@@ -1059,27 +1313,37 @@
         inputKilos.value = Number(GSTATE.propKilosSel).toFixed(2);
       }
 
+      const confBox = document.getElementById('prop-confirmacion-reciente');
+      if (confBox) {
+        confBox.innerHTML = GSTATE.propConfirmacionReciente ? `
+          <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4;">
+            ${esc(GSTATE.propConfirmacionReciente)}
+          </div>
+        ` : '';
+      }
+
       const avisoBox = document.getElementById('prop-aviso-existente');
       if (avisoBox) {
-        avisoBox.innerHTML = renderAvisoDuplicadoPropuestaHtml(GSTATE.propIngredienteIdSel, GSTATE.propKilosSel);
+        avisoBox.innerHTML = renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel);
       }
+
+      sincronizarBotonEnvioPropuestaDom(ingSel, GSTATE.propKilosSel);
     }
 
     function alCambiarCategoriaPropuestaGestor(nuevaCat) {
       GSTATE.propCategoriaSel = nuevaCat;
       GSTATE.propFiltroTexto = '';
       GSTATE.propNombreEditadoManual = false;
-      GSTATE.propMensajeExito = '';
+      GSTATE.propConfirmacionReciente = '';
       const inputFiltro = document.getElementById('prop-filtro-ingrediente');
       if (inputFiltro) inputFiltro.value = '';
 
       const listaCat = obtenerIngredientesFiltradosGestor(nuevaCat, '');
       GSTATE.propIngredienteIdSel = listaCat[0] ? Number(listaCat[0].id) : 0;
       const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (ingSel && ingSel.es_pack_barritas) {
-        GSTATE.propKilosSel = 0.30; // Pack x 6 barritas (300g) por defecto
-      } else if (nuevaCat === 'Granolas' && Math.abs(GSTATE.propKilosSel - 0.50) < 0.002) {
-        GSTATE.propKilosSel = 0.20;
+      if (ingSel) {
+        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
       }
       actualizarControlesPropuestaEnVivo();
     }
@@ -1087,21 +1351,24 @@
     function alFiltrarIngredientesPropuestaGestor(texto) {
       GSTATE.propFiltroTexto = texto;
       GSTATE.propNombreEditadoManual = false;
+      GSTATE.propConfirmacionReciente = '';
       actualizarControlesPropuestaEnVivo();
     }
 
     function alCambiarIngredientePropuestaGestor(ingId) {
       GSTATE.propIngredienteIdSel = Number(ingId || 0);
       GSTATE.propNombreEditadoManual = false;
-      GSTATE.propMensajeExito = '';
+      GSTATE.propConfirmacionReciente = '';
       const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (ingSel && ingSel.es_pack_barritas && GSTATE.propKilosSel === 0.25) {
-        GSTATE.propKilosSel = 0.30;
+      if (ingSel) {
+        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
       }
       actualizarControlesPropuestaEnVivo();
     }
 
     function fijarGramajePropuestaGestor(kilos) {
+      GSTATE.propConfirmacionReciente = '';
       GSTATE.propKilosSel = Number(kilos || 0.25);
       const inputKilos = document.getElementById('prop-kilos');
       if (inputKilos) inputKilos.value = GSTATE.propKilosSel.toFixed(2);
@@ -1109,6 +1376,7 @@
     }
 
     function alCambiarKilosPropuestaGestor(valor) {
+      GSTATE.propConfirmacionReciente = '';
       const k = Number(valor || 0);
       if (k > 0) GSTATE.propKilosSel = k;
       actualizarControlesPropuestaEnVivo();
@@ -1126,21 +1394,29 @@
         GSTATE.propIngredienteIdSel = filtrados[0] ? Number(filtrados[0].id) : 0;
       }
       const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (ingSel && GSTATE.propIngredienteInicializadoId !== Number(ingSel.id)) {
+        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
+      }
       const nombreInicial = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
+      const estInicial = evaluarEstadoGramajeParaGestor(ingSel, GSTATE.propKilosSel);
+      const etPesoInicial = formatearPesoCortoGestor(GSTATE.propKilosSel);
+      const btnHabilitado = estInicial.tipo === 'NUEVA_DISPONIBLE';
+      const btnLabelInicial = btnHabilitado
+        ? `Enviar Solicitud de Nueva Fracción (${etPesoInicial})`
+        : estInicial.tipo === 'YA_EXISTE_LAMDA'
+          ? `Medida ${etPesoInicial} ya existe en LAMDA`
+          : estInicial.tipo === 'YA_SOLICITADA'
+            ? `Medida ${etPesoInicial} ya solicitada`
+            : `Medida ${etPesoInicial} ya cotizada`;
 
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
-            <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Producto o Presentación</h3>
+            <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Nueva Fracción</h3>
             <p style="margin:0 0 14px 0; font-size:0.8rem; color:var(--muted);">
-              Elegí la categoría, el producto disponible y el gramaje. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que definas tu ganancia y lo publiques.
+              Elegí el producto y una medida nueva que aún no exista. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que definas tu ganancia y la publiques.
             </p>
-
-            ${GSTATE.propMensajeExito ? `
-              <div style="margin-bottom:12px; padding:10px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-size:0.82rem; font-weight:700;">
-                ${esc(GSTATE.propMensajeExito)}
-              </div>
-            ` : ''}
 
             <div style="display:flex; flex-direction:column; gap:11px;">
               <div>
@@ -1172,12 +1448,15 @@
 
               <div>
                 <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">3. Presentación / Gramaje</label>
+                <div id="prop-resumen-existentes">
+                  ${renderResumenExistentesLamdaHtml(ingSel)}
+                </div>
                 <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
                   ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel)}
                 </div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                   <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Peso en Kg (0.20 = 200g)</label>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso en Kg (ej: 0.35 = 350g)</label>
                     <input type="number" step="0.05" min="0.05" id="prop-kilos" class="input-sm" style="width:100%;"
                       value="${Number(GSTATE.propKilosSel || 0.25).toFixed(2)}"
                       oninput="alCambiarKilosPropuestaGestor(this.value)" />
@@ -1205,27 +1484,37 @@
                 <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Bolsita individual para merienda" />
               </div>
 
-              <div id="prop-aviso-existente">
-                ${renderAvisoDuplicadoPropuestaHtml(GSTATE.propIngredienteIdSel, GSTATE.propKilosSel)}
+              <div id="prop-confirmacion-reciente">
+                ${GSTATE.propConfirmacionReciente ? `
+                  <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4;">
+                    ${esc(GSTATE.propConfirmacionReciente)}
+                  </div>
+                ` : ''}
               </div>
 
-              <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary" onclick="enviarNuevaPropuestaGestor()">
-                Enviar Solicitud de Cotización
+              <div id="prop-aviso-existente">
+                ${renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)}
+              </div>
+
+              <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary"
+                ${btnHabilitado ? '' : 'disabled'}
+                style="opacity:${btnHabilitado ? '1' : '0.5'};"
+                onclick="enviarNuevaPropuestaGestor()">
+                ${esc(btnLabelInicial)}
               </button>
             </div>
           </div>
 
           <div class="card">
-            <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes</h3>
+            <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes (${GSTATE.propuestas.length})</h3>
             <div style="display:flex; flex-direction:column; gap:10px;">
               ${GSTATE.propuestas.length === 0 ? `
                 <div style="padding:18px; border-radius:12px; border:1px dashed var(--border); color:var(--muted); font-size:0.84rem; text-align:center;">
                   Todavía no enviaste solicitudes de fracciones.
                 </div>
               ` : GSTATE.propuestas.map(p => {
-                const gramosTxt = Number(p.kilos_sugeridos || 0.25) >= 1
-                  ? `${Number(p.kilos_sugeridos)} kg`
-                  : `${Math.round(Number(p.kilos_sugeridos || 0.25) * 1000)}g`;
+                const gramosTxt = formatearPesoCortoGestor(p.kilos_sugeridos || 0.25);
+                const esHabilitacion = Boolean(p.articulo_bunker_sugerido_codigo);
                 return `
                   <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -1235,7 +1524,8 @@
                       </span>
                     </div>
                     <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
-                      ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${gramosTxt}</strong>
+                      ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${esc(gramosTxt)}</strong>
+                      · ${esHabilitacion ? 'Presentación existente LAMDA' : 'Nueva fracción'}
                       ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
                     </div>
                     ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
@@ -1255,7 +1545,8 @@
       `;
     }
 
-    async function enviarNuevaPropuestaGestor() {
+    async function enviarNuevaPropuestaGestor(opciones = {}) {
+      const solicitarHabilitacionExistente = Boolean(opciones && opciones.solicitarHabilitacionExistente === true);
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (!ingSel) {
         alert('Seleccioná primero un producto disponible de la lista.');
@@ -1267,20 +1558,22 @@
         return;
       }
 
-      const yaPendiente = (GSTATE.propuestas || []).find(
-        p => p.estado !== 'APROBADA' &&
-             Number(p.ingrediente_sugerido_id) === Number(ingSel.id) &&
-             Math.abs(Number(p.kilos_sugeridos) - kilos) < 0.003
-      );
-      if (yaPendiente) {
-        alert('Ya enviaste una solicitud para este mismo producto y gramaje, y está en cotización.');
+      const est = evaluarEstadoGramajeParaGestor(ingSel, kilos);
+      if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
+        alert('Esta presentación ya está cotizada; podés verla o sumarla desde Mi Oferta y Márgenes.');
+        return;
+      }
+      if (est.tipo === 'YA_EXISTE_LAMDA' && !solicitarHabilitacionExistente) {
+        alert('LAMDA ya produce esta presentación. Elegí otro gramaje nuevo o usá la opción para pedir que la habiliten en tu Nodo.');
+        return;
+      }
+      if (est.tipo === 'YA_SOLICITADA' || (est.tipo === 'YA_EXISTE_LAMDA' && est.propuestaPendiente)) {
+        alert('Esta presentación ya fue solicitada y se encuentra en cotización.');
         return;
       }
 
       const nombreBase = (document.getElementById('prop-nombre')?.value || ingSel.alias_vecino_sugerido || ingSel.nombre_claro).trim();
-      const etiquetaPeso = kilos >= 1
-        ? `${Number(kilos.toFixed(2))}kg`
-        : `${Math.round(kilos * 1000)}g`;
+      const etiquetaPeso = formatearPesoCortoGestor(kilos).replace(/\s+/g, '');
       const nombreConPeso = /\bx\s*\d+/i.test(nombreBase) ? nombreBase : `${nombreBase} x ${etiquetaPeso}`;
 
       const btn = document.getElementById('btn-enviar-propuesta-gestor');
@@ -1288,6 +1581,11 @@
         btn.disabled = true;
         btn.textContent = 'Enviando solicitud...';
       }
+
+      const comentarioInput = (document.getElementById('prop-comentario')?.value || '').trim();
+      const comentarioFinal = solicitarHabilitacionExistente && !comentarioInput
+        ? 'Solicitud para habilitar presentación estándar de LAMDA en mi Nodo.'
+        : comentarioInput;
 
       const payload = {
         nodo_solicitante_id: GSTATE.nodo.id,
@@ -1297,7 +1595,8 @@
         nombre_sugerido: nombreConPeso,
         kilos_sugeridos: kilos,
         precio_objetivo_vecino: Number(document.getElementById('prop-target')?.value || 0),
-        comentario_gestor: (document.getElementById('prop-comentario')?.value || '').trim()
+        comentario_gestor: comentarioFinal,
+        solicitar_habilitacion_existente: solicitarHabilitacionExistente
       };
 
       const resp = await fetch('/api/produccion/nodos/propuestas', {
@@ -1308,16 +1607,16 @@
       const data = await resp.json();
       if (!resp.ok || !data.ok) {
         alert('No se pudo enviar la solicitud: ' + (data.error || 'Error interno'));
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Enviar Solicitud de Cotización';
-        }
+        sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
         return;
       }
 
+      const codProp = data.propuesta?.codigo_propuesta || '';
       GSTATE.propNombreEditadoManual = false;
-      GSTATE.propMensajeExito = `Solicitud enviada: ${nombreConPeso}. Te avisaremos aquí cuando tenga su Precio Base listo.`;
-      await cargarPanelGestor();
+      GSTATE.propConfirmacionReciente = solicitarHabilitacionExistente
+        ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
+        : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
+      await cargarPanelGestor({ avanzarGramajeTrasEnvio: true });
     }
 
     // -------------------------------------------------------------------------

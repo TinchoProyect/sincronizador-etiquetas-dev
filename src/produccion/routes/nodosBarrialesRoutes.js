@@ -337,6 +337,22 @@ router.put('/ofertas-gestor/:id', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/sumar-catalogo
+ * Permite al Gestor incorporar en 1 toque a Mi Oferta y Márgenes un artículo ya cotizado
+ * en el Catálogo Base de Nodos, sin pedir nueva cotización.
+ */
+router.post('/gestor/:nodoId/sumar-catalogo', async (req, res) => {
+    try {
+        const catalogoId = req.body && req.body.catalogo_id;
+        const oferta = await nodosService.sumarArticuloCatalogoANodo(req.params.nodoId, catalogoId);
+        res.json({ ok: true, oferta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error incorporando artículo de catálogo al Nodo:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 // ============================================================================
 // ENDPOINTS ETAPA 2: TIENDA MARCA BLANCA DEL VECINO Y PANEL DEL GESTOR
 // ============================================================================

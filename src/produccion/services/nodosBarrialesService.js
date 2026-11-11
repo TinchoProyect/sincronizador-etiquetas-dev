@@ -2536,6 +2536,205 @@ async function obtenerFuentesCostoSeisFlujos() {
 }
 
 /**
+ * Obtiene las presentaciones unitarias (<= 1kg, más packs de barritas) que LAMDA YA PRODUCE
+ * en Planta / Búnker (public.bunker_articulos + public.recetas + public.receta_ingredientes),
+ * cruzadas con public.nodos_articulos_catalogo (Lista Base Nodos Barriales).
+ * Sirve tanto para:
+ *  - Informar al Gestor qué medidas ya existen en LAMDA (sin exponer costos ni stocks internos).
+ *  - Permitir a Administración LAMDA habilitar en 1 clic presentaciones estándar en el Catálogo Base de Nodos.
+ */
+async function obtenerPresentacionesPlantaLamda(runner = null) {
+    const q = runner || db;
+    const [plantaRes, catNodosRes, compRes] = await Promise.all([
+        q.query(`
+            SELECT
+                ba.articulo_id,
+                ba.descripcion_generada,
+                ba.kilos_unidad,
+                COALESCE(ba.es_pack, false) AS es_pack,
+                COALESCE(ba.pack_unidades, 1) AS pack_unidades,
+                COALESCE(ba.costo_base, 0)::numeric(14,2) AS bunker_costo_base,
+                ba.familia_id,
+                bf.nombre AS familia_nombre,
+                ri.ingrediente_id,
+                i.nombre AS ingrediente_nombre,
+                i.articulo_vinculado_numero,
+                COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_insumo_kg,
+                nac.id AS catalogo_nodo_id,
+                nac.precio_base_nodo_final,
+                nac.nombre_publico AS catalogo_nombre_publico,
+                COALESCE(
+                    (SELECT la.precio_final
+                     FROM public.bunker_lista_articulos la
+                     WHERE UPPER(la.articulo_numero) = UPPER(ba.articulo_id)
+                       AND la.lista_id = 5
+                       AND la.disponible = true
+                       AND la.precio_final > 0
+                     LIMIT 1),
+                    (SELECT ROUND(la.precio_final / NULLIF(bp.pack_unidades, 0), 2)
+                     FROM public.bunker_articulos bp
+                     JOIN public.bunker_lista_articulos la
+                       ON UPPER(la.articulo_numero) = UPPER(bp.articulo_id)
+                      AND la.disponible = true
+                      AND la.precio_final > 0
+                     WHERE UPPER(bp.pack_hijo_codigo) = UPPER(ba.articulo_id)
+                       AND bp.es_pack = true
+                     ORDER BY CASE WHEN la.lista_id = 5 THEN 0 ELSE 1 END, la.lista_id ASC
+                     LIMIT 1)
+                )::numeric(14,2) AS precio_ref_mayorista
+            FROM public.bunker_articulos ba
+            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+            JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
+            JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+            JOIN public.ingredientes i ON i.id = ri.ingrediente_id AND COALESCE(i.es_insumo, false) = false
+            LEFT JOIN public.nodos_articulos_catalogo nac
+              ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
+             AND nac.activo = true
+            WHERE ba.articulo_id NOT LIKE 'NB-%'
+              AND UPPER(ba.articulo_id) <> 'CCTX250G'
+              AND COALESCE(ba.familia_id, 0) > 0
+              AND COALESCE(ba.familia_id, 0) <> 42
+              AND (
+                  (COALESCE(ba.es_pack, false) = false AND COALESCE(ba.kilos_unidad, 1) <= 1.05)
+                  OR (ri.ingrediente_id = 141 AND COALESCE(ba.kilos_unidad, 1) <= 1.25)
+              )
+            ORDER BY ri.ingrediente_id ASC,
+                     ba.kilos_unidad ASC,
+                     CASE WHEN nac.id IS NOT NULL THEN 0 ELSE 1 END,
+                     ba.articulo_id ASC
+        `),
+        q.query(`
+            SELECT id, sku_nodo, nombre_publico, presentacion_etiqueta, ingrediente_origen_id,
+                   kilos_unidad, precio_base_nodo_final
+            FROM public.nodos_articulos_catalogo
+            WHERE activo = true
+              AND ingrediente_origen_id IS NOT NULL
+            ORDER BY ingrediente_origen_id ASC, kilos_unidad ASC
+        `),
+        q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion')
+    ]);
+
+    const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
+    const porIngredienteGestor = new Map();
+    const disponiblesParaAdmin = [];
+
+    const formatearEtiquetaPeso = (kilos, esPack, packUnidades) => {
+        const kg = Number(kilos || 0);
+        const gramos = Math.round(kg * 1000);
+        if (esPack && Number(packUnidades) > 1) {
+            const pesoTxt = gramos >= 1000
+                ? `${Number(kg.toFixed(2))} kg`
+                : `${gramos}g`;
+            return `Pack x ${Number(packUnidades)} (${pesoTxt})`;
+        }
+        if (gramos >= 1000 && gramos % 1000 === 0) {
+            return `${gramos / 1000} kg`;
+        }
+        if (gramos >= 1000) {
+            return `${Number(kg.toFixed(2))} kg`;
+        }
+        return `${gramos}g`;
+    };
+
+    const registrarEnMapaGestor = (ingId, itemPublico) => {
+        if (!porIngredienteGestor.has(ingId)) {
+            porIngredienteGestor.set(ingId, []);
+        }
+        const lista = porIngredienteGestor.get(ingId);
+        const idxExist = lista.findIndex(x => Math.abs(Number(x.kilos_unidad) - Number(itemPublico.kilos_unidad)) < 0.003);
+        if (idxExist === -1) {
+            lista.push(itemPublico);
+        } else if (!lista[idxExist].en_catalogo_nodos && itemPublico.en_catalogo_nodos) {
+            lista[idxExist] = itemPublico;
+        }
+    };
+
+    for (const row of plantaRes.rows) {
+        const ingId = Number(row.ingrediente_id);
+        const kilos = Number(Number(row.kilos_unidad || 0).toFixed(4));
+        const etiqueta = formatearEtiquetaPeso(kilos, row.es_pack, row.pack_unidades);
+        const enCatalogo = Boolean(row.catalogo_nodo_id);
+
+        // Metadatos seguros para el celular del Gestor (CERO costos internos ni stocks)
+        registrarEnMapaGestor(ingId, {
+            kilos_unidad: kilos,
+            es_pack: Boolean(row.es_pack),
+            pack_unidades: Number(row.pack_unidades || 1),
+            etiqueta,
+            ya_produce_lamda: true,
+            en_catalogo_nodos: enCatalogo,
+            catalogo_id: enCatalogo ? Number(row.catalogo_nodo_id) : null,
+            precio_base_nodo_final: enCatalogo ? Number(row.precio_base_nodo_final) : null
+        });
+
+        if (!enCatalogo) {
+            const ident = formatearIdentidadClaraIngrediente(
+                {
+                    id: ingId,
+                    nombre: row.ingrediente_nombre,
+                    articulo_vinculado_numero: row.articulo_vinculado_numero
+                },
+                row.familia_nombre,
+                idsCompuestosSet
+            );
+            disponiblesParaAdmin.push({
+                articulo_id: row.articulo_id,
+                descripcion_generada: row.descripcion_generada,
+                kilos_unidad: kilos,
+                etiqueta_peso: etiqueta,
+                es_pack: Boolean(row.es_pack),
+                pack_unidades: Number(row.pack_unidades || 1),
+                ingrediente_id: ingId,
+                ingrediente_nombre: row.ingrediente_nombre,
+                nombre_claro_gestor: ident.nombre_claro_gestor,
+                alias_vecino_sugerido: ident.alias_vecino_sugerido,
+                categoria_gestor: ident.categoria_gestor,
+                flujo: ident.flujo,
+                costo_insumo_kg: Number(row.costo_insumo_kg || 0),
+                bunker_costo_base: Number(row.bunker_costo_base || 0),
+                precio_ref_mayorista: row.precio_ref_mayorista ? Number(row.precio_ref_mayorista) : null
+            });
+        }
+    }
+
+    // Incluir también en el mapa del Gestor cualquier fracción nueva que ya haya sido aprobada en nodos_articulos_catalogo
+    for (const cat of catNodosRes.rows) {
+        const ingId = Number(cat.ingrediente_origen_id);
+        const kilos = Number(Number(cat.kilos_unidad || 0).toFixed(4));
+        registrarEnMapaGestor(ingId, {
+            kilos_unidad: kilos,
+            es_pack: ingId === 141,
+            pack_unidades: ingId === 141 ? Math.max(1, Math.round((kilos * 1000) / 50)) : 1,
+            etiqueta: formatearEtiquetaPeso(kilos, ingId === 141, ingId === 141 ? Math.max(1, Math.round((kilos * 1000) / 50)) : 1),
+            ya_produce_lamda: true,
+            en_catalogo_nodos: true,
+            catalogo_id: Number(cat.id),
+            precio_base_nodo_final: Number(cat.precio_base_nodo_final)
+        });
+    }
+
+    for (const lista of porIngredienteGestor.values()) {
+        lista.sort((a, b) => a.kilos_unidad - b.kilos_unidad);
+    }
+
+    disponiblesParaAdmin.sort((a, b) => {
+        const aChica = a.kilos_unidad < 0.99 ? 0 : 1;
+        const bChica = b.kilos_unidad < 0.99 ? 0 : 1;
+        if (aChica !== bChica) return aChica - bChica;
+        const catDiff = String(a.categoria_gestor).localeCompare(String(b.categoria_gestor), 'es');
+        if (catDiff !== 0) return catDiff;
+        const nomDiff = String(a.nombre_claro_gestor).localeCompare(String(b.nombre_claro_gestor), 'es');
+        if (nomDiff !== 0) return nomDiff;
+        return a.kilos_unidad - b.kilos_unidad;
+    });
+
+    return {
+        porIngredienteGestor,
+        disponiblesParaAdmin
+    };
+}
+
+/**
  * Obtiene el estado completo del ecosistema de Nodos Barriales para la Pizarra
  */
 async function obtenerEstadoCompletoNodos() {
@@ -2550,7 +2749,8 @@ async function obtenerEstadoCompletoNodos() {
         listaNodosRes,
         listasMayoristasRes,
         politicasRes,
-        familiasRes
+        familiasRes,
+        plantaInfo
     ] = await Promise.all([
         db.query(`
             SELECT nm.*,
@@ -2672,7 +2872,8 @@ async function obtenerEstadoCompletoNodos() {
             FROM public.bunker_familias
             WHERE activo = true
             ORDER BY id ASC
-        `)
+        `),
+        obtenerPresentacionesPlantaLamda()
     ]);
 
     if (fuentes) {
@@ -2687,6 +2888,7 @@ async function obtenerEstadoCompletoNodos() {
         propuestas: propuestasRes.rows,
         ofertas_gestor: ofertasRes.rows,
         fuentes,
+        presentaciones_planta_disponibles: plantaInfo ? plantaInfo.disponiblesParaAdmin : [],
         lista_precios_nodos_bunker: listaNodosRes.rows[0] || null,
         listas_mayoristas_bunker: listasMayoristasRes.rows,
         politicas_descuento_bunker: politicasRes.rows,
@@ -3048,7 +3250,11 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
 }
 
 /**
- * Registra una nueva propuesta de fracción solicitada por un Gestor de Nodo
+ * Registra una nueva propuesta de fracción solicitada por un Gestor de Nodo.
+ * Valida determinísticamente que:
+ *  - No esté ya cotizada en nodos_articulos_catalogo.
+ *  - No sea una presentación estándar que LAMDA ya produce (salvo que se pida explícitamente habilitar esa presentación existente).
+ *  - No exista ya una solicitud PENDIENTE_COTIZACION idéntica para ese mismo Nodo, ingrediente y gramaje.
  */
 async function crearPropuestaFraccion(payload = {}) {
     await asegurarEsquemaNodosBarriales();
@@ -3058,8 +3264,66 @@ async function crearPropuestaFraccion(payload = {}) {
         throw new Error('El nombre sugerido de la fracción es obligatorio.');
     }
 
-    const countRes = await db.query('SELECT COUNT(*)::int AS total FROM public.nodos_propuestas_fracciones');
-    const codigoPropuesta = `PROP-NB-${String(countRes.rows[0].total + 1).padStart(3, '0')}`;
+    const nodoId = payload.nodo_solicitante_id ? Number(payload.nodo_solicitante_id) : null;
+    const ingId = payload.ingrediente_sugerido_id ? Number(payload.ingrediente_sugerido_id) : null;
+    const kilos = Math.max(0.01, Number(payload.kilos_sugeridos || 0.25));
+    const esHabilitacionExistente = Boolean(payload.solicitar_habilitacion_existente === true);
+
+    if (ingId) {
+        // 1. Verificar si ya está cotizada en el Catálogo Base de Nodos
+        const catExistRes = await db.query(
+            `SELECT id, sku_nodo, nombre_publico, precio_base_nodo_final
+             FROM public.nodos_articulos_catalogo
+             WHERE activo = true
+               AND ingrediente_origen_id = $1
+               AND ABS(COALESCE(kilos_unidad, 0) - $2) < 0.003
+             LIMIT 1`,
+            [ingId, kilos]
+        );
+        if (catExistRes.rows.length > 0) {
+            throw new Error('Esta presentación ya está cotizada en el Catálogo Base de Nodos. Podés incorporarla o editarla desde Mi Oferta y Márgenes.');
+        }
+
+        // 2. Verificar si ya existe una solicitud pendiente para el mismo Nodo, producto y gramaje
+        if (nodoId) {
+            const pendRes = await db.query(
+                `SELECT codigo_propuesta
+                 FROM public.nodos_propuestas_fracciones
+                 WHERE nodo_solicitante_id = $1
+                   AND ingrediente_sugerido_id = $2
+                   AND estado = 'PENDIENTE_COTIZACION'
+                   AND ABS(COALESCE(kilos_sugeridos, 0) - $3) < 0.003
+                 LIMIT 1`,
+                [nodoId, ingId, kilos]
+            );
+            if (pendRes.rows.length > 0) {
+                throw new Error(`Ya tenés una solicitud en cotización (${pendRes.rows[0].codigo_propuesta}) para este mismo producto y gramaje.`);
+            }
+        }
+
+        // 3. Verificar si LAMDA ya produce esta presentación unitaria en Planta / Búnker
+        const anatomia = await resolverAnatomiaNativaArticuloNodo(db, {
+            ingrediente_origen_id: ingId,
+            kilos_unidad: kilos,
+            flujo_lamda: Number(payload.flujo_sugerido || 2)
+        });
+        if (anatomia.existe_en_bunker && !esHabilitacionExistente) {
+            const etPeso = kilos >= 1 ? `${Number(kilos.toFixed(2))} kg` : `${Math.round(kilos * 1000)}g`;
+            throw new Error(`LAMDA ya produce esta presentación (${etPeso}). No corresponde pedirla como nueva fracción a crear; elegí otro gramaje nuevo o solicitá habilitar la presentación existente.`);
+        }
+        if (anatomia.existe_en_bunker && esHabilitacionExistente) {
+            payload.articulo_bunker_sugerido_codigo = anatomia.sku_nativo;
+            if (!payload.insumo_envase_sugerido_id && anatomia.insumo_envase_id) {
+                payload.insumo_envase_sugerido_id = anatomia.insumo_envase_id;
+            }
+        }
+    }
+
+    const maxRes = await db.query(`
+        SELECT COALESCE(MAX(NULLIF(REGEXP_REPLACE(codigo_propuesta, '[^0-9]', '', 'g'), '')::int), 0) AS max_num
+        FROM public.nodos_propuestas_fracciones
+    `);
+    const codigoPropuesta = `PROP-NB-${String(Number(maxRes.rows[0].max_num || 0) + 1).padStart(3, '0')}`;
 
     const ins = await db.query(
         `INSERT INTO public.nodos_propuestas_fracciones (
@@ -3071,13 +3335,13 @@ async function crearPropuestaFraccion(payload = {}) {
         RETURNING *`,
         [
             codigoPropuesta,
-            payload.nodo_solicitante_id ? Number(payload.nodo_solicitante_id) : null,
+            nodoId,
             nombreSugerido,
             payload.categoria_sugerida || 'Frutos Secos',
             Number(payload.flujo_sugerido || 2),
-            payload.ingrediente_sugerido_id ? Number(payload.ingrediente_sugerido_id) : null,
+            ingId,
             payload.articulo_bunker_sugerido_codigo || null,
-            Number(payload.kilos_sugeridos || 0.25),
+            kilos,
             payload.insumo_envase_sugerido_id ? Number(payload.insumo_envase_sugerido_id) : null,
             Number(payload.segundos_estimados || 35),
             payload.precio_objetivo_vecino ? Number(payload.precio_objetivo_vecino) : null,
@@ -3085,6 +3349,47 @@ async function crearPropuestaFraccion(payload = {}) {
         ]
     );
 
+    return ins.rows[0];
+}
+
+/**
+ * Incorpora en 1 toque un artículo ya cotizado en public.nodos_articulos_catalogo
+ * dentro de Mi Oferta y Márgenes (public.nodos_ofertas_gestor) de un Nodo específico,
+ * dejándolo inicialmente oculto para que el Gestor ajuste su ganancia y lo publique.
+ */
+async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
+    await asegurarEsquemaNodosBarriales();
+    const nId = Number(nodoId);
+    const cId = Number(catalogoId);
+    if (!nId || !cId) {
+        throw new Error('Identificador de Nodo o de artículo de catálogo inválido.');
+    }
+
+    const [nodoRes, catRes] = await Promise.all([
+        db.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]),
+        db.query('SELECT * FROM public.nodos_articulos_catalogo WHERE id = $1 AND activo = true LIMIT 1', [cId])
+    ]);
+    if (nodoRes.rows.length === 0) throw new Error('Nodo no encontrado.');
+    if (catRes.rows.length === 0) throw new Error('El artículo seleccionado no está activo en el Catálogo Base de Nodos.');
+
+    const nodo = nodoRes.rows[0];
+    const cat = catRes.rows[0];
+    const base = Number(cat.precio_base_nodo_final || 0);
+    const margenDef = Number(nodo.margen_gestor_default_pct || cat.margen_sugerido_gestor_pct || 28);
+    const precioVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
+    const ganancia = Math.max(0, precioVecino - base);
+
+    const ins = await db.query(
+        `INSERT INTO public.nodos_ofertas_gestor (
+            nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+         ) VALUES ($1, $2, $3, $4, $5, $6, false)
+         ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
+            precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
+            updated_at = NOW()
+         RETURNING *`,
+        [nId, cId, base, margenDef, precioVecino, ganancia]
+    );
     return ins.rows[0];
 }
 
@@ -3886,7 +4191,7 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
  * independientemente del stock circunstancial del momento y sin exponer costos ni fórmulas internas.
  */
 async function obtenerCatalogoIngredientesSolicitablesGestor() {
-    const [ingRes, compRes, famRes] = await Promise.all([
+    const [ingRes, compRes, famRes, plantaInfo] = await Promise.all([
         db.query(`
             SELECT id, nombre, articulo_vinculado_numero
             FROM public.ingredientes
@@ -3914,13 +4219,15 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
             ORDER BY ri.ingrediente_id,
                      CASE WHEN COALESCE(ba.kilos_unidad, 1) BETWEEN 0.05 AND 1.00 THEN 0 ELSE 1 END,
                      ba.kilos_unidad ASC
-        `)
+        `),
+        obtenerPresentacionesPlantaLamda()
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
     // Excluir pre-mezclas e insumos internos de UP externa (se exponen sus ingredientes puente terminados: #122, #131, #141, etc.)
     const idsIntermediosExcluidos = new Set([109, 132, 133, 134, 135, 136, 140]);
     const mapaFamilias = new Map(famRes.rows.map(r => [Number(r.ingrediente_id), r.familia_nombre]));
+    const mapaPresGestor = plantaInfo ? plantaInfo.porIngredienteGestor : new Map();
 
     const ordenCategorias = [
         'Granolas',
@@ -3947,15 +4254,17 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
             return true;
         })
         .map(ing => {
-            const fam = mapaFamilias.get(Number(ing.id)) || null;
+            const idNum = Number(ing.id);
+            const fam = mapaFamilias.get(idNum) || null;
             const ident = formatearIdentidadClaraIngrediente(ing, fam, idsCompuestosSet);
             return {
-                id: Number(ing.id),
+                id: idNum,
                 nombre_claro: ident.nombre_claro_gestor,
                 alias_vecino_sugerido: ident.alias_vecino_sugerido,
                 categoria_gestor: ident.categoria_gestor,
                 flujo: ident.flujo,
-                es_pack_barritas: ident.es_pack_barritas
+                es_pack_barritas: ident.es_pack_barritas,
+                presentaciones_lamda: mapaPresGestor.get(idNum) || []
             };
         })
         .sort((a, b) => {
@@ -4016,7 +4325,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     const nodo = nodoRes.rows[0];
     const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, catDisponibleRes] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -4037,7 +4346,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         db.query(
             `SELECT npf.id, npf.codigo_propuesta, npf.nodo_solicitante_id, npf.nombre_sugerido,
                     npf.categoria_sugerida, npf.ingrediente_sugerido_id, npf.flujo_sugerido,
-                    npf.kilos_sugeridos, npf.precio_objetivo_vecino,
+                    npf.articulo_bunker_sugerido_codigo, npf.kilos_sugeridos, npf.precio_objetivo_vecino,
                     npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at
              FROM public.nodos_propuestas_fracciones npf
              WHERE npf.nodo_solicitante_id = $1
@@ -4069,7 +4378,24 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
              LIMIT 30`,
             [nodo.id]
         ),
-        obtenerCatalogoIngredientesSolicitablesGestor()
+        obtenerCatalogoIngredientesSolicitablesGestor(),
+        db.query(
+            `SELECT nac.id AS catalogo_id,
+                    nac.nombre_publico,
+                    nac.categoria_familiar,
+                    nac.presentacion_etiqueta,
+                    nac.kilos_unidad,
+                    nac.ingrediente_origen_id,
+                    nac.precio_base_nodo_final
+             FROM public.nodos_articulos_catalogo nac
+             WHERE nac.activo = true
+               AND NOT EXISTS (
+                   SELECT 1 FROM public.nodos_ofertas_gestor nog
+                   WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+               )
+             ORDER BY nac.categoria_familiar ASC, nac.nombre_publico ASC`,
+            [nodo.id]
+        )
     ]);
 
     const itemsPorPedido = new Map();
@@ -4120,6 +4446,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasPublicadas,
         todas_ofertas_gestor: ofertasRes.rows,
+        catalogo_base_disponible: catDisponibleRes.rows,
         propuestas_nodo: propuestasRes.rows,
         pedidos_nodo: pedidosConItems,
         movimientos_cta_cte: movsRes.rows,
@@ -7239,6 +7566,7 @@ module.exports = {
     guardarNodoMaestro,
     actualizarConfiguracionCuentaCanalNodos,
     crearPropuestaFraccion,
+    sumarArticuloCatalogoANodo,
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,
     sincronizarCatalogoNodoDesdeBunker,

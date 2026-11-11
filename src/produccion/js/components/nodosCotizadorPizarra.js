@@ -13,6 +13,7 @@
         catalogo: [],
         propuestas: [],
         ofertas_gestor: [],
+        presentaciones_planta_disponibles: [],
         fuentes: {
             ingredientes_por_flujo: [],
             articulos_flujo_1: [],
@@ -24,12 +25,15 @@
         filtroFlujoCatalogo: 0,
         filtroNodoOfertas: 0,
         busquedaCatalogo: '',
+        busquedaPlantaDisponible: '',
+        filtroPesoPlantaDisponible: 'SUB_1KG',
         busquedaFuentes: '',
         busquedaClienteAbm: '',
         clienteMadreSeleccionadoId: null,
         flujoSeleccionadoMesa: 2,
         propuestaActivaId: null,
         catalogoEditandoId: null,
+        omitirAutoOrigenInicial: false,
         nodoEditandoId: null,
         ultimoPreviewEtiqueta: null
     };
@@ -102,6 +106,7 @@
             ESTADO_NODOS.catalogo = data.catalogo || [];
             ESTADO_NODOS.propuestas = data.propuestas || [];
             ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
+            ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
             ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
             ESTADO_NODOS.inicializado = true;
 
@@ -238,7 +243,7 @@
         `;
 
         if (ESTADO_NODOS.subTabActiva === 'cotizador') {
-            if (!ESTADO_NODOS.propuestaActivaId && !ESTADO_NODOS.catalogoEditandoId) {
+            if (!ESTADO_NODOS.propuestaActivaId && !ESTADO_NODOS.catalogoEditandoId && !ESTADO_NODOS.omitirAutoOrigenInicial) {
                 alCambiarOrigenSelect();
             } else {
                 recalcularMesaCotizacionEnVivo();
@@ -274,15 +279,19 @@
             const esPendiente = prop.estado === 'PENDIENTE_COTIZACION';
             const metaFlujo = FLUJO_META[prop.flujo_sugerido] || FLUJO_META[2];
             const activa = Number(ESTADO_NODOS.propuestaActivaId) === Number(prop.id);
+            const skuBunkerExistente = prop.articulo_bunker_sugerido_codigo ? String(prop.articulo_bunker_sugerido_codigo).trim() : '';
 
             return `
                 <div style="padding:11px 13px; border-radius:10px; background:${activa ? 'rgba(16,185,129,0.14)' : 'rgba(15,23,42,0.75)'}; border:1px solid ${activa ? '#10b981' : esPendiente ? 'rgba(245,158,11,0.4)' : '#334155'}; display:flex; flex-direction:column; gap:6px;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                        <div>
+                        <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
                             <span style="font-size:0.7rem; font-weight:800; padding:2px 6px; border-radius:4px; background:${esPendiente ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}; color:${esPendiente ? '#fbbf24' : '#34d399'};">
                                 ${esPendiente ? '⏳ PENDIENTE COTIZAR' : '✅ APROBADA'}
                             </span>
-                            <span style="font-size:0.72rem; color:#94a3b8; margin-left:6px;">${escaparHtml(prop.codigo_propuesta)} · Nodo: <strong style="color:#e2e8f0;">${escaparHtml(prop.nodo_solicitante_nombre || 'General')}</strong></span>
+                            <span style="font-size:0.68rem; font-weight:800; padding:2px 6px; border-radius:4px; background:${skuBunkerExistente ? 'rgba(56,189,248,0.18)' : 'rgba(167,139,250,0.18)'}; color:${skuBunkerExistente ? '#7dd3fc' : '#ddd6fe'}; border:1px solid ${skuBunkerExistente ? 'rgba(56,189,248,0.4)' : 'rgba(167,139,250,0.4)'};">
+                                ${skuBunkerExistente ? `🏭 HABILITAR EXISTENTE (${escaparHtml(skuBunkerExistente)})` : '✨ NUEVA FRACCIÓN'}
+                            </span>
+                            <span style="font-size:0.72rem; color:#94a3b8;">${escaparHtml(prop.codigo_propuesta)} · Nodo: <strong style="color:#e2e8f0;">${escaparHtml(prop.nodo_solicitante_nombre || 'General')}</strong></span>
                         </div>
                         <span style="font-size:0.7rem; padding:2px 7px; border-radius:999px; background:${metaFlujo.bg}; color:${metaFlujo.color}; font-weight:700;">
                             ${metaFlujo.corto}
@@ -698,6 +707,85 @@
     // =========================================================================
     // SUB-PESTAÑA 2: CATÁLOGO CONECTADO AL BÚNKER Y MÁRGENES POR GESTOR
     // =========================================================================
+    function renderizarFilasPresentacionesPlantaHtml() {
+        const disponibles = Array.isArray(ESTADO_NODOS.presentaciones_planta_disponibles)
+            ? ESTADO_NODOS.presentaciones_planta_disponibles
+            : [];
+        const qPlanta = ESTADO_NODOS.busquedaPlantaDisponible || '';
+        const modoPeso = ESTADO_NODOS.filtroPesoPlantaDisponible || 'SUB_1KG';
+
+        const filtradas = disponibles.filter(p => {
+            const kilos = Number(p.kilos_unidad || 0);
+            if (modoPeso === 'SUB_1KG' && kilos >= 0.99 && !p.es_pack) return false;
+            if (modoPeso === '1KG' && (kilos < 0.99 || p.es_pack)) return false;
+            const bolsa = `${p.articulo_id} ${p.descripcion_generada || ''} ${p.nombre_claro_gestor || ''} ${p.alias_vecino_sugerido || ''} ${p.categoria_gestor || ''} ${p.etiqueta_peso || ''} flujo ${p.flujo}`;
+            return cumpleBusquedaUniversalLamda(bolsa, qPlanta);
+        });
+
+        if (!filtradas.length) {
+            return `
+                <div style="padding:14px; text-align:center; color:#94a3b8; font-size:0.8rem; background:#0f172a; border-radius:8px; border:1px dashed #334155;">
+                    No hay presentaciones de Planta sin habilitar que coincidan con el filtro actual.
+                </div>
+            `;
+        }
+
+        return `
+            <div style="max-height:280px; overflow-y:auto; border:1px solid #263244; border-radius:8px;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.79rem; color:#e2e8f0;">
+                    <thead>
+                        <tr style="background:#0f172a; color:#94a3b8; text-align:left; position:sticky; top:0; z-index:1; border-bottom:1px solid #334155;">
+                            <th style="padding:8px 10px;">SKU Búnker / Flujo</th>
+                            <th style="padding:8px 10px;">Producto LAMDA y Presentación</th>
+                            <th style="padding:8px 10px;">Categoría</th>
+                            <th style="padding:8px 10px;">Costo MP / Base</th>
+                            <th style="padding:8px 10px;">Ref. Lista Mayorista</th>
+                            <th style="padding:8px 10px; text-align:right;">Habilitar en Nodos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filtradas.map(p => {
+                            const meta = FLUJO_META[p.flujo] || FLUJO_META[2];
+                            return `
+                                <tr style="border-bottom:1px solid #1e293b; background:rgba(15,23,42,0.55);">
+                                    <td style="padding:8px 10px;">
+                                        <span style="font-family:monospace; font-weight:800; color:#7dd3fc;">${escaparHtml(p.articulo_id)}</span>
+                                        <div style="margin-top:2px;">
+                                            <span style="font-size:0.66rem; padding:1px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700;">${meta.corto}</span>
+                                        </div>
+                                    </td>
+                                    <td style="padding:8px 10px;">
+                                        <strong style="color:#f8fafc;">${escaparHtml(p.nombre_claro_gestor)}</strong>
+                                        <span style="margin-left:6px; background:rgba(56,189,248,0.16); color:#bae6fd; border:1px solid rgba(56,189,248,0.35); padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">
+                                            ${escaparHtml(p.etiqueta_peso)}
+                                        </span>
+                                        <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">${escaparHtml(p.descripcion_generada || '')}</div>
+                                    </td>
+                                    <td style="padding:8px 10px; color:#cbd5e1;">${escaparHtml(p.categoria_gestor || '')}</td>
+                                    <td style="padding:8px 10px;">
+                                        <div style="color:#cbd5e1;">MP: <strong>${fmtMoneda(p.costo_insumo_kg)}/kg</strong></div>
+                                        ${p.bunker_costo_base > 0 ? `<div style="font-size:0.71rem; color:#94a3b8;">Costo u. Búnker: ${fmtMoneda(p.bunker_costo_base, 0)}</div>` : ''}
+                                    </td>
+                                    <td style="padding:8px 10px;">
+                                        ${p.precio_ref_mayorista
+                                            ? `<span style="color:#fcd34d; font-weight:700;">${fmtMoneda(p.precio_ref_mayorista)}</span>`
+                                            : `<span style="color:#64748b; font-size:0.72rem;">Solo pack mayorista · cotizar u.</span>`}
+                                    </td>
+                                    <td style="padding:8px 10px; text-align:right;">
+                                        <button onclick="window.NodosPizarra.cargarPresentacionPlantaEnMesa(${Number(p.ingrediente_id)}, ${Number(p.kilos_unidad)})"
+                                            style="padding:5px 10px; border-radius:6px; font-size:0.74rem; font-weight:800; cursor:pointer; border:1px solid #38bdf8; background:rgba(56,189,248,0.18); color:#bae6fd;">
+                                            ⚡ Cotizar y Habilitar
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
     function renderizarSubTabCatalogo() {
         const q = ESTADO_NODOS.busquedaCatalogo;
         const fFlujo = Number(ESTADO_NODOS.filtroFlujoCatalogo || 0);
@@ -860,6 +948,47 @@
                             }).join('')}
                         </tbody>
                     </table>
+                </div>
+
+                <!-- BANDEJA RÁPIDA: PRESENTACIONES ESTÁNDAR QUE LAMDA YA PRODUCE EN PLANTA (AÚN SIN PRECIO EN LISTA NODOS) -->
+                <div class="card" style="padding:14px 16px; background:#151e2e; border:1px solid rgba(56,189,248,0.38); border-radius:12px; display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="font-weight:800; font-size:0.93rem; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+                                <span>🏭 Presentaciones estándar que LAMDA ya produce en Planta</span>
+                                <span style="background:rgba(56,189,248,0.2); color:#bae6fd; border:1px solid rgba(56,189,248,0.4); font-size:0.72rem; padding:1px 8px; border-radius:999px;">
+                                    ${(ESTADO_NODOS.presentaciones_planta_disponibles || []).length} disponibles para habilitar
+                                </span>
+                            </div>
+                            <div style="font-size:0.76rem; color:#94a3b8; margin-top:2px;">
+                                Artículos unitarios con receta activa en el Búnker que el Gestor ya ve marcados como existentes en su celular. Al cotizarlos aquí se reutiliza su SKU, receta y bolsa real sin duplicar artículos, sumándose a la Lista Base Nodos.
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button onclick="window.NodosPizarra.cambiarFiltroPesoPlantaDisponible('SUB_1KG')"
+                                style="padding:5px 10px; border-radius:7px; font-size:0.75rem; font-weight:700; cursor:pointer; border:1px solid ${ESTADO_NODOS.filtroPesoPlantaDisponible === 'SUB_1KG' ? '#38bdf8' : '#334155'}; background:${ESTADO_NODOS.filtroPesoPlantaDisponible === 'SUB_1KG' ? 'rgba(56,189,248,0.2)' : '#0f172a'}; color:${ESTADO_NODOS.filtroPesoPlantaDisponible === 'SUB_1KG' ? '#bae6fd' : '#cbd5e1'};">
+                                Bolsas chicas (&lt; 1 kg)
+                            </button>
+                            <button onclick="window.NodosPizarra.cambiarFiltroPesoPlantaDisponible('1KG')"
+                                style="padding:5px 10px; border-radius:7px; font-size:0.75rem; font-weight:700; cursor:pointer; border:1px solid ${ESTADO_NODOS.filtroPesoPlantaDisponible === '1KG' ? '#38bdf8' : '#334155'}; background:${ESTADO_NODOS.filtroPesoPlantaDisponible === '1KG' ? 'rgba(56,189,248,0.2)' : '#0f172a'}; color:${ESTADO_NODOS.filtroPesoPlantaDisponible === '1KG' ? '#bae6fd' : '#cbd5e1'};">
+                                Bolsas de 1 kg
+                            </button>
+                            <button onclick="window.NodosPizarra.cambiarFiltroPesoPlantaDisponible('TODAS')"
+                                style="padding:5px 10px; border-radius:7px; font-size:0.75rem; font-weight:700; cursor:pointer; border:1px solid ${ESTADO_NODOS.filtroPesoPlantaDisponible === 'TODAS' ? '#38bdf8' : '#334155'}; background:${ESTADO_NODOS.filtroPesoPlantaDisponible === 'TODAS' ? 'rgba(56,189,248,0.2)' : '#0f172a'}; color:${ESTADO_NODOS.filtroPesoPlantaDisponible === 'TODAS' ? '#bae6fd' : '#cbd5e1'};">
+                                Todas
+                            </button>
+                        </div>
+                    </div>
+
+                    <input type="text" id="input-buscar-planta-disponible"
+                        placeholder="🔍 Filtrar presentaciones existentes de Planta por nombre, SKU (ej: GSX200G, GDFX200G, MFSX300G), categoría o gramaje..."
+                        value="${escaparHtml(ESTADO_NODOS.busquedaPlantaDisponible || '')}"
+                        oninput="window.NodosPizarra.filtrarBusquedaPlantaDisponible(this.value)"
+                        style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.81rem;">
+
+                    <div id="nodos-planta-disponibles-lista">
+                        ${renderizarFilasPresentacionesPlantaHtml()}
+                    </div>
                 </div>
             </div>
         `;
@@ -1722,7 +1851,9 @@
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(item.flujo || 2);
+        ESTADO_NODOS.omitirAutoOrigenInicial = true;
         renderizarVistaNodosCompleta();
+        ESTADO_NODOS.omitirAutoOrigenInicial = false;
 
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
@@ -1740,6 +1871,54 @@
         if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(item.nombre, kilos, item.flujo, item.id);
         sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
         recalcularMesaCotizacionEnVivo();
+    }
+
+    async function cargarPresentacionPlantaEnMesa(ingId, kilosUnidad) {
+        const item = ESTADO_NODOS.fuentes.ingredientes_por_flujo.find(i => Number(i.id) === Number(ingId));
+        const pres = (ESTADO_NODOS.presentaciones_planta_disponibles || []).find(
+            p => Number(p.ingrediente_id) === Number(ingId) && Math.abs(Number(p.kilos_unidad) - Number(kilosUnidad)) < 0.002
+        );
+        const flujoTarget = Number(item?.flujo || pres?.flujo || 2);
+        const kilosNum = Number(kilosUnidad) || 0.25;
+
+        ESTADO_NODOS.subTabActiva = 'cotizador';
+        ESTADO_NODOS.propuestaActivaId = null;
+        ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.flujoSeleccionadoMesa = flujoTarget;
+        ESTADO_NODOS.omitirAutoOrigenInicial = true;
+        renderizarVistaNodosCompleta();
+        ESTADO_NODOS.omitirAutoOrigenInicial = false;
+
+        const selectEl = document.getElementById('cot-origen-select');
+        const costoEl = document.getElementById('cot-costo-kg');
+        const kilosEl = document.getElementById('cot-kilos-unidad');
+        const nombreEl = document.getElementById('cot-nombre-publico');
+        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
+        const skuEl = document.getElementById('cot-sku-nodo');
+        const catEl = document.getElementById('cot-categoria');
+        const compMayEl = document.getElementById('cot-compartido-mayorista');
+        const titEl = document.getElementById('mesa-cotizacion-titulo');
+        const subEl = document.getElementById('mesa-cotizacion-subtitulo');
+
+        if (selectEl) selectEl.value = String(ingId);
+        const costoVivo = obtenerCostoVivoIngredientePizarra(ingId, item?.costo_kg || pres?.costo_insumo_kg || 0);
+        if (costoEl) costoEl.value = costoVivo.toFixed(2);
+        if (kilosEl) kilosEl.value = kilosNum.toFixed(2);
+        if (nombreEl) nombreEl.value = pres?.alias_vecino_sugerido || item?.alias_vecino_sugerido || pres?.nombre_claro_gestor || '';
+        if (bunkerNomEl && pres?.descripcion_generada) bunkerNomEl.value = pres.descripcion_generada;
+        if (skuEl && pres?.articulo_id) skuEl.value = pres.articulo_id;
+        if (catEl && (pres?.categoria_gestor || item?.categoria_gestor)) catEl.value = pres?.categoria_gestor || item?.categoria_gestor;
+        if (compMayEl) compMayEl.value = 'true';
+
+        if (titEl && pres) {
+            titEl.innerHTML = `🏭 Habilitando Presentación Existente de Planta (${escaparHtml(pres.articulo_id)})`;
+        }
+        if (subEl && pres) {
+            subEl.innerHTML = `Reutiliza artículo y receta real del Búnker: <strong style="color:#f8fafc;">${escaparHtml(pres.descripcion_generada)}</strong>${pres.precio_ref_mayorista ? ` · Ref. Mayorista: <strong style="color:#fcd34d;">${fmtMoneda(pres.precio_ref_mayorista)}</strong>` : ''}`;
+        }
+
+        recalcularMesaCotizacionEnVivo();
+        await sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
     }
 
     async function cargarPropuestaEnMesa(propuestaId) {
@@ -3252,6 +3431,7 @@
         fijarGramajeRapido,
         recalcularEnVivo: recalcularMesaCotizacionEnVivo,
         cargarIngredienteDirectoEnMesa,
+        cargarPresentacionPlantaEnMesa,
         cargarPropuestaEnMesa,
         editarArticuloCatalogoEnMesa,
         limpiarMesaCotizacion,
@@ -3265,6 +3445,16 @@
         },
         filtrarCatalogo: (val) => {
             ESTADO_NODOS.busquedaCatalogo = val;
+            const body = document.getElementById('nodos-subtab-body');
+            if (body) body.innerHTML = renderizarSubTabCatalogo();
+        },
+        filtrarBusquedaPlantaDisponible: (val) => {
+            ESTADO_NODOS.busquedaPlantaDisponible = val;
+            const lista = document.getElementById('nodos-planta-disponibles-lista');
+            if (lista) lista.innerHTML = renderizarFilasPresentacionesPlantaHtml();
+        },
+        cambiarFiltroPesoPlantaDisponible: (modo) => {
+            ESTADO_NODOS.filtroPesoPlantaDisponible = modo;
             const body = document.getElementById('nodos-subtab-body');
             if (body) body.innerHTML = renderizarSubTabCatalogo();
         },
@@ -3316,6 +3506,7 @@
                         ESTADO_NODOS.catalogo = data.catalogo || [];
                         ESTADO_NODOS.propuestas = data.propuestas || [];
                         ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
+                        ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
                         ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
                         ESTADO_NODOS.inicializado = true;
                         actualizarBadgePropuestasPendientes();
