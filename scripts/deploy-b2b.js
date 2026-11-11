@@ -4,23 +4,25 @@ const { spawnSync } = require('child_process');
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-const token = process.env.CLOUDFLARE_API_TOKEN;
+const workersToken = process.env.CLOUDFLARE_WORKERS_TOKEN || '';
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
 console.log('🚀 Desplegando Portal B2B a Cloudflare Workers...');
 console.log('Account ID:', accountId);
-console.log('Token disponible:', !!token);
-
-if (!token) {
-    console.error('❌ Falta CLOUDFLARE_API_TOKEN en .env');
-    process.exit(1);
-}
 
 const env = {
     ...process.env,
-    CLOUDFLARE_API_TOKEN: token,
     CLOUDFLARE_ACCOUNT_ID: accountId
 };
+
+// Nota: CLOUDFLARE_API_TOKEN en .env corresponde a GraphQL Analytics (solo lectura).
+// Si no existe CLOUDFLARE_WORKERS_TOKEN específico, limpiamos CLOUDFLARE_API_TOKEN
+// para que Wrangler utilice la sesión OAuth de `npx wrangler login` (default.toml).
+if (workersToken) {
+    env.CLOUDFLARE_API_TOKEN = workersToken;
+} else {
+    delete env.CLOUDFLARE_API_TOKEN;
+}
 
 const result = spawnSync('npx', ['wrangler', 'deploy'], {
     cwd: path.join(__dirname, '..', 'b2b-portal'),
