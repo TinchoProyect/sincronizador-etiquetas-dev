@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lamda-b2b-v9-universal';
+const CACHE_NAME = 'lamda-b2b-v10-universal';
 const CORE_ASSETS = [
   '/',
   '/index.html',

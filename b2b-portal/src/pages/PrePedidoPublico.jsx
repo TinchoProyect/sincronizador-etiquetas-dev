@@ -752,42 +752,14 @@ export default function PrePedidoPublico({ path }) {
     });
   };
 
+  // Mantener las acordeones plegadas al utilizar el buscador superior para facilitar la navegación en móvil y escritorio
   useEffect(() => {
-    if ((searchTerms.length > 0 || filtroFavoritos || filtroOfertas) && hierarchicalData.length > 0) {
-      const allFamKeys = new Set(hierarchicalData.map(f => f.key));
-      const allAtKeys = new Set();
-      const allSubKeys = new Set();
-      const allSubSubKeys = new Set();
-      const allSubSubSubKeys = new Set();
-
-      hierarchicalData.forEach(f => {
-        f.atributos.forEach(at => {
-          allAtKeys.add(at.key);
-          if (at.hasSubcategorias) {
-            at.subcategorias.forEach(sub => {
-              allSubKeys.add(sub.key);
-              if (sub.hasSubSubcategorias) {
-                sub.subSubcategorias.forEach(ss => {
-                  allSubSubKeys.add(ss.key);
-                  if (ss.hasSubSubSubcategorias) {
-                    ss.subSubSubcategorias.forEach(sss => {
-                      allSubSubSubKeys.add(sss.key);
-                    });
-                  }
-                });
-              }
-            });
-          }
-        });
-      });
-
-      setExpandedFamilias(allFamKeys);
-      setExpandedAtributos(allAtKeys);
-      setExpandedSubcategorias(allSubKeys);
-      setExpandedSubSubcategorias(allSubSubKeys);
-      setExpandedSubSubSubcategorias(allSubSubSubKeys);
-    }
-  }, [searchTerms, filtroFavoritos, filtroOfertas, hierarchicalData]);
+    setExpandedFamilias(new Set());
+    setExpandedAtributos(new Set());
+    setExpandedSubcategorias(new Set());
+    setExpandedSubSubcategorias(new Set());
+    setExpandedSubSubSubcategorias(new Set());
+  }, [search]);
 
   // Calcular precio efectivo de un producto contemplando ofertas activas
   const obtenerProductoConOferta = (product) => {

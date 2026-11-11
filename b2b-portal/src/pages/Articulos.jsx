@@ -621,44 +621,14 @@ export default function Articulos({
       });
   }, [filteredProducts]);
 
-  // Auto-expandir familias y grupos cuando se activa el filtro de favoritos o una búsqueda
+  // Mantener las acordeones plegadas al utilizar el buscador superior para facilitar la navegación en móvil y escritorio
   useEffect(() => {
-    if (filtroFavoritos || searchTerms.length > 0) {
-      const famKeys = new Set();
-      const atKeys = new Set();
-      const subKeys = new Set();
-      const subSubKeys = new Set();
-      const subSubSubKeys = new Set();
-
-      for (const fam of hierarchicalData) {
-        famKeys.add(fam.key);
-        for (const at of fam.atributos) {
-          atKeys.add(at.key);
-          if (at.subcategorias) {
-            for (const sub of at.subcategorias) {
-              subKeys.add(sub.key);
-              if (sub.subSubcategorias) {
-                for (const subsub of sub.subSubcategorias) {
-                  subSubKeys.add(subsub.key);
-                  if (subsub.subSubSubcategorias) {
-                    for (const subsubsub of subsub.subSubSubcategorias) {
-                      subSubSubKeys.add(subsubsub.key);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      setExpandedFamilias(famKeys);
-      setExpandedAtributos(atKeys);
-      setExpandedSubcategorias(subKeys);
-      setExpandedSubSubcategorias(subSubKeys);
-      setExpandedSubSubSubcategorias(subSubSubKeys);
-    }
-  }, [filtroFavoritos, searchTerms, hierarchicalData]);
+    setExpandedFamilias(new Set());
+    setExpandedAtributos(new Set());
+    setExpandedSubcategorias(new Set());
+    setExpandedSubSubcategorias(new Set());
+    setExpandedSubSubSubcategorias(new Set());
+  }, [search]);
 
   // Telemetría de búsqueda en catálogo (con debounce para registrar término real buscado)
   useEffect(() => {
