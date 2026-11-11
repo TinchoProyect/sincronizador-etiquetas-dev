@@ -300,9 +300,11 @@ router.post('/propuestas', async (req, res) => {
 router.post('/propuestas/:id/anular', async (req, res) => {
     try {
         const nodoId = req.body && req.body.nodo_id;
+        const nodoSlug = req.body && req.body.nodo_slug;
         const propuesta = await nodosService.anularODescartarPropuestaFraccion(req.params.id, {
             origen: 'GESTOR',
-            nodo_id: nodoId
+            nodo_id: nodoId,
+            nodo_slug: nodoSlug
         });
         res.json({ ok: true, propuesta });
     } catch (error) {
@@ -399,6 +401,7 @@ router.post('/gestor/:nodoId/sumar-catalogo', async (req, res) => {
  */
 router.get('/portal/:slug', async (req, res) => {
     try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const fechaSimulada = req.query.fecha_simulada || null;
         const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada);
         res.json({ ok: true, ...data });

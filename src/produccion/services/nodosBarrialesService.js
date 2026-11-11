@@ -3380,7 +3380,15 @@ async function anularODescartarPropuestaFraccion(propuestaId, opciones = {}) {
 
     const origen = String(opciones.origen || 'GESTOR').toUpperCase();
     if (origen === 'GESTOR') {
-        const nodoId = Number(opciones.nodo_id || 0);
+        let nodoId = Number(opciones.nodo_id || 0);
+        const nodoSlug = String(opciones.nodo_slug || '').trim().toLowerCase();
+        if (!nodoId && nodoSlug) {
+            const nRes = await db.query(
+                'SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = $1 LIMIT 1',
+                [nodoSlug]
+            );
+            if (nRes.rows[0]) nodoId = Number(nRes.rows[0].id);
+        }
         if (!nodoId || Number(prop.nodo_solicitante_id) !== nodoId) {
             throw new Error('No tenés permiso para anular solicitudes de otro Nodo.');
         }

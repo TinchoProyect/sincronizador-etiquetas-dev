@@ -386,6 +386,9 @@
     <div id="gestor-main-view"></div>
   </main>
 
+  <!-- AVISO VISIBLE EN PANTALLA ANTE ÉXITO O FALLA DE COMUNICACIÓN -->
+  <div id="gestor-aviso-flotante" style="display:none; position:fixed; top:14px; left:14px; right:14px; max-width:520px; margin:0 auto; z-index:2500; padding:12px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(62,37,25,0.18); font-size:0.84rem; font-weight:700; line-height:1.4;"></div>
+
   <!-- MODAL DE WHATSAPP / RECIBO DIGITAL MARCA BLANCA -->
   <div id="modal-recibo-gestor" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:2000; align-items:center; justify-content:center; padding:16px;">
     <div style="background:#ffffff; border-radius:18px; max-width:460px; width:100%; overflow:hidden; box-shadow:0 20px 45px rgba(62,37,25,0.22); border:1px solid var(--border);">
@@ -424,6 +427,40 @@
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    let _timerAvisoFlotante = null;
+    function mostrarAvisoPantallaGestor(mensaje, tipo = 'ok') {
+      const box = document.getElementById('gestor-aviso-flotante');
+      if (!box) return;
+      if (_timerAvisoFlotante) clearTimeout(_timerAvisoFlotante);
+
+      const esError = tipo === 'error';
+      box.style.background = esError ? '#fef2f2' : '#ecfdf3';
+      box.style.border = esError ? '1px solid #ef4444' : '1px solid rgba(31,111,74,0.45)';
+      box.style.color = esError ? '#991b1b' : '#14532d';
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>${esError ? '⚠️ ' : ''}${esc(mensaje)}</div>
+          <button type="button" onclick="document.getElementById('gestor-aviso-flotante').style.display='none'"
+            style="border:none; background:transparent; color:inherit; font-weight:900; font-size:0.95rem; cursor:pointer; padding:0 2px; line-height:1;">
+            ✕
+          </button>
+        </div>
+      `;
+      box.style.display = 'block';
+      _timerAvisoFlotante = setTimeout(() => {
+        box.style.display = 'none';
+      }, esError ? 9000 : 5000);
+    }
+
+    async function leerRespuestaJsonSegura(resp) {
+      const raw = await resp.text();
+      try {
+        return raw ? JSON.parse(raw) : {};
+      } catch (_) {
+        return { ok: false, error: `Respuesta inesperada del servidor (HTTP ${resp.status})` };
+      }
+    }
+
     function aplicarPaletaNodo(hexColor) {
       const clean = /^#[0-9a-fA-F]{6}$/.test(String(hexColor || '').trim()) ? String(hexColor).trim() : '#a2553b';
       const r = parseInt(clean.slice(1, 3), 16);
@@ -452,8 +489,8 @@
 
     async function cargarPanelGestor(opciones = {}) {
       const [resp, respLiq] = await Promise.all([
-        fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`),
-        fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`)
+        fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`, { cache: 'no-store' }),
+        fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`, { cache: 'no-store' })
       ]);
       const data = await resp.json();
       if (!data.ok) {
@@ -941,29 +978,43 @@
 
     async function sumarCatalogoBaseAMiOferta(catalogoId, abrirOfertasDespues = false) {
       if (!GSTATE.nodo || !catalogoId) return;
-      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/sumar-catalogo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogo_id: Number(catalogoId) })
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('No se pudo sumar el producto: ' + (data.error || 'Error interno'));
-        return;
-      }
-      await cargarPanelGestor();
-      if (abrirOfertasDespues) {
-        abrirSeccionGestor('ofertas');
+      try {
+        const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/sumar-catalogo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ catalogo_id: Number(catalogoId) })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo sumar el producto: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('✓ Producto sumado a Mi Oferta y Márgenes.', 'ok');
+        if (abrirOfertasDespues) {
+          abrirSeccionGestor('ofertas');
+        }
+      } catch (err) {
+        mostrarAvisoPantallaGestor('Falla de conexión al intentar sumar el producto. Verificá tu señal e intentá de nuevo.', 'error');
       }
     }
 
     async function guardarCambioOferta(ofertaId, body) {
-      await fetch(`/api/produccion/nodos/ofertas-gestor/${ofertaId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      await cargarPanelGestor();
+      try {
+        const resp = await fetch(`/api/produccion/nodos/ofertas-gestor/${ofertaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar el cambio: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de comunicación al guardar la oferta.', 'error');
+      }
     }
 
     async function guardarPrecioDirectoOferta(ofertaId, base, nuevoPrecio) {
@@ -1632,56 +1683,133 @@
         solicitar_habilitacion_existente: solicitarHabilitacionExistente
       };
 
-      const resp = await fetch('/api/produccion/nodos/propuestas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('No se pudo enviar la solicitud: ' + (data.error || 'Error interno'));
-        sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
-        return;
-      }
+      try {
+        const resp = await fetch('/api/produccion/nodos/propuestas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo enviar la solicitud: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
+          return;
+        }
 
-      const codProp = data.propuesta?.codigo_propuesta || '';
-      GSTATE.propNombreEditadoManual = false;
-      GSTATE.propConfirmacionReciente = solicitarHabilitacionExistente
-        ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
-        : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
-      await cargarPanelGestor({ avanzarGramajeTrasEnvio: true });
+        const codProp = data.propuesta?.codigo_propuesta || '';
+        GSTATE.propNombreEditadoManual = false;
+        GSTATE.propConfirmacionReciente = solicitarHabilitacionExistente
+          ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
+          : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
+        await cargarPanelGestor({ avanzarGramajeTrasEnvio: true });
+      } catch (err) {
+        mostrarAvisoPantallaGestor('Error de comunicación al enviar la solicitud. Verificá tu conexión e intentá de nuevo.', 'error');
+        sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
+      }
     }
 
-    async function anularPropuestaGestor(propuestaId, esLimpiezaDescartada = false) {
-      if (!GSTATE.nodo || !propuestaId) return;
+    async function ejecutarAnulacionPropuestaGestor(propuestaId, esLimpiezaDescartada = false) {
       const prop = (GSTATE.propuestas || []).find(x => Number(x.id) === Number(propuestaId));
       const etiquetaNombre = prop ? prop.nombre_sugerido : 'esta presentación';
+      const btnConfirm = document.getElementById('btn-confirmar-anular-propuesta');
+      const errModalBox = document.getElementById('modal-anular-error-box');
 
-      if (!esLimpiezaDescartada) {
-        const confirmar = window.confirm(
-          `¿Querés anular la solicitud de "${etiquetaNombre}"?\n\nEse gramaje volverá a quedar libre por si querés volver a pedirlo.`
-        );
-        if (!confirmar) return;
+      if (btnConfirm) {
+        btnConfirm.disabled = true;
+        btnConfirm.textContent = 'Anulando...';
       }
+      if (errModalBox) errModalBox.style.display = 'none';
 
-      const resp = await fetch(`/api/produccion/nodos/propuestas/${Number(propuestaId)}/anular`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodo_id: GSTATE.nodo.id })
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert('No se pudo anular la solicitud: ' + (data.error || 'Error interno'));
+      try {
+        const resp = await fetch(`/api/produccion/nodos/propuestas/${Number(propuestaId)}/anular`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodo_id: GSTATE.nodo?.id || null,
+            nodo_slug: GSTATE.slug || ''
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          const msgErr = data.error || `Error HTTP ${resp.status}`;
+          if (errModalBox) {
+            errModalBox.textContent = '⚠️ No se pudo anular: ' + msgErr;
+            errModalBox.style.display = 'block';
+          }
+          mostrarAvisoPantallaGestor('No se pudo anular la solicitud: ' + msgErr, 'error');
+          if (btnConfirm) {
+            btnConfirm.disabled = false;
+            btnConfirm.textContent = 'Confirmar anulación';
+          }
+          return;
+        }
+
+        cerrarModalReciboGestor();
+        if (!esLimpiezaDescartada) {
+          const codTxt = prop?.codigo_propuesta ? ` (${prop.codigo_propuesta})` : '';
+          const msgExito = `✓ Solicitud${codTxt} de ${etiquetaNombre} anulada. Esa medida volvió a quedar libre.`;
+          GSTATE.propConfirmacionReciente = msgExito;
+          mostrarAvisoPantallaGestor(msgExito, 'ok');
+        } else {
+          GSTATE.propConfirmacionReciente = '';
+        }
+        await cargarPanelGestor();
+      } catch (err) {
+        const msgRed = 'Falla de comunicación con el servidor al intentar anular. Verificá tu conexión e intentá nuevamente.';
+        if (errModalBox) {
+          errModalBox.textContent = '⚠️ ' + msgRed;
+          errModalBox.style.display = 'block';
+        }
+        mostrarAvisoPantallaGestor(msgRed, 'error');
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+          btnConfirm.textContent = 'Confirmar anulación';
+        }
+      }
+    }
+
+    function anularPropuestaGestor(propuestaId, esLimpiezaDescartada = false) {
+      if (!GSTATE.nodo || !propuestaId) return;
+      if (esLimpiezaDescartada) {
+        ejecutarAnulacionPropuestaGestor(propuestaId, true);
         return;
       }
 
-      if (!esLimpiezaDescartada) {
-        const codTxt = prop?.codigo_propuesta ? ` (${prop.codigo_propuesta})` : '';
-        GSTATE.propConfirmacionReciente = `✓ Solicitud${codTxt} de ${etiquetaNombre} anulada. Esa medida volvió a quedar libre.`;
-      } else {
-        GSTATE.propConfirmacionReciente = '';
+      const prop = (GSTATE.propuestas || []).find(x => Number(x.id) === Number(propuestaId));
+      const etiquetaNombre = prop ? prop.nombre_sugerido : 'esta presentación';
+      const codProp = prop?.codigo_propuesta || '';
+
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) {
+        ejecutarAnulacionPropuestaGestor(propuestaId, false);
+        return;
       }
-      await cargarPanelGestor();
+
+      body.innerHTML = `
+        <div style="padding:16px 20px; background:var(--brand-soft); border-bottom:1px solid var(--brand-border); color:var(--text);">
+          <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:var(--brand-dark);">Confirmar baja de solicitud</div>
+          <div style="font-size:1.02rem; font-weight:900; margin-top:2px;">Anular ${esc(etiquetaNombre)}</div>
+          ${codProp ? `<div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">Código ${esc(codProp)}</div>` : ''}
+        </div>
+        <div style="padding:18px 20px; background:#fff; color:var(--text); font-size:0.86rem; line-height:1.45;">
+          <p style="margin:0 0 12px 0;">
+            Se dará de baja esta solicitud pendiente de cotización y <strong>ese gramaje volverá a quedar libre</strong> por si querés volver a pedirlo.
+          </p>
+          <div id="modal-anular-error-box" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:#fef2f2; border:1px solid #ef4444; color:#991b1b; font-size:0.8rem; font-weight:700;"></div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" id="btn-confirmar-anular-propuesta"
+              onclick="ejecutarAnulacionPropuestaGestor(${Number(propuestaId)}, false)"
+              class="btn-primary" style="flex:1; background:#b91c1c;">
+              Confirmar anulación
+            </button>
+            <button type="button" onclick="cerrarModalReciboGestor()" class="btn-soft" style="padding:11px 16px;">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
     }
 
     // -------------------------------------------------------------------------
