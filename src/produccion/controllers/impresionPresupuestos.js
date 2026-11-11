@@ -3,7 +3,7 @@ const JsBarcode = require('jsbarcode');
 const { createCanvas } = require('canvas');
 const motorCalculadoraFiscal = require('../utils/motorCalculadoraFiscal');
 const inyectorVectorial = require('../utils/inyectorColumnasPDFKit');
-const { obtenerArbolCanastosPorCodigos } = require('../services/nodosBarrialesService');
+const { obtenerArbolCanastosPorCodigos, obtenerMetadataPedidosVecinosPorCodigos } = require('../services/nodosBarrialesService');
 
 /**
  * Calcular el total de artículos sumando las cantidades
@@ -291,25 +291,31 @@ const imprimirPresupuestoCliente = async (req, res) => {
 
         const enriquecerArbolNodosParaImpresion = async (clientesArray) => {
             try {
-                const codigos = [];
+                const codigosCanastos = [];
+                const codigosPedidosVecinos = [];
                 (clientesArray || []).forEach(c => {
                     (c.presupuestos || []).forEach(p => {
                         const ext = String(p.id_presupuesto_ext || '').trim();
-                        if (ext.startsWith('CAN-')) codigos.push(ext);
+                        if (ext.startsWith('NB-')) codigosPedidosVecinos.push(ext);
+                        else if (ext.startsWith('CAN-')) codigosCanastos.push(ext);
                     });
                 });
-                if (codigos.length === 0) return;
-                const mapaArbol = await obtenerArbolCanastosPorCodigos(codigos);
+                const [mapaVecinos, mapaArbol] = await Promise.all([
+                    codigosPedidosVecinos.length > 0 ? obtenerMetadataPedidosVecinosPorCodigos(codigosPedidosVecinos) : Promise.resolve({}),
+                    codigosCanastos.length > 0 ? obtenerArbolCanastosPorCodigos(codigosCanastos) : Promise.resolve({})
+                ]);
                 (clientesArray || []).forEach(c => {
                     (c.presupuestos || []).forEach(p => {
                         const ext = String(p.id_presupuesto_ext || '').trim();
-                        if (ext && mapaArbol[ext]) {
+                        if (ext && mapaVecinos[ext]) {
+                            p._vecinoNodo = mapaVecinos[ext];
+                        } else if (ext && mapaArbol[ext]) {
                             p._nodoArbol = mapaArbol[ext];
                         }
                     });
                 });
             } catch (errNodo) {
-                console.warn('[REMITO-R] No se pudo adjuntar árbol de Nodo Barrial:', errNodo.message);
+                console.warn('[REMITO-R] No se pudo adjuntar metadatos de Nodo Barrial:', errNodo.message);
             }
         };
 
@@ -1627,6 +1633,33 @@ function generarHTMLPresupuestoUnico({
         </div>
         
         <!-- DATOS DEL PEDIDO -->
+        ${presupuesto._vecinoNodo ? (() => {
+            const vn = presupuesto._vecinoNodo;
+            const modEntregaHtml = vn.modalidad_entrega === 'ENVIO_BARRIAL'
+                ? `Envío Barrial: ${vn.direccion_entrega || 'Domicilio acordado'}`
+                : `Retira en ${vn.nombre_marca}${vn.direccion_retiro ? ' (' + vn.direccion_retiro + ')' : ''}`;
+            return `
+        <div class="datos-pedido" style="border-left: 5px solid #16a34a; background: #f8fafc; padding: 10px 14px; border-radius: 6px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #166534; text-transform: uppercase; letter-spacing: 0.4px;">
+                    NODO BARRIAL: ${vn.nombre_marca} <span style="font-weight: normal; color: #475569;">(Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · Canasto ' + vn.codigo_canasto : ''})</span>
+                </div>
+                <div class="nombre-cliente" style="font-size: 17px; font-weight: bold; color: #0f172a; margin-top: 4px;">
+                    Cliente / Vecino: ${vn.vecino_nombre}
+                </div>
+                <div style="font-size: 11.5px; color: #334155; margin-top: 4px;">
+                    <strong>Modalidad:</strong> ${modEntregaHtml} · <strong>Pago:</strong> ${vn.medio_pago}${vn.fecha_entrega_label ? ` · <strong>Entrega:</strong> ${vn.fecha_entrega_label}` : ''}
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div class="codigo-presupuesto" style="font-size: 15px; font-weight: bold; color: #0f172a;">Pedido #${vn.codigo_pedido}</div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">Nodo ID: ${clienteId} · Fecha: ${fechaPresupuesto}</div>
+                <div style="font-size: 13px; font-weight: bold; color: #2c3e50; margin-top: 8px;">
+                    Total Items Distintos: ${totalArticulos}
+                </div>
+            </div>
+        </div>`;
+        })() : `
         <div class="datos-pedido">
             <div>
                 <div class="numero-cliente">N° de Cliente: ${clienteId}</div>
@@ -1639,7 +1672,7 @@ function generarHTMLPresupuestoUnico({
                     Total Items Distintos: ${totalArticulos}
                 </div>
             </div>
-        </div>
+        </div>`}
         
         </div>
         
@@ -2053,26 +2086,53 @@ function renderizarPDFPresupuestoUnico(doc, {
        .strokeColor('black').lineWidth(1);
     
     // DATOS DEL PEDIDO
-    doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
-    doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
-       .text(`${clienteId}`, 140, 100);
-    doc.fontSize(11).font('Helvetica').fillColor('black')
-       .text(clienteNombre, 50, 125);
-    
-    // Código de presupuesto y fecha
-    doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
-       .text(presupuesto.id_presupuesto_ext, 450, 105);
-    doc.fontSize(8).fillColor('#999999')
-       .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
-    
-    // TOTAL ARTÍCULOS
-    doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
-       .text(`Items Distintos: ${totalArticulos}`, 395, 134, { width: 150, align: 'right' });
-    
-    doc.fillColor('black');
+    let tablaY = 150;
+    if (presupuesto._vecinoNodo) {
+        const vn = presupuesto._vecinoNodo;
+        const modPdfTxt = vn.modalidad_entrega === 'ENVIO_BARRIAL'
+            ? `Envío Barrial: ${vn.direccion_entrega || 'Domicilio'}`
+            : `Retira en ${vn.nombre_marca}`;
+        doc.fillColor('#f8fafc').roundedRect(50, 96, 495, 52, 4).fill();
+        doc.strokeColor('#cbd5e1').lineWidth(0.8).roundedRect(50, 96, 495, 52, 4).stroke();
+        doc.fillColor('#16a34a').rect(50, 96, 4, 52).fill();
+
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#166534')
+           .text(`NODO BARRIAL: ${vn.nombre_marca} (Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · ' + vn.codigo_canasto : ''})`, 60, 102, { width: 325 });
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
+           .text(`Cliente / Vecino: ${vn.vecino_nombre}`, 60, 115, { width: 325 });
+        doc.fontSize(8.5).font('Helvetica').fillColor('#334155')
+           .text(`${modPdfTxt} · Pago: ${vn.medio_pago}${vn.fecha_entrega_label ? ' · Entrega: ' + vn.fecha_entrega_label : ''}`, 60, 133, { width: 340 });
+
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#0f172a')
+           .text(`Pedido #${vn.codigo_pedido}`, 390, 102, { width: 148, align: 'right' });
+        doc.fontSize(8).font('Helvetica').fillColor('#64748b')
+           .text(`Nodo ID: ${clienteId} · Fecha: ${fechaPresupuesto}`, 390, 117, { width: 148, align: 'right' });
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#2c3e50')
+           .text(`Items Distintos: ${totalArticulos}`, 390, 131, { width: 148, align: 'right' });
+
+        doc.fillColor('black').strokeColor('black').lineWidth(1);
+        tablaY = 156;
+    } else {
+        doc.fontSize(11).font('Helvetica').text(`N° de Cliente:`, 50, 105);
+        doc.fontSize(24).font('Helvetica-Bold').fillColor('#2c3e50')
+           .text(`${clienteId}`, 140, 100);
+        doc.fontSize(11).font('Helvetica').fillColor('black')
+           .text(clienteNombre, 50, 125);
+        
+        // Código de presupuesto y fecha
+        doc.fontSize(9).font('Helvetica').fillColor('#7f8c8d')
+           .text(presupuesto.id_presupuesto_ext, 450, 105);
+        doc.fontSize(8).fillColor('#999999')
+           .text(`Fecha: ${fechaPresupuesto}`, 450, 118);
+        
+        // TOTAL ARTÍCULOS
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#2c3e50')
+           .text(`Items Distintos: ${totalArticulos}`, 395, 134, { width: 150, align: 'right' });
+        
+        doc.fillColor('black');
+    }
     
     // TABLA DE ARTÍCULOS
-    const tablaY = 150;
     
     const esPerfilEmilio = (perfilId === 'PERFIL_EMILIO' || perfilId === 'PERFIL_PRECIO_KILO' || clienteId == 1 || clienteId === '001');
     const esPerfilGreenCorner = (perfilId === 'TOTALIZADOR_MENS' || perfilId === 'PERFIL_GREEN_CORNER' || clienteId == 577 || clienteId === '577');
@@ -2784,11 +2844,13 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                     }
                 }
                 
-                const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
+                const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-') || Boolean(presupuesto._vecinoNodo);
                 const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
 
                 if (esCanastoNodo) {
-                    const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
+                    const qrPayloadNodo = presupuesto._vecinoNodo
+                        ? `${presupuesto._vecinoNodo.codigo_pedido}|${presupuesto._vecinoNodo.codigo_canasto || presupuesto._vecinoNodo.nombre_marca}`
+                        : (presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext);
                     const QRCode = require('qrcode');
                     qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
                 } else {
@@ -3005,11 +3067,13 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
                         }
                     }
                     
-                    const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
+                    const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-') || Boolean(presupuesto._vecinoNodo);
                     const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
 
                     if (esCanastoNodo) {
-                        const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
+                        const qrPayloadNodo = presupuesto._vecinoNodo
+                            ? `${presupuesto._vecinoNodo.codigo_pedido}|${presupuesto._vecinoNodo.codigo_canasto || presupuesto._vecinoNodo.nombre_marca}`
+                            : (presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext);
                         const QRCode = require('qrcode');
                         qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
                     } else {

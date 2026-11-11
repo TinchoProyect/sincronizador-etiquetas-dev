@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
-const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda, obtenerArbolCanastosPorCodigos } = require('../services/nodosBarrialesService');
+const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda, obtenerArbolCanastosPorCodigos, obtenerMetadataPedidosVecinosPorCodigos } = require('../services/nodosBarrialesService');
 
 /**
  * Helper para detectar el modo de JOIN entre presupuestos y presupuestos_detalles
@@ -478,30 +478,50 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 };
             });
 
-            // Enriquecer clientes de Nodo Barrial con su Árbol de 3 niveles (Nodo -> Vecinos -> Artículos)
+            // Enriquecer clientes de Nodo Barrial con metadatos individuales por Vecino ('NB-...') y Canasto ('CAN-...')
+            const codigosPedidosVecinos = [];
             const codigosCanastosNodos = [];
             clientesConIndicador.forEach(cli => {
                 (cli.articulos || []).forEach(art => {
                     const pExt = String(art.id_presupuesto_ext || art.presupuesto_id || '').trim();
-                    if (pExt.startsWith('CAN-')) {
+                    if (pExt.startsWith('NB-')) {
+                        codigosPedidosVecinos.push(pExt);
+                    } else if (pExt.startsWith('CAN-')) {
                         codigosCanastosNodos.push(pExt);
                     }
                 });
             });
 
-            if (codigosCanastosNodos.length > 0) {
+            if (codigosPedidosVecinos.length > 0 || codigosCanastosNodos.length > 0) {
                 try {
-                    const mapaArbolNodos = await obtenerArbolCanastosPorCodigos(codigosCanastosNodos);
+                    const mapaVecinos = codigosPedidosVecinos.length > 0
+                        ? await obtenerMetadataPedidosVecinosPorCodigos(codigosPedidosVecinos)
+                        : {};
+                    Object.values(mapaVecinos).forEach(mv => {
+                        if (mv && mv.codigo_canasto) codigosCanastosNodos.push(mv.codigo_canasto);
+                    });
+                    const mapaArbolNodos = codigosCanastosNodos.length > 0
+                        ? await obtenerArbolCanastosPorCodigos(codigosCanastosNodos)
+                        : {};
+
                     clientesConIndicador.forEach(cli => {
+                        const vecinosCli = {};
                         const canastosCli = {};
                         (cli.articulos || []).forEach(art => {
                             const pExt = String(art.id_presupuesto_ext || art.presupuesto_id || '').trim();
-                            if (pExt && mapaArbolNodos[pExt]) {
+                            if (pExt && mapaVecinos[pExt]) {
+                                vecinosCli[pExt] = mapaVecinos[pExt];
+                                const codCan = mapaVecinos[pExt].codigo_canasto;
+                                if (codCan && mapaArbolNodos[codCan]) {
+                                    canastosCli[codCan] = mapaArbolNodos[codCan];
+                                }
+                            } else if (pExt && mapaArbolNodos[pExt]) {
                                 canastosCli[pExt] = mapaArbolNodos[pExt];
                             }
                         });
-                        if (Object.keys(canastosCli).length > 0) {
+                        if (Object.keys(vecinosCli).length > 0 || Object.keys(canastosCli).length > 0) {
                             cli.es_nodo_barrial = true;
+                            cli.vecinos_nodos = vecinosCli;
                             cli.canastos_nodos = canastosCli;
                         }
                     });
@@ -1263,8 +1283,7 @@ const actualizarPackMapping = async (req, res) => {
             
             console.log(`🧩 [PACK-MAP] padre=${padreArticulo} mapeo=ELIMINADO (rowCount=${result.rowCount})`);
             
-            try { await sincronizarCambioSecuenciaDesdeLamda(presupuestos_ids, nueva_secuencia); } catch (e) { console.warn('[SECUENCIA] Nodos sync warn:', e.message); }
-        if (result.rowCount === 0) {
+            if (result.rowCount === 0) {
                 return res.status(404).json({
                     success: false,
                     error: 'padre no encontrado en stock_real_consolidado'
@@ -1492,6 +1511,18 @@ const actualizarSecuenciaPresupuestos = async (req, res) => {
         const result = await pool.query(updateQuery, queryParams);
         
         console.log(`✅ [SECUENCIA] Actualizados: ${result.rowCount} presupuestos`);
+        
+        if (result.rowCount > 0) {
+            try {
+                const idsSinc = Array.from(new Set([
+                    ...presupuestos_ids.map(x => String(x)),
+                    ...result.rows.map(r => String(r.id_presupuesto_ext || r.id))
+                ]));
+                await sincronizarCambioSecuenciaDesdeLamda(idsSinc, nueva_secuencia);
+            } catch (errNodoSync) {
+                console.warn('⚠️ [SECUENCIA] Advertencia sincronizando secuencia con Nodo Barrial:', errNodoSync.message);
+            }
+        }
         
         if ((nueva_secuencia === 'Retira_Deposito' || nueva_secuencia === 'Pedido_Listo') && result.rowCount > 0) {
             const tipoOperacion = nueva_secuencia === 'Retira_Deposito' ? 'RETIRA-DEPOSITO' : 'PEDIDO-LISTO';

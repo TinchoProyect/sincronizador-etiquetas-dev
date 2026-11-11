@@ -1060,19 +1060,21 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
       })
     ]);
 
-    const codigosCanastoActivos = (activosRes.rows || [])
+    const codigosNodosActivos = (activosRes.rows || [])
       .map(r => String(r.id_presupuesto_ext || '').trim())
-      .filter(ext => ext.startsWith('CAN-'));
+      .filter(ext => ext.startsWith('CAN-') || ext.startsWith('NB-'));
 
-    if (codigosCanastoActivos.length > 0) {
+    if (codigosNodosActivos.length > 0) {
       try {
         const canRes = await pool.query(
-          `SELECT nle.*, nm.nombre_marca, nm.gestor_nombre, nm.color_primario
+          `SELECT DISTINCT nle.*, nm.nombre_marca, nm.gestor_nombre, nm.color_primario
            FROM public.nodos_lotes_estacion nle
            JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+           LEFT JOIN public.nodos_pedidos_vecinos npv_link ON npv_link.lote_canasto_id = nle.id
            WHERE nle.codigo_canasto = ANY($1::text[])
-              OR nle.id_presupuesto_ext = ANY($1::text[])`,
-          [codigosCanastoActivos]
+              OR nle.id_presupuesto_ext = ANY($1::text[])
+              OR npv_link.codigo_pedido = ANY($1::text[])`,
+          [codigosNodosActivos]
         );
         if (canRes.rows.length > 0) {
           const canIds = canRes.rows.map(c => Number(c.id));
@@ -1080,6 +1082,7 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
             pool.query(
               `SELECT * FROM public.nodos_pedidos_vecinos
                WHERE lote_canasto_id = ANY($1::int[])
+                 AND COALESCE(estado_operativo, '') <> 'CANCELADO'
                ORDER BY id ASC`,
               [canIds]
             ),
@@ -1088,6 +1091,7 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
                FROM public.nodos_pedidos_items npi
                JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
                WHERE npv.lote_canasto_id = ANY($1::int[])
+                 AND COALESCE(npv.estado_operativo, '') <> 'CANCELADO'
                ORDER BY npi.id ASC`,
               [canIds]
             )
@@ -1107,9 +1111,13 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
           });
 
           const vecPorCanasto = new Map();
+          const canastoIdPorCodigoPedido = new Map();
           pedVecRes.rows.forEach(pv => {
             const cid = Number(pv.lote_canasto_id);
             const items = itemsPorPed.get(Number(pv.id)) || [];
+            if (pv.codigo_pedido) {
+              canastoIdPorCodigoPedido.set(String(pv.codigo_pedido).trim(), cid);
+            }
             if (!vecPorCanasto.has(cid)) vecPorCanasto.set(cid, []);
             vecPorCanasto.get(cid).push({
               id: Number(pv.id),
@@ -1118,6 +1126,7 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
               modalidad_entrega: pv.modalidad_entrega || 'RETIRO_NODO',
               direccion_entrega: pv.direccion_entrega || '',
               medio_pago: pv.medio_pago || 'TRANSFERENCIA',
+              secuencia_operativa_lamda: pv.secuencia_operativa_lamda || 'Imprimir',
               total_vecino: Number(pv.total_vecino || 0),
               bolsa_lista: ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(String(pv.estado_operativo || '')),
               total_unidades: items.reduce((a, x) => a + Number(x.cantidad || 0), 0),
@@ -1125,11 +1134,13 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
             });
           });
 
-          const mapaArbol = new Map();
+          const mapaArbolPorCanastoId = new Map();
+          const canastoIdPorCodigoCanasto = new Map();
           canRes.rows.forEach(c => {
-            const vecinos = vecPorCanasto.get(Number(c.id)) || [];
+            const cid = Number(c.id);
+            const vecinos = vecPorCanasto.get(cid) || [];
             const arbol = {
-              canasto_id: Number(c.id),
+              canasto_id: cid,
               codigo_canasto: c.codigo_canasto,
               nodo_id: Number(c.nodo_id),
               nombre_marca: c.nombre_marca,
@@ -1140,17 +1151,84 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
               total_unidades: vecinos.reduce((a, v) => a + Number(v.total_unidades || 0), 0),
               vecinos
             };
-            mapaArbol.set(c.codigo_canasto, arbol);
-            if (c.id_presupuesto_ext) mapaArbol.set(c.id_presupuesto_ext, arbol);
+            mapaArbolPorCanastoId.set(cid, arbol);
+            canastoIdPorCodigoCanasto.set(String(c.codigo_canasto).trim(), cid);
+            if (c.id_presupuesto_ext) {
+              canastoIdPorCodigoCanasto.set(String(c.id_presupuesto_ext).trim(), cid);
+            }
           });
+
+          // Consolidar filas individuales NB-... de un mismo Canasto en una sola tarjeta Árbol para Pantalla Principal
+          const filasConsolidadas = [];
+          const grupoPorCanasto = new Map();
 
           activosRes.rows.forEach(r => {
             const ext = String(r.id_presupuesto_ext || '').trim();
-            if (ext && mapaArbol.has(ext)) {
-              r.es_nodo_barrial = true;
-              r.nodo_arbol = mapaArbol.get(ext);
+            const cid = canastoIdPorCodigoPedido.get(ext) || canastoIdPorCodigoCanasto.get(ext);
+            if (!cid || !mapaArbolPorCanastoId.has(cid)) {
+              filasConsolidadas.push(r);
+              return;
             }
+            if (!grupoPorCanasto.has(cid)) {
+              const arbol = mapaArbolPorCanastoId.get(cid);
+              const filaBase = {
+                ...r,
+                id_presupuesto_ext: arbol.codigo_canasto,
+                es_nodo_barrial: true,
+                nodo_arbol: arbol,
+                presupuestos_vecinos_activos: [],
+                _articulosMap: new Map(),
+                _tieneImprimir: false
+              };
+              grupoPorCanasto.set(cid, filaBase);
+              filasConsolidadas.push(filaBase);
+            }
+            const grupo = grupoPorCanasto.get(cid);
+            grupo.presupuestos_vecinos_activos.push(ext);
+            const sec = String(r.secuencia || 'Imprimir').trim();
+            if (sec === 'Imprimir' || sec === 'Imprimir_Modificado') {
+              grupo._tieneImprimir = true;
+            }
+            (Array.isArray(r.articulos) ? r.articulos : []).forEach(art => {
+              const keySku = String(art.articulo || '').trim().toUpperCase();
+              if (!keySku) return;
+              if (!grupo._articulosMap.has(keySku)) {
+                grupo._articulosMap.set(keySku, {
+                  ...art,
+                  cantidad: Number(art.cantidad || 0)
+                });
+              } else {
+                const acum = grupo._articulosMap.get(keySku);
+                acum.cantidad = Number((Number(acum.cantidad || 0) + Number(art.cantidad || 0)).toFixed(3));
+              }
+            });
           });
+
+          grupoPorCanasto.forEach(grupo => {
+            grupo.secuencia = grupo._tieneImprimir ? 'Imprimir' : 'Armar_Pedido';
+            grupo.articulos = Array.from(grupo._articulosMap.values()).map(art => {
+              if (art.es_saldo_ingrediente) {
+                return { ...art, faltante: 0, en_disputa: false, estado_stock: 'COMPLETO' };
+              }
+              const cantTotal = Number(art.cantidad || 0);
+              const stockDisp = Math.max(0, Number(art.stock_disponible || 0));
+              const demandaGlobal = Math.max(cantTotal, Number(art.demanda_global || 0));
+              const diff = cantTotal - stockDisp;
+              const faltante = diff > 0.005 ? Number(diff.toFixed(2)) : 0;
+              const enDisputa = faltante === 0 && demandaGlobal > stockDisp && stockDisp > 0;
+              const estadoStock = faltante > 0 ? 'FALTANTE' : (enDisputa ? 'EN_DISPUTA' : 'COMPLETO');
+              return {
+                ...art,
+                faltante,
+                en_disputa: enDisputa,
+                estado_stock: estadoStock
+              };
+            });
+            delete grupo._articulosMap;
+            delete grupo._tieneImprimir;
+          });
+
+          activosRes.rows = filasConsolidadas;
         }
       } catch (errNodoPiz) {
         console.warn('⚠️ Error enriqueciendo árbol de Nodo en Pizarra:', errNodoPiz.message);

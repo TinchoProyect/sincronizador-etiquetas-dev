@@ -361,7 +361,10 @@
         if (!modalBody) return;
 
         let banner = document.getElementById('banner-chequeo-nodo-barrial');
-        if (!String(presupuestoId || '').startsWith('CAN-')) {
+        const idStr = String(presupuestoId || '').trim();
+        const esCanasto = idStr.startsWith('CAN-');
+        const esVecino = idStr.startsWith('NB-');
+        if (!esCanasto && !esVecino) {
             if (banner) banner.style.display = 'none';
             return;
         }
@@ -373,7 +376,50 @@
         }
 
         await cargarEstadoCircuitoNodos();
-        const canasto = (estadoCircuitoNodos.canastos || []).find(c => c.codigo_canasto === presupuestoId);
+
+        if (esVecino) {
+            let canastoPadre = null;
+            let pedidoVecino = null;
+            for (const c of (estadoCircuitoNodos.canastos || [])) {
+                const pv = (c.pedidos_vecinos || []).find(p => String(p.codigo_pedido || '').trim() === idStr);
+                if (pv) {
+                    canastoPadre = c;
+                    pedidoVecino = pv;
+                    break;
+                }
+            }
+            if (!canastoPadre || !pedidoVecino) {
+                banner.style.display = 'none';
+                return;
+            }
+            const modEntrega = pedidoVecino.modalidad_entrega === 'ENVIO_BARRIAL'
+                ? `🛵 Envío Barrial (${pedidoVecino.direccion_entrega || 'Domicilio'})`
+                : `🏪 Retira en ${canastoPadre.nombre_marca}`;
+            const lista = Boolean(pedidoVecino.bolsa_lista);
+            banner.style.cssText = 'display: block; background: #f0fdf4; border: 1.5px solid #16a34a; border-radius: 8px; padding: 11px 14px; margin-bottom: 14px;';
+            banner.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <div style="font-weight: 800; color: #166534; font-size: 13.5px;">
+                            🏘️ ${canastoPadre.nombre_marca} — 👤 ${pedidoVecino.vecino_nombre} (#${pedidoVecino.codigo_pedido})
+                        </div>
+                        <div style="font-size: 12px; color: #15803d; margin-top: 2px;">
+                            ${modEntrega} · Pago: ${pedidoVecino.medio_pago || 'TRANSFERENCIA'} · Canasto ${canastoPadre.codigo_canasto}
+                            <span style="margin-left: 6px; font-weight: 700; color: ${lista ? '#166534' : '#92400e'};">
+                                ${lista ? '✅ Bolsa etiquetada' : '⏳ Etiqueta Zebra pendiente'}
+                            </span>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.armarYVerEtiquetaVecinoDesdeProduccion(${pedidoVecino.id}, '${canastoPadre.codigo_canasto}', false)"
+                        style="background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                        🏷️ ${lista ? 'Ver / Reimprimir Etiqueta Zebra' : 'Emitir Etiqueta Zebra Vecino'}
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        const canasto = (estadoCircuitoNodos.canastos || []).find(c => c.codigo_canasto === idStr);
         if (!canasto) {
             banner.style.display = 'none';
             return;

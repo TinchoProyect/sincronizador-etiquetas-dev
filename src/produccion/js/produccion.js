@@ -339,15 +339,70 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             String(cliente.cliente_nombre || '').includes('NODO:')
         );
         const canastosClienteObj = cliente.canastos_nodos || {};
+        const vecinosClienteObj = cliente.vecinos_nodos || {};
         const listaCanastosCli = Object.values(canastosClienteObj);
-        const primerNodoInfo = listaCanastosCli[0] || null;
-        const totalVecinosCli = listaCanastosCli.reduce((acc, c) => acc + Number(c.total_vecinos || 0), 0);
-        const totalUnidadesCli = listaCanastosCli.reduce((acc, c) => acc + Number(c.total_unidades || 0), 0);
+        const listaVecinosCli = Object.values(vecinosClienteObj);
+        const primerNodoInfo = listaCanastosCli[0] || listaVecinosCli[0] || null;
+        const presupuestosDistintosSeccion = new Set((cliente.articulos || []).map(a => a.presupuesto_id)).size;
+        const articulosDistintosSeccion = new Set((cliente.articulos || []).map(a => a.articulo_numero)).size;
+        const totalUnidadesSeccion = (cliente.articulos || []).reduce((acc, a) => acc + (parseFloat(a.pedido_total) || 0), 0);
 
         const header = document.createElement('div');
         header.className = 'cliente-header';
         if (esClienteNodo && primerNodoInfo) {
-            header.innerHTML = `<strong>🏘️ ${primerNodoInfo.nombre_marca}</strong> <span style="font-weight:500; font-size:0.92em; color:#166534;">(Nodo Barrial · Gestor: ${primerNodoInfo.gestor_nombre})</span> — <strong>${totalVecinosCli} ${totalVecinosCli === 1 ? 'vecino' : 'vecinos'}</strong> · ${totalUnidadesCli} bolsas/u. (${totalArticulos} artículos distintos)`;
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            header.style.flexWrap = 'wrap';
+            header.style.gap = '8px';
+
+            const spanTituloNodo = document.createElement('span');
+            const codCanastoTxt = primerNodoInfo.codigo_canasto ? ` · Canasto ${primerNodoInfo.codigo_canasto}` : '';
+            spanTituloNodo.innerHTML = `<strong>🏘️ ${primerNodoInfo.nombre_marca}</strong> <span style="font-weight:500; font-size:0.92em; color:#166534;">(Nodo Barrial · Gestor: ${primerNodoInfo.gestor_nombre || '-'}${codCanastoTxt})</span> — <strong>${presupuestosDistintosSeccion} ${presupuestosDistintosSeccion === 1 ? 'canasto de vecino' : 'canastos de vecinos'}</strong> · ${totalUnidadesSeccion} bolsas/u. (${articulosDistintosSeccion} artículos distintos)`;
+            header.appendChild(spanTituloNodo);
+
+            if (primerNodoInfo.codigo_canasto) {
+                const accionesHeaderNodo = document.createElement('div');
+                accionesHeaderNodo.style.display = 'flex';
+                accionesHeaderNodo.style.gap = '6px';
+                accionesHeaderNodo.style.alignItems = 'center';
+
+                const btnEtiquetasHeader = document.createElement('button');
+                btnEtiquetasHeader.type = 'button';
+                btnEtiquetasHeader.textContent = '🏷️ Etiquetas Zebra / QR Canasto';
+                btnEtiquetasHeader.className = 'admin-button';
+                btnEtiquetasHeader.style.padding = '4px 10px';
+                btnEtiquetasHeader.style.fontSize = '11.5px';
+                btnEtiquetasHeader.style.background = '#0f766e';
+                btnEtiquetasHeader.style.color = '#ffffff';
+                btnEtiquetasHeader.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof window.abrirModalBolsasCanastoLamda === 'function') {
+                        window.abrirModalBolsasCanastoLamda(primerNodoInfo.codigo_canasto);
+                    }
+                });
+                accionesHeaderNodo.appendChild(btnEtiquetasHeader);
+
+                if (containerId === 'pedidos-listo' || containerId === 'pedidos-retira') {
+                    const btnEntregaQrHeader = document.createElement('button');
+                    btnEntregaQrHeader.type = 'button';
+                    btnEntregaQrHeader.textContent = '📲 Entregar Canasto QR al Gestor';
+                    btnEntregaQrHeader.className = 'admin-button';
+                    btnEntregaQrHeader.style.padding = '4px 10px';
+                    btnEntregaQrHeader.style.fontSize = '11.5px';
+                    btnEntregaQrHeader.style.background = '#0d9488';
+                    btnEntregaQrHeader.style.color = '#ffffff';
+                    btnEntregaQrHeader.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (typeof window.abrirModalEntregaQrCanastoLamda === 'function') {
+                            window.abrirModalEntregaQrCanastoLamda(primerNodoInfo.codigo_canasto, cliente.cliente_id);
+                        }
+                    });
+                    accionesHeaderNodo.appendChild(btnEntregaQrHeader);
+                }
+
+                header.appendChild(accionesHeaderNodo);
+            }
         } else {
             header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
         }
@@ -411,10 +466,13 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             presupuestosMap.get(presupId).articulos.push(articulo);
         });
 
-        // Convertir a array y ordenar por fecha
-        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) =>
-            new Date(b.presupuesto_fecha) - new Date(a.presupuesto_fecha)
-        );
+        // Convertir a array y ordenar (ascendente por código para Nodos Barriales, por fecha para clientes tradicionales)
+        const presupuestos = Array.from(presupuestosMap.values()).sort((a, b) => {
+            if (esClienteNodo) {
+                return String(a.presupuesto_id || '').localeCompare(String(b.presupuesto_id || ''), 'es', { numeric: true });
+            }
+            return new Date(b.presupuesto_fecha) - new Date(a.presupuesto_fecha);
+        });
 
         console.log(`   → ${presupuestos.length} presupuestos agrupados`);
 
@@ -485,13 +543,17 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             const arbolCanasto = (cliente.canastos_nodos && cliente.canastos_nodos[presupuesto.presupuesto_id])
                 ? cliente.canastos_nodos[presupuesto.presupuesto_id]
                 : null;
+            const vecinoNodo = (cliente.vecinos_nodos && cliente.vecinos_nodos[presupuesto.presupuesto_id])
+                ? cliente.vecinos_nodos[presupuesto.presupuesto_id]
+                : null;
             const esCanastoNodo = Boolean(arbolCanasto || String(presupuesto.presupuesto_id || '').startsWith('CAN-'));
+            const esVecinoNodo = Boolean(vecinoNodo || String(presupuesto.presupuesto_id || '').startsWith('NB-'));
 
             const iconSpan = document.createElement('span');
             iconSpan.textContent = '▼';
             iconSpan.style.fontSize = '1.2em';
             iconSpan.style.transition = 'transform 0.3s ease';
-            if (esCanastoNodo) {
+            if (esCanastoNodo || esVecinoNodo) {
                 iconSpan.style.transform = 'rotate(180deg)';
             }
 
@@ -501,7 +563,15 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             estadoSpan.style.marginRight = '10px';
 
             const infoSpan = document.createElement('span');
-            if (arbolCanasto) {
+            if (vecinoNodo) {
+                const modEntregaTxt = vecinoNodo.modalidad_entrega === 'ENVIO_BARRIAL'
+                    ? `🛵 Envío Barrial (${vecinoNodo.direccion_entrega || 'Domicilio'})`
+                    : `🏪 Retira en ${vecinoNodo.nombre_marca}`;
+                const badgeBolsa = vecinoNodo.bolsa_lista
+                    ? `<span style="background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:11px; font-weight:700; padding:1px 7px; border-radius:99px; margin-left:6px;">✅ Bolsa etiquetada</span>`
+                    : '';
+                infoSpan.innerHTML = `<strong>👤 ${vecinoNodo.vecino_nombre}</strong> <span style="background:#0f172a; color:#fff; font-size:11px; font-weight:700; padding:1px 6px; border-radius:4px; margin-left:6px;">#${vecinoNodo.codigo_pedido}</span> <span style="color:#15803d; font-weight:600; margin-left:8px;">${modEntregaTxt} · ${vecinoNodo.medio_pago || 'TRANSFERENCIA'}</span> <span style="color: #6c757d; margin-left: 8px;">(${presupuesto.articulos.length} ${presupuesto.articulos.length === 1 ? 'artículo' : 'artículos'})</span>${badgeBolsa}${textoModificado}`;
+            } else if (arbolCanasto) {
                 infoSpan.innerHTML = `<strong>🏘️ ${arbolCanasto.nombre_marca} · Canasto ${arbolCanasto.codigo_canasto}</strong> <span style="color: #15803d; font-weight: 600; margin-left: 8px;">👥 ${arbolCanasto.total_vecinos} ${arbolCanasto.total_vecinos === 1 ? 'vecino' : 'vecinos'} · ${arbolCanasto.total_unidades} bolsas (${presupuesto.articulos.length} artículos distintos)</span> <span style="color: #6c757d; margin-left: 8px;">📅 ${arbolCanasto.fecha_entrega_label || fechaFormateada}</span>${textoModificado}`;
             } else {
                 infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>${textoModificado}`;
@@ -723,7 +793,22 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 }
             });
 
-            if (esCanastoNodo) {
+            if (esVecinoNodo && vecinoNodo && vecinoNodo.pedido_id && vecinoNodo.codigo_canasto) {
+                const btnZebraVecino = document.createElement('button');
+                btnZebraVecino.textContent = vecinoNodo.bolsa_lista ? '🏷️ Reimprimir Etiqueta' : '🏷️ Etiqueta Zebra';
+                btnZebraVecino.className = 'admin-button';
+                btnZebraVecino.style.padding = '6px 10px';
+                btnZebraVecino.style.fontSize = '12px';
+                btnZebraVecino.style.background = '#0f766e';
+                btnZebraVecino.style.color = '#fff';
+                btnZebraVecino.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof window.armarYVerEtiquetaVecinoDesdeProduccion === 'function') {
+                        window.armarYVerEtiquetaVecinoDesdeProduccion(vecinoNodo.pedido_id, vecinoNodo.codigo_canasto, false);
+                    }
+                });
+                botonesPresupuesto.appendChild(btnZebraVecino);
+            } else if (esCanastoNodo) {
                 const btnBolsasZebra = document.createElement('button');
                 btnBolsasZebra.textContent = '🏷️ Etiquetas Zebra + QR Canasto';
                 btnBolsasZebra.className = 'admin-button';
@@ -757,7 +842,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 }
             }
 
-            if (esCanastoNodo) {
+            if (esCanastoNodo || esVecinoNodo) {
                 presupuestoHeader.style.backgroundColor = '#f0fdf4';
                 presupuestoHeader.style.borderBottom = '1px solid #bbf7d0';
             }
@@ -766,10 +851,10 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             presupuestoHeader.appendChild(botonesPresupuesto);
             presupuestoDiv.appendChild(presupuestoHeader);
 
-            // Contenido del presupuesto (Árbol de Vecinos para Nodo Barrial o tabla tradicional)
+            // Contenido del presupuesto (tabla de artículos de cada vecino del Nodo o cliente tradicional)
             const presupuestoContenido = document.createElement('div');
             presupuestoContenido.id = presupuestoId;
-            presupuestoContenido.style.display = esCanastoNodo ? 'block' : 'none';
+            presupuestoContenido.style.display = (esCanastoNodo || esVecinoNodo) ? 'block' : 'none';
 
             const tabla = document.createElement('table');
             tabla.className = 'articulos-tabla';
@@ -1104,9 +1189,15 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto y estamos en acordeón "Imprimir"
         if (containerId === 'pedidos-imprimir' && presupuestos.length > 1) {
             const btnImprimirTodos = document.createElement('button');
-            btnImprimirTodos.textContent = '📄 Imprimir Todos de Este Cliente';
+            btnImprimirTodos.textContent = esClienteNodo
+                ? `📄 Imprimir Todos de Este Nodo (${presupuestos.length} hojas individuales por vecino)`
+                : '📄 Imprimir Todos de Este Cliente';
             btnImprimirTodos.className = 'admin-button';
             btnImprimirTodos.style.marginLeft = '10px';
+            if (esClienteNodo) {
+                btnImprimirTodos.style.background = '#15803d';
+                btnImprimirTodos.style.color = '#ffffff';
+            }
             btnImprimirTodos.addEventListener('click', () => imprimirPresupuestoCliente(cliente.cliente_id));
             accionesDiv.appendChild(btnImprimirTodos);
         }
@@ -1507,45 +1598,61 @@ function obtenerTodosLosPresupuestosExternos(secuenciasFiltro = null) {
     return resultado;
 }
 
-// Función para imprimir todos los presupuestos de un cliente
+// Función para imprimir todos los presupuestos de un cliente (o todos los vecinos de un Nodo Barrial)
 async function imprimirPresupuestoCliente(clienteId) {
     console.log(`📄 Imprimiendo presupuestos del cliente ${clienteId}...`);
 
-    // 1. Obtener IDs de presupuestos del cliente
-    const presupuestosIds = obtenerPresupuestosDeCliente(clienteId);
-    console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`);
+    // 1. Obtener IDs de presupuestos del cliente que están en etapa de impresión
+    const presupuestosIds = obtenerPresupuestosDeCliente(clienteId, ['Imprimir', 'Imprimir_Modificado']);
+    console.log(`📋 Presupuestos a imprimir: ${presupuestosIds.length}`, presupuestosIds);
 
-    // 2. Abrir impresión
-    const urlPdf = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=pdf&contexto=produccion`;
-    const urlHtml = `${base}/impresion-presupuesto?cliente_id=${clienteId}&formato=html&contexto=produccion`;
+    if (presupuestosIds.length === 0) {
+        alert('No hay presupuestos pendientes de impresión para este cliente.');
+        return;
+    }
 
-    const win = window.open(urlPdf, '_blank');
+    const fechaCorteInput = document.getElementById('fecha-corte');
+    const fechaCorte = fechaCorteInput && fechaCorteInput.value
+        ? fechaCorteInput.value
+        : new Date().toISOString().slice(0, 10);
+    const idsParam = presupuestosIds.join(',');
+    const baseQueryString = `fecha=${fechaCorte}&cliente_id=${clienteId}&presupuestos_ext_ids=${encodeURIComponent(idsParam)}`;
 
-    setTimeout(() => {
-        if (!win || win.closed || typeof win.closed == 'undefined') {
-            window.open(urlHtml, '_blank');
-        }
-    }, 2000);
+    try {
+        const kilosOverrides = await preValidarImpresion(baseQueryString);
+        const overrideParam = kilosOverrides ? `&kilos_override=${encodeURIComponent(JSON.stringify(kilosOverrides))}` : '';
 
-    // 3. Actualizar secuencia a "Armar_Pedido"
-    if (presupuestosIds.length > 0) {
+        // 2. Abrir impresión (1 hoja individual por cada presupuesto / vecino)
+        const urlPdf = `${base}/impresion-presupuesto?${baseQueryString}&formato=pdf&contexto=produccion${overrideParam}`;
+        const urlHtml = `${base}/impresion-presupuesto?${baseQueryString}&formato=html&contexto=produccion${overrideParam}`;
+
+        const win = window.open(urlPdf, 'lamda_remito_print');
+
+        setTimeout(() => {
+            if (!win || win.closed || typeof win.closed == 'undefined') {
+                window.open(urlHtml, 'lamda_remito_print');
+            }
+        }, 2000);
+
+        // 3. Actualizar secuencia a "Armar_Pedido" (Verificación) y abrir automáticamente ese acordeón
         const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIds);
         if (actualizado) {
-            // Recargar datos y expandir sección "Armar Pedido" + cliente
-            setTimeout(() => {
-                cargarPedidosPorCliente();
-
-                setTimeout(() => {
-                    console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
-                    forzarExpandirSeccion('pedidos-armar-section');
-
-                    // Expandir el cliente DENTRO de la sección "Armar Pedido"
-                    setTimeout(() => {
-                        abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
-                    }, 500);
-                }, 800);
-            }, 1000);
+            window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+            window.acordeonesClientesAbiertos.add(`pedidos-armar-${clienteId}`);
+            await cargarPedidosPorCliente();
+            forzarExpandirSeccion('pedidos-armar-section');
+            abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
+            const secArmar = document.getElementById('pedidos-armar-section');
+            if (secArmar) {
+                secArmar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
+    } catch (err) {
+        if (err.message === "USUARIO_CANCELO_MODAL") {
+            console.log("🚫 [REMITO-R] Impresión por cliente cancelada por validación de Kilos.");
+            return;
+        }
+        console.error(err);
     }
 }
 
@@ -1673,20 +1780,15 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
         // 2. Actualizar secuencia a "Armar_Pedido"
         const actualizado = await actualizarSecuenciaPresupuestos([presupuestoId]);
         if (actualizado) {
-            // Recargar datos y expandir sección "Armar Pedido" + cliente
-            setTimeout(() => {
-                cargarPedidosPorCliente();
-
-                setTimeout(() => {
-                    console.log(`🔍 Expandiendo sección "Armar Pedido" y cliente ${clienteId}...`);
-                    forzarExpandirSeccion('pedidos-armar-section');
-
-                    // Expandir el cliente DENTRO de la sección "Armar Pedido"
-                    setTimeout(() => {
-                        abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
-                    }, 500);
-                }, 800);
-            }, 1000);
+            window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+            window.acordeonesClientesAbiertos.add(`pedidos-armar-${clienteId}`);
+            await cargarPedidosPorCliente();
+            forzarExpandirSeccion('pedidos-armar-section');
+            abrirAcordeonEnSeccion(clienteId, 'pedidos-armar');
+            const secArmar = document.getElementById('pedidos-armar-section');
+            if (secArmar) {
+                secArmar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     } catch (err) {
         if (err.message === "USUARIO_CANCELO_MODAL") {
@@ -1711,6 +1813,20 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
     if (presupuestosIdsExternos.length === 0) {
         alert('No hay presupuestos para imprimir en el acordeón "Imprimir / Imprimir Modificado"');
         return;
+    }
+
+    // Registrar qué clientes están siendo impresos para abrirlos automáticamente en Verificación ("Armar Pedido")
+    const clientesImpresosSet = new Set();
+    if (window.clientesPedidos && Array.isArray(window.clientesPedidos)) {
+        window.clientesPedidos.forEach(cli => {
+            const tieneParaImprimir = (cli.articulos || []).some(art => {
+                const sec = String(art.secuencia || 'Imprimir').trim();
+                return secuenciasFiltro.includes(sec);
+            });
+            if (tieneParaImprimir && cli.cliente_id != null) {
+                clientesImpresosSet.add(cli.cliente_id);
+            }
+        });
     }
 
     // 2. Construir lista de IDs externos para pasar al backend (igual que botón individual)
@@ -1738,14 +1854,24 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
             }
         }, 2000);
 
-        // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos)
+        // 4. Actualizar secuencia a "Armar_Pedido" (usa IDs externos) y desplegar Verificación automáticamente
         if (presupuestosIdsExternos.length > 0) {
             const actualizado = await actualizarSecuenciaPresupuestos(presupuestosIdsExternos);
             if (actualizado) {
                 console.log(`✅ [IMPRIMIR-TODOS] Secuencia actualizada para ${presupuestosIdsExternos.length} presupuestos`);
-                setTimeout(() => {
-                    cargarPedidosPorCliente();
-                }, 1000);
+                window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+                clientesImpresosSet.forEach(cid => {
+                    window.acordeonesClientesAbiertos.add(`pedidos-armar-${cid}`);
+                });
+                await cargarPedidosPorCliente();
+                forzarExpandirSeccion('pedidos-armar-section');
+                clientesImpresosSet.forEach(cid => {
+                    abrirAcordeonEnSeccion(cid, 'pedidos-armar');
+                });
+                const secArmar = document.getElementById('pedidos-armar-section');
+                if (secArmar) {
+                    secArmar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             }
         }
     } catch (err) {
@@ -2072,7 +2198,13 @@ function abrirModalArmarPedido(clienteId, presupuestoId) {
     // Actualizar título del modal
     const titulo = document.getElementById('modal-presupuesto-titulo');
     if (titulo) {
-        titulo.textContent = `Presupuesto ${presupuestoId}`;
+        const cliRef = (window.clientesPedidos || []).find(c => String(c.cliente_id) === String(clienteId));
+        const vn = cliRef && cliRef.vecinos_nodos ? cliRef.vecinos_nodos[presupuestoId] : null;
+        if (vn) {
+            titulo.textContent = `🏘️ ${vn.nombre_marca} — 👤 ${vn.vecino_nombre} (#${vn.codigo_pedido})`;
+        } else {
+            titulo.textContent = `Presupuesto ${presupuestoId}`;
+        }
     }
 
     // Renderizar tabla de artículos
