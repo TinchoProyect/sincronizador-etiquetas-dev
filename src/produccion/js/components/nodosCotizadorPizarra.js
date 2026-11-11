@@ -310,7 +310,14 @@
 
                     ${prop.comentario_gestor ? `<div style="font-size:0.75rem; color:#94a3b8; font-style:italic; background:rgba(0,0,0,0.25); padding:5px 8px; border-radius:6px;">"${escaparHtml(prop.comentario_gestor)}"</div>` : ''}
 
-                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:2px;">
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:2px; flex-wrap:wrap;">
+                        ${esPendiente ? `
+                            <button onclick="window.NodosPizarra.descartarPropuestaAdmin(${prop.id})"
+                                title="Descartar esta solicitud pendiente"
+                                style="padding:5px 10px; border-radius:6px; font-size:0.75rem; font-weight:700; cursor:pointer; border:1px solid rgba(244,63,94,0.45); background:rgba(244,63,94,0.12); color:#fda4af;">
+                                ✕ Descartar
+                            </button>
+                        ` : ''}
                         <button onclick="window.NodosPizarra.cargarPropuestaEnMesa(${prop.id})"
                             style="padding:5px 11px; border-radius:6px; font-size:0.76rem; font-weight:700; cursor:pointer; border:1px solid #10b981; background:rgba(16,185,129,0.2); color:#6ee7b7;">
                             ⚡ Cargar en Mesa de Cotización
@@ -2025,6 +2032,53 @@
         renderizarVistaNodosCompleta();
     }
 
+    async function descartarPropuestaAdmin(propuestaId) {
+        const prop = (ESTADO_NODOS.propuestas || []).find(p => Number(p.id) === Number(propuestaId));
+        if (!prop) return;
+
+        let motivo = '';
+        if (window.Swal) {
+            const res = await window.Swal.fire({
+                title: `¿Descartar ${prop.codigo_propuesta}?`,
+                html: `<div style="text-align:left; font-size:0.88rem; color:#cbd5e1;">
+                    Se descartará la solicitud de <strong>${escaparHtml(prop.nombre_sugerido)}</strong> enviada por <strong>${escaparHtml(prop.nodo_solicitante_nombre || 'el Nodo')}</strong>.<br><br>
+                    Podés dejar un motivo breve opcional para el Gestor:
+                </div>`,
+                input: 'text',
+                inputPlaceholder: 'Ej: Ese gramaje ya se reemplaza por 150g (opcional)',
+                background: '#1e293b',
+                color: '#f8fafc',
+                showCancelButton: true,
+                confirmButtonText: 'Descartar solicitud',
+                confirmButtonColor: '#e11d48',
+                cancelButtonText: 'Cancelar'
+            });
+            if (!res.isConfirmed) return;
+            motivo = String(res.value || '').trim();
+        } else {
+            const ok = window.confirm(`¿Descartar la solicitud ${prop.codigo_propuesta} (${prop.nombre_sugerido})?`);
+            if (!ok) return;
+        }
+
+        try {
+            const resp = await fetch(`/api/produccion/nodos/propuestas/${Number(propuestaId)}/descartar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motivo })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                throw new Error(data.error || 'No se pudo descartar la solicitud');
+            }
+            if (Number(ESTADO_NODOS.propuestaActivaId) === Number(propuestaId)) {
+                ESTADO_NODOS.propuestaActivaId = null;
+            }
+            await cargarDatosNodosBarriales(true);
+        } catch (err) {
+            alert('⚠️ ' + err.message);
+        }
+    }
+
     async function aprobarYPublicarEnPadronNodos() {
         try {
             const origenVal = document.getElementById('cot-origen-select')?.value || '';
@@ -3433,6 +3487,7 @@
         cargarIngredienteDirectoEnMesa,
         cargarPresentacionPlantaEnMesa,
         cargarPropuestaEnMesa,
+        descartarPropuestaAdmin,
         editarArticuloCatalogoEnMesa,
         limpiarMesaCotizacion,
         aprobarYPublicarEnPadronNodos,

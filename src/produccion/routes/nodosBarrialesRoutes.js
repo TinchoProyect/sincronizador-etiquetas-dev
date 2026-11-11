@@ -294,6 +294,42 @@ router.post('/propuestas', async (req, res) => {
 });
 
 /**
+ * POST /api/produccion/nodos/propuestas/:id/anular
+ * Permite al Gestor anular una solicitud propia mientras siga pendiente de cotización
+ */
+router.post('/propuestas/:id/anular', async (req, res) => {
+    try {
+        const nodoId = req.body && req.body.nodo_id;
+        const propuesta = await nodosService.anularODescartarPropuestaFraccion(req.params.id, {
+            origen: 'GESTOR',
+            nodo_id: nodoId
+        });
+        res.json({ ok: true, propuesta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error anulando propuesta desde Gestor:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/propuestas/:id/descartar
+ * Permite a Administración de LAMDA descartar una solicitud pendiente
+ */
+router.post('/propuestas/:id/descartar', async (req, res) => {
+    try {
+        const motivo = req.body && req.body.motivo;
+        const propuesta = await nodosService.anularODescartarPropuestaFraccion(req.params.id, {
+            origen: 'ADMIN',
+            motivo
+        });
+        res.json({ ok: true, propuesta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error descartando propuesta desde Administración:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/produccion/nodos/cotizar-aprobar
  * Cotiza en Pizarra una fracción, la aprueba en el catálogo aislado de Nodos
  * y propaga el Precio Base Nodo a las ofertas de los gestores.

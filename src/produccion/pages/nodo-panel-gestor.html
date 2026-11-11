@@ -1064,7 +1064,7 @@
       }
 
       const yaPendiente = (GSTATE.propuestas || []).find(
-        p => p.estado !== 'APROBADA' &&
+        p => p.estado === 'PENDIENTE_COTIZACION' &&
              Number(p.ingrediente_sugerido_id) === idNum &&
              Math.abs(Number(p.kilos_sugeridos) - kgNum) < 0.003
       );
@@ -1210,7 +1210,15 @@
           return `
             <div style="padding:11px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.28); color:var(--warn); font-size:0.8rem; line-height:1.45;">
               <strong>⏳ Habilitación ya solicitada (${esc(est.propuestaPendiente.codigo_propuesta)})</strong><br>
-              Ya pediste habilitar esta presentación existente de <strong>${esc(etPeso)}</strong> en tu Nodo. Elegí otro gramaje si querés pedir una fracción nueva.
+              Ya pediste habilitar esta presentación existente de <strong>${esc(etPeso)}</strong> en tu Nodo.
+              <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:0.74rem;">¿La enviaste por error?</span>
+                <button type="button" class="btn-soft"
+                  style="font-size:0.75rem; padding:5px 10px; border-color:rgba(185,28,28,0.35); color:#b91c1c; background:#fff5f5;"
+                  onclick="anularPropuestaGestor(${Number(est.propuestaPendiente.id)})">
+                  ✕ Anular solicitud
+                </button>
+              </div>
             </div>
           `;
         }
@@ -1233,7 +1241,15 @@
         return `
           <div style="padding:10px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.25); color:var(--warn); font-size:0.8rem; line-height:1.45;">
             <strong>⏳ Solicitud en cotización (${esc(est.propuesta.codigo_propuesta)})</strong><br>
-            Esta medida de <strong>${esc(etPeso)}</strong> ya fue enviada y está pendiente de cotización. Elegí otro gramaje para pedir otra presentación.
+            Esta medida de <strong>${esc(etPeso)}</strong> ya fue enviada y está pendiente de cotización.
+            <div style="margin-top:8px; padding-top:7px; border-top:1px dashed rgba(180,83,9,0.25); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:0.74rem;">¿Te equivocaste de gramaje o producto?</span>
+              <button type="button" class="btn-soft"
+                style="font-size:0.75rem; padding:5px 10px; border-color:rgba(185,28,28,0.35); color:#b91c1c; background:#fff5f5;"
+                onclick="anularPropuestaGestor(${Number(est.propuesta.id)})">
+                ✕ Anular solicitud
+              </button>
+            </div>
           </div>
         `;
       }
@@ -1515,12 +1531,18 @@
               ` : GSTATE.propuestas.map(p => {
                 const gramosTxt = formatearPesoCortoGestor(p.kilos_sugeridos || 0.25);
                 const esHabilitacion = Boolean(p.articulo_bunker_sugerido_codigo);
+                const esAprobada = p.estado === 'APROBADA';
+                const esDescartada = p.estado === 'DESCARTADA';
+                const badgeBg = esAprobada ? 'var(--ok-soft)' : esDescartada ? '#f3f4f6' : 'var(--warn-soft)';
+                const badgeColor = esAprobada ? 'var(--ok)' : esDescartada ? 'var(--muted)' : 'var(--warn)';
+                const badgeLabel = esAprobada ? 'Cotizada' : esDescartada ? 'Descartada' : 'En cotización';
+
                 return `
                   <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                       <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
-                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${p.estado === 'APROBADA' ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${p.estado === 'APROBADA' ? 'var(--ok)' : 'var(--warn)'};">
-                        ${p.estado === 'APROBADA' ? 'Cotizada' : 'En cotización'}
+                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${badgeBg}; color:${badgeColor};">
+                        ${badgeLabel}
                       </span>
                     </div>
                     <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
@@ -1529,13 +1551,24 @@
                       ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
                     </div>
                     ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
-                    ${p.estado === 'APROBADA' ? `
-                      <div style="margin-top:8px;">
+                    ${esDescartada && p.respuesta_lamda ? `<div style="margin-top:5px; padding:6px 8px; border-radius:8px; background:#f8f7f5; font-size:0.75rem; color:var(--muted);">${esc(p.respuesta_lamda)}</div>` : ''}
+                    <div style="margin-top:8px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+                      ${esAprobada ? `
                         <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;" onclick="abrirSeccionGestor('ofertas')">
                           Ver en Mi Oferta y Márgenes →
                         </button>
-                      </div>
-                    ` : ''}
+                      ` : esDescartada ? `
+                        <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 10px;" onclick="anularPropuestaGestor(${Number(p.id)}, true)">
+                          Quitar del listado
+                        </button>
+                      ` : `
+                        <button type="button" class="btn-soft"
+                          style="font-size:0.75rem; padding:5px 10px; border-color:rgba(185,28,28,0.35); color:#b91c1c; background:#fff5f5;"
+                          onclick="anularPropuestaGestor(${Number(p.id)})">
+                          ✕ Anular solicitud
+                        </button>
+                      `}
+                    </div>
                   </div>
                 `;
               }).join('')}
@@ -1617,6 +1650,38 @@
         ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
         : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
       await cargarPanelGestor({ avanzarGramajeTrasEnvio: true });
+    }
+
+    async function anularPropuestaGestor(propuestaId, esLimpiezaDescartada = false) {
+      if (!GSTATE.nodo || !propuestaId) return;
+      const prop = (GSTATE.propuestas || []).find(x => Number(x.id) === Number(propuestaId));
+      const etiquetaNombre = prop ? prop.nombre_sugerido : 'esta presentación';
+
+      if (!esLimpiezaDescartada) {
+        const confirmar = window.confirm(
+          `¿Querés anular la solicitud de "${etiquetaNombre}"?\n\nEse gramaje volverá a quedar libre por si querés volver a pedirlo.`
+        );
+        if (!confirmar) return;
+      }
+
+      const resp = await fetch(`/api/produccion/nodos/propuestas/${Number(propuestaId)}/anular`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodo_id: GSTATE.nodo.id })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        alert('No se pudo anular la solicitud: ' + (data.error || 'Error interno'));
+        return;
+      }
+
+      if (!esLimpiezaDescartada) {
+        const codTxt = prop?.codigo_propuesta ? ` (${prop.codigo_propuesta})` : '';
+        GSTATE.propConfirmacionReciente = `✓ Solicitud${codTxt} de ${etiquetaNombre} anulada. Esa medida volvió a quedar libre.`;
+      } else {
+        GSTATE.propConfirmacionReciente = '';
+      }
+      await cargarPanelGestor();
     }
 
     // -------------------------------------------------------------------------

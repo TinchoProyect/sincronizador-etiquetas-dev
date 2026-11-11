@@ -2808,6 +2808,7 @@ async function obtenerEstadoCompletoNodos() {
             LEFT JOIN public.nodos_maestro nm ON nm.id = npf.nodo_solicitante_id
             LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
             LEFT JOIN public.ingredientes env ON env.id = npf.insumo_envase_sugerido_id
+            WHERE COALESCE(npf.estado, '') NOT IN ('ANULADA', 'DESCARTADA')
             ORDER BY
                 CASE WHEN npf.estado = 'PENDIENTE_COTIZACION' THEN 0 ELSE 1 END,
                 npf.id DESC
@@ -3353,6 +3354,61 @@ async function crearPropuestaFraccion(payload = {}) {
 }
 
 /**
+ * Anula una solicitud pendiente desde el celular del Gestor (liberando ese gramaje)
+ * o descarta una solicitud pendiente desde Administración de LAMDA.
+ */
+async function anularODescartarPropuestaFraccion(propuestaId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const pId = Number(propuestaId);
+    if (!pId) {
+        throw new Error('Identificador de solicitud inválido.');
+    }
+
+    const propRes = await db.query(
+        'SELECT * FROM public.nodos_propuestas_fracciones WHERE id = $1 LIMIT 1',
+        [pId]
+    );
+    if (propRes.rows.length === 0) {
+        throw new Error('La solicitud seleccionada no existe.');
+    }
+    const prop = propRes.rows[0];
+
+    if (prop.estado === 'APROBADA') {
+        throw new Error('Esta solicitud ya fue cotizada y aprobada en el Catálogo Base; no puede anularse.');
+    }
+
+    const origen = String(opciones.origen || 'GESTOR').toUpperCase();
+    if (origen === 'GESTOR') {
+        const nodoId = Number(opciones.nodo_id || 0);
+        if (!nodoId || Number(prop.nodo_solicitante_id) !== nodoId) {
+            throw new Error('No tenés permiso para anular solicitudes de otro Nodo.');
+        }
+        const upd = await db.query(
+            `UPDATE public.nodos_propuestas_fracciones
+             SET estado = 'ANULADA',
+                 updated_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [pId]
+        );
+        return upd.rows[0];
+    }
+
+    const motivoAdmin = String(opciones.motivo || '').trim() || 'Solicitud descartada desde Administración.';
+    const updAdmin = await db.query(
+        `UPDATE public.nodos_propuestas_fracciones
+         SET estado = 'DESCARTADA',
+             respuesta_lamda = $2,
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [pId, motivoAdmin]
+    );
+    return updAdmin.rows[0];
+}
+
+/**
  * Incorpora en 1 toque un artículo ya cotizado en public.nodos_articulos_catalogo
  * dentro de Mi Oferta y Márgenes (public.nodos_ofertas_gestor) de un Nodo específico,
  * dejándolo inicialmente oculto para que el Gestor ajuste su ganancia y lo publique.
@@ -3521,7 +3577,7 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 [
                     skuNodo,
                     tax.nombre_publico_limpio || nombrePublico,
-                    tax.familia_nombre,
+                    String(payload.categoria_familiar || '').trim() || tax.familia_nombre,
                     payload.presentacion_etiqueta || tax.presentacion_etiqueta,
                     Number(payload.flujo_lamda || 2),
                     payload.origen_tipo || 'INGREDIENTE',
@@ -3599,7 +3655,7 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 [
                     skuNodo,
                     tax.nombre_publico_limpio || nombrePublico,
-                    tax.familia_nombre,
+                    String(payload.categoria_familiar || '').trim() || tax.familia_nombre,
                     payload.presentacion_etiqueta || tax.presentacion_etiqueta,
                     Number(payload.flujo_lamda || 2),
                     payload.origen_tipo || 'INGREDIENTE',
@@ -3635,7 +3691,8 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             articuloRow = ins.rows[0];
         }
 
-        // Si provenía de una propuesta de fracción, marcarla como APROBADA y vincularla
+        // Si provenía de una propuesta de fracción (o existían solicitudes pendientes equivalentes), marcarlas como APROBADA y vincularlas
+        const textoRespuestaAprobada = payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} (${articuloRow.nomenclatura_bunker})`;
         if (payload.propuesta_id) {
             await client.query(
                 `UPDATE public.nodos_propuestas_fracciones SET
@@ -3647,10 +3704,27 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 WHERE id = $3`,
                 [
                     articuloRow.id,
-                    payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} (${articuloRow.nomenclatura_bunker})`,
+                    textoRespuestaAprobada,
                     Number(payload.propuesta_id),
                     ingredienteOrigenFinalId
                 ]
+            );
+        }
+        if (ingredienteOrigenFinalId) {
+            const idsEquiv = [Number(ingredienteOrigenFinalId)];
+            if (payload.ingrediente_origen_id && !idsEquiv.includes(Number(payload.ingrediente_origen_id))) {
+                idsEquiv.push(Number(payload.ingrediente_origen_id));
+            }
+            await client.query(
+                `UPDATE public.nodos_propuestas_fracciones SET
+                    estado = 'APROBADA',
+                    articulo_catalogo_id = $1,
+                    respuesta_lamda = $2,
+                    updated_at = NOW()
+                WHERE estado = 'PENDIENTE_COTIZACION'
+                  AND ingrediente_sugerido_id = ANY($3::int[])
+                  AND ABS(COALESCE(kilos_sugeridos, 0) - $4) < 0.003`,
+                [articuloRow.id, textoRespuestaAprobada, idsEquiv, calc.kilos_unidad]
             );
         }
 
@@ -4350,6 +4424,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
                     npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at
              FROM public.nodos_propuestas_fracciones npf
              WHERE npf.nodo_solicitante_id = $1
+               AND COALESCE(npf.estado, '') <> 'ANULADA'
              ORDER BY npf.id DESC`,
             [nodo.id]
         ),
@@ -7566,6 +7641,7 @@ module.exports = {
     guardarNodoMaestro,
     actualizarConfiguracionCuentaCanalNodos,
     crearPropuestaFraccion,
+    anularODescartarPropuestaFraccion,
     sumarArticuloCatalogoANodo,
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,
