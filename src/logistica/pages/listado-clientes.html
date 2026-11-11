@@ -196,6 +196,114 @@
             background-color: var(--purple-light);
         }
 
+        /* Estilos Estructura Tipo Árbol — Nodos Barriales y Subcuentas de Vecinos */
+        .grid-clientes tbody tr.fila-nodo-barrial {
+            background: linear-gradient(90deg, #f0fdf4 0%, #ffffff 55%);
+            border-left: 4px solid #16a34a;
+        }
+        .grid-clientes tbody tr.fila-nodo-barrial:hover {
+            background: linear-gradient(90deg, #dcfce7 0%, #f8fafc 65%);
+        }
+        .btn-toggle-nodo-tree {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            border: 1px solid #86efac;
+            background: #dcfce7;
+            color: #166534;
+            font-size: 11.5px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn-toggle-nodo-tree:hover {
+            background: #bbf7d0;
+            border-color: #16a34a;
+        }
+        .grid-clientes tbody tr.fila-arbol-nodo-detalle,
+        .grid-clientes tbody tr.fila-arbol-nodo-detalle:hover {
+            background-color: #f8fafc !important;
+        }
+        .arbol-nodo-wrapper {
+            margin: 4px 6px 8px 22px;
+            padding: 14px 16px;
+            border-left: 4px solid #16a34a;
+            border-radius: 0 10px 10px 0;
+            background: #ffffff;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+            border-top: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .nodo-cuadratura-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .nodo-cuadratura-card {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+        .tabla-vecinos-arbol {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .tabla-vecinos-arbol th {
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 9px 11px;
+            border-bottom: 1px solid #cbd5e1;
+        }
+        .tabla-vecinos-arbol td {
+            padding: 9px 11px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+            color: #1e293b;
+        }
+        .tabla-vecinos-arbol tbody tr:hover {
+            background-color: #f0fdf4 !important;
+        }
+        .tabla-vecinos-arbol tbody tr.vecino-match-busqueda {
+            background-color: #fef9c3 !important;
+            outline: 2px solid #eab308;
+        }
+        .modal-subcuenta-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.58);
+            backdrop-filter: blur(2px);
+            z-index: 2300;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+        .modal-subcuenta-box {
+            background: #ffffff;
+            width: 100%;
+            max-width: 960px;
+            max-height: 90vh;
+            border-radius: 14px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #cbd5e1;
+        }
+
         /* Badge para Identificador Externo */
         .badge {
             display: inline-flex;
@@ -604,7 +712,7 @@
             <div class="controls-bar">
                 <div class="search-container">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscador-clientes" class="search-input" placeholder="Buscar por código, nombre, razón social o ID externo...">
+                    <input type="text" id="buscador-clientes" class="search-input" placeholder="Buscar por código, cliente, vecino de Nodo, teléfono o ID externo...">
                 </div>
                 
                 <div style="display: flex; gap: 10px; align-items: center; position: relative; flex-wrap: wrap;">
@@ -1071,11 +1179,30 @@
         </form>
     </div>
 
+    <!-- MODAL SUBCUENTA DE VECINO COMPRADOR (NODO BARRIAL) -->
+    <div id="modal-subcuenta-vecino-nodo" class="modal-subcuenta-overlay">
+        <div class="modal-subcuenta-box" onclick="event.stopPropagation()">
+            <div id="modal-subcuenta-vecino-header" style="padding: 16px 22px; background: linear-gradient(135deg, #064e3b 0%, #166534 100%); color: #ffffff; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.12rem; font-weight: 800;">👤 Subcuenta de Vecino del Nodo</h3>
+                </div>
+                <button type="button" onclick="window.cerrarModalSubcuentaVecinoNodo()" style="background: rgba(255,255,255,0.16); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+            </div>
+            <div id="modal-subcuenta-vecino-body" style="padding: 18px 22px; overflow-y: auto; flex: 1; background: #f8fafc;">
+                Cargando subcuenta...
+            </div>
+            <div style="padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #ffffff; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12px; color: #64748b;">📌 Los vecinos operan exclusivamente bajo el árbol de su Nodo (nunca mezclados como mayoristas sueltos).</span>
+                <button type="button" onclick="window.cerrarModalSubcuentaVecinoNodo()" class="btn-premium" style="background: #e2e8f0; color: #334155; padding: 8px 18px;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Script de configuración de variables globales -->
     <script src="/env-config.js?v=2"></script>
     <!-- Módulo de Mapa Interactivo -->
     <script src="../js/modules/mapaInteractivo.js?v=1.2.0"></script>
     <!-- Script de lógica frontend -->
-    <script src="../js/listado-clientes.js?v=1.2.4"></script>
+    <script src="../js/listado-clientes.js?v=1.3.0"></script>
 </body>
 </html>

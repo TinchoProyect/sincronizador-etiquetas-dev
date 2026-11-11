@@ -10,6 +10,15 @@ router.get('/', clientesBunkerController.obtenerTodos);
 // Sugerir un código legacy (Lomasoft ID) único de 3 dígitos disponible
 router.get('/sugerir-legacy', clientesBunkerController.sugerirLegacy);
 
+// Subcuentas y operatoria contable de Vecinos de Nodos Barriales (antes de '/:id')
+router.get('/nodos-vecinos/:vecinoId/subcuenta', clientesBunkerController.obtenerSubcuentaVecinoNodo);
+router.post('/nodos-pedidos/:pedidoId/conciliar-pago', clientesBunkerController.conciliarPagoPedidoVecinoNodo);
+router.post('/nodos-pedidos/:pedidoId/anular', clientesBunkerController.anularPedidoVecinoNodo);
+router.post('/nodos-pedidos/:pedidoId/nota-credito', clientesBunkerController.aplicarNotaCreditoPedidoVecinoNodo);
+
+// Obtener estructura en Árbol de un Nodo Barrial (cuadratura en vivo + clientes vecinos)
+router.get('/:id/arbol-nodo', clientesBunkerController.obtenerArbolNodo);
+
 // Obtener historial de artículos comprados/facturados por cliente
 router.get('/:id/articulos-comprados', clientesBunkerController.obtenerArticulosComprados);
 

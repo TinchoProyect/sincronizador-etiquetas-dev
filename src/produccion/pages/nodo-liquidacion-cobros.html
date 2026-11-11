@@ -341,12 +341,19 @@
             const lote = obtenerLoteActivo();
             const c = lote?.cuadro_liquidacion || {};
             const saldoCc = Number(lote?.saldo_cuenta_corriente || 0);
+            const esDeudor = saldoCc > 0.01;
+            const esAcreedor = saldoCc < -0.01;
+            const colorBordeSaldo = esDeudor ? '#f43f5e' : '#10b981';
+            const colorTextoSaldo = esDeudor ? '#fb7185' : '#34d399';
+            const labelSaldo = esDeudor
+                ? 'Saldo Deudor del Nodo hacia LAMDA'
+                : (esAcreedor ? 'Saldo Acreedor a Favor del Nodo' : 'Cuenta Corriente del Nodo Al Día ($0)');
 
             el.innerHTML = `
-                <div class="kpi-card" style="border-left: 4px solid ${saldoCc < 0 ? '#f43f5e' : '#10b981'};">
+                <div class="kpi-card" style="border-left: 4px solid ${colorBordeSaldo};">
                     <div>
-                        <div class="kpi-val" style="color:${saldoCc < 0 ? '#fb7185' : '#34d399'};">${fmtMoneda(saldoCc)}</div>
-                        <div class="kpi-lbl">Saldo Actual Cuenta Corriente del Nodo</div>
+                        <div class="kpi-val" style="color:${colorTextoSaldo};">${esAcreedor ? fmtMoneda(Math.abs(saldoCc)) + ' a favor' : fmtMoneda(saldoCc)}</div>
+                        <div class="kpi-lbl">${labelSaldo}</div>
                     </div>
                     <div style="font-size:1.7rem;">📒</div>
                 </div>
@@ -445,10 +452,11 @@
             }
 
             cont.innerHTML = movs.map(m => {
-                const esCredito = Number(m.signo) > 0;
-                const esNeutro = Number(m.signo) === 0;
-                const colorMonto = esNeutro ? '#fcd34d' : esCredito ? '#34d399' : '#fb7185';
-                const prefijo = esNeutro ? 'Efvo Gestor: ' : esCredito ? '+' : '-';
+                const signo = Number(m.signo);
+                const esDebito = signo > 0;
+                const esNeutro = signo === 0;
+                const colorMonto = esNeutro ? '#fcd34d' : esDebito ? '#fb7185' : '#34d399';
+                const prefijo = esNeutro ? 'Efvo Gestor: ' : esDebito ? 'DEBITO +' : 'CREDITO -';
 
                 return `
                     <div style="padding:10px 12px; border-radius:9px; background:#0f172a; border:1px solid #263244; display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -457,7 +465,7 @@
                             <div style="font-size:0.69rem; color:#64748b; margin-top:2px;">Ref: ${esc(m.referencia_externa || m.codigo_canasto || '-')}</div>
                         </div>
                         <div style="text-align:right; flex-shrink:0;">
-                            <div style="font-size:0.84rem; font-weight:900; color:${colorMonto};">${prefijo}${fmtMoneda(m.monto)}</div>
+                            <div style="font-size:0.84rem; font-weight:900; color:${colorMonto};">${prefijo}${fmtMoneda(Math.abs(Number(m.monto || 0)))}</div>
                             <div style="font-size:0.69rem; color:#94a3b8;">Saldo Cta. Cte: <strong>${fmtMoneda(m.saldo_resultante)}</strong></div>
                         </div>
                     </div>
@@ -478,60 +486,94 @@
             const cerrado = Boolean(lote.liquidacion_cerrada);
 
             const filasPedidos = (lote.pedidos_vecinos || []).map(p => {
+                const esAnulado = Boolean(p.anulado || String(p.estado_operativo || '').toUpperCase() === 'ANULADO');
                 const esEfectivo = String(p.medio_pago).toUpperCase() === 'EFECTIVO';
-                const confirmado = Boolean(p.pago_confirmado);
+                const confirmado = !esAnulado && Boolean(p.pago_confirmado);
+                const estOp = String(p.estado_operativo || '').toUpperCase();
+                const puedeAnular = !esAnulado && !cerrado && !lote.debito_cta_cte_registrado &&
+                    !['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estOp);
+                const puedeNotaCredito = !esAnulado && !cerrado && Number(p.total_vecino || 0) > 0;
+                const montoAjuste = Number(p.monto_ajuste_credito || 0);
                 const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(i.nombre_publico)}`).join(' · ');
 
                 return `
-                    <div class="cobro-card ${confirmado ? 'confirmado' : ''}">
+                    <div class="cobro-card ${confirmado ? 'confirmado' : ''}" style="${esAnulado ? 'opacity:0.62; border-color:#475569; background:#0b1120;' : ''}">
                         <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:5px;">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <span style="font-family:monospace; font-weight:900; font-size:0.84rem; background:#1e293b; color:#38bdf8; padding:3px 8px; border-radius:6px;">
+                                <span style="font-family:monospace; font-weight:900; font-size:0.84rem; background:#1e293b; color:${esAnulado ? '#94a3b8' : '#38bdf8'}; padding:3px 8px; border-radius:6px; ${esAnulado ? 'text-decoration:line-through;' : ''}">
                                     #${esc(p.codigo_pedido)}
                                 </span>
-                                <strong style="font-size:0.96rem; color:#f8fafc;">👤 ${esc(p.vecino_nombre)}</strong>
-                                <span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.18)' : 'rgba(56,189,248,0.18)'}; color:${esEfectivo ? '#fcd34d' : '#7dd3fc'};">
-                                    ${esEfectivo ? '💵 Pago en Efectivo al Gestor' : `🏦 Transferencia a Alias ${esc(lote.alias_bancario_display || 'LAMDA')}`}
-                                </span>
-                                ${confirmado
-                                    ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
-                                        ${esEfectivo ? '✅ Efectivo cobrado en mano por Gestor' : `✅ Transferencia conciliada en Banco (${esc(p.titular_transferencia || p.titular_sugerido)})`}
-                                       </span>`
-                                    : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente de registrar</span>`
+                                <strong style="font-size:0.96rem; color:${esAnulado ? '#94a3b8' : '#f8fafc'};">👤 ${esc(p.vecino_nombre)}</strong>
+                                ${esAnulado
+                                    ? `<span class="badge" style="background:rgba(244,63,94,0.2); color:#fda4af; border:1px solid #f43f5e;">🚫 PEDIDO ANULADO</span>`
+                                    : `
+                                        <span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.18)' : 'rgba(56,189,248,0.18)'}; color:${esEfectivo ? '#fcd34d' : '#7dd3fc'};">
+                                            ${esEfectivo ? '💵 Pago en Efectivo al Gestor' : `🏦 Transferencia a Alias ${esc(lote.alias_bancario_display || 'LAMDA')}`}
+                                        </span>
+                                        ${confirmado
+                                            ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
+                                                ${esEfectivo ? '✅ Efectivo cobrado en mano por Gestor' : `✅ Transferencia conciliada en Banco (${esc(p.titular_transferencia || p.titular_sugerido)})`}
+                                               </span>`
+                                            : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente de registrar</span>`
+                                        }
+                                        ${montoAjuste > 0 ? `<span class="badge" style="background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid #a855f7;">➖ Ajuste Crédito: -${fmtMoneda(montoAjuste)}</span>` : ''}
+                                    `
                                 }
                             </div>
 
                             <div style="font-size:0.8rem; color:#cbd5e1;">📦 ${itemsTxt}</div>
 
-                            <div style="font-size:0.75rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
-                                <span>Total abonado por vecino: <strong style="color:#f8fafc;">${fmtMoneda(p.total_vecino)}</strong></span>
-                                <span>Costo Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong></span>
-                                <span style="color:#34d399;">Ganancia Gestor en este pedido: <strong>+${fmtMoneda(p.ganancia_total_gestor)}</strong> ${Number(p.cargo_envio_barrial) > 0 ? `(incluye ${fmtMoneda(p.cargo_envio_barrial)} envío barrial)` : ''}</span>
-                            </div>
+                            ${esAnulado ? `
+                                <div style="font-size:0.75rem; color:#fda4af;">
+                                    Motivo de baja: <strong>${esc(p.motivo_anulacion_ajuste || 'Anulado antes de despacho')}</strong> · Subcuenta vecinal revertida a $0.
+                                </div>
+                            ` : `
+                                <div style="font-size:0.75rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
+                                    <span>Total a abonar por vecino: <strong style="color:#f8fafc;">${fmtMoneda(p.total_vecino)}</strong></span>
+                                    <span>Costo Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong></span>
+                                    <span style="color:#34d399;">Ganancia Gestor en este pedido: <strong>+${fmtMoneda(p.ganancia_total_gestor)}</strong> ${Number(p.cargo_envio_barrial) > 0 ? `(incluye ${fmtMoneda(p.cargo_envio_barrial)} envío barrial)` : ''}</span>
+                                </div>
+                            `}
                         </div>
 
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            ${!confirmado ? `
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                            ${esAnulado ? '' : (!confirmado ? `
                                 ${!esEfectivo ? `
                                     <button type="button" class="btn-action"
                                         onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.total_vecino)})"
                                         style="background:linear-gradient(135deg, #38bdf8, #0284c7); color:#082f49;">
-                                        🏦 Conciliar Transferencia (+${fmtMoneda(p.total_vecino)})
+                                        🏦 Conciliar Transferencia (${fmtMoneda(p.total_vecino)})
                                     </button>
                                 ` : `
                                     <button type="button" class="btn-action"
                                         onclick="registrarCobroEfectivoGestor(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', ${Number(p.total_vecino)})"
                                         style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#0f172a;">
-                                        💵 Registrar Efectivo Cobrado (${fmtMoneda(p.total_vecino)})
+                                        💵 Registrar Efectivo (${fmtMoneda(p.total_vecino)})
                                     </button>
                                 `}
                             ` : `
                                 <button type="button" class="btn-action"
                                     onclick="verReciboVecinoMarcaBlanca(${p.id})"
                                     style="background:#1e293b; color:#cbd5e1; border:1px solid #334155;">
-                                    🧾 Ver Recibo del Vecino
+                                    🧾 Ver Recibo
                                 </button>
-                            `}
+                            `)}
+                            ${puedeNotaCredito ? `
+                                <button type="button" class="btn-action"
+                                    onclick="abrirModalNotaCreditoPedido(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', ${Number(p.total_vecino)})"
+                                    style="background:#1e1b4b; color:#d8b4fe; border:1px solid #6366f1; padding:7px 10px; font-size:0.75rem;"
+                                    title="Aplicar Nota de Crédito / descuento parcial sobre el pedido">
+                                    ➖ Ajuste
+                                </button>
+                            ` : ''}
+                            ${puedeAnular ? `
+                                <button type="button" class="btn-action"
+                                    onclick="anularPedidoVecinoUI(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}')"
+                                    style="background:rgba(244,63,94,0.16); color:#fda4af; border:1px solid rgba(244,63,94,0.45); padding:7px 10px; font-size:0.75rem;"
+                                    title="Anular pedido antes de su entrega/despacho">
+                                    ✕ Anular
+                                </button>
+                            ` : ''}
                         </div>
                     </div>
                 `;
@@ -657,8 +699,8 @@
                             💡 <strong>Detalle de Compensación:</strong> ${esc(c.explicacion_compensacion)}
                             ${lote.codigo_bunker_cliente_madre ? `
                                 <div style="margin-top:6px; padding:7px 10px; border-radius:7px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; font-size:0.78rem;">
-                                    🔗 <strong>Cuenta Madre Vinculada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong>
-                                    Al cerrar la liquidación, la subcuenta operativa (${esc(lote.codigo_bunker_cliente)}) queda en <strong>$0,00</strong> y el neto consolidado se asienta como movimiento único (<code>LIQUIDACION_NODO</code>) en la Cuenta Principal <strong>${esc(lote.codigo_bunker_cliente_madre)}</strong> (Saldo actual: <strong>${fmtMoneda(lote.saldo_cuenta_corriente_madre)}</strong>).
+                                    🔗 <strong>Cuenta Personal Aislada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong>
+                                    Permanece aislada durante la operatoria diaria (Saldo actual: <strong>${Number(lote.saldo_cuenta_corriente_madre) < -0.01 ? fmtMoneda(Math.abs(Number(lote.saldo_cuenta_corriente_madre))) + ' a favor' : fmtMoneda(lote.saldo_cuenta_corriente_madre)}</strong>). Al cerrar el lote podés elegir <strong>Rendición Directa sobre ${esc(lote.codigo_bunker_cliente)}</strong> o <strong>Compensar contra ${esc(lote.codigo_bunker_cliente_madre)}</strong>.
                                 </div>
                             ` : ''}
                         </div>
@@ -667,12 +709,11 @@
                             <button type="button" class="btn-action"
                                 onclick="confirmarCierreLiquidacionLote(${lote.id})"
                                 style="background:linear-gradient(135deg, #10b981, #059669); color:#052e16; padding:12px 20px; font-size:0.88rem;">
-                                ✅ Confirmar Compensación (${fmtMoneda(c.monto_compensacion_final)}) y Saldar Cta. Cte. en $0
+                                ✅ Cerrar Liquidación (${fmtMoneda(c.monto_compensacion_final)}) y Saldar ${esc(lote.codigo_bunker_cliente)} en $0
                             </button>
                         ` : `
-                            <div style="padding:10px 16px; border-radius:9px; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; font-weight:800; font-size:0.84rem;">
-                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')}) · Subcuenta Nodo: ${fmtMoneda(lote.saldo_cuenta_corriente)}
-                                ${lote.codigo_bunker_cliente_madre ? ` · Cta. Madre ${esc(lote.codigo_bunker_cliente_madre)}: ${fmtMoneda(lote.saldo_cuenta_corriente_madre)}` : ''}
+                            <div style="padding:10px 16px; border-radius:9px; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; font-weight:800; font-size:0.82rem;">
+                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')} · ${lote.liquidacion_oficial?.modalidad_cierre === 'COMPENSACION_CUENTA_MADRE' ? `Compensada en ${esc(lote.codigo_bunker_cliente_madre)}` : `Rendición Directa en ${esc(lote.codigo_bunker_cliente)}`}) · Subcuenta Nodo: ${fmtMoneda(lote.saldo_cuenta_corriente)}
                             </div>
                         `}
                     </div>
@@ -779,47 +820,91 @@
             const lote = obtenerLoteActivo();
             if (!lote) return;
             const c = lote.cuadro_liquidacion;
+            const tieneCuentaMadre = Boolean(lote.codigo_bunker_cliente_madre);
+            const montoComp = Number(c.monto_compensacion_final || 0);
+            const esSaldoAFavorGestor = c.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR';
+            const saldoMadreActual = Number(lote.saldo_cuenta_corriente_madre || 0);
+            const saldoMadreProyectado = esSaldoAFavorGestor
+                ? Number((saldoMadreActual - montoComp).toFixed(2))
+                : Number((saldoMadreActual + montoComp).toFixed(2));
+
+            const textoOpcionA = esSaldoAFavorGestor
+                ? `LAMDA transfiere/paga <strong>${fmtMoneda(montoComp)}</strong> al Gestor y <strong>${esc(lote.codigo_bunker_cliente)}</strong> queda en <strong>$0,00</strong>.`
+                : `El Gestor rinde <strong>${fmtMoneda(montoComp)}</strong> a LAMDA y <strong>${esc(lote.codigo_bunker_cliente)}</strong> queda en <strong>$0,00</strong>.`;
+
+            const textoOpcionB = esSaldoAFavorGestor
+                ? `Se acredita un <strong>CRÉDITO a favor (-${fmtMoneda(montoComp)})</strong> en <strong>${esc(lote.codigo_bunker_cliente_madre || '')}</strong> (Saldo proyectado: <strong>${saldoMadreProyectado < -0.01 ? fmtMoneda(Math.abs(saldoMadreProyectado)) + ' a favor' : fmtMoneda(saldoMadreProyectado)}</strong>).`
+                : `Se asienta un <strong>DÉBITO (+${fmtMoneda(montoComp)})</strong> en <strong>${esc(lote.codigo_bunker_cliente_madre || '')}</strong> descontando de su saldo personal (Saldo proyectado: <strong>${saldoMadreProyectado < -0.01 ? fmtMoneda(Math.abs(saldoMadreProyectado)) + ' a favor' : fmtMoneda(saldoMadreProyectado)}</strong>).`;
 
             const confirm = await Swal.fire({
                 title: `🏁 Cerrar Liquidación de Lote ${lote.codigo_canasto}`,
                 background: '#151e2e',
                 color: '#f8fafc',
-                width: '620px',
+                width: '660px',
                 html: `
-                    <div style="text-align:left; font-size:0.88rem; line-height:1.55; display:flex; flex-direction:column; gap:10px;">
-                        <p>Se registrará el cierre contable del lote de <strong>${esc(lote.nombre_marca)}</strong> (${esc(lote.gestor_nombre)}):</p>
+                    <div style="text-align:left; font-size:0.86rem; line-height:1.5; display:flex; flex-direction:column; gap:11px;">
                         <div style="padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
                             <div>🛍️ <strong>Total vendido a vecinos:</strong> ${fmtMoneda(c.total_venta_vecinos)}</div>
-                            <div>🏭 <strong>Costo Base LAMDA:</strong> -${fmtMoneda(c.total_base_lamda)}</div>
-                            <div style="color:#34d399;">💰 <strong>Ganancia Neta del Gestor (retenida de su efectivo):</strong> +${fmtMoneda(c.ganancia_neta_gestor)}</div>
+                            <div>🏭 <strong>Costo Base LAMDA (DÉBITO despacho):</strong> +${fmtMoneda(c.total_base_lamda)}</div>
+                            <div style="color:#34d399;">💰 <strong>Ganancia Neta del Gestor:</strong> +${fmtMoneda(c.ganancia_neta_gestor)}</div>
                             <hr style="border:none; border-top:1px dashed #334155; margin:8px 0;">
-                            <div>🏦 <strong>Transferencias en cuenta LAMDA:</strong> ${fmtMoneda(c.transferencias_esperadas)}</div>
-                            <div>💵 <strong>Efectivo cobrado en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
-                            <div style="margin-top:6px; font-size:0.98rem; color:#38bdf8; font-weight:900;">
-                                🤝 ${esc(c.titulo_resultado)} → Subcuenta ${esc(lote.codigo_bunker_cliente)} en $0
+                            <div>🏦 <strong>Transferencias en Banco LAMDA (CRÉDITO):</strong> -${fmtMoneda(c.transferencias_esperadas)}</div>
+                            <div>💵 <strong>Efectivo en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
+                            <div style="margin-top:6px; font-size:0.96rem; color:#38bdf8; font-weight:900;">
+                                🤝 ${esc(c.titulo_resultado)} → Subcuenta ${esc(lote.codigo_bunker_cliente)} queda en $0,00
                             </div>
-                            ${lote.codigo_bunker_cliente_madre ? `
-                                <div style="margin-top:8px; padding:8px 10px; border-radius:7px; background:rgba(16,185,129,0.14); border:1px solid #10b981; color:#6ee7b7; font-size:0.8rem;">
-                                    🔗 <strong>Impacto Neto en Cuenta Madre (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong><br>
-                                    Se asentará un movimiento consolidado <code>LIQUIDACION_NODO</code> en la Cuenta Principal ${esc(lote.codigo_bunker_cliente_madre)} (Saldo previo: ${fmtMoneda(lote.saldo_cuenta_corriente_madre)}).
-                                </div>
-                            ` : ''}
                         </div>
+
+                        <div style="font-size:0.78rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
+                            Elegí la modalidad contable de cierre:
+                        </div>
+
+                        <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:#0f172a; border:2px solid #38bdf8; cursor:pointer;">
+                            <input type="radio" name="swal-modo-cierre" value="directo" checked style="margin-top:4px; accent-color:#38bdf8;">
+                            <div>
+                                <div style="font-weight:800; color:#f8fafc;">Opción A · Rendición / Liquidación directa sobre ${esc(lote.codigo_bunker_cliente)}</div>
+                                <div style="font-size:0.78rem; color:#cbd5e1; margin-top:2px;">
+                                    ${textoOpcionA}
+                                    ${tieneCuentaMadre ? `<br><span style="color:#94a3b8;">🔒 La Cuenta Personal <strong>${esc(lote.codigo_bunker_cliente_madre)}</strong> no se toca.</span>` : ''}
+                                </div>
+                            </div>
+                        </label>
+
+                        ${tieneCuentaMadre ? `
+                            <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.45); cursor:pointer;">
+                                <input type="radio" name="swal-modo-cierre" value="compensar_madre" style="margin-top:4px; accent-color:#10b981;">
+                                <div>
+                                    <div style="font-weight:800; color:#6ee7b7;">Opción B · Compensar contra Cuenta Personal (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')})</div>
+                                    <div style="font-size:0.78rem; color:#d1fae5; margin-top:2px;">
+                                        ${textoOpcionB}
+                                    </div>
+                                </div>
+                            </label>
+                        ` : ''}
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: '✅ Asentar Liquidación y Saldar Cuenta Corriente',
+                confirmButtonText: '✅ Confirmar Cierre y Saldar Lote en $0',
                 cancelButtonText: 'Cancelar',
-                confirmButtonColor: '#10b981'
+                confirmButtonColor: '#10b981',
+                preConfirm: () => {
+                    const sel = document.querySelector('input[name="swal-modo-cierre"]:checked');
+                    return {
+                        impactar_en_cuenta_madre: Boolean(tieneCuentaMadre && sel && sel.value === 'compensar_madre')
+                    };
+                }
             });
 
-            if (!confirm.isConfirmed) return;
+            if (!confirm.isConfirmed || !confirm.value) return;
 
             try {
                 const res = await fetch(`/api/produccion/nodos/liquidacion/canastos/${canastoId}/cerrar-liquidacion`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ responsable: lote.gestor_nombre })
+                    body: JSON.stringify({
+                        responsable: lote.gestor_nombre,
+                        impactar_en_cuenta_madre: confirm.value.impactar_en_cuenta_madre
+                    })
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || 'Error cerrando liquidación');
@@ -829,11 +914,126 @@
 
                 Swal.fire({
                     icon: 'success',
-                    title: '✅ Lote Liquidado y Cuenta Corriente en $0',
-                    text: 'Quedaron conciliados todos los pagos y asentada la compensación final en la Cuenta Corriente del Nodo.',
+                    title: '✅ Lote Liquidado y Subcuenta en $0',
+                    text: confirm.value.impactar_en_cuenta_madre
+                        ? `El lote quedó saldado en $0,00 y el neto se compensó con asiento espejo en ${lote.codigo_bunker_cliente_madre}.`
+                        : `El lote quedó saldado en $0,00 mediante rendición directa sobre ${lote.codigo_bunker_cliente} (Cuenta Personal intacta).`,
                     background: '#151e2e',
                     color: '#f8fafc'
                 });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function anularPedidoVecinoUI(pedidoId, codigoPedido, vecinoNombre) {
+            const { value: motivo } = await Swal.fire({
+                title: `🚫 Anular Pedido #${codigoPedido}`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '520px',
+                html: `
+                    <div style="text-align:left; font-size:0.84rem; display:flex; flex-direction:column; gap:10px;">
+                        <div style="padding:10px 12px; border-radius:8px; background:rgba(244,63,94,0.14); border:1px solid rgba(244,63,94,0.4); color:#fecdd3;">
+                            Se anulará el pedido de <strong>${esc(vecinoNombre)}</strong> antes de su entrega:
+                            <ul style="margin:6px 0 0 18px;">
+                                <li>Revierte el cargo en la Subcuenta del Vecino a <strong>$0,00</strong>.</li>
+                                <li>Si tenía pago registrado, revierte también el asiento en la Cta. Cte. del Nodo.</li>
+                                <li>Desactiva el presupuesto vinculado y recalcula los totales del canasto.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Motivo de anulación</label>
+                            <input id="swal-motivo-anular" type="text" value="Cancelado por el vecino antes del despacho"
+                                style="width:100%; padding:9px; border-radius:7px; border:1px solid #f43f5e; background:#0f172a; color:#f8fafc;">
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '🚫 Confirmar Anulación',
+                cancelButtonText: 'Volver',
+                confirmButtonColor: '#e11d48',
+                preConfirm: () => document.getElementById('swal-motivo-anular').value.trim() || 'Anulado antes de despacho'
+            });
+            if (!motivo) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/anular`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ motivo })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo anular el pedido');
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+                Swal.fire({ icon: 'success', title: 'Pedido Anulado', text: `El pedido #${codigoPedido} fue dado de baja y revertido contablemente.`, background: '#151e2e', color: '#f8fafc', timer: 2200, showConfirmButton: false });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function abrirModalNotaCreditoPedido(pedidoId, codigoPedido, vecinoNombre, totalActual) {
+            const { value: formValues } = await Swal.fire({
+                title: `➖ Nota de Crédito — Pedido #${codigoPedido}`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '540px',
+                html: `
+                    <div style="text-align:left; font-size:0.84rem; display:flex; flex-direction:column; gap:10px;">
+                        <div style="padding:10px 12px; border-radius:8px; background:rgba(99,102,241,0.14); border:1px solid rgba(99,102,241,0.45); color:#e0e7ff;">
+                            Aplica una bonificación o ajuste por faltante parcial a <strong>${esc(vecinoNombre)}</strong> (Total actual: <strong>${fmtMoneda(totalActual)}</strong>).
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Monto a descontar al Vecino ($)</label>
+                                <input id="swal-nc-vecino" type="number" min="1" max="${Number(totalActual)}" step="1" placeholder="Ej: 1500"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #6366f1; background:#0f172a; color:#f8fafc; font-weight:800;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Reconocimiento Costo Base LAMDA ($ opc.)</label>
+                                <input id="swal-nc-base" type="number" min="0" step="1" placeholder="Auto proporcional"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Motivo del ajuste</label>
+                            <input id="swal-nc-motivo" type="text" value="Ajuste / bonificación comercial sobre pedido"
+                                style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Aplicar Nota de Crédito',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#6366f1',
+                preConfirm: () => {
+                    const montoDescuento = Number(document.getElementById('swal-nc-vecino').value || 0);
+                    const rawBase = document.getElementById('swal-nc-base').value;
+                    if (!Number.isFinite(montoDescuento) || montoDescuento <= 0 || montoDescuento >= Number(totalActual)) {
+                        Swal.showValidationMessage('Ingresá un monto mayor a $0 y menor al total del pedido (para baja total usá Anular).');
+                        return false;
+                    }
+                    return {
+                        monto_credito_vecino: montoDescuento,
+                        ...(rawBase !== '' ? { monto_credito_base_lamda: Number(rawBase) } : {}),
+                        motivo: document.getElementById('swal-nc-motivo').value.trim() || 'Nota de Crédito'
+                    };
+                }
+            });
+            if (!formValues) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/nota-credito`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formValues)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo aplicar la Nota de Crédito');
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+                Swal.fire({ icon: 'success', title: 'Nota de Crédito Aplicada', text: `Se descontaron ${fmtMoneda(formValues.monto_credito_vecino)} del pedido #${codigoPedido}.`, background: '#151e2e', color: '#f8fafc', timer: 2300, showConfirmButton: false });
             } catch (err) {
                 Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
             }
@@ -1082,8 +1282,8 @@
                                                 </td>
                                                 <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos Barriales')}</td>
                                                 <td style="font-family:monospace; font-size:0.78rem; color:#fcd34d;">${esc(n.alias_bancario_display || 'S/A')}</td>
-                                                <td style="font-weight:900; color:${Number(n.saldo_cuenta_corriente) < 0 ? '#fb7185' : '#34d399'};">
-                                                    ${fmtMoneda(n.saldo_cuenta_corriente)}
+                                                <td style="font-weight:900; color:${Number(n.saldo_cuenta_corriente) > 0.01 ? '#fb7185' : '#34d399'};">
+                                                    ${Number(n.saldo_cuenta_corriente) < -0.01 ? fmtMoneda(Math.abs(Number(n.saldo_cuenta_corriente))) + ' a favor' : fmtMoneda(n.saldo_cuenta_corriente)}
                                                 </td>
                                             </tr>
                                         `).join('')}

@@ -11,6 +11,18 @@ const arcaService = require('../services/arcaService');
 const { pool } = require('../config/database');
 const { createClient } = require('@supabase/supabase-js');
 const { sincronizarTodoElDirectorioB2B } = require('../services/b2bDirectorySyncService');
+const nodosBarrialesService = require('../../produccion/services/nodosBarrialesService');
+
+let _esquemaNodosReadyPromise = null;
+function asegurarEsquemaNodosOnce() {
+    if (!_esquemaNodosReadyPromise) {
+        _esquemaNodosReadyPromise = nodosBarrialesService.asegurarEsquemaNodosBarriales().catch(err => {
+            _esquemaNodosReadyPromise = null;
+            console.warn('⚠️ [CLIENTES-BUNKER] No se pudo verificar esquema Nodos Barriales:', err.message);
+        });
+    }
+    return _esquemaNodosReadyPromise;
+}
 
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
@@ -99,6 +111,7 @@ exports.obtenerTodos = async (req, res) => {
     try {
         const { search } = req.query;
         console.log(`🔍 [CLIENTES-BUNKER] Listando clientes. Búsqueda: "${search || ''}"`);
+        await asegurarEsquemaNodosOnce();
         const clientes = await ClientesBunkerModel.obtenerTodos({ search });
         
         // Validación cruzada dinámica con perfiles reales en Supabase
@@ -168,7 +181,8 @@ exports.sugerirLegacy = async (req, res) => {
         let maxNum = 0;
         idsAsignados.forEach(id => {
             const num = parseInt(id, 10);
-            if (!isNaN(num) && num > maxNum) {
+            // Excluir rango reservado 9000+ utilizado por Nodos Barriales (ej: 9001 = Lo de Mati)
+            if (!isNaN(num) && num < 9000 && num > maxNum) {
                 maxNum = num;
             }
         });
@@ -845,6 +859,78 @@ exports.obtenerArticulosComprados = async (req, res) => {
     } catch (error) {
         console.error(`❌ [CLIENTES-BUNKER] Error al obtener artículos comprados del cliente:`, error);
         res.status(500).json({ success: false, error: 'Error al consultar historial de artículos del cliente.' });
+    }
+};
+
+/**
+ * Obtener estructura en Árbol de un Nodo Barrial (cuadratura en vivo + subcuentas de vecinos)
+ * GET /api/logistica/bunker/clientes/:id/arbol-nodo
+ */
+exports.obtenerArbolNodo = async (req, res) => {
+    try {
+        const data = await nodosBarrialesService.obtenerArbolNodoClientesBunker(req.params.id, {
+            search: req.query.search || ''
+        });
+        res.json({ success: true, ok: true, ...data });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en obtenerArbolNodo (${req.params.id}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+/**
+ * Obtener ficha integral de la Subcuenta de un Vecino comprador del Nodo
+ * GET /api/logistica/bunker/clientes/nodos-vecinos/:vecinoId/subcuenta
+ */
+exports.obtenerSubcuentaVecinoNodo = async (req, res) => {
+    try {
+        const data = await nodosBarrialesService.obtenerSubcuentaVecinoDetalle(req.params.vecinoId);
+        res.json({ success: true, ok: true, ...data });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en obtenerSubcuentaVecinoNodo (${req.params.vecinoId}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+/**
+ * Conciliar pago de un pedido vecinal desde Clientes Búnker / Subcuenta del Vecino
+ * POST /api/logistica/bunker/clientes/nodos-pedidos/:pedidoId/conciliar-pago
+ */
+exports.conciliarPagoPedidoVecinoNodo = async (req, res) => {
+    try {
+        const tablero = await nodosBarrialesService.conciliarPagoPedidoVecino(req.params.pedidoId, req.body || {});
+        res.json({ success: true, ok: true, tablero });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en conciliarPagoPedidoVecinoNodo (${req.params.pedidoId}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+/**
+ * Anular un pedido vecinal antes de su despacho/entrega desde Clientes Búnker / Subcuenta del Vecino
+ * POST /api/logistica/bunker/clientes/nodos-pedidos/:pedidoId/anular
+ */
+exports.anularPedidoVecinoNodo = async (req, res) => {
+    try {
+        const resultado = await nodosBarrialesService.anularPedidoVecinoNodo(req.params.pedidoId, req.body || {});
+        res.json({ success: true, ...resultado });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en anularPedidoVecinoNodo (${req.params.pedidoId}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
+/**
+ * Aplicar Nota de Crédito / ajuste parcial sobre pedido vecinal desde Clientes Búnker / Subcuenta del Vecino
+ * POST /api/logistica/bunker/clientes/nodos-pedidos/:pedidoId/nota-credito
+ */
+exports.aplicarNotaCreditoPedidoVecinoNodo = async (req, res) => {
+    try {
+        const resultado = await nodosBarrialesService.aplicarNotaCreditoPedidoVecino(req.params.pedidoId, req.body || {});
+        res.json({ success: true, ...resultado });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en aplicarNotaCreditoPedidoVecinoNodo (${req.params.pedidoId}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
     }
 };
 

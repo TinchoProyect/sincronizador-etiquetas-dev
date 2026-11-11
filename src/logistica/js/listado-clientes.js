@@ -1601,6 +1601,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Caché del mapa de financiación por cliente
     let ultimoMapaFinanciacion = {};
 
+    // Estado de Estructura Tipo Árbol para Nodos Barriales (Clientes del Nodo + Subcuentas)
+    const nodosExpandidosIds = new Set();
+    const cacheArbolNodos = new Map();
+    let ultimaBusquedaClientes = '';
+    const escHtmlNodo = (v) => String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
     // --- 1. CARGA DE CLIENTES DESDE LA API ---
     async function cargarClientes(searchQuery = '') {
         try {
@@ -1650,6 +1661,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
             });
+
+            const cleanSearch = String(searchQuery || '').trim();
+            if (cleanSearch !== ultimaBusquedaClientes) {
+                cacheArbolNodos.clear();
+                ultimaBusquedaClientes = cleanSearch;
+            }
+            if (cleanSearch.length > 0) {
+                todosLosClientes.forEach(c => {
+                    if (c.nodo_info && Number(c.nodo_info.vecinos_coincidentes || 0) > 0) {
+                        nodosExpandidosIds.add(Number(c.id));
+                    }
+                });
+            }
 
             actualizarDeudaTotal(); // Actualizar widget de deuda consolidada y KPIs de financiación
             ordenarYRenderizar();
@@ -1885,41 +1909,152 @@ document.addEventListener('DOMContentLoaded', () => {
             const wpAttr = encodeURIComponent(JSON.stringify(contactosWp));
             const mailAttr = encodeURIComponent(JSON.stringify(contactosEmail));
 
-            // Distintivo visual para clientes con Portal B2B Activo
+            // Distintivo visual para clientes con Portal B2B Activo o Nodos Barriales (Estructura en Árbol)
+            const ni = cliente.nodo_info || null;
+            const esNodoBarrial = Boolean(ni && ni.nodo_id);
+            const estaExpandidoNodo = esNodoBarrial && nodosExpandidosIds.has(Number(cliente.id));
+            if (esNodoBarrial) {
+                tr.classList.add('fila-nodo-barrial');
+            }
+
             const tieneB2B = cliente.onboarding_completado === true;
             const tieneStock = cliente.ver_stock === true;
-            const htmlNombre = tieneB2B 
-                ? `<div style="display: flex; flex-direction: column; gap: 2px;">
-                     <span style="font-weight: 700; color: #1e1b4b;">${cliente.cliente_nombre}</span>
-                     <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                       <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; align-self: flex-start; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Acceso al Portal B2B Habilitado (${cliente.email_portal})">🌐 Portal Activo</span>
-                       ${tieneStock ? `<span class="badge" style="background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Visualización de Stock Habilitada">📦 Stock ON</span>` : ''}
-                     </div>
-                   </div>`
-                : `<span style="font-weight: 600; color: #334155;">${cliente.cliente_nombre}</span>`;
+            let codigoCellHtml = cliente.codigo_bunker_cliente;
+            let htmlNombre = '';
+            let htmlFinanciacionFinal = htmlFinanciacionCell;
+            let badgeSaldoFinal = badgeSaldo;
+            let htmlAccionesFinal = `
+                <div style="display: flex; gap: 6px; justify-content: center;">
+                    <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
+                    <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
+                    <button class="btn-action btn-colaborador-b2b" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-ver-stock="${cliente.ver_stock === true}" title="Habilitar Operador de Pre-Pedido B2B (Selección de Artículos)">👷</button>
+                    ${tieneB2B ? `<button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>` : ''}
+                    <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
+                    <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
+                    <button class="btn-action btn-delete" data-id="${cliente.id}" title="Eliminar cliente permanentemente">🗑️</button>
+                </div>
+            `;
+
+            if (esNodoBarrial) {
+                const cantVecinos = Number(ni.cantidad_vecinos || 0);
+                const totalSaldoVecinos = Number(ni.total_saldo_vecinos || 0);
+                const efvoGestor = Number(ni.efectivo_mano_gestor || 0);
+                const vecinosMatch = Number(ni.vecinos_coincidentes || 0);
+
+                codigoCellHtml = `
+                    <div style="display:flex; align-items:center; gap:7px;">
+                        <button type="button" onclick="window.toggleArbolNodoBunker(${cliente.id})" title="${estaExpandidoNodo ? 'Contraer árbol del Nodo' : 'Desplegar clientes vecinos del Nodo'}"
+                            style="width:24px; height:24px; border-radius:6px; border:1px solid #86efac; background:${estaExpandidoNodo ? '#16a34a' : '#dcfce7'}; color:${estaExpandidoNodo ? '#ffffff' : '#166534'}; font-size:11px; font-weight:900; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;">
+                            ${estaExpandidoNodo ? '▼' : '▶'}
+                        </button>
+                        <div>
+                            <div style="font-weight:800; color:#14532d;">${escHtmlNodo(cliente.codigo_bunker_cliente)}</div>
+                            <div style="font-size:10px; font-weight:700; color:#15803d;">${escHtmlNodo(ni.codigo_nodo)}</div>
+                        </div>
+                    </div>
+                `;
+
+                htmlNombre = `
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            <span style="font-weight:800; color:#14532d; font-size:1.01em;">🏘️ ${escHtmlNodo(ni.nombre_marca || cliente.cliente_nombre)}</span>
+                            <button type="button" class="btn-toggle-nodo-tree" onclick="window.toggleArbolNodoBunker(${cliente.id})">
+                                <span>${estaExpandidoNodo ? '▼' : '▶'}</span>
+                                <span>🌳 Clientes del Nodo (${cantVecinos})</span>
+                            </button>
+                            ${vecinosMatch > 0 && ultimaBusquedaClientes ? `<span class="badge" style="background:#fef9c3; color:#854d0e; border:1px solid #fde047; font-size:10.5px; font-weight:800;">🔍 ${vecinosMatch} vecino${vecinosMatch === 1 ? '' : 's'} coincide${vecinosMatch === 1 ? '' : 'n'}</span>` : ''}
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:11px; color:#475569;">
+                            <span>👤 Gestor: <strong>${escHtmlNodo(ni.gestor_nombre || '-')}</strong></span>
+                            ${ni.codigo_bunker_cliente_madre ? `
+                                <span class="badge" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:10px; font-weight:700;" title="Cuenta personal del colaborador aislada de la operatoria diaria del Nodo">
+                                    🔗 Cta. Personal aislada: ${escHtmlNodo(ni.codigo_bunker_cliente_madre)}
+                                </span>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                htmlFinanciacionFinal = `
+                    <div style="display:inline-flex; flex-direction:column; align-items:center; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:5px 11px;">
+                        <span style="font-size:11px; font-weight:800; color:#166534;">🔄 Liquidación por Lote Canasto</span>
+                        <span style="font-size:9.5px; color:#15803d; font-weight:600;">Subcuenta Operativa Nodo (0% interés)</span>
+                    </div>
+                `;
+
+                const labelEstadoNodo = saldoNum > 0.01
+                    ? `<small style="color:#dc2626; font-size:0.75em; font-weight:700;">Deudor a LAMDA</small>`
+                    : (saldoNum < -0.01
+                        ? `<small style="color:#16a34a; font-size:0.75em; font-weight:700;">Saldo a favor del Nodo</small>`
+                        : `<small style="color:#15803d; font-size:0.74em; font-weight:700;">Cta. Nodo Al Día ($ 0,00)</small>`);
+
+                badgeSaldoFinal = `
+                    <div>
+                        <span style="font-weight:800; color:${colorSaldo}; font-size:1.04em;">${saldoFormateado}</span><br>
+                        ${labelEstadoNodo}
+                        <div style="margin-top:4px; display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
+                            <span style="font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:4px; background:${totalSaldoVecinos > 0.01 ? '#fffbeb' : '#f1f5f9'}; color:${totalSaldoVecinos > 0.01 ? '#b45309' : '#64748b'}; border:1px solid ${totalSaldoVecinos > 0.01 ? '#fde68a' : '#e2e8f0'};">
+                                👥 Vecinos s/cobrar: $ ${fmtMoneda(totalSaldoVecinos)}
+                            </span>
+                            ${efvoGestor > 0.01 ? `
+                                <span style="font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:4px; background:#ecfeff; color:#0e7490; border:1px solid #a5f3fc;">
+                                    💵 Efvo. en Gestor: $ ${fmtMoneda(efvoGestor)}
+                                </span>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                htmlAccionesFinal = `
+                    <div style="display:flex; gap:5px; justify-content:center; flex-wrap:wrap;">
+                        <button type="button" class="btn-action" onclick="window.toggleArbolNodoBunker(${cliente.id})" style="background:#dcfce7; border:1px solid #86efac; color:#166534;" title="Desplegar / contraer Clientes Vecinos del Nodo">🌳</button>
+                        <button type="button" class="btn-action" onclick="window.open('/liquidacion-nodos', '_blank')" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1;" title="Abrir Tablero de Conciliación y Liquidación de Lotes del Nodo">⚖️</button>
+                        <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver Cuenta Corriente Operativa del Nodo (${cliente.codigo_bunker_cliente})">💳</button>
+                        <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
+                        <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de Nodo">✏️</button>
+                    </div>
+                `;
+            } else {
+                htmlNombre = tieneB2B 
+                    ? `<div style="display: flex; flex-direction: column; gap: 2px;">
+                         <span style="font-weight: 700; color: #1e1b4b;">${cliente.cliente_nombre}</span>
+                         <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                           <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; align-self: flex-start; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Acceso al Portal B2B Habilitado (${cliente.email_portal})">🌐 Portal Activo</span>
+                           ${tieneStock ? `<span class="badge" style="background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;" title="Visualización de Stock Habilitada">📦 Stock ON</span>` : ''}
+                         </div>
+                       </div>`
+                    : `<span style="font-weight: 600; color: #334155;">${cliente.cliente_nombre}</span>`;
+            }
 
             tr.innerHTML = `
                 <td style="text-align: center; vertical-align: middle;">${cellSeleccion}</td>
-                <td class="col-codigo" style="font-weight: 700; color: #475569;">${cliente.codigo_bunker_cliente}</td>
+                <td class="col-codigo" style="font-weight: 700; color: #475569;">${codigoCellHtml}</td>
                 <td class="col-nombre" style="vertical-align: middle;">${htmlNombre}</td>
                 <td class="col-razon" style="color: #64748b; vertical-align: middle;">${cliente.razon_social}</td>
                 <td class="col-externo" style="vertical-align: middle;">${badgeExterno}</td>
-                <td class="col-financiacion" style="text-align: center; vertical-align: middle;">${htmlFinanciacionCell}</td>
-                <td class="col-saldo" style="text-align: right; white-space: nowrap; vertical-align: middle;">${badgeSaldo}</td>
+                <td class="col-financiacion" style="text-align: center; vertical-align: middle;">${htmlFinanciacionFinal}</td>
+                <td class="col-saldo" style="text-align: right; white-space: nowrap; vertical-align: middle;">${badgeSaldoFinal}</td>
                 <td class="col-listas">${htmlListas}</td>
                 <td class="col-acciones" style="text-align: center; vertical-align: middle;">
-                    <div style="display: flex; gap: 6px; justify-content: center;">
-                        <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver cuenta corriente">💳</button>
-                        <button class="btn-action btn-invite" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-emails="${mailAttr}" title="Invitar al Portal B2B (WhatsApp/Email)">✉️</button>
-                        <button class="btn-action btn-colaborador-b2b" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" data-whatsapp="${wpAttr}" data-ver-stock="${cliente.ver_stock === true}" title="Habilitar Operador de Pre-Pedido B2B (Selección de Artículos)">👷</button>
-                        ${tieneB2B ? `<button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>` : ''}
-                        <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
-                        <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente">✏️</button>
-                        <button class="btn-action btn-delete" data-id="${cliente.id}" title="Eliminar cliente permanentemente">🗑️</button>
-                    </div>
+                    ${htmlAccionesFinal}
                 </td>
             `;
             cuerpoTablaClientes.appendChild(tr);
+
+            if (estaExpandidoNodo) {
+                const trArbol = document.createElement('tr');
+                trArbol.id = `arbol-nodo-row-${cliente.id}`;
+                trArbol.className = 'fila-arbol-nodo-detalle';
+                trArbol.innerHTML = `
+                    <td colspan="9" style="padding: 4px 12px 12px 12px; border-bottom: 2px solid #cbd5e1;">
+                        <div id="arbol-nodo-box-${cliente.id}" class="arbol-nodo-wrapper">
+                            <div style="color:#64748b; font-size:13px; padding:8px;">⏳ Cargando estructura en árbol de clientes del Nodo...</div>
+                        </div>
+                    </td>
+                `;
+                cuerpoTablaClientes.appendChild(trArbol);
+                cargarYRenderizarArbolNodo(cliente.id);
+            }
         });
 
         // Sincronizar el checkbox general 'seleccionar todos'
@@ -4583,6 +4718,573 @@ document.addEventListener('DOMContentLoaded', () => {
             guardarModalDomicilio();
         });
     }
+
+    // --- ESTRUCTURA TIPO ÁRBOL: NODOS BARRIALES → CLIENTES VECINOS Y SUBCUENTAS ---
+    const fmtMonedaNodo = (n) => Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    async function cargarYRenderizarArbolNodo(bunkerClienteId, forceReload = false) {
+        const numId = Number(bunkerClienteId);
+        const box = document.getElementById(`arbol-nodo-box-${numId}`);
+        if (!box) return;
+
+        try {
+            let data = (!forceReload && cacheArbolNodos.has(numId)) ? cacheArbolNodos.get(numId) : null;
+            if (!data) {
+                const q = encodeURIComponent((buscadorInput?.value || '').trim());
+                const resp = await fetch(`/api/logistica/bunker/clientes/${numId}/arbol-nodo${q ? `?search=${q}` : ''}`);
+                const json = await resp.json();
+                if (!resp.ok || (!json.ok && !json.success)) {
+                    throw new Error(json.error || 'No se pudo cargar el árbol del Nodo.');
+                }
+                data = json;
+                cacheArbolNodos.set(numId, data);
+            }
+
+            const nodo = data.nodo || {};
+            const cuad = data.cuadratura || {};
+            const vecinos = Array.isArray(data.vecinos) ? data.vecinos : [];
+
+            const saldoNodo = Number(cuad.saldo_cc_nodo_lamda || 0);
+            const txtSaldoNodo = saldoNodo > 0.01
+                ? `<span style="color:#dc2626;">+$ ${fmtMonedaNodo(saldoNodo)}</span> <small style="font-size:11px; color:#dc2626;">(Deudor a LAMDA)</small>`
+                : (saldoNodo < -0.01
+                    ? `<span style="color:#16a34a;">$ ${fmtMonedaNodo(Math.abs(saldoNodo))}</span> <small style="font-size:11px; color:#16a34a;">(A favor del Nodo)</small>`
+                    : `<span style="color:#15803d;">$ 0,00</span> <small style="font-size:11px; color:#15803d;">(Al día)</small>`);
+
+            const totalVecinosPend = Number(cuad.total_subcuentas_vecinos || 0);
+            const efvoGestor = Number(cuad.efectivo_en_mano_gestor_lotes_abiertos || 0);
+            const transfLamda = Number(cuad.transferencias_en_lamda_lotes_abiertos || 0);
+
+            const saldoMadre = Number(nodo.saldo_cuenta_madre || 0);
+            const htmlTarjetaMadre = nodo.codigo_bunker_cliente_madre
+                ? `
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid #64748b;">
+                        <div style="font-size:10.5px; font-weight:800; color:#475569; text-transform:uppercase;">🔗 Cuenta Personal Vinculada (${escHtmlNodo(nodo.codigo_bunker_cliente_madre)})</div>
+                        <div style="font-size:1.05rem; font-weight:800; color:${saldoMadre > 0.01 ? '#dc2626' : '#16a34a'}; margin-top:3px;">
+                            ${saldoMadre < -0.01 ? `$ ${fmtMonedaNodo(Math.abs(saldoMadre))} a favor` : `$ ${fmtMonedaNodo(saldoMadre)}`}
+                        </div>
+                        <div style="font-size:11px; color:#64748b; margin-top:2px;">🔒 Aislada en operatoria diaria (${escHtmlNodo(nodo.cliente_madre_nombre || '')})</div>
+                    </div>
+                `
+                : `
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid #cbd5e1;">
+                        <div style="font-size:10.5px; font-weight:800; color:#64748b; text-transform:uppercase;">🔗 Cuenta Personal Colaborador</div>
+                        <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; margin-top:4px;">Sin cuenta personal vinculada</div>
+                        <div style="font-size:11px; color:#64748b; margin-top:2px;">Rendición directa sobre ${escHtmlNodo(nodo.codigo_bunker_cliente || '')}</div>
+                    </div>
+                `;
+
+            const filasVecinosHtml = vecinos.length === 0
+                ? `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Todavía no hay clientes vecinos empadronados en este Nodo.</td></tr>`
+                : vecinos.map(v => {
+                    const saldoV = Number(v.saldo_actual || 0);
+                    const ult = v.ultimo_pedido || null;
+                    const pendPrimero = (v.pedidos_pendientes_pago || [])[0] || null;
+                    const esEfvoPend = pendPrimero && String(pendPrimero.medio_pago || '').toUpperCase() === 'EFECTIVO';
+
+                    const badgeSaldoVec = saldoV > 0.01
+                        ? `<span style="font-weight:800; color:#dc2626;">$ ${fmtMonedaNodo(saldoV)}</span><div style="font-size:10px; color:#b91c1c; font-weight:700;">Pendiente cobro</div>`
+                        : (saldoV < -0.01
+                            ? `<span style="font-weight:800; color:#16a34a;">$ ${fmtMonedaNodo(Math.abs(saldoV))}</span><div style="font-size:10px; color:#15803d; font-weight:700;">Saldo a favor</div>`
+                            : `<span style="font-weight:800; color:#15803d;">$ 0,00</span><div style="font-size:10px; color:#64748b; font-weight:600;">Al día</div>`);
+
+                    return `
+                        <tr class="${v.coincide_busqueda ? 'vecino-match-busqueda' : ''}">
+                            <td style="font-family:monospace; font-weight:800; color:#166534; white-space:nowrap;">
+                                ↳ ${escHtmlNodo(v.codigo_vecino)}
+                            </td>
+                            <td>
+                                <div style="font-weight:800; color:#0f172a;">👤 ${escHtmlNodo(v.nombre_completo)}</div>
+                                <div style="font-size:11px; color:#475569;">📱 ${escHtmlNodo(v.telefono_whatsapp)} <span style="color:#94a3b8; font-family:monospace;">(ID: ${escHtmlNodo(v.telefono_normalizado)})</span></div>
+                            </td>
+                            <td style="font-size:11.5px; color:#334155;">
+                                ${v.direccion_calle
+                                    ? `<div>🛵 ${escHtmlNodo(v.direccion_calle)}</div>${v.entrecalles_referencia ? `<div style="font-size:10.5px; color:#64748b;">(${escHtmlNodo(v.entrecalles_referencia)})</div>` : ''}`
+                                    : `<span style="color:#15803d; font-weight:600;">🏡 Retira en Nodo (${escHtmlNodo(nodo.nombre_marca)})</span>`
+                                }
+                            </td>
+                            <td>
+                                <div style="font-weight:700; color:#1e293b;">${v.cantidad_pedidos_activos} compra${v.cantidad_pedidos_activos === 1 ? '' : 's'} · $ ${fmtMonedaNodo(v.total_comprado)}</div>
+                                ${ult ? `
+                                    <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                                        Último: <strong style="font-family:monospace; color:#0369a1;">#${escHtmlNodo(ult.codigo_pedido)}</strong>
+                                        ${ult.anulado
+                                            ? `<span style="color:#e11d48; font-weight:700;">(Anulado)</span>`
+                                            : (ult.pago_confirmado ? `<span style="color:#16a34a; font-weight:700;">(Pagado)</span>` : `<span style="color:#d97706; font-weight:700;">(Pendiente)</span>`)
+                                        }
+                                    </div>
+                                ` : ''}
+                            </td>
+                            <td>
+                                ${v.titular_habitual
+                                    ? `<span class="badge" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-size:10.5px; font-weight:700;">🏦 ${escHtmlNodo(v.titular_habitual)}</span>`
+                                    : `<span style="font-size:11px; color:#64748b;">${ult && ult.medio_pago === 'EFECTIVO' ? '💵 Pago en Efectivo' : 'Sin titular aprendido'}</span>`
+                                }
+                            </td>
+                            <td style="text-align:right; white-space:nowrap;">
+                                ${badgeSaldoVec}
+                            </td>
+                            <td style="text-align:center; white-space:nowrap;">
+                                <div style="display:inline-flex; gap:5px; align-items:center; flex-wrap:wrap; justify-content:center;">
+                                    <button type="button" onclick="window.abrirModalSubcuentaVecinoNodo(${v.id}, ${numId})"
+                                        style="padding:5px 10px; border-radius:6px; border:1px solid #cbd5e1; background:#ffffff; color:#1e293b; font-size:11.5px; font-weight:700; cursor:pointer;">
+                                        📄 Subcuenta
+                                    </button>
+                                    ${pendPrimero ? `
+                                        <button type="button"
+                                            onclick="window.conciliarPagoPedidoVecinoDesdeBunker(${pendPrimero.id}, '${escHtmlNodo(pendPrimero.codigo_pedido)}', '${escHtmlNodo(v.nombre_completo)}', '${escHtmlNodo(pendPrimero.medio_pago)}', '${escHtmlNodo(v.titular_habitual || v.nombre_completo.toUpperCase())}', ${Number(pendPrimero.total_vecino)}, null, ${numId})"
+                                            style="padding:5px 9px; border-radius:6px; border:1px solid ${esEfvoPend ? '#f59e0b' : '#38bdf8'}; background:${esEfvoPend ? '#fef3c7' : '#e0f2fe'}; color:${esEfvoPend ? '#92400e' : '#0369a1'}; font-size:11px; font-weight:800; cursor:pointer;"
+                                            title="Registrar cobro de #${escHtmlNodo(pendPrimero.codigo_pedido)}">
+                                            ${esEfvoPend ? '💵' : '🏦'} Cobrar #${escHtmlNodo(pendPrimero.codigo_pedido)}
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            box.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:9px; border-bottom:1px solid #e2e8f0;">
+                    <div>
+                        <div style="font-size:14px; font-weight:800; color:#14532d; display:flex; align-items:center; gap:8px;">
+                            <span>🌳 Árbol de Clientes y Cuadratura Contable — ${escHtmlNodo(nodo.nombre_marca)} (${escHtmlNodo(nodo.codigo_bunker_cliente)})</span>
+                            <span class="badge" style="background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:11px;">${vecinos.length} vecino${vecinos.length === 1 ? '' : 's'} único${vecinos.length === 1 ? '' : 's'} por teléfono</span>
+                        </div>
+                        <div style="font-size:11.5px; color:#64748b; margin-top:2px;">
+                            Gestor responsable: <strong>${escHtmlNodo(nodo.gestor_nombre)}</strong> · Cada vecino mantiene su subcuenta auditable bajo este Nodo sin mezclarse en el listado mayorista.
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button type="button" onclick="window.recargarArbolNodoBunker(${numId})"
+                            style="padding:6px 11px; border-radius:7px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:12px; font-weight:700; cursor:pointer;">
+                            🔄 Actualizar Árbol
+                        </button>
+                        <button type="button" onclick="window.open('/liquidacion-nodos', '_blank')"
+                            style="padding:6px 13px; border-radius:7px; border:1px solid #0284c7; background:#0284c7; color:#ffffff; font-size:12px; font-weight:800; cursor:pointer;">
+                            ⚖️ Abrir Liquidación de Lotes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="nodo-cuadratura-grid">
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid ${saldoNodo > 0.01 ? '#dc2626' : '#16a34a'};">
+                        <div style="font-size:10.5px; font-weight:800; color:#475569; text-transform:uppercase;">📒 Saldo Cta. Cte. Nodo (${escHtmlNodo(nodo.codigo_bunker_cliente)})</div>
+                        <div style="font-size:1.08rem; font-weight:800; margin-top:3px;">${txtSaldoNodo}</div>
+                        <div style="font-size:11px; color:#64748b; margin-top:2px;">Transf. conciliadas en LAMDA: $ ${fmtMonedaNodo(transfLamda)}</div>
+                    </div>
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid ${totalVecinosPend > 0.01 ? '#d97706' : '#16a34a'};">
+                        <div style="font-size:10.5px; font-weight:800; color:#475569; text-transform:uppercase;">👥 Subcuentas de Vecinos s/Cobrar</div>
+                        <div style="font-size:1.08rem; font-weight:800; color:${totalVecinosPend > 0.01 ? '#b45309' : '#15803d'}; margin-top:3px;">$ ${fmtMonedaNodo(totalVecinosPend)}</div>
+                        <div style="font-size:11px; color:#64748b; margin-top:2px;">${cuad.vecinos_con_saldo_pendiente || 0} de ${cuad.vecinos_totales || 0} vecino(s) con pago pendiente</div>
+                    </div>
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid #0284c7;">
+                        <div style="font-size:10.5px; font-weight:800; color:#475569; text-transform:uppercase;">💵 Efectivo en Mano del Gestor</div>
+                        <div style="font-size:1.08rem; font-weight:800; color:#0369a1; margin-top:3px;">$ ${fmtMonedaNodo(efvoGestor)}</div>
+                        <div style="font-size:11px; color:#64748b; margin-top:2px;">Cobrado en lotes abiertos · Ganancia lote: +$ ${fmtMonedaNodo(cuad.ganancia_gestor_lotes_abiertos || 0)}</div>
+                    </div>
+                    ${htmlTarjetaMadre}
+                </div>
+
+                <div style="overflow-x:auto;">
+                    <table class="tabla-vecinos-arbol">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Cliente del Nodo / WhatsApp</th>
+                                <th>Entrega / Domicilio Barrial</th>
+                                <th>Compras / Último Pedido</th>
+                                <th>Titular / Medio</th>
+                                <th style="text-align:right;">Saldo Subcuenta</th>
+                                <th style="text-align:center;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filasVecinosHtml}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (err) {
+            box.innerHTML = `<div style="padding:12px; color:#dc2626; font-weight:700;">⚠️ Error al cargar el árbol del Nodo: ${escHtmlNodo(err.message)}</div>`;
+        }
+    }
+
+    window.toggleArbolNodoBunker = function(bunkerClienteId) {
+        const numId = Number(bunkerClienteId);
+        if (nodosExpandidosIds.has(numId)) {
+            nodosExpandidosIds.delete(numId);
+        } else {
+            nodosExpandidosIds.add(numId);
+        }
+        ordenarYRenderizar();
+    };
+
+    window.recargarArbolNodoBunker = async function(bunkerClienteId) {
+        const numId = Number(bunkerClienteId);
+        cacheArbolNodos.delete(numId);
+        nodosExpandidosIds.add(numId);
+        await cargarClientes(buscadorInput?.value || '');
+    };
+
+    const modalSubcuentaVecino = document.getElementById('modal-subcuenta-vecino-nodo');
+    if (modalSubcuentaVecino) {
+        modalSubcuentaVecino.addEventListener('click', () => window.cerrarModalSubcuentaVecinoNodo());
+    }
+
+    window.cerrarModalSubcuentaVecinoNodo = function() {
+        if (modalSubcuentaVecino) {
+            modalSubcuentaVecino.style.display = 'none';
+        }
+    };
+
+    window.abrirModalSubcuentaVecinoNodo = async function(vecinoId, bunkerClienteNodoId) {
+        const headerEl = document.getElementById('modal-subcuenta-vecino-header');
+        const bodyEl = document.getElementById('modal-subcuenta-vecino-body');
+        if (!modalSubcuentaVecino || !bodyEl) return;
+
+        modalSubcuentaVecino.style.display = 'flex';
+        bodyEl.innerHTML = `<div style="padding:28px; text-align:center; color:#64748b; font-weight:600;">⏳ Consultando subcuenta, pedidos y libro mayor del vecino...</div>`;
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/nodos-vecinos/${Number(vecinoId)}/subcuenta`);
+            const data = await resp.json();
+            if (!resp.ok || (!data.ok && !data.success)) {
+                throw new Error(data.error || 'No se pudo cargar la subcuenta del vecino.');
+            }
+
+            const v = data.vecino || {};
+            const pedidos = Array.isArray(data.pedidos) ? data.pedidos : [];
+            const movs = Array.isArray(data.movimientos_cc) ? data.movimientos_cc : [];
+            const saldoActual = Number(v.saldo_actual || 0);
+
+            if (headerEl) {
+                headerEl.innerHTML = `
+                    <div>
+                        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.88; font-weight:700;">
+                            🏘️ ${escHtmlNodo(v.nombre_marca)} (${escHtmlNodo(v.codigo_bunker_cliente)}) · Código Único ${escHtmlNodo(v.codigo_vecino)}
+                        </div>
+                        <h3 style="margin:3px 0 0 0; font-size:1.18rem; font-weight:800;">
+                            👤 ${escHtmlNodo(v.nombre_completo)} &nbsp;·&nbsp; <span style="font-weight:600; font-size:0.92rem;">📱 ${escHtmlNodo(v.telefono_whatsapp)} (ID canónico: ${escHtmlNodo(v.telefono_normalizado)})</span>
+                        </h3>
+                    </div>
+                    <button type="button" onclick="window.cerrarModalSubcuentaVecinoNodo()" style="background: rgba(255,255,255,0.18); border: none; color: #fff; width: 34px; height: 34px; border-radius: 8px; font-size: 20px; cursor: pointer; font-weight: 700;">&times;</button>
+                `;
+            }
+
+            const filasPedidos = pedidos.length === 0
+                ? `<tr><td colspan="6" style="text-align:center; padding:14px; color:#64748b;">Sin pedidos registrados.</td></tr>`
+                : pedidos.map(p => {
+                    const esAnulado = Boolean(p.anulado);
+                    const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO';
+                    const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${escHtmlNodo(i.nombre_publico)}`).join(' · ');
+                    const ajusteCred = Number(p.monto_ajuste_credito || 0);
+
+                    return `
+                        <tr style="${esAnulado ? 'opacity:0.6; background:#f1f5f9;' : ''}">
+                            <td style="font-family:monospace; font-weight:800; color:${esAnulado ? '#64748b' : '#0369a1'}; ${esAnulado ? 'text-decoration:line-through;' : ''}">
+                                #${escHtmlNodo(p.codigo_pedido)}
+                                <div style="font-size:10px; color:#64748b; font-family:sans-serif; text-decoration:none;">${escHtmlNodo(p.codigo_canasto || '')}</div>
+                            </td>
+                            <td>
+                                <div style="font-size:12px; font-weight:600; color:#1e293b;">${itemsTxt || '—'}</div>
+                                <div style="font-size:11px; color:#64748b; margin-top:2px;">📅 ${escHtmlNodo(p.fecha_entrega_label || '')} · ${p.modalidad_entrega === 'ENVIO_DOMICILIO' ? '🛵 Envío barrial' : '🏡 Retiro en Nodo'}</div>
+                            </td>
+                            <td>
+                                <span class="badge" style="background:${esEfvo ? '#fef3c7' : '#e0f2fe'}; color:${esEfvo ? '#92400e' : '#0369a1'}; font-size:10.5px; font-weight:700;">
+                                    ${esEfvo ? '💵 Efectivo al Gestor' : '🏦 Transferencia LAMDA'}
+                                </span>
+                            </td>
+                            <td>
+                                ${esAnulado
+                                    ? `<span class="badge" style="background:#ffe4e6; color:#be123c; border:1px solid #fda4af; font-size:10.5px; font-weight:800;">🚫 ANULADO</span><div style="font-size:10px; color:#be123c; margin-top:2px;">${escHtmlNodo(p.motivo_anulacion_ajuste || '')}</div>`
+                                    : (p.pago_confirmado
+                                        ? `<span class="badge" style="background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:10.5px; font-weight:800;">✅ Pagado</span>`
+                                        : `<span class="badge" style="background:#fef9c3; color:#854d0e; border:1px solid #fde047; font-size:10.5px; font-weight:800;">⏳ Pendiente</span>`)
+                                }
+                                ${!esAnulado && ajusteCred > 0 ? `<div style="font-size:10px; color:#6d28d9; font-weight:700; margin-top:2px;">➖ Nota Crédito: -$ ${fmtMonedaNodo(ajusteCred)}</div>` : ''}
+                            </td>
+                            <td style="text-align:right; font-weight:800; color:#0f172a; white-space:nowrap;">
+                                $ ${fmtMonedaNodo(p.total_vecino)}
+                            </td>
+                            <td style="text-align:center; white-space:nowrap;">
+                                <div style="display:inline-flex; gap:4px; flex-wrap:wrap; justify-content:center;">
+                                    ${!esAnulado && !p.pago_confirmado ? `
+                                        <button type="button"
+                                            onclick="window.conciliarPagoPedidoVecinoDesdeBunker(${p.id}, '${escHtmlNodo(p.codigo_pedido)}', '${escHtmlNodo(v.nombre_completo)}', '${escHtmlNodo(p.medio_pago)}', '${escHtmlNodo(p.titular_sugerido || '')}', ${Number(p.total_vecino)}, ${v.id}, ${Number(bunkerClienteNodoId)})"
+                                            style="padding:4px 8px; border-radius:5px; border:1px solid #0284c7; background:#0284c7; color:#fff; font-size:11px; font-weight:700; cursor:pointer;">
+                                            ✅ Cobrar
+                                        </button>
+                                    ` : ''}
+                                    ${p.puede_nota_credito ? `
+                                        <button type="button"
+                                            onclick="window.notaCreditoPedidoVecinoDesdeBunker(${p.id}, '${escHtmlNodo(p.codigo_pedido)}', '${escHtmlNodo(v.nombre_completo)}', ${Number(p.total_vecino)}, ${v.id}, ${Number(bunkerClienteNodoId)})"
+                                            style="padding:4px 8px; border-radius:5px; border:1px solid #6366f1; background:#eef2ff; color:#4338ca; font-size:11px; font-weight:700; cursor:pointer;"
+                                            title="Aplicar Nota de Crédito parcial">
+                                            ➖ Ajuste
+                                        </button>
+                                    ` : ''}
+                                    ${p.puede_anular ? `
+                                        <button type="button"
+                                            onclick="window.anularPedidoVecinoDesdeBunker(${p.id}, '${escHtmlNodo(p.codigo_pedido)}', '${escHtmlNodo(v.nombre_completo)}', ${v.id}, ${Number(bunkerClienteNodoId)})"
+                                            style="padding:4px 8px; border-radius:5px; border:1px solid #f43f5e; background:#fff1f2; color:#be123c; font-size:11px; font-weight:700; cursor:pointer;"
+                                            title="Anular pedido antes de entrega">
+                                            ✕ Anular
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            const filasMovs = movs.length === 0
+                ? `<tr><td colspan="5" style="text-align:center; padding:14px; color:#64748b;">Sin movimientos en la subcuenta.</td></tr>`
+                : movs.map(m => {
+                    const esDeb = String(m.tipo || '').toUpperCase() === 'DEBITO';
+                    const fechaStr = m.created_at ? new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                    return `
+                        <tr>
+                            <td style="font-size:11.5px; color:#475569; white-space:nowrap;">${escHtmlNodo(fechaStr)}</td>
+                            <td>
+                                <span class="badge" style="background:${esDeb ? '#fee2e2' : '#dcfce7'}; color:${esDeb ? '#991b1b' : '#166534'}; font-size:10px; font-weight:800;">
+                                    ${esDeb ? 'DÉBITO (+)' : 'CRÉDITO (-)'}
+                                </span>
+                            </td>
+                            <td style="font-size:12px; color:#1e293b;">
+                                <strong>${escHtmlNodo(m.concepto || m.origen_tipo)}</strong>
+                                ${m.codigo_pedido ? `<span style="font-family:monospace; color:#64748b;"> · #${escHtmlNodo(m.codigo_pedido)}</span>` : ''}
+                            </td>
+                            <td style="text-align:right; font-weight:800; color:${esDeb ? '#dc2626' : '#16a34a'}; white-space:nowrap;">
+                                ${esDeb ? '+' : '-'}$ ${fmtMonedaNodo(m.importe)}
+                            </td>
+                            <td style="text-align:right; font-weight:800; color:#0f172a; white-space:nowrap;">
+                                $ ${fmtMonedaNodo(m.saldo_resultante)}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            bodyEl.innerHTML = `
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px;">
+                        <div style="font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase;">🛍️ Total Comprado Activo</div>
+                        <div style="font-size:1.25rem; font-weight:800; color:#0f172a; margin-top:4px;">$ ${fmtMonedaNodo(v.total_comprado)}</div>
+                    </div>
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px;">
+                        <div style="font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase;">✅ Total Abonado / Conciliado</div>
+                        <div style="font-size:1.25rem; font-weight:800; color:#16a34a; margin-top:4px;">$ ${fmtMonedaNodo(v.total_abonado)}</div>
+                    </div>
+                    <div style="background:#ffffff; border:2px solid ${saldoActual > 0.01 ? '#fca5a5' : '#86efac'}; border-radius:10px; padding:12px 14px;">
+                        <div style="font-size:11px; font-weight:800; color:#475569; text-transform:uppercase;">📒 Saldo Actual Subcuenta Vecino</div>
+                        <div style="font-size:1.28rem; font-weight:900; color:${saldoActual > 0.01 ? '#dc2626' : '#15803d'}; margin-top:4px;">
+                            ${saldoActual < -0.01 ? `$ ${fmtMonedaNodo(Math.abs(saldoActual))} a favor` : `$ ${fmtMonedaNodo(saldoActual)}`}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:16px;">
+                    <div style="font-size:13px; font-weight:800; color:#1e293b; margin-bottom:10px;">📦 1. Pedidos del Vecino en ${escHtmlNodo(v.nombre_marca)}</div>
+                    <div style="overflow-x:auto;">
+                        <table class="tabla-vecinos-arbol">
+                            <thead>
+                                <tr>
+                                    <th>Pedido / Lote</th>
+                                    <th>Detalle y Entrega</th>
+                                    <th>Medio de Pago</th>
+                                    <th>Estado</th>
+                                    <th style="text-align:right;">Importe</th>
+                                    <th style="text-align:center;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasPedidos}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px;">
+                    <div style="font-size:13px; font-weight:800; color:#1e293b; margin-bottom:10px;">📒 2. Libro Mayor Cronológico de Subcuenta</div>
+                    <div style="overflow-x:auto;">
+                        <table class="tabla-vecinos-arbol">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Asiento</th>
+                                    <th>Concepto / Referencia</th>
+                                    <th style="text-align:right;">Movimiento</th>
+                                    <th style="text-align:right;">Saldo Resultante</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasMovs}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        } catch (err) {
+            bodyEl.innerHTML = `<div style="padding:18px; color:#dc2626; font-weight:700;">⚠️ ${escHtmlNodo(err.message)}</div>`;
+        }
+    };
+
+    window.conciliarPagoPedidoVecinoDesdeBunker = async function(pedidoId, codigoPedido, vecinoNombre, medioPago, titularSugerido, monto, vecinoIdModal, bunkerClienteNodoId) {
+        const esEfvo = String(medioPago || '').toUpperCase() === 'EFECTIVO';
+        let payload = {};
+
+        if (esEfvo) {
+            const conf = await Swal.fire({
+                title: `💵 Registrar Efectivo #${codigoPedido}`,
+                html: `Confirmar cobro en efectivo en mano del Gestor a <strong>${escHtmlNodo(vecinoNombre)}</strong> por <strong>$ ${fmtMonedaNodo(monto)}</strong>.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: '✅ Registrar Efectivo Cobrado',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#d97706'
+            });
+            if (!conf.isConfirmed) return;
+            payload = { comprobante_referencia: `REC-EFVO-${codigoPedido}` };
+        } else {
+            const { value: formVals } = await Swal.fire({
+                title: `🏦 Conciliar Transferencia #${codigoPedido}`,
+                width: '520px',
+                html: `
+                    <div style="text-align:left; font-size:13.5px; display:flex; flex-direction:column; gap:10px;">
+                        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:10px; color:#0c4a6e;">
+                            Transferencia de <strong>${escHtmlNodo(vecinoNombre)}</strong> por <strong>$ ${fmtMonedaNodo(monto)}</strong>.<br>
+                            Salda la subcuenta del vecino y acredita <strong>-$ ${fmtMonedaNodo(monto)} (CRÉDITO a favor)</strong> en la Cta. Cte. del Nodo.
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:4px;">Titular bancario / billetera</label>
+                            <input id="swal-bk-titular" class="form-control" value="${escHtmlNodo(titularSugerido)}">
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                            <div>
+                                <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:4px;">Entidad origen</label>
+                                <input id="swal-bk-entidad" class="form-control" value="Mercado Pago">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:4px;">Referencia</label>
+                                <input id="swal-bk-ref" class="form-control" value="MP-${escHtmlNodo(codigoPedido)}">
+                            </div>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Conciliar Pago',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#0284c7',
+                preConfirm: () => ({
+                    titular_transferencia: document.getElementById('swal-bk-titular').value,
+                    billetera_origen: document.getElementById('swal-bk-entidad').value,
+                    comprobante_referencia: document.getElementById('swal-bk-ref').value
+                })
+            });
+            if (!formVals) return;
+            payload = formVals;
+        }
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/nodos-pedidos/${Number(pedidoId)}/conciliar-pago`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await resp.json();
+            if (!resp.ok || (!json.ok && !json.success)) throw new Error(json.error || 'No se pudo conciliar el pago.');
+
+            await window.recargarArbolNodoBunker(bunkerClienteNodoId);
+            if (vecinoIdModal) {
+                await window.abrirModalSubcuentaVecinoNodo(vecinoIdModal, bunkerClienteNodoId);
+            }
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Pago #${codigoPedido} conciliado`, showConfirmButton: false, timer: 2000 });
+        } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+        }
+    };
+
+    window.anularPedidoVecinoDesdeBunker = async function(pedidoId, codigoPedido, vecinoNombre, vecinoIdModal, bunkerClienteNodoId) {
+        const { value: motivo } = await Swal.fire({
+            title: `🚫 Anular Pedido #${codigoPedido}`,
+            input: 'text',
+            inputLabel: `Motivo de anulación del pedido de ${vecinoNombre} (revierte subcuenta y Cta. Cte.)`,
+            inputValue: 'Cancelado por el vecino antes del despacho',
+            showCancelButton: true,
+            confirmButtonText: '🚫 Confirmar Anulación',
+            cancelButtonText: 'Volver',
+            confirmButtonColor: '#e11d48'
+        });
+        if (!motivo) return;
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/nodos-pedidos/${Number(pedidoId)}/anular`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motivo })
+            });
+            const json = await resp.json();
+            if (!resp.ok || (!json.ok && !json.success)) throw new Error(json.error || 'No se pudo anular el pedido.');
+
+            await window.recargarArbolNodoBunker(bunkerClienteNodoId);
+            if (vecinoIdModal) {
+                await window.abrirModalSubcuentaVecinoNodo(vecinoIdModal, bunkerClienteNodoId);
+            }
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Pedido #${codigoPedido} anulado`, showConfirmButton: false, timer: 2200 });
+        } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+        }
+    };
+
+    window.notaCreditoPedidoVecinoDesdeBunker = async function(pedidoId, codigoPedido, vecinoNombre, totalActual, vecinoIdModal, bunkerClienteNodoId) {
+        const { value: formVals } = await Swal.fire({
+            title: `➖ Nota de Crédito — #${codigoPedido}`,
+            width: '500px',
+            html: `
+                <div style="text-align:left; font-size:13px; display:flex; flex-direction:column; gap:10px;">
+                    <div>Total actual de <strong>${escHtmlNodo(vecinoNombre)}</strong>: <strong>$ ${fmtMonedaNodo(totalActual)}</strong></div>
+                    <div>
+                        <label style="display:block; font-weight:700; margin-bottom:4px;">Monto a bonificar / descontar al vecino ($)</label>
+                        <input id="swal-bk-nc-monto" type="number" min="1" max="${Number(totalActual)}" step="1" class="form-control" placeholder="Ej: 1500">
+                    </div>
+                    <div>
+                        <label style="display:block; font-weight:700; margin-bottom:4px;">Motivo</label>
+                        <input id="swal-bk-nc-motivo" type="text" class="form-control" value="Ajuste parcial sobre pedido">
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✅ Aplicar Nota de Crédito',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#6366f1',
+            preConfirm: () => {
+                const m = Number(document.getElementById('swal-bk-nc-monto').value || 0);
+                if (!Number.isFinite(m) || m <= 0 || m >= Number(totalActual)) {
+                    Swal.showValidationMessage('Ingresá un monto mayor a $0 y menor al total del pedido.');
+                    return false;
+                }
+                return {
+                    monto_credito_vecino: m,
+                    motivo: document.getElementById('swal-bk-nc-motivo').value.trim() || 'Nota de Crédito'
+                };
+            }
+        });
+        if (!formVals) return;
+
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/nodos-pedidos/${Number(pedidoId)}/nota-credito`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formVals)
+            });
+            const json = await resp.json();
+            if (!resp.ok || (!json.ok && !json.success)) throw new Error(json.error || 'No se pudo aplicar la Nota de Crédito.');
+
+            await window.recargarArbolNodoBunker(bunkerClienteNodoId);
+            if (vecinoIdModal) {
+                await window.abrirModalSubcuentaVecinoNodo(vecinoIdModal, bunkerClienteNodoId);
+            }
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Nota de Crédito aplicada en #${codigoPedido}`, showConfirmButton: false, timer: 2200 });
+        } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+        }
+    };
 
     // --- INICIALIZACIÓN ---
     setupLomasSoftAutocomplete();

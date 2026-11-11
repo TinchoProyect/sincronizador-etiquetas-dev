@@ -2252,6 +2252,8 @@
       const liqData = GSTATE.liquidacionTablero;
       const nodoResumen = (liqData?.nodos || []).find(n => Number(n.id) === Number(GSTATE.nodo?.id)) || GSTATE.nodo || {};
       const saldoActual = Number(nodoResumen?.saldo_cuenta_corriente ?? GSTATE.nodo?.saldo_cuenta_corriente ?? 0);
+      const esDeudor = saldoActual > 0.01;
+      const esAcreedor = saldoActual < -0.01;
       const codMadre = nodoResumen?.codigo_bunker_cliente_madre || GSTATE.nodo?.codigo_bunker_cliente_madre || null;
       const nomMadre = nodoResumen?.cliente_madre_razon_social || nodoResumen?.cliente_madre_nombre || GSTATE.nodo?.cliente_madre_razon_social || '';
       const saldoMadre = Number(nodoResumen?.saldo_cuenta_corriente_madre ?? GSTATE.nodo?.saldo_cuenta_corriente_madre ?? 0);
@@ -2261,8 +2263,8 @@
           <div style="font-size:0.74rem; color:var(--muted); font-weight:800; text-transform:uppercase;">
             Subcuenta Operativa del Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_bunker_cliente || 'CB-NODO')})
           </div>
-          <div style="font-size:1.45rem; font-weight:900; margin-top:4px; color:${saldoActual < 0 ? 'var(--brand-dark)' : 'var(--ok)'};">
-            ${saldoActual < 0 ? '-' + fmt(Math.abs(saldoActual)) : fmt(saldoActual)}
+          <div style="font-size:1.45rem; font-weight:900; margin-top:4px; color:${esDeudor ? 'var(--warn)' : 'var(--ok)'};">
+            ${esAcreedor ? `${fmt(Math.abs(saldoActual))} a tu favor` : (esDeudor ? `${fmt(saldoActual)} a rendir a LAMDA` : `${fmt(0)} (Al día)`)}
           </div>
           <p style="margin:6px 0 0 0; font-size:0.82rem; color:var(--muted);">
             Alias de recaudación para transferencias de vecinos: <strong>${esc(GSTATE.nodo?.alias_bancario_display || 'pago.canasto')}</strong>
@@ -2270,11 +2272,11 @@
 
           ${codMadre ? `
             <div style="margin-top:14px; padding:12px 14px; border-radius:12px; background:var(--surface-warm); border:1px solid var(--border); font-size:0.83rem;">
-              <div><strong>Cuenta Principal Vinculada (${esc(codMadre)}):</strong> ${esc(nomMadre)}</div>
+              <div><strong>Cuenta Personal Vinculada (${esc(codMadre)}):</strong> ${esc(nomMadre)} <span style="font-size:0.74rem; color:var(--muted);">(Aislada de la operatoria diaria)</span></div>
               <div style="margin-top:3px; color:var(--muted);">
-                Saldo actual Cuenta Principal:
+                Saldo actual Cuenta Personal:
                 <strong style="color:var(--text);">
-                  ${saldoMadre < 0 ? `${fmt(Math.abs(saldoMadre))} a favor` : fmt(saldoMadre)}
+                  ${saldoMadre < -0.01 ? `${fmt(Math.abs(saldoMadre))} a favor` : fmt(saldoMadre)}
                 </strong>
               </div>
             </div>
@@ -2290,7 +2292,14 @@
           ` : `
             <div style="display:flex; flex-direction:column; gap:8px;">
               ${GSTATE.movimientosCtaCte.map(m => {
-                const monto = Number(m.monto || 0);
+                const monto = Math.abs(Number(m.monto || 0));
+                const signo = Number(m.signo ?? 0);
+                const esDebito = signo > 0;
+                const esNeutro = signo === 0;
+                const colorMov = esNeutro ? 'var(--muted)' : (esDebito ? 'var(--warn)' : 'var(--ok)');
+                const textoMov = esNeutro
+                  ? `Efvo. en mano: ${fmt(monto)}`
+                  : (esDebito ? `+${fmt(monto)} (Cargo LAMDA)` : `-${fmt(monto)} (A favor Nodo)`);
                 return `
                   <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#fffdfb;">
                     <div>
@@ -2299,8 +2308,8 @@
                         ${m.codigo_canasto ? `Lote ${esc(m.codigo_canasto)} · ` : ''}${m.created_at ? new Date(m.created_at).toLocaleDateString('es-AR') : ''}
                       </div>
                     </div>
-                    <strong style="font-size:0.92rem; color:${monto < 0 ? 'var(--brand-dark)' : 'var(--ok)'};">
-                      ${monto < 0 ? '-' + fmt(Math.abs(monto)) : '+' + fmt(monto)}
+                    <strong style="font-size:0.92rem; color:${colorMov};">
+                      ${textoMov}
                     </strong>
                   </div>
                 `;

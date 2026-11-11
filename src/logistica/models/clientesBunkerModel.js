@@ -14,6 +14,35 @@ class ClientesBunkerModel {
      * @returns {Promise<Array>} Lista de clientes que coinciden con la búsqueda
      */
     static async obtenerTodos({ search } = {}) {
+        const cleanSearch = typeof search === 'string' ? search.trim() : '';
+        const rawDigits = cleanSearch.replace(/\D+/g, '');
+        let normDigits = rawDigits;
+        if (normDigits.startsWith('549') && normDigits.length >= 12) normDigits = normDigits.slice(3);
+        else if (normDigits.startsWith('54') && normDigits.length >= 11) normDigits = normDigits.slice(2);
+        if (normDigits.startsWith('0')) normDigits = normDigits.slice(1);
+        const searchDigitsPattern = normDigits.length >= 4 ? `%${normDigits}%` : '__NO_DIGIT_MATCH__';
+
+        const params = [];
+        let vecinosMatchExpr = '0';
+        if (cleanSearch) {
+            params.push(`%${cleanSearch}%`, searchDigitsPattern);
+            vecinosMatchExpr = `(
+                SELECT COUNT(*)::int
+                FROM public.nodos_vecinos nv_s
+                WHERE nv_s.nodo_id = nm.id
+                  AND COALESCE(nv_s.activo, true) = true
+                  AND (
+                      nv_s.nombre_completo ILIKE $1
+                      OR COALESCE(nv_s.codigo_vecino, '') ILIKE $1
+                      OR COALESCE(nv_s.telefono_whatsapp, '') ILIKE $1
+                      OR COALESCE(nv_s.telefono_normalizado, '') ILIKE $1
+                      OR COALESCE(nv_s.titular_transferencia_habitual, '') ILIKE $1
+                      OR COALESCE(nv_s.direccion_calle, '') ILIKE $1
+                      OR COALESCE(nv_s.telefono_normalizado, '') LIKE $2
+                  )
+            )`;
+        }
+
         let query = `
             SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id,
@@ -27,14 +56,60 @@ class ClientesBunkerModel {
                         JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
                         WHERE clp.bunker_cliente_id = c.id),
                        '[]'::json
-                   ) as listas_precios
+                   ) as listas_precios,
+                   nodo_data.nodo_info
             FROM public.bunker_clientes c
             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
+            LEFT JOIN LATERAL (
+                SELECT JSON_BUILD_OBJECT(
+                    'nodo_id', nm.id,
+                    'codigo_nodo', nm.codigo_nodo,
+                    'slug', nm.slug,
+                    'nombre_marca', nm.nombre_marca,
+                    'gestor_nombre', nm.gestor_nombre,
+                    'gestor_telefono', nm.gestor_telefono,
+                    'barrio_zona', nm.barrio_zona,
+                    'color_primario', COALESCE(nm.color_primario, '#16a34a'),
+                    'codigo_bunker_cliente_madre', nm.codigo_bunker_cliente_madre,
+                    'cliente_madre_bunker_id', nm.cliente_madre_bunker_id,
+                    'cliente_madre_nombre', COALESCE(bc_m.razon_social, bc_m.cliente_nombre),
+                    'saldo_cuenta_madre', CASE WHEN nm.codigo_bunker_cliente_madre IS NOT NULL THEN COALESCE(cc_m.saldo, 0)::numeric(14,2) ELSE NULL END,
+                    'cantidad_vecinos', (
+                        SELECT COUNT(*)::int FROM public.nodos_vecinos nv
+                        WHERE nv.nodo_id = nm.id AND COALESCE(nv.activo, true) = true
+                    ),
+                    'vecinos_con_deuda', (
+                        SELECT COUNT(*)::int FROM public.nodos_vecinos nv
+                        WHERE nv.nodo_id = nm.id AND COALESCE(nv.activo, true) = true AND COALESCE(nv.saldo_actual, 0) > 0.01
+                    ),
+                    'total_saldo_vecinos', (
+                        SELECT COALESCE(SUM(nv.saldo_actual), 0)::numeric(14,2) FROM public.nodos_vecinos nv
+                        WHERE nv.nodo_id = nm.id AND COALESCE(nv.activo, true) = true
+                    ),
+                    'efectivo_mano_gestor', (
+                        SELECT COALESCE(SUM(npv.total_vecino), 0)::numeric(14,2)
+                        FROM public.nodos_pedidos_vecinos npv
+                        JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+                        WHERE npv.nodo_id = nm.id
+                          AND COALESCE(nle.liquidacion_cerrada, false) = false
+                          AND UPPER(COALESCE(npv.estado_operativo, '')) <> 'ANULADO'
+                          AND UPPER(COALESCE(npv.medio_pago, '')) = 'EFECTIVO'
+                          AND (COALESCE(npv.impactado_cta_cte_pago, false) = true OR UPPER(COALESCE(npv.estado_pago, '')) = 'COBRADO_EFECTIVO_GESTOR')
+                    ),
+                    'vecinos_coincidentes', ${vecinosMatchExpr}
+                ) AS nodo_info
+                FROM public.nodos_maestro nm
+                LEFT JOIN public.bunker_clientes bc_m ON bc_m.id = nm.cliente_madre_bunker_id
+                LEFT JOIN public.factura_cuentas_corrientes cc_m
+                  ON cc_m.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+                 AND cc_m.nombre_cuenta = 'Cuenta Principal'
+                WHERE nm.bunker_cliente_id = c.id
+                   OR nm.codigo_bunker_cliente = c.codigo_bunker_cliente
+                LIMIT 1
+            ) nodo_data ON true
         `;
-        const params = [];
 
-        if (search) {
-            // Realiza una búsqueda flexible cruzando por múltiples campos clave y contactos
+        if (cleanSearch) {
             query += `
                 WHERE c.codigo_bunker_cliente ILIKE $1 
                    OR c.cliente_nombre ILIKE $1 
@@ -52,11 +127,11 @@ class ClientesBunkerModel {
                        WHERE (cd.id_cliente = c.id OR (c.lomas_soft_id ~ '^[0-9]+$' AND cd.id_cliente = c.lomas_soft_id::integer))
                          AND (cd.direccion ILIKE $1 OR cd.alias ILIKE $1)
                    )
+                   OR (nodo_data.nodo_info IS NOT NULL AND COALESCE((nodo_data.nodo_info->>'vecinos_coincidentes')::int, 0) > 0)
             `;
-            params.push(`%${search}%`);
         }
 
-        query += ` ORDER BY c.cliente_nombre ASC`;
+        query += ` ORDER BY CASE WHEN nodo_data.nodo_info IS NOT NULL THEN 0 ELSE 1 END, c.cliente_nombre ASC`;
 
         const result = await pool.query(query, params);
         return result.rows;
@@ -172,7 +247,7 @@ class ClientesBunkerModel {
         const query = `
             SELECT MAX(CAST(SUBSTRING(codigo_bunker_cliente FROM 4) AS INTEGER)) as max_val 
             FROM public.bunker_clientes 
-            WHERE codigo_bunker_cliente LIKE 'CB-%'
+            WHERE codigo_bunker_cliente ~ '^CB-[0-9]+$'
         `;
         const result = await pool.query(query);
         const maxVal = result.rows[0].max_val ? parseInt(result.rows[0].max_val, 10) : 0;

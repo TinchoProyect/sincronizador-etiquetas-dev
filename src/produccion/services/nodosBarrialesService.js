@@ -1059,6 +1059,85 @@ async function recalcularSaldosCuentaMadreBunker(client, ccId) {
 }
 
 /**
+ * Normaliza en forma canónica un número telefónico móvil/fijo argentino de 10 dígitos
+ * (ej: "+54 9 221 501-1101", "0221-15-5011101" y "221 501-1101" convergen todos en "2215011101").
+ */
+function normalizarTelefonoVecinoNodo(rawTel = '') {
+    let d = String(rawTel || '').replace(/\D+/g, '');
+    if (!d) return '';
+
+    if (d.startsWith('00549') && d.length >= 14) {
+        d = d.slice(5);
+    } else if (d.startsWith('0054') && d.length >= 13) {
+        d = d.slice(4);
+    } else if (d.startsWith('549') && d.length >= 12) {
+        d = d.slice(3);
+    } else if (d.startsWith('54') && d.length >= 11) {
+        d = d.slice(2);
+    }
+
+    if (d.startsWith('0') && d.length >= 11) {
+        d = d.slice(1);
+    }
+
+    if (d.length === 12) {
+        if (d.startsWith('1115')) {
+            d = '11' + d.slice(4);
+        } else if (/^[23]\d{2}15\d{7}$/.test(d)) {
+            d = d.slice(0, 3) + d.slice(5);
+        } else if (/^[23]\d{3}15\d{6}$/.test(d)) {
+            d = d.slice(0, 4) + d.slice(6);
+        }
+    }
+
+    return d;
+}
+
+function formatearCodigoVecinoNodo(nodoId, vecinoId) {
+    const nPad = String(Number(nodoId || 1)).padStart(2, '0');
+    const vPad = String(Number(vecinoId || 1)).padStart(4, '0');
+    return `VEC-N${nPad}-${vPad}`;
+}
+
+/**
+ * Recalcula de forma determinista el saldo de la subcuenta individual de un vecino del Nodo:
+ * DEBITO suma (+monto: pedido comprado / reversión de pago)
+ * CREDITO resta (-monto: pago transferencia / pago efectivo / nota de crédito / anulación)
+ * Saldo > 0 => el vecino aún debe abonar su compra; Saldo = 0 => al día; Saldo < 0 => saldo a favor del vecino.
+ */
+async function recalcularSaldoSubcuentaVecino(client, vecinoId) {
+    if (!vecinoId) return 0;
+    const movsRes = await client.query(
+        `SELECT id, naturaleza, monto
+         FROM public.nodos_vecinos_movimientos_cc
+         WHERE vecino_id = $1::int
+         ORDER BY created_at ASC, id ASC`,
+        [Number(vecinoId)]
+    );
+
+    let saldoAcum = 0;
+    for (const m of movsRes.rows) {
+        const monto = Number(m.monto || 0);
+        if (String(m.naturaleza || '').toUpperCase() === 'DEBITO') {
+            saldoAcum += monto;
+        } else {
+            saldoAcum -= monto;
+        }
+        saldoAcum = Number(saldoAcum.toFixed(2));
+        await client.query(
+            'UPDATE public.nodos_vecinos_movimientos_cc SET saldo_resultante = $1 WHERE id = $2',
+            [saldoAcum, m.id]
+        );
+    }
+
+    await client.query(
+        'UPDATE public.nodos_vecinos SET saldo_actual = $1, updated_at = NOW() WHERE id = $2::int',
+        [saldoAcum, Number(vecinoId)]
+    );
+    return saldoAcum;
+}
+
+/**
  * Crea o asegura el vínculo de un Nodo con public.bunker_clientes y public.factura_cuentas_corrientes:
  * - Todo Nodo opera SIEMPRE sobre su propia Subcuenta Operativa Aislada (CB-NODO-xxx) vinculada a Lista Base Nodos Barriales.
  * - Opcionalmente puede vincularse con una Cuenta Madre preexistente en LAMDA (ej: Matías CB-0006, id = 18)
@@ -2393,6 +2472,243 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                    AND (UPPER(articulo_numero) LIKE 'NB-%' OR UPPER(articulo_numero) = 'CCTX250G')`,
                 [listaNodosId]
             );
+        }
+
+        // ------------------------------------------------------------------------------------
+        // ETAPA A: ÁRBOL DE CLIENTES DEL NODO, IDENTIDAD ÚNICA Y SUBCUENTAS DETERMINISTAS
+        // ------------------------------------------------------------------------------------
+        await client.query(`
+            ALTER TABLE public.nodos_vecinos
+                ADD COLUMN IF NOT EXISTS codigo_vecino VARCHAR(40),
+                ADD COLUMN IF NOT EXISTS telefono_normalizado VARCHAR(30),
+                ADD COLUMN IF NOT EXISTS saldo_actual NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
+
+            ALTER TABLE public.nodos_pedidos_vecinos
+                ADD COLUMN IF NOT EXISTS monto_ajuste_credito NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS motivo_anulacion_ajuste TEXT,
+                ADD COLUMN IF NOT EXISTS fecha_anulacion TIMESTAMPTZ;
+
+            ALTER TABLE public.nodos_liquidaciones_lote
+                ADD COLUMN IF NOT EXISTS modalidad_cierre VARCHAR(40) NOT NULL DEFAULT 'RENDICION_DIRECTA_NODO';
+
+            CREATE TABLE IF NOT EXISTS public.nodos_vecinos_movimientos_cc (
+                id SERIAL PRIMARY KEY,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                vecino_id INTEGER NOT NULL REFERENCES public.nodos_vecinos(id) ON DELETE CASCADE,
+                pedido_vecino_id INTEGER REFERENCES public.nodos_pedidos_vecinos(id) ON DELETE SET NULL,
+                lote_canasto_id INTEGER REFERENCES public.nodos_lotes_estacion(id) ON DELETE SET NULL,
+                tipo_movimiento VARCHAR(50) NOT NULL,
+                naturaleza VARCHAR(12) NOT NULL CHECK (naturaleza IN ('DEBITO', 'CREDITO')),
+                monto NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                saldo_resultante NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                medio_pago VARCHAR(40),
+                concepto TEXT NOT NULL,
+                referencia_externa VARCHAR(120),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_nodos_vecinos_movs_vecino_id
+                ON public.nodos_vecinos_movimientos_cc (vecino_id, id);
+            CREATE INDEX IF NOT EXISTS idx_nodos_vecinos_movs_pedido_id
+                ON public.nodos_vecinos_movimientos_cc (pedido_vecino_id);
+        `);
+
+        // 1) Normalizar teléfonos y deduplicar canónicamente por (nodo_id, telefono_normalizado)
+        const allVecRes = await client.query(
+            'SELECT id, nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, codigo_vecino FROM public.nodos_vecinos ORDER BY id ASC'
+        );
+        const vistosPorNodoTel = new Map();
+        for (const v of allVecRes.rows) {
+            let telNorm = normalizarTelefonoVecinoNodo(v.telefono_normalizado || v.telefono_whatsapp);
+            if (!telNorm) {
+                telNorm = `SIN-TEL-${v.id}`;
+            }
+            const clave = `${v.nodo_id}::${telNorm}`;
+            if (!vistosPorNodoTel.has(clave)) {
+                vistosPorNodoTel.set(clave, v.id);
+                const codVec = v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, v.id);
+                await client.query(
+                    `UPDATE public.nodos_vecinos
+                     SET telefono_normalizado = $1,
+                         codigo_vecino = $2
+                     WHERE id = $3`,
+                    [telNorm, codVec, v.id]
+                );
+            } else {
+                const canonicoId = vistosPorNodoTel.get(clave);
+                await client.query('UPDATE public.nodos_pedidos_vecinos SET vecino_id = $1 WHERE vecino_id = $2', [canonicoId, v.id]);
+                await client.query('UPDATE public.nodos_alias_vecinos_aprendidos SET vecino_id = $1 WHERE vecino_id = $2', [canonicoId, v.id]);
+                await client.query('UPDATE public.nodos_vecinos_movimientos_cc SET vecino_id = $1 WHERE vecino_id = $2', [canonicoId, v.id]);
+                await client.query('DELETE FROM public.nodos_vecinos WHERE id = $1', [v.id]);
+            }
+        }
+
+        await client.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_vecinos_nodo_tel
+                ON public.nodos_vecinos (nodo_id, telefono_normalizado)
+        `);
+
+        // 2) Vincular cualquier pedido huérfano por teléfono normalizado y sembrar movimientos históricos idempotentes
+        const pedsBackfillRes = await client.query(
+            `SELECT id, codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                    direccion_entrega, entrecalles_referencia, lote_canasto_id,
+                    medio_pago, estado_pago, estado_operativo,
+                    total_vecino, monto_ajuste_credito, impactado_cta_cte_pago,
+                    comprobante_referencia, created_at
+             FROM public.nodos_pedidos_vecinos
+             ORDER BY id ASC`
+        );
+        const vecinosRecalcularSet = new Set();
+
+        for (const p of pedsBackfillRes.rows) {
+            let vid = p.vecino_id ? Number(p.vecino_id) : null;
+            const telNormPed = normalizarTelefonoVecinoNodo(p.vecino_telefono) || `SIN-TEL-PED-${p.id}`;
+            if (!vid) {
+                const upVec = await client.query(
+                    `INSERT INTO public.nodos_vecinos (
+                        nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, direccion_calle, entrecalles_referencia
+                     ) VALUES ($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (nodo_id, telefono_normalizado)
+                     DO UPDATE SET updated_at = NOW()
+                     RETURNING id, codigo_vecino`,
+                    [p.nodo_id, p.vecino_nombre, p.vecino_telefono, telNormPed, p.direccion_entrega || '', p.entrecalles_referencia || '']
+                );
+                vid = Number(upVec.rows[0].id);
+                if (!upVec.rows[0].codigo_vecino) {
+                    await client.query(
+                        'UPDATE public.nodos_vecinos SET codigo_vecino = $1 WHERE id = $2',
+                        [formatearCodigoVecinoNodo(p.nodo_id, vid), vid]
+                    );
+                }
+                await client.query('UPDATE public.nodos_pedidos_vecinos SET vecino_id = $1 WHERE id = $2', [vid, p.id]);
+            }
+
+            const exMovsPed = await client.query(
+                'SELECT tipo_movimiento FROM public.nodos_vecinos_movimientos_cc WHERE pedido_vecino_id = $1',
+                [p.id]
+            );
+            const tiposExistentes = new Set(exMovsPed.rows.map(r => r.tipo_movimiento));
+            const montoAjuste = Number(p.monto_ajuste_credito || 0);
+            const montoVigente = Number(p.total_vecino || 0);
+            const montoOriginal = Number((montoVigente + montoAjuste).toFixed(2));
+
+            if (!tiposExistentes.has('DEBITO_PEDIDO') && montoOriginal > 0) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa, created_at
+                     ) VALUES ($1, $2, $3, $4, 'DEBITO_PEDIDO', 'DEBITO', $5, 0, $6, $7, $8, COALESCE($9, NOW()))`,
+                    [
+                        p.nodo_id,
+                        vid,
+                        p.id,
+                        p.lote_canasto_id || null,
+                        montoOriginal,
+                        p.medio_pago || 'TRANSFERENCIA',
+                        `Compra Pedido #${p.codigo_pedido}`,
+                        p.codigo_pedido,
+                        p.created_at
+                    ]
+                );
+                vecinosRecalcularSet.add(vid);
+            }
+
+            if (montoAjuste > 0 && !tiposExistentes.has('CREDITO_NOTA_CREDITO')) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'CREDITO_NOTA_CREDITO', 'CREDITO', $5, 0, $6, $7, $8)`,
+                    [
+                        p.nodo_id,
+                        vid,
+                        p.id,
+                        p.lote_canasto_id || null,
+                        montoAjuste,
+                        p.medio_pago || 'TRANSFERENCIA',
+                        `Nota de Crédito Pedido #${p.codigo_pedido}`,
+                        p.codigo_pedido
+                    ]
+                );
+                vecinosRecalcularSet.add(vid);
+            }
+
+            const pagoConf = Boolean(p.impactado_cta_cte_pago) ||
+                ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+            if (pagoConf && String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
+                !tiposExistentes.has('CREDITO_TRANSFERENCIA_LAMDA') && !tiposExistentes.has('CREDITO_EFECTIVO_GESTOR')) {
+                const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ||
+                    String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
+                const tipoPagoMov = esEfvo ? 'CREDITO_EFECTIVO_GESTOR' : 'CREDITO_TRANSFERENCIA_LAMDA';
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, $5, 'CREDITO', $6, 0, $7, $8, $9)`,
+                    [
+                        p.nodo_id,
+                        vid,
+                        p.id,
+                        p.lote_canasto_id || null,
+                        tipoPagoMov,
+                        montoVigente,
+                        esEfvo ? 'EFECTIVO' : 'TRANSFERENCIA',
+                        esEfvo
+                            ? `Pago en Efectivo al Gestor — Pedido #${p.codigo_pedido}`
+                            : `Pago por Transferencia conciliado — Pedido #${p.codigo_pedido}`,
+                        p.comprobante_referencia || p.codigo_pedido
+                    ]
+                );
+                vecinosRecalcularSet.add(vid);
+            }
+
+            if (String(p.estado_operativo || '').toUpperCase() === 'ANULADO' && !tiposExistentes.has('CREDITO_ANULACION_PEDIDO')) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'CREDITO_ANULACION_PEDIDO', 'CREDITO', $5, 0, $6, $7, $8)`,
+                    [
+                        p.nodo_id,
+                        vid,
+                        p.id,
+                        p.lote_canasto_id || null,
+                        montoVigente,
+                        p.medio_pago || 'TRANSFERENCIA',
+                        `Anulación Pedido #${p.codigo_pedido}`,
+                        p.codigo_pedido
+                    ]
+                );
+                vecinosRecalcularSet.add(vid);
+            }
+        }
+
+        const vecsFinalRes = await client.query('SELECT id FROM public.nodos_vecinos ORDER BY id ASC');
+        for (const vr of vecsFinalRes.rows) {
+            await recalcularSaldoSubcuentaVecino(client, vr.id);
+        }
+
+        // 3) Alinear signos históricos en nodos_movimientos_cta_cte y recalcular Cuentas Corrientes CB-NODO-% con ley única (DEBITO +, CREDITO -)
+        await client.query(`
+            UPDATE public.nodos_movimientos_cta_cte
+               SET signo = 1
+             WHERE tipo_movimiento = 'DEBITO_RETIRO_LOTE' AND signo <> 1;
+
+            UPDATE public.nodos_movimientos_cta_cte
+               SET signo = -1
+             WHERE tipo_movimiento = 'CREDITO_TRANSFERENCIA_VECINO' AND signo <> -1;
+        `);
+
+        const ccsNodoRes = await client.query(
+            `SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente LIKE 'CB-NODO-%' ORDER BY id ASC`
+        );
+        for (const rowCc of ccsNodoRes.rows) {
+            await recalcularSaldosCuentaMadreBunker(client, rowCc.id);
         }
 
         await client.query('COMMIT');
@@ -5013,50 +5329,55 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         const medioPago = payload.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
 
-        // Registrar o actualizar el vecino en el padrón separado de clientes particulares del Nodo (public.nodos_vecinos)
+        // Registrar o actualizar el vecino de forma determinista por clave única (nodo_id, telefono_normalizado)
+        const telNormVecino = normalizarTelefonoVecinoNodo(vecinoTelefono);
+        if (!telNormVecino || telNormVecino.length < 7) {
+            throw new Error('Por favor ingresá un número de WhatsApp válido con código de área (ej: 221 501-1101).');
+        }
         const dirVecino = payload.direccion_entrega || nodo.direccion_retiro || '';
         const entrecallesVecino = payload.entrecalles_referencia || '';
-        const checkVec = await client.query(
-            `SELECT id FROM public.nodos_vecinos
-             WHERE nodo_id = $1
-               AND (LOWER(TRIM(nombre_completo)) = LOWER(TRIM($2)) OR REGEXP_REPLACE(telefono_whatsapp, '[^0-9]', '', 'g') = REGEXP_REPLACE($3, '[^0-9]', '', 'g'))
-             ORDER BY id ASC LIMIT 1`,
-            [nodo.id, vecinoNombre, vecinoTelefono]
+        const upVec = await client.query(
+            `INSERT INTO public.nodos_vecinos (
+                nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado,
+                direccion_calle, entrecalles_referencia, notas_entrega, activo
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+             ON CONFLICT (nodo_id, telefono_normalizado)
+             DO UPDATE SET
+                nombre_completo = EXCLUDED.nombre_completo,
+                telefono_whatsapp = EXCLUDED.telefono_whatsapp,
+                direccion_calle = COALESCE(NULLIF(EXCLUDED.direccion_calle, ''), public.nodos_vecinos.direccion_calle),
+                entrecalles_referencia = COALESCE(NULLIF(EXCLUDED.entrecalles_referencia, ''), public.nodos_vecinos.entrecalles_referencia),
+                notas_entrega = COALESCE(NULLIF(EXCLUDED.notas_entrega, ''), public.nodos_vecinos.notas_entrega),
+                activo = true,
+                updated_at = NOW()
+             RETURNING id, codigo_vecino`,
+            [
+                nodo.id,
+                vecinoNombre,
+                vecinoTelefono,
+                telNormVecino,
+                dirVecino,
+                entrecallesVecino,
+                payload.observaciones_vecino || ''
+            ]
         );
-        let vecinoId;
-        if (checkVec.rows.length > 0) {
-            vecinoId = checkVec.rows[0].id;
+        const vecinoId = Number(upVec.rows[0].id);
+        const codigoVecino = upVec.rows[0].codigo_vecino || formatearCodigoVecinoNodo(nodo.id, vecinoId);
+        if (!upVec.rows[0].codigo_vecino) {
             await client.query(
-                `UPDATE public.nodos_vecinos
-                 SET nombre_completo = $1,
-                     telefono_whatsapp = $2,
-                     direccion_calle = COALESCE(NULLIF($3, ''), direccion_calle),
-                     entrecalles_referencia = COALESCE(NULLIF($4, ''), entrecalles_referencia),
-                     notas_entrega = COALESCE(NULLIF($5, ''), notas_entrega),
-                     updated_at = NOW()
-                 WHERE id = $6`,
-                [vecinoNombre, vecinoTelefono, dirVecino, entrecallesVecino, payload.observaciones_vecino || '', vecinoId]
+                'UPDATE public.nodos_vecinos SET codigo_vecino = $1 WHERE id = $2',
+                [codigoVecino, vecinoId]
             );
-        } else {
-            const insVec = await client.query(
-                `INSERT INTO public.nodos_vecinos (
-                    nodo_id, nombre_completo, telefono_whatsapp, direccion_calle, entrecalles_referencia, notas_entrega
-                 ) VALUES ($1,$2,$3,$4,$5,$6)
-                 RETURNING id`,
-                [
-                    nodo.id,
-                    vecinoNombre,
-                    vecinoTelefono,
-                    dirVecino,
-                    entrecallesVecino,
-                    payload.observaciones_vecino || ''
-                ]
-            );
-            vecinoId = insVec.rows[0].id;
         }
 
-        const seqRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_pedidos_vecinos');
-        const codigoPedido = `NB-${1001 + seqRes.rows[0].total}`;
+        const seqRes = await client.query(`
+            SELECT GREATEST(
+                1000 + COUNT(*)::int,
+                COALESCE(MAX(CASE WHEN codigo_pedido ~ '^NB-[0-9]+$' THEN CAST(SUBSTRING(codigo_pedido FROM 4) AS INTEGER) ELSE 1000 END), 1000)
+            ) AS base_num
+            FROM public.nodos_pedidos_vecinos
+        `);
+        const codigoPedido = `NB-${Number(seqRes.rows[0].base_num || 1000) + 1}`;
 
         const direccionFinal = modalidad === 'ENVIO_BARRIAL'
             ? String(payload.direccion_entrega || '').trim()
@@ -5122,11 +5443,40 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         }
 
         await sincronizarCanastosEstacionNodos(client);
+
+        const pedCanRes = await client.query(
+            'SELECT lote_canasto_id FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1',
+            [pedidoRow.id]
+        );
+        const loteCanastoId = pedCanRes.rows[0]?.lote_canasto_id || null;
+
+        await client.query(
+            `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                tipo_movimiento, naturaleza, monto, saldo_resultante,
+                medio_pago, concepto, referencia_externa
+             ) VALUES ($1, $2, $3, $4, 'DEBITO_PEDIDO', 'DEBITO', $5, 0, $6, $7, $8)`,
+            [
+                nodo.id,
+                vecinoId,
+                pedidoRow.id,
+                loteCanastoId,
+                totalVecino,
+                medioPago,
+                `Compra Pedido #${codigoPedido} (${itemsValidados.length} art. · ${entregaAsignada.label_completo})`,
+                codigoPedido
+            ]
+        );
+        const saldoVecinoActual = await recalcularSaldoSubcuentaVecino(client, vecinoId);
+
         await client.query('COMMIT');
 
         return {
             pedido: {
                 ...pedidoRow,
+                lote_canasto_id: loteCanastoId,
+                codigo_vecino: codigoVecino,
+                saldo_subcuenta_vecino: saldoVecinoActual,
                 items: itemsValidados
             },
             nodo_pago_info: {
@@ -5199,7 +5549,7 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 
 /**
  * Sincroniza automáticamente los Canastos/Lotes alojados en ESTACION_NODOS
- * agrupando los pedidos vecinales por Nodo y Ventana de Entrega.
+ * agrupando los pedidos vecinales por Nodo y Ventana de Entrega (excluyendo pedidos ANULADOS de los totales activos).
  */
 async function sincronizarCanastosEstacionNodos(runner = null) {
     const q = runner || db;
@@ -5210,16 +5560,24 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                npv.fecha_entrega_label,
                MAX(npv.ventana_horaria_label) AS ventana_horaria_label,
                MIN(npv.fecha_entrega_comprometida) AS fecha_entrega_iso,
-               COUNT(*)::int AS total_bolsas,
+               COUNT(*) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               )::int AS total_bolsas,
                COUNT(*) FILTER (
                    WHERE npv.estado_operativo IN ('ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO')
                )::int AS bolsas_armadas,
                COUNT(*) FILTER (
                    WHERE npv.estado_operativo IN ('EN_PODER_GESTOR', 'ENTREGADO_VECINO')
                )::int AS bolsas_despachadas,
-               COALESCE(SUM(npv.total_base_lamda), 0)::numeric(14,2) AS total_base_lamda,
-               COALESCE(SUM(npv.total_vecino), 0)::numeric(14,2) AS total_venta_vecinos,
-               COALESCE(SUM(npv.ganancia_total_gestor), 0)::numeric(14,2) AS ganancia_estimada_gestor
+               COALESCE(SUM(npv.total_base_lamda) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS total_base_lamda,
+               COALESCE(SUM(npv.total_vecino) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS total_venta_vecinos,
+               COALESCE(SUM(npv.ganancia_total_gestor) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS ganancia_estimada_gestor
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
         GROUP BY npv.nodo_id, nm.codigo_nodo, npv.fecha_entrega_label
@@ -5229,7 +5587,9 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
     const kilosPorGrupoRes = await q.query(`
         SELECT npv.nodo_id,
                npv.fecha_entrega_label,
-               COALESCE(SUM(npi.cantidad * COALESCE(nac.kilos_unidad, 0.25)), 0)::numeric(12,3) AS total_kilos
+               COALESCE(SUM(npi.cantidad * COALESCE(nac.kilos_unidad, 0.25)) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(12,3) AS total_kilos
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_pedidos_items npi ON npi.pedido_id = npv.id
         LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
@@ -5896,6 +6256,18 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         let bolsasListasCount = 0;
 
         for (const pedido of pedidosCanastoRes.rows) {
+            if (String(pedido.estado_operativo || '').toUpperCase() === 'ANULADO') {
+                await q.query(
+                    `UPDATE public.presupuestos
+                     SET activo = false,
+                         archivado = true,
+                         estado = 'Anulado'
+                     WHERE id_presupuesto_ext = $1 OR ($2::int IS NOT NULL AND id = $2::int)`,
+                    [pedido.codigo_pedido, pedido.presupuesto_id_local || null]
+                );
+                continue;
+            }
+
             const itemsPedidoRes = await q.query(
                 `SELECT sku_nodo,
                         MAX(nombre_publico) AS nombre_publico,
@@ -6392,6 +6764,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             SELECT npv.*
             FROM public.nodos_pedidos_vecinos npv
             WHERE ($1 = 0 OR npv.nodo_id = $1)
+              AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
             ORDER BY npv.id ASC
         `, [nodoIdFiltro]),
         db.query(`
@@ -6407,6 +6780,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
             LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
             WHERE ($1 = 0 OR npv.nodo_id = $1)
+              AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
             ORDER BY npi.id ASC
         `, [nodoIdFiltro]),
         db.query(`
@@ -6647,6 +7021,7 @@ async function generarEtiquetaQrMaestroCanasto(canastoId) {
         `SELECT id, codigo_pedido, vecino_nombre, total_vecino, medio_pago, estado_pago, estado_operativo
          FROM public.nodos_pedidos_vecinos
          WHERE lote_canasto_id = $1
+           AND COALESCE(estado_operativo, '') <> 'ANULADO'
          ORDER BY id ASC`,
         [canasto.id]
     );
@@ -6669,8 +7044,8 @@ async function generarEtiquetaQrMaestroCanasto(canastoId) {
 
 /**
  * Confirma el retiro del Canasto completo por parte del Gestor del Nodo (escaneo de QR Maestro),
- * pasa todos los pedidos del lote a "En reparto / En poder del Gestor" (EN_PODER_GESTOR) y
- * registra automáticamente el Débito por el Costo Base LAMDA del lote en la Cuenta Corriente del Nodo.
+ * pasa todos los pedidos activos del lote a "En reparto / En poder del Gestor" (EN_PODER_GESTOR) y
+ * registra automáticamente el Débito (+monto) por el Costo Base LAMDA del lote en la Cuenta Corriente del Nodo.
  */
 async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
@@ -6712,7 +7087,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
 
         const retiradoPor = String(payload.retirado_por || canasto.gestor_nombre || 'Gestor del Nodo').trim();
 
-        // Pasar todas las bolsas del Canasto a EN_PODER_GESTOR ("En reparto / En poder del Gestor")
+        // Pasar todas las bolsas activas del Canasto a EN_PODER_GESTOR ("En reparto / En poder del Gestor")
         await client.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET estado_operativo = 'EN_PODER_GESTOR',
@@ -6721,7 +7096,8 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
                  fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
                  fecha_entrega_gestor = NOW(),
                  updated_at = NOW()
-             WHERE lote_canasto_id = $1`,
+             WHERE lote_canasto_id = $1
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [canasto.id]
         );
 
@@ -6729,7 +7105,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
         let saldoResultante = 0;
         let movCcFacturaId = null;
 
-        // Impactar en Cuenta Corriente oficial del Nodo (factura_cuentas_corrientes + factura_cuenta_corriente_movimientos)
+        // Impactar en Cuenta Corriente oficial del Nodo (convención única LAMDA: DEBITO suma +monto = saldo deudor hacia LAMDA)
         if (canasto.codigo_bunker_cliente) {
             const ccRes = await client.query(
                 `SELECT id, saldo
@@ -6742,30 +7118,17 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
 
             if (ccRes.rows.length > 0) {
                 const ccId = ccRes.rows[0].id;
-                const saldoActual = Number(ccRes.rows[0].saldo || 0);
-                // El retiro de mercadería del depósito genera un débito por el Costo Base LAMDA
-                saldoResultante = Number((saldoActual - montoDebitoBaseLamda).toFixed(2));
-
-                await client.query(
-                    `UPDATE public.factura_cuentas_corrientes
-                     SET saldo = $1,
-                         actualizada_en = NOW()
-                     WHERE id = $2`,
-                    [saldoResultante, ccId]
-                );
-
                 const descMovimiento = `Retiro Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} pedidos vecinales - ${canasto.fecha_entrega_label})`;
                 const insMovCc = await client.query(
                     `INSERT INTO public.factura_cuenta_corriente_movimientos (
                         cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                         tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
                         creado_en, metadatos
-                     ) VALUES ($1, 'DEBITO', $2, $3, 'CANASTO_NODO', NULL, $4, NOW(), NOW(), $5)
+                     ) VALUES ($1, 'DEBITO', $2, 0, 'CANASTO_NODO', NULL, $3, NOW(), NOW(), $4)
                      RETURNING id`,
                     [
                         ccId,
                         montoDebitoBaseLamda,
-                        saldoResultante,
                         descMovimiento,
                         JSON.stringify({
                             canasto_id: canasto.id,
@@ -6778,16 +7141,17 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
                     ]
                 );
                 movCcFacturaId = insMovCc.rows[0].id;
+                saldoResultante = await recalcularSaldosCuentaMadreBunker(client, ccId);
             }
         }
 
-        // Registrar también en el libro mayor específico de Nodos Barriales
+        // Registrar también en el libro mayor específico de Nodos Barriales (signo = +1 por DEBITO)
         const conceptoNodo = `Débito por retiro de Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} bolsas · ${canasto.fecha_entrega_label})`;
         await client.query(
             `INSERT INTO public.nodos_movimientos_cta_cte (
                 nodo_id, lote_canasto_id, tipo_movimiento, signo, monto,
                 saldo_resultante, concepto, referencia_externa
-             ) VALUES ($1, $2, 'DEBITO_RETIRO_LOTE', -1, $3, $4, $5, $6)`,
+             ) VALUES ($1, $2, 'DEBITO_RETIRO_LOTE', 1, $3, $4, $5, $6)`,
             [
                 canasto.nodo_id,
                 canasto.id,
@@ -6855,19 +7219,18 @@ async function reabrirCanastoParaPruebaLaboratorio(canastoId) {
         const canasto = canRes.rows[0];
 
         if (canasto.debito_cta_cte_registrado && canasto.codigo_bunker_cliente) {
-            const monto = Number(canasto.total_base_lamda || 0);
-            await client.query(
-                `UPDATE public.factura_cuentas_corrientes
-                 SET saldo = COALESCE(saldo, 0) + $1,
-                     actualizada_en = NOW()
-                 WHERE codigo_bunker_cliente = $2`,
-                [monto, canasto.codigo_bunker_cliente]
-            );
             if (canasto.movimiento_cc_id) {
                 await client.query(
                     'DELETE FROM public.factura_cuenta_corriente_movimientos WHERE id = $1',
                     [canasto.movimiento_cc_id]
                 );
+            }
+            const ccRes = await client.query(
+                'SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
+                [canasto.codigo_bunker_cliente]
+            );
+            if (ccRes.rows[0]?.id) {
+                await recalcularSaldosCuentaMadreBunker(client, ccRes.rows[0].id);
             }
             await client.query(
                 `DELETE FROM public.nodos_movimientos_cta_cte
@@ -6882,7 +7245,8 @@ async function reabrirCanastoParaPruebaLaboratorio(canastoId) {
                  ubicacion_deposito = 'ESTACION_NODOS',
                  fecha_entrega_gestor = NULL,
                  updated_at = NOW()
-             WHERE lote_canasto_id = $1`,
+             WHERE lote_canasto_id = $1
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [canasto.id]
         );
 
@@ -6927,7 +7291,7 @@ function normalizarTitularBancario(str = '') {
 
 /**
  * Calcula la radiografía contable y el cuadro de compensación automática de un Canasto/Lote:
- * - Total vendido a vecinos (incluyendo envíos barriales 100% del gestor)
+ * - Total vendido a vecinos activos (excluyendo pedidos ANULADOS)
  * - Menos Costo Base LAMDA del lote -> Ganancia Neta del Gestor
  * - Compensación entre lo cobrado por Transferencia en banco de LAMDA vs. lo cobrado en Efectivo en mano del Gestor
  */
@@ -6947,13 +7311,21 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
     let efectivoCobradoManoGestor = 0;
     let cantEfectivoTotales = 0;
     let cantEfectivoCobrados = 0;
+    let pedidosAnulados = 0;
 
+    const pedidosActivos = [];
     for (const p of pedidos) {
+        if (String(p.estado_operativo || '').toUpperCase() === 'ANULADO') {
+            pedidosAnulados++;
+            continue;
+        }
+        pedidosActivos.push(p);
+
         const totVec = Number(p.total_vecino || 0);
         const subProd = Number(p.subtotal_productos_vecino || totVec);
         const envBarrial = Number(p.cargo_envio_barrial || 0);
         const totBase = Number(p.total_base_lamda || 0);
-        const ganGestor = Number(p.ganancia_total_gestor || (totVec - totBase));
+        const ganGestor = Number(p.ganancia_total_gestor ?? (totVec - totBase));
 
         totalVentaVecinos += totVec;
         totalSubtotalProductos += subProd;
@@ -6982,7 +7354,7 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
         }
     }
 
-    const totalPedidos = pedidos.length;
+    const totalPedidos = pedidosActivos.length;
     const pedidosPagosConfirmados = cantTransferenciasConciliadas + cantEfectivoCobrados;
     const todosPagosConfirmados = totalPedidos > 0 && pedidosPagosConfirmados === totalPedidos;
 
@@ -7009,11 +7381,12 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
         direccionCompensacion = 'LAMDA_TRANSFIERE_A_GESTOR';
         montoCompensacionFinal = diferenciaCompensacion;
         tituloResultado = `LAMDA transfiere al Gestor: $${montoCompensacionFinal.toLocaleString('es-AR')}`;
-        explicacionCompensacion = `Las transferencias cobradas en el banco de LAMDA ($${transfEnLamda.toLocaleString('es-AR')}) cubrieron la totalidad del Costo Base del lote ($${totalBaseLamda.toLocaleString('es-AR')}) y generaron un saldo a favor de $${montoCompensacionFinal.toLocaleString('es-AR')} que LAMDA transfiere al Gestor para completar su ganancia.`;
+        explicacionCompensacion = `Las transferencias cobradas en el banco de LAMDA ($${transfEnLamda.toLocaleString('es-AR')}) cubrieron la totalidad del Costo Base del lote ($${totalBaseLamda.toLocaleString('es-AR')}) y generaron un saldo a favor de $${montoCompensacionFinal.toLocaleString('es-AR')} que LAMDA transfiere o acredita al Gestor para completar su ganancia.`;
     }
 
     return {
         total_pedidos: totalPedidos,
+        pedidos_anulados: pedidosAnulados,
         pedidos_pagos_confirmados: pedidosPagosConfirmados,
         todos_pagos_confirmados: todosPagosConfirmados,
         total_venta_vecinos: Number(totalVentaVecinos.toFixed(2)),
@@ -7163,16 +7536,19 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
 
     const pedidosPorCanasto = new Map();
     const pedidosPorVecinoId = new Map();
-    const pedidosPorVecinoNombre = new Map();
 
     for (const p of pedidosRes.rows) {
         const cid = Number(p.lote_canasto_id);
-        const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+        const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+        const pagoConfirmado = !esAnulado && (
+            Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
+        );
 
         const titularSugerido = p.titular_transferencia || normalizarTitularBancario(p.vecino_nombre);
         const enriched = {
             ...p,
+            anulado: esAnulado,
             pago_confirmado: pagoConfirmado,
             titular_sugerido: titularSugerido,
             items: itemsPorPedido.get(Number(p.id)) || []
@@ -7185,48 +7561,44 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
             if (!pedidosPorVecinoId.has(vid)) pedidosPorVecinoId.set(vid, []);
             pedidosPorVecinoId.get(vid).push(enriched);
         }
-        const keyNombre = `${p.nodo_id}::${String(p.vecino_nombre || '').trim().toLowerCase()}`;
-        if (!pedidosPorVecinoNombre.has(keyNombre)) pedidosPorVecinoNombre.set(keyNombre, []);
-        pedidosPorVecinoNombre.get(keyNombre).push(enriched);
     }
 
     const aliasPorVecinoId = new Map();
-    const aliasPorVecinoNombre = new Map();
     for (const al of aliasRes.rows) {
         if (al.vecino_id) {
             const vid = Number(al.vecino_id);
             if (!aliasPorVecinoId.has(vid)) aliasPorVecinoId.set(vid, []);
             aliasPorVecinoId.get(vid).push(al);
         }
-        const keyN = `${al.nodo_id}::${String(al.vecino_nombre || '').trim().toLowerCase()}`;
-        if (!aliasPorVecinoNombre.has(keyN)) aliasPorVecinoNombre.set(keyN, []);
-        aliasPorVecinoNombre.get(keyN).push(al);
     }
 
     const vecinosPadron = vecinosRes.rows.map(v => {
-        const keyNombre = `${v.nodo_id}::${String(v.nombre_completo || '').trim().toLowerCase()}`;
-        const pedsId = pedidosPorVecinoId.get(Number(v.id)) || [];
-        const pedsNom = pedidosPorVecinoNombre.get(keyNombre) || [];
-        const mapaUnicos = new Map();
-        [...pedsId, ...pedsNom].forEach(p => mapaUnicos.set(Number(p.id), p));
-        const pedidosHistorial = Array.from(mapaUnicos.values()).sort((a, b) => Number(b.id) - Number(a.id));
+        const pedidosHistorial = (pedidosPorVecinoId.get(Number(v.id)) || [])
+            .slice()
+            .sort((a, b) => Number(b.id) - Number(a.id));
 
-        const aliasList = aliasPorVecinoId.get(Number(v.id)) || aliasPorVecinoNombre.get(keyNombre) || [];
+        const aliasList = aliasPorVecinoId.get(Number(v.id)) || [];
         let totalComprado = 0;
         let totalPagado = 0;
         let totalPendiente = 0;
+        let pedidosActivosCount = 0;
         for (const ph of pedidosHistorial) {
+            if (ph.anulado) continue;
+            pedidosActivosCount++;
             const monto = Number(ph.total_vecino || 0);
             totalComprado += monto;
             if (ph.pago_confirmado) totalPagado += monto;
             else totalPendiente += monto;
         }
-        const ultimoPedido = pedidosHistorial[0] || null;
+        const ultimoPedido = pedidosHistorial.find(x => !x.anulado) || pedidosHistorial[0] || null;
         return {
             ...v,
+            codigo_vecino: v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, v.id),
+            saldo_actual: Number(Number(v.saldo_actual || 0).toFixed(2)),
             titulares_aprendidos: aliasList,
             titular_habitual_efectivo: v.titular_transferencia_habitual || (aliasList[0] ? aliasList[0].titular_normalizado : ''),
-            cantidad_pedidos: pedidosHistorial.length,
+            cantidad_pedidos: pedidosActivosCount,
+            cantidad_pedidos_totales: pedidosHistorial.length,
             total_comprado: Number(totalComprado.toFixed(2)),
             total_pagado: Number(totalPagado.toFixed(2)),
             total_pendiente_pago: Number(totalPendiente.toFixed(2)),
@@ -7262,11 +7634,12 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
 }
 
 /**
- * Concilia el pago de un pedido vecinal:
- * - Si es TRANSFERENCIA: Acredita (+total_vecino) a favor del Nodo en su Cuenta Corriente con LAMDA
- *   (ya que el dinero ingresó en la cuenta recaudadora de LAMDA) y memoriza el titular bancario del vecino.
- * - Si es EFECTIVO: Registra el cobro en efectivo en mano del Gestor (emitiendo recibo vecinal y
- *   computándolo como efectivo retenido por el Gestor para la compensación final del lote).
+ * Concilia el pago de un pedido vecinal (ley contable unificada LAMDA):
+ * - Si es TRANSFERENCIA: Acredita (-total_vecino, CREDITO) a favor del Nodo en su Cuenta Corriente CB-NODO-xxx
+ *   (ya que el dinero ingresó en la cuenta recaudadora de LAMDA), acredita en la Subcuenta del Vecino (-total_vecino)
+ *   y memoriza el titular bancario del vecino.
+ * - Si es EFECTIVO: Registra el cobro en efectivo en mano del Gestor, salda la Subcuenta del Vecino (-total_vecino)
+ *   y computa el efectivo retenido en mano del Gestor para la compensación final del lote (sin tocar CB-NODO-xxx).
  */
 async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
@@ -7290,6 +7663,10 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
             throw new Error('Pedido vecinal no encontrado.');
         }
         const ped = pedRes.rows[0];
+
+        if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
+            throw new Error(`El pedido #${ped.codigo_pedido} se encuentra ANULADO y no admite conciliación de cobro.`);
+        }
 
         if (ped.impactado_cta_cte_pago) {
             await client.query('COMMIT');
@@ -7316,35 +7693,25 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         const saldoActual = ccRes.rows.length > 0 ? Number(ccRes.rows[0].saldo || 0) : 0;
 
         if (!esEfectivo) {
-            // 1. TRANSFERENCIA BANCARIA RECIBIDA EN CUENTA DE LAMDA -> CRÉDITO A FAVOR DEL NODO (+montoTotalVecino)
+            // 1. TRANSFERENCIA BANCARIA RECIBIDA EN CUENTA DE LAMDA -> CREDITO (-montoTotalVecino) A FAVOR DEL NODO
             const titularInput = payload.titular_transferencia || ped.titular_transferencia || normalizarTitularBancario(ped.vecino_nombre);
             const titularNorm = normalizarTitularBancario(titularInput);
             const referencia = String(payload.comprobante_referencia || `TRF-${ped.codigo_pedido}`).trim();
             const billetera = String(payload.billetera_origen || 'Mercado Pago / Transferencia').trim();
 
-            saldoResultante = Number((saldoActual + montoTotalVecino).toFixed(2));
-
             if (ccRes.rows.length > 0) {
                 const ccId = ccRes.rows[0].id;
-                await client.query(
-                    `UPDATE public.factura_cuentas_corrientes
-                     SET saldo = $1, actualizada_en = NOW()
-                     WHERE id = $2`,
-                    [saldoResultante, ccId]
-                );
-
                 const descCc = `Transferencia Vecino #${ped.codigo_pedido} (${ped.vecino_nombre} · Titular: ${titularNorm}) acreditada en cuenta LAMDA`;
                 const insMov = await client.query(
                     `INSERT INTO public.factura_cuenta_corriente_movimientos (
                         cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                         tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
                         creado_en, metadatos
-                     ) VALUES ($1, 'CREDITO', $2, $3, 'TRANSFERENCIA_VECINO_NODO', NULL, $4, NOW(), NOW(), $5)
+                     ) VALUES ($1, 'CREDITO', $2, 0, 'TRANSFERENCIA_VECINO_NODO', NULL, $3, NOW(), NOW(), $4)
                      RETURNING id`,
                     [
                         ccId,
                         montoTotalVecino,
-                        saldoResultante,
                         descCc,
                         JSON.stringify({
                             pedido_id: ped.id,
@@ -7356,6 +7723,9 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                     ]
                 );
                 movCcFacturaId = insMov.rows[0].id;
+                saldoResultante = await recalcularSaldosCuentaMadreBunker(client, ccId);
+            } else {
+                saldoResultante = Number((saldoActual - montoTotalVecino).toFixed(2));
             }
 
             // Aprendizaje automático del titular para futuras transferencias del vecino
@@ -7380,13 +7750,31 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                      WHERE id = $2`,
                     [titularNorm, ped.vecino_id]
                 );
+
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'CREDITO_TRANSFERENCIA_LAMDA', 'CREDITO', $5, 0, 'TRANSFERENCIA', $6, $7)`,
+                    [
+                        ped.nodo_id,
+                        ped.vecino_id,
+                        ped.id,
+                        ped.lote_canasto_id || null,
+                        montoTotalVecino,
+                        `Pago por Transferencia acreditado (${titularNorm}) — Pedido #${ped.codigo_pedido}`,
+                        referencia
+                    ]
+                );
+                await recalcularSaldoSubcuentaVecino(client, ped.vecino_id);
             }
 
             await client.query(
                 `INSERT INTO public.nodos_movimientos_cta_cte (
                     nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo,
                     monto, saldo_resultante, concepto, referencia_externa
-                 ) VALUES ($1, $2, $3, 'CREDITO_TRANSFERENCIA_VECINO', 1, $4, $5, $6, $7)`,
+                 ) VALUES ($1, $2, $3, 'CREDITO_TRANSFERENCIA_VECINO', -1, $4, $5, $6, $7)`,
                 [
                     ped.nodo_id,
                     ped.lote_canasto_id,
@@ -7400,7 +7788,8 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
 
             await client.query(
                 `UPDATE public.nodos_pedidos_vecinos
-                 SET estado_pago = 'CONCILIADO_BANCO_LAMDA',
+                 SET medio_pago = 'TRANSFERENCIA',
+                     estado_pago = 'CONCILIADO_BANCO_LAMDA',
                      titular_transferencia = $1,
                      comprobante_referencia = $2,
                      fecha_conciliacion_pago = NOW(),
@@ -7414,6 +7803,26 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
             // 2. EFECTIVO COBRADO EN MANO POR EL GESTOR AL ENTREGAR AL VECINO
             const referencia = String(payload.comprobante_referencia || `REC-EFVO-${ped.codigo_pedido}`).trim();
             saldoResultante = saldoActual;
+
+            if (ped.vecino_id) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'CREDITO_EFECTIVO_GESTOR', 'CREDITO', $5, 0, 'EFECTIVO', $6, $7)`,
+                    [
+                        ped.nodo_id,
+                        ped.vecino_id,
+                        ped.id,
+                        ped.lote_canasto_id || null,
+                        montoTotalVecino,
+                        `Pago en Efectivo abonado a ${ped.gestor_nombre} — Pedido #${ped.codigo_pedido}`,
+                        referencia
+                    ]
+                );
+                await recalcularSaldoSubcuentaVecino(client, ped.vecino_id);
+            }
 
             await client.query(
                 `INSERT INTO public.nodos_movimientos_cta_cte (
@@ -7435,7 +7844,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                 `UPDATE public.nodos_pedidos_vecinos
                  SET medio_pago = 'EFECTIVO',
                      estado_pago = 'COBRADO_EFECTIVO_GESTOR',
-                     estado_operativo = CASE WHEN estado_operativo = 'EN_PODER_GESTOR' THEN 'ENTREGADO_VECINO' ELSE estado_operativo END,
+                     estado_operativo = CASE WHEN estado_operativo IN ('EN_PODER_GESTOR', 'EN_CAMINO_VECINO') THEN 'ENTREGADO_VECINO' ELSE estado_operativo END,
                      comprobante_referencia = $1,
                      fecha_conciliacion_pago = NOW(),
                      impactado_cta_cte_pago = true,
@@ -7457,7 +7866,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
 }
 
 /**
- * Concilia en un solo paso todos los cobros pendientes (transferencias y efectivo) de un Canasto/Lote
+ * Concilia en un solo paso todos los cobros pendientes (transferencias y efectivo) de un Canasto/Lote activo
  */
 async function conciliarTodosLosPagosPendientesCanasto(canastoId) {
     await asegurarEsquemaNodosBarriales();
@@ -7466,6 +7875,7 @@ async function conciliarTodosLosPagosPendientesCanasto(canastoId) {
         `SELECT id FROM public.nodos_pedidos_vecinos
          WHERE lote_canasto_id = $1::int
            AND COALESCE(impactado_cta_cte_pago, false) = false
+           AND COALESCE(estado_operativo, '') <> 'ANULADO'
          ORDER BY id ASC`,
         [Number(canastoId)]
     );
@@ -7478,13 +7888,17 @@ async function conciliarTodosLosPagosPendientesCanasto(canastoId) {
 }
 
 /**
- * Ejecuta la Liquidación Final del Lote/Canasto y registra la compensación automática
- * en la Cuenta Corriente del Nodo (dejando el lote saldado en $0).
+ * Ejecuta la Liquidación Final del Lote/Canasto con soporte bidireccional determinista:
+ * - Opción A (`impactar_en_cuenta_madre: false`, default): Rendición / transferencia directa sobre `CB-NODO-xxx`
+ *   dejando el lote en $0,00 y manteniendo aislada la Cuenta Personal del Gestor (`CB-0006`).
+ * - Opción B (`impactar_en_cuenta_madre: true`, solo si existe `codigo_bunker_cliente_madre`):
+ *   Salda `CB-NODO-xxx` en $0,00 y asienta el movimiento espejo enlazado en la Cuenta Personal (`CB-0006`)
+ *   tanto cuando el Nodo rinde saldo deudor (`DEBITO` en `CB-0006`) como cuando queda saldo acreedor a favor del Gestor (`CREDITO` en `CB-0006`).
  */
 async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
-    // Asegurar primero que todos los cobros del lote estén conciliados
+    // Asegurar primero que todos los cobros activos del lote estén conciliados
     await conciliarTodosLosPagosPendientesCanasto(canastoId);
 
     // Si el canasto aún no tenía registrado su retiro/débito base de Etapa 3, registrarlo primero
@@ -7515,8 +7929,16 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
             throw new Error(`La liquidación del canasto ${canasto.codigo_canasto} ya se encuentra cerrada y saldada.`);
         }
 
+        const impactarEnCuentaMadre = Boolean(payload.impactar_en_cuenta_madre === true);
+        if (impactarEnCuentaMadre && !canasto.codigo_bunker_cliente_madre) {
+            throw new Error('Este Nodo no posee una Cuenta Personal/Madre vinculada para compensar el cierre.');
+        }
+        const modalidadCierre = impactarEnCuentaMadre ? 'COMPENSACION_CUENTA_MADRE' : 'RENDICION_DIRECTA_NODO';
+
         const pedsRes = await client.query(
-            'SELECT * FROM public.nodos_pedidos_vecinos WHERE lote_canasto_id = $1::int ORDER BY id ASC',
+            `SELECT * FROM public.nodos_pedidos_vecinos
+             WHERE lote_canasto_id = $1::int
+             ORDER BY id ASC`,
             [canasto.id]
         );
         const cuadro = calcularCuadroLiquidacionCanasto(canasto, pedsRes.rows);
@@ -7538,63 +7960,57 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 const saldoActual = Number(ccRes.rows[0].saldo || 0);
 
                 if (cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA' && cuadro.monto_compensacion_final > 0) {
-                    // El Gestor rinde a LAMDA el excedente de efectivo -> Crédito que cancela el saldo deudor en la subcuenta del Nodo
-                    saldoResultante = Number((saldoActual + cuadro.monto_compensacion_final).toFixed(2));
-                    await client.query(
-                        'UPDATE public.factura_cuentas_corrientes SET saldo = $1, actualizada_en = NOW() WHERE id = $2',
-                        [saldoResultante, ccId]
-                    );
+                    // Saldo deudor (> 0) en CB-NODO-xxx -> CREDITO (-monto) cancela la deuda del lote dejándolo en $0,00
+                    const descNodo = impactarEnCuentaMadre
+                        ? `Liquidación Lote ${canasto.codigo_canasto} (${codigoLiq}): Compensación contra Cuenta Personal ${canasto.codigo_bunker_cliente_madre} (${canasto.gestor_nombre} retuvo ganancia de $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')})`
+                        : `Liquidación y Rendición Directa Lote ${canasto.codigo_canasto} (${codigoLiq}): ${canasto.gestor_nombre} retuvo ganancia de $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} y rindió saldo neto a LAMDA`;
                     const insMov = await client.query(
                         `INSERT INTO public.factura_cuenta_corriente_movimientos (
                             cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                             tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
                             creado_en, metadatos
-                         ) VALUES ($1, 'CREDITO', $2, $3, 'LIQUIDACION_LOTE_NODO', NULL, $4, NOW(), NOW(), $5)
+                         ) VALUES ($1, 'CREDITO', $2, 0, 'LIQUIDACION_LOTE_NODO', NULL, $3, NOW(), NOW(), $4)
                          RETURNING id`,
                         [
                             ccId,
                             cuadro.monto_compensacion_final,
-                            saldoResultante,
-                            `Liquidación y Rendición Lote ${canasto.codigo_canasto} (${canasto.gestor_nombre} retuvo ganancia de $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} y rindió saldo neto a LAMDA)`,
-                            JSON.stringify(cuadro)
+                            descNodo,
+                            JSON.stringify({ ...cuadro, codigo_liquidacion: codigoLiq, modalidad_cierre: modalidadCierre })
                         ]
                     );
                     movCcFacturaId = insMov.rows[0].id;
+                    saldoResultante = await recalcularSaldosCuentaMadreBunker(client, ccId);
                 } else if (cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR' && cuadro.monto_compensacion_final > 0) {
-                    saldoResultante = Number((saldoActual - cuadro.monto_compensacion_final).toFixed(2));
-                    await client.query(
-                        'UPDATE public.factura_cuentas_corrientes SET saldo = $1, actualizada_en = NOW() WHERE id = $2',
-                        [saldoResultante, ccId]
-                    );
+                    // Saldo acreedor (< 0, a favor del Nodo) en CB-NODO-xxx -> DEBITO (+monto) cancela el saldo a favor al pagarlo/transferirlo a CB-0006 o banco del Gestor
+                    const descNodo = impactarEnCuentaMadre
+                        ? `Liquidación Lote ${canasto.codigo_canasto} (${codigoLiq}): Traspaso de saldo a favor a Cuenta Personal ${canasto.codigo_bunker_cliente_madre}`
+                        : `Liquidación Directa Lote ${canasto.codigo_canasto} (${codigoLiq}): Transferencia de saldo de ganancia de LAMDA al Gestor (${canasto.gestor_nombre})`;
                     const insMov = await client.query(
                         `INSERT INTO public.factura_cuenta_corriente_movimientos (
                             cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                             tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
                             creado_en, metadatos
-                         ) VALUES ($1, 'DEBITO', $2, $3, 'LIQUIDACION_LOTE_NODO', NULL, $4, NOW(), NOW(), $5)
+                         ) VALUES ($1, 'DEBITO', $2, 0, 'LIQUIDACION_LOTE_NODO', NULL, $3, NOW(), NOW(), $4)
                          RETURNING id`,
                         [
                             ccId,
                             cuadro.monto_compensacion_final,
-                            saldoResultante,
-                            `Liquidación Lote ${canasto.codigo_canasto}: Transferencia de saldo de comisiones de LAMDA al Gestor`,
-                            JSON.stringify(cuadro)
+                            descNodo,
+                            JSON.stringify({ ...cuadro, codigo_liquidacion: codigoLiq, modalidad_cierre: modalidadCierre })
                         ]
                     );
                     movCcFacturaId = insMov.rows[0].id;
+                    saldoResultante = await recalcularSaldosCuentaMadreBunker(client, ccId);
                 } else {
                     saldoResultante = saldoActual;
                 }
             }
         }
 
-        // 2. Impacto Neto Consolidado en la Cuenta Madre vinculada (ej: Matías CB-0006 -> Cuenta Principal id=20)
-        // Convención estándar de cuentaCorrienteService.js (y Portal B2B):
-        // - CREDITO resta al saldo (aumenta saldo a favor del colaborador/cliente, igual que CREDITO_HORAS y CREDITO_RENDIMIENTO)
-        // - DEBITO suma al saldo (reduce saldo a favor / genera cargo a favor de LAMDA, igual que FACTURA)
+        // 2. Asiento Espejo Bidireccional en Cuenta Personal/Madre (ej: CB-0006) SOLO cuando el Admin eligió Opción B
         let movCcMadreId = null;
         let saldoMadrePostCierre = null;
-        if (canasto.codigo_bunker_cliente_madre && payload.impactar_en_cuenta_madre !== false) {
+        if (canasto.codigo_bunker_cliente_madre) {
             const ccMadreRes = await client.query(
                 `SELECT id, saldo FROM public.factura_cuentas_corrientes
                  WHERE codigo_bunker_cliente = $1
@@ -7605,19 +8021,20 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
             );
             if (ccMadreRes.rows.length > 0) {
                 const ccMadreId = ccMadreRes.rows[0].id;
-                if (cuadro.monto_compensacion_final > 0 && (cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR' || cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA')) {
+                if (impactarEnCuentaMadre && cuadro.monto_compensacion_final > 0 &&
+                    (cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR' || cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA')) {
                     const esCreditoMadre = cuadro.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR';
                     const tipoMovMadre = esCreditoMadre ? 'CREDITO' : 'DEBITO';
                     const descMadre = esCreditoMadre
-                        ? `Liquidación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Saldo neto de comisiones a favor de ${canasto.gestor_nombre} (Transferencias en LAMDA $${cuadro.transferencias_conciliadas_lamda.toLocaleString('es-AR')} - Costo Base $${cuadro.total_base_lamda.toLocaleString('es-AR')})`
-                        : `Liquidación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Rendición neta a favor de LAMDA por cobros en efectivo en mano ($${cuadro.efectivo_cobrado_mano_gestor.toLocaleString('es-AR')} cobrados - $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} comisión retenida)`;
+                        ? `Compensación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Saldo neto de ganancia acreditado a favor de ${canasto.gestor_nombre} (Transferencias en LAMDA $${cuadro.transferencias_conciliadas_lamda.toLocaleString('es-AR')} - Costo Base $${cuadro.total_base_lamda.toLocaleString('es-AR')})`
+                        : `Compensación Nodo ${canasto.nombre_marca} (${codigoLiq} · Lote ${canasto.codigo_canasto}): Rendición neta compensada a favor de LAMDA por cobros en efectivo en mano ($${cuadro.efectivo_cobrado_mano_gestor.toLocaleString('es-AR')} cobrados - $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} ganancia retenida)`;
 
                     const insMovMadre = await client.query(
                         `INSERT INTO public.factura_cuenta_corriente_movimientos (
                             cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                             tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
-                            creado_en, metadatos, origen_tipo
-                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5, 'LIQUIDACION_NODO')
+                            creado_en, metadatos
+                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5)
                          RETURNING id`,
                         [
                             ccMadreId,
@@ -7627,14 +8044,25 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                             JSON.stringify({
                                 ...cuadro,
                                 codigo_liquidacion: codigoLiq,
+                                modalidad_cierre: modalidadCierre,
                                 codigo_canasto: canasto.codigo_canasto,
                                 codigo_bunker_subcuenta_nodo: canasto.codigo_bunker_cliente,
-                                codigo_bunker_cliente_madre: canasto.codigo_bunker_cliente_madre
+                                codigo_bunker_cliente_madre: canasto.codigo_bunker_cliente_madre,
+                                movimiento_cc_subcuenta_nodo_id: movCcFacturaId
                             })
                         ]
                     );
                     movCcMadreId = insMovMadre.rows[0].id;
                     saldoMadrePostCierre = await recalcularSaldosCuentaMadreBunker(client, ccMadreId);
+
+                    if (movCcFacturaId) {
+                        await client.query(
+                            `UPDATE public.factura_cuenta_corriente_movimientos
+                             SET metadatos = COALESCE(metadatos, '{}'::jsonb) || $1::jsonb
+                             WHERE id = $2`,
+                            [JSON.stringify({ movimiento_cc_madre_id: movCcMadreId }), movCcFacturaId]
+                        );
+                    }
                 } else {
                     saldoMadrePostCierre = Number(ccMadreRes.rows[0].saldo || 0);
                 }
@@ -7649,8 +8077,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 direccion_compensacion, monto_compensacion_final,
                 saldo_cta_cte_post_cierre, movimiento_cc_id,
                 movimiento_cc_madre_id, saldo_cta_cte_madre_post_cierre,
-                observaciones
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                modalidad_cierre, observaciones
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
              RETURNING *`,
             [
                 codigoLiq,
@@ -7667,12 +8095,19 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 movCcFacturaId,
                 movCcMadreId,
                 saldoMadrePostCierre,
+                modalidadCierre,
                 payload.observaciones || cuadro.explicacion_compensacion
             ]
         );
         const liqRow = insLiq.rows[0];
 
-        const signoMov = cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA' ? 1 : -1;
+        // Ley unificada: CREDITO (GESTOR_RINDE_A_LAMDA) => signo -1; DEBITO (LAMDA_TRANSFIERE_A_GESTOR) => signo +1
+        const signoMov = cuadro.monto_compensacion_final > 0
+            ? (cuadro.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA' ? -1 : 1)
+            : 0;
+        const etiquetaModo = impactarEnCuentaMadre
+            ? `Compensado en ${canasto.codigo_bunker_cliente_madre}`
+            : 'Rendición / Liquidación Directa Nodo';
         await client.query(
             `INSERT INTO public.nodos_movimientos_cta_cte (
                 nodo_id, lote_canasto_id, tipo_movimiento, signo, monto,
@@ -7684,7 +8119,7 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 signoMov,
                 cuadro.monto_compensacion_final,
                 saldoResultante,
-                `Cierre de Liquidación ${codigoLiq} (${canasto.codigo_canasto}): Ganancia Gestor $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} cubierta · ${cuadro.titulo_resultado} · Cta. Cte. Saldada`,
+                `Cierre de Liquidación ${codigoLiq} (${canasto.codigo_canasto} · ${etiquetaModo}): Ganancia Gestor $${cuadro.ganancia_neta_gestor.toLocaleString('es-AR')} cubierta · ${cuadro.titulo_resultado} · Cta. Cte. Nodo Saldada`,
                 codigoLiq
             ]
         );
@@ -7703,7 +8138,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
             `UPDATE public.nodos_pedidos_vecinos
              SET estado_operativo = 'ENTREGADO_VECINO',
                  updated_at = NOW()
-             WHERE lote_canasto_id = $1`,
+             WHERE lote_canasto_id = $1
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [canasto.id]
         );
 
@@ -7720,7 +8156,7 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
 
 /**
  * Herramienta de Laboratorio: Reabre los cobros y la liquidación de un Canasto
- * dejando el lote nuevamente en estado "Entregado al Gestor" (saldo -$66.820) para repetir la prueba.
+ * recalculando de forma determinista CB-NODO-xxx, CB-0006 y las subcuentas de vecinos.
  */
 async function reabrirLiquidacionCanastoPrueba(canastoId) {
     await asegurarEsquemaNodosBarriales();
@@ -7748,15 +8184,6 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
             [canasto.id]
         );
         for (const liq of liqRes.rows) {
-            if (canasto.codigo_bunker_cliente && Number(liq.monto_compensacion_final) > 0) {
-                const ajuste = liq.direccion_compensacion === 'GESTOR_RINDE_A_LAMDA'
-                    ? -Number(liq.monto_compensacion_final)
-                    : Number(liq.monto_compensacion_final);
-                await client.query(
-                    'UPDATE public.factura_cuentas_corrientes SET saldo = COALESCE(saldo, 0) + $1, actualizada_en = NOW() WHERE codigo_bunker_cliente = $2',
-                    [ajuste, canasto.codigo_bunker_cliente]
-                );
-            }
             if (liq.movimiento_cc_id) {
                 await client.query('DELETE FROM public.factura_cuenta_corriente_movimientos WHERE id = $1', [liq.movimiento_cc_id]);
             }
@@ -7772,21 +8199,39 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
         }
         await client.query('DELETE FROM public.nodos_liquidaciones_lote WHERE lote_canasto_id = $1::int', [canasto.id]);
 
-        // 2. Revertir créditos de transferencias de vecinos de este lote
+        // 2. Revertir créditos de pagos de vecinos de este lote (tanto en CB-NODO-xxx como en subcuentas vecinales)
         const pedsRes = await client.query(
             'SELECT * FROM public.nodos_pedidos_vecinos WHERE lote_canasto_id = $1::int',
             [canasto.id]
         );
+        const vecinosAfectados = new Set();
         for (const p of pedsRes.rows) {
-            if (p.impactado_cta_cte_pago && String(p.medio_pago).toUpperCase() === 'TRANSFERENCIA' && canasto.codigo_bunker_cliente) {
-                await client.query(
-                    'UPDATE public.factura_cuentas_corrientes SET saldo = COALESCE(saldo, 0) - $1, actualizada_en = NOW() WHERE codigo_bunker_cliente = $2',
-                    [Number(p.total_vecino || 0), canasto.codigo_bunker_cliente]
-                );
-            }
             if (p.movimiento_pago_cc_id) {
                 await client.query('DELETE FROM public.factura_cuenta_corriente_movimientos WHERE id = $1', [p.movimiento_pago_cc_id]);
             }
+            if (String(p.estado_operativo || '').toUpperCase() !== 'ANULADO') {
+                await client.query(
+                    `DELETE FROM public.nodos_vecinos_movimientos_cc
+                     WHERE pedido_vecino_id = $1::int
+                       AND tipo_movimiento IN ('CREDITO_TRANSFERENCIA_LAMDA', 'CREDITO_EFECTIVO_GESTOR')`,
+                    [p.id]
+                );
+                if (p.vecino_id) vecinosAfectados.add(Number(p.vecino_id));
+            }
+        }
+
+        if (canasto.codigo_bunker_cliente) {
+            const ccNodoRes = await client.query(
+                'SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1 LIMIT 1',
+                [canasto.codigo_bunker_cliente]
+            );
+            if (ccNodoRes.rows[0]?.id) {
+                await recalcularSaldosCuentaMadreBunker(client, ccNodoRes.rows[0].id);
+            }
+        }
+
+        for (const vid of vecinosAfectados) {
+            await recalcularSaldoSubcuentaVecino(client, vid);
         }
 
         // 3. Limpiar movimientos de cobro/liquidación en nodos_movimientos_cta_cte (conservando DEBITO_RETIRO_LOTE)
@@ -7797,7 +8242,7 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
             [canasto.id]
         );
 
-        // 4. Restaurar estado de pago de los pedidos del canasto
+        // 4. Restaurar estado de pago de los pedidos activos del canasto
         await client.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET estado_pago = CASE WHEN medio_pago = 'EFECTIVO' THEN 'COBRAR_EN_ENTREGA' ELSE 'PENDIENTE_TRANSFERENCIA' END,
@@ -7806,7 +8251,8 @@ async function reabrirLiquidacionCanastoPrueba(canastoId) {
                  movimiento_pago_cc_id = NULL,
                  fecha_conciliacion_pago = NULL,
                  updated_at = NOW()
-             WHERE lote_canasto_id = $1::int`,
+             WHERE lote_canasto_id = $1::int
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [canasto.id, canasto.estado_canasto]
         );
 
@@ -7874,7 +8320,7 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
         `);
         await client.query(`
             DELETE FROM public.factura_cuenta_corriente_movimientos
-            WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO', 'LIQUIDACION_NODO')
+            WHERE tipo_comprobante IN ('CANASTO_NODO', 'TRANSFERENCIA_VECINO_NODO', 'LIQUIDACION_LOTE_NODO', 'LIQUIDACION_NODO', 'REVERSION_TRANSFERENCIA_ANULADA_NODO', 'NOTA_CREDITO_CANASTO_NODO')
                OR origen_tipo = 'LIQUIDACION_NODO'
                OR cuenta_corriente_id IN (
                    SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente LIKE 'CB-NODO-%'
@@ -7915,6 +8361,7 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
         // 4. Vaciar todas las tablas operativas de Nodos y reiniciar sus secuencias a 1
         await client.query(`
             TRUNCATE TABLE
+                public.nodos_vecinos_movimientos_cc,
                 public.nodos_liquidaciones_lote,
                 public.nodos_movimientos_cta_cte,
                 public.nodos_alias_vecinos_aprendidos,
@@ -8050,6 +8497,7 @@ async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
             `SELECT npv.*
              FROM public.nodos_pedidos_vecinos npv
              WHERE npv.lote_canasto_id = ANY($1::int[])
+               AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
              ORDER BY npv.id ASC`,
             [canastoIds]
         ),
@@ -8061,6 +8509,7 @@ async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
              JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
              LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
              WHERE npv.lote_canasto_id = ANY($1::int[])
+               AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
              ORDER BY npi.id ASC`,
             [canastoIds]
         )
@@ -8283,9 +8732,827 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = [], opci
     return resultado;
 }
 
+/**
+ * Anula de forma determinista un pedido vecinal mientras se encuentre en etapas previas
+ * al despacho/entrega física (H1 CONFIRMADO_VECINO, H2 EN_PREPARACION, H3 ARMADO_EN_CANASTO):
+ * - Acredita la anulación en `nodos_vecinos_movimientos_cc` dejando saldado el cargo del pedido.
+ * - Si el pedido ya tenía una transferencia conciliada en Banco LAMDA, revierte determinísticamente
+ *   el crédito en `CB-NODO-xxx` (DEBITO por reversión) y registra el reintegro en la subcuenta del vecino
+ *   (salvo que se indique explícitamente `devolver_pago_conciliado: false` únicamente para registro interno,
+ *   aunque por regla contable del lote se revierte en `CB-NODO-xxx` para no desfasar el cierre del canasto).
+ * - Desactiva su fila espejo en `public.presupuestos` y recalcula los totales del canasto en `nodos_lotes_estacion`.
+ */
+async function anularPedidoVecinoNodo(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const motivo = String(payload.motivo || 'Anulación solicitada antes de despacho al Nodo').trim();
+
+    const client = await db.connect();
+    let nodoIdRef = null;
+    let vecinoIdRef = null;
+    try {
+        await client.query('BEGIN');
+
+        const pedRes = await client.query(
+            `SELECT npv.*,
+                    nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    nle.codigo_canasto, nle.estado_canasto, nle.debito_cta_cte_registrado, nle.liquidacion_cerrada
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+             WHERE npv.id = $1::int
+             FOR UPDATE OF npv`,
+            [Number(pedidoId)]
+        );
+        if (pedRes.rows.length === 0) {
+            throw new Error('Pedido vecinal no encontrado.');
+        }
+        const ped = pedRes.rows[0];
+        nodoIdRef = Number(ped.nodo_id);
+        vecinoIdRef = ped.vecino_id ? Number(ped.vecino_id) : null;
+
+        const estadoOp = String(ped.estado_operativo || '').toUpperCase();
+        if (estadoOp === 'ANULADO') {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya se encuentra ANULADO.`);
+        }
+        if (ped.liquidacion_cerrada) {
+            throw new Error(`No se puede anular el pedido #${ped.codigo_pedido} porque la liquidación del lote ${ped.codigo_canasto} ya está cerrada.`);
+        }
+        if (['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estadoOp) || ped.debito_cta_cte_registrado) {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya fue despachado al Nodo (${estadoOp}). Para diferencias posteriores al despacho utilice Nota de Crédito / Ajuste.`);
+        }
+
+        const montoVigente = Number(ped.total_vecino || 0);
+        const estabaPagado = Boolean(ped.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
+        const eraTransferencia = String(ped.medio_pago || '').toUpperCase() === 'TRANSFERENCIA' ||
+            String(ped.estado_pago || '').toUpperCase() === 'CONCILIADO_BANCO_LAMDA';
+
+        // 1) Revertir en Subcuenta del Vecino
+        if (vecinoIdRef && montoVigente > 0) {
+            await client.query(
+                `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                    nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                    tipo_movimiento, naturaleza, monto, saldo_resultante,
+                    medio_pago, concepto, referencia_externa
+                 ) VALUES ($1, $2, $3, $4, 'CREDITO_ANULACION_PEDIDO', 'CREDITO', $5, 0, $6, $7, $8)`,
+                [
+                    ped.nodo_id,
+                    vecinoIdRef,
+                    ped.id,
+                    ped.lote_canasto_id || null,
+                    montoVigente,
+                    ped.medio_pago || 'TRANSFERENCIA',
+                    `Anulación Pedido #${ped.codigo_pedido}: ${motivo}`,
+                    ped.codigo_pedido
+                ]
+            );
+
+            if (estabaPagado) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'DEBITO_REINTEGRO_PAGO_ANULADO', 'DEBITO', $5, 0, $6, $7, $8)`,
+                    [
+                        ped.nodo_id,
+                        vecinoIdRef,
+                        ped.id,
+                        ped.lote_canasto_id || null,
+                        montoVigente,
+                        ped.medio_pago || 'TRANSFERENCIA',
+                        `Reintegro / reversión de cobro por anulación de Pedido #${ped.codigo_pedido}`,
+                        ped.codigo_pedido
+                    ]
+                );
+            }
+
+            await recalcularSaldoSubcuentaVecino(client, vecinoIdRef);
+        }
+
+        // 2) Si tenía transferencia conciliada en Banco LAMDA, revertir el CREDITO en CB-NODO-xxx con un DEBITO espejo
+        if (estabaPagado && eraTransferencia && ped.codigo_bunker_cliente && montoVigente > 0) {
+            const ccRes = await client.query(
+                `SELECT id FROM public.factura_cuentas_corrientes
+                 WHERE codigo_bunker_cliente = $1
+                 LIMIT 1
+                 FOR UPDATE`,
+                [ped.codigo_bunker_cliente]
+            );
+            let saldoNodoPost = 0;
+            if (ccRes.rows.length > 0) {
+                const ccId = ccRes.rows[0].id;
+                await client.query(
+                    `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                        cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                        tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                        creado_en, metadatos
+                     ) VALUES ($1, 'DEBITO', $2, 0, 'REVERSION_TRANSFERENCIA_ANULADA_NODO', NULL, $3, NOW(), NOW(), $4)`,
+                    [
+                        ccId,
+                        montoVigente,
+                        `Reversión de transferencia por anulación de Pedido #${ped.codigo_pedido} (${ped.vecino_nombre}) — ${motivo}`,
+                        JSON.stringify({
+                            pedido_id: ped.id,
+                            codigo_pedido: ped.codigo_pedido,
+                            vecino_nombre: ped.vecino_nombre,
+                            motivo
+                        })
+                    ]
+                );
+                saldoNodoPost = await recalcularSaldosCuentaMadreBunker(client, ccId);
+            }
+
+            await client.query(
+                `INSERT INTO public.nodos_movimientos_cta_cte (
+                    nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo,
+                    monto, saldo_resultante, concepto, referencia_externa
+                 ) VALUES ($1, $2, $3, 'DEBITO_REVERSION_PAGO_ANULADO', 1, $4, $5, $6, $7)`,
+                [
+                    ped.nodo_id,
+                    ped.lote_canasto_id || null,
+                    ped.id,
+                    montoVigente,
+                    saldoNodoPost,
+                    `Reversión de transferencia conciliada por anulación de #${ped.codigo_pedido} (${ped.vecino_nombre})`,
+                    ped.codigo_pedido
+                ]
+            );
+        } else if (estabaPagado && !eraTransferencia) {
+            // Si había sido marcado efectivo en mano antes de despacho, dejar constancia neutra
+            await client.query(
+                `INSERT INTO public.nodos_movimientos_cta_cte (
+                    nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo,
+                    monto, saldo_resultante, concepto, referencia_externa
+                 ) VALUES ($1, $2, $3, 'ANULACION_COBRO_EFECTIVO', 0, $4, 0, $5, $6)`,
+                [
+                    ped.nodo_id,
+                    ped.lote_canasto_id || null,
+                    ped.id,
+                    montoVigente,
+                    `Baja de cobro efectivo por anulación de Pedido #${ped.codigo_pedido} (${ped.vecino_nombre})`,
+                    ped.codigo_pedido
+                ]
+            );
+        }
+
+        // 3) Marcar pedido como ANULADO y desactivar presupuesto espejo en circuito LAMDA
+        await client.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET estado_operativo = 'ANULADO',
+                 estado_pago = $1,
+                 impactado_cta_cte_pago = false,
+                 motivo_anulacion_ajuste = $2,
+                 fecha_anulacion = NOW(),
+                 updated_at = NOW()
+             WHERE id = $3::int`,
+            [estabaPagado ? 'ANULADO_REVERTIDO' : 'ANULADO', motivo, ped.id]
+        );
+
+        await client.query(
+            `UPDATE public.presupuestos
+             SET activo = false,
+                 archivado = true,
+                 estado = 'Anulado'
+             WHERE id_presupuesto_ext = $1 OR ($2::int IS NOT NULL AND id = $2::int)`,
+            [ped.codigo_pedido, ped.presupuesto_id_local || null]
+        );
+
+        await sincronizarCanastosEstacionNodos(client);
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    return {
+        ok: true,
+        nodo_id: nodoIdRef,
+        vecino_id: vecinoIdRef,
+        tablero: await obtenerTableroLiquidacionCobros({ nodo_id: nodoIdRef || 0 })
+    };
+}
+
+/**
+ * Aplica una Nota de Crédito parcial sobre un pedido vecinal (por faltante parcial o ajuste de precio)
+ * antes del cierre de liquidación del lote:
+ * - Reduce determinísticamente `total_vecino`, `total_base_lamda` (proporcional o explícito) y `ganancia_total_gestor`.
+ * - Asienta `CREDITO_NOTA_CREDITO` en `nodos_vecinos_movimientos_cc`.
+ * - Si el pedido ya tenía transferencia conciliada, ajusta el excedente en `CB-NODO-xxx` y registra el reintegro.
+ * - Si el lote ya había sido retirado (`debito_cta_cte_registrado`), acredita la reducción de Costo Base en `CB-NODO-xxx`.
+ */
+async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const montoCredito = Number(Number(payload.monto_credito_vecino || payload.monto || 0).toFixed(2));
+    const motivo = String(payload.motivo || 'Ajuste / Nota de Crédito por faltante parcial').trim();
+
+    if (!(montoCredito > 0)) {
+        throw new Error('Ingrese un monto de Nota de Crédito mayor a $0.');
+    }
+
+    const client = await db.connect();
+    let nodoIdRef = null;
+    let vecinoIdRef = null;
+    try {
+        await client.query('BEGIN');
+
+        const pedRes = await client.query(
+            `SELECT npv.*,
+                    nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    nle.codigo_canasto, nle.debito_cta_cte_registrado, nle.liquidacion_cerrada
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+             WHERE npv.id = $1::int
+             FOR UPDATE OF npv`,
+            [Number(pedidoId)]
+        );
+        if (pedRes.rows.length === 0) {
+            throw new Error('Pedido vecinal no encontrado.');
+        }
+        const ped = pedRes.rows[0];
+        nodoIdRef = Number(ped.nodo_id);
+        vecinoIdRef = ped.vecino_id ? Number(ped.vecino_id) : null;
+
+        if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
+            throw new Error(`El pedido #${ped.codigo_pedido} está ANULADO.`);
+        }
+        if (ped.liquidacion_cerrada) {
+            throw new Error(`La liquidación del lote ${ped.codigo_canasto} ya se encuentra cerrada.`);
+        }
+
+        const totalActualVecino = Number(ped.total_vecino || 0);
+        if (montoCredito >= totalActualVecino) {
+            throw new Error(`El monto de la Nota de Crédito ($${montoCredito.toLocaleString('es-AR')}) cubre el total del pedido ($${totalActualVecino.toLocaleString('es-AR')}). Utilice la opción "Anular Pedido" para dar de baja el pedido completo.`);
+        }
+
+        const totalBaseActual = Number(ped.total_base_lamda || 0);
+        const proporcionBase = totalActualVecino > 0 ? (totalBaseActual / totalActualVecino) : 0;
+        const reduccionBase = payload.monto_reduccion_base_lamda !== undefined && payload.monto_reduccion_base_lamda !== null && payload.monto_reduccion_base_lamda !== ''
+            ? Math.min(totalBaseActual, Math.max(0, Number(Number(payload.monto_reduccion_base_lamda).toFixed(2))))
+            : Math.min(totalBaseActual, Number((montoCredito * proporcionBase).toFixed(2)));
+
+        const nuevoTotalVecino = Number((totalActualVecino - montoCredito).toFixed(2));
+        const nuevoSubtotalProd = Math.max(0, Number((Number(ped.subtotal_productos_vecino || totalActualVecino) - montoCredito).toFixed(2)));
+        const nuevoTotalBase = Math.max(0, Number((totalBaseActual - reduccionBase).toFixed(2)));
+        const nuevaGanancia = Math.max(0, Number((nuevoTotalVecino - nuevoTotalBase).toFixed(2)));
+
+        const estabaPagado = Boolean(ped.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
+        const eraTransferencia = String(ped.medio_pago || '').toUpperCase() === 'TRANSFERENCIA' ||
+            String(ped.estado_pago || '').toUpperCase() === 'CONCILIADO_BANCO_LAMDA';
+
+        // 1) Asentar Nota de Crédito en Subcuenta del Vecino
+        if (vecinoIdRef) {
+            await client.query(
+                `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                    nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                    tipo_movimiento, naturaleza, monto, saldo_resultante,
+                    medio_pago, concepto, referencia_externa
+                 ) VALUES ($1, $2, $3, $4, 'CREDITO_NOTA_CREDITO', 'CREDITO', $5, 0, $6, $7, $8)`,
+                [
+                    ped.nodo_id,
+                    vecinoIdRef,
+                    ped.id,
+                    ped.lote_canasto_id || null,
+                    montoCredito,
+                    ped.medio_pago || 'TRANSFERENCIA',
+                    `Nota de Crédito Pedido #${ped.codigo_pedido}: ${motivo}`,
+                    ped.codigo_pedido
+                ]
+            );
+
+            if (estabaPagado && payload.dejar_saldo_a_favor_vecino !== true) {
+                await client.query(
+                    `INSERT INTO public.nodos_vecinos_movimientos_cc (
+                        nodo_id, vecino_id, pedido_vecino_id, lote_canasto_id,
+                        tipo_movimiento, naturaleza, monto, saldo_resultante,
+                        medio_pago, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, $4, 'DEBITO_REINTEGRO_NOTA_CREDITO', 'DEBITO', $5, 0, $6, $7, $8)`,
+                    [
+                        ped.nodo_id,
+                        vecinoIdRef,
+                        ped.id,
+                        ped.lote_canasto_id || null,
+                        montoCredito,
+                        ped.medio_pago || 'TRANSFERENCIA',
+                        `Reintegro de diferencia abonada al vecino por Nota de Crédito #${ped.codigo_pedido}`,
+                        ped.codigo_pedido
+                    ]
+                );
+            }
+            await recalcularSaldoSubcuentaVecino(client, vecinoIdRef);
+        }
+
+        // 2) Ajustes en CB-NODO-xxx si correspondiera (transferencia previa o lote ya despachado)
+        if (ped.codigo_bunker_cliente) {
+            const ccRes = await client.query(
+                `SELECT id FROM public.factura_cuentas_corrientes
+                 WHERE codigo_bunker_cliente = $1
+                 LIMIT 1
+                 FOR UPDATE`,
+                [ped.codigo_bunker_cliente]
+            );
+            const ccId = ccRes.rows[0]?.id || null;
+
+            if (ccId && estabaPagado && eraTransferencia && payload.dejar_saldo_a_favor_vecino !== true) {
+                await client.query(
+                    `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                        cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                        tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                        creado_en, metadatos
+                     ) VALUES ($1, 'DEBITO', $2, 0, 'REVERSION_TRANSFERENCIA_ANULADA_NODO', NULL, $3, NOW(), NOW(), $4)`,
+                    [
+                        ccId,
+                        montoCredito,
+                        `Reintegro parcial de transferencia por Nota de Crédito en #${ped.codigo_pedido} (${ped.vecino_nombre}) — ${motivo}`,
+                        JSON.stringify({ pedido_id: ped.id, codigo_pedido: ped.codigo_pedido, monto_credito: montoCredito, motivo })
+                    ]
+                );
+                const sPost = await recalcularSaldosCuentaMadreBunker(client, ccId);
+                await client.query(
+                    `INSERT INTO public.nodos_movimientos_cta_cte (
+                        nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo,
+                        monto, saldo_resultante, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, 'DEBITO_REINTEGRO_NOTA_CREDITO', 1, $4, $5, $6, $7)`,
+                    [
+                        ped.nodo_id,
+                        ped.lote_canasto_id || null,
+                        ped.id,
+                        montoCredito,
+                        sPost,
+                        `Ajuste de transferencia por Nota de Crédito #${ped.codigo_pedido} (${ped.vecino_nombre})`,
+                        ped.codigo_pedido
+                    ]
+                );
+            }
+
+            if (ccId && ped.debito_cta_cte_registrado && reduccionBase > 0) {
+                await client.query(
+                    `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                        cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                        tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                        creado_en, metadatos
+                     ) VALUES ($1, 'CREDITO', $2, 0, 'NOTA_CREDITO_CANASTO_NODO', NULL, $3, NOW(), NOW(), $4)`,
+                    [
+                        ccId,
+                        reduccionBase,
+                        `Nota de Crédito Costo Base LAMDA en Lote ${ped.codigo_canasto} (Pedido #${ped.codigo_pedido}) — ${motivo}`,
+                        JSON.stringify({ pedido_id: ped.id, codigo_pedido: ped.codigo_pedido, reduccion_base: reduccionBase, motivo })
+                    ]
+                );
+                const sPostBase = await recalcularSaldosCuentaMadreBunker(client, ccId);
+                await client.query(
+                    `INSERT INTO public.nodos_movimientos_cta_cte (
+                        nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo,
+                        monto, saldo_resultante, concepto, referencia_externa
+                     ) VALUES ($1, $2, $3, 'CREDITO_AJUSTE_BASE_LOTE', -1, $4, $5, $6, $7)`,
+                    [
+                        ped.nodo_id,
+                        ped.lote_canasto_id || null,
+                        ped.id,
+                        reduccionBase,
+                        sPostBase,
+                        `Bonificación de Costo Base en Lote ${ped.codigo_canasto} por Nota de Crédito #${ped.codigo_pedido}`,
+                        ped.codigo_pedido
+                    ]
+                );
+            }
+        }
+
+        await client.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET subtotal_productos_vecino = $1,
+                 total_vecino = $2,
+                 total_base_lamda = $3,
+                 ganancia_total_gestor = $4,
+                 monto_ajuste_credito = COALESCE(monto_ajuste_credito, 0) + $5,
+                 motivo_anulacion_ajuste = $6,
+                 updated_at = NOW()
+             WHERE id = $7::int`,
+            [nuevoSubtotalProd, nuevoTotalVecino, nuevoTotalBase, nuevaGanancia, montoCredito, motivo, ped.id]
+        );
+
+        await sincronizarCanastosEstacionNodos(client);
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    return {
+        ok: true,
+        nodo_id: nodoIdRef,
+        vecino_id: vecinoIdRef,
+        tablero: await obtenerTableroLiquidacionCobros({ nodo_id: nodoIdRef || 0 })
+    };
+}
+
+/**
+ * Devuelve la estructura completa en Árbol de un Nodo para `Clientes Búnker`:
+ * - Datos del Nodo + Vínculo con Cuenta Personal/Madre (ej: CB-0006)
+ * - Cuadratura contable en vivo (Saldo CB-NODO-xxx vs Subcuentas de Vecinos vs Efectivo en Gestor)
+ * - Padrón completo de vecinos compradores con subcuenta, historial resumido y pedidos pendientes de cobro
+ */
+async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const rawParam = String(bunkerClienteIdOrNodoId || '').trim();
+    const searchTerm = String(opciones.search || '').trim().toLowerCase();
+    const searchDigits = normalizarTelefonoVecinoNodo(searchTerm) || searchTerm.replace(/\D+/g, '');
+
+    let nodoRes;
+    if (/^(CB-NODO-|NODO-)/i.test(rawParam)) {
+        nodoRes = await db.query(
+            `SELECT nm.*,
+                    COALESCE(cc.id, 0) AS cuenta_corriente_nodo_id,
+                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                    bc_madre.cliente_nombre AS cliente_madre_nombre,
+                    bc_madre.razon_social AS cliente_madre_razon_social,
+                    COALESCE(cc_madre.id, 0) AS cuenta_corriente_madre_id,
+                    COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_madre
+             FROM public.nodos_maestro nm
+             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+             LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+             LEFT JOIN public.factura_cuentas_corrientes cc_madre
+               ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
+             WHERE UPPER(nm.codigo_bunker_cliente) = UPPER($1)
+                OR UPPER(nm.codigo_nodo) = UPPER($1)
+             LIMIT 1`,
+            [rawParam]
+        );
+    } else {
+        const numId = Number(rawParam);
+        if (!Number.isFinite(numId) || numId <= 0) {
+            throw new Error('Identificador de Nodo inválido.');
+        }
+        nodoRes = await db.query(
+            `SELECT nm.*,
+                    COALESCE(cc.id, 0) AS cuenta_corriente_nodo_id,
+                    COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
+                    bc_madre.cliente_nombre AS cliente_madre_nombre,
+                    bc_madre.razon_social AS cliente_madre_razon_social,
+                    COALESCE(cc_madre.id, 0) AS cuenta_corriente_madre_id,
+                    COALESCE(cc_madre.saldo, 0)::numeric(14,2) AS saldo_cuenta_madre
+             FROM public.nodos_maestro nm
+             LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = nm.codigo_bunker_cliente
+             LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
+             LEFT JOIN public.factura_cuentas_corrientes cc_madre
+               ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
+              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
+             WHERE ($2::boolean = false AND nm.bunker_cliente_id = $1::int)
+                OR nm.id = $1::int
+             ORDER BY CASE WHEN nm.bunker_cliente_id = $1::int THEN 0 ELSE 1 END
+             LIMIT 1`,
+            [numId, Boolean(opciones.porNodoId)]
+        );
+    }
+
+    if (nodoRes.rows.length === 0) {
+        throw new Error('No se encontró un Nodo Barrial vinculado a este cliente.');
+    }
+    const nRow = nodoRes.rows[0];
+    const nodoId = Number(nRow.id);
+
+    const [vecinosRes, pedidosRes, lotesRes, aliasRes] = await Promise.all([
+        db.query(
+            `SELECT *
+             FROM public.nodos_vecinos
+             WHERE nodo_id = $1::int
+               AND COALESCE(activo, true) = true
+             ORDER BY nombre_completo ASC, id ASC`,
+            [nodoId]
+        ),
+        db.query(
+            `SELECT npv.*, nle.codigo_canasto, nle.liquidacion_cerrada
+             FROM public.nodos_pedidos_vecinos npv
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+             WHERE npv.nodo_id = $1::int
+             ORDER BY npv.id DESC`,
+            [nodoId]
+        ),
+        db.query(
+            `SELECT *
+             FROM public.nodos_lotes_estacion
+             WHERE nodo_id = $1::int
+             ORDER BY id DESC`,
+            [nodoId]
+        ),
+        db.query(
+            `SELECT *
+             FROM public.nodos_alias_vecinos_aprendidos
+             WHERE nodo_id = $1::int
+             ORDER BY usos_confirmados DESC, updated_at DESC`,
+            [nodoId]
+        )
+    ]);
+
+    const pedsPorVecino = new Map();
+    const pedsPorCanasto = new Map();
+    for (const p of pedidosRes.rows) {
+        const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+        const pagoConfirmado = !esAnulado && (
+            Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
+        );
+        const enriched = {
+            ...p,
+            anulado: esAnulado,
+            pago_confirmado: pagoConfirmado
+        };
+        if (p.vecino_id) {
+            const vid = Number(p.vecino_id);
+            if (!pedsPorVecino.has(vid)) pedsPorVecino.set(vid, []);
+            pedsPorVecino.get(vid).push(enriched);
+        }
+        if (p.lote_canasto_id) {
+            const cid = Number(p.lote_canasto_id);
+            if (!pedsPorCanasto.has(cid)) pedsPorCanasto.set(cid, []);
+            pedsPorCanasto.get(cid).push(enriched);
+        }
+    }
+
+    const aliasPorVecino = new Map();
+    for (const al of aliasRes.rows) {
+        if (al.vecino_id) {
+            const vid = Number(al.vecino_id);
+            if (!aliasPorVecino.has(vid)) aliasPorVecino.set(vid, []);
+            aliasPorVecino.get(vid).push(al);
+        }
+    }
+
+    let totalSubcuentasVecinos = 0;
+    let vecinosConSaldoPendiente = 0;
+    let vecinosConSaldoAFavor = 0;
+
+    const vecinosArbol = vecinosRes.rows.map(v => {
+        const vid = Number(v.id);
+        const codVec = v.codigo_vecino || formatearCodigoVecinoNodo(nodoId, vid);
+        const saldoVec = Number(Number(v.saldo_actual || 0).toFixed(2));
+        totalSubcuentasVecinos += saldoVec;
+        if (saldoVec > 0.01) vecinosConSaldoPendiente++;
+        else if (saldoVec < -0.01) vecinosConSaldoAFavor++;
+
+        const peds = pedsPorVecino.get(vid) || [];
+        const pedsActivos = peds.filter(x => !x.anulado);
+        const pedsAnulados = peds.filter(x => x.anulado);
+        const pedsPendientesPago = pedsActivos.filter(x => !x.pago_confirmado);
+        const totalComprado = pedsActivos.reduce((acc, x) => acc + Number(x.total_vecino || 0), 0);
+        const ultimoPed = pedsActivos[0] || peds[0] || null;
+        const aliasList = aliasPorVecino.get(vid) || [];
+        const titularHab = v.titular_transferencia_habitual || (aliasList[0] ? aliasList[0].titular_normalizado : '');
+
+        let coincideBusqueda = false;
+        if (searchTerm) {
+            const bolsaVec = `${codVec} ${v.nombre_completo || ''} ${v.telefono_whatsapp || ''} ${v.telefono_normalizado || ''} ${titularHab} ${v.direccion_calle || ''}`.toLowerCase();
+            if (bolsaVec.includes(searchTerm) || (searchDigits.length >= 4 && String(v.telefono_normalizado || '').includes(searchDigits))) {
+                coincideBusqueda = true;
+            }
+        }
+
+        return {
+            id: vid,
+            codigo_vecino: codVec,
+            nombre_completo: v.nombre_completo,
+            telefono_whatsapp: v.telefono_whatsapp,
+            telefono_normalizado: v.telefono_normalizado || normalizarTelefonoVecinoNodo(v.telefono_whatsapp),
+            direccion_calle: v.direccion_calle || '',
+            entrecalles_referencia: v.entrecalles_referencia || '',
+            titular_habitual: titularHab,
+            saldo_actual: saldoVec,
+            cantidad_pedidos_activos: pedsActivos.length,
+            cantidad_pedidos_anulados: pedsAnulados.length,
+            total_comprado: Number(totalComprado.toFixed(2)),
+            coincide_busqueda: coincideBusqueda,
+            ultimo_pedido: ultimoPed ? {
+                id: Number(ultimoPed.id),
+                codigo_pedido: ultimoPed.codigo_pedido,
+                fecha_entrega_label: ultimoPed.fecha_entrega_label,
+                modalidad_entrega: ultimoPed.modalidad_entrega,
+                medio_pago: ultimoPed.medio_pago,
+                estado_pago: ultimoPed.estado_pago,
+                estado_operativo: ultimoPed.estado_operativo,
+                total_vecino: Number(ultimoPed.total_vecino || 0),
+                pago_confirmado: Boolean(ultimoPed.pago_confirmado),
+                anulado: Boolean(ultimoPed.anulado)
+            } : null,
+            pedidos_pendientes_pago: pedsPendientesPago.map(pp => ({
+                id: Number(pp.id),
+                codigo_pedido: pp.codigo_pedido,
+                medio_pago: pp.medio_pago,
+                estado_pago: pp.estado_pago,
+                estado_operativo: pp.estado_operativo,
+                total_vecino: Number(pp.total_vecino || 0),
+                fecha_entrega_label: pp.fecha_entrega_label
+            }))
+        };
+    });
+
+    let efectivoManoGestorAbiertos = 0;
+    let transferenciasLamdaAbiertos = 0;
+    let costoBaseDespachadoAbiertos = 0;
+    let gananciaGestorAbiertos = 0;
+
+    const lotesResumen = lotesRes.rows.map(l => {
+        const cuadro = calcularCuadroLiquidacionCanasto(l, pedsPorCanasto.get(Number(l.id)) || []);
+        if (!l.liquidacion_cerrada) {
+            efectivoManoGestorAbiertos += Number(cuadro.efectivo_cobrado_mano_gestor || 0);
+            transferenciasLamdaAbiertos += Number(cuadro.transferencias_conciliadas_lamda || 0);
+            if (l.debito_cta_cte_registrado) {
+                costoBaseDespachadoAbiertos += Number(cuadro.total_base_lamda || 0);
+            }
+            gananciaGestorAbiertos += Number(cuadro.ganancia_neta_gestor || 0);
+        }
+        return {
+            id: Number(l.id),
+            codigo_canasto: l.codigo_canasto,
+            fecha_entrega_label: l.fecha_entrega_label,
+            estado_canasto: l.estado_canasto,
+            debito_cta_cte_registrado: Boolean(l.debito_cta_cte_registrado),
+            liquidacion_cerrada: Boolean(l.liquidacion_cerrada),
+            total_bolsas: Number(l.total_bolsas || 0),
+            cuadro_liquidacion: cuadro
+        };
+    });
+
+    return {
+        nodo: {
+            id: nodoId,
+            codigo_nodo: nRow.codigo_nodo,
+            slug: nRow.slug,
+            nombre_marca: nRow.nombre_marca,
+            subtitulo_marca: nRow.subtitulo_marca || '',
+            gestor_nombre: nRow.gestor_nombre,
+            gestor_telefono: nRow.gestor_telefono || '',
+            barrio_zona: nRow.barrio_zona || '',
+            direccion_retiro: nRow.direccion_retiro || '',
+            color_primario: nRow.color_primario || '#16a34a',
+            bunker_cliente_id: nRow.bunker_cliente_id ? Number(nRow.bunker_cliente_id) : null,
+            codigo_bunker_cliente: nRow.codigo_bunker_cliente,
+            cuenta_corriente_nodo_id: Number(nRow.cuenta_corriente_nodo_id || 0) || null,
+            saldo_cuenta_corriente: Number(Number(nRow.saldo_cuenta_corriente || 0).toFixed(2)),
+            cliente_madre_bunker_id: nRow.cliente_madre_bunker_id ? Number(nRow.cliente_madre_bunker_id) : null,
+            codigo_bunker_cliente_madre: nRow.codigo_bunker_cliente_madre || null,
+            cliente_madre_nombre: nRow.cliente_madre_razon_social || nRow.cliente_madre_nombre || null,
+            cuenta_corriente_madre_id: Number(nRow.cuenta_corriente_madre_id || 0) || null,
+            saldo_cuenta_madre: nRow.codigo_bunker_cliente_madre ? Number(Number(nRow.saldo_cuenta_madre || 0).toFixed(2)) : null
+        },
+        cuadratura: {
+            saldo_cc_nodo_lamda: Number(Number(nRow.saldo_cuenta_corriente || 0).toFixed(2)),
+            total_subcuentas_vecinos: Number(totalSubcuentasVecinos.toFixed(2)),
+            vecinos_totales: vecinosArbol.length,
+            vecinos_con_saldo_pendiente: vecinosConSaldoPendiente,
+            vecinos_con_saldo_a_favor: vecinosConSaldoAFavor,
+            efectivo_en_mano_gestor_lotes_abiertos: Number(efectivoManoGestorAbiertos.toFixed(2)),
+            transferencias_en_lamda_lotes_abiertos: Number(transferenciasLamdaAbiertos.toFixed(2)),
+            costo_base_despachado_lotes_abiertos: Number(costoBaseDespachadoAbiertos.toFixed(2)),
+            ganancia_gestor_lotes_abiertos: Number(gananciaGestorAbiertos.toFixed(2))
+        },
+        lotes_resumen: lotesResumen,
+        vecinos: vecinosArbol
+    };
+}
+
+/**
+ * Devuelve la ficha integral de la Subcuenta de un Vecino del Nodo:
+ * datos canónicos, todos sus pedidos con detalle de artículos y acciones disponibles,
+ * y el extracto cronológico completo de `nodos_vecinos_movimientos_cc`.
+ */
+async function obtenerSubcuentaVecinoDetalle(vecinoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const vid = Number(vecinoId);
+    if (!Number.isFinite(vid) || vid <= 0) {
+        throw new Error('ID de vecino inválido.');
+    }
+
+    const vecRes = await db.query(
+        `SELECT nv.*,
+                nm.codigo_nodo, nm.slug AS nodo_slug, nm.nombre_marca,
+                nm.gestor_nombre, nm.codigo_bunker_cliente, nm.color_primario
+         FROM public.nodos_vecinos nv
+         JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
+         WHERE nv.id = $1::int
+         LIMIT 1`,
+        [vid]
+    );
+    if (vecRes.rows.length === 0) {
+        throw new Error('Vecino no encontrado en el padrón del Nodo.');
+    }
+    const v = vecRes.rows[0];
+
+    const [pedidosRes, itemsRes, movsRes, aliasRes] = await Promise.all([
+        db.query(
+            `SELECT npv.*,
+                    nle.codigo_canasto, nle.estado_canasto,
+                    nle.debito_cta_cte_registrado, nle.liquidacion_cerrada
+             FROM public.nodos_pedidos_vecinos npv
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+             WHERE npv.vecino_id = $1::int
+             ORDER BY npv.id DESC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT npi.*
+             FROM public.nodos_pedidos_items npi
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             WHERE npv.vecino_id = $1::int
+             ORDER BY npi.id ASC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT nvm.*, npv.codigo_pedido, nle.codigo_canasto
+             FROM public.nodos_vecinos_movimientos_cc nvm
+             LEFT JOIN public.nodos_pedidos_vecinos npv ON npv.id = nvm.pedido_vecino_id
+             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = nvm.lote_canasto_id
+             WHERE nvm.vecino_id = $1::int
+             ORDER BY nvm.created_at DESC, nvm.id DESC`,
+            [vid]
+        ),
+        db.query(
+            `SELECT *
+             FROM public.nodos_alias_vecinos_aprendidos
+             WHERE vecino_id = $1::int
+             ORDER BY usos_confirmados DESC, updated_at DESC`,
+            [vid]
+        )
+    ]);
+
+    const itemsPorPed = new Map();
+    for (const it of itemsRes.rows) {
+        const pid = Number(it.pedido_id);
+        if (!itemsPorPed.has(pid)) itemsPorPed.set(pid, []);
+        itemsPorPed.get(pid).push(it);
+    }
+
+    let totalComprado = 0;
+    let totalAbonado = 0;
+    const pedidos = pedidosRes.rows.map(p => {
+        const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+        const pagoConfirmado = !esAnulado && (
+            Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
+        );
+        const estOp = String(p.estado_operativo || '').toUpperCase();
+        const puedeAnular = !esAnulado && !p.liquidacion_cerrada && !p.debito_cta_cte_registrado &&
+            !['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estOp);
+        const puedeNotaCredito = !esAnulado && !p.liquidacion_cerrada && Number(p.total_vecino || 0) > 0;
+
+        if (!esAnulado) {
+            totalComprado += Number(p.total_vecino || 0);
+            if (pagoConfirmado) totalAbonado += Number(p.total_vecino || 0);
+        }
+
+        return {
+            ...p,
+            anulado: esAnulado,
+            pago_confirmado: pagoConfirmado,
+            puede_anular: puedeAnular,
+            puede_nota_credito: puedeNotaCredito,
+            titular_sugerido: p.titular_transferencia || v.titular_transferencia_habitual || normalizarTitularBancario(v.nombre_completo),
+            items: itemsPorPed.get(Number(p.id)) || []
+        };
+    });
+
+    return {
+        vecino: {
+            id: vid,
+            nodo_id: Number(v.nodo_id),
+            codigo_nodo: v.codigo_nodo,
+            nodo_slug: v.nodo_slug,
+            nombre_marca: v.nombre_marca,
+            gestor_nombre: v.gestor_nombre,
+            codigo_bunker_cliente: v.codigo_bunker_cliente,
+            color_primario: v.color_primario || '#16a34a',
+            codigo_vecino: v.codigo_vecino || formatearCodigoVecinoNodo(v.nodo_id, vid),
+            nombre_completo: v.nombre_completo,
+            telefono_whatsapp: v.telefono_whatsapp,
+            telefono_normalizado: v.telefono_normalizado || normalizarTelefonoVecinoNodo(v.telefono_whatsapp),
+            direccion_calle: v.direccion_calle || '',
+            entrecalles_referencia: v.entrecalles_referencia || '',
+            notas_entrega: v.notas_entrega || '',
+            titular_transferencia_habitual: v.titular_transferencia_habitual || '',
+            saldo_actual: Number(Number(v.saldo_actual || 0).toFixed(2)),
+            total_comprado: Number(totalComprado.toFixed(2)),
+            total_abonado: Number(totalAbonado.toFixed(2)),
+            titulares_aprendidos: aliasRes.rows
+        },
+        pedidos,
+        movimientos_cc: movsRes.rows
+    };
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
     ponerACeroDatosNodosBarriales,
+    normalizarTelefonoVecinoNodo,
     construirTaxonomiaPosicionalNodo,
     previsualizarAnatomiaCotizacionNodo,
     calcularEstructuraCostosNodo,
@@ -8324,6 +9591,10 @@ module.exports = {
     conciliarTodosLosPagosPendientesCanasto,
     cerrarLiquidacionCanasto,
     reabrirLiquidacionCanastoPrueba,
+    anularPedidoVecinoNodo,
+    aplicarNotaCreditoPedidoVecino,
+    obtenerArbolNodoClientesBunker,
+    obtenerSubcuentaVecinoDetalle,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,

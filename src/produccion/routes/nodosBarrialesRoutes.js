@@ -624,6 +624,64 @@ router.post('/liquidacion/canastos/:canastoId/reabrir-prueba', async (req, res) 
     }
 });
 
+/**
+ * POST /api/produccion/nodos/liquidacion/pedidos/:pedidoId/anular
+ * Anula un pedido de vecino antes de su entrega/despacho revirtiendo subcuenta y Cta. Cte. si correspondiera
+ */
+router.post('/liquidacion/pedidos/:pedidoId/anular', async (req, res) => {
+    try {
+        const resultado = await nodosService.anularPedidoVecinoNodo(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/anular:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/pedidos/:pedidoId/nota-credito
+ * Aplica una Nota de Crédito / ajuste parcial sobre un pedido de vecino antes del cierre del lote
+ */
+router.post('/liquidacion/pedidos/:pedidoId/nota-credito', async (req, res) => {
+    try {
+        const resultado = await nodosService.aplicarNotaCreditoPedidoVecino(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/nota-credito:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/bunker-arbol/:nodoId
+ * Devuelve el árbol desplegable de un Nodo Barrial (cuadratura en vivo + subcuentas de vecinos)
+ */
+router.get('/bunker-arbol/:nodoId', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerArbolNodoClientesBunker(req.params.nodoId, {
+            search: req.query.search || ''
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /bunker-arbol/:nodoId:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/vecinos/:vecinoId/subcuenta
+ * Devuelve el detalle completo de la subcuenta de un vecino comprador (pedidos + libro mayor + KPIs)
+ */
+router.get('/vecinos/:vecinoId/subcuenta', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerSubcuentaVecinoDetalle(req.params.vecinoId);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /vecinos/:vecinoId/subcuenta:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 // ============================================================================
 // ENDPOINTS INTEGRACIÓN CON EL CIRCUITO OPERATIVO HABITUAL DE LAMDA
 // (Pizarra Principal :3000 -> Producción/Carro Personal -> Imprimir -> Armar/Chequeo -> Reparto :3005)
