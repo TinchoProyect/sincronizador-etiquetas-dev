@@ -918,10 +918,12 @@ window.actualizarEstilosCanalComercialBunker = function() {
     }
 };
 
-window.cambiarCanalComercialBunker = function(nuevoCanal) {
+window.cambiarCanalComercialBunker = async function(nuevoCanal) {
     window.bunkerCanalComercialActivo = nuevoCanal || 'MAYORISTA';
+    localStorage.setItem('bunker_canal_comercial_activo', window.bunkerCanalComercialActivo);
     window.actualizarEstilosCanalComercialBunker();
 
+    const prevListaId = Number(listaSeleccionadaGlobal);
     const selectLista = document.getElementById('filtro-lista-precios');
     if (window.bunkerCanalComercialActivo === 'NODOS' && window.listaPrecioNodosId) {
         listaSeleccionadaGlobal = Number(window.listaPrecioNodosId);
@@ -929,6 +931,16 @@ window.cambiarCanalComercialBunker = function(nuevoCanal) {
     } else if (window.bunkerCanalComercialActivo === 'MAYORISTA' && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId)) {
         listaSeleccionadaGlobal = Number(window.listaPrecioMayoristaDefaultId || 1);
         if (selectLista) selectLista.value = String(listaSeleccionadaGlobal);
+    }
+
+    if (Number(listaSeleccionadaGlobal) !== prevListaId) {
+        localStorage.setItem('bunker_lista_seleccionada_id', String(listaSeleccionadaGlobal));
+        if (gp_listasFinancieras && gp_listasFinancieras.length > 0) {
+            const idx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaSeleccionadaGlobal));
+            if (idx !== -1) gp_activeTabIdx = idx;
+        }
+        await cargarDataGrid();
+        return;
     }
 
     if (typeof window.aplicarFiltrosYOrdenamiento === 'function') {
@@ -971,8 +983,13 @@ async function cargarListasPreciosFiltro() {
             }
 
             listaSeleccionadaGlobal = parseInt(select.value) || 1;
+            const savedCanal = localStorage.getItem('bunker_canal_comercial_activo');
             if (window.listaPrecioNodosId && Number(listaSeleccionadaGlobal) === Number(window.listaPrecioNodosId)) {
-                window.bunkerCanalComercialActivo = 'NODOS';
+                window.bunkerCanalComercialActivo = (savedCanal === 'TODOS') ? 'TODOS' : 'NODOS';
+            } else if (savedCanal === 'TODOS') {
+                window.bunkerCanalComercialActivo = 'TODOS';
+            } else {
+                window.bunkerCanalComercialActivo = 'MAYORISTA';
             }
             window.actualizarEstilosCanalComercialBunker();
             
@@ -987,7 +1004,8 @@ async function cargarListasPreciosFiltro() {
                 nombre_lista: lista.nombre,
                 canal_comercial: lista.canal_comercial || 'MAYORISTA'
             }));
-            gp_activeTabIdx = 0;
+            const initTabIdx = gp_listasFinancieras.findIndex(l => Number(l.lista_id) === Number(listaSeleccionadaGlobal));
+            gp_activeTabIdx = initTabIdx !== -1 ? initTabIdx : 0;
         } else {
             select.innerHTML = '<option value="1">L1 Base</option>';
         }
@@ -1006,6 +1024,7 @@ window.cambiarListaPreciosDataGrid = async function(nuevaListaId) {
     } else if (window.bunkerCanalComercialActivo === 'NODOS') {
         window.bunkerCanalComercialActivo = 'MAYORISTA';
     }
+    localStorage.setItem('bunker_canal_comercial_activo', window.bunkerCanalComercialActivo);
     window.actualizarEstilosCanalComercialBunker();
     
     // Sincronizar el tab activo del gestor financiero

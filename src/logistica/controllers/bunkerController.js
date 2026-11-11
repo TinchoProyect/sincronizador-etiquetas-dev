@@ -413,6 +413,14 @@ exports.crearArticulo = async (req, res) => {
         }
 
         const resultado = await BunkerService.crearArticuloTransaccional(db, articuloData, listasMargenes, terminosAsegurados, solo_taxonomia);
+        if (!solo_taxonomia && articuloData && articuloData.articulo_id) {
+            try {
+                const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+                await sincronizarCatalogoNodoDesdeBunker(articuloData.articulo_id);
+            } catch (syncErr) {
+                console.warn('[BUNKER->NODOS] Aviso sincronizando crearArticulo:', syncErr.message);
+            }
+        }
         triggerB2BSync('precios', `bunker:crearArticulo:${articuloData.articulo_id || ''}`);
 
         res.status(201).json({
@@ -431,6 +439,12 @@ exports.eliminarArticulo = async (req, res) => {
         const { id } = req.params;
         const result = await BunkerService.eliminarArticuloTransaccional(req.db, id);
         if (result) {
+            try {
+                const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+                await sincronizarCatalogoNodoDesdeBunker(id);
+            } catch (syncErr) {
+                console.warn('[BUNKER->NODOS] Aviso sincronizando eliminarArticulo:', syncErr.message);
+            }
             triggerB2BSync('precios', `bunker:eliminarArticulo:${id}`);
             res.json({ success: true, message: 'Artículo eliminado del Búnker exitosamente' });
         } else {
@@ -462,6 +476,12 @@ exports.actualizarArticulo = async (req, res) => {
         const { articuloData, listasMargenes, solo_taxonomia } = req.body;
 
         await BunkerService.actualizarArticuloTransaccional(req.db, id, articuloData, listasMargenes, solo_taxonomia);
+        try {
+            const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+            await sincronizarCatalogoNodoDesdeBunker(id);
+        } catch (syncErr) {
+            console.warn('[BUNKER->NODOS] Aviso sincronizando actualizarArticulo:', syncErr.message);
+        }
         triggerB2BSync('precios', `bunker:actualizarArticulo:${id}`);
 
         res.json({ success: true, message: 'Artículo actualizado exitosamente' });
@@ -507,7 +527,9 @@ exports.actualizarEstructuraFinanciera = async (req, res) => {
         try {
             const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
             await sincronizarCatalogoNodoDesdeBunker(id);
-        } catch (_) {}
+        } catch (syncErr) {
+            console.warn('[BUNKER->NODOS] Aviso sincronizando actualizarEstructuraFinanciera:', syncErr.message);
+        }
         triggerB2BSync('precios', `bunker:actualizarEstructuraFinanciera:${id}`);
         res.json({ success: true, message: 'Estructura financiera actualizada exitosamente' });
     } catch (error) {
@@ -526,7 +548,9 @@ exports.actualizarDisponibilidadArticulo = async (req, res) => {
         try {
             const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
             await sincronizarCatalogoNodoDesdeBunker(articuloId);
-        } catch (_) {}
+        } catch (syncErr) {
+            console.warn('[BUNKER->NODOS] Aviso sincronizando actualizarDisponibilidadArticulo:', syncErr.message);
+        }
         triggerB2BSync('precios', `bunker:actualizarDisponibilidadArticulo:${articuloId}`);
         res.json({ success: true, message: 'Disponibilidad del artículo actualizada con éxito en la lista.' });
     } catch (error) {
@@ -1569,6 +1593,15 @@ exports.actualizarMargenesEnMasa = async (req, res) => {
         }
 
         await BunkerService.actualizarMargenesEnMasa(db, parseInt(lista_id, 10), articulo_ids, margenVal, modoIvaMapped);
+        try {
+            const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+            for (const artId of articulo_ids) {
+                await sincronizarCatalogoNodoDesdeBunker(artId);
+            }
+        } catch (syncErr) {
+            console.warn('[BUNKER->NODOS] Aviso sincronizando actualizarMargenesEnMasa:', syncErr.message);
+        }
+        triggerB2BSync('precios', `bunker:actualizarMargenesEnMasa:${lista_id}`);
 
         res.json({ success: true, message: 'Márgenes actualizados en masa exitosamente.' });
     } catch (error) {
@@ -1589,6 +1622,15 @@ exports.actualizarHabilitacionEnMasa = async (req, res) => {
         const isDisponible = !!disponible;
 
         await BunkerService.actualizarHabilitacionEnMasa(db, parseInt(lista_id, 10), articulo_ids, isDisponible);
+        try {
+            const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+            for (const artId of articulo_ids) {
+                await sincronizarCatalogoNodoDesdeBunker(artId);
+            }
+        } catch (syncErr) {
+            console.warn('[BUNKER->NODOS] Aviso sincronizando actualizarHabilitacionEnMasa:', syncErr.message);
+        }
+        triggerB2BSync('precios', `bunker:actualizarHabilitacionEnMasa:${lista_id}`);
 
         res.json({ success: true, message: 'Disponibilidad de catálogo actualizada en masa exitosamente.' });
     } catch (error) {
