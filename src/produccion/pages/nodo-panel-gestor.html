@@ -414,6 +414,7 @@
       propIngredienteIdSel: 0,
       propIngredienteInicializadoId: 0,
       propKilosSel: 0.25,
+      propUnidadPesoManual: 'g',
       propNombreEditadoManual: false,
       propConfirmacionReciente: '',
       liquidacionTablero: null
@@ -534,6 +535,7 @@
         const ingActual = GSTATE.ingredientesDisponibles.find(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel));
         if (ingActual && (opciones.avanzarGramajeTrasEnvio || GSTATE.propIngredienteInicializadoId !== Number(ingActual.id))) {
           GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingActual);
+          GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
           GSTATE.propIngredienteInicializadoId = Number(ingActual.id);
         }
       }
@@ -727,7 +729,7 @@
     function copiarLinkTiendaVecinos() {
       const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
       navigator.clipboard.writeText(url);
-      alert(`✅ Link de tu tienda copiado:\n${url}`);
+      mostrarAvisoPantallaGestor(`✅ Link de tu tienda copiado: ${url}`, 'ok');
     }
 
     let _ultimoPayloadWaGestor = null;
@@ -1308,9 +1310,33 @@
       return '';
     }
 
+    function formatearValorInputPesoManual(kilos, unidad) {
+      const k = Number(kilos || 0);
+      if (!Number.isFinite(k) || k <= 0) return '';
+      if (unidad === 'kg') {
+        return String(Math.round(k * 1000) / 1000);
+      }
+      return String(Math.round(k * 1000 * 10) / 10);
+    }
+
+    function parsearKilosDesdeTextoManual(texto, unidad) {
+      const limpio = String(texto ?? '').trim().replace(',', '.').replace(/\s+/g, '');
+      if (!limpio || limpio === '.' || !/^\d*(\.\d+)?$/.test(limpio)) return 0;
+      const num = Number(limpio);
+      if (!Number.isFinite(num) || num <= 0) return 0;
+      const kilos = unidad === 'kg' ? num : (num / 1000);
+      return Number(kilos.toFixed(4));
+    }
+
     function sincronizarBotonEnvioPropuestaDom(ingObj, kilos) {
       const btn = document.getElementById('btn-enviar-propuesta-gestor');
       if (!btn) return;
+      if (!kilos || Number(kilos) <= 0) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = 'Ingresá un peso válido mayor a 0';
+        return;
+      }
       const est = evaluarEstadoGramajeParaGestor(ingObj, kilos);
       const etPeso = formatearPesoCortoGestor(kilos);
 
@@ -1375,9 +1401,15 @@
         gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
       }
 
-      const inputKilos = document.getElementById('prop-kilos');
-      if (inputKilos && Math.abs(Number(inputKilos.value) - Number(GSTATE.propKilosSel)) >= 0.001) {
-        inputKilos.value = Number(GSTATE.propKilosSel).toFixed(2);
+      const selUnidad = document.getElementById('prop-peso-unidad');
+      if (selUnidad && selUnidad.value !== GSTATE.propUnidadPesoManual) {
+        selUnidad.value = GSTATE.propUnidadPesoManual;
+      }
+
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (inputPeso && document.activeElement !== inputPeso) {
+        inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
+        inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
       }
 
       const confBox = document.getElementById('prop-confirmacion-reciente');
@@ -1410,6 +1442,7 @@
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (ingSel) {
         GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
         GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
       }
       actualizarControlesPropuestaEnVivo();
@@ -1429,6 +1462,7 @@
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (ingSel) {
         GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
         GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
       }
       actualizarControlesPropuestaEnVivo();
@@ -1437,15 +1471,67 @@
     function fijarGramajePropuestaGestor(kilos) {
       GSTATE.propConfirmacionReciente = '';
       GSTATE.propKilosSel = Number(kilos || 0.25);
-      const inputKilos = document.getElementById('prop-kilos');
-      if (inputKilos) inputKilos.value = GSTATE.propKilosSel.toFixed(2);
+      GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
+      const selUnidad = document.getElementById('prop-peso-unidad');
+      if (selUnidad) selUnidad.value = GSTATE.propUnidadPesoManual;
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (inputPeso) {
+        inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
+        inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
+      }
       actualizarControlesPropuestaEnVivo();
     }
 
-    function alCambiarKilosPropuestaGestor(valor) {
+    function alEscribirPesoManualGestor(texto) {
       GSTATE.propConfirmacionReciente = '';
-      const k = Number(valor || 0);
-      if (k > 0) GSTATE.propKilosSel = k;
+      const unidad = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
+      const kilos = parsearKilosDesdeTextoManual(texto, unidad);
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+
+      if (kilos > 0) {
+        GSTATE.propKilosSel = kilos;
+        const gramajesBox = document.getElementById('prop-gramajes-box');
+        if (gramajesBox) {
+          gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
+        }
+        const avisoBox = document.getElementById('prop-aviso-existente');
+        if (avisoBox) {
+          avisoBox.innerHTML = renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel);
+        }
+        sincronizarBotonEnvioPropuestaDom(ingSel, GSTATE.propKilosSel);
+      } else {
+        const avisoBox = document.getElementById('prop-aviso-existente');
+        if (avisoBox) avisoBox.innerHTML = '';
+        sincronizarBotonEnvioPropuestaDom(ingSel, 0);
+      }
+    }
+
+    function alSalirPesoManualGestor() {
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (!inputPeso) return;
+      const unidad = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
+      const kilos = parsearKilosDesdeTextoManual(inputPeso.value, unidad);
+      if (kilos > 0) {
+        GSTATE.propKilosSel = kilos;
+      }
+      inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, unidad);
+      actualizarControlesPropuestaEnVivo();
+    }
+
+    function alCambiarUnidadPesoManualGestor(nuevaUnidad) {
+      const unidadDestino = nuevaUnidad === 'kg' ? 'kg' : 'g';
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (inputPeso) {
+        const kilosLeidos = parsearKilosDesdeTextoManual(inputPeso.value, GSTATE.propUnidadPesoManual);
+        if (kilosLeidos > 0) {
+          GSTATE.propKilosSel = kilosLeidos;
+        }
+      }
+      GSTATE.propUnidadPesoManual = unidadDestino;
+      if (inputPeso) {
+        inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, unidadDestino);
+        inputPeso.placeholder = unidadDestino === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
+      }
       actualizarControlesPropuestaEnVivo();
     }
 
@@ -1463,6 +1549,7 @@
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (ingSel && GSTATE.propIngredienteInicializadoId !== Number(ingSel.id)) {
         GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
+        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
         GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
       }
       const nombreInicial = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
@@ -1521,16 +1608,27 @@
                 <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
                   ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel)}
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div style="display:grid; grid-template-columns: 1.25fr 0.95fr; gap:10px;">
                   <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso en Kg (ej: 0.35 = 350g)</label>
-                    <input type="number" step="0.05" min="0.05" id="prop-kilos" class="input-sm" style="width:100%;"
-                      value="${Number(GSTATE.propKilosSel || 0.25).toFixed(2)}"
-                      oninput="alCambiarKilosPropuestaGestor(this.value)" />
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso manual</label>
+                    <div style="display:flex; gap:5px; align-items:stretch;">
+                      <input type="text" inputmode="decimal" autocomplete="off" id="prop-peso-manual" class="input-sm"
+                        style="flex:1; min-width:0;"
+                        value="${esc(formatearValorInputPesoManual(GSTATE.propKilosSel || 0.25, GSTATE.propUnidadPesoManual))}"
+                        placeholder="${GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350'}"
+                        oninput="alEscribirPesoManualGestor(this.value)"
+                        onblur="alSalirPesoManualGestor()" />
+                      <select id="prop-peso-unidad" class="input-sm"
+                        style="width:74px; padding-left:7px; padding-right:4px; font-weight:800; background:var(--surface-warm);"
+                        onchange="alCambiarUnidadPesoManualGestor(this.value)">
+                        <option value="g" ${GSTATE.propUnidadPesoManual === 'g' ? 'selected' : ''}>g</option>
+                        <option value="kg" ${GSTATE.propUnidadPesoManual === 'kg' ? 'selected' : ''}>kg</option>
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
-                    <input type="number" step="100" id="prop-target" class="input-sm" style="width:100%;" placeholder="Opcional" />
+                    <input type="text" inputmode="numeric" id="prop-target" class="input-sm" style="width:100%;" placeholder="Opcional" />
                   </div>
                 </div>
               </div>
@@ -1633,26 +1731,31 @@
       const solicitarHabilitacionExistente = Boolean(opciones && opciones.solicitarHabilitacionExistente === true);
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (!ingSel) {
-        alert('Seleccioná primero un producto disponible de la lista.');
+        mostrarAvisoPantallaGestor('Seleccioná primero un producto disponible de la lista.', 'error');
         return;
       }
-      const kilos = Number(document.getElementById('prop-kilos')?.value || GSTATE.propKilosSel || 0.25);
+      const inputManualEl = document.getElementById('prop-peso-manual');
+      const unidadManual = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
+      const kilos = inputManualEl && String(inputManualEl.value).trim() !== ''
+        ? parsearKilosDesdeTextoManual(inputManualEl.value, unidadManual)
+        : Number(GSTATE.propKilosSel || 0);
       if (!kilos || kilos <= 0) {
-        alert('Ingresá un peso válido mayor a 0.');
+        mostrarAvisoPantallaGestor('Ingresá un peso válido mayor a 0 (por ejemplo 350 en g o 0.5 en kg).', 'error');
         return;
       }
+      GSTATE.propKilosSel = kilos;
 
       const est = evaluarEstadoGramajeParaGestor(ingSel, kilos);
       if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
-        alert('Esta presentación ya está cotizada; podés verla o sumarla desde Mi Oferta y Márgenes.');
+        mostrarAvisoPantallaGestor('Esta presentación ya está cotizada; podés verla o sumarla desde Mi Oferta y Márgenes.', 'error');
         return;
       }
       if (est.tipo === 'YA_EXISTE_LAMDA' && !solicitarHabilitacionExistente) {
-        alert('LAMDA ya produce esta presentación. Elegí otro gramaje nuevo o usá la opción para pedir que la habiliten en tu Nodo.');
+        mostrarAvisoPantallaGestor('LAMDA ya produce esta presentación. Elegí otro gramaje nuevo o usá la opción para pedir que la habiliten en tu Nodo.', 'error');
         return;
       }
       if (est.tipo === 'YA_SOLICITADA' || (est.tipo === 'YA_EXISTE_LAMDA' && est.propuestaPendiente)) {
-        alert('Esta presentación ya fue solicitada y se encuentra en cotización.');
+        mostrarAvisoPantallaGestor('Esta presentación ya fue solicitada y se encuentra en cotización.', 'error');
         return;
       }
 
@@ -1907,7 +2010,7 @@
     function eliminarVentanaRow(idx) {
       const actual = leerVentanasDesdeDom();
       if (actual.length <= 1) {
-        alert('Debe quedar al menos un día de entrega configurado.');
+        mostrarAvisoPantallaGestor('Debe quedar al menos un día de entrega configurado.', 'error');
         return;
       }
       actual.splice(idx, 1);
@@ -1923,15 +2026,21 @@
         permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked)
       };
 
-      const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        alert('✅ Configuración guardada.');
+      try {
+        const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar la configuración: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        mostrarAvisoPantallaGestor('✅ Días de entrega, corte y envío barrial actualizados.', 'ok');
         await cargarPanelGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al guardar la configuración logística.', 'error');
       }
     }
 
@@ -2031,21 +2140,26 @@
       const ped = (GSTATE.pedidos || []).find(p => Number(p.id) === Number(pedidoId));
       if (!ped) return;
 
-      const resp = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          medio_pago: 'EFECTIVO',
-          comprobante_referencia: `REC-EFVO-${ped.codigo_pedido}`
-        })
-      });
-      const data = await resp.json();
-      if (!data.ok) {
-        alert('⚠️ ' + (data.error || 'No se pudo registrar el cobro en efectivo.'));
-        return;
+      try {
+        const resp = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/conciliar-pago`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            medio_pago: 'EFECTIVO',
+            comprobante_referencia: `REC-EFVO-${ped.codigo_pedido}`
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo registrar el cobro en efectivo: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        mostrarAvisoPantallaGestor(`✅ Cobro en efectivo registrado para el pedido #${ped.codigo_pedido}.`, 'ok');
+        await cargarPanelGestor();
+        abrirModalReciboVecinoGestor(pedidoId);
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al registrar el cobro en efectivo.', 'error');
       }
-      await cargarPanelGestor();
-      abrirModalReciboVecinoGestor(pedidoId);
     }
 
     function cerrarModalReciboGestor() {

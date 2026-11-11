@@ -31,6 +31,7 @@
         busquedaClienteAbm: '',
         clienteMadreSeleccionadoId: null,
         flujoSeleccionadoMesa: 2,
+        unidadTiempoMesa: 'seg',
         propuestaActivaId: null,
         catalogoEditandoId: null,
         omitirAutoOrigenInicial: false,
@@ -488,7 +489,7 @@
                     </div>
 
                     <!-- ENVASE, TIEMPO DE FRACCIONADO Y TARIFA HORARIA -->
-                    <div style="display:grid; grid-template-columns: 1.3fr 0.8fr 1.2fr; gap:10px; margin-bottom:12px;">
+                    <div style="display:grid; grid-template-columns: 1.25fr 1fr 1.15fr; gap:10px; margin-bottom:12px;">
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Envase / Bolsa</label>
                             <select id="cot-envase-select" onchange="window.NodosPizarra.recalcularEnVivo()"
@@ -497,9 +498,21 @@
                             </select>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Tiempo de Armado (seg)</label>
-                            <input type="number" id="cot-segundos-mo" step="1" min="0" value="35" oninput="window.NodosPizarra.recalcularEnVivo()"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
+                            <label style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">
+                                <span>Tiempo de Armado</span>
+                                <span id="cot-tiempo-equiv-label" style="font-size:0.68rem; color:#38bdf8; font-weight:700;"></span>
+                            </label>
+                            <div style="display:flex; gap:5px; align-items:stretch;">
+                                <input type="text" inputmode="decimal" autocomplete="off" id="cot-segundos-mo"
+                                    value="${ESTADO_NODOS.unidadTiempoMesa === 'min' ? '0.58' : '35'}"
+                                    oninput="window.NodosPizarra.recalcularEnVivo()"
+                                    style="flex:1; min-width:0; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
+                                <select id="cot-unidad-tiempo-mo" onchange="window.NodosPizarra.alCambiarUnidadTiempoMesa(this.value)"
+                                    style="width:74px; padding:8px 6px; border-radius:7px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                                    <option value="seg" ${ESTADO_NODOS.unidadTiempoMesa === 'seg' ? 'selected' : ''}>Seg</option>
+                                    <option value="min" ${ESTADO_NODOS.unidadTiempoMesa === 'min' ? 'selected' : ''}>Min</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Operario / Valor Hora</label>
@@ -605,11 +618,58 @@
         }).join('');
     }
 
+    function elegirUnidadTiempoInicial(segundosTotales) {
+        const seg = Math.max(0, Math.round(Number(segundosTotales) || 0));
+        return (seg >= 60 && seg % 30 === 0) ? 'min' : 'seg';
+    }
+
+    function formatearValorTiempoMesa(segundosTotales, unidad) {
+        const seg = Math.max(0, Number(segundosTotales) || 0);
+        if (unidad === 'min') {
+            return String(Math.round((seg / 60) * 100) / 100);
+        }
+        return String(Math.round(seg));
+    }
+
+    function obtenerSegundosDesdeMesa(unidadOverride) {
+        const segEl = document.getElementById('cot-segundos-mo');
+        if (!segEl) return 35;
+        const limpio = String(segEl.value ?? '').trim().replace(',', '.');
+        if (!limpio || limpio === '.') return 0;
+        const num = Number(limpio);
+        if (!Number.isFinite(num) || num < 0) return 0;
+        const unidad = unidadOverride || document.getElementById('cot-unidad-tiempo-mo')?.value || ESTADO_NODOS.unidadTiempoMesa || 'seg';
+        return unidad === 'min' ? Math.round(num * 60) : Math.round(num);
+    }
+
+    function fijarSegundosEnMesa(segundosTotales, autoUnidad = true) {
+        const seg = Math.max(0, Number(segundosTotales) || 35);
+        if (autoUnidad) {
+            ESTADO_NODOS.unidadTiempoMesa = elegirUnidadTiempoInicial(seg);
+        }
+        const unidadEl = document.getElementById('cot-unidad-tiempo-mo');
+        if (unidadEl) unidadEl.value = ESTADO_NODOS.unidadTiempoMesa;
+        const segEl = document.getElementById('cot-segundos-mo');
+        if (segEl) segEl.value = formatearValorTiempoMesa(seg, ESTADO_NODOS.unidadTiempoMesa);
+    }
+
+    function alCambiarUnidadTiempoMesa(nuevaUnidad) {
+        const unidadDestino = nuevaUnidad === 'min' ? 'min' : 'seg';
+        const segActuales = obtenerSegundosDesdeMesa(ESTADO_NODOS.unidadTiempoMesa);
+        ESTADO_NODOS.unidadTiempoMesa = unidadDestino;
+        const segEl = document.getElementById('cot-segundos-mo');
+        if (segEl) {
+            segEl.value = formatearValorTiempoMesa(segActuales, unidadDestino);
+            segEl.focus();
+            if (typeof segEl.select === 'function') segEl.select();
+        }
+        recalcularMesaCotizacionEnVivo();
+    }
+
     function recalcularMesaCotizacionEnVivo() {
         const costoKgEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
         const envaseEl = document.getElementById('cot-envase-select');
-        const segEl = document.getElementById('cot-segundos-mo');
         const tarifaEl = document.getElementById('cot-tarifa-select');
         const margenLamdaEl = document.getElementById('cot-margen-lamda');
         const ivaEl = document.getElementById('cot-iva-pct');
@@ -629,7 +689,22 @@
         const packUnidades = ingSelId === 141 ? Math.max(1, Math.round(kilosUnidad / 0.05)) : 1;
         const costoEnvaseExtra = ingSelId === 141 ? (packUnidades * costoFlowpackUnit) : 0;
         const costoEnvaseUnitario = costoEnvaseContenedor + costoEnvaseExtra;
-        const segundos = Math.max(0, Number(segEl.value) || 35);
+        const unidadTiempoActual = document.getElementById('cot-unidad-tiempo-mo')?.value || ESTADO_NODOS.unidadTiempoMesa || 'seg';
+        ESTADO_NODOS.unidadTiempoMesa = unidadTiempoActual;
+        const segundos = obtenerSegundosDesdeMesa(unidadTiempoActual);
+        const equivEl = document.getElementById('cot-tiempo-equiv-label');
+        if (equivEl) {
+            if (unidadTiempoActual === 'min') {
+                equivEl.textContent = `= ${segundos}s`;
+            } else if (segundos >= 60) {
+                equivEl.textContent = `= ${Math.round((segundos / 60) * 100) / 100} min`;
+            } else {
+                equivEl.textContent = '';
+            }
+        }
+        const etTiempoArmado = segundos >= 60 && segundos % 30 === 0
+            ? `${Math.round((segundos / 60) * 10) / 10} min / ${segundos}s`
+            : `${segundos}s`;
         const tarifaOpt = tarifaEl?.selectedOptions?.[0];
         const valorHora = Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000);
         const margenLamdaPct = Math.max(0, Number(margenLamdaEl.value) || 22);
@@ -672,7 +747,7 @@
                     <div style="font-size:0.95rem; font-weight:800; color:#f8fafc;">${fmtMoneda(costoInsumoFraccion, 2)}</div>
                 </div>
                 <div style="padding:8px; border-radius:7px; background:#0f172a; border:1px solid #1e293b;">
-                    <div style="font-size:0.7rem; color:#94a3b8;">2. Envase + Armado (${segundos}s)</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">2. Envase + Armado (${etTiempoArmado})</div>
                     <div style="font-size:0.95rem; font-weight:800; color:#f8fafc;">${fmtMoneda(costoEnvaseUnitario + costoManoObra, 2)}</div>
                     <div style="font-size:0.66rem; color:#64748b;">Bolsa ${fmtMoneda(costoEnvaseUnitario, 1)} + MO ${fmtMoneda(costoManoObra, 1)}</div>
                 </div>
@@ -1751,8 +1826,8 @@
             if (envEl && anat.insumo_envase_id && !ESTADO_NODOS.catalogoEditandoId) {
                 envEl.value = String(anat.insumo_envase_id);
             }
-            if (segEl && anat.segundos_nativos && !ESTADO_NODOS.catalogoEditandoId) {
-                segEl.value = Number(anat.segundos_nativos);
+            if (anat.segundos_nativos && !ESTADO_NODOS.catalogoEditandoId) {
+                fijarSegundosEnMesa(anat.segundos_nativos, true);
             }
             if (badgeEl) {
                 const envObj = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === Number(anat.insumo_envase_id));
@@ -1976,7 +2051,7 @@
         if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(prop.ingrediente_sugerido_nombre || prop.nombre_sugerido, kilosSug, ESTADO_NODOS.flujoSeleccionadoMesa, prop.ingrediente_sugerido_id);
         if (catEl) catEl.value = prop.categoria_sugerida || itemIng?.categoria_gestor || 'Frutos Secos';
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
-        if (segEl && prop.segundos_estimados) segEl.value = Number(prop.segundos_estimados);
+        if (prop.segundos_estimados) fijarSegundosEnMesa(prop.segundos_estimados, true);
 
         recalcularMesaCotizacionEnVivo();
         await sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: Boolean(aliasDelGestor) });
@@ -2017,7 +2092,7 @@
         if (skuEl) skuEl.value = cat.sku_nodo;
         if (catEl) catEl.value = cat.categoria_familiar || 'Frutos Secos';
         if (envEl && cat.insumo_envase_id) envEl.value = String(cat.insumo_envase_id);
-        if (segEl) segEl.value = Number(cat.segundos_fraccionamiento || 35);
+        fijarSegundosEnMesa(cat.segundos_fraccionamiento || 35, true);
         if (margenL) margenL.value = Number(cat.margen_lamda_pct || 22);
         if (iibbEl) iibbEl.value = Number(cat.iibb_pct || 4);
         if (margenG) margenG.value = Number(cat.margen_sugerido_gestor_pct || 28);
@@ -2029,6 +2104,7 @@
     function limpiarMesaCotizacion() {
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.unidadTiempoMesa = 'seg';
         renderizarVistaNodosCompleta();
     }
 
@@ -2109,7 +2185,7 @@
                 kilos_unidad: kilos,
                 insumo_envase_id: envSelect?.value ? Number(envSelect.value) : null,
                 costo_envase_unitario: Number(envOpt?.getAttribute('data-costo') || 0),
-                segundos_fraccionamiento: Number(document.getElementById('cot-segundos-mo')?.value || 35),
+                segundos_fraccionamiento: Math.max(1, obtenerSegundosDesdeMesa() || 35),
                 tarifa_colaborador_id: tarifaSelect?.value ? Number(tarifaSelect.value) : null,
                 valor_hora_aplicado: Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000),
                 margen_lamda_pct: Number(document.getElementById('cot-margen-lamda')?.value || 22),
@@ -3483,6 +3559,7 @@
         alCambiarKilosUnidadMesa,
         aplicarAliasVecinoSugeridoMesa,
         fijarGramajeRapido,
+        alCambiarUnidadTiempoMesa,
         recalcularEnVivo: recalcularMesaCotizacionEnVivo,
         cargarIngredienteDirectoEnMesa,
         cargarPresentacionPlantaEnMesa,
