@@ -96,8 +96,26 @@ app.use('/api/logistica', createProxyMiddleware({
   }
 }));
 
-app.use(express.json({ limit: '30mb' }));
-app.use(express.urlencoded({ limit: '30mb', extended: true }));
+// 🧾 [FACTURACION / WHATSAPP] Configurar proxy para el módulo de facturación y WhatsApp (puerto 3004)
+console.log('🔍 [FACTURACION] Configurando proxy para módulo de facturación y WhatsApp...');
+app.use('/api/facturacion', createProxyMiddleware({
+  target: 'http://localhost:3004',
+  changeOrigin: true,
+  pathRewrite: (path, req) => {
+    return '/facturacion' + req.url;
+  },
+  onError: (err, req, res) => {
+    console.error('❌ [FACTURACION] Error en proxy:', err.message);
+    res.status(503).json({
+      success: false,
+      error: 'Servicio de facturación/WhatsApp no disponible',
+      message: 'Verifique que el servidor de facturación esté ejecutándose en puerto 3004'
+    });
+  }
+}));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');

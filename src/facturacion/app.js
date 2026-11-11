@@ -73,8 +73,8 @@ app.use(cors(corsOptions));
 console.log('✅ [FACTURACION] CORS configurado para orígenes:', corsOptions.origin);
 
 // Middleware básico
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');

@@ -8983,14 +8983,15 @@
                 : String(telefonoDestino || '').trim(),
             pdfBase64: cleanBase64,
             filename,
-            mensajeTexto: mensajeTexto || '📄 Lista de Precios LAMDA'
+            mensajeTexto: mensajeTexto || '📄 Lista de Precios LAMDA',
+            chatId: st?.chatId || null
         };
 
         const urlFacturacionWa = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
             ? 'http://localhost:3004/facturacion/whatsapp/enviar-documento'
             : '/api/facturacion/whatsapp/enviar-documento';
 
-        let resEnvio;
+        let resEnvio = null;
         try {
             resEnvio = await fetch(urlFacturacionWa, {
                 method: 'POST',
@@ -8998,7 +8999,19 @@
                 body: JSON.stringify(payloadDocumento)
             });
         } catch (errRed) {
-            throw new Error('No se pudo conectar con el servidor de WhatsApp (puerto 3004). Verificá que el módulo de Facturación/WhatsApp esté activo.');
+            resEnvio = null;
+        }
+
+        if (!resEnvio || resEnvio.status === 404 || resEnvio.status === 502 || resEnvio.status === 503) {
+            try {
+                resEnvio = await fetch('/api/crm/whatsapp/enviar-documento', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadDocumento)
+                });
+            } catch (errRedFallback) {
+                throw new Error('No se pudo conectar con el servidor de WhatsApp (puerto 3004). Verificá que el módulo de Facturación/WhatsApp esté activo.');
+            }
         }
 
         const rawText = await resEnvio.text();
@@ -9010,7 +9023,10 @@
         }
 
         if (!resEnvio.ok || !dataEnvio.success) {
-            throw new Error(dataEnvio.error || dataEnvio.message || 'Error al enviar el PDF por WhatsApp.');
+            const detalleErr = (Array.isArray(dataEnvio?.detalles) && dataEnvio.detalles[0]?.error)
+                ? dataEnvio.detalles[0].error
+                : (dataEnvio.error || dataEnvio.message || 'Error al enviar el PDF por WhatsApp.');
+            throw new Error(detalleErr);
         }
         return dataEnvio;
     }

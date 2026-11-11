@@ -50,6 +50,8 @@ const CLIENT_RUNTIME_SCRIPT = `
         var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
         if (!host) return false;
         if (window.location.pathname && window.location.pathname.indexOf('/gw/300') === 0) return true;
+        var port = (window.location && window.location.port) ? String(window.location.port) : '';
+        if (port === '3000' || port === '3002' || port === '3003' || port === '3004') return false;
         if (host !== 'localhost' && host !== '127.0.0.1') return true;
         return false;
     }
@@ -99,6 +101,11 @@ const CLIENT_RUNTIME_SCRIPT = `
                 resolved.indexOf('/api/bunker') === 0 ||
                 resolved.indexOf('/api/b2b') === 0 ||
                 resolved.indexOf('/api/system') === 0 ||
+                resolved.indexOf('/api/presupuestos') === 0 ||
+                resolved.indexOf('/api/supabase') === 0 ||
+                resolved.indexOf('/api/produccion') === 0 ||
+                resolved.indexOf('/api/tiempos') === 0 ||
+                resolved.indexOf('/api/facturacion') === 0 ||
                 resolved.indexOf('/lamda-cloud-runtime.js') === 0 ||
                 resolved.indexOf('/lamda-prueba-') === 0 ||
                 resolved.indexOf('/env-config.js') === 0 ||

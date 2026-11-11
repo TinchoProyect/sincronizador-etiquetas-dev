@@ -841,6 +841,129 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
 });
 
 /**
+ * POST /api/crm/whatsapp/enviar-directo
+ * Envía un mensaje de WhatsApp a un número de teléfono cuando aún no existe un chatId en crm_whatsapp_chats
+ * o desde el Asistente Comercial Híbrido directo por cliente.
+ */
+router.post('/crm/whatsapp/enviar-directo', async (req, res) => {
+    try {
+        const { telefono, mensaje, mensajeTexto } = req.body || {};
+        const textoFinal = String(mensajeTexto || mensaje || '').trim();
+        const telLimpio = String(telefono || '').replace(/[^0-9]/g, '').trim();
+
+        if (!telLimpio) {
+            return res.status(400).json({ success: false, error: 'El número de teléfono de destino es obligatorio.' });
+        }
+        if (!textoFinal) {
+            return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío.' });
+        }
+
+        const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                destinatarios: telLimpio,
+                mensajeTexto: textoFinal
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            let detalleError = (Array.isArray(data.detalles) && data.detalles[0]?.error)
+                ? data.detalles[0].error
+                : (data.error || data.message || 'No se pudo enviar el mensaje directo por WhatsApp.');
+            if (/No LID for user/i.test(detalleError)) {
+                detalleError = `El número +${telLimpio} no tiene una cuenta de WhatsApp activa.`;
+            }
+            return res.status(response.status || 500).json({
+                success: false,
+                error: detalleError,
+                detalles: data.detalles || []
+            });
+        }
+
+        await pool.query(`
+            UPDATE public.crm_whatsapp_chats
+            SET esperando_respuesta = false,
+                no_leidos = 0,
+                ultimo_mensaje_texto = $2,
+                ultimo_mensaje_from_me = true,
+                ultimo_mensaje_at = NOW(),
+                updated_at = NOW()
+            WHERE RIGHT(REGEXP_REPLACE(COALESCE(telefono_normalizado, ''), '[^0-9]', '', 'g'), 10) = RIGHT($1, 10)
+        `, [telLimpio, textoFinal]).catch(() => {});
+
+        res.json({
+            success: true,
+            message: 'Mensaje directo enviado correctamente.',
+            data
+        });
+    } catch (error) {
+        console.error('❌ [CRM-WA-HUB] Error en /crm/whatsapp/enviar-directo:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/crm/whatsapp/enviar-documento
+ * Proxy directo en CRM para despachar un documento PDF adjunto vía microservicio 3004
+ * y apagar simultáneamente el alerta de espera en crm_whatsapp_chats.
+ */
+router.post('/crm/whatsapp/enviar-documento', async (req, res) => {
+    try {
+        const { destinatarios, pdfBase64, filename, mensajeTexto, chatId } = req.body || {};
+        if (!destinatarios || !pdfBase64) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan parámetros requeridos (destinatarios, pdfBase64).'
+            });
+        }
+
+        const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-documento', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                destinatarios,
+                pdfBase64,
+                filename: filename || 'Lista_de_Precios_LAMDA.pdf',
+                mensajeTexto: mensajeTexto || '📄 Lista de Precios LAMDA'
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            let detalleError = (Array.isArray(data.detalles) && data.detalles[0]?.error)
+                ? data.detalles[0].error
+                : (data.error || data.message || 'No se pudo enviar el documento PDF por WhatsApp.');
+            return res.status(response.status || 500).json({
+                success: false,
+                error: detalleError,
+                detalles: data.detalles || []
+            });
+        }
+
+        const resumenDoc = `📄 [${filename || 'Documento.pdf'}] ${String(mensajeTexto || '').trim()}`.trim();
+        if (chatId) {
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET esperando_respuesta = false,
+                    no_leidos = 0,
+                    ultimo_mensaje_texto = $2,
+                    ultimo_mensaje_from_me = true,
+                    ultimo_mensaje_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [parseInt(chatId, 10), resumenDoc]).catch(() => {});
+        }
+
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [CRM-WA-HUB] Error en /crm/whatsapp/enviar-documento:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/crm/whatsapp/chats/:id/marcar-atendido
  * Apaga manualmente la alerta de "Esperando respuesta" sin necesidad de enviar un mensaje
  * (ej: cuando el cliente solo dice "Ok, gracias!")

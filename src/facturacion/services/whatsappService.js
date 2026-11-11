@@ -576,6 +576,28 @@ async function resolverChatId(numero) {
 }
 
 /**
+ * Envío resiliente en WhatsApp Web (WWebJS) con reintento automático sin sendSeen
+ * y fallback al JID canónico @c.us si falla el JID @lid por caché/memoizer de WhatsApp Web.
+ */
+async function enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content, options = {}) {
+    try {
+        return await client.sendMessage(targetChatId, content, options);
+    } catch (err1) {
+        console.warn(`⚠️ [WHATSAPP-SERVICE] Primer intento de sendMessage a ${targetChatId} falló (${err1.message}). Reintentando con sendSeen: false...`);
+        const optsNoSeen = { ...options, sendSeen: false };
+        try {
+            return await client.sendMessage(targetChatId, content, optsNoSeen);
+        } catch (err2) {
+            if (canonicalChatId && canonicalChatId !== targetChatId) {
+                console.warn(`⚠️ [WHATSAPP-SERVICE] Fallback de sendMessage hacia canonicalChatId ${canonicalChatId}...`);
+                return await client.sendMessage(canonicalChatId, content, optsNoSeen);
+            }
+            throw err2;
+        }
+    }
+}
+
+/**
  * Enviar Factura PDF a una lista de números telefónicos
  * 
  * @param {number|string} facturaId - ID de la factura
@@ -648,9 +670,9 @@ const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = 
             console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje con adjunto a: ${targetChatId}`);
 
             // Enviar mensaje con adjunto y texto como caption
-            const sentMsg = await client.sendMessage(targetChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
+            const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
             
-            crmWhatsappDb.registrarMensajeWhatsapp({
+            await crmWhatsappDb.registrarMensajeWhatsapp({
                 msgId: sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
@@ -684,12 +706,6 @@ const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = 
  * @returns {Promise<Array>} Resultados del envío por cada número
  */
 const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = 'Te enviamos el documento solicitado. Saludos.') => {
-    const simRes = interceptarEnvioEnModoSeguro(numeros, "DOCUMENTO_PDF", filename);
-    if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
-
     if (!numeros || !numeros.trim()) {
         throw new Error('No se especificaron números telefónicos de destino.');
     }
@@ -700,6 +716,64 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
 
     if (listaNumeros.length === 0) {
         throw new Error('Ninguno de los números telefónicos provistos es válido.');
+    }
+
+    if (esModoLaboratorioWa() && (!client || !client.pupPage)) {
+        try {
+            const TELEFONO_PRUEBA_EXCLUSIVO = '5492216615746';
+            const redirLab = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, `DOCUMENTO PDF (${filename})`);
+            const destinoUnico = String(redirLab.listaFinal?.[0] || '').replace(/[^0-9]/g, '');
+            if (redirLab.listaFinal.length === 1 && destinoUnico === TELEFONO_PRUEBA_EXCLUSIVO) {
+                const cloudUrl = `${obtenerUrlNubeTitular()}/gw/3004/facturacion/whatsapp/enviar-documento`;
+                const jwtToken = firmarJwtSesion({ id: 1, usuario: 'laboratorio-safe-redirect', rol_id: 1 });
+                console.log(`🚀 [WHATSAPP-LAB-REAL] Despachando PDF "${filename}" redirigido exclusivamente a +${TELEFONO_PRUEBA_EXCLUSIVO} vía sesión activa LAMDA (${cloudUrl})...`);
+                const relayRes = await fetch(cloudUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${jwtToken}`,
+                        'Cookie': `lamda_cloud_jwt=${jwtToken}`
+                    },
+                    body: JSON.stringify({
+                        destinatarios: TELEFONO_PRUEBA_EXCLUSIVO,
+                        pdfBase64: pdfBuffer.toString('base64'),
+                        filename,
+                        mensajeTexto: redirLab.textoFinal
+                    })
+                });
+                const relayJson = await relayRes.json().catch(() => ({}));
+                if (relayRes.ok && relayJson.success) {
+                    await crmWhatsappDb.registrarMensajeWhatsapp({
+                        msgId: `lab_pdf_${Date.now()}`,
+                        chatId: `${TELEFONO_PRUEBA_EXCLUSIVO}@c.us`,
+                        telefono: TELEFONO_PRUEBA_EXCLUSIVO,
+                        fromMe: true,
+                        cuerpo: `📄 [${filename}] ${redirLab.textoFinal || ''}`.trim(),
+                        tipoMensaje: 'document',
+                        mediaFilename: filename,
+                        mediaMimetype: 'application/pdf',
+                        ack: 1,
+                        origenEnvio: 'lamda_laboratorio_real'
+                    }).catch(() => {});
+                    return listaNumeros.map(orig => ({
+                        numero: TELEFONO_PRUEBA_EXCLUSIVO,
+                        original: orig,
+                        redirectedTo: TELEFONO_PRUEBA_EXCLUSIVO,
+                        success: true,
+                        simulated: false,
+                        realDelivery: true
+                    }));
+                }
+            }
+        } catch (errRelayPdf) {
+            console.warn('⚠️ [WHATSAPP-LAB-REAL] Fallback a simulación local de PDF en Laboratorio:', errRelayPdf.message);
+        }
+    }
+
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "DOCUMENTO_PDF", filename);
+    if (simRes) return simRes;
+    if (connectionStatus !== 'CONECTADO') {
+        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
     }
 
     console.log(`📱 [WHATSAPP-SERVICE] Enviando PDF genérico "${filename}" a ${listaNumeros.length} destinatarios.`);
@@ -716,9 +790,9 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando documento con adjunto a: ${targetChatId}`);
 
-            const sentMsg = await client.sendMessage(targetChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
+            const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
             
-            crmWhatsappDb.registrarMensajeWhatsapp({
+            await crmWhatsappDb.registrarMensajeWhatsapp({
                 msgId: sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
@@ -838,9 +912,9 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando mensaje de texto a: ${targetChatId}`);
 
-            const sentMsg = await client.sendMessage(targetChatId, mensajeTexto);
+            const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, mensajeTexto);
             
-            crmWhatsappDb.registrarMensajeWhatsapp({
+            await crmWhatsappDb.registrarMensajeWhatsapp({
                 msgId: sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
@@ -908,9 +982,9 @@ const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensa
             const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
             console.log(`📱 [WHATSAPP-SERVICE] Enviando imagen a: ${targetChatId}`);
 
-            const sentMsg = await client.sendMessage(targetChatId, media, { caption: mensajeTexto });
+            const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto });
             
-            crmWhatsappDb.registrarMensajeWhatsapp({
+            await crmWhatsappDb.registrarMensajeWhatsapp({
                 msgId: sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
