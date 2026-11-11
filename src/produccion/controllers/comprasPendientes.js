@@ -493,6 +493,17 @@ const marcarPendienteImpreso = async (req, res) => {
 
         console.log(`✅ [MARCAR-IMPRESO] Presupuesto ${id_presupuesto_local} → secuencia: Armar_Pedido`);
 
+        try {
+            const { sincronizarCambioSecuenciaDesdeLamda } = require('../services/nodosBarrialesService');
+            const rowImp = result.rows[0];
+            await sincronizarCambioSecuenciaDesdeLamda(
+                [String(rowImp.id_presupuesto_ext || rowImp.id), String(rowImp.id)],
+                'Armar_Pedido'
+            );
+        } catch (errSyncNodo) {
+            console.warn('⚠️ [MARCAR-IMPRESO] Advertencia sincronizando Nodo:', errSyncNodo.message);
+        }
+
         res.json({
             success: true,
             data: result.rows[0],

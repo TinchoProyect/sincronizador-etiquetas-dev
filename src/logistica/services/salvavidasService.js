@@ -640,12 +640,43 @@ async function calcularSimulacionCuenta(cuentaId, opciones = {}, db = pool) {
     };
 }
 
+let _cacheDashboardSombra = null; // { fingerprint, ts, payload }
+const DASHBOARD_SOMBRA_TTL_MS = 120000;
+
+async function _obtenerHuellaDashboardSombra(db = pool) {
+    try {
+        const r = await db.query(`
+            SELECT
+                TO_CHAR(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD') AS fecha_ar,
+                (SELECT COUNT(*)::text || ':' || COALESCE(MAX(id)::text, '0') || ':' || COALESCE(SUM(COALESCE(monto, 0))::numeric(16,2)::text, '0') FROM public.factura_cuenta_corriente_movimientos) AS fp_movs,
+                (SELECT COUNT(*)::text || ':' || COALESCE(SUM(COALESCE(saldo, 0))::numeric(16,2)::text, '0') FROM public.factura_cuentas_corrientes) AS fp_cc,
+                (SELECT COUNT(*)::text || ':' || COALESCE(MAX(updated_at)::text, '0') FROM public.bunker_clientes) AS fp_cli,
+                (SELECT COALESCE(STRING_AGG(id::text || ':' || COALESCE(modo_sistema, '') || ':' || COALESCE(tasa_servicio_financiero::text, ''), ',' ORDER BY id), '') FROM public.bunker_financiacion_config) AS fp_cfg,
+                (SELECT COUNT(*)::text || ':' || COALESCE(STRING_AGG(id::text || '=' || COALESCE(salvavidas_habilitado::text, ''), ',' ORDER BY id), '') FROM public.bunker_listas_precios) AS fp_lp
+        `);
+        const row = r.rows[0] || {};
+        return `${row.fecha_ar}|${row.fp_movs}|${row.fp_cc}|${row.fp_cli}|${row.fp_cfg}|${row.fp_lp}`;
+    } catch (_) {
+        return null;
+    }
+}
+
 /**
  * Genera el Dashboard de Métricas Sombra consolidado bajo el paradigma de 3 ventanas
  * y el mapa integral `clientes_financiacion_map` para la grilla de Gestión de Clientes Búnker.
  * @param {Object} db - Pool o cliente de base de datos
  */
 async function obtenerDashboardMetricasSombra(db = pool) {
+    const fingerprint = await _obtenerHuellaDashboardSombra(db);
+    if (
+        fingerprint &&
+        _cacheDashboardSombra &&
+        _cacheDashboardSombra.fingerprint === fingerprint &&
+        (Date.now() - _cacheDashboardSombra.ts) < DASHBOARD_SOMBRA_TTL_MS
+    ) {
+        return _cacheDashboardSombra.payload;
+    }
+
     const configGlobal = await obtenerConfiguracionGlobal(db);
 
     const queryClientes = `
@@ -686,6 +717,7 @@ async function obtenerDashboardMetricasSombra(db = pool) {
     const desglosePorLista = {};
     const rankingClientesAsistidos = [];
     const clientesFinanciacionMap = {};
+    const pendientesSimulacion = [];
 
     for (const cli of clientesUnicos.values()) {
         const rawModo = String(cli.salvavidas_modo || 'HEREDAR_LISTA').toUpperCase();
@@ -731,7 +763,22 @@ async function obtenerDashboardMetricasSombra(db = pool) {
         }
 
         totalCuentasAnalizadas++;
-        const sim = await calcularSimulacionCuenta(cli.cuenta_id, { persistir_sombra: false }, db);
+        pendientesSimulacion.push({ cli, modoSwitch });
+    }
+
+    const BATCH_SIZE = 8;
+    const resultadosSim = [];
+    for (let i = 0; i < pendientesSimulacion.length; i += BATCH_SIZE) {
+        const lote = pendientesSimulacion.slice(i, i + BATCH_SIZE);
+        const simsLote = await Promise.all(
+            lote.map(item => calcularSimulacionCuenta(item.cli.cuenta_id, { persistir_sombra: false }, db))
+        );
+        for (let j = 0; j < lote.length; j++) {
+            resultadosSim.push({ ...lote[j], sim: simsLote[j] });
+        }
+    }
+
+    for (const { cli, modoSwitch, sim } of resultadosSim) {
         if (!sim) continue;
 
         const calcNeta = Number(sim.financiacion_calculada_neta ?? sim.financiacion_total ?? 0);
@@ -822,7 +869,7 @@ async function obtenerDashboardMetricasSombra(db = pool) {
 
     rankingClientesAsistidos.sort((a, b) => b.asistencia_devengada - a.asistencia_devengada);
 
-    return {
+    const payload = {
         configuracion_vigente: configGlobal,
         clientes_financiacion_map: clientesFinanciacionMap,
         metricas_generales: {
@@ -850,6 +897,11 @@ async function obtenerDashboardMetricasSombra(db = pool) {
         })),
         ranking_clientes_asistidos: rankingClientesAsistidos.slice(0, 20)
     };
+
+    if (fingerprint) {
+        _cacheDashboardSombra = { fingerprint, ts: Date.now(), payload };
+    }
+    return payload;
 }
 
 /**
@@ -903,6 +955,7 @@ async function actualizarConfiguracionCliente(codigoCliente, datos, db = pool) {
         hasDiasCort,
         hasMotivo
     ]);
+    _cacheDashboardSombra = null;
     return res.rows[0] || null;
 }
 
@@ -933,6 +986,7 @@ async function actualizarConfiguracionGlobal(datos, db = pool) {
         modo_sistema,
         descripcion_servicio
     ]);
+    _cacheDashboardSombra = null;
     return res.rows[0] || null;
 }
 
@@ -1262,6 +1316,7 @@ async function emitirFacturaInteresPago(cuentaId, pagoMovId, modoFacturacion = '
 
     // Recalcular saldos acumulados en orden cronológico estricto
     await recalcularSaldosCC(cuentaId, db);
+    _cacheDashboardSombra = null;
 
     return {
         idempotente: false,

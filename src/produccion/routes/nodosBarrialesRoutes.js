@@ -403,10 +403,74 @@ router.get('/portal/:slug', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const fechaSimulada = req.query.fecha_simulada || null;
-        const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada);
+        const vista = req.query.vista || '';
+        const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada, { vista });
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /portal/:slug:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/tienda/:slug/seguimiento/:token
+ * Seguimiento en vivo Marca Blanca por token criptográfico (6 hitos envío / 5 hitos retiro)
+ */
+router.get('/tienda/:slug/seguimiento/:token', async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosService.obtenerSeguimientoPublicoPedidoVecino(req.params.slug, req.params.token);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        res.status(404).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/tienda/:slug/buscar-seguimiento
+ * Buscador público validando coincidencia simultánea de WhatsApp + código #NB-...
+ */
+router.post('/tienda/:slug/buscar-seguimiento', async (req, res) => {
+    try {
+        const data = await nodosService.buscarSeguimientoPublicoPorTelefonoYPedido(req.params.slug, req.body || {});
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion
+ * Confirmación de 1 toque de recepción física del lote en el Nodo (Hito 3 -> 4 + Débito CB-NODO-xxx)
+ */
+router.post('/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion', async (req, res) => {
+    try {
+        const resultado = await nodosService.confirmarRecepcionLotePorGestor(
+            req.params.nodoId,
+            req.params.canastoId,
+            req.body || {}
+        );
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en confirmar-recepcion de lote:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/pedidos/:pedidoId/estado-entrega
+ * Controles de 1 toque del Gestor: SALIO_REPARTO (Hito 5) y ENTREGADO (Hito 6 + cobro efectivo unificado)
+ */
+router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', async (req, res) => {
+    try {
+        const resultado = await nodosService.actualizarEstadoEntregaVecinoPorGestor(
+            req.params.nodoId,
+            req.params.pedidoId,
+            req.body || {}
+        );
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en estado-entrega de pedido vecinal:', error);
         res.status(400).json({ ok: false, error: error.message });
     }
 });

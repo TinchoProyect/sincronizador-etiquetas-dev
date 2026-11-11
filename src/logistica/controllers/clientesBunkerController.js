@@ -14,12 +14,15 @@ const { sincronizarTodoElDirectorioB2B } = require('../services/b2bDirectorySync
 const nodosBarrialesService = require('../../produccion/services/nodosBarrialesService');
 
 let _esquemaNodosReadyPromise = null;
+let _esquemaNodosReadyDone = false;
 function asegurarEsquemaNodosOnce() {
     if (!_esquemaNodosReadyPromise) {
-        _esquemaNodosReadyPromise = nodosBarrialesService.asegurarEsquemaNodosBarriales().catch(err => {
-            _esquemaNodosReadyPromise = null;
-            console.warn('⚠️ [CLIENTES-BUNKER] No se pudo verificar esquema Nodos Barriales:', err.message);
-        });
+        _esquemaNodosReadyPromise = nodosBarrialesService.asegurarEsquemaNodosBarriales()
+            .then(() => { _esquemaNodosReadyDone = true; })
+            .catch(err => {
+                _esquemaNodosReadyPromise = null;
+                console.warn('⚠️ [CLIENTES-BUNKER] No se pudo verificar esquema Nodos Barriales:', err.message);
+            });
     }
     return _esquemaNodosReadyPromise;
 }
@@ -33,47 +36,90 @@ const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY)
       })
     : null;
 
-async function obtenerClienteIdsActivosB2B() {
-    if (!supabaseAdmin) return [];
-    const activeSet = new Set();
-    const esEmailFicticio = (em) => {
-        const clean = String(em || '').trim().toLowerCase();
-        return !clean || clean.endsWith('@lamdaclientes.com') || clean.endsWith('@b2b.lamdaser.com') || clean.endsWith('@lamda.com.ar');
-    };
-    try {
-        const { data: profs } = await supabaseAdmin
-            .from('clientes_b2b_perfiles')
-            .select('cliente_id, email');
-        (profs || []).forEach(p => {
-            if (p.cliente_id && !esEmailFicticio(p.email)) {
-                activeSet.add(p.cliente_id);
-            }
-        });
-    } catch (e) {}
+const B2B_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+let _b2bActiveIdsSet = new Set();
+let _b2bCacheLoadedAt = 0;
+let _b2bRefreshInFlight = null;
 
-    try {
-        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
-        (usersData?.users || []).forEach(u => {
-            const cid = u.app_metadata?.cliente_id || u.user_metadata?.cliente_id;
-            if (cid && (u.last_sign_in_at || !esEmailFicticio(u.email))) {
-                activeSet.add(cid);
-            }
-        });
-    } catch (e) {}
-
-    try {
-        const { data: telem } = await supabaseAdmin
-            .from('telemetria_accesos')
-            .select('cliente_nombre');
-        (telem || []).forEach(t => {
-            if (t.cliente_nombre && t.cliente_nombre.startsWith('CB-')) {
-                activeSet.add(t.cliente_nombre);
-            }
-        });
-    } catch (e) {}
-
-    return Array.from(activeSet);
+function conTimeoutRemoto(promise, ms = 3500) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_REMOTO')), ms))
+    ]);
 }
+
+async function refrescarClienteIdsActivosB2BEnFondo() {
+    if (!supabaseAdmin) return _b2bActiveIdsSet;
+    if (_b2bRefreshInFlight) return _b2bRefreshInFlight;
+
+    _b2bRefreshInFlight = (async () => {
+        const activeSet = new Set();
+        const esEmailFicticio = (em) => {
+            const clean = String(em || '').trim().toLowerCase();
+            return !clean || clean.endsWith('@lamdaclientes.com') || clean.endsWith('@b2b.lamdaser.com') || clean.endsWith('@lamda.com.ar');
+        };
+
+        const [profsRes, usersRes, telemRes] = await Promise.allSettled([
+            conTimeoutRemoto(
+                supabaseAdmin.from('clientes_b2b_perfiles').select('cliente_id, email'),
+                3500
+            ),
+            conTimeoutRemoto(
+                supabaseAdmin.auth.admin.listUsers(),
+                3500
+            ),
+            conTimeoutRemoto(
+                supabaseAdmin
+                    .from('telemetria_accesos')
+                    .select('cliente_nombre')
+                    .like('cliente_nombre', 'CB-%')
+                    .order('id', { ascending: false })
+                    .limit(1000),
+                3500
+            )
+        ]);
+
+        if (profsRes.status === 'fulfilled' && Array.isArray(profsRes.value?.data)) {
+            profsRes.value.data.forEach(p => {
+                if (p.cliente_id && !esEmailFicticio(p.email)) activeSet.add(p.cliente_id);
+            });
+        }
+        if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value?.data?.users)) {
+            usersRes.value.data.users.forEach(u => {
+                const cid = u.app_metadata?.cliente_id || u.user_metadata?.cliente_id;
+                if (cid && (u.last_sign_in_at || !esEmailFicticio(u.email))) activeSet.add(cid);
+            });
+        }
+        if (telemRes.status === 'fulfilled' && Array.isArray(telemRes.value?.data)) {
+            telemRes.value.data.forEach(t => {
+                if (t.cliente_nombre && t.cliente_nombre.startsWith('CB-')) activeSet.add(t.cliente_nombre);
+            });
+        }
+
+        if (activeSet.size > 0 || _b2bCacheLoadedAt === 0) {
+            _b2bActiveIdsSet = activeSet;
+            _b2bCacheLoadedAt = Date.now();
+        }
+        return _b2bActiveIdsSet;
+    })()
+        .catch(() => _b2bActiveIdsSet)
+        .finally(() => { _b2bRefreshInFlight = null; });
+
+    return _b2bRefreshInFlight;
+}
+
+function obtenerSetClientesActivosB2BInstantaneo() {
+    if (supabaseAdmin && (Date.now() - _b2bCacheLoadedAt > B2B_CACHE_TTL_MS)) {
+        refrescarClienteIdsActivosB2BEnFondo().catch(() => {});
+    }
+    return _b2bActiveIdsSet;
+}
+
+// Precalentar esquema de Nodos y caché B2B en segundo plano al iniciar el módulo (cero bloqueo en GET)
+setImmediate(() => {
+    asegurarEsquemaNodosOnce();
+    refrescarClienteIdsActivosB2BEnFondo().catch(() => {});
+});
 
 /**
  * Validador oficial de CUIT/CUIL basado en ponderadores de Módulo 11 (Adaptación de Blueprint ARCA).
@@ -110,13 +156,11 @@ function validarCuit(cuit) {
 exports.obtenerTodos = async (req, res) => {
     try {
         const { search } = req.query;
-        console.log(`🔍 [CLIENTES-BUNKER] Listando clientes. Búsqueda: "${search || ''}"`);
-        await asegurarEsquemaNodosOnce();
+        if (!_esquemaNodosReadyDone) {
+            await asegurarEsquemaNodosOnce();
+        }
         const clientes = await ClientesBunkerModel.obtenerTodos({ search });
-        
-        // Validación cruzada dinámica con perfiles reales en Supabase
-        const activeIds = await obtenerClienteIdsActivosB2B();
-        const activeSet = new Set(activeIds);
+        const activeSet = obtenerSetClientesActivosB2BInstantaneo();
 
         const dataConOnboarding = clientes.map(c => ({
             ...c,
@@ -141,22 +185,8 @@ exports.obtenerPorId = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Cliente no encontrado.' });
         }
 
-        // Validación cruzada individual con Supabase
-        let onboarding_completado = cliente.onboarding_completado;
-        if (!onboarding_completado && supabaseAdmin) {
-            try {
-                const { data, error } = await supabaseAdmin
-                    .from('clientes_b2b_perfiles')
-                    .select('id')
-                    .eq('cliente_id', cliente.codigo_bunker_cliente)
-                    .maybeSingle();
-                if (!error && data) {
-                    onboarding_completado = true;
-                }
-            } catch (err) {
-                console.error('⚠️ [CLIENTES-BUNKER] Error al verificar perfil individual en Supabase:', err.message);
-            }
-        }
+        const activeSet = obtenerSetClientesActivosB2BInstantaneo();
+        const onboarding_completado = cliente.onboarding_completado === true || activeSet.has(cliente.codigo_bunker_cliente);
 
         res.json({ 
             success: true, 
@@ -412,15 +442,18 @@ exports.actualizar = async (req, res) => {
             }
         }
 
-        // 8. Control de unicidad de cuit_cuil (excluyendo el registro actual, con bypass de confirmación)
+        // 8. Control de unicidad de cuit_cuil (excluyendo el registro actual y pares legítimos Cliente Madre <-> Nodo Barrial)
         if (cuit_cuil !== null && !confirmarCuitDuplicado) {
-            const clienteExistenteCuit = await ClientesBunkerModel.obtenerPorCuit(cuit_cuil);
-            if (clienteExistenteCuit && clienteExistenteCuit.id != id) {
+            const coincidenciasCuit = await ClientesBunkerModel.obtenerTodosPorCuit(cuit_cuil);
+            for (const otro of coincidenciasCuit) {
+                if (Number(otro.id) === Number(id)) continue;
+                const esParMadreNodo = await ClientesBunkerModel.esParMadreNodoVinculado(otro.id, id);
+                if (esParMadreNodo) continue;
                 return res.status(409).json({ 
                     success: false, 
                     code: 'CUIT_DUPLICADO', 
-                    clienteNombre: clienteExistenteCuit.cliente_nombre,
-                    error: `El CUIT/CUIL "${cuit_cuil}" ya está asociado al cliente "${clienteExistenteCuit.cliente_nombre}".` 
+                    clienteNombre: otro.cliente_nombre,
+                    error: `El CUIT/CUIL "${cuit_cuil}" ya está asociado al cliente "${otro.cliente_nombre}".` 
                 });
             }
         }
@@ -554,6 +587,14 @@ exports.actualizar = async (req, res) => {
             } catch (errSupabase) {
                 console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando ver_stock en Supabase:', errSupabase.message);
             }
+        }
+
+        // Si este cliente es Cliente Madre de uno o más Nodos Barriales (ej: CB-0006 -> CB-NODO-001),
+        // propagar en segundo plano cualquier actualización fiscal/contacto hacia su ficha operativa de Nodo
+        if (typeof nodosBarrialesService.sincronizarHerenciaFiscalDesdeMadrePorId === 'function') {
+            nodosBarrialesService.sincronizarHerenciaFiscalDesdeMadrePorId(Number(id)).catch(errHer => {
+                console.warn('⚠️ [CLIENTES-BUNKER] No se pudo propagar herencia fiscal al Nodo vinculado:', errHer.message);
+            });
         }
 
         console.log(`✅ [CLIENTES-BUNKER] Cliente actualizado exitosamente: "${clienteActualizado.cliente_nombre}" (ID: ${id})`);

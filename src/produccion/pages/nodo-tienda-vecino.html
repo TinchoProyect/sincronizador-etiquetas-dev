@@ -456,6 +456,180 @@
       font-weight: 600;
       margin-top: 2px;
     }
+
+    /* Seguimiento en Vivo Marca Blanca (Estilo Mercado Libre) */
+    .btn-track-header {
+      background: var(--brand-light);
+      color: var(--brand-dark);
+      border: 1.5px solid var(--brand-border);
+      padding: 9px 15px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-track-header:hover {
+      background: var(--brand);
+      color: #ffffff;
+      border-color: var(--brand);
+    }
+    .active-order-banner {
+      background: linear-gradient(135deg, #fffdfb 0%, #f5efe8 100%);
+      border: 1.5px solid var(--brand-border);
+      border-radius: 16px;
+      padding: 13px 16px;
+      margin-bottom: 14px;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: 0 4px 14px rgba(62, 37, 25, 0.06);
+    }
+    .trk-hero-box {
+      background: linear-gradient(135deg, var(--surface-warm) 0%, #fffdfb 100%);
+      border: 1.5px solid var(--brand-border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .trk-hero-box.completed {
+      background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+      border-color: #86efac;
+    }
+    .trk-progress-track {
+      width: 100%;
+      height: 8px;
+      background: #e7ddd3;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .trk-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand) 0%, #16a34a 100%);
+      border-radius: 999px;
+      transition: width 0.35s ease;
+    }
+    .trk-timeline {
+      position: relative;
+      padding: 4px 0 4px 6px;
+      margin: 0 0 16px 0;
+    }
+    .trk-step {
+      display: flex;
+      gap: 14px;
+      position: relative;
+      padding-bottom: 18px;
+    }
+    .trk-step:last-child {
+      padding-bottom: 2px;
+    }
+    .trk-step:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 32px;
+      bottom: 0;
+      width: 2.5px;
+      background: #e5dcd2;
+    }
+    .trk-step.done:not(:last-child)::before {
+      background: #16a34a;
+    }
+    .trk-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.92rem;
+      font-weight: 900;
+      background: #f3ede6;
+      border: 2px solid #d8cbc0;
+      color: var(--muted);
+      z-index: 1;
+    }
+    .trk-step.done .trk-dot {
+      background: #dcfce7;
+      border-color: #16a34a;
+      color: #15803d;
+    }
+    .trk-step.current .trk-dot {
+      background: var(--brand);
+      border-color: var(--brand-dark);
+      color: #ffffff;
+      box-shadow: 0 0 0 5px var(--brand-light);
+      animation: trkPulse 2s infinite;
+    }
+    .trk-step.done.current.final-step .trk-dot {
+      background: #16a34a;
+      border-color: #15803d;
+      box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.18);
+    }
+    @keyframes trkPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+    .trk-step-body {
+      flex: 1;
+      min-width: 0;
+      padding-top: 3px;
+    }
+    .trk-step-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .trk-step-title {
+      font-size: 0.93rem;
+      font-weight: 800;
+      color: var(--muted);
+    }
+    .trk-step.done .trk-step-title {
+      color: var(--text);
+    }
+    .trk-step.current .trk-step-title {
+      font-size: 1rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+    }
+    .trk-step.done.current.final-step .trk-step-title {
+      color: #15803d;
+    }
+    .trk-step-time {
+      font-size: 0.74rem;
+      font-weight: 800;
+      color: #15803d;
+      background: #ecfdf5;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .trk-step-desc {
+      font-size: 0.81rem;
+      color: var(--muted);
+      margin-top: 3px;
+      line-height: 1.38;
+      font-weight: 600;
+    }
+    .trk-live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #16a34a;
+      margin-right: 5px;
+    }
   </style>
 </head>
 <body>
@@ -483,10 +657,18 @@
           </div>
         </div>
       </div>
+      <div>
+        <button type="button" class="btn-track-header" onclick="abrirModalBuscadorSeguimiento()">
+          📦 Seguir mi pedido
+        </button>
+      </div>
     </div>
   </header>
 
   <main class="container">
+    <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
+    <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
+
     <!-- Aviso de Próxima Fecha de Entrega según Punto de Corte -->
     <div class="delivery-banner" id="delivery-banner">
       <div>
@@ -521,6 +703,11 @@
   <!-- Modal de Confirmación de Pedido Vecinal -->
   <div class="modal-backdrop" id="checkout-modal">
     <div class="modal-card" id="checkout-card-content"></div>
+  </div>
+
+  <!-- Modal Marca Blanca de Seguimiento en Vivo / Buscador de Pedido -->
+  <div class="modal-backdrop" id="tracking-modal" onclick="if(event.target===this) cerrarModalSeguimiento()">
+    <div class="modal-card" id="tracking-card-content"></div>
   </div>
 
   <script>
@@ -635,6 +822,7 @@
       renderCategorias();
       renderCatalogo();
       actualizarBarraCarrito();
+      refrescarBannerPedidosRecientes();
     }
 
     function simularHorarioCorte(despues) {
@@ -973,6 +1161,15 @@
 
       const ped = data.pedido;
       const pagoInfo = data.nodo_pago_info;
+      if (ped && ped.tracking_token) {
+        guardarPedidoRecienteLocal({
+          codigo_pedido: ped.codigo_pedido,
+          tracking_token: ped.tracking_token,
+          vecino_nombre: ped.vecino_nombre,
+          created_at: ped.created_at || new Date().toISOString()
+        });
+        refrescarBannerPedidosRecientes();
+      }
       const box = document.getElementById('checkout-card-content');
 
       box.innerHTML = `
@@ -1007,10 +1204,19 @@
             </div>
           `}
 
+          ${ped.tracking_token ? `
+            <div style="margin-bottom:12px;">
+              <button type="button" onclick="cerrarModalCheckout(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
+                style="width:100%; padding:12px 16px; border-radius:11px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
+                📍 Seguir el estado de mi pedido en vivo →
+              </button>
+            </div>
+          ` : ''}
+
           <div id="etiqueta-confirmacion-preview" style="margin-bottom:12px;"></div>
 
           <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-            <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}')"
+            <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}', '${esc(ped.tracking_token || '')}')"
               style="padding:9px 14px; border-radius:9px; border:1px solid #16a34a; background:#15803d; color:#ffffff; font-weight:800; font-size:0.8rem; cursor:pointer;">
               📲 Recibir Comprobante por WhatsApp
             </button>
@@ -1031,13 +1237,20 @@
 
     let _ultimoPayloadWaTienda = null;
 
-    async function enviarComprobanteWhatsAppPrueba(codigoPedido, vecinoNombre, nombreMarca, fechaEntrega, totalVecino, medioPago, aliasBancario) {
-      const mensaje = [
+    async function enviarComprobanteWhatsAppPrueba(codigoPedido, vecinoNombre, nombreMarca, fechaEntrega, totalVecino, medioPago, aliasBancario, trackingToken = '') {
+      const linkSeguimiento = trackingToken
+        ? `${window.location.origin}/tienda/${encodeURIComponent(STATE.slug)}?seguimiento=${encodeURIComponent(trackingToken)}`
+        : '';
+      const lineasMsg = [
         `🌿 *${nombreMarca}* — Nuevo Pedido #${codigoPedido}`,
         `👤 Vecino/a: *${vecinoNombre}*`,
         `📅 Entrega: ${fechaEntrega}`,
         `💰 Total: *${fmt(totalVecino)}* (${medioPago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia al alias ${aliasBancario}`})`
-      ].join('\n');
+      ];
+      if (linkSeguimiento) {
+        lineasMsg.push(`📍 Seguí tu pedido en vivo acá: ${linkSeguimiento}`);
+      }
+      const mensaje = lineasMsg.join('\n');
       const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1133,9 +1346,518 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    // =========================================================================
+    // SEGUIMIENTO EN VIVO MARCA BLANCA (ESTILO MERCADO LIBRE — 0 RASTROS INTERNOS)
+    // =========================================================================
+    let _trackingTimer = null;
+    let _trackingTokenActivo = '';
+
+    function _storageKeyPedidosVecino() {
+      return `nodo_ultimos_pedidos_${STATE.slug || 'default'}`;
+    }
+
+    function obtenerPedidosRecientesLocal() {
+      try {
+        const raw = localStorage.getItem(_storageKeyPedidosVecino());
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr.filter(x => x && x.tracking_token) : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function guardarPedidoRecienteLocal(info) {
+      if (!info || !info.tracking_token) return;
+      try {
+        const lista = obtenerPedidosRecientesLocal().filter(x => x.tracking_token !== info.tracking_token);
+        lista.unshift({
+          codigo_pedido: info.codigo_pedido || '',
+          tracking_token: info.tracking_token,
+          vecino_nombre: info.vecino_nombre || '',
+          created_at: info.created_at || new Date().toISOString()
+        });
+        localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(lista.slice(0, 5)));
+      } catch (_) {}
+    }
+
+    function descartarBannerPedidoLocal(token) {
+      try {
+        const lista = obtenerPedidosRecientesLocal().filter(x => x.tracking_token !== token);
+        localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(lista));
+      } catch (_) {}
+      refrescarBannerPedidosRecientes();
+    }
+
+    async function refrescarBannerPedidosRecientes() {
+      const banner = document.getElementById('mis-pedidos-recientes-banner');
+      if (!banner) return;
+      const guardados = obtenerPedidosRecientesLocal();
+      if (guardados.length === 0) {
+        banner.style.display = 'none';
+        return;
+      }
+      const ultimo = guardados[0];
+      try {
+        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(ultimo.tracking_token)}`, { cache: 'no-store' });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          banner.style.display = 'none';
+          return;
+        }
+        const seg = data.seguimiento;
+        const ped = data.pedido;
+        const pasoActual = (seg.pasos || []).find(p => p.es_actual) || (seg.pasos || [])[0] || {};
+        banner.style.display = 'flex';
+        banner.innerHTML = `
+          <div style="display:flex; align-items:center; gap:11px; min-width:0;">
+            <div style="width:40px; height:40px; border-radius:12px; background:var(--brand-light); border:1px solid var(--brand-border); display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0;">
+              ${esc(pasoActual.icono || '📦')}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:0.74rem; font-weight:800; color:var(--brand-dark); text-transform:uppercase; letter-spacing:0.02em;">
+                Tu pedido #${esc(ped.codigo_pedido)} · Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}
+              </div>
+              <div style="font-size:0.95rem; font-weight:900; color:var(--text);">
+                ${esc(seg.titulo_estado_actual)}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}')"
+              style="padding:8px 14px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
+              📍 Ver en vivo →
+            </button>
+            <button type="button" title="Ocultar aviso" onclick="descartarBannerPedidoLocal('${esc(ped.tracking_token)}')"
+              style="width:30px; height:30px; border-radius:8px; border:1px solid var(--border); background:#ffffff; color:var(--muted); font-weight:800; cursor:pointer;">
+              &times;
+            </button>
+          </div>
+        `;
+      } catch (_) {
+        banner.style.display = 'none';
+      }
+    }
+
+    function formatearFechaHoraHito(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      if (Number.isNaN(d.getTime())) return '';
+      const hoy = new Date();
+      const esHoy = d.getFullYear() === hoy.getFullYear() &&
+        d.getMonth() === hoy.getMonth() &&
+        d.getDate() === hoy.getDate();
+      const hhmm = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      if (esHoy) return `Hoy ${hhmm} hs`;
+      const ddmm = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+      return `${ddmm} · ${hhmm} hs`;
+    }
+
+    function detenerPollingSeguimiento() {
+      if (_trackingTimer) {
+        clearInterval(_trackingTimer);
+        _trackingTimer = null;
+      }
+    }
+
+    function cerrarModalSeguimiento() {
+      detenerPollingSeguimiento();
+      _trackingTokenActivo = '';
+      const modal = document.getElementById('tracking-modal');
+      if (modal) modal.style.display = 'none';
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('seguimiento')) {
+          url.searchParams.delete('seguimiento');
+          window.history.replaceState({}, '', url.pathname + (url.search || ''));
+        }
+      } catch (_) {}
+      refrescarBannerPedidosRecientes();
+    }
+
+    function abrirModalBuscadorSeguimiento() {
+      detenerPollingSeguimiento();
+      _trackingTokenActivo = '';
+      const modal = document.getElementById('tracking-modal');
+      const box = document.getElementById('tracking-card-content');
+      if (!modal || !box) return;
+      modal.style.display = 'flex';
+
+      const guardados = obtenerPedidosRecientesLocal();
+      const nombreMarca = STATE.nodo?.nombre_marca || 'Tienda Barrial';
+
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0; font-size:1.18rem; font-weight:900;">📦 Seguir mi pedido</h2>
+            <div style="font-size:0.8rem; color:var(--muted); font-weight:700; margin-top:2px;">
+              Consultá en tiempo real el estado de tu compra en ${esc(nombreMarca)}
+            </div>
+          </div>
+          <button type="button" onclick="cerrarModalSeguimiento()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
+        </div>
+
+        ${guardados.length > 0 ? `
+          <div style="margin-bottom:16px;">
+            <div style="font-size:0.76rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:6px;">Tus pedidos guardados en este celular</div>
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              ${guardados.map(g => `
+                <button type="button" onclick="abrirSeguimientoPorToken('${esc(g.tracking_token)}')"
+                  style="display:flex; justify-content:space-between; align-items:center; padding:10px 13px; border-radius:11px; border:1.5px solid var(--brand-border); background:var(--surface-warm); color:var(--text); font-family:inherit; cursor:pointer; text-align:left;">
+                  <span><strong>#${esc(g.codigo_pedido)}</strong> ${g.vecino_nombre ? `· ${esc(g.vecino_nombre)}` : ''}</span>
+                  <span style="font-size:0.8rem; font-weight:900; color:var(--brand-dark);">Ver estado →</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="background:#fffdfb; border:1px solid var(--border); border-radius:14px; padding:14px;">
+          <div style="font-size:0.84rem; font-weight:900; color:var(--text); margin-bottom:10px;">
+            🔍 Buscar con tu WhatsApp y número de pedido
+          </div>
+          <div class="form-group">
+            <label>Tu número de WhatsApp *</label>
+            <input type="tel" id="trk-buscar-tel" placeholder="Ej: 221 501 1102" value="${esc(window._savedVecinoTel || '')}">
+          </div>
+          <div class="form-group">
+            <label>Código de pedido *</label>
+            <input type="text" id="trk-buscar-codigo" placeholder="Ej: NB-1002 o 1002" onkeydown="if(event.key==='Enter') buscarMiPedidoVecino()">
+          </div>
+          <div id="trk-buscar-error" style="display:none; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:8px 11px; border-radius:9px; font-size:0.8rem; font-weight:700; margin-bottom:10px;"></div>
+          <button type="button" id="btn-ejecutar-busqueda-trk" onclick="buscarMiPedidoVecino()"
+            style="width:100%; padding:12px; border-radius:11px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.94rem; cursor:pointer;">
+            Consultar estado en vivo
+          </button>
+        </div>
+      `;
+    }
+
+    async function buscarMiPedidoVecino() {
+      const tel = (document.getElementById('trk-buscar-tel')?.value || '').trim();
+      const codigo = (document.getElementById('trk-buscar-codigo')?.value || '').trim();
+      const errBox = document.getElementById('trk-buscar-error');
+      const btn = document.getElementById('btn-ejecutar-busqueda-trk');
+      if (errBox) errBox.style.display = 'none';
+
+      if (!tel || !codigo) {
+        if (errBox) {
+          errBox.textContent = 'Completá tu número de WhatsApp y el código del pedido (ej: NB-1002).';
+          errBox.style.display = 'block';
+        }
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Buscando pedido...';
+      }
+
+      try {
+        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/buscar-seguimiento`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telefono: tel, codigo_pedido: codigo })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (errBox) {
+            errBox.textContent = data.error || 'No encontramos un pedido con esos datos.';
+            errBox.style.display = 'block';
+          }
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Consultar estado en vivo';
+          }
+          return;
+        }
+
+        window._savedVecinoTel = tel;
+        guardarPedidoRecienteLocal({
+          codigo_pedido: data.pedido.codigo_pedido,
+          tracking_token: data.pedido.tracking_token,
+          vecino_nombre: data.pedido.vecino_nombre,
+          created_at: data.pedido.created_at
+        });
+        _activarVistaSeguimientoConDatos(data);
+      } catch (e) {
+        if (errBox) {
+          errBox.textContent = 'Error de conexión al consultar el pedido.';
+          errBox.style.display = 'block';
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Consultar estado en vivo';
+        }
+      }
+    }
+
+    async function abrirSeguimientoPorToken(token, silencioso = false) {
+      const cleanTok = String(token || '').trim();
+      if (!cleanTok) return;
+      const modal = document.getElementById('tracking-modal');
+      const box = document.getElementById('tracking-card-content');
+      if (!modal || !box) return;
+
+      if (!silencioso) {
+        modal.style.display = 'flex';
+        box.innerHTML = `<div style="padding:32px; text-align:center; color:var(--muted); font-weight:800;">⏳ Cargando estado en vivo de tu pedido...</div>`;
+      }
+
+      try {
+        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(cleanTok)}`, {
+          cache: 'no-store'
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (!silencioso) {
+            box.innerHTML = `
+              <div style="text-align:center; padding:24px 12px;">
+                <div style="font-size:2rem; margin-bottom:6px;">🔎</div>
+                <h3 style="margin:0 0 6px 0;">Enlace no encontrado</h3>
+                <p style="font-size:0.86rem; color:var(--muted); margin:0 0 14px 0;">${esc(data.error || 'No pudimos localizar ese pedido.')}</p>
+                <div style="display:flex; gap:8px; justify-content:center;">
+                  <button type="button" onclick="abrirModalBuscadorSeguimiento()" style="padding:9px 14px; border-radius:9px; border:1px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-weight:800; cursor:pointer;">Buscar por número</button>
+                  <button type="button" onclick="cerrarModalSeguimiento()" style="padding:9px 14px; border-radius:9px; border:none; background:var(--brand); color:#fff; font-weight:800; cursor:pointer;">Volver a la tienda</button>
+                </div>
+              </div>
+            `;
+          }
+          return;
+        }
+
+        guardarPedidoRecienteLocal({
+          codigo_pedido: data.pedido.codigo_pedido,
+          tracking_token: data.pedido.tracking_token,
+          vecino_nombre: data.pedido.vecino_nombre,
+          created_at: data.pedido.created_at
+        });
+        _activarVistaSeguimientoConDatos(data);
+      } catch (_) {
+        if (!silencioso) {
+          box.innerHTML = `<div style="padding:24px; text-align:center; color:#b91c1c; font-weight:800;">No se pudo actualizar el seguimiento. Verificá tu conexión.</div>`;
+        }
+      }
+    }
+
+    function _activarVistaSeguimientoConDatos(data) {
+      const tok = data.pedido.tracking_token;
+      _trackingTokenActivo = tok;
+
+      if (data.nodo?.color_primario) {
+        aplicarPaletaTienda(data.nodo.color_primario);
+      }
+
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('seguimiento', tok);
+        window.history.replaceState({}, '', url.pathname + url.search);
+      } catch (_) {}
+
+      renderizarVistaSeguimientoEnVivo(data);
+
+      detenerPollingSeguimiento();
+      if (!data.seguimiento.anulado && Number(data.seguimiento.hito_actual) < 6) {
+        _trackingTimer = setInterval(() => {
+          if (_trackingTokenActivo) {
+            abrirSeguimientoPorToken(_trackingTokenActivo, true);
+          }
+        }, 15000);
+      }
+    }
+
+    function renderizarVistaSeguimientoEnVivo(data) {
+      const box = document.getElementById('tracking-card-content');
+      if (!box) return;
+
+      const nodo = data.nodo || {};
+      const ped = data.pedido || {};
+      const seg = data.seguimiento || {};
+      const pasos = Array.isArray(seg.pasos) ? seg.pasos : [];
+      const items = Array.isArray(data.items) ? data.items : [];
+      const esEntregado = !seg.anulado && Number(seg.hito_actual) >= 6;
+      const pct = seg.anulado
+        ? 0
+        : Math.min(100, Math.max(12, Math.round((Number(seg.paso_actual_orden || 1) / Math.max(1, Number(seg.total_pasos || 5))) * 100)));
+
+      const pasoActualObj = pasos.find(p => p.es_actual) || pasos[0] || {};
+      const linkCompartir = `${window.location.origin}/tienda/${encodeURIComponent(nodo.slug || STATE.slug)}?seguimiento=${encodeURIComponent(ped.tracking_token)}`;
+      const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
+      const waGestorHref = telGestorDigits
+        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`)}`
+        : '';
+
+      box.innerHTML = `
+        <!-- Cabecera Marca Blanca del Seguimiento -->
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-bottom:1px solid var(--border); padding-bottom:11px; margin-bottom:14px;">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+            ${nodo.logo_original_base64
+              ? `<img src="${nodo.logo_original_base64}" alt="${esc(nodo.nombre_marca)}" style="width:42px; height:42px; object-fit:contain; border-radius:10px; flex-shrink:0;">`
+              : `<div class="brand-monogram" style="width:40px; height:40px; font-size:0.88rem; flex-shrink:0;">${esc(String(nodo.nombre_marca || 'ND').slice(0, 2).toUpperCase())}</div>`
+            }
+            <div style="min-width:0;">
+              <div style="font-size:0.75rem; font-weight:800; color:var(--brand-dark); text-transform:uppercase; letter-spacing:0.02em;">
+                ${esc(nodo.nombre_marca)} · Pedido #${esc(ped.codigo_pedido)}
+              </div>
+              <div style="font-size:1.04rem; font-weight:900; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                Hola, ${esc(ped.vecino_nombre)}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            <button type="button" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}', true)" title="Actualizar estado"
+              style="padding:6px 10px; border-radius:8px; border:1px solid var(--border); background:#fffdfb; color:var(--text); font-family:inherit; font-size:0.76rem; font-weight:800; cursor:pointer;">
+              🔄 Actualizar
+            </button>
+            <button type="button" onclick="cerrarModalSeguimiento()" style="background:none; border:none; font-size:1.5rem; line-height:1; cursor:pointer; color:var(--muted);">&times;</button>
+          </div>
+        </div>
+
+        <!-- Tarjeta Hero de Estado Actual (Estilo Mercado Libre) -->
+        <div class="trk-hero-box ${esEntregado ? 'completed' : ''}" style="${seg.anulado ? 'background:#fef2f2; border-color:#fecaca;' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+            <span style="font-size:0.73rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 10px; border-radius:999px; background:${seg.anulado ? '#fee2e2' : (esEntregado ? '#dcfce7' : 'var(--brand-light)')}; color:${seg.anulado ? '#b91c1c' : (esEntregado ? '#15803d' : 'var(--brand-dark)')};">
+              ${seg.anulado ? 'Pedido Anulado' : `Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`}
+            </span>
+            ${!seg.anulado && !esEntregado ? `
+              <span style="font-size:0.73rem; font-weight:800; color:#15803d;">
+                <span class="trk-live-dot"></span>En vivo
+              </span>
+            ` : ''}
+          </div>
+          <div style="display:flex; align-items:flex-start; gap:12px;">
+            <div style="font-size:2rem; line-height:1.1;">${seg.anulado ? '🚫' : esc(pasoActualObj.icono || '📦')}</div>
+            <div style="flex:1;">
+              <div style="font-size:1.16rem; font-weight:900; color:${seg.anulado ? '#991b1b' : (esEntregado ? '#15803d' : 'var(--text)')}; line-height:1.22;">
+                ${esc(seg.titulo_estado_actual)}
+              </div>
+              <div style="font-size:0.84rem; color:var(--muted); font-weight:700; margin-top:4px; line-height:1.38;">
+                ${esc(seg.descripcion_estado_actual)}
+              </div>
+            </div>
+          </div>
+          ${!seg.anulado ? `
+            <div class="trk-progress-track">
+              <div class="trk-progress-fill" style="width:${pct}%;"></div>
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- Línea de Tiempo Vertical Paso a Paso -->
+        ${!seg.anulado ? `
+          <div class="trk-timeline">
+            ${pasos.map(p => {
+              const cls = [
+                'trk-step',
+                p.completado ? 'done' : '',
+                p.es_actual ? 'current' : '',
+                (p.hito_numero === 6 && p.completado) ? 'final-step' : ''
+              ].filter(Boolean).join(' ');
+              const horaTxt = p.completado ? formatearFechaHoraHito(p.fecha_hora) : '';
+              const dotContent = p.es_actual
+                ? esc(p.icono)
+                : (p.completado ? '✓' : esc(p.paso_orden));
+              return `
+                <div class="${cls}">
+                  <div class="trk-dot">${dotContent}</div>
+                  <div class="trk-step-body">
+                    <div class="trk-step-head">
+                      <span class="trk-step-title">${esc(p.titulo)}</span>
+                      ${horaTxt ? `<span class="trk-step-time">${esc(horaTxt)}</span>` : ''}
+                    </div>
+                    ${(p.completado || p.es_actual) ? `<div class="trk-step-desc">${esc(p.descripcion)}</div>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        <!-- Resumen de Entrega, Pago y Productos -->
+        <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:13px 14px; margin-bottom:14px; font-size:0.84rem;">
+          <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding-bottom:8px; border-bottom:1px solid var(--border); margin-bottom:9px;">
+            <div>
+              <div style="font-size:0.73rem; font-weight:800; color:var(--muted); text-transform:uppercase;">
+                ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`}
+              </div>
+              <div style="font-weight:800; color:var(--text); margin-top:2px;">
+                ${ped.modalidad_entrega === 'ENVIO_BARRIAL'
+                  ? `${esc(ped.direccion_entrega)}${ped.entrecalles_referencia ? ` (${esc(ped.entrecalles_referencia)})` : ''}`
+                  : esc(nodo.direccion_retiro || nodo.barrio_zona || '')
+                }
+              </div>
+              ${ped.fecha_entrega_label ? `<div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:2px;">📅 ${esc(ped.fecha_entrega_label)}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              ${ped.pago_confirmado
+                ? `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:0.76rem; font-weight:900;">✅ Pagado (${fmt(ped.total_vecino)})</span>`
+                : `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:0.76rem; font-weight:900;">${ped.medio_pago === 'EFECTIVO' ? `💵 Abonás al recibir: ${fmt(ped.total_vecino)}` : `🏦 Transferencia: ${fmt(ped.total_vecino)}`}</span>`
+              }
+              ${(!ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA' && nodo.alias_bancario_display) ? `
+                <div style="margin-top:5px; font-size:0.76rem; color:var(--text);">
+                  Alias: <strong>${esc(nodo.alias_bancario_display)}</strong>
+                  <button type="button" onclick="navigator.clipboard.writeText('${esc(nodo.alias_bancario_display)}'); this.textContent='✓ Copiado';"
+                    style="margin-left:4px; padding:2px 7px; border-radius:6px; border:1px solid var(--brand-border); background:#fff; color:var(--brand-dark); font-size:0.72rem; font-weight:800; cursor:pointer;">Copiar</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <div style="font-size:0.75rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:5px;">
+            Productos en tu bolsa (${items.reduce((a, b) => a + Number(b.cantidad || 0), 0)} u.)
+          </div>
+          ${items.map(it => `
+            <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.83rem;">
+              <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} <span style="color:var(--muted); font-size:0.76rem;">(${esc(it.presentacion_etiqueta || '')})</span></span>
+              <strong>${fmt(it.subtotal_vecino)}</strong>
+            </div>
+          `).join('')}
+          ${Number(ped.cargo_envio_barrial) > 0 ? `
+            <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:var(--muted);">
+              <span>Envío barrial</span>
+              <span>+${fmt(ped.cargo_envio_barrial)}</span>
+            </div>
+          ` : ''}
+          ${Number(ped.monto_ajuste_credito) > 0 ? `
+            <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:#15803d;">
+              <span>Bonificación / ajuste a favor</span>
+              <span>-${fmt(ped.monto_ajuste_credito)}</span>
+            </div>
+          ` : ''}
+          <div style="display:flex; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:0.96rem; font-weight:900;">
+            <span>Total</span>
+            <span>${fmt(ped.total_vecino)}</span>
+          </div>
+        </div>
+
+        <!-- Acciones inferiores del vecino -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between;">
+          <button type="button" onclick="navigator.clipboard.writeText('${esc(linkCompartir)}'); this.textContent='✅ ¡Enlace copiado!';"
+            style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
+            🔗 Copiar link de seguimiento
+          </button>
+          ${waGestorHref ? `
+            <a href="${esc(waGestorHref)}" target="_blank" rel="noopener"
+              style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.82rem; text-decoration:none; text-align:center;">
+              💬 Consultar a ${esc(nodo.gestor_nombre)}
+            </a>
+          ` : ''}
+          <button type="button" onclick="cerrarModalSeguimiento()"
+            style="width:100%; padding:11px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+            ← Volver a la tienda de ${esc(nodo.nombre_marca)}
+          </button>
+        </div>
+      `;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
       STATE.slug = detectarSlugInicial();
-      cargarTienda('');
+      const params = new URLSearchParams(window.location.search);
+      const tokInicial = (params.get('seguimiento') || '').trim();
+      await cargarTienda('');
+      if (tokInicial) {
+        abrirSeguimientoPorToken(tokInicial);
+      }
     });
   </script>
 </body>

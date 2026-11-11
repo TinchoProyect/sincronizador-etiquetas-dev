@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
-const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda, obtenerArbolCanastosPorCodigos, obtenerMetadataPedidosVecinosPorCodigos } = require('../services/nodosBarrialesService');
+const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda, notificarInicioPreparacionCarroNodo, obtenerArbolCanastosPorCodigos, obtenerMetadataPedidosVecinosPorCodigos } = require('../services/nodosBarrialesService');
 
 /**
  * Helper para detectar el modo de JOIN entre presupuestos y presupuestos_detalles
@@ -714,6 +714,15 @@ const asignarFaltantes = async (req, res) => {
         }
         
         console.log(`✅ [PROD_PED] Asignación completada: ${articulosAsignados}/${articulos_faltantes.length} artículos`);
+
+        if (articulosAsignados > 0) {
+            notificarInicioPreparacionCarroNodo({
+                cliente_id,
+                articulos: articulos_faltantes,
+                operario: usuario.nombre_completo,
+                carro_id: carroId
+            }).catch(() => {});
+        }
         
         res.status(201).json({
             success: true,

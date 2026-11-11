@@ -401,6 +401,7 @@
       slug: '',
       vista: 'inicio', // 'inicio' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion'
       filtroPagoPedidos: 'TODOS',
+      filtroOperativoPedidos: 'TODOS',
       nodo: null,
       proximaEntrega: null,
       ofertas: [],
@@ -490,7 +491,7 @@
 
     async function cargarPanelGestor(opciones = {}) {
       const [resp, respLiq] = await Promise.all([
-        fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}`, { cache: 'no-store' }),
+        fetch(`/api/produccion/nodos/portal/${encodeURIComponent(GSTATE.slug)}?vista=gestor`, { cache: 'no-store' }),
         fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_slug=${encodeURIComponent(GSTATE.slug)}`, { cache: 'no-store' })
       ]);
       const data = await resp.json();
@@ -646,8 +647,11 @@
         ? `Envío barrial ${fmt(GSTATE.nodo.cargo_envio_barrial)}`
         : 'Solo retiro en Nodo';
 
-      const totalPedidos = GSTATE.pedidos.length;
-      const pendCobro = GSTATE.pedidos.filter(p => !p.pago_confirmado).length;
+      const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
+      const totalPedidos = pedidosActivos.length;
+      const pendCobro = pedidosActivos.filter(p => !p.pago_confirmado).length;
+      const listosRecibirLote = pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) === 3 && p.lote_canasto_id && !p.lote_debito_registrado).length;
+      const entregadosCant = pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) >= 6).length;
 
       const saldoNodo = Number(GSTATE.nodo.saldo_cuenta_corriente || 0);
       const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
@@ -684,7 +688,9 @@
           titulo: 'Pedidos de Vecinos',
           meta: totalPedidos === 0
             ? 'Aún no hay pedidos registrados'
-            : `${totalPedidos} pedido${totalPedidos === 1 ? '' : 's'}${pendCobro > 0 ? ` · ${pendCobro} pendiente${pendCobro === 1 ? '' : 's'} de cobro` : ' · todos cobrados'}`
+            : (listosRecibirLote > 0
+                ? `📥 ${listosRecibirLote} pedido${listosRecibirLote === 1 ? '' : 's'} listo${listosRecibirLote === 1 ? '' : 's'} para recibir lote · ${pendCobro} pend. cobro`
+                : `${totalPedidos} pedido${totalPedidos === 1 ? '' : 's'} (${entregadosCant} entregado${entregadosCant === 1 ? '' : 's'})${pendCobro > 0 ? ` · ${pendCobro} pend. cobro` : ' · todos cobrados'}`)
         },
         {
           num: '5',
@@ -860,17 +866,24 @@
       });
     }
 
+    function obtenerUrlSeguimientoPedidoGestor(p) {
+      if (!p || !p.tracking_token || !GSTATE.slug) return '';
+      return `${window.location.origin}/tienda/${encodeURIComponent(GSTATE.slug)}?seguimiento=${encodeURIComponent(p.tracking_token)}`;
+    }
+
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
       const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico} (${fmt(it.subtotal_vecino)})`).join('\n');
+      const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
       const mensaje = [
         `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
-        `¡Hola ${p.vecino_nombre}! Te confirmamos el detalle de tu pedido:`,
+        `¡Hola ${p.vecino_nombre}! Te compartimos el detalle y estado de tu pedido:`,
         itemsTxt,
         Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro: ${GSTATE.nodo.direccion_retiro || ''}`,
         `💰 *Total:* ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : `Transferencia al alias ${GSTATE.nodo.alias_bancario_display || ''}`})`,
-        `📅 *Entrega:* ${p.fecha_entrega_label}`
+        `📅 *Entrega:* ${p.fecha_entrega_label}`,
+        linkSeg ? `📍 *Seguí tu pedido en vivo acá:* ${linkSeg}` : ''
       ].filter(Boolean).join('\n');
 
       await abrirModalDespachoWhatsAppGestor({
@@ -2045,44 +2058,186 @@
     }
 
     // -------------------------------------------------------------------------
-    // 4. PEDIDOS DE VECINOS
+    // 4. PEDIDOS DE VECINOS (SEGUIMIENTO EN VIVO + CONTROLES DE 1 TOQUE)
     // -------------------------------------------------------------------------
     function filtrarEstadoPagoPedidosGestor(filtro) {
       GSTATE.filtroPagoPedidos = filtro;
       renderVistaGestor();
     }
 
+    function filtrarEstadoOperativoPedidosGestor(filtro) {
+      GSTATE.filtroOperativoPedidos = filtro;
+      renderVistaGestor();
+    }
+
+    function _obtenerMetaHitoGestor(p) {
+      const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+      if (esAnulado) {
+        return { texto: '🚫 Anulado', bg: '#fee2e2', fg: '#991b1b', bd: '#fecaca', pasoTxt: 'Anulado' };
+      }
+      const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+      const totalPasos = esEnvio ? 6 : 5;
+      const hito = Number(p.hito_tracking_actual || 1);
+      const marca = GSTATE.nodo?.nombre_marca || 'el Nodo';
+
+      if (hito <= 1) {
+        return { texto: `📝 Confirmado (1/${totalPasos})`, bg: '#f1f5f9', fg: '#334155', bd: '#cbd5e1' };
+      }
+      if (hito === 2) {
+        return { texto: `🥣 En preparación (2/${totalPasos})`, bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
+      }
+      if (hito === 3) {
+        return { texto: `📦 Controlado y embolsado (3/${totalPasos})`, bg: '#e0f2fe', fg: '#0369a1', bd: '#bae6fd' };
+      }
+      if (hito === 4) {
+        return esEnvio
+          ? { texto: `🏡 Ya en ${marca} · Listo p/ reparto (4/6)`, bg: 'var(--brand-soft)', fg: 'var(--brand-dark)', bd: 'var(--brand-border)' }
+          : { texto: `🎉 Listo p/ retirar en ${marca} (4/5)`, bg: '#dcfce7', fg: '#166534', bd: '#86efac' };
+      }
+      if (hito === 5) {
+        return { texto: `🛵 En camino al vecino (5/6)`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
+      }
+      return { texto: `✅ Entregado (${totalPasos}/${totalPasos})`, bg: '#dcfce7', fg: '#14532d', bd: '#86efac' };
+    }
+
     function renderSeccionPedidos() {
-      const todos = GSTATE.pedidos || [];
+      const todos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
+      const anulados = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() === 'ANULADO');
+
+      // Detectar lotes controlados en Verificación (Hito 3) pendientes de recepción de 1 toque en el Nodo
+      const mapaLotes = new Map();
+      for (const p of todos) {
+        const cid = Number(p.lote_canasto_id || 0);
+        if (!cid) continue;
+        if (!mapaLotes.has(cid)) {
+          mapaLotes.set(cid, {
+            canasto_id: cid,
+            codigo_canasto: p.lote_codigo_canasto || `Lote #${cid}`,
+            debito_registrado: Boolean(p.lote_debito_registrado),
+            estado_canasto: p.lote_estado_canasto || '',
+            pedidos: []
+          });
+        }
+        mapaLotes.get(cid).pedidos.push(p);
+      }
+
+      const lotesListosParaRecibir = [];
+      const lotesEnPreparacion = [];
+      for (const lote of mapaLotes.values()) {
+        if (lote.debito_registrado || lote.estado_canasto === 'ENTREGADO_AL_GESTOR') continue;
+        const todosControlados = lote.pedidos.length > 0 && lote.pedidos.every(x => Number(x.hito_tracking_actual || 1) >= 3);
+        const algunoSinRecibir = lote.pedidos.some(x => Number(x.hito_tracking_actual || 1) < 4);
+        if (todosControlados && algunoSinRecibir) {
+          lotesListosParaRecibir.push(lote);
+        } else if (algunoSinRecibir) {
+          lotesEnPreparacion.push(lote);
+        }
+      }
+
+      const cantPrep = todos.filter(p => Number(p.hito_tracking_actual || 1) <= 3).length;
+      const cantEnNodo = todos.filter(p => Number(p.hito_tracking_actual || 1) === 4).length;
+      const cantReparto = todos.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
+      const cantEntregados = todos.filter(p => Number(p.hito_tracking_actual || 1) >= 6).length;
+
       const pagados = todos.filter(p => Boolean(p.pago_confirmado));
       const pendientes = todos.filter(p => !p.pago_confirmado);
 
-      const listaFiltrada = GSTATE.filtroPagoPedidos === 'PAGADOS'
+      const basePorCobro = GSTATE.filtroPagoPedidos === 'PAGADOS'
         ? pagados
         : GSTATE.filtroPagoPedidos === 'PENDIENTES'
           ? pendientes
-          : todos;
+          : (GSTATE.filtroOperativoPedidos === 'ANULADOS' ? anulados : todos);
+
+      const listaFiltrada = basePorCobro.filter(p => {
+        const fOp = GSTATE.filtroOperativoPedidos || 'TODOS';
+        if (fOp === 'TODOS' || fOp === 'ANULADOS') return true;
+        const h = Number(p.hito_tracking_actual || 1);
+        if (fOp === 'PREP') return h <= 3;
+        if (fOp === 'EN_NODO') return h === 4;
+        if (fOp === 'REPARTO') return h === 5;
+        if (fOp === 'ENTREGADOS') return h >= 6;
+        return true;
+      });
+
+      const bannersRecepcionHtml = lotesListosParaRecibir.map(l => `
+        <div class="card" style="background:linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border:1.5px solid #4ade80; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:220px;">
+              <div style="font-size:0.74rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.03em;">
+                📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu Nodo')}
+              </div>
+              <div style="font-size:1.05rem; font-weight:900; color:#14532d; margin-top:3px;">
+                ${esc(l.codigo_canasto)} (${l.pedidos.length} ${l.pedidos.length === 1 ? 'bolsa de vecino' : 'bolsas de vecinos'})
+              </div>
+              <div style="font-size:0.8rem; color:#166534; margin-top:3px;">
+                Al confirmar la recepción, los vecinos verán en vivo que su pedido ya llegó al barrio y podrás marcar salidas a reparto o entregas en 1 toque.
+              </div>
+            </div>
+            <button type="button" id="btn-recibir-lote-${l.canasto_id}" onclick="confirmarRecepcionLoteGestor(${l.canasto_id})"
+              style="padding:12px 18px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.24);">
+              📥 Confirmar que recibí el lote (${l.pedidos.length})
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      const bannersPrepHtml = lotesEnPreparacion.map(l => {
+        const listos = l.pedidos.filter(x => Number(x.hito_tracking_actual || 1) >= 3).length;
+        return `
+          <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:10px 14px; margin-bottom:12px; font-size:0.8rem; color:#92400e; font-weight:700;">
+            🥣 <strong>${esc(l.codigo_canasto)} en preparación:</strong> ${listos} de ${l.pedidos.length} bolsas controladas y embolsadas. Cuando el lote esté completo vas a poder confirmar su recepción acá.
+          </div>
+        `;
+      }).join('');
 
       return `
+        ${bannersRecepcionHtml}
+        ${bannersPrepHtml}
+
         <div class="card">
-          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
-            <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
-              style="${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+          <!-- Filtros por etapa operativa -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('TODOS')"
+              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               Todos (${todos.length})
             </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('PREP')"
+              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              🥣 Prep./Control (${cantPrep})
+            </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
+              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              🏡 En el Nodo (${cantEnNodo})
+            </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
+              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              🛵 En camino (${cantReparto})
+            </button>
+            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('ENTREGADOS')"
+              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              ✅ Entregados (${cantEntregados})
+            </button>
+          </div>
+
+          <!-- Filtros rápidos de cobro -->
+          <div style="display:flex; gap:6px; flex-wrap:wrap; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid var(--border);">
+            <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
+              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              Cobros: Todos
+            </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
-              style="${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              Pendientes (${pendientes.length})
+              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              💵 Pendientes de cobro (${pendientes.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
-              style="${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              Pagados (${pagados.length})
+              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              ✅ Pagados (${pagados.length})
             </button>
           </div>
 
           ${listaFiltrada.length === 0 ? `
             <div style="text-align:center; padding:24px; color:var(--muted); font-size:0.88rem; background:#fffdfb; border-radius:12px; border:1px dashed var(--border);">
-              No hay pedidos registrados en esta vista.
+              No hay pedidos registrados en este filtro.
             </div>
           ` : ''}
 
@@ -2090,19 +2245,31 @@
             ${listaFiltrada.map(p => {
               const pagado = Boolean(p.pago_confirmado);
               const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
+              const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+              const hito = Number(p.hito_tracking_actual || 1);
+              const metaHito = _obtenerMetaHitoGestor(p);
+              const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
+              const puedeSalirReparto = esEnvio && hito === 4;
+              const puedeMarcarEntregado = hito === 4 || hito === 5;
+
               return `
-                <div style="border:1px solid ${pagado ? 'rgba(47,111,78,0.35)' : 'var(--border)'}; border-radius:14px; padding:14px; background:#fffdfb;">
+                <div style="border:1.5px solid ${hito >= 6 ? 'rgba(22,163,74,0.4)' : (pagado ? 'rgba(47,111,78,0.35)' : 'var(--border)')}; border-radius:14px; padding:14px; background:#fffdfb;">
                   <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                     <div>
-                      <span style="font-weight:900; font-size:0.95rem;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
-                      <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
-                        ${esc(p.fecha_entrega_label)} · ${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío: ${esc(p.direccion_entrega)}` : 'Retira en Nodo'}
+                      <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                        <span style="font-weight:900; font-size:0.96rem;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
+                        <span style="display:inline-block; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
+                          ${esc(metaHito.texto)}
+                        </span>
+                      </div>
+                      <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
+                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 Envío: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Retira en Nodo'}
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-weight:900; font-size:1rem;">${fmt(p.total_vecino)}</div>
+                      <div style="font-weight:900; font-size:1.02rem;">${fmt(p.total_vecino)}</div>
                       <span style="font-size:0.72rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
-                        ${pagado ? (esEfvo ? 'Pagado en efectivo' : 'Transferencia acreditada') : 'Pendiente de cobro'}
+                        ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia')}
                       </span>
                     </div>
                   </div>
@@ -2111,19 +2278,42 @@
                     ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 9px; border-radius:8px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
                   </div>
 
+                  <!-- Botonera contextual de 1 toque (Reparto / Entrega / Cobro / Seguimiento) -->
+                  ${(puedeSalirReparto || puedeMarcarEntregado) ? `
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; padding:9px 10px; margin-bottom:10px; border-radius:11px; background:var(--surface-warm); border:1px solid var(--border);">
+                      ${puedeSalirReparto ? `
+                        <button type="button" onclick="avanzarEstadoEntregaGestor(${p.id}, 'SALIO_REPARTO', false)"
+                          style="flex:1; min-width:165px; padding:9px 13px; border-radius:10px; border:1.5px solid #6d28d9; background:#7c3aed; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                          🛵 Salió a reparto
+                        </button>
+                      ` : ''}
+                      ${puedeMarcarEntregado ? `
+                        <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
+                          style="flex:1; min-width:165px; padding:9px 13px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                          ${pagado ? '✅ Marcar Entregado' : `✅ Entregado${esEfvo ? ' / Cobrar' : ''}`}
+                        </button>
+                      ` : ''}
+                    </div>
+                  ` : ''}
+
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:10px;">
                     <span style="font-size:0.78rem; font-weight:800; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
                       ${!pagado ? `
-                        <button type="button" class="btn-primary" style="padding:7px 12px; font-size:0.78rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
+                        <button type="button" class="btn-primary" style="padding:7px 11px; font-size:0.76rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
                           💵 Cobrar Efectivo
                         </button>
                       ` : `
-                        <button type="button" class="btn-soft" onclick="abrirModalReciboVecinoGestor(${p.id})">
+                        <button type="button" class="btn-soft" style="font-size:0.76rem; padding:6px 10px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
                           🧾 Recibo Digital
                         </button>
                       `}
-                      <button type="button" class="btn-soft" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
+                      ${urlSeg ? `
+                        <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="font-size:0.76rem; padding:6px 10px; text-decoration:none;">
+                          📍 Seguimiento
+                        </a>
+                      ` : ''}
+                      <button type="button" class="btn-soft" style="font-size:0.76rem; padding:6px 10px;" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
                         📲 Detalle WA
                       </button>
                     </div>
@@ -2134,6 +2324,120 @@
           </div>
         </div>
       `;
+    }
+
+    async function confirmarRecepcionLoteGestor(canastoId) {
+      if (!GSTATE.nodo?.id || !canastoId) return;
+      const btn = document.getElementById(`btn-recibir-lote-${canastoId}`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Registrando recepción...';
+      }
+      try {
+        const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/lotes/${canastoId}/confirmar-recepcion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo' })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo confirmar la recepción del lote: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '📥 Confirmar que recibí el lote';
+          }
+          return;
+        }
+        mostrarAvisoPantallaGestor(`✅ ¡Lote ${data.codigo_canasto || ''} recibido en ${GSTATE.nodo.nombre_marca}! Tus vecinos ya ven sus bolsas disponibles en vivo.`, 'ok');
+        await cargarPanelGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al confirmar la recepción del lote.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '📥 Confirmar que recibí el lote';
+        }
+      }
+    }
+
+    function tocarBotonEntregadoGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      if (p.pago_confirmado) {
+        avanzarEstadoEntregaGestor(p.id, 'ENTREGADO', false);
+        return;
+      }
+
+      // Modal ágil de 1 toque que unifica Entrega + Cobro en Efectivo + Recibo Digital
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) return;
+
+      body.innerHTML = `
+        <div style="background:var(--brand); color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Confirmar Entrega en 1 Toque</div>
+            <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">Pedido #${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</div>
+          </div>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.18); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:18px; color:var(--text);">
+          <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; font-size:0.86rem;">
+            <div><strong>Importe del pedido:</strong> <span style="font-size:1.05rem; font-weight:900; color:var(--brand-dark);">${fmt(p.total_vecino)}</span></div>
+            <div style="font-size:0.79rem; color:var(--muted); margin-top:3px;">
+              Medio elegido al pedir: <strong>${p.medio_pago === 'EFECTIVO' ? '💵 Efectivo al recibir' : '🏦 Transferencia bancaria'}</strong> (aún pendiente de acreditar)
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button type="button" onclick="cerrarModalReciboGestor(); avanzarEstadoEntregaGestor(${p.id}, 'ENTREGADO', true);"
+              style="width:100%; padding:13px 14px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; text-align:center;">
+              💵 Entregado + Cobré ${fmt(p.total_vecino)} en Efectivo
+            </button>
+            <button type="button" onclick="cerrarModalReciboGestor(); avanzarEstadoEntregaGestor(${p.id}, 'ENTREGADO', false);"
+              style="width:100%; padding:11px 14px; border-radius:12px; border:1px solid var(--border); background:#fffdfb; color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer; text-align:center;">
+              📦 Solo marcar Entregado (cobro por transferencia / luego)
+            </button>
+            <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    async function avanzarEstadoEntregaGestor(pedidoId, accion, registrarCobroEfectivo = false) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo?.id) return;
+
+      try {
+        const resp = await fetch(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/pedidos/${pedidoId}/estado-entrega`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accion,
+            registrar_cobro_efectivo: Boolean(registrarCobroEfectivo),
+            actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo'
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo actualizar el estado del pedido: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+
+        const msgExito = accion === 'SALIO_REPARTO'
+          ? `🛵 Pedido #${p.codigo_pedido} marcado "En camino a domicilio". El vecino ya lo ve en vivo.`
+          : (data.cobro_efectivo_registrado
+              ? `✅ Pedido #${p.codigo_pedido} entregado y cobrado en efectivo (${fmt(p.total_vecino)}).`
+              : `✅ Pedido #${p.codigo_pedido} marcado como entregado a ${p.vecino_nombre}.`);
+        mostrarAvisoPantallaGestor(msgExito, 'ok');
+
+        await cargarPanelGestor();
+
+        if (data.cobro_efectivo_registrado) {
+          abrirModalReciboVecinoGestor(pedidoId);
+        }
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al actualizar el estado de entrega.', 'error');
+      }
     }
 
     async function cobrarEnEfectivoYEmitirReciboGestor(pedidoId) {
@@ -2225,6 +2529,7 @@
       const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
       const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
       const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico}: ${fmt(it.subtotal_vecino)}`).join('\n');
+      const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
 
       const mensaje = [
         `🧾 *RECIBO DE PAGO — ${GSTATE.nodo.nombre_marca}*`,
@@ -2233,6 +2538,7 @@
         itemsTxt,
         Number(p.cargo_envio_barrial) > 0 ? `• Envío barrial: ${fmt(p.cargo_envio_barrial)}` : '',
         `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}* (${esEfvo ? 'Efectivo' : 'Transferencia'})`,
+        linkSeg ? `📍 Seguimiento de tu pedido: ${linkSeg}` : '',
         `¡Muchas gracias!`
       ].filter(Boolean).join('\n');
 

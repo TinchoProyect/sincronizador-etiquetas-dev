@@ -1714,6 +1714,15 @@ router.post('/entregas/confirmar', async (req, res) => {
 
             await client.query('COMMIT');
 
+            if (!esRechazo) {
+                try {
+                    const { sincronizarCambioSecuenciaDesdeLamda } = require('../../produccion/services/nodosBarrialesService');
+                    sincronizarCambioSecuenciaDesdeLamda([String(id_presupuesto)], 'Entregado').catch(errN => {
+                        console.warn('⚠️ [MOVIL] Advertencia sincronizando despacho de Nodo Barrial:', errN.message);
+                    });
+                } catch (_) {}
+            }
+
             console.log('[MOVIL] ✅ Entrega confirmada exitosamente');
 
             res.json({

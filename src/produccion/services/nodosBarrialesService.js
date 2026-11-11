@@ -8,6 +8,7 @@
  * con los 6 Flujos de Costos de la Pizarra Inteligente LAMDA.
  */
 
+const crypto = require('crypto');
 const db = require('../config/database');
 const {
     convertirLogoAZplGfa,
@@ -1144,6 +1145,242 @@ async function recalcularSaldoSubcuentaVecino(client, vecinoId) {
  *   sin tocar ni alterar la ficha, listas ni lomas_soft_id de la Cuenta Madre, e impactando en ella únicamente
  *   el asiento neto consolidado al cerrar la liquidación del canasto.
  */
+function tieneContactosRegistradosValidos(rawJsonOrText) {
+    if (!rawJsonOrText) return false;
+    const str = String(rawJsonOrText).trim();
+    if (!str || str === '[]' || str === '{}') return false;
+    if (str.startsWith('[')) {
+        try {
+            const arr = JSON.parse(str);
+            return Array.isArray(arr) && arr.some(x => x && (x.numero || x.email));
+        } catch (_) {
+            return false;
+        }
+    }
+    return str.length >= 5;
+}
+
+/**
+ * Sincroniza/hereda datos fiscales, contactos (WhatsApp y Email) y domicilio geolocalizado
+ * desde el Cliente Madre (ej: CB-0006 Matías Ferronato) hacia el registro operativo del Nodo
+ * (ej: CB-NODO-001), manteniendo sus Cuentas Corrientes 100% separadas y sin colisionar email_portal.
+ */
+async function sincronizarHerenciaFiscalYContactosDesdeMadre(runner, bunkerClienteNodoId, clienteMadreBunkerId, datosNodo = {}) {
+    const q = runner || db;
+    const idNodoBc = Number(bunkerClienteNodoId || 0);
+    if (!idNodoBc) return null;
+
+    const resNodoBc = await q.query('SELECT * FROM public.bunker_clientes WHERE id = $1 LIMIT 1', [idNodoBc]);
+    if (resNodoBc.rows.length === 0) return null;
+    const bcNodo = resNodoBc.rows[0];
+
+    let bcMadre = null;
+    const idMadreBc = Number(clienteMadreBunkerId || 0);
+    if (idMadreBc && idMadreBc !== idNodoBc) {
+        const resMadreBc = await q.query('SELECT * FROM public.bunker_clientes WHERE id = $1 LIMIT 1', [idMadreBc]);
+        bcMadre = resMadreBc.rows[0] || null;
+    }
+
+    const gestorNombre = String(datosNodo.gestor_nombre || '').trim();
+    const nombreMarca = String(datosNodo.nombre_marca || '').trim();
+    const gestorTelDigits = String(datosNodo.gestor_telefono || '').replace(/\D+/g, '');
+    const gestorEmail = String(datosNodo.gestor_email || '').trim();
+
+    // 1. Determinar campos fiscales heredados sin pisar ediciones manuales específicas del Nodo
+    const cuitActual = String(bcNodo.cuit_cuil || '').replace(/\D+/g, '');
+    const cuitMadre = bcMadre ? String(bcMadre.cuit_cuil || '').replace(/\D+/g, '') : '';
+    const cuitFinal = cuitActual || cuitMadre || null;
+
+    const razonActual = String(bcNodo.razon_social || '').trim();
+    const esRazonGenericaNodo = !razonActual ||
+        razonActual.toLowerCase() === gestorNombre.toLowerCase() ||
+        razonActual.toLowerCase() === nombreMarca.toLowerCase() ||
+        razonActual.toUpperCase().startsWith('[NODO]');
+    const razonFinal = (esRazonGenericaNodo && bcMadre && String(bcMadre.razon_social || '').trim())
+        ? String(bcMadre.razon_social).trim()
+        : (razonActual || gestorNombre || nombreMarca || 'Gestor Nodo Barrial');
+
+    const ivaActual = String(bcNodo.condicion_iva || '').trim();
+    const esIvaGenericoNodo = !ivaActual || ivaActual === 'Consumidor Final / Monotributo';
+    const ivaFinal = (esIvaGenericoNodo && bcMadre && String(bcMadre.condicion_iva || '').trim())
+        ? String(bcMadre.condicion_iva).trim()
+        : (ivaActual || 'Consumidor Final');
+
+    const prefActual = String(bcNodo.preferencia_facturacion || '').trim().toUpperCase();
+    const prefMadre = bcMadre ? String(bcMadre.preferencia_facturacion || '').trim().toUpperCase() : '';
+    const prefFinal = ((!prefActual || prefActual === 'PREGUNTAR') && ['ARCA', 'INTERNO'].includes(prefMadre))
+        ? prefMadre
+        : (['ARCA', 'INTERNO', 'PREGUNTAR'].includes(prefActual) ? prefActual : 'INTERNO');
+
+    const domFiscalActual = String(bcNodo.domicilio_fiscal || '').trim();
+    const esDomGenerico = !domFiscalActual || domFiscalActual.toLowerCase() === 'la plata';
+    const domFiscalFinal = (!esDomGenerico)
+        ? domFiscalActual
+        : (String(datosNodo.direccion_retiro || '').trim() ||
+           (bcMadre && String(bcMadre.domicilio_fiscal || '').trim()) ||
+           String(datosNodo.barrio_zona || '').trim() ||
+           'La Plata');
+
+    const provFinal = String(bcNodo.provincia || '').trim() || (bcMadre && String(bcMadre.provincia || '').trim()) || 'BUENOS AIRES';
+    const estadoClaveFinal = (bcMadre && String(bcMadre.estado_clave || '').trim()) || String(bcNodo.estado_clave || '').trim() || 'ACTIVO';
+    const catMonoFinal = String(bcNodo.categoria_monotributo || '').trim() || (bcMadre ? bcMadre.categoria_monotributo : null) || null;
+    const actPrinActual = String(bcNodo.actividad_principal || '').trim();
+    const actPrinFinal = ((!actPrinActual || actPrinActual === 'GESTOR NODO BARRIAL MARCA BLANCA') && bcMadre && String(bcMadre.actividad_principal || '').trim())
+        ? String(bcMadre.actividad_principal).trim()
+        : (actPrinActual || 'GESTOR NODO BARRIAL MARCA BLANCA');
+    const canalFinal = String(bcNodo.canal_envio_preferido || '').trim() || (bcMadre && String(bcMadre.canal_envio_preferido || '').trim()) || 'whatsapp';
+
+    // 2. Contactos WhatsApp y Email (elimina alerta "⚠️ Sin contactos. Edite el cliente.")
+    let wpFinal = bcNodo.whatsapp_facturas;
+    if (!tieneContactosRegistradosValidos(wpFinal)) {
+        if (bcMadre && tieneContactosRegistradosValidos(bcMadre.whatsapp_facturas)) {
+            wpFinal = bcMadre.whatsapp_facturas;
+        } else if (gestorTelDigits.length >= 8) {
+            const numNorm = gestorTelDigits.startsWith('54') ? gestorTelDigits : `549${gestorTelDigits.replace(/^0/, '')}`;
+            wpFinal = JSON.stringify([{
+                id: `cont_nodo_${idNodoBc}`,
+                numero: numNorm,
+                nombre: gestorNombre || nombreMarca || 'Gestor Nodo',
+                cargo: 'titular',
+                enviar_alerta: true,
+                default_resumen: true,
+                default: true
+            }]);
+        }
+    }
+
+    let emailFactFinal = bcNodo.email_facturas;
+    if (!tieneContactosRegistradosValidos(emailFactFinal)) {
+        if (bcMadre && tieneContactosRegistradosValidos(bcMadre.email_facturas)) {
+            emailFactFinal = bcMadre.email_facturas;
+        } else {
+            const emailCandidato = (bcMadre && String(bcMadre.email_portal || '').trim()) || gestorEmail;
+            const esFicticio = !emailCandidato ||
+                emailCandidato.toLowerCase().endsWith('@lamdaclientes.com') ||
+                emailCandidato.toLowerCase().endsWith('@b2b.lamdaser.com') ||
+                emailCandidato.toLowerCase().endsWith('@lamda.com.ar');
+            if (!esFicticio && emailCandidato.includes('@')) {
+                emailFactFinal = JSON.stringify([{
+                    email: emailCandidato.toLowerCase(),
+                    nombre: (bcMadre && bcMadre.email_portal_nombre) || gestorNombre || (bcMadre && bcMadre.cliente_nombre) || '',
+                    cargo: (bcMadre && bcMadre.email_portal_cargo) || 'titular',
+                    enviar_alerta: true
+                }]);
+            }
+        }
+    }
+
+    await q.query(
+        `UPDATE public.bunker_clientes
+         SET cuit_cuil = $1,
+             razon_social = $2,
+             condicion_iva = $3,
+             preferencia_facturacion = $4,
+             domicilio_fiscal = $5,
+             provincia = $6,
+             estado_clave = $7,
+             categoria_monotributo = $8,
+             actividad_principal = $9,
+             whatsapp_facturas = $10,
+             email_facturas = $11,
+             canal_envio_preferido = $12,
+             updated_at = NOW()
+         WHERE id = $13 AND codigo_bunker_cliente LIKE 'CB-NODO-%'`,
+        [
+            cuitFinal,
+            razonFinal,
+            ivaFinal,
+            prefFinal,
+            domFiscalFinal,
+            provFinal,
+            estadoClaveFinal,
+            catMonoFinal,
+            actPrinFinal,
+            wpFinal || null,
+            emailFactFinal || null,
+            canalFinal,
+            idNodoBc
+        ]
+    );
+
+    // 3. Heredar domicilio geolocalizado en clientes_domicilios hacia id_cliente = bunker_cliente_id del Nodo si no posee uno
+    if (bcMadre) {
+        const domNodoRes = await q.query(
+            'SELECT id FROM public.clientes_domicilios WHERE id_cliente = $1 AND COALESCE(activo, true) = true LIMIT 1',
+            [idNodoBc]
+        );
+        if (domNodoRes.rows.length === 0) {
+            const idsMadreCand = [Number(bcMadre.id)];
+            if (bcMadre.lomas_soft_id) {
+                const cleanLomas = String(bcMadre.lomas_soft_id).trim();
+                if (cleanLomas) {
+                    const legRes = await q.query(
+                        `SELECT id FROM public.clientes
+                         WHERE cliente_id::text = $1 OR ltrim(cliente_id::text, '0') = ltrim($1, '0')`,
+                        [cleanLomas]
+                    );
+                    for (const lr of legRes.rows) {
+                        if (lr.id) idsMadreCand.unshift(Number(lr.id));
+                    }
+                }
+            }
+            const domMadreRes = await q.query(
+                `SELECT *
+                 FROM public.clientes_domicilios
+                 WHERE id_cliente = ANY($1::int[]) AND COALESCE(activo, true) = true
+                 ORDER BY COALESCE(es_predeterminado, false) DESC, id ASC
+                 LIMIT 1`,
+                [idsMadreCand]
+            );
+            if (domMadreRes.rows.length > 0) {
+                const dm = domMadreRes.rows[0];
+                await q.query(
+                    `INSERT INTO public.clientes_domicilios (
+                        id_cliente, alias, direccion, localidad, provincia, codigo_postal,
+                        latitud, longitud, instrucciones_entrega, horario_atencion_desde, horario_atencion_hasta,
+                        telefono_contacto, es_predeterminado, activo, coordenadas_validadas
+                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,true,$13)`,
+                    [
+                        idNodoBc,
+                        dm.alias ? `${dm.alias} (${nombreMarca || 'Nodo'})` : `Sede ${nombreMarca || 'Nodo'}`,
+                        String(datosNodo.direccion_retiro || '').trim() || dm.direccion,
+                        String(datosNodo.barrio_zona || '').trim() || dm.localidad,
+                        dm.provincia || 'Buenos Aires',
+                        dm.codigo_postal || null,
+                        dm.latitud,
+                        dm.longitud,
+                        dm.instrucciones_entrega || `Entrega de Canastos Nodo ${nombreMarca || ''}`.trim(),
+                        dm.horario_atencion_desde || null,
+                        dm.horario_atencion_hasta || null,
+                        dm.telefono_contacto || datosNodo.gestor_telefono || null,
+                        Boolean(dm.coordenadas_validadas)
+                    ]
+                );
+            }
+        }
+    }
+
+    return { cuit_cuil: cuitFinal, razon_social: razonFinal, preferencia_facturacion: prefFinal };
+}
+
+/**
+ * Propaga actualizaciones desde un Cliente Madre editado en Clientes Búnker hacia cualquier Nodo vinculado.
+ */
+async function sincronizarHerenciaFiscalDesdeMadrePorId(clienteMadreBunkerId) {
+    const madreId = Number(clienteMadreBunkerId || 0);
+    if (!madreId) return;
+    const nodosVinc = await db.query(
+        `SELECT id, nombre_marca, gestor_nombre, gestor_telefono, gestor_email, direccion_retiro, barrio_zona,
+                bunker_cliente_id, cliente_madre_bunker_id
+         FROM public.nodos_maestro
+         WHERE cliente_madre_bunker_id = $1 AND bunker_cliente_id IS NOT NULL`,
+        [madreId]
+    );
+    for (const n of nodosVinc.rows) {
+        await sincronizarHerenciaFiscalYContactosDesdeMadre(db, n.bunker_cliente_id, n.cliente_madre_bunker_id, n);
+    }
+}
+
 async function asegurarVinculoContableNodo(client, datosNodo) {
     let clienteMadreBunkerId = datosNodo.cliente_madre_bunker_id ? Number(datosNodo.cliente_madre_bunker_id) : null;
     let codigoBunkerMadre = datosNodo.codigo_bunker_cliente_madre ? String(datosNodo.codigo_bunker_cliente_madre).trim() : '';
@@ -1205,14 +1442,10 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
         bunkerClienteId = checkBc.rows[0].id;
         await client.query(
             `UPDATE public.bunker_clientes
-             SET cliente_nombre = $1,
-                 razon_social = $2,
-                 domicilio_fiscal = $3
-             WHERE id = $4 AND codigo_bunker_cliente LIKE 'CB-NODO-%'`,
+             SET cliente_nombre = $1
+             WHERE id = $2 AND codigo_bunker_cliente LIKE 'CB-NODO-%'`,
             [
                 `[NODO] ${datosNodo.nombre_marca} (${datosNodo.gestor_nombre})`,
-                datosNodo.gestor_nombre || datosNodo.nombre_marca,
-                datosNodo.direccion_retiro || datosNodo.barrio_zona || 'La Plata',
                 bunkerClienteId
             ]
         );
@@ -1235,6 +1468,9 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
         );
         bunkerClienteId = insBc.rows[0].id;
     }
+
+    // Heredar automáticamente CUIT, Razón Social fiscal, Preferencia de Facturación, Contactos y Domicilio desde el Cliente Madre
+    await sincronizarHerenciaFiscalYContactosDesdeMadre(client, bunkerClienteId, clienteMadreBunkerId, datosNodo);
 
     // Asegurar subcuenta corriente operativa del Nodo en factura_cuentas_corrientes
     const checkCc = await client.query(
@@ -1263,6 +1499,220 @@ async function asegurarVinculoContableNodo(client, datosNodo) {
         codigo_bunker_cliente: codigoBunker,
         cliente_madre_bunker_id: clienteMadreBunkerId,
         codigo_bunker_cliente_madre: codigoBunkerMadre || null
+    };
+}
+
+// ============================================================================
+// MOTOR DETERMINISTA DE SEGUIMIENTO EN VIVO MARCA BLANCA (6 HITOS)
+// ============================================================================
+
+const MAPA_HITO_A_ESTADO = {
+    1: 'CONFIRMADO_VECINO',
+    2: 'EN_PREPARACION',
+    3: 'ARMADO_EN_CANASTO',
+    4: 'EN_PODER_GESTOR',
+    5: 'EN_CAMINO_VECINO',
+    6: 'ENTREGADO_VECINO'
+};
+
+function generarTrackingTokenPedidoNodo() {
+    return crypto.randomBytes(12).toString('hex');
+}
+
+function resolverHitoDesdeEstadoOperativo(estadoOp = '', secuenciaLamda = '') {
+    const est = String(estadoOp || '').trim().toUpperCase();
+    const sec = String(secuenciaLamda || '').trim();
+    if (est === 'ANULADO') return 0;
+    if (est === 'ENTREGADO_VECINO') return 6;
+    if (est === 'EN_CAMINO_VECINO') return 5;
+    if (est === 'EN_PODER_GESTOR') return 4;
+    if (est === 'ARMADO_EN_CANASTO' || sec === 'Pedido_Listo' || sec === 'Retira_Deposito') return 3;
+    if (est === 'EN_PREPARACION' || sec === 'Armar_Pedido') return 2;
+    return 1;
+}
+
+/**
+ * Registra de forma monótona e idempotente el avance de hito de un pedido vecinal,
+ * actualizando timestamps reales e insertando auditoría en nodos_pedidos_eventos_tracking.
+ * Jamás retrocede de hito salvo reinicio explícito de Laboratorio.
+ */
+async function registrarTransicionHitoPedidoVecino(runner, pedidoId, nuevoHito, opciones = {}) {
+    const q = runner || db;
+    const pid = Number(pedidoId || 0);
+    const hitoDestino = Number(nuevoHito || 0);
+    if (!pid || !MAPA_HITO_A_ESTADO[hitoDestino]) return { avanzado: false };
+
+    const pedRes = await q.query(
+        `SELECT id, nodo_id, codigo_pedido, modalidad_entrega, estado_operativo,
+                secuencia_operativa_lamda, hito_tracking_actual,
+                fecha_en_preparacion, fecha_armado_bolsa, fecha_entrega_gestor,
+                fecha_en_camino_vecino, fecha_entregado_vecino
+         FROM public.nodos_pedidos_vecinos
+         WHERE id = $1
+         LIMIT 1`,
+        [pid]
+    );
+    if (pedRes.rows.length === 0) return { avanzado: false };
+    const ped = pedRes.rows[0];
+
+    if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
+        return { avanzado: false, motivo: 'ANULADO' };
+    }
+
+    const hitoActual = Number(ped.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(ped.estado_operativo, ped.secuencia_operativa_lamda));
+    const permitirRetroceso = Boolean(opciones.permitirRetrocesoLaboratorio);
+    if (!permitirRetroceso && hitoDestino <= hitoActual) {
+        return { avanzado: false, hito_actual: hitoActual };
+    }
+
+    const nuevoEstado = opciones.estadoOverride || MAPA_HITO_A_ESTADO[hitoDestino];
+    const origen = String(opciones.origen || 'SISTEMA').slice(0, 50);
+    const actor = opciones.actor ? String(opciones.actor).slice(0, 120) : null;
+    const detalle = opciones.detalle ? String(opciones.detalle) : null;
+
+    await q.query(
+        `UPDATE public.nodos_pedidos_vecinos
+         SET estado_operativo = $1,
+             hito_tracking_actual = $2::int,
+             fecha_en_preparacion = CASE WHEN $2::int >= 2 THEN COALESCE(fecha_en_preparacion, NOW()) ELSE fecha_en_preparacion END,
+             fecha_armado_bolsa = CASE WHEN $2::int >= 3 THEN COALESCE(fecha_armado_bolsa, NOW()) ELSE fecha_armado_bolsa END,
+             fecha_entrega_gestor = CASE WHEN $2::int >= 4 THEN COALESCE(fecha_entrega_gestor, NOW()) ELSE fecha_entrega_gestor END,
+             fecha_en_camino_vecino = CASE WHEN $2::int = 5 THEN COALESCE(fecha_en_camino_vecino, NOW()) ELSE fecha_en_camino_vecino END,
+             fecha_entregado_vecino = CASE WHEN $2::int = 6 THEN COALESCE(fecha_entregado_vecino, NOW()) ELSE fecha_entregado_vecino END,
+             updated_at = NOW()
+         WHERE id = $3::int`,
+        [nuevoEstado, Number(hitoDestino), Number(pid)]
+    );
+
+    await q.query(
+        `INSERT INTO public.nodos_pedidos_eventos_tracking (
+            pedido_id, nodo_id, hito_numero, estado_operativo, origen_evento, actor, detalle
+         ) VALUES ($1::int, $2::int, $3::int, $4, $5, $6, $7)`,
+        [Number(pid), Number(ped.nodo_id), Number(hitoDestino), nuevoEstado, origen, actor, detalle]
+    );
+
+    return { avanzado: true, hito_anterior: hitoActual, hito_actual: hitoDestino, estado_operativo: nuevoEstado };
+}
+
+/**
+ * Construye la línea de tiempo Marca Blanca pura (cero menciones a LAMDA / costos / planta):
+ * - ENVIO_BARRIAL: 6 hitos (1 -> 2 -> 3 -> 4 -> 5 -> 6).
+ * - RETIRO_NODO: 5 hitos (1 -> 2 -> 3 -> 4 "¡Listo para retirar!" -> 6 "Entregado", sin viaje falso de reparto).
+ */
+function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
+    const esEnvio = String(pedido.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+    const marca = nodo.nombre_marca || 'Tu Nodo Barrial';
+    const gestor = nodo.gestor_nombre || marca;
+    const dirRetiro = nodo.direccion_retiro || nodo.barrio_zona || marca;
+    const dirVecino = pedido.direccion_entrega || 'tu domicilio';
+    const esAnulado = String(pedido.estado_operativo || '').toUpperCase() === 'ANULADO';
+    const hitoActual = esAnulado
+        ? 0
+        : Number(pedido.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(pedido.estado_operativo, pedido.secuencia_operativa_lamda));
+
+    const mapaEventosTs = new Map();
+    for (const ev of (eventosRows || [])) {
+        const hn = Number(ev.hito_numero || 0);
+        if (hn > 0 && ev.created_at) {
+            mapaEventosTs.set(hn, ev.created_at);
+        }
+    }
+
+    const definiciones = [
+        {
+            hito_numero: 1,
+            codigo: 'CONFIRMADO_VECINO',
+            icono: '📝',
+            titulo: 'Pedido confirmado',
+            descripcion: `Tu pedido quedó registrado en ${marca} para la entrega programada (${pedido.fecha_entrega_label || 'próximo reparto'}).`,
+            fecha_fallback: pedido.created_at
+        },
+        {
+            hito_numero: 2,
+            codigo: 'EN_PREPARACION',
+            icono: '🥣',
+            titulo: 'En preparación',
+            descripcion: 'Estamos seleccionando y fraccionando tus productos frescos.',
+            fecha_fallback: pedido.fecha_en_preparacion || pedido.fecha_armado_bolsa
+        },
+        {
+            hito_numero: 3,
+            codigo: 'ARMADO_EN_CANASTO',
+            icono: '📦',
+            titulo: 'Controlado y embolsado',
+            descripcion: 'Tus productos ya fueron controlados uno por uno y embolsados con tu nombre.',
+            fecha_fallback: pedido.fecha_armado_bolsa
+        },
+        esEnvio
+            ? {
+                hito_numero: 4,
+                codigo: 'EN_PODER_GESTOR',
+                icono: '🏡',
+                titulo: `Ya llegó a ${marca}`,
+                descripcion: `${gestor} ya recibió tu bolsa en el barrio y la prepara para salir hacia tu domicilio.`,
+                fecha_fallback: pedido.fecha_entrega_gestor
+            }
+            : {
+                hito_numero: 4,
+                codigo: 'EN_PODER_GESTOR',
+                icono: '🎉',
+                titulo: `¡Listo para retirar en ${marca}!`,
+                descripcion: `Ya podés pasar a retirarlo por ${dirRetiro}${pedido.ventana_horaria_label ? ` (${pedido.ventana_horaria_label})` : ''}.`,
+                fecha_fallback: pedido.fecha_entrega_gestor
+            }
+    ];
+
+    if (esEnvio) {
+        definiciones.push({
+            hito_numero: 5,
+            codigo: 'EN_CAMINO_VECINO',
+            icono: '🛵',
+            titulo: 'En camino a tu domicilio',
+            descripcion: `¡${gestor} salió en reparto hacia ${dirVecino}!`,
+            fecha_fallback: pedido.fecha_en_camino_vecino
+        });
+    }
+
+    definiciones.push({
+        hito_numero: 6,
+        codigo: 'ENTREGADO_VECINO',
+        icono: '✅',
+        titulo: 'Entregado',
+        descripcion: `¡Gracias por tu compra en ${marca}! Que disfrutes tus productos.`,
+        fecha_fallback: pedido.fecha_entregado_vecino
+    });
+
+    const HITO_EFECTIVO = (!esEnvio && hitoActual === 5) ? 4 : hitoActual;
+
+    const pasos = definiciones.map((def, idx) => {
+        const completado = !esAnulado && HITO_EFECTIVO >= def.hito_numero;
+        const esActual = !esAnulado && HITO_EFECTIVO === def.hito_numero;
+        const ts = completado ? (mapaEventosTs.get(def.hito_numero) || def.fecha_fallback || null) : null;
+        return {
+            paso_orden: idx + 1,
+            total_pasos: definiciones.length,
+            hito_numero: def.hito_numero,
+            codigo: def.codigo,
+            icono: def.icono,
+            titulo: def.titulo,
+            descripcion: def.descripcion,
+            completado,
+            es_actual: esActual,
+            fecha_hora: ts
+        };
+    });
+
+    const pasoActualObj = pasos.find(p => p.es_actual) || pasos[0];
+    return {
+        anulado: esAnulado,
+        hito_actual: HITO_EFECTIVO,
+        paso_actual_orden: esAnulado ? 0 : (pasoActualObj ? pasoActualObj.paso_orden : 1),
+        total_pasos: pasos.length,
+        titulo_estado_actual: esAnulado ? 'Pedido anulado' : (pasoActualObj ? pasoActualObj.titulo : 'Pedido confirmado'),
+        descripcion_estado_actual: esAnulado
+            ? `Este pedido fue anulado. Si necesitás ayuda, escribile a ${gestor}.`
+            : (pasoActualObj ? pasoActualObj.descripcion : ''),
+        pasos
     };
 }
 
@@ -2709,6 +3159,113 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
         );
         for (const rowCc of ccsNodoRes.rows) {
             await recalcularSaldosCuentaMadreBunker(client, rowCc.id);
+        }
+
+        // 4) Sincronizar herencia fiscal, contactos y domicilio desde Cliente Madre (CB-0006 -> CB-NODO-001 y futuros Nodos)
+        const nodosHerenciaRes = await client.query(
+            `SELECT id, nombre_marca, gestor_nombre, gestor_telefono, gestor_email, direccion_retiro, barrio_zona,
+                    bunker_cliente_id, cliente_madre_bunker_id
+             FROM public.nodos_maestro
+             WHERE bunker_cliente_id IS NOT NULL
+             ORDER BY id ASC`
+        );
+        for (const nRow of nodosHerenciaRes.rows) {
+            await sincronizarHerenciaFiscalYContactosDesdeMadre(client, nRow.bunker_cliente_id, nRow.cliente_madre_bunker_id, nRow);
+        }
+
+        // 5) Etapa B: Columnas de tracking criptográfico, hitos deterministas y bitácora inmutable nodos_pedidos_eventos_tracking
+        await client.query(`
+            ALTER TABLE public.nodos_pedidos_vecinos
+                ADD COLUMN IF NOT EXISTS tracking_token VARCHAR(40),
+                ADD COLUMN IF NOT EXISTS hito_tracking_actual SMALLINT DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS fecha_en_preparacion TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS fecha_en_camino_vecino TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS fecha_entregado_vecino TIMESTAMP;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_pedidos_vecinos_tracking_token
+                ON public.nodos_pedidos_vecinos (tracking_token)
+                WHERE tracking_token IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS public.nodos_pedidos_eventos_tracking (
+                id SERIAL PRIMARY KEY,
+                pedido_id INT NOT NULL REFERENCES public.nodos_pedidos_vecinos(id) ON DELETE CASCADE,
+                nodo_id INT NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                hito_numero SMALLINT NOT NULL,
+                estado_operativo VARCHAR(40) NOT NULL,
+                origen_evento VARCHAR(50) DEFAULT 'SISTEMA',
+                actor VARCHAR(120),
+                detalle TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_nodos_eventos_tracking_pedido
+                ON public.nodos_pedidos_eventos_tracking (pedido_id, hito_numero, id);
+        `);
+
+        // Backfill determinista de tracking_token, hito real actual y eventos de auditoría para pedidos existentes (#NB-1001, #NB-1002, #NB-1003, etc.)
+        const pedsTrackingRes = await client.query(
+            `SELECT id, nodo_id, codigo_pedido, modalidad_entrega, estado_operativo, secuencia_operativa_lamda,
+                    tracking_token, hito_tracking_actual, created_at,
+                    fecha_en_preparacion, fecha_armado_bolsa, fecha_entrega_gestor,
+                    fecha_en_camino_vecino, fecha_entregado_vecino
+             FROM public.nodos_pedidos_vecinos
+             ORDER BY id ASC`
+        );
+        for (const pt of pedsTrackingRes.rows) {
+            const tok = (pt.tracking_token && String(pt.tracking_token).trim().length >= 16)
+                ? String(pt.tracking_token).trim()
+                : generarTrackingTokenPedidoNodo();
+            const hitoReal = resolverHitoDesdeEstadoOperativo(pt.estado_operativo, pt.secuencia_operativa_lamda);
+            const hitoEf = hitoReal === 0 ? Number(pt.hito_tracking_actual || 1) : Math.max(Number(pt.hito_tracking_actual || 1), hitoReal);
+
+            const tsPrep = pt.fecha_en_preparacion || (hitoEf >= 2 ? (pt.fecha_armado_bolsa || pt.created_at) : null);
+            const tsArm = pt.fecha_armado_bolsa || (hitoEf >= 3 ? pt.created_at : null);
+            const tsGestor = pt.fecha_entrega_gestor || (hitoEf >= 4 ? (pt.fecha_armado_bolsa || pt.created_at) : null);
+            const tsEntregado = pt.fecha_entregado_vecino || (hitoEf >= 6 ? (pt.fecha_entrega_gestor || pt.created_at) : null);
+
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET tracking_token = $1,
+                     hito_tracking_actual = $2,
+                     fecha_en_preparacion = COALESCE(fecha_en_preparacion, $3),
+                     fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, $4),
+                     fecha_entrega_gestor = COALESCE(fecha_entrega_gestor, $5),
+                     fecha_entregado_vecino = COALESCE(fecha_entregado_vecino, $6)
+                 WHERE id = $7`,
+                [tok, hitoReal === 0 ? 0 : hitoEf, tsPrep, tsArm, tsGestor, tsEntregado, pt.id]
+            );
+
+            if (hitoReal > 0) {
+                const evsExRes = await client.query(
+                    'SELECT hito_numero FROM public.nodos_pedidos_eventos_tracking WHERE pedido_id = $1',
+                    [pt.id]
+                );
+                const hitosRegistrados = new Set(evsExRes.rows.map(r => Number(r.hito_numero)));
+                const esEnvio = String(pt.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+                const secuenciaHitos = [1, 2, 3, 4, ...(esEnvio ? [5] : []), 6].filter(h => h <= hitoEf);
+                for (const h of secuenciaHitos) {
+                    if (hitosRegistrados.has(h)) continue;
+                    const tsEvento = h === 1 ? pt.created_at
+                        : (h === 2 ? (tsPrep || pt.created_at)
+                        : (h === 3 ? (tsArm || pt.created_at)
+                        : (h === 4 ? (tsGestor || pt.created_at)
+                        : (h === 5 ? (pt.fecha_en_camino_vecino || tsGestor || pt.created_at)
+                        : (tsEntregado || pt.created_at)))));
+                    await client.query(
+                        `INSERT INTO public.nodos_pedidos_eventos_tracking (
+                            pedido_id, nodo_id, hito_numero, estado_operativo, origen_evento, actor, detalle, created_at
+                         ) VALUES ($1, $2, $3, $4, 'BACKFILL_SINCRONIZADO', 'Sistema', $5, COALESCE($6, NOW()))`,
+                        [
+                            pt.id,
+                            pt.nodo_id,
+                            h,
+                            MAPA_HITO_A_ESTADO[h],
+                            `Sincronizado con estado operativo real de #${pt.codigo_pedido}`,
+                            tsEvento
+                        ]
+                    );
+                }
+            }
         }
 
         await client.query('COMMIT');
@@ -4997,8 +5554,9 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
  * Obtiene todos los datos necesarios para la Tienda Marca Blanca del Vecino y
  * para el Panel de Autogestión del Gestor de un Nodo específico (:slug).
  */
-async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
+async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opciones = {}) {
     await asegurarEsquemaNodosBarriales();
+    const esVistaGestor = String(opciones?.vista || '').trim().toLowerCase() === 'gestor';
 
     let nodoRes = await db.query(
         `SELECT nm.*,
@@ -5074,50 +5632,62 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
              ORDER BY npf.id DESC`,
             [nodo.id]
         ),
-        db.query(
-            `SELECT *
-             FROM public.nodos_pedidos_vecinos
-             WHERE nodo_id = $1
-             ORDER BY id DESC
-             LIMIT 50`,
-            [nodo.id]
-        ),
-        db.query(
-            `SELECT npi.*
-             FROM public.nodos_pedidos_items npi
-             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
-             WHERE npv.nodo_id = $1
-             ORDER BY npi.id ASC`,
-            [nodo.id]
-        ),
-        db.query(
-            `SELECT nmc.*, nle.codigo_canasto
-             FROM public.nodos_movimientos_cta_cte nmc
-             LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = nmc.lote_canasto_id
-             WHERE nmc.nodo_id = $1
-             ORDER BY nmc.id DESC
-             LIMIT 30`,
-            [nodo.id]
-        ),
-        obtenerCatalogoIngredientesSolicitablesGestor(),
-        db.query(
-            `SELECT nac.id AS catalogo_id,
-                    nac.nombre_publico,
-                    nac.categoria_familiar,
-                    nac.presentacion_etiqueta,
-                    nac.kilos_unidad,
-                    nac.ingrediente_origen_id,
-                    nac.precio_base_nodo_final
-             FROM public.nodos_articulos_catalogo nac
-             WHERE nac.activo = true
-               AND nac.precio_base_nodo_final > 0
-               AND NOT EXISTS (
-                   SELECT 1 FROM public.nodos_ofertas_gestor nog
-                   WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
-               )
-             ORDER BY nac.categoria_familiar ASC, nac.nombre_publico ASC`,
-            [nodo.id]
-        )
+        esVistaGestor
+            ? db.query(
+                `SELECT npv.*,
+                        nle.codigo_canasto AS lote_codigo_canasto,
+                        nle.estado_canasto AS lote_estado_canasto,
+                        COALESCE(nle.debito_cta_cte_registrado, false) AS lote_debito_registrado
+                 FROM public.nodos_pedidos_vecinos npv
+                 LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+                 WHERE npv.nodo_id = $1
+                 ORDER BY npv.id DESC
+                 LIMIT 80`,
+                [nodo.id]
+            )
+            : Promise.resolve({ rows: [] }),
+        esVistaGestor
+            ? db.query(
+                `SELECT npi.*
+                 FROM public.nodos_pedidos_items npi
+                 JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+                 WHERE npv.nodo_id = $1
+                 ORDER BY npi.id ASC`,
+                [nodo.id]
+            )
+            : Promise.resolve({ rows: [] }),
+        esVistaGestor
+            ? db.query(
+                `SELECT nmc.*, nle.codigo_canasto
+                 FROM public.nodos_movimientos_cta_cte nmc
+                 LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = nmc.lote_canasto_id
+                 WHERE nmc.nodo_id = $1
+                 ORDER BY nmc.id DESC
+                 LIMIT 30`,
+                [nodo.id]
+            )
+            : Promise.resolve({ rows: [] }),
+        esVistaGestor ? obtenerCatalogoIngredientesSolicitablesGestor() : Promise.resolve([]),
+        esVistaGestor
+            ? db.query(
+                `SELECT nac.id AS catalogo_id,
+                        nac.nombre_publico,
+                        nac.categoria_familiar,
+                        nac.presentacion_etiqueta,
+                        nac.kilos_unidad,
+                        nac.ingrediente_origen_id,
+                        nac.precio_base_nodo_final
+                 FROM public.nodos_articulos_catalogo nac
+                 WHERE nac.activo = true
+                   AND nac.precio_base_nodo_final > 0
+                   AND NOT EXISTS (
+                       SELECT 1 FROM public.nodos_ofertas_gestor nog
+                       WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+                   )
+                 ORDER BY nac.categoria_familiar ASC, nac.nombre_publico ASC`,
+                [nodo.id]
+            )
+            : Promise.resolve({ rows: [] })
     ]);
 
     const itemsPorPedido = new Map();
@@ -5130,8 +5700,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
     const pedidosConItems = pedidosRes.rows.map(p => {
         const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
             ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+        const hitoActual = Number(p.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(p.estado_operativo, p.secuencia_operativa_lamda));
         return {
             ...p,
+            hito_tracking_actual: hitoActual,
             pago_confirmado: pagoConfirmado,
             items: itemsPorPedido.get(Number(p.id)) || []
         };
@@ -5151,8 +5723,30 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
             destacado_tienda: Boolean(o.destacado_tienda)
         }));
 
+    const nodoPublico = esVistaGestor
+        ? nodo
+        : {
+            id: nodo.id,
+            codigo_nodo: nodo.codigo_nodo,
+            slug: nodo.slug,
+            nombre_marca: nodo.nombre_marca,
+            subtitulo_marca: nodo.subtitulo_marca,
+            gestor_nombre: nodo.gestor_nombre,
+            gestor_telefono: nodo.gestor_telefono,
+            barrio_zona: nodo.barrio_zona,
+            direccion_retiro: nodo.direccion_retiro,
+            alias_bancario_display: nodo.alias_bancario_display,
+            cbu_display: nodo.cbu_display,
+            titular_display: nodo.titular_display,
+            permitir_envio_barrial: nodo.permitir_envio_barrial,
+            cargo_envio_barrial: nodo.cargo_envio_barrial,
+            config_ventanas_corte: nodo.config_ventanas_corte,
+            color_primario: nodo.color_primario,
+            logo_original_base64: nodo.logo_original_base64
+        };
+
     return {
-        nodo,
+        nodo: nodoPublico,
         nodos_disponibles: [
             {
                 id: nodo.id,
@@ -5167,14 +5761,14 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null) {
         ],
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasPublicadas,
-        todas_ofertas_gestor: ofertasRes.rows,
-        catalogo_base_disponible: catDisponibleRes.rows,
-        propuestas_nodo: propuestasRes.rows,
-        pedidos_nodo: pedidosConItems,
-        movimientos_cta_cte: movsRes.rows,
+        todas_ofertas_gestor: esVistaGestor ? ofertasRes.rows : [],
+        catalogo_base_disponible: esVistaGestor ? catDisponibleRes.rows : [],
+        propuestas_nodo: esVistaGestor ? propuestasRes.rows : [],
+        pedidos_nodo: esVistaGestor ? pedidosConItems : [],
+        movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
-        ingredientes_sugeribles: ingredientesSolicitables
+        ingredientes_sugeribles: esVistaGestor ? ingredientesSolicitables : []
     };
 }
 
@@ -5383,16 +5977,19 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             ? String(payload.direccion_entrega || '').trim()
             : (nodo.direccion_retiro || nodo.barrio_zona || '');
 
+        const trackingToken = generarTrackingTokenPedidoNodo();
+
         const insPed = await client.query(
             `INSERT INTO public.nodos_pedidos_vecinos (
                 codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
                 modalidad_entrega, direccion_entrega, entrecalles_referencia,
                 fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
                 entrar_en_corte_actual, medio_pago, estado_pago, estado_operativo,
+                tracking_token, hito_tracking_actual,
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
                 total_base_lamda, ganancia_total_gestor, observaciones_vecino
              ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CONFIRMADO_VECINO',$15,$16,$17,$18,$19,$20
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CONFIRMADO_VECINO',$15,1,$16,$17,$18,$19,$20,$21
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -5409,6 +6006,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 !proxima.paso_horario_corte,
                 medioPago,
                 estadoPago,
+                trackingToken,
                 subtotalProductosVecino,
                 cargoEnvioBarrial,
                 totalVecino,
@@ -5418,6 +6016,18 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             ]
         );
         const pedidoRow = insPed.rows[0];
+
+        await client.query(
+            `INSERT INTO public.nodos_pedidos_eventos_tracking (
+                pedido_id, nodo_id, hito_numero, estado_operativo, origen_evento, actor, detalle
+             ) VALUES ($1, $2, 1, 'CONFIRMADO_VECINO', 'TIENDA_VECINO', $3, $4)`,
+            [
+                pedidoRow.id,
+                nodo.id,
+                vecinoNombre,
+                `Pedido #${codigoPedido} registrado en ${nodo.nombre_marca} (${modalidad})`
+            ]
+        );
 
         for (const it of itemsValidados) {
             await client.query(
@@ -6506,11 +7116,12 @@ async function sincronizarCambioSecuenciaDesdeLamda(presupuestosIds = [], nuevaS
     if (nuevaSecuencia === 'Imprimir' || nuevaSecuencia === 'Imprimir_Modificado') {
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
-             SET estado_operativo = 'CONFIRMADO_VECINO',
-                 ubicacion_deposito = 'PENDIENTE_TALLER',
+             SET estado_operativo = CASE WHEN COALESCE(hito_tracking_actual, 1) < 2 THEN 'CONFIRMADO_VECINO' ELSE estado_operativo END,
+                 ubicacion_deposito = CASE WHEN COALESCE(hito_tracking_actual, 1) < 3 THEN 'PENDIENTE_TALLER' ELSE ubicacion_deposito END,
                  secuencia_operativa_lamda = $1,
                  updated_at = NOW()
-             WHERE id = ANY($2::int[])`,
+             WHERE id = ANY($2::int[])
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [nuevaSecuencia, pedidoIds]
         );
     } else if (nuevaSecuencia === 'Armar_Pedido') {
@@ -6518,28 +7129,44 @@ async function sincronizarCambioSecuenciaDesdeLamda(presupuestosIds = [], nuevaS
             `UPDATE public.nodos_pedidos_vecinos
              SET secuencia_operativa_lamda = 'Armar_Pedido',
                  updated_at = NOW()
-             WHERE id = ANY($1::int[])`,
+             WHERE id = ANY($1::int[])
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [pedidoIds]
         );
+        for (const pid of pedidoIds) {
+            await registrarTransicionHitoPedidoVecino(db, pid, 2, {
+                origen: 'PRODUCCION_IMPRESION',
+                actor: 'Taller Producción',
+                detalle: 'Orden impresa y en preparación de productos'
+            });
+        }
     } else if (nuevaSecuencia === 'Pedido_Listo' || nuevaSecuencia === 'Retira_Deposito') {
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
-             SET estado_operativo = 'ARMADO_EN_CANASTO',
-                 ubicacion_deposito = 'ESTACION_NODOS',
+             SET ubicacion_deposito = CASE WHEN COALESCE(hito_tracking_actual, 1) < 4 THEN 'ESTACION_NODOS' ELSE ubicacion_deposito END,
                  etiqueta_impresa = true,
                  fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
                  operario_armado = COALESCE(operario_armado, 'Chequeo Producción LAMDA'),
                  secuencia_operativa_lamda = $1,
                  updated_at = NOW()
-             WHERE id = ANY($2::int[])`,
+             WHERE id = ANY($2::int[])
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [nuevaSecuencia, pedidoIds]
         );
+        for (const pid of pedidoIds) {
+            await registrarTransicionHitoPedidoVecino(db, pid, 3, {
+                origen: 'VERIFICACION_LECTOR',
+                actor: 'Verificación Código de Barras',
+                detalle: `Bolsa verificada y controlada (${nuevaSecuencia})`
+            });
+        }
     } else if (nuevaSecuencia === 'Entregado') {
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET secuencia_operativa_lamda = 'Entregado',
                  updated_at = NOW()
-             WHERE id = ANY($1::int[])`,
+             WHERE id = ANY($1::int[])
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [pedidoIds]
         );
     }
@@ -6578,7 +7205,7 @@ async function sincronizarCambioSecuenciaDesdeLamda(presupuestosIds = [], nuevaS
         );
         const rowsP = pedsEstado.rows;
         const totalP = rowsP.length;
-        const armadasP = rowsP.filter(r => ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(String(r.estado_operativo || '')) || ['Pedido_Listo', 'Retira_Deposito', 'Entregado'].includes(r.sec)).length;
+        const armadasP = rowsP.filter(r => ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(String(r.estado_operativo || '')) || ['Pedido_Listo', 'Retira_Deposito', 'Entregado'].includes(r.sec)).length;
 
         let nuevaSecCan = 'Imprimir';
         let nuevoEstCan = 'EN_ARMADO';
@@ -6604,6 +7231,53 @@ async function sincronizarCambioSecuenciaDesdeLamda(presupuestosIds = [], nuevaS
              WHERE id = $4`,
             [nuevoEstCan, armadasP, nuevaSecCan, canastoId]
         );
+    }
+}
+
+/**
+ * Enganche determinista para Hito 2 (EN_PREPARACION) cuando desde Configurar Carros
+ * se asignan artículos faltantes de un Nodo Barrial a un operador de fraccionamiento.
+ */
+async function notificarInicioPreparacionCarroNodo({ cliente_id = null, articulos = [], operario = 'Operador Taller', carro_id = null } = {}) {
+    try {
+        await asegurarEsquemaNodosBarriales();
+        const skusUpper = Array.isArray(articulos)
+            ? articulos.map(a => String(a.articulo_numero || a.codigo || a || '').trim().toUpperCase()).filter(Boolean)
+            : [];
+        if (skusUpper.length === 0) return { actualizados: 0 };
+
+        const cliNum = Number(cliente_id || 0);
+        let filtroNodoSql = '';
+        const params = [skusUpper];
+        if (cliNum >= 9001 && cliNum < 9999) {
+            params.push(cliNum - 9000);
+            filtroNodoSql = `AND npv.nodo_id = $2`;
+        }
+
+        const pedsRes = await db.query(
+            `SELECT DISTINCT npv.id
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_pedidos_items npi ON npi.pedido_id = npv.id
+             WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               AND COALESCE(npv.hito_tracking_actual, 1) < 2
+               AND UPPER(TRIM(npi.sku_nodo)) = ANY($1::text[])
+               ${filtroNodoSql}`,
+            params
+        );
+
+        let actualizados = 0;
+        for (const r of pedsRes.rows) {
+            const resHito = await registrarTransicionHitoPedidoVecino(db, r.id, 2, {
+                origen: 'PRODUCCION_CARRO',
+                actor: String(operario || 'Operador Taller'),
+                detalle: `Artículos asignados a Carro de Producción${carro_id ? ` #${carro_id}` : ''}`
+            });
+            if (resHito.avanzado) actualizados++;
+        }
+        return { actualizados };
+    } catch (err) {
+        console.warn('⚠️ [NodosBarriales] Advertencia notificando inicio de preparación en carro:', err.message);
+        return { actualizados: 0 };
     }
 }
 
@@ -6924,24 +7598,46 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
     }
     const ped = pedRes.rows[0];
 
-    if (ped.estado_operativo === 'EN_PODER_GESTOR' || ped.estado_operativo === 'ENTREGADO_VECINO') {
+    if (['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(String(ped.estado_operativo || '').toUpperCase())) {
         throw new Error('Este pedido ya fue retirado por el Gestor del Nodo.');
     }
 
     const nuevoEstado = desmarcar ? 'CONFIRMADO_VECINO' : 'ARMADO_EN_CANASTO';
     const nuevaUbicacion = desmarcar ? 'PENDIENTE_TALLER' : 'ESTACION_NODOS';
 
-    await db.query(
-        `UPDATE public.nodos_pedidos_vecinos
-         SET estado_operativo = $1::varchar,
-             ubicacion_deposito = $2::varchar,
-             etiqueta_impresa = CASE WHEN $3::boolean THEN etiqueta_impresa ELSE true END,
-             fecha_armado_bolsa = CASE WHEN $3::boolean THEN NULL ELSE NOW() END,
-             operario_armado = CASE WHEN $3::boolean THEN NULL ELSE $4::varchar END,
-             updated_at = NOW()
-         WHERE id = $5::int`,
-        [nuevoEstado, nuevaUbicacion, desmarcar, operario, Number(pedidoId)]
-    );
+    if (desmarcar) {
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET estado_operativo = 'CONFIRMADO_VECINO',
+                 hito_tracking_actual = 1,
+                 ubicacion_deposito = 'PENDIENTE_TALLER',
+                 fecha_armado_bolsa = NULL,
+                 operario_armado = NULL,
+                 updated_at = NOW()
+             WHERE id = $1::int`,
+            [Number(pedidoId)]
+        );
+        await db.query(
+            'DELETE FROM public.nodos_pedidos_eventos_tracking WHERE pedido_id = $1 AND hito_numero >= 3',
+            [Number(pedidoId)]
+        );
+    } else {
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET ubicacion_deposito = 'ESTACION_NODOS',
+                 etiqueta_impresa = true,
+                 fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
+                 operario_armado = $1::varchar,
+                 updated_at = NOW()
+             WHERE id = $2::int`,
+            [operario, Number(pedidoId)]
+        );
+        await registrarTransicionHitoPedidoVecino(db, Number(pedidoId), 3, {
+            origen: 'MESA_ARMADO_DEPOSITO',
+            actor: operario,
+            detalle: `Bolsa controlada y alojada en Canasto por ${operario}`
+        });
+    }
 
     await sincronizarCanastosEstacionNodos();
 
@@ -6972,18 +7668,34 @@ async function armarTodasBolsasDeCanasto(canastoId, payload = {}) {
 
     const operario = String(payload.operario || 'Equipo Depósito').trim();
 
+    const pedsPendArmar = await db.query(
+        `SELECT id FROM public.nodos_pedidos_vecinos
+         WHERE lote_canasto_id = $1
+           AND COALESCE(estado_operativo, '') <> 'ANULADO'
+           AND COALESCE(hito_tracking_actual, 1) < 3`,
+        [Number(canastoId)]
+    );
+
     await db.query(
         `UPDATE public.nodos_pedidos_vecinos
-         SET estado_operativo = 'ARMADO_EN_CANASTO',
-             ubicacion_deposito = 'ESTACION_NODOS',
+         SET ubicacion_deposito = 'ESTACION_NODOS',
              etiqueta_impresa = true,
              fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
              operario_armado = COALESCE(operario_armado, $1),
              updated_at = NOW()
          WHERE lote_canasto_id = $2
-           AND estado_operativo = 'CONFIRMADO_VECINO'`,
+           AND COALESCE(estado_operativo, '') <> 'ANULADO'
+           AND COALESCE(hito_tracking_actual, 1) < 3`,
         [operario, Number(canastoId)]
     );
+
+    for (const r of pedsPendArmar.rows) {
+        await registrarTransicionHitoPedidoVecino(db, r.id, 3, {
+            origen: 'MESA_ARMADO_LOTE',
+            actor: operario,
+            detalle: `Bolsa controlada en cierre de Canasto por ${operario}`
+        });
+    }
 
     await sincronizarCanastosEstacionNodos();
     const etiquetaCanasto = await generarEtiquetaQrMaestroCanasto(canastoId);
@@ -7086,20 +7798,35 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
         }
 
         const retiradoPor = String(payload.retirado_por || canasto.gestor_nombre || 'Gestor del Nodo').trim();
+        const origenRetiro = String(payload.origen_evento || 'DESPACHO_LOTE_NODO').trim();
 
-        // Pasar todas las bolsas activas del Canasto a EN_PODER_GESTOR ("En reparto / En poder del Gestor")
+        const pedsActivosCanRes = await client.query(
+            `SELECT id FROM public.nodos_pedidos_vecinos
+             WHERE lote_canasto_id = $1
+               AND COALESCE(estado_operativo, '') <> 'ANULADO'
+             ORDER BY id ASC`,
+            [canasto.id]
+        );
+
         await client.query(
             `UPDATE public.nodos_pedidos_vecinos
-             SET estado_operativo = 'EN_PODER_GESTOR',
-                 ubicacion_deposito = 'DESPACHADO_NODO',
+             SET ubicacion_deposito = 'DESPACHADO_NODO',
                  etiqueta_impresa = true,
                  fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
-                 fecha_entrega_gestor = NOW(),
+                 fecha_entrega_gestor = COALESCE(fecha_entrega_gestor, NOW()),
                  updated_at = NOW()
              WHERE lote_canasto_id = $1
                AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
             [canasto.id]
         );
+
+        for (const pRow of pedsActivosCanRes.rows) {
+            await registrarTransicionHitoPedidoVecino(client, pRow.id, 4, {
+                origen: origenRetiro,
+                actor: retiradoPor,
+                detalle: `Lote ${canasto.codigo_canasto} recibido en ${canasto.nombre_marca} (${retiradoPor})`
+            });
+        }
 
         const montoDebitoBaseLamda = Number(canasto.total_base_lamda || 0);
         let saldoResultante = 0;
@@ -7240,10 +7967,21 @@ async function reabrirCanastoParaPruebaLaboratorio(canastoId) {
         }
 
         await client.query(
+            `DELETE FROM public.nodos_pedidos_eventos_tracking
+             WHERE pedido_id IN (
+                 SELECT id FROM public.nodos_pedidos_vecinos WHERE lote_canasto_id = $1
+             ) AND hito_numero >= 4`,
+            [canasto.id]
+        );
+
+        await client.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET estado_operativo = 'ARMADO_EN_CANASTO',
+                 hito_tracking_actual = 3,
                  ubicacion_deposito = 'ESTACION_NODOS',
                  fecha_entrega_gestor = NULL,
+                 fecha_en_camino_vecino = NULL,
+                 fecha_entregado_vecino = NULL,
                  updated_at = NOW()
              WHERE lote_canasto_id = $1
                AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
@@ -9549,8 +10287,318 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
     };
 }
 
+// ============================================================================
+// ETAPA B: SEGUIMIENTO EN VIVO MARCA BLANCA Y CONTROLES DE 1 TOQUE DEL GESTOR
+// ============================================================================
+
+async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
+    const [itemsRes, evsRes] = await Promise.all([
+        db.query(
+            `SELECT nombre_publico, presentacion_etiqueta, cantidad,
+                    precio_unitario_vecino, subtotal_vecino
+             FROM public.nodos_pedidos_items
+             WHERE pedido_id = $1
+             ORDER BY id ASC`,
+            [pedidoRow.id]
+        ),
+        db.query(
+            `SELECT hito_numero, estado_operativo, created_at
+             FROM public.nodos_pedidos_eventos_tracking
+             WHERE pedido_id = $1
+             ORDER BY hito_numero ASC, id ASC`,
+            [pedidoRow.id]
+        )
+    ]);
+
+    const pagoConfirmado = Boolean(pedidoRow.impactado_cta_cte_pago) ||
+        ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedidoRow.estado_pago || '').toUpperCase());
+
+    const timeline = construirTimelineMarcaBlancaPedido(pedidoRow, nodoRow, evsRes.rows);
+
+    return {
+        nodo: {
+            slug: nodoRow.slug,
+            nombre_marca: nodoRow.nombre_marca,
+            subtitulo_marca: nodoRow.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+            gestor_nombre: nodoRow.gestor_nombre,
+            gestor_telefono: nodoRow.gestor_telefono,
+            barrio_zona: nodoRow.barrio_zona,
+            direccion_retiro: nodoRow.direccion_retiro,
+            color_primario: nodoRow.color_primario || '#a2553b',
+            logo_original_base64: nodoRow.logo_original_base64 || null,
+            alias_bancario_display: nodoRow.alias_bancario_display || '',
+            cbu_display: nodoRow.cbu_display || '',
+            titular_display: nodoRow.titular_display || ''
+        },
+        pedido: {
+            codigo_pedido: pedidoRow.codigo_pedido,
+            tracking_token: pedidoRow.tracking_token,
+            vecino_nombre: pedidoRow.vecino_nombre,
+            modalidad_entrega: pedidoRow.modalidad_entrega,
+            direccion_entrega: pedidoRow.direccion_entrega || '',
+            entrecalles_referencia: pedidoRow.entrecalles_referencia || '',
+            fecha_entrega_label: pedidoRow.fecha_entrega_label || '',
+            ventana_horaria_label: pedidoRow.ventana_horaria_label || '',
+            medio_pago: pedidoRow.medio_pago,
+            pago_confirmado: pagoConfirmado,
+            subtotal_productos_vecino: Number(pedidoRow.subtotal_productos_vecino || 0),
+            cargo_envio_barrial: Number(pedidoRow.cargo_envio_barrial || 0),
+            monto_ajuste_credito: Number(pedidoRow.monto_ajuste_credito || 0),
+            motivo_ajuste_credito: pedidoRow.motivo_ajuste_credito || '',
+            total_vecino: Number(pedidoRow.total_vecino || 0),
+            observaciones_vecino: pedidoRow.observaciones_vecino || '',
+            created_at: pedidoRow.created_at
+        },
+        items: itemsRes.rows.map(it => ({
+            nombre_publico: it.nombre_publico,
+            presentacion_etiqueta: it.presentacion_etiqueta,
+            cantidad: Number(it.cantidad || 1),
+            precio_unitario_vecino: Number(it.precio_unitario_vecino || 0),
+            subtotal_vecino: Number(it.subtotal_vecino || 0)
+        })),
+        seguimiento: timeline
+    };
+}
+
+/**
+ * Consulta pública por token criptográfico (100% Marca Blanca, cero datos internos de LAMDA).
+ */
+async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
+    await asegurarEsquemaNodosBarriales();
+
+    const cleanSlug = String(slug || '').trim();
+    const cleanToken = String(trackingToken || '').trim();
+    if (!cleanToken || cleanToken.length < 12) {
+        throw new Error('Enlace de seguimiento inválido.');
+    }
+
+    const res = await db.query(
+        `SELECT npv.*,
+                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario,
+                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         WHERE npv.tracking_token = $1
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+         LIMIT 1`,
+        [cleanToken, cleanSlug]
+    );
+
+    if (res.rows.length === 0) {
+        throw new Error('No encontramos un pedido asociado a este enlace de seguimiento.');
+    }
+
+    const row = res.rows[0];
+    return _armarRespuestaSeguimientoMarcaBlanca(row, { ...row, slug: row.nm_slug });
+}
+
+/**
+ * Buscador público anti-enumeración en Tienda del Vecino: exige coincidencia simultánea
+ * de WhatsApp del vecino + Código de pedido (#NB-1002 o 1002) dentro del mismo Nodo.
+ */
+async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const cleanSlug = String(slug || '').trim();
+    const telNorm = normalizarTelefonoVecinoNodo(payload.telefono || payload.vecino_telefono || '');
+    const rawCodigo = String(payload.codigo_pedido || '').trim().toUpperCase().replace(/^#+/, '');
+
+    if (!telNorm || telNorm.length < 6) {
+        throw new Error('Ingresá el número de WhatsApp con el que hiciste el pedido.');
+    }
+    if (!rawCodigo) {
+        throw new Error('Ingresá el número de tu pedido (por ejemplo: NB-1002).');
+    }
+
+    const codigoNormalizado = /^\d+$/.test(rawCodigo)
+        ? `NB-${rawCodigo}`
+        : (rawCodigo.startsWith('NB-') ? rawCodigo : `NB-${rawCodigo.replace(/^NB/i, '').replace(/^-+/, '')}`);
+
+    const res = await db.query(
+        `SELECT npv.*,
+                nv.telefono_normalizado AS vec_tel_norm,
+                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario,
+                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
+         WHERE UPPER(TRIM(npv.codigo_pedido)) = $1
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+         LIMIT 5`,
+        [codigoNormalizado, cleanSlug]
+    );
+
+    const coincidente = res.rows.find(r => {
+        const tPed = normalizarTelefonoVecinoNodo(r.vec_tel_norm || r.vecino_telefono || '');
+        if (!tPed) return false;
+        const ultimos8Ingresado = telNorm.slice(-8);
+        const ultimos8Pedido = tPed.slice(-8);
+        return tPed === telNorm || (ultimos8Ingresado.length >= 7 && ultimos8Ingresado === ultimos8Pedido);
+    });
+
+    if (!coincidente) {
+        throw new Error('No encontramos un pedido que coincida con ese número de pedido y WhatsApp. Verificá ambos datos.');
+    }
+
+    if (!coincidente.tracking_token) {
+        const nuevoTok = generarTrackingTokenPedidoNodo();
+        await db.query('UPDATE public.nodos_pedidos_vecinos SET tracking_token = $1 WHERE id = $2', [nuevoTok, coincidente.id]);
+        coincidente.tracking_token = nuevoTok;
+    }
+
+    return _armarRespuestaSeguimientoMarcaBlanca(coincidente, { ...coincidente, slug: coincidente.nm_slug });
+}
+
+/**
+ * Control de 1 toque en el Panel del Gestor: confirma la recepción física del lote en el Nodo
+ * (Hito 3 -> Hito 4 EN_PODER_GESTOR) registrando determinísticamente el débito base sobre CB-NODO-xxx.
+ */
+async function confirmarRecepcionLotePorGestor(nodoId, canastoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    const cid = Number(canastoId || 0);
+    if (!nid || !cid) {
+        throw new Error('Identificadores de Nodo y Lote requeridos.');
+    }
+
+    const canRes = await db.query(
+        `SELECT nle.*, nm.gestor_nombre, nm.slug
+         FROM public.nodos_lotes_estacion nle
+         JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+         WHERE nle.id = $1 AND nle.nodo_id = $2
+         LIMIT 1`,
+        [cid, nid]
+    );
+    if (canRes.rows.length === 0) {
+        throw new Error('El lote seleccionado no pertenece a este Nodo.');
+    }
+    const canasto = canRes.rows[0];
+
+    // Validar que los pedidos activos del lote ya hayan sido controlados en Verificación (Hito >= 3)
+    const pedsCheck = await db.query(
+        `SELECT id, codigo_pedido, estado_operativo, hito_tracking_actual
+         FROM public.nodos_pedidos_vecinos
+         WHERE lote_canasto_id = $1 AND COALESCE(estado_operativo, '') <> 'ANULADO'`,
+        [cid]
+    );
+    const sinVerificar = pedsCheck.rows.filter(p => Number(p.hito_tracking_actual || 1) < 3);
+    if (sinVerificar.length > 0) {
+        throw new Error(`Todavía hay ${sinVerificar.length} pedido(s) en preparación pendiente(s) de control antes de confirmar la recepción del lote.`);
+    }
+
+    if (canasto.estado_canasto === 'ENTREGADO_AL_GESTOR' && canasto.debito_cta_cte_registrado) {
+        return {
+            ya_recibido: true,
+            codigo_canasto: canasto.codigo_canasto
+        };
+    }
+
+    const resRetiro = await confirmarRetiroCanastoPorGestor(cid, {
+        retirado_por: payload.actor || canasto.gestor_nombre || 'Gestor del Nodo',
+        origen_evento: 'RECEPCION_PANEL_GESTOR'
+    });
+
+    return {
+        ya_recibido: false,
+        codigo_canasto: canasto.codigo_canasto,
+        canasto: resRetiro.canasto
+    };
+}
+
+/**
+ * Control de 1 toque en el Panel del Gestor para avanzar un pedido vecinal a:
+ *  - Hito 5 ('SALIO_REPARTO' -> EN_CAMINO_VECINO, exclusivo para ENVIO_BARRIAL en Hito 4)
+ *  - Hito 6 ('ENTREGADO' -> ENTREGADO_VECINO, desde Hito 4 o 5), con opción unificada
+ *    de registrar el cobro en efectivo en el mismo paso.
+ */
+async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    const pid = Number(pedidoId || 0);
+    const accion = String(payload.accion || '').trim().toUpperCase();
+
+    if (!nid || !pid) {
+        throw new Error('Nodo y Pedido requeridos.');
+    }
+    if (!['SALIO_REPARTO', 'ENTREGADO'].includes(accion)) {
+        throw new Error('Acción inválida. Use SALIO_REPARTO o ENTREGADO.');
+    }
+
+    const pedRes = await db.query(
+        `SELECT npv.*, nm.nombre_marca, nm.gestor_nombre, nm.slug
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         WHERE npv.id = $1 AND npv.nodo_id = $2
+         LIMIT 1`,
+        [pid, nid]
+    );
+    if (pedRes.rows.length === 0) {
+        throw new Error('Pedido vecinal no encontrado en este Nodo.');
+    }
+    const ped = pedRes.rows[0];
+
+    if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
+        throw new Error('No se puede avanzar la entrega de un pedido anulado.');
+    }
+
+    const hitoActual = Number(ped.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(ped.estado_operativo, ped.secuencia_operativa_lamda));
+    if (hitoActual < 4) {
+        throw new Error(`El pedido #${ped.codigo_pedido} aún no figura recibido en ${ped.nombre_marca}. Confirmá primero la recepción del lote arriba.`);
+    }
+
+    const actor = String(payload.actor || ped.gestor_nombre || 'Gestor del Nodo').trim();
+
+    if (accion === 'SALIO_REPARTO') {
+        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+            throw new Error(`El pedido #${ped.codigo_pedido} es de retiro en el Nodo (no lleva viaje de reparto domiciliario).`);
+        }
+        if (hitoActual >= 6) {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya figura como entregado.`);
+        }
+        await registrarTransicionHitoPedidoVecino(db, pid, 5, {
+            origen: 'PANEL_GESTOR_REPARTO',
+            actor,
+            detalle: `${actor} inició reparto barrial hacia ${ped.direccion_entrega || 'domicilio del vecino'}`
+        });
+    } else if (accion === 'ENTREGADO') {
+        await registrarTransicionHitoPedidoVecino(db, pid, 6, {
+            origen: 'PANEL_GESTOR_ENTREGA',
+            actor,
+            detalle: `Pedido #${ped.codigo_pedido} entregado a ${ped.vecino_nombre}`
+        });
+    }
+
+    let cobroRegistrado = false;
+    const pagoYaConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
+        ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
+
+    if (accion === 'ENTREGADO' && Boolean(payload.registrar_cobro_efectivo) && !pagoYaConfirmado) {
+        await conciliarPagoPedidoVecino(pid, {
+            medio_pago: 'EFECTIVO',
+            comprobante_referencia: `REC-EFVO-${ped.codigo_pedido}`,
+            nota: payload.nota_cobro || `Cobrado en efectivo al entregar #${ped.codigo_pedido}`
+        });
+        cobroRegistrado = true;
+    }
+
+    const pedActualizadoRes = await db.query('SELECT * FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1', [pid]);
+    const pedAct = pedActualizadoRes.rows[0];
+    const seguimientoData = await _armarRespuestaSeguimientoMarcaBlanca(pedAct, ped);
+
+    return {
+        pedido: pedAct,
+        cobro_efectivo_registrado: cobroRegistrado,
+        seguimiento: seguimientoData.seguimiento
+    };
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
+    sincronizarHerenciaFiscalDesdeMadrePorId,
     ponerACeroDatosNodosBarriales,
     normalizarTelefonoVecinoNodo,
     construirTaxonomiaPosicionalNodo,
@@ -9575,6 +10623,7 @@ module.exports = {
     sincronizarCanastosEstacionNodos,
     sincronizarNodosConCircuitoOperativoLamda,
     sincronizarCambioSecuenciaDesdeLamda,
+    notificarInicioPreparacionCarroNodo,
     cambiarEtapaCircuitoLamdaCanasto,
     obtenerEstadoCircuitoOperativoLamda,
     obtenerArbolCanastosPorCodigos,
@@ -9595,6 +10644,10 @@ module.exports = {
     aplicarNotaCreditoPedidoVecino,
     obtenerArbolNodoClientesBunker,
     obtenerSubcuentaVecinoDetalle,
+    obtenerSeguimientoPublicoPedidoVecino,
+    buscarSeguimientoPublicoPorTelefonoYPedido,
+    confirmarRecepcionLotePorGestor,
+    actualizarEstadoEntregaVecinoPorGestor,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,

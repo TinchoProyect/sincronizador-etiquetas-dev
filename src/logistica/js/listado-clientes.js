@@ -255,7 +255,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Estado del ojo (mostrar/ocultar deuda total)
     let mostrarDeuda = localStorage.getItem('lamda_mostrar_deuda_total') !== 'false';
 
-    function actualizarDeudaTotal() {
+    function actualizarDeudaTotal(listaFuente = null) {
+        const lista = Array.isArray(listaFuente) ? listaFuente : todosLosClientes;
         let totalDeuda = 0;
         let totalFinancActivaConIva = 0;
         let totalFinancSombraConIva = 0;
@@ -265,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let countSombraConCargo = 0;
         let countExcluido = 0;
 
-        todosLosClientes.forEach(c => {
+        lista.forEach(c => {
             const val = parseFloat(c.saldo || 0);
             if (val > 0) totalDeuda += val;
 
@@ -986,8 +987,141 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cardExcluido) cardExcluido.classList.toggle('active-filter', filtroFinanc === 'EXCLUIDO');
     }
 
+    function normalizarTextoBusquedaLocal(str) {
+        return String(str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+    }
+
+    function normalizarDigitosBusquedaLocal(str) {
+        let d = String(str || '').replace(/\D+/g, '');
+        if (d.startsWith('549') && d.length >= 12) d = d.slice(3);
+        else if (d.startsWith('54') && d.length >= 11) d = d.slice(2);
+        if (d.startsWith('0')) d = d.slice(1);
+        return d;
+    }
+
+    function construirIndiceBusquedaCliente(c) {
+        const listasTxt = Array.isArray(c.listas_precios) ? c.listas_precios.map(l => l.nombre || '').join(' ') : '';
+        const ni = c.nodo_info || null;
+        const nodoTxt = ni
+            ? [ni.codigo_nodo, ni.slug, ni.nombre_marca, ni.gestor_nombre, ni.gestor_telefono, ni.barrio_zona, ni.codigo_bunker_cliente_madre, ni.cliente_madre_nombre].join(' ')
+            : '';
+
+        const bolsaBase = normalizarTextoBusquedaLocal([
+            c.codigo_bunker_cliente,
+            c.cliente_nombre,
+            c.razon_social,
+            c.lomas_soft_id,
+            c.cuit_cuil,
+            c.condicion_iva,
+            c.domicilio_fiscal,
+            c.provincia,
+            c.whatsapp_facturas,
+            c.email_facturas,
+            c.email_portal,
+            c.email_portal_nombre,
+            c.email_portal_cargo,
+            c.domicilios_busqueda,
+            listasTxt,
+            nodoTxt
+        ].join(' '));
+
+        const digitsBase = [
+            c.cuit_cuil,
+            c.lomas_soft_id,
+            c.whatsapp_facturas,
+            ni ? ni.gestor_telefono : ''
+        ].map(v => String(v || '').replace(/\D+/g, '')).filter(Boolean).join(' ');
+
+        const vecinosIndice = (ni && Array.isArray(ni.vecinos_indice))
+            ? ni.vecinos_indice.map(v => ({
+                id: Number(v.id),
+                bolsa: normalizarTextoBusquedaLocal([
+                    v.codigo_vecino,
+                    v.nombre_completo,
+                    v.telefono_whatsapp,
+                    v.telefono_normalizado,
+                    v.direccion_calle,
+                    v.titular_habitual
+                ].join(' ')),
+                digits: normalizarDigitosBusquedaLocal(v.telefono_normalizado || v.telefono_whatsapp || '')
+            }))
+            : [];
+
+        return { bolsaBase, digitsBase, vecinosIndice };
+    }
+
+    function evaluarVecinoCoincideTerminos(bolsaVecino, digitsVecino, terminos) {
+        if (!terminos || terminos.length === 0) return false;
+        return terminos.every(t => {
+            if (bolsaVecino.includes(t.texto)) return true;
+            if (t.digits.length >= 4 && digitsVecino && digitsVecino.includes(t.digits)) return true;
+            return false;
+        });
+    }
+
+    function parsearTerminosBusquedaLocal(rawQuery) {
+        const norm = normalizarTextoBusquedaLocal(rawQuery);
+        if (!norm) return [];
+        return norm.split(/\s+/).filter(Boolean).map(texto => ({
+            texto,
+            digits: normalizarDigitosBusquedaLocal(texto)
+        }));
+    }
+
     function ordenarYRenderizar() {
-        let clientesOrdenados = [...todosLosClientes];
+        const rawBusqueda = (buscadorInput?.value || '').trim();
+        ultimaBusquedaClientes = rawBusqueda;
+        const terminos = parsearTerminosBusquedaLocal(rawBusqueda);
+
+        let clientesOrdenados = [];
+        if (terminos.length === 0) {
+            if (nodosAutoExpandidosPorBusqueda.size > 0) {
+                nodosAutoExpandidosPorBusqueda.forEach(nid => nodosExpandidosIds.delete(nid));
+                nodosAutoExpandidosPorBusqueda.clear();
+            }
+            clientesOrdenados = todosLosClientes.map(c => {
+                if (c.nodo_info) c.nodo_info.vecinos_coincidentes = 0;
+                return c;
+            });
+        } else {
+            for (const c of todosLosClientes) {
+                const idx = c._searchIndex || construirIndiceBusquedaCliente(c);
+                c._searchIndex = idx;
+
+                let vecinosMatchCount = 0;
+                if (idx.vecinosIndice.length > 0) {
+                    for (const vi of idx.vecinosIndice) {
+                        if (evaluarVecinoCoincideTerminos(vi.bolsa, vi.digits, terminos)) {
+                            vecinosMatchCount++;
+                        }
+                    }
+                }
+                if (c.nodo_info) {
+                    c.nodo_info.vecinos_coincidentes = vecinosMatchCount;
+                }
+
+                const coincideCliente = terminos.every(t => {
+                    if (idx.bolsaBase.includes(t.texto)) return true;
+                    if (t.digits.length >= 4 && idx.digitsBase.includes(t.digits)) return true;
+                    return false;
+                });
+
+                if (coincideCliente || vecinosMatchCount > 0) {
+                    clientesOrdenados.push(c);
+                    if (c.nodo_info && vecinosMatchCount > 0) {
+                        const numId = Number(c.id);
+                        if (!nodosExpandidosIds.has(numId)) {
+                            nodosExpandidosIds.add(numId);
+                            nodosAutoExpandidosPorBusqueda.add(numId);
+                        }
+                    }
+                }
+            }
+        }
         
         // Aplicar Filtro de Programa de Financiación
         const filtroFinanc = document.getElementById('filtro-financiacion-modo')?.value || 'todos';
@@ -1037,11 +1171,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return saldoA - saldoB; // Menor saldo primero (más a favor primero)
             });
         } else {
-            // 'none': Orden por defecto (Nombre Comercial alfabético)
+            // 'none': Nodos Barriales primero (como en SQL) + Nombre Comercial alfabético
             clientesOrdenados.sort((a, b) => {
+                const esNodoA = a.nodo_info ? 0 : 1;
+                const esNodoB = b.nodo_info ? 0 : 1;
+                if (esNodoA !== esNodoB) return esNodoA - esNodoB;
                 return (a.cliente_nombre || '').localeCompare(b.cliente_nombre || '', 'es');
             });
         }
+        actualizarDeudaTotal(clientesOrdenados);
         renderizarClientes(clientesOrdenados);
     }
 
@@ -1662,6 +1800,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Estado de Estructura Tipo Árbol para Nodos Barriales (Clientes del Nodo + Subcuentas)
     const nodosExpandidosIds = new Set();
+    const nodosAutoExpandidosPorBusqueda = new Set();
     const cacheArbolNodos = new Map();
     let ultimaBusquedaClientes = '';
     const escHtmlNodo = (v) => String(v ?? '')
@@ -1671,25 +1810,22 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-    // --- 1. CARGA DE CLIENTES DESDE LA API ---
-    async function cargarClientes(searchQuery = '') {
+    // --- 1. CARGA DE CLIENTES DESDE LA API (PADRÓN COMPLETO EN MEMORIA + FILTRO LOCAL 0ms) ---
+    async function cargarClientes() {
         try {
-            const visibleCount = Object.values(columnasConfig).filter(c => c.visible).length + 2; // +2 por selección y col-acciones
-            cuerpoTablaClientes.innerHTML = `
-                <tr>
-                    <td colspan="${visibleCount}" style="text-align: center; color: #94a3b8; padding: 20px;">
-                        ⏳ Buscando clientes...
-                    </td>
-                </tr>
-            `;
-
-            let url = apiEndpoint;
-            if (searchQuery) {
-                url += `?search=${encodeURIComponent(searchQuery)}`;
+            if (todosLosClientes.length === 0) {
+                const visibleCount = Object.values(columnasConfig).filter(c => c.visible).length + 2; // +2 por selección y col-acciones
+                cuerpoTablaClientes.innerHTML = `
+                    <tr>
+                        <td colspan="${visibleCount}" style="text-align: center; color: #94a3b8; padding: 20px;">
+                            ⏳ Cargando padrón de clientes...
+                        </td>
+                    </tr>
+                `;
             }
 
             const [clientesRes, dashRes] = await Promise.allSettled([
-                fetch(url).then(r => r.json()),
+                fetch(apiEndpoint).then(r => r.json()),
                 fetch('/api/logistica/bunker/cuentas-corrientes/salvavidas/dashboard-sombra').then(r => r.json())
             ]);
 
@@ -1703,7 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             todosLosClientes = (clientesRes.value.data || []).map(c => {
                 const infoFinanc = ultimoMapaFinanciacion[c.codigo_bunker_cliente] || null;
-                return {
+                const item = {
                     ...c,
                     salvavidas_info: infoFinanc || {
                         codigo_bunker_cliente: c.codigo_bunker_cliente,
@@ -1719,23 +1855,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         tasa_tem_pct: 3
                     }
                 };
+                item._searchIndex = construirIndiceBusquedaCliente(item);
+                return item;
             });
 
-            const cleanSearch = String(searchQuery || '').trim();
-            if (cleanSearch !== ultimaBusquedaClientes) {
-                cacheArbolNodos.clear();
-                ultimaBusquedaClientes = cleanSearch;
-            }
-            if (cleanSearch.length > 0) {
+            cacheArbolNodos.clear();
+            ordenarYRenderizar();
+
+            // Precalentar en segundo plano los árboles de Nodos (normalmente 1-3 registros)
+            // para que al expandir o buscar vecinos el despliegue sea en 0ms sin spinner
+            setTimeout(() => {
                 todosLosClientes.forEach(c => {
-                    if (c.nodo_info && Number(c.nodo_info.vecinos_coincidentes || 0) > 0) {
-                        nodosExpandidosIds.add(Number(c.id));
+                    const nid = Number(c.id);
+                    if (c.nodo_info && !cacheArbolNodos.has(nid)) {
+                        fetch(`/api/logistica/bunker/clientes/${nid}/arbol-nodo`)
+                            .then(r => r.json())
+                            .then(j => { if (j && (j.ok || j.success)) cacheArbolNodos.set(nid, j); })
+                            .catch(() => {});
                     }
                 });
-            }
-
-            actualizarDeudaTotal(); // Actualizar widget de deuda consolidada y KPIs de financiación
-            ordenarYRenderizar();
+            }, 60);
         } catch (error) {
             console.error('❌ [CLIENTES-FRONT] Error al cargar clientes:', error);
             const visibleCount = Object.values(columnasConfig).filter(c => c.visible).length + 2;
@@ -2784,13 +2923,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // --- 3. BÚSQUEDA REACTIVA EN CALIENTE ---
-    let debounceTimer;
-    buscadorInput.addEventListener('keyup', () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            cargarClientes(buscadorInput.value.trim());
-        }, 300); // 300ms de retraso para evitar ráfagas de queries al backend
+    // --- 3. BÚSQUEDA INSTANTÁNEA EN MEMORIA (0ms, SIN LLAMADAS HTTP POR TECLA) ---
+    buscadorInput.addEventListener('input', () => {
+        ordenarYRenderizar();
     });
 
     // Filtro B2B dropdown listener
@@ -4795,8 +4930,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let data = (!forceReload && cacheArbolNodos.has(numId)) ? cacheArbolNodos.get(numId) : null;
             if (!data) {
-                const q = encodeURIComponent((buscadorInput?.value || '').trim());
-                const resp = await fetch(`/api/logistica/bunker/clientes/${numId}/arbol-nodo${q ? `?search=${q}` : ''}`);
+                const resp = await fetch(`/api/logistica/bunker/clientes/${numId}/arbol-nodo`);
                 const json = await resp.json();
                 if (!resp.ok || (!json.ok && !json.success)) {
                     throw new Error(json.error || 'No se pudo cargar el árbol del Nodo.');
@@ -4805,9 +4939,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 cacheArbolNodos.set(numId, data);
             }
 
+            const terminosArbol = parsearTerminosBusquedaLocal(buscadorInput?.value || '');
             const nodo = data.nodo || {};
             const cuad = data.cuadratura || {};
-            const vecinos = Array.isArray(data.vecinos) ? data.vecinos : [];
+            const vecinos = (Array.isArray(data.vecinos) ? data.vecinos : []).map(v => {
+                if (terminosArbol.length === 0) return { ...v, coincide_busqueda: false };
+                const bolsaV = normalizarTextoBusquedaLocal([
+                    v.codigo_vecino,
+                    v.nombre_completo,
+                    v.telefono_whatsapp,
+                    v.telefono_normalizado,
+                    v.direccion_calle,
+                    v.titular_habitual
+                ].join(' '));
+                const digitsV = normalizarDigitosBusquedaLocal(v.telefono_normalizado || v.telefono_whatsapp || '');
+                return {
+                    ...v,
+                    coincide_busqueda: evaluarVecinoCoincideTerminos(bolsaV, digitsV, terminosArbol)
+                };
+            });
 
             const saldoNodo = Number(cuad.saldo_cc_nodo_lamda || 0);
             const txtSaldoNodo = saldoNodo > 0.01
@@ -4978,6 +5128,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.toggleArbolNodoBunker = function(bunkerClienteId) {
         const numId = Number(bunkerClienteId);
+        nodosAutoExpandidosPorBusqueda.delete(numId);
         if (nodosExpandidosIds.has(numId)) {
             nodosExpandidosIds.delete(numId);
         } else {
