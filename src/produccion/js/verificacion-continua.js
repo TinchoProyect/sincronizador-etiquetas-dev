@@ -384,16 +384,19 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
     let presupuestoSeleccionado = null;
     let clienteAsociado = null;
     
-    // Normalizar entrada de escáner a String seguro
-    let term = codigo_escaneado.toString().trim().toLowerCase();
+    // Normalizar entrada de escáner a String seguro (contemplando teclado ES-LA donde '-' o '/' pueden variar)
+    let term = codigo_escaneado.toString().trim().toLowerCase().replace(/['`´]/g, '-');
 
-    // Paso 2 (Parseo / Recorte): Extraer la porción base
-    let termObj = term.split('-')[0];
-    
-    // Purga brutal: Todo lo que no sea [0-9, a-z] se destruye. Zero-width chars, BOMs, tabs, etc.
-    const termLimpio = termObj.replace(/[^\w]/g, '');
+    // Si es formato numérico con sufijo de impresión (ej: "8234895-1"), extraer el ID local "8234895";
+    // si tiene prefijo alfanumérico (ej: "nb-1001"), conservar también el código completo con guión.
+    const termSinSufijoImpresion = /^\d+-\d+$/.test(term) ? term.split('-')[0] : term;
+    const candidatosEscaneo = Array.from(new Set([
+        termSinSufijoImpresion.replace(/[^\w-]/g, ''),
+        termSinSufijoImpresion.replace(/[^\w]/g, ''),
+        term.replace(/[^\w-]/g, '')
+    ].filter(Boolean)));
 
-    console.log(`[VIGÍA SEARCH] Term Original: "${term}" -> Term Limpio (Buscando esto en memoria): "${termLimpio}"`);
+    console.log(`[VIGÍA SEARCH] Term Original: "${term}" -> Candidatos:`, candidatosEscaneo);
 
     // Loop profundo: buscar entre todos los clientes
     for (const cliente of window.clientesPedidos) {
@@ -401,19 +404,22 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
             const secuencia = (art.secuencia || 'Imprimir').trim();
             if (secuencia === 'Armar_Pedido') {
                 // BUGFIX: No usar `||` para short-circuit porque `presupuesto_id` (UUID) oculta el `id_presupuesto_local` (Numérico).
-                const posiblesIDs = [
-                    art.presupuesto_id,
-                    art.id_presupuesto_local,
-                    art.presupuesto_ext,
-                    art.id_presupuesto_ext
-                ].filter(Boolean).map(id => id.toString().toLowerCase().replace(/[^\w-]/g, ''));
+                const posiblesIDs = [];
+                [art.presupuesto_id, art.id_presupuesto_local, art.presupuesto_ext, art.id_presupuesto_ext]
+                    .filter(Boolean)
+                    .forEach(rawId => {
+                        const conGuion = rawId.toString().toLowerCase().replace(/[^\w-]/g, '');
+                        const alfanum = rawId.toString().toLowerCase().replace(/[^\w]/g, '');
+                        if (conGuion) posiblesIDs.push(conGuion);
+                        if (alfanum) posiblesIDs.push(alfanum);
+                    });
                 
-                // Si encontramos a la víctima en cualquiera de sus posibles IDs
-                if (posiblesIDs.includes(termLimpio)) {
+                // Si encontramos coincidencia en cualquiera de sus posibles IDs (local o externo NB-XXXX)
+                if (candidatosEscaneo.some(cand => posiblesIDs.includes(cand))) {
                     encontrado = true;
                     presupuestoSeleccionado = art.presupuesto_id; // id base para agrupar internamente
                     clienteAsociado = cliente;
-                    console.log(`✅ [VIGÍA SEARCH] MATCH PERFECTO! Pedido en memoria: UUID/Local/Ext(${posiblesIDs.join(' | ')}) concuerda con ${termLimpio}`);
+                    console.log(`✅ [VIGÍA SEARCH] MATCH PERFECTO! Pedido en memoria: UUID/Local/Ext(${posiblesIDs.join(' | ')}) concuerda con`, candidatosEscaneo);
                     break;
                 }
             }
@@ -431,10 +437,15 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
     console.log(`[VC] Pedido ${presupuestoSeleccionado} encontrado. Procesando cliente ${clienteAsociado.cliente_nombre}`);
     
     const articulosAProcesar = clienteAsociado.articulos.filter(a => a.presupuesto_id === presupuestoSeleccionado);
+    const vnInfo = (clienteAsociado.vecinos_nodos && clienteAsociado.vecinos_nodos[presupuestoSeleccionado])
+        ? clienteAsociado.vecinos_nodos[presupuestoSeleccionado]
+        : null;
     
     // Inicializar contadores del pedido
     vc_estado_actual.cliente_id = clienteAsociado.cliente_id;
-    vc_estado_actual.cliente_nombre = clienteAsociado.cliente_nombre;
+    vc_estado_actual.cliente_nombre = vnInfo
+        ? `${vnInfo.nombre_marca} — 👤 ${vnInfo.vecino_nombre} (#${vnInfo.codigo_pedido})`
+        : clienteAsociado.cliente_nombre;
     vc_estado_actual.presupuesto_id_local = presupuestoSeleccionado;
     vc_estado_actual.presupuesto_id_ext = articulosAProcesar[0].presupuesto_ext || articulosAProcesar[0].id_presupuesto_ext || '';
     
@@ -447,11 +458,19 @@ function vc_buscarYActivarPedido(codigo_escaneado) {
         const esSaldo = art.es_saldo_ingrediente === true;
         subtotalLineasPedidas = Number((subtotalLineasPedidas + pedida).toFixed(4));
         if (esIng) initialEscaneados = Number((initialEscaneados + pedida).toFixed(4));
+
+        const skuActual = String(art.articulo_numero || art.codigo || '').trim();
+        const itemVecino = (vnInfo && Array.isArray(vnInfo.items))
+            ? vnInfo.items.find(it => String(it.sku_nodo || '').trim().toUpperCase() === skuActual.toUpperCase())
+            : null;
+        const descComercial = itemVecino && itemVecino.nombre_publico
+            ? `${itemVecino.nombre_publico}${itemVecino.presentacion_etiqueta ? ' (' + itemVecino.presentacion_etiqueta + ')' : ''} — ${art.descripcion || skuActual}`
+            : art.descripcion;
         
         return {
-            codigo_principal: art.articulo_numero || art.codigo,
+            codigo_principal: skuActual,
             codigo_barras: (art.codigo_barras || '').toString().trim(),
-            descripcion: art.descripcion,
+            descripcion: descComercial,
             pedido_total: pedida,
             cantidad_escaneada: esIng ? pedida : 0,
             completado: esIng ? true : false,
@@ -488,11 +507,16 @@ function vc_procesarArticuloFisico(codigo_escaneado) {
     let itemAsociado = null;
     let indexEnArray = -1;
 
+    const normalizarSimbolosScanner = (s) => String(s || '').trim().toLowerCase().replace(/[-/'`´&_]/g, '/');
+    const termNorm = normalizarSimbolosScanner(term);
+
     for (let i = 0; i < vc_estado_actual.articulos.length; i++) {
         const art = vc_estado_actual.articulos[i];
+        const codPrinc = (art.codigo_principal || '').toString().trim().toLowerCase();
+        const codBarras = (art.codigo_barras || '').toString().trim().toLowerCase();
         if (
-            (art.codigo_principal && art.codigo_principal.toString().toLowerCase() === term) ||
-            (art.codigo_barras && art.codigo_barras.toLowerCase() === term)
+            (codPrinc && (codPrinc === term || normalizarSimbolosScanner(codPrinc) === termNorm)) ||
+            (codBarras && (codBarras === term || normalizarSimbolosScanner(codBarras) === termNorm))
         ) {
             itemAsociado = art;
             indexEnArray = i;

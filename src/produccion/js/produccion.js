@@ -383,6 +383,28 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 });
                 accionesHeaderNodo.appendChild(btnEtiquetasHeader);
 
+                if (containerId === 'pedidos-armar' || containerId === 'pedidos-listo' || containerId === 'pedidos-retira') {
+                    const btnReimprimirNodoHeader = document.createElement('button');
+                    btnReimprimirNodoHeader.type = 'button';
+                    btnReimprimirNodoHeader.textContent = '🖨️ Reimprimir Hojas Nodo';
+                    btnReimprimirNodoHeader.title = 'Abrir 1 Hoja Resumen LAMDA → Nodo + Hojas Individuales Marca Blanca de los Vecinos';
+                    btnReimprimirNodoHeader.className = 'admin-button';
+                    btnReimprimirNodoHeader.style.padding = '4px 10px';
+                    btnReimprimirNodoHeader.style.fontSize = '11.5px';
+                    btnReimprimirNodoHeader.style.background = '#15803d';
+                    btnReimprimirNodoHeader.style.color = '#ffffff';
+                    btnReimprimirNodoHeader.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const idsSeccion = Array.from(new Set((cliente.articulos || []).map(a => a.presupuesto_id).filter(Boolean)));
+                        if (idsSeccion.length === 0) return;
+                        const fechaCorteInput = document.getElementById('fecha-corte');
+                        const fechaCorte = (fechaCorteInput && fechaCorteInput.value) ? fechaCorteInput.value : new Date().toISOString().slice(0, 10);
+                        const urlReprint = `${base}/impresion-presupuesto?fecha=${fechaCorte}&cliente_id=${cliente.cliente_id}&presupuestos_ext_ids=${encodeURIComponent(idsSeccion.join(','))}&formato=pdf&contexto=produccion`;
+                        window.open(urlReprint, 'lamda_remito_print');
+                    });
+                    accionesHeaderNodo.appendChild(btnReimprimirNodoHeader);
+                }
+
                 if (containerId === 'pedidos-listo' || containerId === 'pedidos-retira') {
                     const btnEntregaQrHeader = document.createElement('button');
                     btnEntregaQrHeader.type = 'button';
@@ -638,6 +660,23 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
 
             // Botón verificar (solo en acordeón "Armar Pedido")
             if (containerId === 'pedidos-armar') {
+                if (esVecinoNodo) {
+                    const btnHojaVecino = document.createElement('button');
+                    btnHojaVecino.textContent = '🖨️ Hoja Vecino';
+                    btnHojaVecino.title = 'Ver / Reimprimir Hoja Marca Blanca individual de este vecino';
+                    btnHojaVecino.className = 'admin-button';
+                    btnHojaVecino.style.padding = '6px 10px';
+                    btnHojaVecino.style.fontSize = '12px';
+                    btnHojaVecino.style.background = '#a2553b';
+                    btnHojaVecino.style.color = '#ffffff';
+                    btnHojaVecino.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const urlInd = `${base}/impresion-presupuesto?cliente_id=${cliente.cliente_id}&presupuesto_id=${encodeURIComponent(presupuesto.presupuesto_id)}&formato=pdf&contexto=produccion`;
+                        window.open(urlInd, 'lamda_remito_print');
+                    });
+                    botonesPresupuesto.appendChild(btnHojaVecino);
+                }
+
                 const btnVerificarPresup = document.createElement('button');
                 btnVerificarPresup.textContent = '🔍 Verificar';
                 btnVerificarPresup.className = 'admin-button';
@@ -1186,11 +1225,11 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             accionesDiv.appendChild(btnAsignar);
         }
 
-        // Solo mostrar botón "Imprimir Todos" si hay más de 1 presupuesto y estamos en acordeón "Imprimir"
-        if (containerId === 'pedidos-imprimir' && presupuestos.length > 1) {
+        // Mostrar botón "Imprimir Todos" en acordeón "Imprimir" (para Nodos incluso con 1 canasto, para incluir la Hoja Resumen LAMDA -> Nodo)
+        if (containerId === 'pedidos-imprimir' && (esClienteNodo ? presupuestos.length >= 1 : presupuestos.length > 1)) {
             const btnImprimirTodos = document.createElement('button');
             btnImprimirTodos.textContent = esClienteNodo
-                ? `📄 Imprimir Todos de Este Nodo (${presupuestos.length} hojas individuales por vecino)`
+                ? `📄 Imprimir Nodo: 1 Hoja Resumen LAMDA + ${presupuestos.length} ${presupuestos.length === 1 ? 'Hoja Vecino (Marca Blanca)' : 'Hojas Vecinos (Marca Blanca)'}`
                 : '📄 Imprimir Todos de Este Cliente';
             btnImprimirTodos.className = 'admin-button';
             btnImprimirTodos.style.marginLeft = '10px';
@@ -2263,6 +2302,11 @@ function renderizarTablaVerificacion() {
 
     tbody.innerHTML = '';
 
+    const cliRef = (window.clientesPedidos || []).find(c => String(c.cliente_id) === String(estadoVerificacion.cliente_id));
+    const vnInfo = (cliRef && cliRef.vecinos_nodos && estadoVerificacion.presupuesto_id)
+        ? cliRef.vecinos_nodos[estadoVerificacion.presupuesto_id]
+        : null;
+
     estadoVerificacion.articulos.forEach((articulo, index) => {
         const tr = document.createElement('tr');
         tr.className = articulo.confirmado ? 'articulo-confirmado' : 'articulo-pendiente';
@@ -2274,18 +2318,30 @@ function renderizarTablaVerificacion() {
         tdEstado.textContent = articulo.es_ingrediente ? '✅ KIT' : (articulo.confirmado ? '✅' : '⏳');
         tr.appendChild(tdEstado);
 
-        // Código
+        // Código + referencia de código de barras si difiere del SKU
         const tdCodigo = document.createElement('td');
-        tdCodigo.textContent = articulo.articulo_numero;
+        const skuTxt = String(articulo.articulo_numero || '').trim();
+        const cbTxt = String(articulo.codigo_barras || '').trim();
+        if (cbTxt && cbTxt.toUpperCase() !== skuTxt.toUpperCase()) {
+            tdCodigo.innerHTML = `<strong>${skuTxt}</strong><div style="font-size: 10.5px; color: #475569; font-family: monospace;">║█║ ${cbTxt}</div>`;
+        } else {
+            tdCodigo.textContent = skuTxt;
+        }
         tr.appendChild(tdCodigo);
 
-        // Descripción
+        // Descripción (con nombre comercial amigable si es pedido de Vecino de Nodo)
         const tdDescripcion = document.createElement('td');
+        const itemVecino = (vnInfo && Array.isArray(vnInfo.items))
+            ? vnInfo.items.find(it => String(it.sku_nodo || '').trim().toUpperCase() === skuTxt.toUpperCase())
+            : null;
         if (articulo.es_ingrediente) {
             tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.85em; color: #64748b; font-style: italic;">(Stock Cliente)</span>`;
         } else if (articulo.es_saldo_ingrediente) {
             const kgTxt = articulo.kilos_saldo ? `${Number(articulo.kilos_saldo)} kg` : 'Saldo';
             tdDescripcion.innerHTML = `${articulo.descripcion || '-'} <span style="font-size: 0.82em; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">⚖️ Saldo Ingrediente (${kgTxt})</span>`;
+        } else if (itemVecino && itemVecino.nombre_publico) {
+            const presLbl = itemVecino.presentacion_etiqueta ? ` — ${itemVecino.presentacion_etiqueta}` : '';
+            tdDescripcion.innerHTML = `<div style="font-weight: 700; color: #0f172a;">${itemVecino.nombre_publico}${presLbl}</div><div style="font-size: 11px; color: #64748b;">Depósito: ${articulo.descripcion || skuTxt}</div>`;
         } else {
             tdDescripcion.textContent = articulo.descripcion || '-';
         }
@@ -2360,15 +2416,20 @@ function configurarScannerInput() {
  */
 function procesarCodigoEscaneado(codigo) {
     console.log(`🔍 Código escaneado: ${codigo}`);
+    const codigoTrim = String(codigo || '').trim();
+    const codigoLower = codigoTrim.toLowerCase();
+    const normalizarSimbolosScanner = (s) => String(s || '').trim().toLowerCase().replace(/[-/'`´&_]/g, '/');
+    const codigoNorm = normalizarSimbolosScanner(codigoTrim);
 
-    // Buscar artículo en la lista (por articulo_numero o codigo_barras)
-    const index = estadoVerificacion.articulos.findIndex(art =>
-        art.articulo_numero === codigo ||
-        String(art.articulo_numero || '') === codigo ||
-        String(art.codigo_barras || '') === codigo
-    );
-
-    const feedback = document.getElementById('scanner-feedback');
+    // 1. Buscar artículo en la lista (por articulo_numero o codigo_barras, insensible a mayúsculas y layout ES-LA del lector)
+    const index = estadoVerificacion.articulos.findIndex(art => {
+        const sku = String(art.articulo_numero || '').trim().toLowerCase();
+        const cb = String(art.codigo_barras || '').trim().toLowerCase();
+        return (
+            (sku && (sku === codigoLower || normalizarSimbolosScanner(sku) === codigoNorm)) ||
+            (cb && (cb === codigoLower || normalizarSimbolosScanner(cb) === codigoNorm))
+        );
+    });
 
     if (index !== -1) {
         // Artículo encontrado
@@ -2376,10 +2437,11 @@ function procesarCodigoEscaneado(codigo) {
         const totalPedido = parseFloat(articulo.pedido_total) || 0;
         const confirmadaActual = parseFloat(articulo.cantidad_confirmada) || 0;
         const restante = Math.round((totalPedido - confirmadaActual) * 1000) / 1000;
+        const etiquetaArt = articulo.articulo_numero || codigoTrim;
 
         if (restante <= 0.0001) {
             // Ya se escaneó la cantidad completa
-            mostrarFeedback(`⚠️ Artículo ${codigo} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
+            mostrarFeedback(`⚠️ Artículo ${etiquetaArt} ya tiene ${articulo.cantidad_confirmada}/${articulo.pedido_total} confirmados`, 'error');
         } else {
             // Si es un saldo de ingrediente (o fracción < 1), un solo pistoleo valida el saldo completo
             const incremento = (articulo.es_saldo_ingrediente || totalPedido < 1 || restante < 1) ? restante : 1;
@@ -2389,15 +2451,45 @@ function procesarCodigoEscaneado(codigo) {
 
             // Feedback diferenciado según si completó o no
             if (nuevaCantidad >= totalPedido - 0.0001) {
-                mostrarFeedback(`✅ Artículo ${codigo} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
+                mostrarFeedback(`✅ Artículo ${etiquetaArt} COMPLETO (${nuevaCantidad}/${articulo.pedido_total})`, 'success');
             } else {
-                mostrarFeedback(`✅ Artículo ${codigo} +${incremento} → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
+                mostrarFeedback(`✅ Artículo ${etiquetaArt} +${incremento} → ${nuevaCantidad}/${articulo.pedido_total}`, 'success');
             }
         }
-    } else {
-        // Artículo no encontrado
-        mostrarFeedback(`❌ Artículo ${codigo} no pertenece a este presupuesto`, 'error');
+        return;
     }
+
+    // 2. Verificar si el operario escaneó el código de barras inferior de la hoja impresa (ej: "8234895-1" o "NB-1001")
+    const termHoja = codigoLower.replace(/['`´]/g, '-');
+    const baseHoja = /^\d+-\d+$/.test(termHoja) ? termHoja.split('-')[0] : termHoja;
+    const idLocalActual = estadoVerificacion.articulos[0] ? String(estadoVerificacion.articulos[0].id_presupuesto_local || '').toLowerCase() : '';
+    const idPresupActual = String(estadoVerificacion.presupuesto_id || '').toLowerCase();
+
+    if (baseHoja && (baseHoja === idLocalActual || baseHoja === idPresupActual)) {
+        mostrarFeedback(`📄 Comprobante ${estadoVerificacion.presupuesto_id} validado — escanee ahora cada artículo de la bolsa`, 'success');
+        return;
+    }
+
+    // Si aún no escaneó artículos en el modal actual y pistolea la hoja de OTRO vecino en "Armar_Pedido", conmutar automáticamente
+    const sumaConfirmada = estadoVerificacion.articulos.reduce((acc, a) => acc + (a.es_ingrediente ? 0 : (parseFloat(a.cantidad_confirmada) || 0)), 0);
+    if (sumaConfirmada === 0 && Array.isArray(window.clientesPedidos)) {
+        for (const cli of window.clientesPedidos) {
+            const artOtro = (cli.articulos || []).find(a => {
+                if (String(a.secuencia || 'Imprimir').trim() !== 'Armar_Pedido') return false;
+                const pExt = String(a.presupuesto_id || '').toLowerCase();
+                const pLoc = String(a.id_presupuesto_local || '').toLowerCase();
+                return baseHoja === pExt || baseHoja === pLoc;
+            });
+            if (artOtro) {
+                abrirModalArmarPedido(cli.cliente_id, artOtro.presupuesto_id);
+                mostrarFeedback(`📄 Cambiado a comprobante ${artOtro.presupuesto_id} — escanee los artículos`, 'success');
+                return;
+            }
+        }
+    }
+
+    // Artículo no encontrado
+    mostrarFeedback(`❌ Artículo ${codigoTrim} no pertenece a este presupuesto`, 'error');
 }
 
 /**

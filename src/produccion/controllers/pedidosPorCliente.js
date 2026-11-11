@@ -282,7 +282,15 @@ const obtenerPedidosPorCliente = async (req, res) => {
                         'esta_facturado', app.esta_facturado,
                         'origen_factura_canal', app.origen_factura_canal,
                         'articulo_numero', app.articulo_numero,
-                        'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                        'codigo_barras', COALESCE(
+                            NULLIF(NULLIF(TRIM(src.codigo_barras), ''), app.articulo_numero),
+                            NULLIF(NULLIF(TRIM(a.codigo_barras), ''), app.articulo_numero),
+                            NULLIF(NULLIF(TRIM(ba.codigo_barras::text), ''), app.articulo_numero),
+                            NULLIF(TRIM(src.codigo_barras), ''),
+                            NULLIF(TRIM(a.codigo_barras), ''),
+                            NULLIF(TRIM(ba.codigo_barras::text), ''),
+                            ''
+                        ),
                         'descripcion', COALESCE(
                             NULLIF(TRIM(ba.descripcion_generada), ''),
                             NULLIF(TRIM(ba.descripcion), ''),
@@ -893,7 +901,15 @@ const obtenerPedidosArticulos = async (req, res) => {
             ),
             valores_redondeados AS (
                 SELECT 
-                    COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ac.articulo_numero) as codigo_barras_original,
+                    COALESCE(
+                        NULLIF(NULLIF(TRIM(src.codigo_barras), ''), ac.articulo_numero),
+                        NULLIF(NULLIF(TRIM(a.codigo_barras), ''), ac.articulo_numero),
+                        NULLIF(NULLIF(TRIM(ba.codigo_barras::text), ''), ac.articulo_numero),
+                        NULLIF(TRIM(src.codigo_barras), ''),
+                        NULLIF(TRIM(a.codigo_barras), ''),
+                        NULLIF(TRIM(ba.codigo_barras::text), ''),
+                        ac.articulo_numero
+                    ) as codigo_barras_original,
                     ac.pedido_total,
                     ac.total_pedidos,
                     COALESCE(

@@ -102,6 +102,1014 @@ function generarIMGComando(texto) {
 }
 
 /**
+ * Elimina emojis Unicode y pictogramas fuera del mapa WinAnsi de PDFKit (Helvetica)
+ * evitando caracteres corruptos tipo "Ø<ßØþ" al imprimir PDFs.
+ */
+function limpiarTextoPdf(valor) {
+    if (valor === null || valor === undefined) return '';
+    return String(valor)
+        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
+        .replace(/[^\x09\x0A\x0D\x20-\xFF–—•€™]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function escaparHtmlImpresion(valor) {
+    return String(valor ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function formatearMonedaImpresion(monto) {
+    const num = Number(monto || 0);
+    const esEntero = Math.abs(num - Math.round(num)) < 0.005;
+    return '$' + num.toLocaleString('es-AR', {
+        minimumFractionDigits: esEntero ? 0 : 2,
+        maximumFractionDigits: esEntero ? 0 : 2
+    });
+}
+
+function formatearTelefonoImpresion(tel) {
+    const digitos = String(tel || '').replace(/\D+/g, '');
+    if (!digitos) return '';
+    if (digitos.startsWith('549221') && digitos.length === 13) {
+        return `221 ${digitos.slice(6, 9)}-${digitos.slice(9)}`;
+    }
+    if (digitos.startsWith('221') && digitos.length === 10) {
+        return `221 ${digitos.slice(3, 6)}-${digitos.slice(6)}`;
+    }
+    if (digitos.startsWith('549') && digitos.length >= 12) {
+        return `+54 9 ${digitos.slice(3)}`;
+    }
+    return String(tel).trim();
+}
+
+function formatearMedioEstadoPagoVecino(medioPago, estadoPago) {
+    const medio = String(medioPago || 'TRANSFERENCIA').toUpperCase();
+    const estado = String(estadoPago || '').toUpperCase();
+    if (medio === 'EFECTIVO') {
+        if (estado === 'CONCILIADO' || estado === 'PAGADO') return 'Efectivo (Abonado)';
+        return 'Efectivo al recibir';
+    }
+    if (estado === 'CONCILIADO' || estado === 'PAGADO') {
+        return 'Transferencia (Acreditada)';
+    }
+    return 'Transferencia (A confirmar)';
+}
+
+function extraerBufferLogoBase64(dataUri) {
+    if (!dataUri || typeof dataUri !== 'string') return null;
+    const match = dataUri.match(/^data:image\/(?:png|jpe?g);base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!match) return null;
+    try {
+        return Buffer.from(match[1].replace(/\s+/g, ''), 'base64');
+    } catch (_) {
+        return null;
+    }
+}
+
+function resolverDetalleComercialVecino(articulo, vn) {
+    const skuArt = String(articulo?.articulo_numero || articulo?.sku_canonico || '').trim().toUpperCase();
+    const itemMatch = Array.isArray(vn?.items)
+        ? vn.items.find(it => String(it.sku_nodo || '').trim().toUpperCase() === skuArt)
+        : null;
+
+    const cant = Number(articulo?.cantidad || itemMatch?.cantidad || 0);
+    if (itemMatch) {
+        const nombreBase = String(itemMatch.nombre_publico || articulo?.descripcion || skuArt).trim();
+        const presentacion = String(itemMatch.presentacion_etiqueta || '').trim();
+        const descripcionComercial = presentacion && !nombreBase.toLowerCase().includes(presentacion.toLowerCase())
+            ? `${nombreBase} — ${presentacion}`
+            : nombreBase;
+        const precioUnit = Number(itemMatch.precio_unitario_vecino || 0);
+        const subtotal = Number(itemMatch.subtotal_vecino || (cant * precioUnit));
+        return {
+            sku: skuArt || itemMatch.sku_nodo,
+            nombrePublico: nombreBase,
+            presentacion,
+            descripcionComercial,
+            cantidad: cant,
+            precioUnitarioVecino: precioUnit,
+            subtotalVecino: subtotal
+        };
+    }
+
+    return {
+        sku: skuArt,
+        nombrePublico: String(articulo?.descripcion || skuArt).trim(),
+        presentacion: '',
+        descripcionComercial: String(articulo?.descripcion || skuArt).trim(),
+        cantidad: cant,
+        precioUnitarioVecino: 0,
+        subtotalVecino: 0
+    };
+}
+
+/**
+ * Construye los objetos de Hoja Resumen LAMDA -> Nodo (1 por Nodo/Canasto presente en el cliente)
+ * consolidando todos los canastos/pedidos individuales de vecinos de la tirada.
+ */
+function construirResumenesControlNodoCliente(cliente) {
+    const presupuestosNodo = (cliente?.presupuestos || []).filter(p => Boolean(p && p._vecinoNodo));
+    if (presupuestosNodo.length === 0) return [];
+
+    const grupos = new Map();
+    for (const p of presupuestosNodo) {
+        const vn = p._vecinoNodo;
+        const key = `${vn.nodo_id || cliente.cliente_id}|${vn.codigo_canasto || 'LOTE'}`;
+        if (!grupos.has(key)) {
+            grupos.set(key, {
+                clienteId: cliente.cliente_id,
+                nodoId: vn.nodo_id,
+                codigoNodo: vn.codigo_nodo || '',
+                nombreMarca: vn.nombre_marca || cliente.cliente_nombre || 'Nodo Barrial',
+                gestorNombre: vn.gestor_nombre || '',
+                gestorTelefono: formatearTelefonoImpresion(vn.gestor_telefono || ''),
+                barrioZona: vn.barrio_zona || '',
+                direccionRetiro: vn.direccion_retiro || '',
+                codigoCanasto: vn.codigo_canasto || '',
+                qrMaestroPayload: vn.qr_maestro_payload || vn.codigo_canasto || `NODO-${vn.nodo_id || cliente.cliente_id}`,
+                fechaEntregaLabel: vn.fecha_entrega_label || '',
+                canastosIndividuales: [],
+                mapaArticulos: new Map(),
+                totalUnidades: 0,
+                totalKilos: 0
+            });
+        }
+        const grupo = grupos.get(key);
+        const arts = Array.isArray(p.articulos) ? p.articulos : [];
+        let unidadesVecino = 0;
+
+        for (const art of arts) {
+            const sku = String(art.articulo_numero || art.sku_canonico || '').trim();
+            const cant = Number(art.cantidad || 0);
+            const detCom = resolverDetalleComercialVecino(art, vn);
+            const itemNodo = Array.isArray(vn.items)
+                ? vn.items.find(it => String(it.sku_nodo || '').trim().toUpperCase() === sku.toUpperCase())
+                : null;
+            const kgUnit = Number(art.kilos_unidad || itemNodo?.kilos_unidad || 0);
+            const kgLinea = Number((cant * kgUnit).toFixed(3));
+
+            unidadesVecino += cant;
+            grupo.totalUnidades += cant;
+            grupo.totalKilos = Number((grupo.totalKilos + kgLinea).toFixed(3));
+
+            if (!grupo.mapaArticulos.has(sku)) {
+                grupo.mapaArticulos.set(sku, {
+                    sku,
+                    descripcionDeposito: String(art.descripcion || sku).trim(),
+                    nombreComercial: detCom.descripcionComercial,
+                    cantidadTotal: 0,
+                    kilosTotales: 0
+                });
+            }
+            const acum = grupo.mapaArticulos.get(sku);
+            acum.cantidadTotal = Number((acum.cantidadTotal + cant).toFixed(3));
+            acum.kilosTotales = Number((acum.kilosTotales + kgLinea).toFixed(3));
+        }
+
+        const modTxt = vn.modalidad_entrega === 'ENVIO_BARRIAL'
+            ? `Envío Barrial${vn.direccion_entrega ? ' (' + vn.direccion_entrega + ')' : ''}`
+            : `Retira en ${vn.nombre_marca}`;
+
+        grupo.canastosIndividuales.push({
+            codigoPedido: vn.codigo_pedido || p.id_presupuesto_ext,
+            idPresupuestoLocal: p._id_presupuesto || p.id || 0,
+            vecinoNombre: vn.vecino_nombre || 'Vecino',
+            modalidadTexto: modTxt,
+            medioPago: vn.medio_pago || 'TRANSFERENCIA',
+            itemsDistintos: arts.length,
+            unidadesTotales: unidadesVecino
+        });
+    }
+
+    return Array.from(grupos.values()).map(g => {
+        const articulosConsolidados = Array.from(g.mapaArticulos.values())
+            .sort((a, b) => a.sku.localeCompare(b.sku));
+        const listaCodigosTexto = g.canastosIndividuales.map(c => `#${c.codigoPedido}`).join(', ');
+        return {
+            clienteId: g.clienteId,
+            nodoId: g.nodoId,
+            codigoNodo: g.codigoNodo,
+            nombreMarca: g.nombreMarca,
+            gestorNombre: g.gestorNombre,
+            gestorTelefono: g.gestorTelefono,
+            barrioZona: g.barrioZona,
+            direccionRetiro: g.direccionRetiro,
+            codigoCanasto: g.codigoCanasto,
+            qrMaestroPayload: g.qrMaestroPayload,
+            fechaEntregaLabel: g.fechaEntregaLabel,
+            canastosIndividuales: g.canastosIndividuales,
+            articulosConsolidados,
+            totalCanastos: g.canastosIndividuales.length,
+            totalUnidades: g.totalUnidades,
+            totalKilos: g.totalKilos,
+            totalKilosFmt: g.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            listaCodigosTexto
+        };
+    });
+}
+
+/**
+ * Genera el HTML de 1 Hoja Individual Marca Blanca pura para el Vecino (va dentro de la bolsa del cliente).
+ * Cero menciones, logos, alias ni teléfonos de LAMDA; mantiene el código de barras inferior para verificación en depósito.
+ */
+function generarHTMLHojaVecinoMarcaBlanca({
+    presupuesto,
+    fechaHoy,
+    horaHoy,
+    agregarPageBreak = false,
+    esContextoProduccion = false,
+    esPendienteCompra = false
+}) {
+    const vn = presupuesto._vecinoNodo;
+    const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+    const idPresupuesto = presupuesto._id_presupuesto || presupuesto.id || 0;
+    const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+    const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+    const svgCodigoBarras = generarSVGCodigoBarras(codigoBarras);
+    const brandColor = /^#[0-9a-fA-F]{6}$/.test(String(vn.color_primario || '').trim())
+        ? String(vn.color_primario).trim()
+        : '#a2553b';
+
+    const logoSrc = vn.logo_original_base64 || vn.logo_mono_preview_base64 || '';
+    const telNodo = formatearTelefonoImpresion(vn.gestor_telefono);
+    const modEntregaTxt = vn.modalidad_entrega === 'ENVIO_BARRIAL'
+        ? `Envío a domicilio: ${vn.direccion_entrega || 'Domicilio acordado'}`
+        : `Retira en ${vn.nombre_marca}${vn.direccion_retiro ? ' (' + vn.direccion_retiro + ')' : ''}`;
+    const pagoTxt = formatearMedioEstadoPagoVecino(vn.medio_pago, vn.estado_pago);
+
+    const articulosSorted = Array.isArray(presupuesto.articulos)
+        ? [...presupuesto.articulos].sort((a, b) => String(a.articulo_numero || '').localeCompare(String(b.articulo_numero || '')))
+        : [];
+
+    let sumaSubtotales = 0;
+    const filasHtml = articulosSorted.map(art => {
+        const det = resolverDetalleComercialVecino(art, vn);
+        sumaSubtotales += Number(det.subtotalVecino || 0);
+        return `
+                <tr>
+                    <td class="col-codigo" style="width: 15%; color: #6b5348; background: #fcf9f7;">${escaparHtmlImpresion(det.sku)}</td>
+                    <td class="col-descripcion" style="width: 47%; font-weight: 600; color: #2c1a12; font-size: 11px;">${escaparHtmlImpresion(det.descripcionComercial)}</td>
+                    <td class="col-cantidad" style="width: 10%; font-size: 11.5px; color: #2c1a12;">${det.cantidad}</td>
+                    <td style="width: 14%; text-align: right; padding: 5px 6px; color: #4a352b;">${det.precioUnitarioVecino > 0 ? formatearMonedaImpresion(det.precioUnitarioVecino) : '-'}</td>
+                    <td style="width: 14%; text-align: right; padding: 5px 6px; font-weight: 700; color: #2c1a12;">${det.subtotalVecino > 0 ? formatearMonedaImpresion(det.subtotalVecino) : '-'}</td>
+                </tr>`;
+    }).join('');
+
+    const subtotalProductos = Number(vn.subtotal_productos_vecino || sumaSubtotales || vn.total_vecino || 0);
+    const cargoEnvio = Number(vn.cargo_envio_barrial || 0);
+    const totalVecino = Number(vn.total_vecino || (subtotalProductos + cargoEnvio));
+    const totalBolsas = articulosSorted.reduce((acc, a) => acc + Number(a.cantidad || 0), 0);
+
+    const logoHtml = logoSrc
+        ? `<img src="${logoSrc}" alt="${escaparHtmlImpresion(vn.nombre_marca)}" style="max-height: 48px; max-width: 165px; width: auto; display: block;">`
+        : `<div style="font-size: 20px; font-weight: 900; color: ${brandColor}; letter-spacing: 0.3px;">${escaparHtmlImpresion(vn.nombre_marca)}</div>`;
+
+    return `
+    <div class="remito-container vecino-marca-blanca${agregarPageBreak ? ' page-break' : ''}">
+        <div class="header" style="border-bottom: 2px solid ${brandColor}; padding-bottom: 10px; margin-bottom: 12px;">
+            <div class="header-left" style="flex-direction: column; align-items: flex-start; gap: 3px;">
+                ${logoHtml}
+                ${vn.subtitulo_marca ? `<div style="font-size: 9px; color: #6b5348; font-weight: 600;">${escaparHtmlImpresion(vn.subtitulo_marca)}</div>` : ''}
+            </div>
+            <div class="header-center">
+                <div style="border: 2px solid ${brandColor}; background: #fdf8f5; color: ${brandColor}; border-radius: 6px; padding: 5px 12px; text-align: center;">
+                    <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;">Detalle de Pedido</div>
+                    <div style="font-size: 13px; font-weight: 900; margin-top: 1px;">#${escaparHtmlImpresion(vn.codigo_pedido)}</div>
+                </div>
+            </div>
+            <div class="header-right" style="font-size: 9.5px; color: #4a352b; line-height: 1.35;">
+                <div style="font-weight: 800; font-size: 11.5px; color: #2c1a12;">${escaparHtmlImpresion(vn.nombre_marca)}</div>
+                ${telNodo ? `<div><strong>WhatsApp:</strong> ${escaparHtmlImpresion(telNodo)}</div>` : ''}
+                ${vn.alias_bancario_display ? `<div><strong>Alias:</strong> ${escaparHtmlImpresion(vn.alias_bancario_display)}</div>` : `<div><strong>Coordina:</strong> ${escaparHtmlImpresion(vn.gestor_nombre)}</div>`}
+                <div style="color: #7c665a; font-size: 8.5px;">${vn.barrio_zona ? escaparHtmlImpresion(vn.barrio_zona) + ' · ' : ''}${fechaHoy} ${horaHoy}</div>
+            </div>
+        </div>
+
+        <div class="datos-pedido" style="border: 1px solid #e6d5cb; border-left: 5px solid ${brandColor}; background: #fdf8f5; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px;">
+            <div style="max-width: 68%;">
+                <div style="font-size: 9px; font-weight: 800; color: ${brandColor}; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Pedido preparado para
+                </div>
+                <div style="font-size: 16px; font-weight: 800; color: #2c1a12; margin-top: 2px;">
+                    ${escaparHtmlImpresion(vn.vecino_nombre)}${vn.vecino_telefono ? ` <span style="font-size: 10.5px; font-weight: 500; color: #6b5348;">· Tel: ${escaparHtmlImpresion(formatearTelefonoImpresion(vn.vecino_telefono))}</span>` : ''}
+                </div>
+                <div style="font-size: 10.5px; color: #3e2519; margin-top: 5px;">
+                    <strong>Entrega:</strong> ${escaparHtmlImpresion(modEntregaTxt)}${vn.fecha_entrega_label ? ` · <strong>Horario:</strong> ${escaparHtmlImpresion(vn.fecha_entrega_label)}` : ''}
+                </div>
+                <div style="font-size: 10.5px; color: #3e2519; margin-top: 2px;">
+                    <strong>Medio / Estado de Pago:</strong> ${escaparHtmlImpresion(pagoTxt)}
+                </div>
+                ${vn.observaciones_vecino ? `<div style="font-size: 9.5px; color: #6b5348; margin-top: 3px;"><strong>Nota:</strong> ${escaparHtmlImpresion(vn.observaciones_vecino)}</div>` : ''}
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 13px; font-weight: 800; color: #2c1a12;">Comprobante #${escaparHtmlImpresion(vn.codigo_pedido)}</div>
+                <div style="font-size: 9.5px; color: #6b5348; margin-top: 3px;">Fecha: ${fechaPresupuesto}</div>
+                <div style="font-size: 11px; font-weight: 800; color: ${brandColor}; margin-top: 8px;">
+                    ${totalBolsas} bolsa${totalBolsas === 1 ? '' : 's'} (${articulosSorted.length} producto${articulosSorted.length === 1 ? '' : 's'})
+                </div>
+            </div>
+        </div>
+
+        <table class="articulos-tabla" style="margin-top: 6px;">
+            <thead>
+                <tr>
+                    <th style="width: 15%; background: #f7ede7; color: #3e2519;">Ref.</th>
+                    <th style="width: 47%; background: #f7ede7; color: #3e2519;">Producto y Presentación</th>
+                    <th style="width: 10%; text-align: center; background: #f7ede7; color: #3e2519;">Cant.</th>
+                    <th style="width: 14%; text-align: right; background: #f7ede7; color: #3e2519;">Precio Unit.</th>
+                    <th style="width: 14%; text-align: right; background: #f7ede7; color: #3e2519;">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filasHtml || '<tr><td colspan="5" style="text-align:center; padding:12px;">Sin productos registrados</td></tr>'}
+            </tbody>
+        </table>
+
+        ${totalVecino > 0 ? `
+        <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+            <div style="min-width: 240px; background: #fdf8f5; border: 1.5px solid #e6d5cb; border-radius: 6px; padding: 8px 12px;">
+                ${cargoEnvio > 0 ? `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #5c453a; margin-bottom: 3px;">
+                    <span>Subtotal productos:</span>
+                    <strong>${formatearMonedaImpresion(subtotalProductos)}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #5c453a; margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1px dashed #dcc6b8;">
+                    <span>Envío barrial:</span>
+                    <strong>${formatearMonedaImpresion(cargoEnvio)}</strong>
+                </div>` : ''}
+                <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 900; color: #2c1a12;">
+                    <span>TOTAL DEL PEDIDO:</span>
+                    <span style="color: ${brandColor};">${formatearMonedaImpresion(totalVecino)}</span>
+                </div>
+            </div>
+        </div>` : ''}
+
+        <div class="control-entrega" style="border-color: #d6bfb2; background: #fcf9f7; margin-top: 18px;">
+            <h4 style="color: #3e2519;">Control de Entrega — ${escaparHtmlImpresion(vn.nombre_marca)}</h4>
+            <div class="campos-control" style="margin-bottom: 4px;">
+                <div class="campo-firma" style="border-bottom-color: #8c6f60;">
+                    <label>Recibí conforme (Nombre)</label>
+                </div>
+                <div class="campo-firma" style="border-bottom-color: #8c6f60;">
+                    <label>Observaciones / Firma</label>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 12px 0 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+            ${svgCodigoBarras}
+        </div>
+
+        <div class="pie-pagina">
+            ${escaparHtmlImpresion(vn.nombre_marca)}${vn.barrio_zona ? ' · ' + escaparHtmlImpresion(vn.barrio_zona) : ''} — Comprobante #${escaparHtmlImpresion(vn.codigo_pedido)} — Hoja 1 de 1 — ${new Date().toLocaleString('es-AR')}
+        </div>
+
+        ${esContextoProduccion && !esPendienteCompra ? `
+        <div style="display: flex; justify-content: space-between; padding: 0 40px; margin-top: 12px;">
+            <div style="text-align: center;">
+                <div style="height: 35px; overflow: hidden; display: flex; justify-content: center;">
+                    ${generarIMGComando('CMD-ON')}
+                </div>
+                <div style="font-size: 10px; font-weight: bold; margin-top: 4px; font-family: sans-serif;">ON</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="height: 35px; overflow: hidden; display: flex; justify-content: center;">
+                    ${generarIMGComando('CMD-OFF')}
+                </div>
+                <div style="font-size: 10px; font-weight: bold; margin-top: 4px; font-family: sans-serif;">OFF</div>
+            </div>
+        </div>` : ''}
+    </div>
+`;
+}
+
+/**
+ * Renderiza en PDFKit 1 Hoja Individual Marca Blanca pura para el Vecino (cero referencias a LAMDA).
+ */
+function renderizarPDFHojaVecinoMarcaBlanca(doc, {
+    presupuesto,
+    fechaHoy,
+    horaHoy,
+    esContextoProduccion = false,
+    esPendienteCompra = false,
+    qrBuffer = null
+}) {
+    const vn = presupuesto._vecinoNodo;
+    const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
+    const idPresupuesto = presupuesto._id_presupuesto || presupuesto.id || 0;
+    const numeroImpresion = presupuesto._snapshot?.numero_impresion || 1;
+    const codigoBarras = `${idPresupuesto}-${numeroImpresion}`;
+    const bufferCodigoBarras = generarBufferCodigoBarras(codigoBarras);
+    const bufferComandoON = (esContextoProduccion && !esPendienteCompra) ? generarBufferComando('CMD-ON') : null;
+    const bufferComandoOFF = (esContextoProduccion && !esPendienteCompra) ? generarBufferComando('CMD-OFF') : null;
+
+    const brandColor = /^#[0-9a-fA-F]{6}$/.test(String(vn.color_primario || '').trim())
+        ? String(vn.color_primario).trim()
+        : '#a2553b';
+    const nombreMarca = limpiarTextoPdf(vn.nombre_marca || 'Tienda Vecinal');
+    const subtituloMarca = limpiarTextoPdf(vn.subtitulo_marca || '');
+    const gestorNombre = limpiarTextoPdf(vn.gestor_nombre || '');
+    const telNodo = limpiarTextoPdf(formatearTelefonoImpresion(vn.gestor_telefono));
+    const barrioZona = limpiarTextoPdf(vn.barrio_zona || '');
+    const aliasCobro = limpiarTextoPdf(vn.alias_bancario_display || '');
+    const codigoPedido = limpiarTextoPdf(vn.codigo_pedido || presupuesto.id_presupuesto_ext || '');
+
+    // 1. ENCABEZADO MARCA BLANCA DEL NODO (Ej: Lo de Mati)
+    const logoBuffer = extraerBufferLogoBase64(vn.logo_original_base64) || extraerBufferLogoBase64(vn.logo_mono_preview_base64);
+    if (logoBuffer) {
+        try {
+            doc.image(logoBuffer, 50, 34, { fit: [130, 42] });
+        } catch (_) {
+            doc.fontSize(18).font('Helvetica-Bold').fillColor(brandColor)
+               .text(nombreMarca, 50, 42, { width: 175, lineBreak: false });
+        }
+    } else {
+        doc.fontSize(18).font('Helvetica-Bold').fillColor(brandColor)
+           .text(nombreMarca, 50, 42, { width: 175, lineBreak: false });
+    }
+    if (subtituloMarca) {
+        doc.fontSize(7.5).font('Helvetica').fillColor('#6b5348')
+           .text(subtituloMarca, 50, 79, { width: 190 });
+    }
+
+    // Insignia central de Pedido Vecinal
+    doc.fillColor('#fdf8f5').roundedRect(240, 38, 115, 36, 5).fill();
+    doc.strokeColor(brandColor).lineWidth(1.3).roundedRect(240, 38, 115, 36, 5).stroke();
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(brandColor)
+       .text('DETALLE DE PEDIDO', 240, 44, { width: 115, align: 'center' });
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#2c1a12')
+       .text(`#${codigoPedido}`, 240, 56, { width: 115, align: 'center' });
+
+    // Datos comerciales y contacto del Nodo a la derecha (sin datos de LAMDA)
+    doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#2c1a12')
+       .text(nombreMarca, 365, 36, { width: 180, align: 'right' });
+    if (telNodo) {
+        doc.fontSize(8.5).font('Helvetica').fillColor('#4a352b')
+           .text(`WhatsApp: ${telNodo}`, 365, 50, { width: 180, align: 'right' });
+    }
+    doc.fontSize(8.5).font('Helvetica').fillColor('#4a352b')
+       .text(aliasCobro ? `Alias: ${aliasCobro}` : `Coordina: ${gestorNombre}`, 365, 62, { width: 180, align: 'right' });
+    doc.fontSize(8).font('Helvetica').fillColor('#7c665a')
+       .text(`${barrioZona ? barrioZona + ' · ' : ''}${fechaHoy} - ${horaHoy}`, 365, 74, { width: 180, align: 'right' });
+
+    doc.strokeColor(brandColor).lineWidth(1)
+       .moveTo(50, 92).lineTo(545, 92).stroke();
+
+    // 2. BLOQUE DEL VECINO, ENTREGA Y PAGO
+    const vecinoNombre = limpiarTextoPdf(vn.vecino_nombre || 'Cliente');
+    const vecinoTel = limpiarTextoPdf(formatearTelefonoImpresion(vn.vecino_telefono));
+    const modEntregaTxt = limpiarTextoPdf(
+        vn.modalidad_entrega === 'ENVIO_BARRIAL'
+            ? `Envío a domicilio: ${vn.direccion_entrega || 'Domicilio acordado'}`
+            : `Retira en ${nombreMarca}${vn.direccion_retiro ? ' (' + vn.direccion_retiro + ')' : ''}`
+    );
+    const pagoTxt = limpiarTextoPdf(formatearMedioEstadoPagoVecino(vn.medio_pago, vn.estado_pago));
+    const entregaHorario = limpiarTextoPdf(vn.fecha_entrega_label || '');
+
+    const articulosSorted = Array.isArray(presupuesto.articulos)
+        ? [...presupuesto.articulos].sort((a, b) => String(a.articulo_numero || '').localeCompare(String(b.articulo_numero || '')))
+        : [];
+    const totalBolsas = articulosSorted.reduce((acc, a) => acc + Number(a.cantidad || 0), 0);
+
+    doc.fillColor('#fdf8f5').roundedRect(50, 100, 495, 62, 5).fill();
+    doc.strokeColor('#e6d5cb').lineWidth(0.8).roundedRect(50, 100, 495, 62, 5).stroke();
+    doc.fillColor(brandColor).rect(50, 100, 4.5, 62).fill();
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(brandColor)
+       .text('PEDIDO PREPARADO PARA', 62, 106, { width: 320 });
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#2c1a12')
+       .text(`${vecinoNombre}${vecinoTel ? '  ·  Tel: ' + vecinoTel : ''}`, 62, 117, { width: 325 });
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#3e2519')
+       .text(`Entrega: ${modEntregaTxt}`, 62, 134, { width: 330 });
+    doc.fontSize(8.5).font('Helvetica').fillColor('#5c453a')
+       .text(`Pago: ${pagoTxt}${entregaHorario ? '  ·  Horario: ' + entregaHorario : ''}`, 62, 147, { width: 335 });
+
+    doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#2c1a12')
+       .text(`Comprobante #${codigoPedido}`, 395, 107, { width: 142, align: 'right' });
+    doc.fontSize(8.5).font('Helvetica').fillColor('#6b5348')
+       .text(`Fecha: ${fechaPresupuesto}`, 395, 122, { width: 142, align: 'right' });
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor(brandColor)
+       .text(`${totalBolsas} bolsa${totalBolsas === 1 ? '' : 's'} (${articulosSorted.length} prod.)`, 395, 139, { width: 142, align: 'right' });
+
+    // 3. TABLA DE PRODUCTOS CON NOMBRE COMERCIAL AMIGABLE
+    let tablaY = 172;
+    const colWidths = [68, 242, 45, 70, 70]; // Total = 495
+    const rowHeight = 22;
+
+    doc.fillColor('#f7ede7').rect(50, tablaY, 495, rowHeight).fill();
+    doc.strokeColor('#dcc6b8').lineWidth(0.8);
+    let xAcc = 50;
+    const headers = ['REF.', 'PRODUCTO Y PRESENTACIÓN', 'CANT.', 'PRECIO UNIT.', 'SUBTOTAL'];
+    const aligns = ['left', 'left', 'center', 'right', 'right'];
+    headers.forEach((h, idx) => {
+        doc.rect(xAcc, tablaY, colWidths[idx], rowHeight).stroke();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#3e2519')
+           .text(h, xAcc + 5, tablaY + 7, { width: colWidths[idx] - 10, align: aligns[idx] });
+        xAcc += colWidths[idx];
+    });
+
+    let currentY = tablaY + rowHeight;
+    let sumaSubtotales = 0;
+
+    if (articulosSorted.length > 0) {
+        articulosSorted.forEach((art, index) => {
+            const det = resolverDetalleComercialVecino(art, vn);
+            sumaSubtotales += Number(det.subtotalVecino || 0);
+
+            if (index % 2 === 1) {
+                doc.fillColor('#fcf9f7').rect(50, currentY, 495, rowHeight).fill();
+            }
+            doc.strokeColor('#e6d5cb').lineWidth(0.6);
+            let cellX = 50;
+            colWidths.forEach((w) => {
+                doc.rect(cellX, currentY, w, rowHeight).stroke();
+                cellX += w;
+            });
+
+            const skuClean = limpiarTextoPdf(det.sku);
+            const descClean = limpiarTextoPdf(det.descripcionComercial);
+            const descFontSize = descClean.length > 46 ? 8.5 : (descClean.length > 34 ? 9.5 : 10);
+
+            doc.fontSize(7.5).font('Helvetica').fillColor('#6b5348')
+               .text(skuClean, 55, currentY + 7, { width: colWidths[0] - 8 });
+            doc.fontSize(descFontSize).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text(descClean, 55 + colWidths[0], currentY + 6, { width: colWidths[1] - 10 });
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text(String(det.cantidad), 50 + colWidths[0] + colWidths[1], currentY + 5, { width: colWidths[2], align: 'center' });
+            doc.fontSize(8.5).font('Helvetica').fillColor('#4a352b')
+               .text(det.precioUnitarioVecino > 0 ? formatearMonedaImpresion(det.precioUnitarioVecino) : '-',
+                     50 + colWidths[0] + colWidths[1] + colWidths[2], currentY + 7, { width: colWidths[3] - 6, align: 'right' });
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text(det.subtotalVecino > 0 ? formatearMonedaImpresion(det.subtotalVecino) : '-',
+                     50 + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], currentY + 6.5, { width: colWidths[4] - 6, align: 'right' });
+
+            currentY += rowHeight;
+        });
+    } else {
+        doc.rect(50, currentY, 495, rowHeight).stroke();
+        doc.fontSize(9.5).font('Helvetica').fillColor('#6b5348')
+           .text('Sin productos registrados', 50, currentY + 6, { width: 495, align: 'center' });
+        currentY += rowHeight;
+    }
+
+    // 4. CUADRO DE TOTALES DEL VECINO
+    const subtotalProductos = Number(vn.subtotal_productos_vecino || sumaSubtotales || vn.total_vecino || 0);
+    const cargoEnvio = Number(vn.cargo_envio_barrial || 0);
+    const totalVecino = Number(vn.total_vecino || (subtotalProductos + cargoEnvio));
+
+    if (totalVecino > 0) {
+        currentY += 8;
+        const boxH = cargoEnvio > 0 ? 48 : 26;
+        doc.fillColor('#fdf8f5').roundedRect(315, currentY, 230, boxH, 4).fill();
+        doc.strokeColor('#dcc6b8').lineWidth(0.9).roundedRect(315, currentY, 230, boxH, 4).stroke();
+
+        let ty = currentY + 6;
+        if (cargoEnvio > 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#5c453a')
+               .text('Subtotal productos:', 325, ty, { width: 120 });
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text(formatearMonedaImpresion(subtotalProductos), 445, ty, { width: 90, align: 'right' });
+            ty += 12;
+            doc.fontSize(8.5).font('Helvetica').fillColor('#5c453a')
+               .text('Envío barrial:', 325, ty, { width: 120 });
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text(formatearMonedaImpresion(cargoEnvio), 445, ty, { width: 90, align: 'right' });
+            ty += 13;
+        } else {
+            ty = currentY + 7;
+        }
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#2c1a12')
+           .text('TOTAL DEL PEDIDO:', 325, ty, { width: 120 });
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(brandColor)
+           .text(formatearMonedaImpresion(totalVecino), 445, ty - 0.5, { width: 90, align: 'right' });
+
+        currentY += boxH + 6;
+    }
+
+    // 5. CONTROL DE ENTREGA Y CÓDIGO DE BARRAS DE VERIFICACIÓN AL PIE
+    const tieneQr = Boolean(qrBuffer);
+    if (currentY + (tieneQr ? 185 : 105) > 785) {
+        doc.addPage();
+        currentY = 50;
+    }
+    const controlY = currentY + 12;
+    const controlHeight = 36;
+
+    doc.strokeColor('#d6bfb2').lineWidth(0.9)
+       .roundedRect(50, controlY, 495, controlHeight, 4).stroke();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#3e2519')
+       .text(`CONTROL DE ENTREGA — ${nombreMarca}`, 50, controlY + 7, { width: 495, align: 'center' });
+
+    const campoY = controlY + 22;
+    doc.fontSize(8).font('Helvetica').fillColor('#6b5348')
+       .text('Recibí conforme:', 60, campoY, { lineBreak: false });
+    doc.strokeColor('#ccb5a7').lineWidth(0.5)
+       .moveTo(130, campoY + 8).lineTo(285, campoY + 8).stroke();
+    doc.text('Observaciones / Firma:', 300, campoY, { lineBreak: false });
+    doc.moveTo(395, campoY + 8).lineTo(530, campoY + 8).stroke();
+
+    const pieY = tieneQr ? Math.min(controlY + controlHeight + 42, 685) : Math.min(controlY + controlHeight + 48, 765);
+
+    if (bufferCodigoBarras) {
+        try {
+            doc.image(bufferCodigoBarras, 227, pieY - 36, { width: 140, height: 35 });
+        } catch (imgErr) {
+            console.error('❌ [BARCODE-PDF-VECINO] Error insertando código de barras:', imgErr.message);
+        }
+    }
+
+    doc.fontSize(7).font('Helvetica').fillColor('#8c7569')
+       .text(`${nombreMarca}${barrioZona ? ' · ' + barrioZona : ''} — Comprobante #${codigoPedido} — Hoja 1 de 1 — ${new Date().toLocaleString('es-AR')}`,
+             50, pieY + 4, { width: 495, align: 'center', lineBreak: false });
+
+    const bottomRelY = pieY - 6;
+    if (bufferComandoON) {
+        try {
+            doc.image(bufferComandoON, 50, bottomRelY, { width: 70, height: 20 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text('ON', 50, bottomRelY + 22, { width: 70, align: 'center', lineBreak: false });
+        } catch (_) {}
+    }
+    if (bufferComandoOFF) {
+        try {
+            doc.image(bufferComandoOFF, 475, bottomRelY, { width: 70, height: 20 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#2c1a12')
+               .text('OFF', 475, bottomRelY + 22, { width: 70, align: 'center', lineBreak: false });
+        } catch (_) {}
+    }
+
+    if (tieneQr) {
+        try {
+            const qrSize = 72;
+            const qrX = 261.5;
+            const qrY = pieY + 20;
+            doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor(brandColor)
+               .text(`PEDIDO #${codigoPedido}`, 50, qrY + qrSize + 3, { width: 495, align: 'center', lineBreak: false });
+        } catch (_) {}
+    }
+
+    doc.fillColor('black').strokeColor('black').lineWidth(1);
+}
+
+/**
+ * Genera el HTML de la Hoja Adicional de Control LAMDA -> Nodo (Remito General de Entrega al Gestor).
+ */
+function generarHTMLResumenControlNodo(resumen, { fechaHoy, horaHoy, agregarPageBreak = true }) {
+    const filasCanastos = resumen.canastosIndividuales.map(c => `
+                <tr>
+                    <td style="text-align: center; font-weight: bold; width: 8%;">[ &nbsp;&nbsp; ]</td>
+                    <td class="col-codigo" style="width: 16%; font-weight: 700; color: #0f172a;">#${escaparHtmlImpresion(c.codigoPedido)}</td>
+                    <td style="width: 30%; font-weight: 700; color: #0f172a;">${escaparHtmlImpresion(c.vecinoNombre)}</td>
+                    <td style="width: 30%; color: #334155;">${escaparHtmlImpresion(c.modalidadTexto)}</td>
+                    <td style="width: 16%; text-align: center; font-weight: 700; color: #166534;">${c.unidadesTotales} bolsa${c.unidadesTotales === 1 ? '' : 's'} (${c.itemsDistintos} ítem${c.itemsDistintos === 1 ? '' : 's'})</td>
+                </tr>`).join('');
+
+    const filasArticulos = resumen.articulosConsolidados.map(a => `
+                <tr>
+                    <td class="col-codigo" style="width: 20%;">${escaparHtmlImpresion(a.sku)}</td>
+                    <td class="col-descripcion" style="width: 52%;">
+                        <strong>${escaparHtmlImpresion(a.descripcionDeposito)}</strong>
+                        ${a.nombreComercial && a.nombreComercial !== a.descripcionDeposito ? `<span style="color: #475569;"> · (${escaparHtmlImpresion(a.nombreComercial)})</span>` : ''}
+                    </td>
+                    <td class="col-cantidad" style="width: 14%;">${a.cantidadTotal}</td>
+                    <td style="width: 14%; text-align: center; font-weight: 600;">${a.kilosTotales > 0 ? a.kilosTotales.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kg' : '-'}</td>
+                </tr>`).join('');
+
+    return `
+    <div class="remito-container resumen-control-lamda-nodo${agregarPageBreak ? ' page-break' : ''}">
+        <div class="header">
+            <div class="header-left">
+                <img src="/img/logo_LAMDA_grande.png" class="logo-lamda-img" alt="LAMDA" onerror="this.style.display='none'">
+            </div>
+            <div class="header-center" style="flex-direction: column; gap: 3px;">
+                <div class="letra-r">R</div>
+                <div style="font-size: 9px; font-weight: 800; color: #166534; letter-spacing: 0.5px;">HOJA RESUMEN LAMDA → NODO</div>
+            </div>
+            <div class="header-right">
+                <div class="empresa-alias">ALIAS: LAMDA.SER.MARTIN</div>
+                <div class="fecha-emision" style="margin-bottom: 2px;">${fechaHoy} - ${horaHoy}</div>
+                <div style="font-size: 10px; color: #666;">WhatsApp: 221 6615746</div>
+            </div>
+        </div>
+
+        <div class="datos-pedido" style="border: 1.5px solid #16a34a; border-left: 5px solid #16a34a; background: #f0fdf4; padding: 10px 14px; border-radius: 6px;">
+            <div>
+                <div style="font-size: 10px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Remito General de Control y Entrega a Nodo Barrial
+                </div>
+                <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 3px;">
+                    N° de Cliente: ${escaparHtmlImpresion(resumen.clienteId)} — NODO: ${escaparHtmlImpresion(resumen.nombreMarca)}
+                </div>
+                <div style="font-size: 11px; color: #334155; margin-top: 4px;">
+                    <strong>Gestor responsable:</strong> ${escaparHtmlImpresion(resumen.gestorNombre)}${resumen.gestorTelefono ? ` (Tel: ${escaparHtmlImpresion(resumen.gestorTelefono)})` : ''}
+                    ${resumen.direccionRetiro ? ` · <strong>Sede:</strong> ${escaparHtmlImpresion(resumen.direccionRetiro)}` : ''}
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div class="codigo-presupuesto" style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                    ${escaparHtmlImpresion(resumen.codigoCanasto || 'ENTREGA-NODO')}
+                </div>
+                ${resumen.fechaEntregaLabel ? `<div style="font-size: 10px; color: #475569; margin-top: 3px;">Entrega: ${escaparHtmlImpresion(resumen.fechaEntregaLabel)}</div>` : ''}
+                <div style="font-size: 12px; font-weight: 800; color: #166534; margin-top: 7px;">
+                    ${resumen.totalCanastos} canasto${resumen.totalCanastos === 1 ? '' : 's'} · ${resumen.totalUnidades} bolsas (${resumen.totalKilosFmt} kg)
+                </div>
+            </div>
+        </div>
+
+        <div class="seccion-titulo" style="border-left-color: #16a34a; background: #f8fafc; color: #0f172a;">
+            1. Detalle de Canastos / Pedidos Individuales de la Entrega (${resumen.totalCanastos} canasto${resumen.totalCanastos === 1 ? '' : 's'}: ${escaparHtmlImpresion(resumen.listaCodigosTexto)})
+        </div>
+        <table class="articulos-tabla">
+            <thead>
+                <tr>
+                    <th style="width: 8%; text-align: center;">Ctrl</th>
+                    <th style="width: 16%;">Canasto / Pedido</th>
+                    <th style="width: 30%;">Vecino Destinatario</th>
+                    <th style="width: 30%;">Modalidad en Nodo</th>
+                    <th style="width: 16%; text-align: center;">Bolsas</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filasCanastos}
+                <tr style="background: #f0fdf4; font-weight: bold;">
+                    <td colspan="4" style="text-align: right; padding: 6px 8px; color: #14532d;">TOTAL CANASTOS INDIVIDUALES ENTREGADOS AL NODO:</td>
+                    <td style="text-align: center; padding: 6px 8px; color: #14532d; font-size: 11px;">${resumen.totalCanastos} canasto${resumen.totalCanastos === 1 ? '' : 's'}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="seccion-titulo" style="border-left-color: #2563eb; background: #f8fafc; color: #0f172a; margin-top: 14px;">
+            2. Consolidado General de Artículos (${resumen.articulosConsolidados.length} artículos distintos · ${resumen.totalUnidades} unidades totales)
+        </div>
+        <table class="articulos-tabla">
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Código SKU</th>
+                    <th style="width: 52%;">Descripción Depósito / Nombre Comercial</th>
+                    <th style="width: 14%; text-align: center;">Unidades</th>
+                    <th style="width: 14%; text-align: center;">Peso Est.</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filasArticulos}
+                <tr style="background: #eff6ff; font-weight: bold;">
+                    <td colspan="2" style="text-align: right; padding: 6px 8px; color: #1e3a8a;">TOTAL MERCADERÍA CONSOLIDADA:</td>
+                    <td style="text-align: center; padding: 6px 8px; color: #1e3a8a;">${resumen.totalUnidades}</td>
+                    <td style="text-align: center; padding: 6px 8px; color: #1e3a8a;">${resumen.totalKilosFmt} kg</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="control-entrega" style="margin-top: 18px;">
+            <h4>Conformidad de Entrega LAMDA → Gestor del Nodo (${escaparHtmlImpresion(resumen.nombreMarca)})</h4>
+            <div class="campos-control">
+                <div class="campo-firma">
+                    <label>Entregado por (LAMDA)</label>
+                </div>
+                <div class="campo-firma">
+                    <label>Recibido por Gestor (${escaparHtmlImpresion(resumen.gestorNombre)}) — Canastos: ___ / ${resumen.totalCanastos}</label>
+                </div>
+            </div>
+            <div class="nota-importante">
+                <strong>CONTROL CONJUNTO:</strong> Verificar la entrega de los <strong>${resumen.totalCanastos} canastos individuales</strong> (${escaparHtmlImpresion(resumen.listaCodigosTexto)}). Cada canasto lleva en su interior su comprobante individual de <strong>${escaparHtmlImpresion(resumen.nombreMarca)}</strong> para el vecino.
+            </div>
+        </div>
+
+        <div class="pie-pagina">
+            Sistema LAMDA — Hoja Resumen de Control Nodo ${escaparHtmlImpresion(resumen.clienteId)} (${escaparHtmlImpresion(resumen.nombreMarca)}) — ${new Date().toLocaleString('es-AR')}
+        </div>
+    </div>
+`;
+}
+
+/**
+ * Renderiza en PDFKit la Hoja Adicional de Control LAMDA -> Nodo (con logo LAMDA, consolidado de artículos y conteo de canastos).
+ */
+function renderizarPDFResumenControlNodo(doc, resumen, { fechaHoy, horaHoy, qrBuffer = null }) {
+    const pathLogo = require('path').join(__dirname, '..', '..', 'facturacion', 'img', 'logo_LAMDA_grande.png');
+    if (require('fs').existsSync(pathLogo)) {
+        doc.image(pathLogo, 50, 40, { height: 30 });
+    } else {
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('black').text('LAMDA', 50, 48);
+    }
+
+    doc.lineWidth(1.5).strokeColor('black')
+       .roundedRect(280, 36, 34, 30, 4).stroke();
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('black')
+       .text('R', 280, 42, { width: 34, align: 'center' });
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#166534')
+       .text('CONTROL LAMDA -> NODO', 220, 70, { width: 155, align: 'center' });
+
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('black')
+       .text('ALIAS: LAMDA.SER.MARTIN', 395, 40, { width: 150, align: 'right' });
+    doc.fontSize(9.5).font('Helvetica').fillColor('#666666')
+       .text(`${fechaHoy} - ${horaHoy}`, 395, 54, { width: 150, align: 'right' });
+    doc.fontSize(9.5).font('Helvetica').fillColor('#666666')
+       .text('WhatsApp: 221 6615746', 395, 67, { width: 150, align: 'right' });
+
+    doc.strokeColor('#cccccc').lineWidth(0.5)
+       .moveTo(50, 86).lineTo(545, 86).stroke();
+
+    // Cabecera de Destinatario Nodo
+    const nombreMarca = limpiarTextoPdf(resumen.nombreMarca);
+    const gestorNombre = limpiarTextoPdf(resumen.gestorNombre);
+    const gestorTel = limpiarTextoPdf(resumen.gestorTelefono);
+    const dirRetiro = limpiarTextoPdf(resumen.direccionRetiro);
+    const codCanasto = limpiarTextoPdf(resumen.codigoCanasto || 'ENTREGA-NODO');
+    const entregaLbl = limpiarTextoPdf(resumen.fechaEntregaLabel);
+
+    doc.fillColor('#f0fdf4').roundedRect(50, 94, 495, 56, 4).fill();
+    doc.strokeColor('#16a34a').lineWidth(1).roundedRect(50, 94, 495, 56, 4).stroke();
+    doc.fillColor('#16a34a').rect(50, 94, 4.5, 56).fill();
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#166534')
+       .text('REMITO GENERAL DE CONTROL Y ENTREGA A NODO BARRIAL', 62, 100, { width: 325 });
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
+       .text(`Cliente #${resumen.clienteId} — NODO: ${nombreMarca}`, 62, 112, { width: 325 });
+    doc.fontSize(8.5).font('Helvetica').fillColor('#334155')
+       .text(`Gestor: ${gestorNombre}${gestorTel ? ' · Tel: ' + gestorTel : ''}${dirRetiro ? ' · Sede: ' + dirRetiro : ''}`, 62, 131, { width: 335 });
+
+    doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#0f172a')
+       .text(codCanasto, 395, 101, { width: 142, align: 'right' });
+    doc.fontSize(8).font('Helvetica').fillColor('#475569')
+       .text(entregaLbl ? `Entrega: ${entregaLbl}` : `Fecha: ${fechaHoy}`, 395, 116, { width: 142, align: 'right' });
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#166534')
+       .text(`${resumen.totalCanastos} canasto${resumen.totalCanastos === 1 ? '' : 's'} · ${resumen.totalUnidades} bolsas (${resumen.totalKilosFmt} kg)`, 380, 132, { width: 157, align: 'right' });
+
+    // SECCIÓN 1: DETALLE DE CANASTOS INDIVIDUALES
+    let currentY = 160;
+    doc.fillColor('#f8fafc').rect(50, currentY, 495, 18).fill();
+    doc.fillColor('#16a34a').rect(50, currentY, 3.5, 18).fill();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a')
+       .text(`1. DETALLE DE CANASTOS INDIVIDUALES A ENTREGAR (${resumen.totalCanastos} CANASTO${resumen.totalCanastos === 1 ? '' : 'S'}: ${limpiarTextoPdf(resumen.listaCodigosTexto)})`,
+             58, currentY + 5, { width: 482 });
+    currentY += 21;
+
+    const colCan = [38, 72, 150, 150, 85]; // 495
+    const rowHCan = 19;
+    doc.fillColor('#f1f5f9').rect(50, currentY, 495, rowHCan).fill();
+    doc.strokeColor('#cbd5e1').lineWidth(0.7);
+    let xC = 50;
+    ['CTRL', 'CANASTO', 'VECINO DESTINATARIO', 'MODALIDAD EN NODO', 'BOLSAS'].forEach((h, i) => {
+        doc.rect(xC, currentY, colCan[i], rowHCan).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b')
+           .text(h, xC + 4, currentY + 6, { width: colCan[i] - 8, align: (i === 0 || i === 4) ? 'center' : 'left' });
+        xC += colCan[i];
+    });
+    currentY += rowHCan;
+
+    resumen.canastosIndividuales.forEach((c, idx) => {
+        if (currentY > 710) {
+            doc.addPage();
+            currentY = 50;
+        }
+        if (idx % 2 === 1) {
+            doc.fillColor('#f8fafc').rect(50, currentY, 495, rowHCan).fill();
+        }
+        doc.strokeColor('#cbd5e1').lineWidth(0.6);
+        let cx = 50;
+        colCan.forEach(w => {
+            doc.rect(cx, currentY, w, rowHCan).stroke();
+            cx += w;
+        });
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155')
+           .text('[    ]', 50, currentY + 5.5, { width: colCan[0], align: 'center' });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a')
+           .text(`#${limpiarTextoPdf(c.codigoPedido)}`, 55 + colCan[0], currentY + 5.5, { width: colCan[1] - 8 });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a')
+           .text(limpiarTextoPdf(c.vecinoNombre), 55 + colCan[0] + colCan[1], currentY + 5.5, { width: colCan[2] - 8 });
+        doc.fontSize(8).font('Helvetica').fillColor('#334155')
+           .text(limpiarTextoPdf(c.modalidadTexto), 55 + colCan[0] + colCan[1] + colCan[2], currentY + 5.5, { width: colCan[3] - 8 });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#166534')
+           .text(`${c.unidadesTotales} (${c.itemsDistintos} art.)`, 50 + colCan[0] + colCan[1] + colCan[2] + colCan[3], currentY + 5.5, { width: colCan[4], align: 'center' });
+
+        currentY += rowHCan;
+    });
+
+    // Fila resumen total canastos
+    doc.fillColor('#f0fdf4').rect(50, currentY, 495, rowHCan).fill();
+    doc.strokeColor('#86efac').lineWidth(0.8).rect(50, currentY, 495, rowHCan).stroke();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#14532d')
+       .text('TOTAL CANASTOS INDIVIDUALES A CONTROLAR Y ENTREGAR:', 55, currentY + 5.5, { width: 350, align: 'right' });
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#14532d')
+       .text(`${resumen.totalCanastos} canasto${resumen.totalCanastos === 1 ? '' : 's'}`, 410, currentY + 5, { width: 130, align: 'center' });
+    currentY += rowHCan + 12;
+
+    // SECCIÓN 2: CONSOLIDADO DE ARTÍCULOS DE DEPÓSITO
+    if (currentY > 640) {
+        doc.addPage();
+        currentY = 50;
+    }
+    doc.fillColor('#f8fafc').rect(50, currentY, 495, 18).fill();
+    doc.fillColor('#2563eb').rect(50, currentY, 3.5, 18).fill();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a')
+       .text(`2. CONSOLIDADO GENERAL DE ARTÍCULOS DE DEPÓSITO (${resumen.articulosConsolidados.length} ARTÍCULOS · ${resumen.totalUnidades} UNIDADES)`,
+             58, currentY + 5, { width: 482 });
+    currentY += 21;
+
+    const colArt = [90, 265, 70, 70]; // 495
+    const rowHArt = 20;
+    doc.fillColor('#f1f5f9').rect(50, currentY, 495, rowHArt).fill();
+    doc.strokeColor('#cbd5e1').lineWidth(0.7);
+    let xA = 50;
+    ['CÓDIGO SKU', 'DESCRIPCIÓN DEPÓSITO / COMERCIAL', 'UNIDADES', 'PESO EST.'].forEach((h, i) => {
+        doc.rect(xA, currentY, colArt[i], rowHArt).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b')
+           .text(h, xA + 5, currentY + 6, { width: colArt[i] - 10, align: i >= 2 ? 'center' : 'left' });
+        xA += colArt[i];
+    });
+    currentY += rowHArt;
+
+    resumen.articulosConsolidados.forEach((a, idx) => {
+        if (currentY > 710) {
+            doc.addPage();
+            currentY = 50;
+        }
+        if (idx % 2 === 1) {
+            doc.fillColor('#f8fafc').rect(50, currentY, 495, rowHArt).fill();
+        }
+        doc.strokeColor('#cbd5e1').lineWidth(0.6);
+        let ax = 50;
+        colArt.forEach(w => {
+            doc.rect(ax, currentY, w, rowHArt).stroke();
+            ax += w;
+        });
+
+        const descDep = limpiarTextoPdf(a.descripcionDeposito);
+        const nomCom = limpiarTextoPdf(a.nombreComercial);
+        const descMixta = (nomCom && nomCom.toLowerCase() !== descDep.toLowerCase())
+            ? `${descDep} (${nomCom})`
+            : descDep;
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155')
+           .text(limpiarTextoPdf(a.sku), 55, currentY + 6, { width: colArt[0] - 8 });
+        doc.fontSize(descMixta.length > 48 ? 8 : 9).font('Helvetica').fillColor('#0f172a')
+           .text(descMixta, 55 + colArt[0], currentY + 5.5, { width: colArt[1] - 10 });
+        doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#0f172a')
+           .text(String(a.cantidadTotal), 50 + colArt[0] + colArt[1], currentY + 4.5, { width: colArt[2], align: 'center' });
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#334155')
+           .text(a.kilosTotales > 0 ? `${a.kilosTotales.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg` : '-',
+                 50 + colArt[0] + colArt[1] + colArt[2], currentY + 6, { width: colArt[3], align: 'center' });
+
+        currentY += rowHArt;
+    });
+
+    // Fila total mercadería
+    doc.fillColor('#eff6ff').rect(50, currentY, 495, rowHArt).fill();
+    doc.strokeColor('#93c5fd').lineWidth(0.8).rect(50, currentY, 495, rowHArt).stroke();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1e3a8a')
+       .text('TOTAL MERCADERÍA CONSOLIDADA:', 55, currentY + 6, { width: colArt[0] + colArt[1] - 12, align: 'right' });
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e3a8a')
+       .text(String(resumen.totalUnidades), 50 + colArt[0] + colArt[1], currentY + 5, { width: colArt[2], align: 'center' });
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e3a8a')
+       .text(`${resumen.totalKilosFmt} kg`, 50 + colArt[0] + colArt[1] + colArt[2], currentY + 5.5, { width: colArt[3], align: 'center' });
+    currentY += rowHArt + 14;
+
+    // CONFORMIDAD DE ENTREGA LAMDA -> GESTOR
+    const tieneQr = Boolean(qrBuffer);
+    if (currentY + (tieneQr ? 150 : 75) > 785) {
+        doc.addPage();
+        currentY = 50;
+    }
+    const controlY = currentY;
+    const controlH = 44;
+
+    doc.strokeColor('#94a3b8').lineWidth(0.9).roundedRect(50, controlY, 495, controlH, 4).stroke();
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a')
+       .text(`CONFORMIDAD DE ENTREGA LAMDA -> GESTOR DEL NODO (${nombreMarca})`, 50, controlY + 6, { width: 495, align: 'center' });
+
+    const fy = controlY + 24;
+    doc.fontSize(8).font('Helvetica').fillColor('#475569')
+       .text('Entregado por (LAMDA):', 60, fy, { lineBreak: false });
+    doc.strokeColor('#cbd5e1').lineWidth(0.6).moveTo(155, fy + 8).lineTo(265, fy + 8).stroke();
+    doc.text(`Recibido Gestor (Canastos: ___ / ${resumen.totalCanastos}):`, 278, fy, { lineBreak: false });
+    doc.moveTo(435, fy + 8).lineTo(532, fy + 8).stroke();
+
+    const pieY = tieneQr ? Math.min(controlY + controlH + 14, 695) : Math.min(controlY + controlH + 22, 770);
+    if (tieneQr) {
+        try {
+            const qrSize = 72;
+            doc.image(qrBuffer, 261.5, pieY, { width: qrSize, height: qrSize });
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#166534')
+               .text(`QR MAESTRO ${codCanasto}`, 50, pieY + qrSize + 3, { width: 495, align: 'center', lineBreak: false });
+        } catch (_) {}
+    }
+
+    const footerY = tieneQr ? Math.min(pieY + 86, 785) : pieY;
+    doc.fontSize(7).font('Helvetica').fillColor('#94a3b8')
+       .text(`Sistema LAMDA — Hoja Resumen de Control Nodo #${resumen.clienteId} (${nombreMarca}) — ${new Date().toLocaleString('es-AR')}`,
+             50, footerY, { width: 495, align: 'center', lineBreak: false });
+
+    doc.fillColor('black').strokeColor('black').lineWidth(1);
+}
+
+/**
  * Guardar snapshot de presupuesto al imprimir
  * @param {number} id_presupuesto - ID interno del presupuesto
  * @param {string} id_presupuesto_ext - ID externo del presupuesto
@@ -255,11 +1263,13 @@ const imprimirPresupuestoCliente = async (req, res) => {
             fecha_hasta, 
             formato = 'html',
             pendiente_compra = 'false',
-            contexto = ''
+            contexto = '',
+            omitir_resumen_nodo = 'false'
         } = req.query;
         
         const esPendienteCompra = pendiente_compra === 'true';
         const esContextoProduccion = contexto === 'produccion';
+        const omitirResumenNodo = omitir_resumen_nodo === 'true';
         
         let kilosOverride = {};
         if (req.query.kilos_override) {
@@ -301,7 +1311,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     });
                 });
                 const [mapaVecinos, mapaArbol] = await Promise.all([
-                    codigosPedidosVecinos.length > 0 ? obtenerMetadataPedidosVecinosPorCodigos(codigosPedidosVecinos) : Promise.resolve({}),
+                    codigosPedidosVecinos.length > 0 ? obtenerMetadataPedidosVecinosPorCodigos(codigosPedidosVecinos, { incluirLogo: true }) : Promise.resolve({}),
                     codigosCanastos.length > 0 ? obtenerArbolCanastosPorCodigos(codigosCanastos) : Promise.resolve({})
                 ]);
                 (clientesArray || []).forEach(c => {
@@ -371,7 +1381,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
         // Determinar el tipo de consulta según los parámetros
         let query, params, result;
         
-        if (cliente_id) {
+        if (cliente_id && !presupuestos_ext_ids) {
             // CASO 1 y 2: Por cliente (con o sin presupuesto_id específico)
             query = `
                 WITH presupuestos_filtrados AS (
@@ -408,7 +1418,15 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 SELECT JSON_AGG(
                                     JSON_BUILD_OBJECT(
                                         'articulo_numero', pd.articulo,
-                                        'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                        'codigo_barras', COALESCE(
+                                            NULLIF(NULLIF(TRIM(src.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(a.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(ba.codigo_barras::text), ''), pd.articulo),
+                                            NULLIF(TRIM(src.codigo_barras), ''),
+                                            NULLIF(TRIM(a.codigo_barras), ''),
+                                            NULLIF(TRIM(ba.codigo_barras::text), ''),
+                                            ''
+                                        ),
                                         'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                         'descripcion', CASE
                                             WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
@@ -475,7 +1493,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                 ) ing ON true
                                 WHERE pd.id_presupuesto = pf.id
                             )
-                        ) ORDER BY pf.fecha DESC
+                        ) ORDER BY pf.fecha DESC, pf.id ASC
                     ) as presupuestos
                 FROM public.clientes c
                 LEFT JOIN clientes_perfiles_impresion cpi ON cpi.id_cliente_ext = c.cliente_id::text
@@ -671,11 +1689,12 @@ const imprimirPresupuestoCliente = async (req, res) => {
             // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
             applyKilosOverrides([clienteData]);
             await enriquecerArbolNodosParaImpresion([clienteData]);
+            const soloHojaIndividual = Boolean(presupuesto_id) || omitirResumenNodo;
             
             if (formato === 'pdf') {
-                return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion);
+                return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion, soloHojaIndividual);
             } else {
-                return generarHTML_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta);
+                return generarHTML_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion, soloHojaIndividual);
             }
             
         } else if (presupuestos_ext_ids) {
@@ -721,7 +1740,15 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
-                                                    'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                                    'codigo_barras', COALESCE(
+                                            NULLIF(NULLIF(TRIM(src.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(a.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(ba.codigo_barras::text), ''), pd.articulo),
+                                            NULLIF(TRIM(src.codigo_barras), ''),
+                                            NULLIF(TRIM(a.codigo_barras), ''),
+                                            NULLIF(TRIM(ba.codigo_barras::text), ''),
+                                            ''
+                                        ),
                                                     'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                                     'descripcion', CASE
                                                         WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
@@ -788,7 +1815,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             ) ing ON true
                                             WHERE pd.id_presupuesto = pf2.id
                                         )
-                                    ) ORDER BY pf2.fecha DESC
+                                    ) ORDER BY pf2.fecha DESC, pf2.id ASC
                                 )
                                 FROM presupuestos_filtrados pf2
                                 WHERE pf2.cliente_id_int = c.cliente_id
@@ -903,9 +1930,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             await enriquecerArbolNodosParaImpresion(clientesData);
             
             if (formato === 'pdf') {
-                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
+                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion, omitirResumenNodo);
             } else {
-                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
+                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion, omitirResumenNodo);
             }
             
         } else {
@@ -944,7 +1971,15 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             SELECT JSON_AGG(
                                                 JSON_BUILD_OBJECT(
                                                     'articulo_numero', pd.articulo,
-                                                    'codigo_barras', COALESCE(NULLIF(TRIM(a.codigo_barras), ''), NULLIF(TRIM(ba.codigo_barras::text), ''), NULLIF(TRIM(src.codigo_barras), ''), ''),
+                                                    'codigo_barras', COALESCE(
+                                            NULLIF(NULLIF(TRIM(src.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(a.codigo_barras), ''), pd.articulo),
+                                            NULLIF(NULLIF(TRIM(ba.codigo_barras::text), ''), pd.articulo),
+                                            NULLIF(TRIM(src.codigo_barras), ''),
+                                            NULLIF(TRIM(a.codigo_barras), ''),
+                                            NULLIF(TRIM(ba.codigo_barras::text), ''),
+                                            ''
+                                        ),
                                                     'sku_canonico', COALESCE(NULLIF(TRIM(a.numero), ''), NULLIF(TRIM(ba.articulo_id::text), ''), NULLIF(TRIM(src.articulo_numero), ''), pd.articulo),
                                                     'descripcion', CASE
                                                         WHEN COALESCE(pd.es_saldo_ingrediente, false) = true AND COALESCE(pd.kilos_saldo, 0) > 0 THEN
@@ -1011,7 +2046,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
                                             ) ing ON true
                                             WHERE pd.id_presupuesto = pf2.id
                                         )
-                                    ) ORDER BY pf2.fecha DESC
+                                    ) ORDER BY pf2.fecha DESC, pf2.id ASC
                                 )
                                 FROM presupuestos_filtrados pf2
                                 WHERE pf2.cliente_id_int = c.cliente_id
@@ -1125,9 +2160,9 @@ const imprimirPresupuestoCliente = async (req, res) => {
             await enriquecerArbolNodosParaImpresion(clientesData);
             
             if (formato === 'pdf') {
-                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
+                return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion, omitirResumenNodo);
             } else {
-                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
+                return generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion, omitirResumenNodo);
             }
         }
         
@@ -1566,6 +2601,18 @@ function generarHTMLPresupuestoUnico({
     agregarPageBreak = false,
     esContextoProduccion = false
 }) {
+    // Hoja Individual Marca Blanca pura cuando es pedido de Vecino de un Nodo Barrial
+    if (presupuesto && presupuesto._vecinoNodo) {
+        return generarHTMLHojaVecinoMarcaBlanca({
+            presupuesto,
+            fechaHoy,
+            horaHoy,
+            agregarPageBreak,
+            esContextoProduccion,
+            esPendienteCompra
+        });
+    }
+
     const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
     
     // Calcular datos para código de barras y total de artículos
@@ -1996,6 +3043,19 @@ function renderizarPDFPresupuestoUnico(doc, {
     esContextoProduccion = false,
     qrBuffer = null
 }) {
+    // Hoja Individual Marca Blanca pura cuando es pedido de Vecino de un Nodo Barrial
+    if (presupuesto && presupuesto._vecinoNodo) {
+        return renderizarPDFHojaVecinoMarcaBlanca(doc, {
+            presupuesto,
+            fechaHoy,
+            horaHoy,
+            esContextoProduccion,
+            esPendienteCompra,
+            qrBuffer
+        });
+    }
+
+    clienteNombre = limpiarTextoPdf(clienteNombre);
     const fechaPresupuesto = new Date(presupuesto.fecha).toLocaleDateString('es-AR');
     
     // Calcular datos para código de barras y total de artículos
@@ -2206,7 +3266,7 @@ function renderizarPDFPresupuestoUnico(doc, {
                     doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                     
-                    let descripcion = articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion;
+                    let descripcion = limpiarTextoPdf(articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion);
                     
                     let descFontSize = 12;
                     let descOffsetY = 5;
@@ -2387,7 +3447,7 @@ function renderizarPDFPresupuestoUnico(doc, {
                 doc.moveTo(50 + colWidths[0] + colWidths[1], currentY).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                 doc.moveTo(50 + colWidths[0], currentY + rowHeight).lineTo(50 + colWidths[0] + colWidths[1], currentY + rowHeight).stroke();
                 
-                let descripcion = articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion;
+                let descripcion = limpiarTextoPdf(articulo.es_ingrediente ? `${articulo.descripcion} (Stock Cliente)` : articulo.descripcion);
                 
                 let descFontSize = 12;
                 let descOffsetY = 5;
@@ -2693,7 +3753,7 @@ function renderizarPDFPresupuestoUnico(doc, {
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
+function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false, soloHojaIndividual = false) {
     try {
         const fechaHoy = new Date().toLocaleDateString('es-AR', {
             year: 'numeric',
@@ -2715,25 +3775,25 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
     <style>${generarCSSRemito()}</style>
 </head>
 <body>
-    <div class="remito-container">
-        <div class="header">
-            <div class="header-left">
-                <img src="/img/logo_LAMDA_grande.png" class="logo-lamda-img" alt="LAMDA" onerror="this.style.display='none'">
-            </div>
-            <div class="header-center">
-                <div class="letra-r">R</div>
-            </div>
-            <div class="fecha-emision">
-                ${fechaHoy} - ${horaHoy}
-            </div>
-        </div>
-        
 `;
         
         // Log de debug
         console.log('🛒 [REMITO-R-HTML] esPendienteCompra:', esPendienteCompra);
         console.log('🛒 [REMITO-R-HTML] articulosEnFalta:', articulosEnFalta);
         console.log('🛒 [REMITO-R-HTML] articulosEnFalta.length:', articulosEnFalta.length);
+
+        // Si el cliente es un Nodo Barrial y no es reimpresión de una sola hoja individual,
+        // emitir primero 1 Hoja Adicional de Control LAMDA -> Nodo (con logo de LAMDA + consolidado + canastos)
+        if (!soloHojaIndividual) {
+            const resumenesNodo = construirResumenesControlNodoCliente(clienteData);
+            resumenesNodo.forEach((resumen) => {
+                html += generarHTMLResumenControlNodo(resumen, {
+                    fechaHoy,
+                    horaHoy,
+                    agregarPageBreak: clienteData.presupuestos.length > 0
+                });
+            });
+        }
         
         // Generar una página por cada presupuesto usando la función compartida
         clienteData.presupuestos.forEach((presupuesto, presupIndex) => {
@@ -2781,7 +3841,7 @@ function generarHTML_Rediseñado(res, clienteData, esPendienteCompra = false, ar
  * @param {boolean} esPendienteCompra - Si es true, muestra "ORDEN EN ESPERA" y marca artículos en falta
  * @param {Array} articulosEnFalta - Array de códigos de artículos que están en falta
  */
-async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false) {
+async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = false, articulosEnFalta = [], esContextoProduccion = false, soloHojaIndividual = false) {
     try {
         let PDFDocument;
         try {
@@ -2812,10 +3872,36 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
         
         doc.pipe(res);
         
+        let paginasEmitidas = 0;
+
+        // Si el cliente es un Nodo Barrial y no es reimpresión de 1 sola hoja individual,
+        // emitir primero 1 Hoja Resumen de Control LAMDA -> Nodo
+        if (!soloHojaIndividual) {
+            const resumenesNodo = construirResumenesControlNodoCliente(clienteData);
+            for (const resumen of resumenesNodo) {
+                if (paginasEmitidas > 0) {
+                    doc.addPage();
+                }
+                let qrMaestroBuffer = null;
+                if (resumen.qrMaestroPayload) {
+                    try {
+                        const QRCode = require('qrcode');
+                        qrMaestroBuffer = await QRCode.toBuffer(resumen.qrMaestroPayload, { margin: 1, width: 85 });
+                    } catch (_) {}
+                }
+                renderizarPDFResumenControlNodo(doc, resumen, {
+                    fechaHoy,
+                    horaHoy,
+                    qrBuffer: qrMaestroBuffer
+                });
+                paginasEmitidas++;
+            }
+        }
+
         // Generar una página por cada presupuesto usando la función compartida de forma asíncrona
         let presupIndex = 0;
         for (const presupuesto of clienteData.presupuestos) {
-            if (presupIndex > 0) {
+            if (paginasEmitidas > 0) {
                 doc.addPage();
             }
             
@@ -2824,7 +3910,7 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                 const idLocal = presupuesto._id_presupuesto || presupuesto.id_presupuesto || 0;
                 let supabasePedidoId = null;
                 
-                if (idLocal > 0) {
+                if (idLocal > 0 && !presupuesto._vecinoNodo) {
                     const resMap = await pool.query(
                         'SELECT supabase_pedido_id FROM public.b2b_pedidos_mapeo WHERE local_presupuesto_id = $1 LIMIT 1',
                         [idLocal]
@@ -2836,7 +3922,7 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                 }
                 
                 // Fallback: Si no hay mapeo, pero id_presupuesto_ext es un UUID, lo usamos directamente
-                if (!supabasePedidoId && presupuesto.id_presupuesto_ext) {
+                if (!supabasePedidoId && presupuesto.id_presupuesto_ext && !presupuesto._vecinoNodo) {
                     const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(presupuesto.id_presupuesto_ext);
                     if (esUUID) {
                         supabasePedidoId = presupuesto.id_presupuesto_ext;
@@ -2844,13 +3930,14 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                     }
                 }
                 
-                const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-') || Boolean(presupuesto._vecinoNodo);
+                const esCanastoConsolidado = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
                 const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
 
-                if (esCanastoNodo) {
-                    const qrPayloadNodo = presupuesto._vecinoNodo
-                        ? `${presupuesto._vecinoNodo.codigo_pedido}|${presupuesto._vecinoNodo.codigo_canasto || presupuesto._vecinoNodo.nombre_marca}`
-                        : (presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext);
+                if (presupuesto._vecinoNodo) {
+                    // Hoja Marca Blanca pura para el vecino: solo lleva el código de barras de verificación abajo
+                    qrBuffer = null;
+                } else if (esCanastoConsolidado) {
+                    const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
                     const QRCode = require('qrcode');
                     qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
                 } else {
@@ -2885,7 +3972,6 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                 esPendienteCompra,
                 articulosEnFalta,
                 fechaHoy,
-                fechaHoy,
                 horaHoy,
                 paginaActual: presupIndex + 1,
                 totalPaginas: clienteData.presupuestos.length,
@@ -2894,11 +3980,12 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
             });
             
             presupIndex++;
+            paginasEmitidas++;
         }
         
         doc.end();
         
-        console.log(`✅ [REMITO-R] PDF rediseñado generado: ${nombreArchivo} (${clienteData.presupuestos.length} páginas)`);
+        console.log(`✅ [REMITO-R] PDF rediseñado generado: ${nombreArchivo} (${paginasEmitidas} páginas)`);
         
     } catch (error) {
         console.error('❌ [REMITO-R] Error generando PDF rediseñado:', error);
@@ -2913,9 +4000,9 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
 
 /**
  * Genera HTML para TODOS los clientes (impresión general / "Imprimir Todos")
- * Una hoja por cada presupuesto de cada cliente
+ * Una hoja por cada presupuesto de cada cliente (+ 1 Hoja Resumen LAMDA -> Nodo por cada Nodo Barrial)
  */
-function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
+function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false, omitirResumenNodo = false) {
     try {
         const fechaHoy = new Date().toLocaleDateString('es-AR', {
             year: 'numeric',
@@ -2949,6 +4036,18 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduc
         
         // Iterar por cada cliente y cada presupuesto usando la función compartida
         clientesData.forEach((cliente, clienteIndex) => {
+            if (!omitirResumenNodo) {
+                const resumenesNodo = construirResumenesControlNodoCliente(cliente);
+                resumenesNodo.forEach((resumen) => {
+                    const hayMasPaginas = (cliente.presupuestos.length > 0) || (clienteIndex < clientesData.length - 1);
+                    html += generarHTMLResumenControlNodo(resumen, {
+                        fechaHoy,
+                        horaHoy,
+                        agregarPageBreak: hayMasPaginas
+                    });
+                });
+            }
+
             cliente.presupuestos.forEach((presupuesto, presupIndex) => {
                 presupuestoGlobalIndex++;
                 const esUltimo = (clienteIndex === clientesData.length - 1) && (presupIndex === cliente.presupuestos.length - 1);
@@ -2992,9 +4091,9 @@ function generarHTML_TodosLosClientes(res, clientesData, fecha, esContextoProduc
 
 /**
  * Genera PDF para TODOS los clientes (impresión general / "Imprimir Todos")
- * Una página por cada presupuesto de cada cliente
+ * Una página por cada presupuesto de cada cliente (+ 1 Hoja Resumen LAMDA -> Nodo por cada Nodo Barrial)
  */
-async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false) {
+async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion = false, omitirResumenNodo = false) {
     try {
         let PDFDocument;
         try {
@@ -3032,22 +4131,46 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
         });
         
         let presupuestoGlobalIndex = 0;
+        let paginasEmitidas = 0;
         
         // Iterar por cada cliente y cada presupuesto usando la función compartida de forma asíncrona
         for (const cliente of clientesData) {
+            if (!omitirResumenNodo) {
+                const resumenesNodo = construirResumenesControlNodoCliente(cliente);
+                for (const resumen of resumenesNodo) {
+                    if (paginasEmitidas > 0) {
+                        doc.addPage();
+                    }
+                    let qrMaestroBuffer = null;
+                    if (resumen.qrMaestroPayload) {
+                        try {
+                            const QRCode = require('qrcode');
+                            qrMaestroBuffer = await QRCode.toBuffer(resumen.qrMaestroPayload, { margin: 1, width: 85 });
+                        } catch (_) {}
+                    }
+                    renderizarPDFResumenControlNodo(doc, resumen, {
+                        fechaHoy,
+                        horaHoy,
+                        qrBuffer: qrMaestroBuffer
+                    });
+                    paginasEmitidas++;
+                }
+            }
+
             for (const presupuesto of cliente.presupuestos) {
-                if (presupuestoGlobalIndex > 0) {
+                if (paginasEmitidas > 0) {
                     doc.addPage();
                 }
                 
                 presupuestoGlobalIndex++;
+                paginasEmitidas++;
                 
                 let qrBuffer = null;
                 try {
                     const idLocal = presupuesto._id_presupuesto || presupuesto.id_presupuesto || 0;
                     let supabasePedidoId = null;
                     
-                    if (idLocal > 0) {
+                    if (idLocal > 0 && !presupuesto._vecinoNodo) {
                         const resMap = await pool.query(
                             'SELECT supabase_pedido_id FROM public.b2b_pedidos_mapeo WHERE local_presupuesto_id = $1 LIMIT 1',
                             [idLocal]
@@ -3059,7 +4182,7 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
                     }
                     
                     // Fallback: Si no hay mapeo, pero id_presupuesto_ext es un UUID, lo usamos directamente
-                    if (!supabasePedidoId && presupuesto.id_presupuesto_ext) {
+                    if (!supabasePedidoId && presupuesto.id_presupuesto_ext && !presupuesto._vecinoNodo) {
                         const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(presupuesto.id_presupuesto_ext);
                         if (esUUID) {
                             supabasePedidoId = presupuesto.id_presupuesto_ext;
@@ -3067,13 +4190,14 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
                         }
                     }
                     
-                    const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-') || Boolean(presupuesto._vecinoNodo);
+                    const esCanastoConsolidado = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
                     const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
 
-                    if (esCanastoNodo) {
-                        const qrPayloadNodo = presupuesto._vecinoNodo
-                            ? `${presupuesto._vecinoNodo.codigo_pedido}|${presupuesto._vecinoNodo.codigo_canasto || presupuesto._vecinoNodo.nombre_marca}`
-                            : (presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext);
+                    if (presupuesto._vecinoNodo) {
+                        // Hoja Marca Blanca pura para el vecino: solo lleva el código de barras de verificación abajo
+                        qrBuffer = null;
+                    } else if (esCanastoConsolidado) {
+                        const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
                         const QRCode = require('qrcode');
                         qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
                     } else {
@@ -3119,7 +4243,7 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
         
         doc.end();
         
-        console.log(`✅ [REMITO-R] PDF general generado: ${nombreArchivo} (${totalPresupuestos} páginas)`);
+        console.log(`✅ [REMITO-R] PDF general generado: ${nombreArchivo} (${paginasEmitidas} páginas)`);
         
     } catch (error) {
         console.error('❌ [REMITO-R] Error generando PDF general:', error);

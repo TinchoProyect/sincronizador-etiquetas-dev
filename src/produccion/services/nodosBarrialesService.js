@@ -5377,7 +5377,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
 
     for (const nodo of nodosRes.rows) {
         const clienteIdNum = 9000 + Number(nodo.id);
-        const nombreCliente = `🏘️ NODO: ${nodo.nombre_marca}`;
+        const nombreCliente = `NODO: ${nodo.nombre_marca}`;
         const apellidoCliente = `(${nodo.gestor_nombre})`;
 
         const cliCheck = await q.query('SELECT id FROM public.clientes WHERE cliente_id = $1 LIMIT 1', [clienteIdNum]);
@@ -8155,9 +8155,16 @@ async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
  * Obtiene los metadatos de Nodo + Canasto + Vecino indexados por código de pedido vecinal ('NB-1001', etc.)
  * para enriquecer tanto los acordeones nativos de produccion.html como la impresión individual de Remitos R por vecino.
  */
-async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = []) {
+async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = [], opciones = {}) {
     const codigos = Array.from(new Set((codigosPedidos || []).map(c => String(c || '').trim()).filter(Boolean)));
     if (codigos.length === 0) return {};
+    const incluirLogo = Boolean(opciones && opciones.incluirLogo);
+
+    const logoSelectSql = incluirLogo
+        ? `,
+                nm.logo_original_base64,
+                nm.logo_mono_preview_base64`
+        : '';
 
     const pedRes = await db.query(
         `SELECT npv.*,
@@ -8174,9 +8181,13 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = []) {
                 nm.subtitulo_marca,
                 nm.gestor_nombre,
                 nm.gestor_telefono,
+                nm.gestor_email,
                 nm.barrio_zona,
                 nm.direccion_retiro,
-                nm.color_primario
+                nm.alias_bancario_display,
+                nm.cbu_display,
+                nm.titular_display,
+                nm.color_primario${logoSelectSql}
          FROM public.nodos_pedidos_vecinos npv
          LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
@@ -8219,7 +8230,7 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = []) {
         const totalUnidadesVecino = itemsVecino.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
         const bolsaLista = ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(String(p.estado_operativo || ''));
 
-        resultado[p.codigo_pedido] = {
+        const entry = {
             pedido_id: Number(p.id),
             codigo_pedido: p.codigo_pedido,
             nodo_id: Number(p.nodo_id),
@@ -8229,9 +8240,13 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = []) {
             subtitulo_marca: p.subtitulo_marca || '',
             gestor_nombre: p.gestor_nombre,
             gestor_telefono: p.gestor_telefono || '',
+            gestor_email: p.gestor_email || '',
             barrio_zona: p.barrio_zona || '',
             direccion_retiro: p.direccion_retiro || '',
-            color_primario: p.color_primario || '#16a34a',
+            alias_bancario_display: p.alias_bancario_display || '',
+            cbu_display: p.cbu_display || '',
+            titular_display: p.titular_display || '',
+            color_primario: p.color_primario || '#a2553b',
             canasto_id: p.canasto_id_ref ? Number(p.canasto_id_ref) : null,
             codigo_canasto: p.codigo_canasto || '',
             qr_maestro_payload: p.qr_maestro_payload || p.codigo_canasto || p.codigo_pedido,
@@ -8243,18 +8258,27 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = []) {
             vecino_telefono: p.vecino_telefono || '',
             modalidad_entrega: p.modalidad_entrega || 'RETIRO_NODO',
             direccion_entrega: p.direccion_entrega || '',
+            entrecalles_referencia: p.entrecalles_referencia || '',
+            observaciones_vecino: p.observaciones_vecino || '',
             medio_pago: p.medio_pago || 'TRANSFERENCIA',
             estado_pago: p.estado_pago || 'PENDIENTE',
             estado_operativo: p.estado_operativo || 'CONFIRMADO_VECINO',
             secuencia_operativa_lamda: p.secuencia_operativa_lamda || 'Imprimir',
             bolsa_lista: bolsaLista,
             etiqueta_impresa: Boolean(p.etiqueta_impresa),
+            subtotal_productos_vecino: Number(p.subtotal_productos_vecino || p.total_vecino || 0),
+            cargo_envio_barrial: Number(p.cargo_envio_barrial || 0),
             total_vecino: Number(p.total_vecino || 0),
             total_base_lamda: Number(p.total_base_lamda || 0),
             total_articulos_distintos: itemsVecino.length,
             total_unidades_vecino: totalUnidadesVecino,
             items: itemsVecino
         };
+        if (incluirLogo) {
+            entry.logo_original_base64 = p.logo_original_base64 || '';
+            entry.logo_mono_preview_base64 = p.logo_mono_preview_base64 || '';
+        }
+        resultado[p.codigo_pedido] = entry;
     }
     return resultado;
 }
