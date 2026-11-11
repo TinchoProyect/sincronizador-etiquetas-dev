@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 const { reconciliarFaltantesConStock } = require('../services/reconciliacionStock');
-const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda } = require('../services/nodosBarrialesService');
+const { asegurarEsquemaNodosBarriales, sincronizarCanastosEstacionNodos, sincronizarCambioSecuenciaDesdeLamda, obtenerArbolCanastosPorCodigos } = require('../services/nodosBarrialesService');
 
 /**
  * Helper para detectar el modo de JOIN entre presupuestos y presupuestos_detalles
@@ -478,6 +478,38 @@ const obtenerPedidosPorCliente = async (req, res) => {
                 };
             });
 
+            // Enriquecer clientes de Nodo Barrial con su Árbol de 3 niveles (Nodo -> Vecinos -> Artículos)
+            const codigosCanastosNodos = [];
+            clientesConIndicador.forEach(cli => {
+                (cli.articulos || []).forEach(art => {
+                    const pExt = String(art.id_presupuesto_ext || art.presupuesto_id || '').trim();
+                    if (pExt.startsWith('CAN-')) {
+                        codigosCanastosNodos.push(pExt);
+                    }
+                });
+            });
+
+            if (codigosCanastosNodos.length > 0) {
+                try {
+                    const mapaArbolNodos = await obtenerArbolCanastosPorCodigos(codigosCanastosNodos);
+                    clientesConIndicador.forEach(cli => {
+                        const canastosCli = {};
+                        (cli.articulos || []).forEach(art => {
+                            const pExt = String(art.id_presupuesto_ext || art.presupuesto_id || '').trim();
+                            if (pExt && mapaArbolNodos[pExt]) {
+                                canastosCli[pExt] = mapaArbolNodos[pExt];
+                            }
+                        });
+                        if (Object.keys(canastosCli).length > 0) {
+                            cli.es_nodo_barrial = true;
+                            cli.canastos_nodos = canastosCli;
+                        }
+                    });
+                } catch (errArbol) {
+                    console.warn('[PROD_PED] Error enriqueciendo árbol de Nodos:', errArbol.message);
+                }
+            }
+
             response.data = clientesConIndicador;
             response.total_clientes = clientesConIndicador.length;
         } else {
@@ -687,6 +719,7 @@ const obtenerPedidosArticulos = async (req, res) => {
             fecha = new Date().toISOString().split('T')[0], 
             q, // filtro de búsqueda por texto
             estado_filtro, // todos, faltantes, completos, parciales
+            incluir_completos,
             debug
         } = req.query;
         
@@ -963,11 +996,15 @@ const obtenerPedidosArticulos = async (req, res) => {
             LEFT JOIN public.stock_real_consolidado src_sug_padre ON (src_sug_padre.codigo_barras = asug_padre.codigo_barras OR src_sug_padre.articulo_numero = asug_padre.numero)
             LEFT JOIN public.stock_real_consolidado hijo_sug_hijo ON (hijo_sug_hijo.codigo_barras = src_sug_hijo.pack_hijo_codigo OR hijo_sug_hijo.articulo_numero = src_sug_hijo.pack_hijo_codigo)
             LEFT JOIN public.stock_real_consolidado hijo_sug_padre ON (hijo_sug_padre.codigo_barras = src_sug_padre.pack_hijo_codigo OR hijo_sug_padre.articulo_numero = src_sug_padre.pack_hijo_codigo)
-            WHERE vr.faltante_redondeado > 0
+            WHERE ($3::boolean = true OR vr.faltante_redondeado > 0)
             ORDER BY (CASE WHEN vr.articulo_numero_alfanumerico LIKE 'NB-%' THEN 0 ELSE 1 END) ASC, vr.articulo_numero_alfanumerico;
         `;
         
-        const params = ['presupuesto/orden', fecha];
+        const mostrarCompletos = Boolean(
+            incluir_completos === 'true' ||
+            ['todos', 'completo', 'completos'].includes(String(estado_filtro || '').toLowerCase().trim())
+        );
+        const params = ['presupuesto/orden', fecha, mostrarCompletos];
         console.log('🔍 [PROD_ART] Ejecutando consulta con parámetros:', params);
         
         const result = await pool.query(query, params);

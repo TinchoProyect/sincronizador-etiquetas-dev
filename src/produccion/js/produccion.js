@@ -333,16 +333,32 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
 
         // Calcular total de artículos (suma de todos los presupuestos)
         const totalArticulos = cliente.articulos.length;
+        const esClienteNodo = Boolean(
+            cliente.es_nodo_barrial ||
+            Number(cliente.cliente_id) >= 9000 ||
+            String(cliente.cliente_nombre || '').includes('NODO:')
+        );
+        const canastosClienteObj = cliente.canastos_nodos || {};
+        const listaCanastosCli = Object.values(canastosClienteObj);
+        const primerNodoInfo = listaCanastosCli[0] || null;
+        const totalVecinosCli = listaCanastosCli.reduce((acc, c) => acc + Number(c.total_vecinos || 0), 0);
+        const totalUnidadesCli = listaCanastosCli.reduce((acc, c) => acc + Number(c.total_unidades || 0), 0);
 
         const header = document.createElement('div');
         header.className = 'cliente-header';
-        header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
-        if (Number(cliente.cliente_id) >= 9000 || String(cliente.cliente_nombre || '').includes('NODO:')) {
+        if (esClienteNodo && primerNodoInfo) {
+            header.innerHTML = `<strong>🏘️ ${primerNodoInfo.nombre_marca}</strong> <span style="font-weight:500; font-size:0.92em; color:#166534;">(Nodo Barrial · Gestor: ${primerNodoInfo.gestor_nombre})</span> — <strong>${totalVecinosCli} ${totalVecinosCli === 1 ? 'vecino' : 'vecinos'}</strong> · ${totalUnidadesCli} bolsas/u. (${totalArticulos} artículos distintos)`;
+        } else {
+            header.textContent = `${cliente.cliente_nombre} [ID: ${cliente.cliente_id}] (${totalArticulos} artículos, ${cliente.total_presupuestos} presupuestos)`;
+        }
+        if (esClienteNodo) {
             header.style.background = 'linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%)';
             header.style.borderLeft = '5px solid #16a34a';
             header.style.color = '#14532d';
         }
-        header.title = 'Clic izquierdo para expandir | Clic derecho para Configurar Perfil';
+        header.title = esClienteNodo
+            ? 'Clic izquierdo para desplegar el Árbol del Nodo (Nodo → Vecinos → Artículos)'
+            : 'Clic izquierdo para expandir | Clic derecho para Configurar Perfil';
         
         // Pasar containerId para que toggleAcordeon busque en la sección correcta
         header.addEventListener('click', () => toggleAcordeon(cliente.cliente_id, containerId));
@@ -370,6 +386,10 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
         // ID único por sección para evitar conflictos cuando el mismo cliente está en múltiples secciones
         contenido.id = `contenido-${containerId}-${cliente.cliente_id}`;
         contenido.style.padding = '10px';
+        window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+        if (window.acordeonesClientesAbiertos.has(`${containerId}-${cliente.cliente_id}`)) {
+            contenido.style.display = 'block';
+        }
 
         // Agrupar artículos por presupuesto_id y extraer datos de snapshot
         const presupuestosMap = new Map();
@@ -462,10 +482,18 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             clickeableDiv.style.cursor = 'pointer';
             clickeableDiv.style.gap = '10px';
 
+            const arbolCanasto = (cliente.canastos_nodos && cliente.canastos_nodos[presupuesto.presupuesto_id])
+                ? cliente.canastos_nodos[presupuesto.presupuesto_id]
+                : null;
+            const esCanastoNodo = Boolean(arbolCanasto || String(presupuesto.presupuesto_id || '').startsWith('CAN-'));
+
             const iconSpan = document.createElement('span');
             iconSpan.textContent = '▼';
             iconSpan.style.fontSize = '1.2em';
             iconSpan.style.transition = 'transform 0.3s ease';
+            if (esCanastoNodo) {
+                iconSpan.style.transform = 'rotate(180deg)';
+            }
 
             const estadoSpan = document.createElement('span');
             estadoSpan.className = `indicador-estado ${estadoClass}`;
@@ -473,7 +501,11 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             estadoSpan.style.marginRight = '10px';
 
             const infoSpan = document.createElement('span');
-            infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>${textoModificado}`;
+            if (arbolCanasto) {
+                infoSpan.innerHTML = `<strong>🏘️ ${arbolCanasto.nombre_marca} · Canasto ${arbolCanasto.codigo_canasto}</strong> <span style="color: #15803d; font-weight: 600; margin-left: 8px;">👥 ${arbolCanasto.total_vecinos} ${arbolCanasto.total_vecinos === 1 ? 'vecino' : 'vecinos'} · ${arbolCanasto.total_unidades} bolsas (${presupuesto.articulos.length} artículos distintos)</span> <span style="color: #6c757d; margin-left: 8px;">📅 ${arbolCanasto.fecha_entrega_label || fechaFormateada}</span>${textoModificado}`;
+            } else {
+                infoSpan.innerHTML = `<strong>Presupuesto ${presupuesto.presupuesto_id}</strong> <span style="color: #6c757d; margin-left: 10px;">📅 ${fechaFormateada}</span> <span style="color: #6c757d; margin-left: 10px;">(${presupuesto.articulos.length} artículos)</span>${textoModificado}`;
+            }
 
             clickeableDiv.appendChild(iconSpan);
             clickeableDiv.appendChild(estadoSpan);
@@ -483,14 +515,19 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             const botonesPresupuesto = document.createElement('div');
             botonesPresupuesto.style.display = 'flex';
             botonesPresupuesto.style.gap = '8px';
+            botonesPresupuesto.style.flexWrap = 'wrap';
 
             // Botón imprimir (solo en acordeón "Imprimir")
             if (containerId === 'pedidos-imprimir') {
                 const btnImprimirPresup = document.createElement('button');
-                btnImprimirPresup.textContent = '📄 Imprimir';
+                btnImprimirPresup.textContent = esCanastoNodo ? '✅ Validar e Imprimir Canasto' : '📄 Imprimir';
                 btnImprimirPresup.className = 'admin-button';
                 btnImprimirPresup.style.padding = '6px 12px';
                 btnImprimirPresup.style.fontSize = '12px';
+                if (esCanastoNodo) {
+                    btnImprimirPresup.style.background = '#15803d';
+                    btnImprimirPresup.style.color = '#ffffff';
+                }
                 btnImprimirPresup.addEventListener('click', (e) => {
                     e.stopPropagation();
                     console.log(`[VIGÍA] Clic exacto en "Imprimir" para presupuesto: ${presupuesto.presupuesto_id} del cliente: ${cliente.cliente_id}`);
@@ -686,13 +723,13 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 }
             });
 
-            if (String(presupuesto.presupuesto_id || '').startsWith('CAN-')) {
+            if (esCanastoNodo) {
                 const btnBolsasZebra = document.createElement('button');
-                btnBolsasZebra.textContent = '🏷️ Bolsas Vecinos y Etiquetas Zebra';
+                btnBolsasZebra.textContent = '🏷️ Etiquetas Zebra + QR Canasto';
                 btnBolsasZebra.className = 'admin-button';
                 btnBolsasZebra.style.padding = '6px 12px';
                 btnBolsasZebra.style.fontSize = '12px';
-                btnBolsasZebra.style.background = '#16a34a';
+                btnBolsasZebra.style.background = '#0f766e';
                 btnBolsasZebra.style.color = '#fff';
                 btnBolsasZebra.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -720,14 +757,19 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
                 }
             }
 
+            if (esCanastoNodo) {
+                presupuestoHeader.style.backgroundColor = '#f0fdf4';
+                presupuestoHeader.style.borderBottom = '1px solid #bbf7d0';
+            }
+
             presupuestoHeader.appendChild(clickeableDiv);
             presupuestoHeader.appendChild(botonesPresupuesto);
             presupuestoDiv.appendChild(presupuestoHeader);
 
-            // Contenido del presupuesto (tabla de artículos)
+            // Contenido del presupuesto (Árbol de Vecinos para Nodo Barrial o tabla tradicional)
             const presupuestoContenido = document.createElement('div');
             presupuestoContenido.id = presupuestoId;
-            presupuestoContenido.style.display = 'none';
+            presupuestoContenido.style.display = esCanastoNodo ? 'block' : 'none';
 
             const tabla = document.createElement('table');
             tabla.className = 'articulos-tabla';
@@ -884,7 +926,159 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
             });
 
             tabla.appendChild(tbody);
-            presupuestoContenido.appendChild(tabla);
+
+            if (arbolCanasto && Array.isArray(arbolCanasto.vecinos) && arbolCanasto.vecinos.length > 0) {
+                const mapaStockPresup = new Map();
+                (presupuesto.articulos || []).forEach(a => {
+                    mapaStockPresup.set(String(a.articulo_numero || '').trim().toUpperCase(), a);
+                });
+
+                const arbolWrapper = document.createElement('div');
+                arbolWrapper.style.cssText = 'padding: 12px 14px; background: #ffffff;';
+
+                const subHeaderArbol = document.createElement('div');
+                subHeaderArbol.style.cssText = 'display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dashed #cbd5e1;';
+                subHeaderArbol.innerHTML = `
+                    <div style="font-size: 13px; font-weight: 700; color: #14532d;">
+                        🌳 Desglose en Árbol por Vecino de ${arbolCanasto.nombre_marca} (${arbolCanasto.vecinos.length} pedidos individuales · ${arbolCanasto.bolsas_armadas}/${arbolCanasto.vecinos.length} bolsas etiquetadas)
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <button type="button" class="btn-qr-maestro-inline"
+                            style="background: #0f172a; color: #fff; border: none; border-radius: 5px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer;">
+                            🖨️ QR Maestro Canasto
+                        </button>
+                    </div>
+                `;
+                const btnQrInline = subHeaderArbol.querySelector('.btn-qr-maestro-inline');
+                if (btnQrInline) {
+                    btnQrInline.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (typeof window.verQrMaestroCanastoDesdeProduccion === 'function') {
+                            window.verQrMaestroCanastoDesdeProduccion(arbolCanasto.canasto_id);
+                        }
+                    });
+                }
+                arbolWrapper.appendChild(subHeaderArbol);
+
+                // Nivel 2: Cada vecino del Nodo
+                arbolCanasto.vecinos.forEach((vecino, vIdx) => {
+                    const vecContainer = document.createElement('div');
+                    vecContainer.style.cssText = 'border: 1px solid #cbd5e1; border-left: 4px solid #16a34a; border-radius: 6px; margin-bottom: 10px; overflow: hidden; background: #f8fafc;';
+
+                    const vecHeader = document.createElement('div');
+                    vecHeader.style.cssText = 'padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; background: #f0fdf4; border-bottom: 1px solid #dcfce7;';
+
+                    const modEntregaTxt = vecino.modalidad_entrega === 'ENVIO_BARRIAL'
+                        ? `🛵 Envío Barrial (${vecino.direccion_entrega || 'Domicilio'})`
+                        : `🏪 Retira en ${arbolCanasto.nombre_marca}`;
+                    const cantItemsVec = (vecino.items || []).length;
+                    const badgeBolsa = vecino.bolsa_lista
+                        ? `<span style="background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:11px; font-weight:700; padding:2px 8px; border-radius:99px;">✅ Bolsa etiquetada</span>`
+                        : `<span style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d; font-size:11px; font-weight:700; padding:2px 8px; border-radius:99px;">⏳ Pendiente etiqueta</span>`;
+
+                    const vecLeft = document.createElement('div');
+                    vecLeft.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1;';
+                    const chevVec = document.createElement('span');
+                    chevVec.textContent = '▼';
+                    chevVec.style.cssText = 'font-size: 12px; color: #15803d; font-weight: bold; width: 14px;';
+                    const vecInfo = document.createElement('span');
+                    vecInfo.style.fontSize = '13px';
+                    vecInfo.innerHTML = `<strong>👤 ${vecino.vecino_nombre}</strong> <span style="background:#0f172a; color:#fff; font-size:11px; font-weight:700; padding:1px 6px; border-radius:4px; margin-left:4px;">#${vecino.codigo_pedido}</span> <span style="color:#475569; margin-left:6px;">(${cantItemsVec} ${cantItemsVec === 1 ? 'artículo' : 'artículos'} · ${vecino.total_unidades_vecino} bolsas · ${modEntregaTxt} · ${vecino.medio_pago})</span> ${badgeBolsa}`;
+                    vecLeft.appendChild(chevVec);
+                    vecLeft.appendChild(vecInfo);
+
+                    const btnZebraVec = document.createElement('button');
+                    btnZebraVec.type = 'button';
+                    btnZebraVec.textContent = vecino.bolsa_lista ? '🏷️ Ver / Reimprimir Etiqueta' : '🏷️ Etiqueta Zebra Vecino';
+                    btnZebraVec.style.cssText = 'background: #16a34a; color: #fff; border: none; border-radius: 5px; padding: 5px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer;';
+                    btnZebraVec.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (typeof window.armarYVerEtiquetaVecinoDesdeProduccion === 'function') {
+                            window.armarYVerEtiquetaVecinoDesdeProduccion(vecino.id, arbolCanasto.codigo_canasto, false);
+                        }
+                    });
+
+                    vecHeader.appendChild(vecLeft);
+                    vecHeader.appendChild(btnZebraVec);
+
+                    // Nivel 3: Artículos de cada vecino
+                    const vecBody = document.createElement('div');
+                    const vecKey = `prod-vec-${containerId}-${arbolCanasto.codigo_canasto}-${vecino.id || vIdx}`;
+                    window.vecinosContraidosProduccion = window.vecinosContraidosProduccion || new Set();
+                    const estaContraido = window.vecinosContraidosProduccion.has(vecKey);
+                    vecBody.style.display = estaContraido ? 'none' : 'block';
+                    chevVec.textContent = estaContraido ? '▶' : '▼';
+
+                    vecHeader.addEventListener('click', () => {
+                        if (vecBody.style.display === 'none') {
+                            vecBody.style.display = 'block';
+                            chevVec.textContent = '▼';
+                            window.vecinosContraidosProduccion.delete(vecKey);
+                        } else {
+                            vecBody.style.display = 'none';
+                            chevVec.textContent = '▶';
+                            window.vecinosContraidosProduccion.add(vecKey);
+                        }
+                    });
+
+                    const tablaVec = document.createElement('table');
+                    tablaVec.className = 'articulos-tabla';
+                    tablaVec.style.margin = '0';
+                    tablaVec.innerHTML = `
+                        <thead>
+                            <tr style="background:#f1f5f9;">
+                                <th style="width:18%;">Código SKU</th>
+                                <th style="width:44%;">Artículo pedido por ${vecino.vecino_nombre}</th>
+                                <th style="width:13%; text-align:center;">Cantidad</th>
+                                <th style="width:13%; text-align:center;">Stock Depósito</th>
+                                <th style="width:12%; text-align:center;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(vecino.items || []).map(itV => {
+                                const skuUp = String(itV.sku_nodo || '').trim().toUpperCase();
+                                const stArt = mapaStockPresup.get(skuUp);
+                                const stockDisp = stArt ? stArt.stock_disponible : '-';
+                                const faltArt = stArt ? (parseFloat(stArt.faltante) || 0) : 0;
+                                const estBadge = faltArt > 0
+                                    ? `<span class="indicador-estado indicador-faltantes">Faltante (${faltArt})</span>`
+                                    : `<span class="indicador-estado indicador-completo">Completo</span>`;
+                                const presLbl = itV.presentacion_etiqueta ? ` <span style="color:#64748b;">(${itV.presentacion_etiqueta})</span>` : '';
+                                return `
+                                    <tr>
+                                        <td style="font-family:monospace; font-weight:600;">${itV.sku_nodo}</td>
+                                        <td>${itV.nombre_publico}${presLbl}</td>
+                                        <td style="text-align:center; font-weight:700;">${itV.cantidad}</td>
+                                        <td style="text-align:center;">${stockDisp}</td>
+                                        <td style="text-align:center;">${estBadge}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    `;
+                    vecBody.appendChild(tablaVec);
+
+                    vecContainer.appendChild(vecHeader);
+                    vecContainer.appendChild(vecBody);
+                    arbolWrapper.appendChild(vecContainer);
+                });
+
+                // Resumen consolidado de estantería plegable debajo del árbol de vecinos
+                const detailsConsolidado = document.createElement('details');
+                detailsConsolidado.open = faltantes > 0;
+                detailsConsolidado.style.cssText = 'margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; background: #f8fafc;';
+                const summaryConsolidado = document.createElement('summary');
+                summaryConsolidado.style.cssText = 'cursor: pointer; font-weight: 700; font-size: 12.5px; color: #334155;';
+                summaryConsolidado.textContent = `📦 Total consolidado de mercadería del Canasto para estantería (${presupuesto.articulos.length} artículos distintos · ${arbolCanasto.total_unidades} bolsas totales)`;
+                detailsConsolidado.appendChild(summaryConsolidado);
+                tabla.style.marginTop = '8px';
+                detailsConsolidado.appendChild(tabla);
+                arbolWrapper.appendChild(detailsConsolidado);
+
+                presupuestoContenido.appendChild(arbolWrapper);
+            } else {
+                presupuestoContenido.appendChild(tabla);
+            }
             presupuestoDiv.appendChild(presupuestoContenido);
             contenido.appendChild(presupuestoDiv);
         });
@@ -967,12 +1161,16 @@ function calcularIndicadorEstado(articulo) {
 function toggleAcordeon(clienteId, containerId) {
     // Buscar el contenido con ID único por sección
     const contenido = document.getElementById(`contenido-${containerId}-${clienteId}`);
+    window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+    const key = `${containerId}-${clienteId}`;
 
     if (contenido) {
         if (contenido.style.display === 'block') {
             contenido.style.display = 'none';
+            window.acordeonesClientesAbiertos.delete(key);
         } else {
             contenido.style.display = 'block';
+            window.acordeonesClientesAbiertos.add(key);
         }
     } else {
         console.warn(`⚠️ No se encontró contenido para cliente ${clienteId} en ${containerId}`);
@@ -986,6 +1184,8 @@ function abrirAcordeonEnSeccion(clienteId, containerId) {
     // PASO 1: Expandir el acordeón del cliente
     const contenidoId = `contenido-${containerId}-${clienteId}`;
     const contenido = document.getElementById(contenidoId);
+    window.acordeonesClientesAbiertos = window.acordeonesClientesAbiertos || new Set();
+    window.acordeonesClientesAbiertos.add(`${containerId}-${clienteId}`);
 
     console.log(`🔍 [DEBUG] Buscando contenido con ID: ${contenidoId}`);
     console.log(`🔍 [DEBUG] Contenido encontrado:`, contenido ? 'SÍ' : 'NO');
@@ -997,8 +1197,8 @@ function abrirAcordeonEnSeccion(clienteId, containerId) {
 
         console.log(`✅ [DEBUG] Acordeón del cliente expandido - Display: ${displayAntes} → ${displayDespues}`);
 
-        // PASO 2: Expandir todos los presupuestos dentro del cliente (solo en "Armar Pedido")
-        if (containerId === 'pedidos-armar') {
+        // PASO 2: Expandir todos los presupuestos dentro del cliente en Imprimir y Armar Pedido
+        if (containerId === 'pedidos-armar' || containerId === 'pedidos-imprimir') {
             setTimeout(() => {
                 // Buscar todos los divs de presupuesto dentro del contenido del cliente
                 const presupuestoDivs = contenido.querySelectorAll('div[style*="margin-bottom: 15px"]');
@@ -1462,11 +1662,11 @@ async function imprimirPresupuestoIndividual(clienteId, presupuestoId) {
         const urlPdf = `${base}/impresion-presupuesto?${baseQueryString}&formato=pdf&contexto=produccion${overrideParam}`;
         const urlHtml = `${base}/impresion-presupuesto?${baseQueryString}&formato=html&contexto=produccion${overrideParam}`;
 
-        const win = window.open(urlPdf, '_blank');
+        const win = window.open(urlPdf, 'lamda_remito_print');
 
         setTimeout(() => {
             if (!win || win.closed || typeof win.closed == 'undefined') {
-                window.open(urlHtml, '_blank');
+                window.open(urlHtml, 'lamda_remito_print');
             }
         }, 2000);
 
@@ -1530,11 +1730,11 @@ async function imprimirTodosLosPresupuestos(fechaCorte) {
 
         console.log(`🔗 [IMPRIMIR-TODOS] URL: ${urlHtml}`);
 
-        const win = window.open(urlPdf, '_blank');
+        const win = window.open(urlPdf, 'lamda_remito_print');
 
         setTimeout(() => {
             if (!win || win.closed || typeof win.closed == 'undefined') {
-                window.open(urlHtml, '_blank');
+                window.open(urlHtml, 'lamda_remito_print');
             }
         }, 2000);
 
@@ -1617,8 +1817,8 @@ async function cargarPedidosArticulos() {
     totalesDiv.innerHTML = '';
 
     try {
-        // Usar el nuevo endpoint que reutiliza los flujos existentes
-        const response = await fetch(`${base}/pedidos-articulos?fecha=${fechaCorte}`);
+        // Usar el nuevo endpoint que reutiliza los flujos existentes (incluyendo artículos con stock completo)
+        const response = await fetch(`${base}/pedidos-articulos?fecha=${fechaCorte}&incluir_completos=true`);
         if (!response.ok) {
             throw new Error(`Error al cargar artículos: ${response.statusText}`);
         }

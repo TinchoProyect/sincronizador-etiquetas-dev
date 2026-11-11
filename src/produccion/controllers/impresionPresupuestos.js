@@ -3,6 +3,7 @@ const JsBarcode = require('jsbarcode');
 const { createCanvas } = require('canvas');
 const motorCalculadoraFiscal = require('../utils/motorCalculadoraFiscal');
 const inyectorVectorial = require('../utils/inyectorColumnasPDFKit');
+const { obtenerArbolCanastosPorCodigos } = require('../services/nodosBarrialesService');
 
 /**
  * Calcular el total de artículos sumando las cantidades
@@ -286,6 +287,30 @@ const imprimirPresupuestoCliente = async (req, res) => {
                     });
                 }
             });
+        };
+
+        const enriquecerArbolNodosParaImpresion = async (clientesArray) => {
+            try {
+                const codigos = [];
+                (clientesArray || []).forEach(c => {
+                    (c.presupuestos || []).forEach(p => {
+                        const ext = String(p.id_presupuesto_ext || '').trim();
+                        if (ext.startsWith('CAN-')) codigos.push(ext);
+                    });
+                });
+                if (codigos.length === 0) return;
+                const mapaArbol = await obtenerArbolCanastosPorCodigos(codigos);
+                (clientesArray || []).forEach(c => {
+                    (c.presupuestos || []).forEach(p => {
+                        const ext = String(p.id_presupuesto_ext || '').trim();
+                        if (ext && mapaArbol[ext]) {
+                            p._nodoArbol = mapaArbol[ext];
+                        }
+                    });
+                });
+            } catch (errNodo) {
+                console.warn('[REMITO-R] No se pudo adjuntar árbol de Nodo Barrial:', errNodo.message);
+            }
         };
 
         if (esPendienteCompra) {
@@ -639,6 +664,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             
             // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
             applyKilosOverrides([clienteData]);
+            await enriquecerArbolNodosParaImpresion([clienteData]);
             
             if (formato === 'pdf') {
                 return generarPDF_Rediseñado(res, clienteData, esPendienteCompra, articulosEnFalta, esContextoProduccion);
@@ -868,6 +894,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             
             // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
             applyKilosOverrides(clientesData);
+            await enriquecerArbolNodosParaImpresion(clientesData);
             
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
@@ -1089,6 +1116,7 @@ const imprimirPresupuestoCliente = async (req, res) => {
             
             // APLICAR OVERRIDES EFÍMEROS ANTES DE RENDERIZAR
             applyKilosOverrides(clientesData);
+            await enriquecerArbolNodosParaImpresion(clientesData);
             
             if (formato === 'pdf') {
                 return generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoProduccion);
@@ -1746,6 +1774,38 @@ function generarHTMLPresupuestoUnico({
         </table>
 `;
 
+    if (presupuesto._nodoArbol && Array.isArray(presupuesto._nodoArbol.vecinos) && presupuesto._nodoArbol.vecinos.length > 0) {
+        const na = presupuesto._nodoArbol;
+        const vecinosHtml = na.vecinos.map(v => {
+            const modTxt = v.modalidad_entrega === 'ENVIO_BARRIAL'
+                ? `Envío Barrial (${v.direccion_entrega || 'Domicilio'})`
+                : `Retira en ${na.nombre_marca}`;
+            const itemsLi = (v.items || []).map(it =>
+                `<li style="margin: 2px 0;"><strong>${it.cantidad}x</strong> ${it.nombre_publico}${it.presentacion_etiqueta ? ` (${it.presentacion_etiqueta})` : ''} <span style="color:#64748b;">[${it.sku_nodo}]</span></li>`
+            ).join('');
+            return `
+                <div style="border: 1px solid #cbd5e1; border-left: 4px solid #16a34a; border-radius: 5px; padding: 7px 10px; margin-bottom: 6px; background: #ffffff;">
+                    <div style="font-size: 12px; font-weight: bold; color: #0f172a;">
+                        #${v.codigo_pedido} — ${v.vecino_nombre}
+                        <span style="font-weight: normal; color: #475569; margin-left: 8px;">(${modTxt} · ${v.medio_pago})</span>
+                    </div>
+                    <ul style="margin: 4px 0 0 18px; padding: 0; font-size: 11.5px; color: #1e293b;">
+                        ${itemsLi}
+                    </ul>
+                </div>
+            `;
+        }).join('');
+
+        html += `
+        <div style="margin-top: 12px; padding: 10px 12px; background: #f8fafc; border: 1.5px solid #16a34a; border-radius: 6px;">
+            <div style="font-size: 12.5px; font-weight: bold; color: #14532d; margin-bottom: 8px;">
+                ÁRBOL DE ARMADO POR VECINO — ${na.nombre_marca} (Canasto ${na.codigo_canasto} · ${na.vecinos.length} vecinos · ${na.total_unidades} bolsas/unidades)
+            </div>
+            ${vecinosHtml}
+        </div>
+`;
+    }
+
     if (perfilId === 'PERFIL_TOTAL_FACTURA' || esPerfilGreenCorner) {
         const totalRemito = motorCalculadoraFiscal.calcularTotalRemitoAcumulado(presupuesto.articulos || [], presupuesto);
         const fmtTotal = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalRemito);
@@ -2349,6 +2409,44 @@ function renderizarPDFPresupuestoUnico(doc, {
            });
         currentY += rowHeight;
     }
+
+    // BLOQUE ÁRBOL DE VECINOS PARA CANASTO DE NODO BARRIAL
+    if (presupuesto._nodoArbol && Array.isArray(presupuesto._nodoArbol.vecinos) && presupuesto._nodoArbol.vecinos.length > 0) {
+        const na = presupuesto._nodoArbol;
+        currentY += 10;
+        if (currentY > 640) {
+            doc.addPage();
+            currentY = 50;
+        }
+        doc.fillColor('#f0fdf4').roundedRect(50, currentY, 490, 20, 3).fill();
+        doc.strokeColor('#16a34a').lineWidth(1).roundedRect(50, currentY, 490, 20, 3).stroke();
+        doc.fillColor('#14532d').fontSize(9).font('Helvetica-Bold')
+           .text(`DESGLOSE DE BOLSAS POR VECINO — ${na.nombre_marca} (${na.vecinos.length} pedidos · ${na.total_unidades} unidades)`, 58, currentY + 6, { width: 474 });
+        currentY += 24;
+
+        na.vecinos.forEach((v) => {
+            const itemsCount = (v.items || []).length;
+            const blockH = 16 + (itemsCount * 12) + 4;
+            if (currentY + blockH > 680) {
+                doc.addPage();
+                currentY = 50;
+            }
+            const modTxt = v.modalidad_entrega === 'ENVIO_BARRIAL' ? 'Envío Barrial' : `Retira en ${na.nombre_marca}`;
+            doc.strokeColor('#cbd5e1').lineWidth(0.7).roundedRect(50, currentY, 490, blockH, 3).stroke();
+            doc.fillColor('#16a34a').rect(50, currentY, 3.5, blockH).fill();
+            doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica-Bold')
+               .text(`#${v.codigo_pedido} — ${v.vecino_nombre}  (${modTxt} · ${v.medio_pago})`, 60, currentY + 4, { width: 470 });
+            let itemY = currentY + 16;
+            (v.items || []).forEach((it) => {
+                const pres = it.presentacion_etiqueta ? ` (${it.presentacion_etiqueta})` : '';
+                doc.fillColor('#334155').fontSize(8).font('Helvetica')
+                   .text(`• ${it.cantidad}x ${it.nombre_publico}${pres} [${it.sku_nodo}]`, 68, itemY, { width: 460 });
+                itemY += 12;
+            });
+            currentY += blockH + 4;
+        });
+        doc.fillColor('black').strokeColor('black').lineWidth(1);
+    }
     
     // BLOQUE DE CAMBIOS (solo si el presupuesto fue modificado)
     if (presupuesto._snapshot) {
@@ -2686,23 +2784,32 @@ async function generarPDF_Rediseñado(res, clienteData, esPendienteCompra = fals
                     }
                 }
                 
-                // Sincronización on-the-fly si sigue sin mapeo
-                if (!supabasePedidoId && idLocal > 0) {
-                    try {
-                        console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
-                        const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
-                        supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
-                    } catch (syncErr) {
-                        console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
-                    }
-                }
-                
-                if (supabasePedidoId) {
-                    const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
-                    const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
+                const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
+
+                if (esCanastoNodo) {
+                    const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
                     const QRCode = require('qrcode');
-                    qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
-                    console.log(`📲 [QR-PDF] QR generado con éxito para pedido B2B: ${supabasePedidoId}`);
+                    qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
+                } else {
+                    // Sincronización on-the-fly si sigue sin mapeo (omitir en Modo Laboratorio para no demorar)
+                    if (!supabasePedidoId && idLocal > 0 && !esModoLab) {
+                        try {
+                            console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
+                            const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
+                            supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
+                        } catch (syncErr) {
+                            console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
+                        }
+                    }
+                    
+                    if (supabasePedidoId) {
+                        const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+                        const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                        const QRCode = require('qrcode');
+                        qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
+                        console.log(`📲 [QR-PDF] QR generado con éxito para pedido B2B: ${supabasePedidoId}`);
+                    }
                 }
             } catch (qrErr) {
                 console.error('❌ Error al generar QR para remito:', qrErr.message);
@@ -2898,23 +3005,32 @@ async function generarPDF_TodosLosClientes(res, clientesData, fecha, esContextoP
                         }
                     }
                     
-                    // Sincronización on-the-fly si sigue sin mapeo
-                    if (!supabasePedidoId && idLocal > 0) {
-                        try {
-                            console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
-                            const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
-                            supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
-                        } catch (syncErr) {
-                            console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
-                        }
-                    }
-                    
-                    if (supabasePedidoId) {
-                        const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
-                        const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                    const esCanastoNodo = String(presupuesto.id_presupuesto_ext || '').startsWith('CAN-');
+                    const esModoLab = process.env.LAMDA_MODO_LABORATORIO === 'true' || process.env.MODO_LABORATORIO === 'true';
+
+                    if (esCanastoNodo) {
+                        const qrPayloadNodo = presupuesto._nodoArbol?.qr_maestro_payload || presupuesto.id_presupuesto_ext;
                         const QRCode = require('qrcode');
-                        qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
-                        console.log(`📲 [QR-PDF-GEN] QR generado para pedido B2B: ${supabasePedidoId}`);
+                        qrBuffer = await QRCode.toBuffer(qrPayloadNodo, { margin: 1, width: 85 });
+                    } else {
+                        // Sincronización on-the-fly si sigue sin mapeo (omitir en Modo Laboratorio)
+                        if (!supabasePedidoId && idLocal > 0 && !esModoLab) {
+                            try {
+                                console.log(`📲 [QR-PDF] Pedido local #${idLocal} no sincronizado. Sincronizando on-the-fly...`);
+                                const { subirPedidoEspecifico } = require('../../actualizaPrecios/syncB2BEstados');
+                                supabasePedidoId = await subirPedidoEspecifico(pool, idLocal);
+                            } catch (syncErr) {
+                                console.error(`❌ Error en sincronización on-the-fly para presupuesto #${idLocal}:`, syncErr.message);
+                            }
+                        }
+                        
+                        if (supabasePedidoId) {
+                            const portalUrl = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+                            const qrUrl = `${portalUrl}/#/recepcion/${supabasePedidoId}`;
+                            const QRCode = require('qrcode');
+                            qrBuffer = await QRCode.toBuffer(qrUrl, { margin: 1, width: 85 });
+                            console.log(`📲 [QR-PDF-GEN] QR generado para pedido B2B: ${supabasePedidoId}`);
+                        }
                     }
                 } catch (qrErr) {
                     console.error('❌ Error al generar QR para remito general:', qrErr.message);

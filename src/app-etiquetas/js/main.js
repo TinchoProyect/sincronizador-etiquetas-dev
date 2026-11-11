@@ -144,6 +144,32 @@ window.togglePedidoFaltantes = function(pedidoId) {
   }
 };
 
+window.pizarraVecinosContraidos = window.pizarraVecinosContraidos || new Set();
+
+window.toggleVecinoNodoPizarra = function(vecinoKey, evt) {
+  if (evt) evt.stopPropagation();
+  const key = String(vecinoKey);
+  const body = document.getElementById(`vecino-items-piz-${key}`);
+  const chev = document.getElementById(`vecino-chev-piz-${key}`);
+  if (window.pizarraVecinosContraidos.has(key)) {
+    window.pizarraVecinosContraidos.delete(key);
+    if (body) body.style.display = 'block';
+    if (chev) chev.textContent = '▼';
+  } else {
+    window.pizarraVecinosContraidos.add(key);
+    if (body) body.style.display = 'none';
+    if (chev) chev.textContent = '▶';
+  }
+};
+
+window.abrirCanastoEnProduccion = function(codigoCanasto, evt) {
+  if (evt) evt.stopPropagation();
+  const host = window.location.hostname || 'localhost';
+  const url = `http://${host}:3002/pages/produccion.html#canasto=${encodeURIComponent(codigoCanasto || '')}`;
+  const win = window.open(url, 'lamda_produccion');
+  if (win) win.focus();
+};
+
 window.toggleEstacionDeposito = function(estacionId) {
   const idStr = String(estacionId);
   const drawer = document.getElementById(`drawer-estacion-${idStr}`);
@@ -1164,12 +1190,118 @@ async function actualizarAlertasPizarra() {
       pedidosActivos.forEach(p => {
         const pIdStr = String(p.id);
         const nombreCliente = (p.cliente_nombre || `Cliente ${p.id_cliente}`).trim();
-        const taskText = `1 pedido para armar — ${nombreCliente} (${p.origen})`;
 
         // Artículos propios del pedido con cálculo unificado de stock y disputa
         const arts = Array.isArray(p.articulos) ? p.articulos : [];
         const itemsFaltantes = arts.filter(a => (parseFloat(a.faltante) || 0) > 0.005);
         const itemsDisputa = arts.filter(a => a.en_disputa && (parseFloat(a.faltante) || 0) <= 0.005);
+        const itemsListos = arts.filter(a => (parseFloat(a.faltante) || 0) <= 0.005 && !a.en_disputa);
+
+        // ============================================================
+        // CASO A: PEDIDO DE NODO BARRIAL -> ESTRUCTURA EN ÁRBOL (3 NIVELES)
+        //   Nivel 1: Nodo / Canasto (ej. Lo de Mati)
+        //   Nivel 2: Clientes / Vecinos del Nodo (Vecino 1, Vecino 2, Vecino 3)
+        //   Nivel 3: Artículos de cada vecino
+        // ============================================================
+        if (p.es_nodo_barrial && p.nodo_arbol && Array.isArray(p.nodo_arbol.vecinos)) {
+          const na = p.nodo_arbol;
+          const isExpanded = window.pizarraPedidosExpandidos.has(pIdStr);
+          const totalUdsFalt = itemsFaltantes.reduce((acc, it) => acc + Math.round(parseFloat(it.faltante) || 0), 0);
+
+          const mapaStockPorSku = new Map();
+          arts.forEach(a => {
+            mapaStockPorSku.set(String(a.articulo || '').trim().toUpperCase(), a);
+          });
+
+          let badgeClass = 'pizarra-badge-stock-ok';
+          let badgeText = `✓ Stock listo (${arts.length} art.)`;
+          let bulletColor = '#16a34a';
+          if (itemsFaltantes.length > 0) {
+            badgeClass = 'pizarra-badge-prod';
+            badgeText = `⚠️ ${totalUdsFalt} u. a producir · ${arts.length} art.`;
+            bulletColor = '#ea580c';
+          } else if (itemsDisputa.length > 0) {
+            badgeClass = 'pizarra-badge-disputa';
+            badgeText = `⚠️ Stock comprometido · ${arts.length} art.`;
+            bulletColor = '#d97706';
+          }
+
+          html += `
+            <div class="pizarra-pedido-bloque" style="border-left: 3px solid ${na.color_primario || '#16a34a'}; padding-left: 6px; margin-bottom: 6px;">
+              <div class="pizarra-pedido-header" onclick="window.togglePedidoFaltantes('${pIdStr}')" title="Click para desplegar el Árbol del Nodo (Vecinos y Artículos)" style="cursor: pointer; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span class="pizarra-pedido-bullet" style="color: ${bulletColor};">•</span>
+                <span class="pizarra-pedido-texto">
+                  <strong>🏘️ ${na.nombre_marca}</strong> — Canasto <code>${na.codigo_canasto}</code>
+                  <span style="color: #475569; font-size: 0.86em;">(${na.total_vecinos} ${na.total_vecinos === 1 ? 'vecino' : 'vecinos'} · ${na.total_unidades} bolsas/u. · ${arts.length} artículos distintos)</span>
+                </span>
+                <span id="badge-prod-${pIdStr}" class="${badgeClass} ${isExpanded ? 'is-open' : ''}">
+                  ${badgeText}
+                  <span class="pizarra-chevron ${isExpanded ? 'is-open' : ''}" style="margin-left: 5px;">▼</span>
+                </span>
+                <button type="button" onclick="window.abrirCanastoEnProduccion('${na.codigo_canasto}', event)"
+                  style="background: #14532d; color: #fff; border: none; border-radius: 5px; padding: 3px 9px; font-size: 0.75rem; font-weight: 700; cursor: pointer; margin-left: 4px;"
+                  title="Ir directo a Validar e Imprimir este Canasto en Producción">
+                  Validar e Imprimir ↗
+                </button>
+              </div>
+              <div id="subitems-pedido-${pIdStr}" class="pizarra-subitems-container ${isExpanded ? 'is-open' : ''}" style="padding-top: 6px;">
+          `;
+
+          // Nivel 2: Vecinos del Nodo
+          na.vecinos.forEach((vec, vIdx) => {
+            const vKey = `${pIdStr}-${vec.id || vIdx}`;
+            const vecContraido = window.pizarraVecinosContraidos.has(vKey);
+            const modEntrega = vec.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío Barrial' : `🏪 Retira en ${na.nombre_marca}`;
+            const cantItemsVec = (vec.items || []).length;
+
+            html += `
+              <div style="margin: 4px 0 6px 10px; border-left: 2px solid #86efac; padding-left: 10px;">
+                <div onclick="window.toggleVecinoNodoPizarra('${vKey}', event)"
+                  style="cursor: pointer; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.85rem; color: #0f172a; padding: 3px 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px;">
+                  <span id="vecino-chev-piz-${vKey}" style="font-size: 0.72rem; color: #15803d; width: 12px;">${vecContraido ? '▶' : '▼'}</span>
+                  <strong>👤 ${vec.vecino_nombre}</strong>
+                  <span style="background: #14532d; color: #fff; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">#${vec.codigo_pedido}</span>
+                  <span style="color: #475569; font-size: 0.78rem;">· ${cantItemsVec} ${cantItemsVec === 1 ? 'artículo' : 'artículos'} (${vec.total_unidades} u.) · ${modEntrega}</span>
+                </div>
+                <div id="vecino-items-piz-${vKey}" style="display: ${vecContraido ? 'none' : 'block'}; margin-top: 3px; padding-left: 14px;">
+            `;
+
+            // Nivel 3: Artículos de cada vecino
+            (vec.items || []).forEach(itVec => {
+              const skuUpper = String(itVec.sku_nodo || '').trim().toUpperCase();
+              const stInfo = mapaStockPorSku.get(skuUpper);
+              const tieneFalt = stInfo && (parseFloat(stInfo.faltante) || 0) > 0.005;
+              const colorIt = tieneFalt ? '#c2410c' : '#15803d';
+              const iconoIt = tieneFalt ? '⚠️' : '✓';
+              const leyendaStock = tieneFalt ? `(A producir: faltan ${Math.round(parseFloat(stInfo.faltante) || 0)} u. en total)` : '(En stock)';
+              const presTxt = itVec.presentacion_etiqueta ? ` · ${itVec.presentacion_etiqueta}` : '';
+
+              html += `
+                <div class="pizarra-subitem-prod" style="color: ${colorIt}; padding: 2px 0;">
+                  <span class="pizarra-subitem-icon" style="color: ${colorIt};">${iconoIt}</span>
+                  <span class="pizarra-subitem-cant">${itVec.cantidad} ${itVec.cantidad === 1 ? 'unidad' : 'unidades'}</span>
+                  <span class="pizarra-subitem-desc">— ${itVec.nombre_publico}${presTxt} <span style="font-size:0.78em; color:#64748b;">[${itVec.sku_nodo}] ${leyendaStock}</span></span>
+                </div>
+              `;
+            });
+
+            html += `
+                </div>
+              </div>
+            `;
+          });
+
+          html += `
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        // ============================================================
+        // CASO B: PEDIDO TRADICIONAL LAMDA (Cliente -> Todos sus artículos)
+        // ============================================================
+        const taskText = `1 pedido para armar — ${nombreCliente} (${p.origen})`;
 
         if (itemsFaltantes.length > 0) {
           const totalUds = itemsFaltantes.reduce((acc, it) => acc + Math.round(parseFloat(it.faltante) || 0), 0);
@@ -1177,7 +1309,7 @@ async function actualizarAlertasPizarra() {
 
           html += `
             <div class="pizarra-pedido-bloque">
-              <div class="pizarra-pedido-header" onclick="window.togglePedidoFaltantes('${pIdStr}')" title="Click para ver qué producir">
+              <div class="pizarra-pedido-header" onclick="window.togglePedidoFaltantes('${pIdStr}')" title="Click para ver detalle del pedido">
                 <span class="pizarra-pedido-bullet">•</span>
                 <span class="pizarra-pedido-texto">${taskText}</span>
                 <span id="badge-prod-${pIdStr}" class="pizarra-badge-prod ${isExpanded ? 'is-open' : ''}">
@@ -1194,7 +1326,7 @@ async function actualizarAlertasPizarra() {
             html += `
               <div class="pizarra-subitem-prod">
                 <span class="pizarra-subitem-icon">↳</span>
-                <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'}</span>
+                <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'} a producir</span>
                 <span class="pizarra-subitem-desc">— ${desc}</span>
               </div>
             `;
@@ -1208,6 +1340,18 @@ async function actualizarAlertasPizarra() {
                 <span class="pizarra-subitem-icon" style="color: #ea580c;">⚠️</span>
                 <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'}</span>
                 <span class="pizarra-subitem-desc">— ${desc} (Stock comprometido por otros pedidos)</span>
+              </div>
+            `;
+          });
+
+          itemsListos.forEach(it => {
+            const cant = Math.round(parseFloat(it.cantidad) || 0);
+            const desc = limpiarDescripcionArticulo(it.descripcion);
+            html += `
+              <div class="pizarra-subitem-prod" style="color: #15803d;">
+                <span class="pizarra-subitem-icon" style="color: #16a34a;">✓</span>
+                <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'}</span>
+                <span class="pizarra-subitem-desc">— ${desc} (Listo en depósito)</span>
               </div>
             `;
           });
@@ -1241,6 +1385,18 @@ async function actualizarAlertasPizarra() {
                 <span class="pizarra-subitem-icon" style="color: #ea580c;">⚠️</span>
                 <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'}</span>
                 <span class="pizarra-subitem-desc">— ${desc} (Stock en disputa: demanda global supera disponible)</span>
+              </div>
+            `;
+          });
+
+          itemsListos.forEach(it => {
+            const cant = Math.round(parseFloat(it.cantidad) || 0);
+            const desc = limpiarDescripcionArticulo(it.descripcion);
+            html += `
+              <div class="pizarra-subitem-prod" style="color: #15803d;">
+                <span class="pizarra-subitem-icon" style="color: #16a34a;">✓</span>
+                <span class="pizarra-subitem-cant">${cant} ${cant === 1 ? 'unidad' : 'unidades'}</span>
+                <span class="pizarra-subitem-desc">— ${desc} (Listo en depósito)</span>
               </div>
             `;
           });

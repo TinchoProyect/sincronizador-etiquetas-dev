@@ -7591,8 +7591,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                         `INSERT INTO public.factura_cuenta_corriente_movimientos (
                             cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
                             tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
-                            creado_en, metadatos, origen_tipo, origen_id
-                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5, 'LIQUIDACION_NODO', $6)
+                            creado_en, metadatos, origen_tipo
+                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5, 'LIQUIDACION_NODO')
                          RETURNING id`,
                         [
                             ccMadreId,
@@ -7605,8 +7605,7 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                                 codigo_canasto: canasto.codigo_canasto,
                                 codigo_bunker_subcuenta_nodo: canasto.codigo_bunker_cliente,
                                 codigo_bunker_cliente_madre: canasto.codigo_bunker_cliente_madre
-                            }),
-                            codigoLiq
+                            })
                         ]
                     );
                     movCcMadreId = insMovMadre.rows[0].id;
@@ -7993,6 +7992,140 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
     };
 }
 
+/**
+ * Obtiene la estructura jerárquica en Árbol (Nodo -> Vecinos -> Artículos de cada vecino)
+ * para una lista de códigos de canasto ('CAN-...') sin sobrecargar la consulta principal.
+ */
+async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
+    const codigos = Array.from(new Set((codigosCanastos || []).map(c => String(c || '').trim()).filter(Boolean)));
+    if (codigos.length === 0) return {};
+
+    const canRes = await db.query(
+        `SELECT nle.*,
+                nm.codigo_nodo,
+                nm.slug AS nodo_slug,
+                nm.nombre_marca,
+                nm.subtitulo_marca,
+                nm.gestor_nombre,
+                nm.gestor_telefono,
+                nm.barrio_zona,
+                nm.direccion_retiro,
+                nm.color_primario
+         FROM public.nodos_lotes_estacion nle
+         JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+         WHERE nle.codigo_canasto = ANY($1::text[])
+            OR nle.id_presupuesto_ext = ANY($1::text[])`,
+        [codigos]
+    );
+    if (canRes.rows.length === 0) return {};
+
+    const canastoIds = canRes.rows.map(r => Number(r.id));
+    const [pedidosRes, itemsRes] = await Promise.all([
+        db.query(
+            `SELECT npv.*
+             FROM public.nodos_pedidos_vecinos npv
+             WHERE npv.lote_canasto_id = ANY($1::int[])
+             ORDER BY npv.id ASC`,
+            [canastoIds]
+        ),
+        db.query(
+            `SELECT npi.*,
+                    npv.lote_canasto_id,
+                    COALESCE(nac.kilos_unidad, 0.25)::numeric(10,3) AS kilos_unidad
+             FROM public.nodos_pedidos_items npi
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+             WHERE npv.lote_canasto_id = ANY($1::int[])
+             ORDER BY npi.id ASC`,
+            [canastoIds]
+        )
+    ]);
+
+    const itemsPorPedido = new Map();
+    for (const it of itemsRes.rows) {
+        const pid = Number(it.pedido_id);
+        if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
+        itemsPorPedido.get(pid).push({
+            id: Number(it.id),
+            sku_nodo: it.sku_nodo,
+            nombre_publico: it.nombre_publico,
+            presentacion_etiqueta: it.presentacion_etiqueta || '',
+            cantidad: Number(it.cantidad || 0),
+            kilos_unidad: Number(it.kilos_unidad || 0),
+            precio_unitario_base_lamda: Number(it.precio_unitario_base_lamda || 0),
+            precio_unitario_vecino: Number(it.precio_unitario_vecino || 0),
+            subtotal_vecino: Number(it.subtotal_vecino || 0)
+        });
+    }
+
+    const vecinosPorCanasto = new Map();
+    for (const p of pedidosRes.rows) {
+        const cid = Number(p.lote_canasto_id);
+        const itemsVecino = itemsPorPedido.get(Number(p.id)) || [];
+        const totalUnidadesVecino = itemsVecino.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
+        const bolsaLista = ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(String(p.estado_operativo || ''));
+
+        if (!vecinosPorCanasto.has(cid)) vecinosPorCanasto.set(cid, []);
+        vecinosPorCanasto.get(cid).push({
+            id: Number(p.id),
+            codigo_pedido: p.codigo_pedido,
+            vecino_nombre: p.vecino_nombre,
+            vecino_telefono: p.vecino_telefono || '',
+            modalidad_entrega: p.modalidad_entrega || 'RETIRO_NODO',
+            direccion_entrega: p.direccion_entrega || '',
+            medio_pago: p.medio_pago || 'TRANSFERENCIA',
+            estado_pago: p.estado_pago || 'PENDIENTE',
+            estado_operativo: p.estado_operativo || 'CONFIRMADO_VECINO',
+            bolsa_lista: bolsaLista,
+            etiqueta_impresa: Boolean(p.etiqueta_impresa),
+            total_vecino: Number(p.total_vecino || 0),
+            total_base_lamda: Number(p.total_base_lamda || 0),
+            total_articulos_distintos: itemsVecino.length,
+            total_unidades_vecino: totalUnidadesVecino,
+            items: itemsVecino
+        });
+    }
+
+    const resultado = {};
+    for (const c of canRes.rows) {
+        const cid = Number(c.id);
+        const vecinos = vecinosPorCanasto.get(cid) || [];
+        const totalUnidadesCanasto = vecinos.reduce((acc, v) => acc + Number(v.total_unidades_vecino || 0), 0);
+        const bolsasArmadasCalc = vecinos.filter(v => v.bolsa_lista).length;
+        const payloadArbol = {
+            canasto_id: cid,
+            codigo_canasto: c.codigo_canasto,
+            nodo_id: Number(c.nodo_id),
+            codigo_nodo: c.codigo_nodo,
+            nodo_slug: c.nodo_slug,
+            nombre_marca: c.nombre_marca,
+            subtitulo_marca: c.subtitulo_marca || '',
+            gestor_nombre: c.gestor_nombre,
+            gestor_telefono: c.gestor_telefono || '',
+            barrio_zona: c.barrio_zona || '',
+            direccion_retiro: c.direccion_retiro || '',
+            color_primario: c.color_primario || '#16a34a',
+            fecha_entrega_label: c.fecha_entrega_label || '',
+            estado_canasto: c.estado_canasto || 'EN_ARMADO',
+            secuencia_operativa_lamda: c.secuencia_operativa_lamda || 'Imprimir',
+            total_vecinos: vecinos.length,
+            total_bolsas: Number(c.total_bolsas || vecinos.length),
+            bolsas_armadas: bolsasArmadasCalc,
+            total_unidades: totalUnidadesCanasto,
+            total_kilos_lote: Number(c.total_kilos_lote || 0),
+            total_base_lamda: Number(c.total_base_lamda || 0),
+            total_venta_vecinos: Number(c.total_venta_vecinos || 0),
+            qr_maestro_payload: c.qr_maestro_payload || c.codigo_canasto,
+            vecinos
+        };
+        resultado[c.codigo_canasto] = payloadArbol;
+        if (c.id_presupuesto_ext && c.id_presupuesto_ext !== c.codigo_canasto) {
+            resultado[c.id_presupuesto_ext] = payloadArbol;
+        }
+    }
+    return resultado;
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
     ponerACeroDatosNodosBarriales,
@@ -8020,6 +8153,7 @@ module.exports = {
     sincronizarCambioSecuenciaDesdeLamda,
     cambiarEtapaCircuitoLamdaCanasto,
     obtenerEstadoCircuitoOperativoLamda,
+    obtenerArbolCanastosPorCodigos,
     obtenerTableroMesaArmadoDeposito,
     armarBolsaPedidoVecino,
     armarTodasBolsasDeCanasto,

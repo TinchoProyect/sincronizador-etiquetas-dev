@@ -1060,6 +1060,103 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
       })
     ]);
 
+    const codigosCanastoActivos = (activosRes.rows || [])
+      .map(r => String(r.id_presupuesto_ext || '').trim())
+      .filter(ext => ext.startsWith('CAN-'));
+
+    if (codigosCanastoActivos.length > 0) {
+      try {
+        const canRes = await pool.query(
+          `SELECT nle.*, nm.nombre_marca, nm.gestor_nombre, nm.color_primario
+           FROM public.nodos_lotes_estacion nle
+           JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+           WHERE nle.codigo_canasto = ANY($1::text[])
+              OR nle.id_presupuesto_ext = ANY($1::text[])`,
+          [codigosCanastoActivos]
+        );
+        if (canRes.rows.length > 0) {
+          const canIds = canRes.rows.map(c => Number(c.id));
+          const [pedVecRes, itVecRes] = await Promise.all([
+            pool.query(
+              `SELECT * FROM public.nodos_pedidos_vecinos
+               WHERE lote_canasto_id = ANY($1::int[])
+               ORDER BY id ASC`,
+              [canIds]
+            ),
+            pool.query(
+              `SELECT npi.*, npv.lote_canasto_id
+               FROM public.nodos_pedidos_items npi
+               JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+               WHERE npv.lote_canasto_id = ANY($1::int[])
+               ORDER BY npi.id ASC`,
+              [canIds]
+            )
+          ]);
+
+          const itemsPorPed = new Map();
+          itVecRes.rows.forEach(it => {
+            const pid = Number(it.pedido_id);
+            if (!itemsPorPed.has(pid)) itemsPorPed.set(pid, []);
+            itemsPorPed.get(pid).push({
+              sku_nodo: it.sku_nodo,
+              nombre_publico: it.nombre_publico,
+              presentacion_etiqueta: it.presentacion_etiqueta || '',
+              cantidad: Number(it.cantidad || 0),
+              subtotal_vecino: Number(it.subtotal_vecino || 0)
+            });
+          });
+
+          const vecPorCanasto = new Map();
+          pedVecRes.rows.forEach(pv => {
+            const cid = Number(pv.lote_canasto_id);
+            const items = itemsPorPed.get(Number(pv.id)) || [];
+            if (!vecPorCanasto.has(cid)) vecPorCanasto.set(cid, []);
+            vecPorCanasto.get(cid).push({
+              id: Number(pv.id),
+              codigo_pedido: pv.codigo_pedido,
+              vecino_nombre: pv.vecino_nombre,
+              modalidad_entrega: pv.modalidad_entrega || 'RETIRO_NODO',
+              direccion_entrega: pv.direccion_entrega || '',
+              medio_pago: pv.medio_pago || 'TRANSFERENCIA',
+              total_vecino: Number(pv.total_vecino || 0),
+              bolsa_lista: ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(String(pv.estado_operativo || '')),
+              total_unidades: items.reduce((a, x) => a + Number(x.cantidad || 0), 0),
+              items
+            });
+          });
+
+          const mapaArbol = new Map();
+          canRes.rows.forEach(c => {
+            const vecinos = vecPorCanasto.get(Number(c.id)) || [];
+            const arbol = {
+              canasto_id: Number(c.id),
+              codigo_canasto: c.codigo_canasto,
+              nodo_id: Number(c.nodo_id),
+              nombre_marca: c.nombre_marca,
+              gestor_nombre: c.gestor_nombre,
+              color_primario: c.color_primario || '#16a34a',
+              fecha_entrega_label: c.fecha_entrega_label || '',
+              total_vecinos: vecinos.length,
+              total_unidades: vecinos.reduce((a, v) => a + Number(v.total_unidades || 0), 0),
+              vecinos
+            };
+            mapaArbol.set(c.codigo_canasto, arbol);
+            if (c.id_presupuesto_ext) mapaArbol.set(c.id_presupuesto_ext, arbol);
+          });
+
+          activosRes.rows.forEach(r => {
+            const ext = String(r.id_presupuesto_ext || '').trim();
+            if (ext && mapaArbol.has(ext)) {
+              r.es_nodo_barrial = true;
+              r.nodo_arbol = mapaArbol.get(ext);
+            }
+          });
+        }
+      } catch (errNodoPiz) {
+        console.warn('⚠️ Error enriqueciendo árbol de Nodo en Pizarra:', errNodoPiz.message);
+      }
+    }
+
     res.json({
       success: true,
       pedidos_activos: activosRes.rows,
