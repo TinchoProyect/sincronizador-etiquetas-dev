@@ -953,14 +953,30 @@
                     ${esc(of.categoria_familiar || 'Almacén')} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
                   </div>
                 </div>
-                <label class="switch-label">
-                  <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
-                    onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
-                  <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
-                    ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
-                  </span>
-                </label>
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                  ${of.tiene_desglose_ingredientes ? `
+                    <label class="switch-label" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
+                      <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
+                        onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
+                      <span style="font-size:0.76rem; color:${of.mostrar_ingredientes !== false ? 'var(--brand-dark)' : 'var(--muted)'};">
+                        🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
+                      </span>
+                    </label>
+                  ` : ''}
+                  <label class="switch-label">
+                    <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
+                      onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
+                    <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
+                      ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
+                    </span>
+                  </label>
+                </div>
               </div>
+              ${of.tiene_desglose_ingredientes ? `
+                <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-bottom:8px;">
+                  <strong style="color:var(--text);">🥣 Contiene:</strong> ${(of.ingredientes_comerciales || []).map(esc).join(', ')}
+                </div>
+              ` : ''}
 
               <div class="oferta-grid">
                 <div>
@@ -1988,10 +2004,14 @@
               <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" />
               <div style="font-size:0.72rem; color:var(--ok); font-weight:700; margin-top:3px;">100% acreditado a tu favor</div>
             </div>
-            <div style="display:flex; align-items:center; padding-top:10px;">
+            <div style="display:flex; flex-direction:column; gap:10px; justify-content:center; padding-top:6px;">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-permitir-envio" ${GSTATE.nodo.permitir_envio_barrial ? 'checked' : ''} />
                 Habilitar envío a domicilio en el barrio
+              </label>
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-mostrar-ingredientes" ${GSTATE.nodo.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
+                Mostrar botón "¿Qué contiene?" (ingredientes) en mi tienda
               </label>
             </div>
           </div>
@@ -2036,7 +2056,8 @@
         config_ventanas_corte: leerVentanasDesdeDom(),
         direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
         cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
-        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked)
+        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked),
+        mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true)
       };
 
       try {

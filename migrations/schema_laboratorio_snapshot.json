@@ -12873,6 +12873,16 @@
         "numeric_scale": 8,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "mostrar_ingredientes_tienda": {
+        "ordinal_position": 35,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -13097,6 +13107,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "mostrar_ingredientes": {
+        "ordinal_position": 12,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "true"
       }
     },
     "nodos_pedidos_eventos_tracking": {

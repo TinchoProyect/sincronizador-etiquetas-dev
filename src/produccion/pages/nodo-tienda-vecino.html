@@ -296,6 +296,57 @@
       padding: 3px 10px;
       border-radius: 8px;
     }
+    .prod-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+    .btn-ver-ing {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--brand-light);
+      color: var(--brand-dark);
+      border: 1px solid var(--brand-border);
+      font-family: inherit;
+      font-size: 0.76rem;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.12s;
+    }
+    .btn-ver-ing:hover {
+      background: var(--surface-warm);
+      transform: translateY(-1px);
+    }
+    .ing-chips-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 4px 0;
+    }
+    .ing-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      border-radius: 11px;
+      background: var(--surface-warm);
+      border: 1px solid var(--brand-border);
+      color: var(--text);
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+    .ing-chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand);
+      flex-shrink: 0;
+    }
     .prod-footer {
       display: flex;
       justify-content: space-between;
@@ -791,6 +842,11 @@
     <div class="modal-card" id="tracking-card-content"></div>
   </div>
 
+  <!-- Modal Marca Blanca de Contenido / Ingredientes -->
+  <div class="modal-backdrop" id="ingredientes-modal" onclick="if(event.target===this) cerrarModalIngredientesProducto()">
+    <div class="modal-card" id="ingredientes-card-content" style="max-width:480px;"></div>
+  </div>
+
   <script>
     const STATE = {
       slug: '',
@@ -805,7 +861,8 @@
       simularDespuesDeCorte: false,
       portalToken: '',
       vistaMiCuentaActiva: false,
-      miCuentaData: null
+      miCuentaData: null,
+      ofertaIngredientesModalId: null
     };
 
     function fmt(n) {
@@ -998,7 +1055,8 @@
       const filtrados = STATE.productos.filter(p => {
         if (STATE.categoriaActiva !== 'TODAS' && p.categoria_familiar !== STATE.categoriaActiva) return false;
         if (terms.length === 0) return true;
-        const bolsa = `${p.nombre_publico} ${p.categoria_familiar} ${p.presentacion_etiqueta || ''}`.toLowerCase();
+        const ingTxt = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales.join(' ') : '';
+        const bolsa = `${p.nombre_publico} ${p.categoria_familiar} ${p.presentacion_etiqueta || ''} ${ingTxt}`.toLowerCase();
         return terms.every(t => bolsa.includes(t));
       });
 
@@ -1007,14 +1065,26 @@
         return;
       }
 
+      const permitirBotonNodo = STATE.nodo?.mostrar_ingredientes_tienda !== false;
+
       grid.innerHTML = filtrados.map(p => {
         const cant = Number(STATE.carrito[p.oferta_id] || 0);
+        const mostrarBotonIng = permitirBotonNodo &&
+          p.mostrar_ingredientes !== false &&
+          Array.isArray(p.ingredientes_comerciales) &&
+          p.ingredientes_comerciales.length >= 2;
         return `
           <div class="prod-card">
             <div>
               <div class="prod-cat">${esc(p.categoria_familiar || 'Almacén Natural')}</div>
               <div class="prod-title">${esc(p.nombre_publico)}</div>
-              <span class="prod-pres">${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
+              <div class="prod-meta-row">
+                <span class="prod-pres">${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
+                ${mostrarBotonIng
+                  ? `<button type="button" class="btn-ver-ing" onclick="abrirModalIngredientesProducto(${p.oferta_id})">🥣 ¿Qué contiene?</button>`
+                  : ''
+                }
+              </div>
             </div>
             <div class="prod-footer">
               <div class="prod-price">${fmt(p.precio_venta_vecino)}</div>
@@ -1032,6 +1102,87 @@
       }).join('');
     }
 
+    function abrirModalIngredientesProducto(ofertaId) {
+      const prod = STATE.productos.find(x => Number(x.oferta_id) === Number(ofertaId));
+      if (!prod || !Array.isArray(prod.ingredientes_comerciales) || prod.ingredientes_comerciales.length < 2) return;
+      STATE.ofertaIngredientesModalId = Number(ofertaId);
+      renderContenidoModalIngredientes();
+      const modal = document.getElementById('ingredientes-modal');
+      if (modal) modal.classList.add('open');
+    }
+
+    function cerrarModalIngredientesProducto() {
+      STATE.ofertaIngredientesModalId = null;
+      const modal = document.getElementById('ingredientes-modal');
+      if (modal) modal.classList.remove('open');
+    }
+
+    function renderContenidoModalIngredientes() {
+      const card = document.getElementById('ingredientes-card-content');
+      if (!card || !STATE.ofertaIngredientesModalId) return;
+      const p = STATE.productos.find(x => Number(x.oferta_id) === Number(STATE.ofertaIngredientesModalId));
+      if (!p) {
+        cerrarModalIngredientesProducto();
+        return;
+      }
+      const lista = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales : [];
+      const cant = Number(STATE.carrito[p.oferta_id] || 0);
+      const presentacion = p.presentacion_etiqueta || `${Math.round(Number(p.kilos_unidad || 0) * 1000)}g`;
+
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--brand-dark);">
+              🥣 ¿Qué contiene este producto?
+            </div>
+            <h3 style="margin:4px 0 6px 0; font-size:1.12rem; font-weight:900; color:var(--text); line-height:1.25;">
+              ${esc(p.nombre_publico)}
+            </h3>
+            <span class="prod-pres">${esc(presentacion)}</span>
+          </div>
+          <button type="button" onclick="cerrarModalIngredientesProducto()" aria-label="Cerrar"
+            style="width:32px; height:32px; border-radius:999px; border:1px solid var(--border); background:var(--surface-warm); color:var(--muted); font-weight:900; font-size:1rem; cursor:pointer; flex-shrink:0;">
+            ✕
+          </button>
+        </div>
+
+        <div style="padding-top:12px;">
+          <div style="font-size:0.78rem; font-weight:800; color:var(--muted);">
+            Ingredientes seleccionados (${lista.length}):
+          </div>
+          <div class="ing-chips-wrap">
+            ${lista.map(ing => `
+              <span class="ing-chip">
+                <span class="ing-chip-dot"></span>
+                <span>${esc(ing)}</span>
+              </span>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
+          <div>
+            <div style="font-size:0.72rem; font-weight:700; color:var(--muted);">Precio vecinal</div>
+            <div style="font-size:1.18rem; font-weight:900; color:var(--text);">${fmt(p.precio_venta_vecino)}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            ${cant === 0
+              ? `<button type="button" class="btn-add" onclick="modificarCarrito(${p.oferta_id}, 1)">+ Agregar</button>`
+              : `<div class="stepper">
+                   <button type="button" onclick="modificarCarrito(${p.oferta_id}, -1)">−</button>
+                   <span>${cant}</span>
+                   <button type="button" onclick="modificarCarrito(${p.oferta_id}, 1)">+</button>
+                 </div>`
+            }
+            <button type="button" onclick="cerrarModalIngredientesProducto()"
+              style="padding:9px 14px; border-radius:10px; border:1px solid var(--border); background:var(--surface-warm); color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     function modificarCarrito(ofertaId, delta) {
       const actual = Number(STATE.carrito[ofertaId] || 0);
       const nuevo = Math.max(0, actual + delta);
@@ -1039,6 +1190,9 @@
       else STATE.carrito[ofertaId] = nuevo;
       renderCatalogo();
       actualizarBarraCarrito();
+      if (STATE.ofertaIngredientesModalId === Number(ofertaId)) {
+        renderContenidoModalIngredientes();
+      }
     }
 
     function calcularResumenCarrito() {

@@ -1599,6 +1599,15 @@
                             </div>
                         </div>
 
+                        <!-- PARÁMETRO TIENDA VECINAL: BOTÓN DE CONTENIDO / INGREDIENTES EN ARTÍCULOS ELABORADOS -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding:9px 12px; border-radius:8px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.32);">
+                            <label style="display:inline-flex; align-items:center; gap:8px; font-size:0.76rem; color:#e2e8f0; font-weight:700; cursor:pointer;">
+                                <input type="checkbox" id="abm-mostrar-ingredientes-tienda" checked style="width:15px; height:15px; accent-color:#10b981; cursor:pointer;">
+                                <span>🥣 Mostrar botón <strong>"¿Qué contiene?"</strong> (desglose limpio de ingredientes) en Mixes, Granolas y elaborados de la tienda vecinal</span>
+                            </label>
+                            <span style="font-size:0.68rem; color:#6ee7b7; font-weight:700;">100% Marca Blanca · Dinámico desde Recetas</span>
+                        </div>
+
                         <!-- LOGO DEL NODO PARA PANTALLAS MÓVILES Y ETIQUETA TÉRMICA -->
                         <div style="padding:12px; border-radius:10px; background:#0f172a; border:1px solid #334155;">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
@@ -2961,6 +2970,8 @@
         setVal('abm-cliente-madre-codigo', nodo.codigo_bunker_cliente_madre || '');
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = nodo.usa_cuenta_compartida !== false;
+        const chkIngTienda = document.getElementById('abm-mostrar-ingredientes-tienda');
+        if (chkIngTienda) chkIngTienda.checked = nodo.mostrar_ingredientes_tienda !== false;
         setVal('abm-alias-display', nodo.alias_bancario_display || cfgCanal.alias_recaudador || 'pago.canasto');
         setVal('abm-cargo-envio', Number(nodo.cargo_envio_barrial || 0));
         setVal('abm-margen-default', Number(nodo.margen_gestor_default_pct || 28));
@@ -3020,6 +3031,8 @@
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = true;
+        const chkIngTienda = document.getElementById('abm-mostrar-ingredientes-tienda');
+        if (chkIngTienda) chkIngTienda.checked = true;
         const slugEl = document.getElementById('abm-slug');
         if (slugEl) slugEl.dataset.manual = '';
         const sub = document.getElementById('abm-subtitulo');
@@ -3435,6 +3448,7 @@
                 cbu_display: cfgCanal.cbu_recaudador || '',
                 titular_display: cfgCanal.titular_recaudador || '',
                 cargo_envio_barrial: Number(document.getElementById('abm-cargo-envio')?.value || 0),
+                mostrar_ingredientes_tienda: Boolean(document.getElementById('abm-mostrar-ingredientes-tienda')?.checked ?? true),
                 margen_gestor_default_pct: Number(document.getElementById('abm-margen-default')?.value || 28),
                 color_primario: document.getElementById('abm-color-primario')?.value || '#a2553b',
                 logo_original_base64: logoOriginalSubidoBase64,

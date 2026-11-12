@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -47,6 +47,8 @@ namespace LamdaControlCenter
         private bool isStartingSequence = false;
         private bool isStoppingSequence = false;
         private bool isCheckingPorts = false;
+        private int startWorkerRunning = 0;
+        private bool pendingManualOpenBrowser = false;
         private bool browserOpenedForCurrentRun = false;
         private DateTime startSequenceTimestamp = DateTime.MinValue;
 
@@ -568,7 +570,7 @@ namespace LamdaControlCenter
                 {
                     foreach (var svc in services)
                     {
-                        svc.IsListening = CheckPortOpen("127.0.0.1", svc.Port, 220);
+                        svc.IsListening = IsGenuineLabServiceListening(svc.Port, 220);
                     }
                     if (!this.IsDisposed)
                     {
@@ -588,10 +590,102 @@ namespace LamdaControlCenter
             int count = 0;
             foreach (var svc in services)
             {
-                svc.IsListening = CheckPortOpen("127.0.0.1", svc.Port, 220);
+                svc.IsListening = IsGenuineLabServiceListening(svc.Port, 260);
                 if (svc.IsListening) count++;
             }
             return count;
+        }
+
+        private bool IsGenuineLabServiceListening(int port, int timeoutMs)
+        {
+            if (!CheckPortOpen("127.0.0.1", port, timeoutMs)) return false;
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + port + "/lamda-manifest.json");
+                req.Method = "GET";
+                req.Timeout = Math.Max(450, timeoutMs);
+                req.ReadWriteTimeout = 600;
+                req.Proxy = null;
+                req.KeepAlive = false;
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                {
+                    if ((int)resp.StatusCode != 200) return false;
+                    using (Stream s = resp.GetResponseStream())
+                    {
+                        if (s == null) return false;
+                        using (StreamReader reader = new StreamReader(s, Encoding.UTF8))
+                        {
+                            string body = reader.ReadToEnd();
+                            return !string.IsNullOrEmpty(body) &&
+                                   body.IndexOf("/?app=lamda-lab", StringComparison.OrdinalIgnoreCase) >= 0;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void KillProcessesListeningOnPort(int targetPort)
+        {
+            try
+            {
+                HashSet<int> pidsToKill = new HashSet<int>();
+                ProcessStartInfo psi = new ProcessStartInfo("netstat.exe", "-ano -p tcp");
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardOutput = true;
+
+                using (Process p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(2000);
+
+                    string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string line in lines)
+                    {
+                        if (!line.Contains("LISTENING")) continue;
+                        string[] parts = Regex.Split(line.Trim(), @"\s+");
+                        if (parts.Length >= 5)
+                        {
+                            string localAddr = parts[1];
+                            int colonIdx = localAddr.LastIndexOf(':');
+                            if (colonIdx > 0)
+                            {
+                                int port;
+                                int pid;
+                                if (int.TryParse(localAddr.Substring(colonIdx + 1), out port) &&
+                                    port == targetPort &&
+                                    int.TryParse(parts[parts.Length - 1], out pid) &&
+                                    pid > 0 && pid != Process.GetCurrentProcess().Id)
+                                {
+                                    pidsToKill.Add(pid);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                foreach (int pid in pidsToKill)
+                {
+                    try
+                    {
+                        Process proc = Process.GetProcessById(pid);
+                        proc.Kill();
+                        proc.WaitForExit(1500);
+                    }
+                    catch { }
+                }
+
+                for (int i = 0; i < 8; i++)
+                {
+                    if (!CheckPortOpen("127.0.0.1", targetPort, 120)) break;
+                    Thread.Sleep(150);
+                }
+            }
+            catch { }
         }
 
         private bool CheckPortOpen(string host, int port, int timeoutMs)
@@ -621,11 +715,20 @@ namespace LamdaControlCenter
                 if (svc.IsListening) activeCount++;
             }
 
-            if (isStartingSequence && activeCount == services.Count)
+            if (activeCount == services.Count)
             {
-                isStartingSequence = false;
-                AppendLog("✅ ¡Los 5 servicios del Modo Laboratorio están ACTIVOS y listos!");
-                if (chkAutoOpenBrowser.Checked && !browserOpenedForCurrentRun)
+                if (isStartingSequence)
+                {
+                    isStartingSequence = false;
+                    AppendLog("✅ ¡Los 5 servicios del Modo Laboratorio están ACTIVOS y listos!");
+                }
+                if (pendingManualOpenBrowser)
+                {
+                    pendingManualOpenBrowser = false;
+                    browserOpenedForCurrentRun = true;
+                    OpenMainBrowserTab();
+                }
+                else if (chkAutoOpenBrowser.Checked && !browserOpenedForCurrentRun)
                 {
                     browserOpenedForCurrentRun = true;
                     OpenMainBrowserTab();
@@ -635,6 +738,12 @@ namespace LamdaControlCenter
             if (isStartingSequence && (DateTime.Now - startSequenceTimestamp).TotalSeconds > 28)
             {
                 isStartingSequence = false;
+                if (pendingManualOpenBrowser && IsGenuineLabServiceListening(3000, 350))
+                {
+                    pendingManualOpenBrowser = false;
+                    browserOpenedForCurrentRun = true;
+                    OpenMainBrowserTab();
+                }
             }
 
             startupProgressBar.Value = Math.Min(startupProgressBar.Maximum, activeCount);
@@ -703,6 +812,13 @@ namespace LamdaControlCenter
         private void StartAllServices()
         {
             if (isStoppingSequence) return;
+            if (Interlocked.CompareExchange(ref startWorkerRunning, 1, 0) != 0)
+            {
+                isStartingSequence = true;
+                UpdateVisualState();
+                return;
+            }
+
             isStartingSequence = true;
             browserOpenedForCurrentRun = false;
             startSequenceTimestamp = DateTime.Now;
@@ -710,18 +826,44 @@ namespace LamdaControlCenter
 
             Task.Factory.StartNew(() =>
             {
-                foreach (var svc in services)
+                try
                 {
-                    bool alreadyUp = CheckPortOpen("127.0.0.1", svc.Port, 200);
-                    if (alreadyUp)
+                    foreach (var svc in services)
                     {
-                        svc.IsListening = true;
-                        AppendLog(string.Format("[{0}] Puerto {1} ya se encuentra activo.", svc.Key, svc.Port));
-                        continue;
-                    }
+                        if (isStoppingSequence) break;
 
-                    StartSingleService(svc);
-                    Thread.Sleep(250);
+                        bool genuineUp = IsGenuineLabServiceListening(svc.Port, 350);
+                        if (genuineUp)
+                        {
+                            svc.IsListening = true;
+                            AppendLog(string.Format("[{0}] Puerto {1} (Laboratorio genuino) ya se encuentra activo.", svc.Key, svc.Port));
+                            continue;
+                        }
+
+                        bool portOccupied = CheckPortOpen("127.0.0.1", svc.Port, 200);
+                        if (portOccupied)
+                        {
+                            if (svc.RunningProcess != null && !svc.RunningProcess.HasExited)
+                            {
+                                Thread.Sleep(700);
+                                if (IsGenuineLabServiceListening(svc.Port, 500))
+                                {
+                                    svc.IsListening = true;
+                                    continue;
+                                }
+                            }
+
+                            AppendLog(string.Format("[{0}] ⚠️ El puerto {1} estaba ocupado por un proceso externo ajeno a Laboratorio. Liberando puerto para montar {2}...", svc.Key, svc.Port, svc.Title));
+                            KillProcessesListeningOnPort(svc.Port);
+                        }
+
+                        StartSingleService(svc);
+                        Thread.Sleep(250);
+                    }
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref startWorkerRunning, 0);
                 }
             });
         }
@@ -803,6 +945,7 @@ namespace LamdaControlCenter
         {
             if (!silent) AppendLog("⏹ Deteniendo todos los servicios de LAMDA y cerrando ventana del navegador...");
             isStartingSequence = false;
+            pendingManualOpenBrowser = false;
             isStoppingSequence = true;
 
             Task.Factory.StartNew(() =>
@@ -1115,14 +1258,16 @@ namespace LamdaControlCenter
 
         private void OpenMainBrowserTab()
         {
-            bool port3000Up = CheckPortOpen("127.0.0.1", 3000, 250);
-            if (!port3000Up)
+            bool port3000LabUp = IsGenuineLabServiceListening(3000, 450);
+            if (!port3000LabUp)
             {
-                AppendLog("⚠️ El puerto 3000 aún está apagado. Encendiendo servicios primero...");
-                chkAutoOpenBrowser.Checked = true;
+                pendingManualOpenBrowser = true;
+                AppendLog("⏳ Preparando servicios reales de LAMDA Laboratorio en :3000 (se abrirá automáticamente apenas estén montados)...");
                 StartAllServices();
                 return;
             }
+
+            pendingManualOpenBrowser = false;
 
             IntPtr existingWindow = FindExistingLamdaBrowserWindow();
             if (existingWindow != IntPtr.Zero)
@@ -1150,7 +1295,7 @@ namespace LamdaControlCenter
 
         private void OpenMobileTab()
         {
-            bool port3005Up = CheckPortOpen("127.0.0.1", 3005, 250);
+            bool port3005Up = IsGenuineLabServiceListening(3005, 350);
             if (!port3005Up)
             {
                 MessageBox.Show("El servicio de Logística (Puerto 3005) está apagado. Tocá 'Encender Servicios' primero.", "Servicio Apagado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -1333,7 +1478,7 @@ namespace LamdaControlCenter
 
         private void OpenMobileQrModal()
         {
-            bool port3005Up = CheckPortOpen("127.0.0.1", 3005, 250);
+            bool port3005Up = IsGenuineLabServiceListening(3005, 350);
             if (!port3005Up)
             {
                 DialogResult dr = MessageBox.Show(

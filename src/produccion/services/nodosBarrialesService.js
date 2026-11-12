@@ -16,6 +16,10 @@ const {
     generarPreviewVisualEtiquetaPar,
     generarPreviewVisualCanastoQrMaestro
 } = require('../utils/zplLogoConverter');
+const {
+    construirCatalogoIngredientesComerciales,
+    obtenerDesgloseIngredientesParaItem
+} = require('./desgloseIngredientesComercialService');
 
 let esquemaInicializado = false;
 
@@ -1748,6 +1752,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 cbu_display VARCHAR(40),
                 titular_display VARCHAR(180),
                 permitir_envio_barrial BOOLEAN DEFAULT true,
+                mostrar_ingredientes_tienda BOOLEAN DEFAULT true,
                 cargo_envio_barrial NUMERIC(12,2) DEFAULT 0.00,
                 margen_gestor_default_pct NUMERIC(8,2) DEFAULT 28.00,
                 config_ventanas_corte JSONB DEFAULT '[]'::jsonb,
@@ -1981,7 +1986,11 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS cliente_madre_bunker_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE SET NULL,
                 ADD COLUMN IF NOT EXISTS codigo_bunker_cliente_madre VARCHAR(80),
                 ADD COLUMN IF NOT EXISTS latitud NUMERIC(12,8),
-                ADD COLUMN IF NOT EXISTS longitud NUMERIC(12,8);
+                ADD COLUMN IF NOT EXISTS longitud NUMERIC(12,8),
+                ADD COLUMN IF NOT EXISTS mostrar_ingredientes_tienda BOOLEAN DEFAULT true;
+
+            ALTER TABLE public.nodos_ofertas_gestor
+                ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true;
 
             CREATE TABLE IF NOT EXISTS public.nodos_configuracion_canal (
                 id INTEGER PRIMARY KEY DEFAULT 1,
@@ -3995,8 +4004,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     activo = COALESCE($27, activo),
                     latitud = $28,
                     longitud = $29,
+                    mostrar_ingredientes_tienda = COALESCE($30, mostrar_ingredientes_tienda),
                     updated_at = NOW()
-                WHERE id = $30
+                WHERE id = $31
                 RETURNING *`,
                 [
                     slugBase,
@@ -4035,6 +4045,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     payload.activo !== undefined ? Boolean(payload.activo) : true,
                     Number.isFinite(latVal) ? latVal : null,
                     Number.isFinite(lngVal) ? lngVal : null,
+                    payload.mostrar_ingredientes_tienda !== undefined ? Boolean(payload.mostrar_ingredientes_tienda) : null,
                     Number(idExistente)
                 ]
             );
@@ -4050,9 +4061,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
-                    latitud, longitud
+                    latitud, longitud, mostrar_ingredientes_tienda
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -4090,7 +4101,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         iniciales: zplConfig.iniciales || ''
                     }),
                     Number.isFinite(latVal) ? latVal : null,
-                    Number.isFinite(lngVal) ? lngVal : null
+                    Number.isFinite(lngVal) ? lngVal : null,
+                    payload.mostrar_ingredientes_tienda !== false
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -5340,6 +5352,9 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     const destacado = payload.destacado_tienda !== undefined
         ? Boolean(payload.destacado_tienda)
         : Boolean(row.destacado_tienda);
+    const mostrarIngredientes = payload.mostrar_ingredientes !== undefined
+        ? Boolean(payload.mostrar_ingredientes)
+        : (row.mostrar_ingredientes !== false);
 
     const upd = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
@@ -5349,11 +5364,12 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             ganancia_unitaria_gestor = $4,
             publicado_tienda = $5,
             destacado_tienda = $6,
+            mostrar_ingredientes = $7,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $7
+         WHERE id = $8
          RETURNING *`,
-        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, destacado, Number(ofertaId)]
+        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, destacado, mostrarIngredientes, Number(ofertaId)]
     );
 
     return upd.rows[0];
@@ -5611,7 +5627,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const nodo = nodoRes.rows[0];
     const proximaEntrega = calcularProximaEntregaNodo(nodo.config_ventanas_corte, fechaHoraSimulada);
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, catDisponibleRes] = await Promise.all([
+    const mostrarIngredientesNodo = nodo.mostrar_ingredientes_tienda !== false;
+
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, catDisponibleRes, catalogoIngredientes] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -5621,6 +5639,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                     nac.kilos_unidad,
                     nac.flujo_lamda,
                     nac.ingrediente_origen_id,
+                    nac.articulo_bunker_origen_codigo,
                     nac.precio_base_nodo_final
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
@@ -5696,7 +5715,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                  ORDER BY nac.categoria_familiar ASC, nac.nombre_publico ASC`,
                 [nodo.id]
             )
-            : Promise.resolve({ rows: [] })
+            : Promise.resolve({ rows: [] }),
+        (mostrarIngredientesNodo || esVistaGestor)
+            ? construirCatalogoIngredientesComerciales().catch(() => null)
+            : Promise.resolve(null)
     ]);
 
     const itemsPorPedido = new Map();
@@ -5718,22 +5740,59 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         };
     });
 
-    const ofertasPublicadas = ofertasRes.rows
+    const ofertasConDesglose = await Promise.all(
+        ofertasRes.rows.map(async (o) => {
+            const flujoNum = Number(o.flujo_lamda || 0);
+            const esLineaElaborada = flujoNum >= 3;
+            const desglose = (esLineaElaborada && catalogoIngredientes)
+                ? await obtenerDesgloseIngredientesParaItem(
+                    {
+                        sku_nodo: o.sku_nodo,
+                        articulo_bunker_origen_codigo: o.articulo_bunker_origen_codigo,
+                        ingrediente_origen_id: o.ingrediente_origen_id
+                    },
+                    catalogoIngredientes
+                )
+                : null;
+            const listaIngredientes = (desglose && Array.isArray(desglose.ingredientes) && desglose.ingredientes.length >= 2)
+                ? desglose.ingredientes
+                : [];
+            const tieneDesgloseIngredientes = listaIngredientes.length >= 2;
+            const mostrarEnOferta = o.mostrar_ingredientes !== false;
+            return {
+                ...o,
+                mostrar_ingredientes: mostrarEnOferta,
+                tiene_desglose_ingredientes: tieneDesgloseIngredientes,
+                ingredientes_comerciales: listaIngredientes
+            };
+        })
+    );
+
+    const ofertasPublicadas = ofertasConDesglose
         .filter(o => o.publicado_tienda)
-        .map(o => ({
-            oferta_id: o.id,
-            articulo_catalogo_id: o.articulo_catalogo_id,
-            sku_nodo: o.sku_nodo,
-            nombre_publico: o.nombre_publico,
-            categoria_familiar: o.categoria_familiar,
-            presentacion_etiqueta: o.presentacion_etiqueta,
-            kilos_unidad: Number(o.kilos_unidad),
-            precio_venta_vecino: Number(o.precio_venta_vecino),
-            destacado_tienda: Boolean(o.destacado_tienda)
-        }));
+        .map(o => {
+            const habilitarBotonIng = Boolean(
+                mostrarIngredientesNodo &&
+                o.mostrar_ingredientes !== false &&
+                o.tiene_desglose_ingredientes
+            );
+            return {
+                oferta_id: o.id,
+                articulo_catalogo_id: o.articulo_catalogo_id,
+                sku_nodo: o.sku_nodo,
+                nombre_publico: o.nombre_publico,
+                categoria_familiar: o.categoria_familiar,
+                presentacion_etiqueta: o.presentacion_etiqueta,
+                kilos_unidad: Number(o.kilos_unidad),
+                precio_venta_vecino: Number(o.precio_venta_vecino),
+                destacado_tienda: Boolean(o.destacado_tienda),
+                mostrar_ingredientes: habilitarBotonIng,
+                ingredientes_comerciales: habilitarBotonIng ? o.ingredientes_comerciales : []
+            };
+        });
 
     const nodoPublico = esVistaGestor
-        ? nodo
+        ? { ...nodo, mostrar_ingredientes_tienda: mostrarIngredientesNodo }
         : {
             id: nodo.id,
             codigo_nodo: nodo.codigo_nodo,
@@ -5748,6 +5807,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             cbu_display: nodo.cbu_display,
             titular_display: nodo.titular_display,
             permitir_envio_barrial: nodo.permitir_envio_barrial,
+            mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             cargo_envio_barrial: nodo.cargo_envio_barrial,
             config_ventanas_corte: nodo.config_ventanas_corte,
             color_primario: nodo.color_primario,
@@ -5770,7 +5830,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         ],
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasPublicadas,
-        todas_ofertas_gestor: esVistaGestor ? ofertasRes.rows : [],
+        todas_ofertas_gestor: esVistaGestor ? ofertasConDesglose : [],
         catalogo_base_disponible: esVistaGestor ? catDisponibleRes.rows : [],
         propuestas_nodo: esVistaGestor ? propuestasRes.rows : [],
         pedidos_nodo: esVistaGestor ? pedidosConItems : [],
@@ -5811,8 +5871,9 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             cargo_envio_barrial = $9,
             config_ventanas_corte = $10,
             color_primario = COALESCE($11, color_primario),
+            mostrar_ingredientes_tienda = $12,
             updated_at = NOW()
-         WHERE id = $12
+         WHERE id = $13
          RETURNING *`,
         [
             payload.nombre_marca || actual.nombre_marca,
@@ -5826,6 +5887,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             payload.cargo_envio_barrial !== undefined ? Number(payload.cargo_envio_barrial) : Number(actual.cargo_envio_barrial),
             JSON.stringify(ventanas),
             payload.color_primario || actual.color_primario,
+            payload.mostrar_ingredientes_tienda !== undefined ? Boolean(payload.mostrar_ingredientes_tienda) : (actual.mostrar_ingredientes_tienda !== false),
             Number(nodoId)
         ]
     );
