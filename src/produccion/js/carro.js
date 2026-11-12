@@ -1012,6 +1012,56 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
 }
 
 // Función para actualizar solo los ingredientes de un artículo específico
+/**
+ * Escapa texto plano para insertarlo de forma segura dentro de atributos HTML.
+ */
+function escaparAtributoHtml(valor) {
+    return String(valor ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
+ * Construye el pie con el botón Editar Receta dentro del desplegable de ingredientes.
+ */
+function construirBotonEditarRecetaHtml(numero, nombre, modo = 'editar') {
+    const esCrear = modo === 'crear';
+    const claseBtn = esCrear ? 'btn btn-primary btn-editar-receta' : 'btn btn-secondary btn-editar-receta';
+    const etiqueta = esCrear ? 'Crear Receta' : 'Editar Receta';
+    return `
+        <div style="margin-top: 10px; text-align: right;">
+            <button class="${claseBtn}" data-numero="${escaparAtributoHtml(numero)}" data-nombre="${escaparAtributoHtml(nombre)}" data-modo="${escaparAtributoHtml(modo)}">${etiqueta}</button>
+        </div>
+    `;
+}
+
+/**
+ * Localiza el contenedor .ingredientes-expandidos asociado a un .articulo-container,
+ * saltando banners intermedios (ej. .articulo-insumo-up-banner, .articulo-vinculado-banner).
+ */
+function buscarContenedorIngredientesExpandidos(articuloContainer) {
+    if (!articuloContainer) return null;
+    let sibling = articuloContainer.nextElementSibling;
+    while (sibling && !sibling.classList.contains('articulo-container')) {
+        if (sibling.classList.contains('ingredientes-expandidos')) {
+            return sibling;
+        }
+        sibling = sibling.nextElementSibling;
+    }
+    const numero = articuloContainer.dataset?.numero;
+    if (numero && articuloContainer.parentElement) {
+        const selectorNumero = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(numero)
+            : String(numero).replace(/"/g, '\\"');
+        return articuloContainer.parentElement.querySelector(`.ingredientes-expandidos[data-numero="${selectorNumero}"]`);
+    }
+    return null;
+}
+
+// Función para actualizar solo los ingredientes de un artículo específico
 async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
     try {
         // Buscar el contenedor del artículo
@@ -1021,8 +1071,14 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
         const articuloContainer = inputCantidad.closest('.articulo-container');
         if (!articuloContainer) return;
 
-        const ingredientesContainer = articuloContainer.nextElementSibling;
-        if (!ingredientesContainer || !ingredientesContainer.classList.contains('ingredientes-expandidos')) return;
+        const ingredientesContainer = buscarContenedorIngredientesExpandidos(articuloContainer);
+        if (!ingredientesContainer) return;
+
+        const btnRecetaPrevio = ingredientesContainer.querySelector('.btn-editar-receta');
+        const nombreArticulo = btnRecetaPrevio?.dataset?.nombre
+            || articuloContainer.querySelector('.articulo-descripcion')?.textContent?.trim()
+            || '';
+        const modoReceta = btnRecetaPrevio?.dataset?.modo || 'editar';
 
         // Obtener ingredientes actualizados
         const ingredientes = await obtenerIngredientesExpandidos(numeroArticulo);
@@ -1063,6 +1119,7 @@ async function actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad) {
             htmlIngredientes += `
                         </tbody>
                     </table>
+                    ${construirBotonEditarRecetaHtml(numeroArticulo, nombreArticulo, modoReceta)}
                 </div>
             `;
 
@@ -2635,7 +2692,7 @@ export async function mostrarArticulosDelCarro() {
         let collapsiblesAbiertos = [];
         if (listaArticulosContainer) {
             collapsiblesAbiertos = Array.from(listaArticulosContainer.querySelectorAll('.ingredientes-expandidos:not(.hidden)'))
-                .map(el => el.closest('.articulo-container')?.dataset.numero)
+                .map(el => el.dataset?.numero || el.closest('.articulo-container')?.dataset.numero)
                 .filter(Boolean);
         }
 
@@ -3046,7 +3103,7 @@ export async function mostrarArticulosDelCarro() {
 
             if ((ingredientes && ingredientes.length > 0) || (articulosRecetaUp && articulosRecetaUp.length > 0)) {
                 html += `
-                    <div class="ingredientes-expandidos hidden">
+                    <div class="ingredientes-expandidos hidden" data-numero="${escaparAtributoHtml(art.numero)}">
                         <div>
                             <table>
                                 <thead>
@@ -3101,25 +3158,23 @@ export async function mostrarArticulosDelCarro() {
                 html += `
                                 </tbody>
                             </table>
-                            <div style="margin-top: 10px; text-align: right;">
-                                <button class="btn btn-secondary btn-editar-receta" data-numero="${art.numero}" data-nombre="${art.descripcion.replace(/'/g, "\\'")}" data-modo="editar">Editar Receta</button>
-                            </div>
+                            ${construirBotonEditarRecetaHtml(art.numero, art.descripcion, 'editar')}
                         </div>
                     </div>
                 `;
             } else {
                 if (!tieneReceta) {
                     html += `
-                        <div class="ingredientes-expandidos hidden">
+                        <div class="ingredientes-expandidos hidden" data-numero="${escaparAtributoHtml(art.numero)}">
                             <div style="text-align: center; padding: 15px; background-color: #f8f9fa; border-radius: 4px; margin-top: 10px;">
                                 <p style="margin-bottom: 10px; color: #6c757d; font-weight: bold;">Este artículo no tiene una receta configurada.</p>
-                                <button class="btn btn-primary btn-editar-receta" data-numero="${art.numero}" data-nombre="${art.descripcion.replace(/'/g, "\\'")}" data-modo="crear">Crear Receta</button>
+                                <button class="btn btn-primary btn-editar-receta" data-numero="${escaparAtributoHtml(art.numero)}" data-nombre="${escaparAtributoHtml(art.descripcion)}" data-modo="crear">Crear Receta</button>
                             </div>
                         </div>
                     `;
                 } else {
                     html += `
-                        <div class="ingredientes-expandidos hidden">
+                        <div class="ingredientes-expandidos hidden" data-numero="${escaparAtributoHtml(art.numero)}">
                             <div class="ingredientes-error">
                                 No se pudieron cargar los ingredientes para este artículo.
                             </div>
@@ -3152,8 +3207,17 @@ export async function mostrarArticulosDelCarro() {
 
             // 🔍 UX: Restaurar colapsables abiertos
             collapsiblesAbiertos.forEach(numero => {
-                const expandido = contenedor.querySelector(`.articulo-container[data-numero="${numero}"] .ingredientes-expandidos`);
-                if (expandido) expandido.classList.remove('hidden');
+                const selectorNumero = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+                    ? CSS.escape(numero)
+                    : String(numero).replace(/"/g, '\\"');
+                const articuloEl = contenedor.querySelector(`.articulo-container[data-numero="${selectorNumero}"]`);
+                const expandido = buscarContenedorIngredientesExpandidos(articuloEl)
+                    || contenedor.querySelector(`.ingredientes-expandidos[data-numero="${selectorNumero}"]`);
+                if (expandido) {
+                    expandido.classList.remove('hidden');
+                    const btnToggle = articuloEl?.querySelector('.toggle-ingredientes');
+                    if (btnToggle) btnToggle.textContent = 'Ocultar';
+                }
             });
 
             // ⏱️ Sincronizar HUD de medición temporal si está disponible
@@ -4293,12 +4357,15 @@ function mostrarNotificacionExito(mensaje) {
 // Event listeners para los botones de relación y vinculación
 document.addEventListener('click', async (e) => {
     // Toggle para mostrar/ocultar ingredientes
-    if (e.target.classList.contains('toggle-ingredientes')) {
-        const articuloContainer = e.target.closest('.articulo-container');
-        const ingredientes = articuloContainer.nextElementSibling;
-        ingredientes.classList.toggle('hidden');
-        e.target.textContent = ingredientes.classList.contains('hidden') ?
-            'Ver' : 'Ocultar';
+    const toggleBtn = e.target.closest('.toggle-ingredientes');
+    if (toggleBtn) {
+        const articuloContainer = toggleBtn.closest('.articulo-container');
+        const ingredientes = buscarContenedorIngredientesExpandidos(articuloContainer);
+        if (ingredientes) {
+            ingredientes.classList.toggle('hidden');
+            toggleBtn.textContent = ingredientes.classList.contains('hidden') ?
+                'Ver' : 'Ocultar';
+        }
     }
 
     // Botón vincular artículo

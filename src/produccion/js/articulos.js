@@ -1,5 +1,34 @@
 
 /**
+ * Escapa texto plano para insertarlo de forma segura dentro de atributos HTML.
+ */
+function escaparAtributoHtml(valor) {
+    return String(valor ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
+ * Refresca la tabla del modal de artículos solo si el modal está abierto y tiene datos cargados.
+ */
+async function refrescarTablaArticulosSiModalAbierto() {
+    const modalArticulos = document.getElementById('modal-articulos');
+    const modalVisible = modalArticulos
+        && getComputedStyle(modalArticulos).display !== 'none'
+        && Array.isArray(state.articulosFiltrados)
+        && state.articulosFiltrados.length > 0;
+    if (!modalVisible) return;
+    try {
+        await actualizarTablaArticulos(state.articulosFiltrados);
+    } catch (refreshError) {
+        console.warn('⚠️ [MODAL-ARTICULOS] No se pudo refrescar la tabla tras actualizar receta:', refreshError);
+    }
+}
+
+/**
  * Clasificador Canónico de Línea Productiva para Producción Externa
  * Línea 4: Tostadero (Almendras, Castañas, Maní UP Simple)
  * Línea 5: Barritas (BFXP / Barritas UP)
@@ -534,7 +563,7 @@ export async function actualizarTablaArticulos(articulos) {
                     // PRODUCCIÓN INTERNA: Checkbox + cantidad editable + botones de receta
                     tr.innerHTML = `
                         <td style="text-align: center;">
-                            ${tieneReceta ? `<input type="checkbox" class="seleccionar-articulo modal-articulos-interna-multiple" data-numero="${articulo.numero}" data-nombre="${articulo.nombre.replace(/'/g, "\\'")}" data-integra="${esIntegra}">` : ''}
+                            ${tieneReceta ? `<input type="checkbox" class="seleccionar-articulo modal-articulos-interna-multiple" data-numero="${escaparAtributoHtml(articulo.numero)}" data-nombre="${escaparAtributoHtml(articulo.nombre)}" data-integra="${esIntegra}">` : ''}
                         </td>
                         <td>${articulo.numero}</td>
                         <td>${articulo.nombre.replace(/'/g, "\\'")} ${badgeEtapaFila}</td>
@@ -543,26 +572,26 @@ export async function actualizarTablaArticulos(articulos) {
                         </td>
                         <td>
                             ${tieneReceta ? `
-                                <input type="number" class="cantidad-multiple modal-articulos-interna-multiple" min="1" value="1" style="width: 60px; margin-right: 6px;" data-numero="${articulo.numero}">
+                                <input type="number" class="cantidad-multiple modal-articulos-interna-multiple" min="1" value="1" style="width: 60px; margin-right: 6px;" data-numero="${escaparAtributoHtml(articulo.numero)}">
                                 <button class="btn-editar-receta icon-edit"
-                                        data-numero="${articulo.numero}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
                                         data-modo="editar"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}"
                                         title="Editar receta">
                                     Editar
                                 </button>
                                 <button class="btn-desvincular-receta icon-trash"
-                                        data-numero="${articulo.numero}"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}"
                                         title="Quitar receta">
                                     Quitar
                                 </button>
 ` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                        data-numero="${articulo.numero}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
                                         data-modo="crear"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}">
                                     Vincular receta
                                 </button>
 `}
@@ -580,32 +609,32 @@ export async function actualizarTablaArticulos(articulos) {
                             ${tieneReceta ? `
                                 <input type="number" class="cantidad-input" min="1" value="1" style="width: 50px; margin-right: 6px;">
                                 <button class="${btnAgregarClase}" 
-                                        data-numero="${articulo.numero}" 
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}" 
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}"
                                         data-integra="${esIntegra}"
                                         style="${btnAgregarEstilo}"
                                         title="${btnAgregarTitulo}">
                                     Ag. carro
                                 </button>
                                 <button class="btn-editar-receta icon-edit"
-                                        data-numero="${articulo.numero}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
                                         data-modo="editar"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}"
                                         title="Editar receta">
                                     Editar
                                 </button>
                                 <button class="btn-desvincular-receta icon-trash"
-                                        data-numero="${articulo.numero}"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}"
                                         title="Quitar receta">
                                     Quitar
                                 </button>
 ` : `
                                 <button class="btn-editar-receta"
                                         style="background-color: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px;"
-                                        data-numero="${articulo.numero}"
+                                        data-numero="${escaparAtributoHtml(articulo.numero)}"
                                         data-modo="crear"
-                                        data-nombre="${articulo.nombre.replace(/'/g, "\\'")}">
+                                        data-nombre="${escaparAtributoHtml(articulo.nombre)}">
                                     Vincular receta
                                 </button>
 `}
@@ -826,7 +855,7 @@ export function cerrarModalReceta() {
 // Función para agregar artículo al carro
 export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
     if (btnElement.classList.contains('btn-danger')) {
-        mostrarModalReceta(articulo_numero);
+        mostrarModalReceta(articulo_numero, descripcion || '', 'crear');
         return;
     }
 
@@ -1136,7 +1165,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
             }
 
             document.getElementById('articulo_numero').value = articulo_numero;
-            document.getElementById('articulo_descripcion').value = articulo_nombre;
+            document.getElementById('articulo_descripcion').value = articulo_nombre || '';
 
             // Detectar tipo de carro para mostrar/ocultar sección de artículos
             const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -1144,7 +1173,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
 
             if (carroId) {
                 try {
-                    const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                    const carroResponse = await fetch(`/api/produccion/carro/${carroId}/estado`);
                     if (carroResponse.ok) {
                         const carroData = await carroResponse.json();
                         tipoCarro = carroData.tipo_carro || 'interna';
@@ -1178,7 +1207,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
             // Intentar obtener la receta existente
             if (modo !== 'crear') {
                 try {
-                    const response = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`);
+                    const response = await fetch(`/api/produccion/receta-detalle?codigo=${encodeURIComponent(articulo_numero)}`);
 
                     if (response.ok) {
                         const receta = await response.json();
@@ -1237,7 +1266,7 @@ export async function mostrarModalReceta(articulo_numero, articulo_nombre, modo 
 // Funciones auxiliares para ingredientes
 async function cargarIngredientesDisponibles() {
     try {
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        const response = await fetch('/api/produccion/ingredientes');
         if (!response.ok) {
             throw new Error('Error al cargar ingredientes');
         }
@@ -1398,6 +1427,13 @@ function manejarBusquedaArticuloReceta(e) {
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    const formReceta = document.getElementById('form-receta');
+    if (formReceta) {
+        formReceta.addEventListener('submit', (e) => {
+            e.preventDefault();
+        });
+    }
+
     // Activar buscadores inteligentes de la receta
     const inputBuscarIngrediente = document.getElementById('buscar-ingrediente-receta');
     if (inputBuscarIngrediente) {
@@ -1445,7 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (carroId) {
                     try {
-                        const carroResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+                        const carroResponse = await fetch(`/api/produccion/carro/${carroId}/estado`);
                         if (carroResponse.ok) {
                             const carroData = await carroResponse.json();
                             const tipoCarro = carroData.tipo_carro || 'interna';
@@ -1481,8 +1517,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 const url = state.existeReceta
-                    ? `http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`
-                    : 'http://localhost:3002/api/produccion/recetas';
+                    ? `/api/produccion/receta-detalle?codigo=${encodeURIComponent(articulo_numero)}`
+                    : '/api/produccion/recetas';
                 const method = state.existeReceta ? 'PUT' : 'POST';
 
                 const response = await fetch(url, {
@@ -1506,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     detail: { articulo_numero }
                 }));
 
-                await actualizarTablaArticulos(state.articulosFiltrados);
+                await refrescarTablaArticulosSiModalAbierto();
                 cerrarModalReceta();
 
                 const successDiv = document.createElement('div');
@@ -1620,22 +1656,25 @@ document.addEventListener('DOMContentLoaded', () => {
             eliminarArticuloDeTabla(index);
         }
 
-        if (e.target.classList.contains('btn-agregar')) {
-            const articulo_numero = e.target.dataset.numero;
-            const descripcion = e.target.dataset.nombre;
-            agregarAlCarro(articulo_numero, descripcion, e.target);
+        const btnAgregar = e.target.closest('.btn-agregar');
+        if (btnAgregar) {
+            const articulo_numero = btnAgregar.dataset.numero;
+            const descripcion = btnAgregar.dataset.nombre || '';
+            agregarAlCarro(articulo_numero, descripcion, btnAgregar);
         }
 
-        if (e.target.classList.contains('btn-editar-receta')) {
-            const articulo_numero = e.target.dataset.numero;
-            const articulo_nombre = e.target.dataset.nombre;
-            const modo = e.target.dataset.modo;
+        const btnEditarReceta = e.target.closest('.btn-editar-receta');
+        if (btnEditarReceta) {
+            const articulo_numero = btnEditarReceta.dataset.numero;
+            const articulo_nombre = btnEditarReceta.dataset.nombre || '';
+            const modo = btnEditarReceta.dataset.modo;
             mostrarModalReceta(articulo_numero, articulo_nombre, modo);
         }
 
-        if (e.target.classList.contains('btn-desvincular-receta')) {
-            const articulo_numero = e.target.dataset.numero;
-            const articulo_nombre = e.target.dataset.nombre;
+        const btnDesvincularReceta = e.target.closest('.btn-desvincular-receta');
+        if (btnDesvincularReceta) {
+            const articulo_numero = btnDesvincularReceta.dataset.numero;
+            const articulo_nombre = btnDesvincularReceta.dataset.nombre || '';
             desvincularReceta(articulo_numero, articulo_nombre);
         }
     });
@@ -1712,7 +1751,7 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             return;
         }
 
-        const deleteResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo_numero)}`, {
+        const deleteResponse = await fetch(`/api/produccion/receta-detalle?codigo=${encodeURIComponent(articulo_numero)}`, {
             method: 'DELETE'
         });
 
@@ -1721,7 +1760,7 @@ async function desvincularReceta(articulo_numero, articulo_nombre) {
             throw new Error(errorData.error || 'Error al desvincular la receta');
         }
 
-        await actualizarTablaArticulos(state.articulosFiltrados);
+        await refrescarTablaArticulosSiModalAbierto();
 
         const successDiv = document.createElement('div');
         successDiv.className = 'success-message';

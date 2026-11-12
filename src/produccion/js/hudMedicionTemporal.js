@@ -1011,7 +1011,10 @@ class HudMedicionTemporal {
             let okPreparado = true;
             if (typeof window.marcarCarroPreparado === 'function') {
                 try {
-                    await window.marcarCarroPreparado(this.carroId);
+                    const resPrep = await window.marcarCarroPreparado(this.carroId);
+                    if (resPrep === false) {
+                        okPreparado = false;
+                    }
                 } catch (e) {
                     console.warn('[HUD-MEDICION] Aviso al marcar preparado estándar:', e);
                     okPreparado = false;

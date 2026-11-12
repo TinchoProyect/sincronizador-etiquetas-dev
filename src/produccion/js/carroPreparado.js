@@ -1451,11 +1451,11 @@ export async function marcarCarroPreparado(carroIdParam) {
 
     if (!carroId || carroId === 'null' || carroId === 'undefined') {
         console.error('No hay carro seleccionado (Dual-State)');
-        return;
+        return false;
     }
 
     const btnCarroPreparado = document.getElementById('carro-preparado');
-    if (!btnCarroPreparado) return;
+    if (!btnCarroPreparado) return false;
 
     try {
         // Deshabilitar el botón y mostrar estado de procesamiento
@@ -1485,7 +1485,7 @@ export async function marcarCarroPreparado(carroIdParam) {
                         btnCarroPreparado.disabled = false;
                         btnCarroPreparado.classList.remove('procesando');
                         btnCarroPreparado.textContent = 'Carro listo para producir';
-                        return;
+                        return false;
                     }
                     articuloLlevadoPayload = seleccion;
                 } else if (!esExterno) {
@@ -1524,7 +1524,7 @@ export async function marcarCarroPreparado(carroIdParam) {
                             btnCarroPreparado.disabled = false;
                             btnCarroPreparado.classList.remove('procesando');
                             btnCarroPreparado.textContent = 'Carro listo para producir';
-                            return;
+                            return false;
                         }
                     }
                 }
@@ -1617,6 +1617,7 @@ export async function marcarCarroPreparado(carroIdParam) {
         }
 
         console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
+        return true;
 
     } catch (error) {
         console.error('Error al marcar carro como preparado:', error);
@@ -1624,6 +1625,7 @@ export async function marcarCarroPreparado(carroIdParam) {
         btnCarroPreparado.classList.remove('procesando');
         btnCarroPreparado.textContent = 'Carro listo para producir';
         mostrarNotificacion(`Error: ${error.message}`, true);
+        return false;
     }
 }
 
