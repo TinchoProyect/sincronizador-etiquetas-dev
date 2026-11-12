@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const { normalizarStockComercial, esSkuPremezclaInterna } = require('../shared/stockComercialHelper');
 
 const lockFilePath = path.join(__dirname, 'syncB2BPrecios.lock');
 
@@ -257,7 +258,7 @@ async function sincronizarB2BPrecios() {
     `);
     const stockMap = new Map();
     for (const r of stockRes.rows) {
-      const val = parseFloat(r.stock);
+      const val = normalizarStockComercial(parseFloat(r.stock));
       if (r.articulo_numero) stockMap.set(String(r.articulo_numero).trim(), val);
       if (r.codigo_barras) stockMap.set(String(r.codigo_barras).trim(), val);
     }
@@ -366,6 +367,7 @@ async function sincronizarB2BPrecios() {
     `;
     
     const resLocal = await localClient.query(localQuery);
+    resLocal.rows = (resLocal.rows || []).filter(row => !esSkuPremezclaInterna(row));
     const totalArticulos = resLocal.rows.length;
     console.log(`📊 Artículos activos encontrados localmente: ${totalArticulos}`);
     
@@ -557,7 +559,7 @@ async function sincronizarB2BPrecios() {
         : null;
       if (infoIngComercial && Array.isArray(infoIngComercial.ingredientes) && infoIngComercial.ingredientes.length >= 2) {
         parts.push(infoIngComercial.ingredientes.join(' '));
-        if (infoIngComercial.linea_negocio === 3 || infoIngComercial.linea_negocio === 6) {
+        if ([3, 5, 6].includes(Number(infoIngComercial.linea_negocio))) {
           parts.push(`__ING_L${infoIngComercial.linea_negocio}:${infoIngComercial.ingredientes.join('|')}__`);
         }
       }
@@ -590,7 +592,7 @@ async function sincronizarB2BPrecios() {
 
       let stockParaSupabase = 0;
       if (evalStock.stock_estado === 'disponible') {
-        stockParaSupabase = evalStock.stock_disponible;
+        stockParaSupabase = normalizarStockComercial(evalStock.stock_disponible);
       } else if (evalStock.stock_estado === 'requiere_produccion' && evalStock.stock_potencial > 0) {
         // En Supabase, stock_disponible negativo codifica las unidades de producción potenciales de forma 100% nativa
         stockParaSupabase = -Math.abs(evalStock.stock_potencial);

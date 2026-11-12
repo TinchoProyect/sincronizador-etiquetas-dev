@@ -87,7 +87,7 @@ export function resolverInfoIngredientesProductoB2B(product, mapaIngredientes = 
   if (!codExacto) return null;
 
   const directo = mapaIngredientes[codExacto] || mapaIngredientes[codExacto.toUpperCase()] || null;
-  if (directo && (directo.linea_negocio === 3 || directo.linea_negocio === 6) && Array.isArray(directo.ingredientes) && directo.ingredientes.length >= 2) {
+  if (directo && [3, 5, 6].includes(Number(directo.linea_negocio)) && Array.isArray(directo.ingredientes) && directo.ingredientes.length >= 2) {
     return directo;
   }
 
@@ -95,7 +95,7 @@ export function resolverInfoIngredientesProductoB2B(product, mapaIngredientes = 
   const match = meta.match(/__ING_L(\d+):([^_]+?)__/);
   if (match) {
     const linea = parseInt(match[1], 10);
-    if (linea === 3 || linea === 6) {
+    if ([3, 5, 6].includes(linea)) {
       const lista = match[2].split('|').map((s) => s.trim()).filter(Boolean);
       if (lista.length >= 2) {
         return {
@@ -111,25 +111,30 @@ export function resolverInfoIngredientesProductoB2B(product, mapaIngredientes = 
   return null;
 }
 
-export function BotonVerIngredientesB2B({ onClick }) {
+export function BotonVerIngredientesB2B({ onClick, compact = false }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof onClick === 'function') onClick(e);
+      }}
       title="Ver ingredientes de la receta"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '4px',
+        gap: compact ? '3px' : '4px',
         backgroundColor: 'rgba(245, 158, 11, 0.13)',
         color: '#fbbf24',
         border: '1px solid rgba(245, 158, 11, 0.38)',
         borderRadius: '8px',
-        padding: '3px 8px',
-        fontSize: '0.72rem',
+        padding: compact ? '2px 7px' : '3px 8px',
+        fontSize: compact ? '0.68rem' : '0.72rem',
         fontWeight: 700,
         cursor: 'pointer',
         whiteSpace: 'nowrap',
+        flexShrink: 0,
+        marginLeft: compact ? 'auto' : undefined,
         transition: 'all 0.15s ease'
       }}
     >
@@ -160,8 +165,10 @@ export function DesgloseIngredientesModal({
     return null;
   }
 
-  const esGranola = Number(infoIngredientes.linea_negocio) === 6;
-  const etiquetaTipo = esGranola ? 'Granola Elaborada' : 'Mix Elaborado';
+  const lineaNum = Number(infoIngredientes.linea_negocio);
+  const esGranola = lineaNum === 6;
+  const esBarrita = lineaNum === 5;
+  const etiquetaTipo = esGranola ? 'Granola Elaborada' : (esBarrita ? 'Barrita / Elaborado UP' : 'Mix Elaborado');
 
   return (
     <div

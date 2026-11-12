@@ -9,14 +9,14 @@ export function getCache(key) {
   const cached = memoryCache.get(key);
   if (!cached) {
     try {
-      const stored = sessionStorage.getItem(`b2b_cache_${key}`);
+      const stored = sessionStorage.getItem(`b2b_cache_v2_${key}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Date.now() < parsed.expiry) {
           memoryCache.set(key, parsed);
           return parsed.data;
         } else {
-          sessionStorage.removeItem(`b2b_cache_${key}`);
+          sessionStorage.removeItem(`b2b_cache_v2_${key}`);
         }
       }
     } catch (e) {
@@ -47,7 +47,7 @@ export function setCache(key, data, ttlSeconds = 300) {
   const cacheObj = { data, expiry };
   memoryCache.set(key, cacheObj);
   try {
-    sessionStorage.setItem(`b2b_cache_${key}`, JSON.stringify(cacheObj));
+    sessionStorage.setItem(`b2b_cache_v2_${key}`, JSON.stringify(cacheObj));
   } catch (e) {
     console.warn('Cache write error:', e);
   }
@@ -67,7 +67,7 @@ export function invalidateCache(key) {
     memoryCache.clear();
     try {
       Object.keys(sessionStorage).forEach(k => {
-        if (k.startsWith('b2b_cache_')) {
+        if (k.startsWith('b2b_cache_v2_')) {
           sessionStorage.removeItem(k);
         }
       });

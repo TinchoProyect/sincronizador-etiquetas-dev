@@ -1405,8 +1405,96 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.45rem;
     user-select: none;
     transition: background 0.15s ease;
+}
+
+.bunker-subcat-header.is-collapsible {
+    cursor: pointer;
+}
+
+.bunker-subcat-header.is-collapsible:active {
+    filter: brightness(1.12);
+}
+
+.bunker-subcat-left {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.bunker-subcat-chevron {
+    font-size: 0.64rem;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.bunker-subcat-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bunker-subcat-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.bunker-subcat-body {
+    margin: 0.2rem 0 0.35rem 0;
+}
+
+.btn-ing-movil {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.18rem 0.48rem;
+    border-radius: 999px;
+    border: 1px solid rgba(168, 85, 247, 0.48);
+    background: rgba(168, 85, 247, 0.18);
+    color: #e9d5ff;
+    font-size: 0.67rem;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.2;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.btn-ing-movil:active {
+    transform: scale(0.96);
+    background: rgba(168, 85, 247, 0.3);
+}
+
+.btn-ing-movil.granola {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.18);
+    color: #fde68a;
+}
+
+.btn-ing-movil.barrita {
+    border-color: rgba(16, 185, 129, 0.5);
+    background: rgba(16, 185, 129, 0.18);
+    color: #a7f3d0;
+}
+
+.bunker-atributo-header {
+    gap: 0.45rem;
+}
+
+.bunker-atributo-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .bunker-subcat-header.n3 {
