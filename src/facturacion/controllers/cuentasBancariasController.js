@@ -345,9 +345,10 @@ async function vincularCliente(req, res, next) {
     const dbClient = await pool.connect();
     try {
         const movimientoId = parseInt(req.params.id, 10);
-        const { clienteId, aplicarAjuste, montoAjuste } = req.body;
+        const { clienteId, aplicarAjuste, montoAjuste, modoFinanciacion } = req.body;
+        const modoFinNorm = String(modoFinanciacion || 'BONIFICAR').toUpperCase();
         
-        console.log(`🔗 [BANCARIO-CONTROLLER] Iniciando transacción de vinculación para movimiento ID ${movimientoId}...`);
+        console.log(`🔗 [BANCARIO-CONTROLLER] Iniciando transacción de vinculación para movimiento ID ${movimientoId} (modoFinanciacion: ${modoFinNorm})...`);
         
         await dbClient.query('BEGIN');
         
@@ -367,9 +368,9 @@ async function vincularCliente(req, res, next) {
         const movimiento = checkMov.rows[0];
         const clienteIdAnterior = movimiento.cliente_id;
         
-        // 2. Si el movimiento ya estaba vinculado a un cliente diferente (o se está desvinculando), deshacer esa afectación contable anterior
-        if (clienteIdAnterior && clienteIdAnterior !== clienteId) {
-            console.log(`❌ [BANCARIO-CONTROLLER] Desvinculando movimiento de Cuenta Corriente del cliente anterior ID ${clienteIdAnterior}...`);
+        // 2. Si el movimiento ya estaba vinculado (y se está desvinculando, cambiando de cliente o re-vinculando con modoFinanciacion), deshacer afectación previa
+        if (clienteIdAnterior && (clienteIdAnterior !== clienteId || modoFinanciacion)) {
+            console.log(`❌ [BANCARIO-CONTROLLER] Limpiando afectación previa en Cuenta Corriente del cliente ID ${clienteIdAnterior}...`);
             const resClAnt = await dbClient.query('SELECT codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1', [clienteIdAnterior]);
             if (resClAnt.rowCount > 0) {
                 const codBunkerAnt = resClAnt.rows[0].codigo_bunker_cliente;
@@ -379,8 +380,30 @@ async function vincularCliente(req, res, next) {
                 );
                 if (resCCAnt.rowCount > 0) {
                     const ccIdAnt = resCCAnt.rows[0].id;
+                    // Si había un borrador de factura de financiación asociado a este movimiento bancario, limpiarlo si sigue en BORRADOR
+                    const resMovsPrev = await dbClient.query(
+                        `SELECT id, comprobante_id
+                         FROM public.factura_cuenta_corriente_movimientos
+                         WHERE cuenta_corriente_id = $1
+                           AND (descripcion LIKE '%[Mov: ' || $2 || ']%' OR metadatos->>'movimiento_bancario_id' = $2::text)`,
+                        [ccIdAnt, movimientoId]
+                    );
+                    for (const mp of resMovsPrev.rows) {
+                        if (mp.comprobante_id) {
+                            const fCheck = await dbClient.query(
+                                `SELECT id, estado FROM public.factura_facturas WHERE id = $1`,
+                                [mp.comprobante_id]
+                            );
+                            if (fCheck.rows.length > 0 && fCheck.rows[0].estado === 'BORRADOR') {
+                                await dbClient.query(`DELETE FROM public.factura_factura_items WHERE factura_id = $1`, [mp.comprobante_id]);
+                                await dbClient.query(`DELETE FROM public.factura_facturas WHERE id = $1 AND estado = 'BORRADOR'`, [mp.comprobante_id]);
+                            }
+                        }
+                    }
                     await dbClient.query(
-                        "DELETE FROM public.factura_cuenta_corriente_movimientos WHERE cuenta_corriente_id = $1 AND descripcion LIKE '%[Mov: ' || $2 || ']%'",
+                        `DELETE FROM public.factura_cuenta_corriente_movimientos
+                         WHERE cuenta_corriente_id = $1
+                           AND (descripcion LIKE '%[Mov: ' || $2 || ']%' OR metadatos->>'movimiento_bancario_id' = $2::text)`,
                         [ccIdAnt, movimientoId]
                     );
                     await recalcularSaldoCuentaCorriente(ccIdAnt, dbClient);
@@ -404,7 +427,8 @@ async function vincularCliente(req, res, next) {
         
         // 3. Verificar que el nuevo cliente existe
         const checkCliente = await dbClient.query(
-            'SELECT id, razon_social, codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1',
+            `SELECT id, razon_social, cliente_nombre, codigo_bunker_cliente, cuit_cuil, condicion_iva, lomas_soft_id
+             FROM public.bunker_clientes WHERE id = $1`,
             [clienteId]
         );
         if (checkCliente.rowCount === 0) {
@@ -417,10 +441,13 @@ async function vincularCliente(req, res, next) {
         
         const clienteNuevo = checkCliente.rows[0];
         let movCC = null;
+        let movInteresCC = null;
+        let movDebitoInteresCC = null;
+        let desgloseFinanciacionInfo = null;
         let saldoPostPago = 0;
         
-        // 4. Si la vinculación es nueva o cambió el destinatario, registrar la transacción en la CC
-        if (clienteIdAnterior !== clienteId) {
+        // 4. Si la vinculación es nueva, cambió el destinatario o se re-vincula con modoFinanciacion, registrar la transacción en la CC
+        if (clienteIdAnterior !== clienteId || modoFinanciacion) {
             console.log(`➕ [BANCARIO-CONTROLLER] Registrando movimiento en Cuenta Corriente para cliente ${clienteNuevo.codigo_bunker_cliente}...`);
             
             // Obtener o crear la Cuenta Principal
@@ -447,42 +474,306 @@ async function vincularCliente(req, res, next) {
             const monto = esDebito ? debito : credito;
             
             if (monto > 0) {
-                // En Cuenta Corriente:
-                // - Cobro bancario recibido (CREDITO en banco) => 'CREDITO' en CC (resta deuda del cliente / Haber)
-                // - Pago bancario emitido a cliente/colaborador (DEBITO en banco) => 'DEBITO' en CC (suma al saldo del cliente / cancela saldo a favor / Debe)
                 const tipoMovCC = esDebito ? 'DEBITO' : 'CREDITO';
                 const tipoCompCC = esDebito ? 'PAGO_A_CLIENTE' : 'COBRO_BANCARIO';
+                const conceptoCorto = String(movimiento.concepto || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 75);
                 const descCC = `${esDebito ? 'Pago Emitido a Cliente/Colaborador' : 'Cobro'} Bancario Galicia [Mov: ${movimientoId}] - Concepto: ${movimiento.concepto.substring(0, 80)}`;
                 
-                // Determinar fecha/hora para la Cuenta Corriente:
-                // Los extractos bancarios solo traen fecha contable (ej: 18/09/2026 00:00:00).
-                // Si la hora es medianoche (00:00:00 hora local de Argentina), la situamos a las 23:59:00
-                // para que cronológicamente quede posterior a las facturas, liquidaciones y remitos del mismo día.
                 let fechaMovFinal = new Date(movimiento.fecha_movimiento);
                 if (fechaMovFinal.getUTCHours() === 3 && fechaMovFinal.getUTCMinutes() === 0 && fechaMovFinal.getUTCSeconds() === 0) {
-                    // 03:00 UTC es 00:00 en Argentina (UTC-3) => situar a las 23:59:00 de Argentina (02:59 UTC siguiente)
                     fechaMovFinal = new Date(fechaMovFinal.getTime() + (23 * 3600 + 59 * 60) * 1000);
                 } else if (fechaMovFinal.getHours() === 0 && fechaMovFinal.getMinutes() === 0 && fechaMovFinal.getSeconds() === 0) {
                     fechaMovFinal.setHours(23, 59, 0, 0);
                 }
 
-                // Insertar el movimiento en la Cuenta Corriente
-                const resInsertCC = await dbClient.query(
-                    `INSERT INTO public.factura_cuenta_corriente_movimientos (
-                        cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, 
-                        tipo_comprobante, comprobante_id, descripcion, fecha_movimiento
-                    ) VALUES ($1, $2, $3, 0.00, $4, NULL, $5, $6)
-                    RETURNING id, cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, tipo_comprobante, fecha_movimiento, descripcion`,
-                    [
-                        ccIdNuevo,
-                        tipoMovCC,
-                        monto,
-                        tipoCompCC,
-                        descCC,
-                        fechaMovFinal
-                    ]
-                );
-                movCC = resInsertCC.rows[0];
+                const fmtMoneda = (val) => {
+                    const parts = (parseFloat(val) || 0).toFixed(2).split('.');
+                    return `$ ${parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${parts[1]}`;
+                };
+
+                // Si es un COBRO RECIBIDO (!esDebito), simular imputación FIFO antes de insertar los movimientos
+                let simImputacion = null;
+                if (!esDebito) {
+                    try {
+                        delete require.cache[require.resolve('../../logistica/services/composicionSaldoService')];
+                        const composicionSaldoService = require('../../logistica/services/composicionSaldoService');
+                        simImputacion = await composicionSaldoService.simularImputacionPago(ccIdNuevo, monto, dbClient);
+                    } catch (errSim) {
+                        console.warn('⚠️ [BANCARIO-CONTROLLER] Aviso simulando imputación de pago bancario:', errSim.message);
+                    }
+                }
+
+                const cobrarFinanciacion = !esDebito &&
+                    modoFinNorm !== 'BONIFICAR' &&
+                    simImputacion &&
+                    simImputacion.tiene_financiacion_imputada &&
+                    simImputacion.financiacion_con_iva_cancelada > 0.005;
+
+                if (cobrarFinanciacion) {
+                    const capCancelado = simImputacion.capital_cancelado_total;
+                    const intNeto = simImputacion.financiacion_neta_cancelada;
+                    const intIva = simImputacion.financiacion_iva_cancelada;
+                    const intConIva = simImputacion.financiacion_con_iva_cancelada;
+                    const detallesFin = (simImputacion.detalles_comprobantes || []).filter(d => d.con_financiacion);
+                    const resumenDocs = detallesFin.map(d => {
+                        const nomCorto = (d.comprobante_descripcion || 'Comprobante').split('(')[0].trim();
+                        return `${nomCorto} (${d.dias_al_pago}d al ${d.tasa_tem || 3}% mensual)`;
+                    }).join(' + ');
+                    const resumenFacturasCorto = (simImputacion.detalles_comprobantes || []).map(d => {
+                        return (d.comprobante_descripcion || 'Comprobante').split('(')[0].trim();
+                    }).join(' + ') || 'comprobante en cuenta corriente';
+                    const diasMaxFin = detallesFin.length > 0 ? detallesFin[0].dias_al_pago : 15;
+
+                    const facturaService = require('../services/facturaService');
+                    const clienteIdNum = parseInt(String(clienteNuevo.lomas_soft_id || '').replace(/\D/g, ''), 10) || clienteNuevo.id || 1;
+                    const cuitStr = String(clienteNuevo.cuit_cuil || '').replace(/\D/g, '');
+                    const condIvaStr = String(clienteNuevo.condicion_iva || '').toLowerCase();
+                    const esRI = condIvaStr.includes('inscripto');
+                    const condicionIvaId = esRI ? 1 : (condIvaStr.includes('monotrib') ? 6 : (condIvaStr.includes('exento') ? 4 : 5));
+                    const docTipo = cuitStr.length === 11 ? 80 : 96;
+                    const docNro = cuitStr || '0';
+
+                    const esCircuitoArca = ['DESGLOSAR_ARCA', 'APROBACION_ARCA', 'BANDEJA_ARCA', 'ARCA'].includes(modoFinNorm);
+                    const emitirAhora = (modoFinNorm === 'ARCA' || modoFinNorm === 'INTERNA');
+                    const modoGuardado = esCircuitoArca
+                        ? (emitirAhora ? 'ARCA' : 'APROBACION_ARCA')
+                        : (emitirAhora ? 'INTERNA' : 'APROBACION_INTERNA');
+                    const ptoVta = esCircuitoArca ? 32 : 90;
+                    const tipoCbte = esCircuitoArca ? (esRI ? 1 : 6) : 6;
+                    const ahoraDate = new Date();
+                    const fechaEmisionStr = ahoraDate.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+                    const descItem = `Servicio de Financiación LAMDA s/ capital cancelado (${fmtMoneda(capCancelado)}) de ${resumenDocs || 'cuenta corriente'} — Transferencia Bancaria [Mov: ${movimientoId}]`;
+
+                    const borrador = await facturaService.crearBorrador({
+                        tipo_cbte: tipoCbte,
+                        pto_vta: ptoVta,
+                        concepto: 1,
+                        fecha_emision: fechaEmisionStr,
+                        precio_modo: 'NETO',
+                        requiere_afip: esCircuitoArca,
+                        serie_interna: esCircuitoArca ? null : 'X',
+                        stock_descontado: true,
+                        mover_stock: false,
+                        origen_comprobante: 'FINANCIACION_SALVAVIDAS',
+                        cliente: {
+                            cliente_id: clienteIdNum,
+                            doc_tipo: docTipo,
+                            doc_nro: docNro,
+                            condicion_iva_id: condicionIvaId
+                        },
+                        items: [
+                            {
+                                articulo_id: 'SERV-FIN-LAMDA',
+                                descripcion: descItem,
+                                qty: 1,
+                                p_unit: intNeto,
+                                alic_iva_id: 1,
+                                costo_unitario: 0.0001
+                            }
+                        ]
+                    });
+
+                    await dbClient.query(
+                        `UPDATE public.factura_facturas
+                         SET imp_neto = $1, imp_iva = $2, imp_total = $3, stock_descontado = TRUE
+                         WHERE id = $4`,
+                        [intNeto, intIva, intConIva, borrador.id]
+                    );
+                    await dbClient.query(
+                        `UPDATE public.factura_factura_items
+                         SET p_unit = $1, imp_neto = $1, imp_iva = $2
+                         WHERE factura_id = $3`,
+                        [intNeto, intIva, borrador.id]
+                    );
+
+                    let facturaFinal = borrador;
+                    let etiquetaComp = '';
+                    let tipoCompMovDebito = 'PENDIENTE_FACTURACION';
+
+                    if (emitirAhora) {
+                        facturaFinal = await facturaService.emitir(borrador.id);
+                        tipoCompMovDebito = 'FACTURA';
+                        if (esCircuitoArca && facturaFinal.estado === 'APROBADA') {
+                            const ptoPad = String(facturaFinal.pto_vta).padStart(4, '0');
+                            const nroPad = String(facturaFinal.cbte_nro).padStart(8, '0');
+                            const letraStr = tipoCbte === 1 ? 'Factura A' : 'Factura B';
+                            etiquetaComp = `${letraStr} ${ptoPad}-${nroPad} (CAE: ${facturaFinal.cae || 'N/A'})`;
+                        } else {
+                            const nroIntPad = String(facturaFinal.nro_interno || facturaFinal.cbte_nro || facturaFinal.id).padStart(8, '0');
+                            etiquetaComp = `Fac X0090-${nroIntPad}`;
+                        }
+                    } else {
+                        if (esCircuitoArca) {
+                            const letraStr = tipoCbte === 1 ? 'Factura A' : 'Factura B';
+                            etiquetaComp = `${letraStr} Pto. 0032 (Pend. CAE en ARCA #${borrador.id})`;
+                        } else {
+                            etiquetaComp = `Comp. Interno X0090 (En Aprobación #${borrador.id})`;
+                        }
+                    }
+
+                    const fechaDebitoInteres = new Date(fechaMovFinal.getTime() - 2000);
+                    const fechaCreditoInteres = new Date(fechaMovFinal.getTime() - 1000);
+                    const fechaCreditoCapital = fechaMovFinal;
+
+                    const descMovDebito = `${etiquetaComp} — Servicio Financiación ${diasMaxFin}d (Transf. [Mov: ${movimientoId}])`;
+                    const metaDebito = {
+                        es_cargo_financiacion: true,
+                        modo_facturacion: modoGuardado,
+                        movimiento_bancario_id: movimientoId,
+                        monto_total_sobre: monto,
+                        capital_cancelado: capCancelado,
+                        financiacion_neta: intNeto,
+                        financiacion_iva: intIva,
+                        financiacion_con_iva: intConIva,
+                        detalles_comprobantes: simImputacion.detalles_comprobantes
+                    };
+
+                    const existDebRes = await dbClient.query(
+                        `SELECT id FROM public.factura_cuenta_corriente_movimientos WHERE cuenta_corriente_id = $1 AND comprobante_id = $2`,
+                        [ccIdNuevo, facturaFinal.id]
+                    );
+                    if (existDebRes.rows.length > 0) {
+                        const upDeb = await dbClient.query(
+                            `UPDATE public.factura_cuenta_corriente_movimientos
+                             SET descripcion = $1, fecha_movimiento = $2, metadatos = $3::jsonb
+                             WHERE id = $4
+                             RETURNING *`,
+                            [descMovDebito, fechaDebitoInteres, JSON.stringify(metaDebito), existDebRes.rows[0].id]
+                        );
+                        movDebitoInteresCC = upDeb.rows[0];
+                    } else {
+                        const insDeb = await dbClient.query(
+                            `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                                cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                                tipo_comprobante, comprobante_id, descripcion, fecha_movimiento, metadatos
+                             ) VALUES ($1, 'DEBITO', $2, 0.00, $3, $4, $5, $6, $7)
+                             RETURNING *`,
+                            [ccIdNuevo, intConIva, tipoCompMovDebito, facturaFinal.id, descMovDebito, fechaDebitoInteres, JSON.stringify(metaDebito)]
+                        );
+                        movDebitoInteresCC = insDeb.rows[0];
+                    }
+
+                    // Crédito 1: Cancelación del Interés de Financiación
+                    const descMovInteres = `Cobro Bancario [Mov: ${movimientoId}] — Cancelación Interés Financiación ${diasMaxFin}d (Parte de transf. ${fmtMoneda(monto)}) - Concepto: ${conceptoCorto}`;
+                    const metaInteres = {
+                        tipo_pago: 'Transferencia Bancaria',
+                        banco_origen: 'Transferencia Bancaria',
+                        nro_operacion: String(movimientoId),
+                        movimiento_bancario_id: movimientoId,
+                        es_pago_financiacion: true,
+                        es_desglose_separado_en_cc: true,
+                        monto_total_sobre: monto,
+                        capital_cancelado_sobre: capCancelado,
+                        financiacion_neta_sobre: intNeto,
+                        financiacion_iva_sobre: intIva,
+                        financiacion_con_iva_sobre: intConIva,
+                        financiacion_facturada_id: facturaFinal.id,
+                        financiacion_facturada_mov_id: movDebitoInteresCC.id,
+                        financiacion_facturada_nro: etiquetaComp,
+                        financiacion_facturada_modo: modoGuardado,
+                        detalles_comprobantes: simImputacion.detalles_comprobantes
+                    };
+
+                    const resMovInt = await dbClient.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                            tipo_comprobante, descripcion, fecha_movimiento, metadatos
+                         ) VALUES ($1, 'CREDITO', $2, 0.00, 'COBRO_BANCARIO', $3, $4, $5)
+                         RETURNING id, cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, tipo_comprobante, fecha_movimiento, descripcion, metadatos`,
+                        [ccIdNuevo, intConIva, descMovInteres, fechaCreditoInteres, JSON.stringify(metaInteres)]
+                    );
+                    movInteresCC = resMovInt.rows[0];
+
+                    // Crédito 2: Cancelación del Capital ya facturado
+                    const descMovCapital = `Cobro Bancario [Mov: ${movimientoId}] — Cancelación Capital s/ ${resumenFacturasCorto} (Parte de transf. ${fmtMoneda(monto)}) - Concepto: ${conceptoCorto}`;
+                    const metaCapital = {
+                        tipo_pago: 'Transferencia Bancaria',
+                        banco_origen: 'Transferencia Bancaria',
+                        nro_operacion: String(movimientoId),
+                        movimiento_bancario_id: movimientoId,
+                        es_pago_capital_separado: true,
+                        es_desglose_separado_en_cc: true,
+                        pago_interes_mov_id: movInteresCC.id,
+                        debito_interes_mov_id: movDebitoInteresCC.id,
+                        monto_total_sobre: monto,
+                        capital_cancelado_sobre: capCancelado,
+                        financiacion_neta_sobre: intNeto,
+                        financiacion_iva_sobre: intIva,
+                        financiacion_con_iva_sobre: intConIva,
+                        financiacion_facturada_id: facturaFinal.id,
+                        financiacion_facturada_mov_id: movDebitoInteresCC.id,
+                        financiacion_facturada_nro: etiquetaComp,
+                        financiacion_facturada_modo: modoGuardado,
+                        detalles_comprobantes: simImputacion.detalles_comprobantes
+                    };
+
+                    const resMovCap = await dbClient.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                            tipo_comprobante, descripcion, fecha_movimiento, metadatos
+                         ) VALUES ($1, 'CREDITO', $2, 0.00, 'COBRO_BANCARIO', $3, $4, $5)
+                         RETURNING id, cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, tipo_comprobante, fecha_movimiento, descripcion, metadatos`,
+                        [ccIdNuevo, capCancelado, descMovCapital, fechaCreditoCapital, JSON.stringify(metaCapital)]
+                    );
+                    movCC = resMovCap.rows[0];
+
+                    // Vincular cruzadamente los IDs en los movimientos de interés y débito
+                    await dbClient.query(
+                        `UPDATE public.factura_cuenta_corriente_movimientos
+                         SET metadatos = metadatos || $1::jsonb
+                         WHERE id = $2`,
+                        [JSON.stringify({ pago_capital_mov_id: movCC.id }), movInteresCC.id]
+                    );
+                    await dbClient.query(
+                        `UPDATE public.factura_cuenta_corriente_movimientos
+                         SET metadatos = metadatos || $1::jsonb
+                         WHERE id = $2`,
+                        [JSON.stringify({ pago_origen_id: movCC.id, pago_interes_mov_id: movInteresCC.id }), movDebitoInteresCC.id]
+                    );
+
+                    desgloseFinanciacionInfo = {
+                        factura_id: facturaFinal.id,
+                        estado: facturaFinal.estado,
+                        modo_facturacion: modoGuardado,
+                        etiqueta_comprobante: etiquetaComp,
+                        capital_cancelado: capCancelado,
+                        financiacion_neta: intNeto,
+                        financiacion_iva: intIva,
+                        financiacion_con_iva: intConIva,
+                        movimiento_capital_id: movCC.id,
+                        movimiento_interes_id: movInteresCC.id,
+                        movimiento_debito_id: movDebitoInteresCC.id
+                    };
+                } else {
+                    const metaSimple = {
+                        tipo_pago: esDebito ? 'Transferencia Bancaria Emitida' : 'Transferencia Bancaria',
+                        nro_operacion: String(movimientoId),
+                        movimiento_bancario_id: movimientoId
+                    };
+                    if (!esDebito && modoFinNorm === 'BONIFICAR' && simImputacion && simImputacion.financiacion_con_iva_cancelada > 0.005) {
+                        metaSimple.financiacion_bonificada = true;
+                        metaSimple.financiacion_bonificada_con_iva = simImputacion.financiacion_con_iva_cancelada;
+                    }
+
+                    // Insertar el movimiento único en la Cuenta Corriente
+                    const resInsertCC = await dbClient.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, 
+                            tipo_comprobante, comprobante_id, descripcion, fecha_movimiento, metadatos
+                        ) VALUES ($1, $2, $3, 0.00, $4, NULL, $5, $6, $7)
+                        RETURNING id, cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, tipo_comprobante, fecha_movimiento, descripcion, metadatos`,
+                        [
+                            ccIdNuevo,
+                            tipoMovCC,
+                            monto,
+                            tipoCompCC,
+                            descCC,
+                            fechaMovFinal,
+                            JSON.stringify(metaSimple)
+                        ]
+                    );
+                    movCC = resInsertCC.rows[0];
+                }
                 
                 // Recalcular saldo acumulado de la nueva cuenta
                 saldoPostPago = await recalcularSaldoCuentaCorriente(ccIdNuevo, dbClient);
@@ -583,6 +874,9 @@ async function vincularCliente(req, res, next) {
                 cliente_razon_social: clienteNuevo.razon_social,
                 cliente: clienteCompleto,
                 movimiento_cc: movCC,
+                movimiento_interes_cc: movInteresCC,
+                movimiento_debito_interes_cc: movDebitoInteresCC,
+                desglose_financiacion: desgloseFinanciacionInfo,
                 saldo_cuenta_corriente: saldoPostPago,
                 es_cobro: esCobro
             }

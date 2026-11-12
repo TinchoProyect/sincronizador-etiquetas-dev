@@ -116,7 +116,9 @@ const registrarFactura = async (factura, dbClient) => {
             let descFinal = desc;
             let fechaMovFinal = factura.fecha_emision || new Date();
             if (metaPrev && metaPrev.es_cargo_financiacion) {
-                const refFin = metaPrev.codigo_sobre ? `Sobre #${metaPrev.codigo_sobre}` : `Pago #${metaPrev.pago_origen_id || ''}`;
+                const refFin = metaPrev.codigo_sobre
+                    ? `Sobre #${metaPrev.codigo_sobre}`
+                    : (metaPrev.movimiento_bancario_id ? `Transf. [Mov: ${metaPrev.movimiento_bancario_id}]` : `Pago #${metaPrev.pago_origen_id || ''}`);
                 descFinal = `${desc} — Servicio Financiación (${refFin})`;
                 fechaMovFinal = movPrevio.fecha_movimiento || fechaMovFinal;
             }
@@ -133,6 +135,25 @@ const registrarFactura = async (factura, dbClient) => {
                 fechaMovFinal,
                 movPrevio.id
             ]);
+
+            if (metaPrev && metaPrev.es_cargo_financiacion) {
+                const idsRelacionados = [metaPrev.pago_origen_id, metaPrev.pago_interes_mov_id]
+                    .map(x => parseInt(x, 10))
+                    .filter(x => Number.isFinite(x) && x > 0);
+                if (idsRelacionados.length > 0) {
+                    await dbClient.query(`
+                        UPDATE public.factura_cuenta_corriente_movimientos
+                        SET metadatos = COALESCE(metadatos, '{}'::jsonb) || $1::jsonb
+                        WHERE id = ANY($2::int[])
+                    `, [
+                        JSON.stringify({
+                            financiacion_facturada_nro: desc,
+                            financiacion_facturada_modo: factura.pto_vta === 90 ? 'INTERNA' : 'ARCA'
+                        }),
+                        idsRelacionados
+                    ]);
+                }
+            }
             console.log(`✅ [CC-VINCULACION] Movimiento previo ${movPrevio.id} actualizado a comprobante oficial sin duplicar saldo.`);
             return;
         }

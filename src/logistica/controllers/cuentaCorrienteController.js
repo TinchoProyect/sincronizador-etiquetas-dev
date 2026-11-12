@@ -2102,14 +2102,20 @@ const construirDocumentoPdf = (doc, cuentaObj, movimientos, clienteObj, detallad
                 subLineaColor = '#047857';
             }
         } else if (esDebito && metaMov.es_cargo_financiacion) {
-            const refOrigen = metaMov.codigo_sobre ? `Sobre #${metaMov.codigo_sobre}` : `Pago #${metaMov.pago_origen_id}`;
+            const refOrigen = metaMov.codigo_sobre
+                ? `Sobre #${metaMov.codigo_sobre}`
+                : (metaMov.movimiento_bancario_id ? `Transf. [Mov: ${metaMov.movimiento_bancario_id}]` : `Pago #${metaMov.pago_origen_id}`);
             subLineaMov = `100% Cancelado con ${refOrigen} · Financiación (${formatCurrency(metaMov.financiacion_neta)} neto + ${formatCurrency(metaMov.financiacion_iva)} IVA 21%) s/ ${formatCurrency(metaMov.capital_cancelado)} cap.`;
             subLineaColor = '#047857';
         } else if (!esDebito && metaMov.es_pago_capital_separado) {
-            subLineaMov = `Canceló Capital ya facturado (${formatCurrency(mov.monto)}) · Total Sobre #${metaMov.codigo_sobre || ''}: ${formatCurrency(metaMov.monto_total_sobre || mov.monto)}`;
+            const etiqOrigenCap = metaMov.codigo_sobre
+                ? `Total Sobre #${metaMov.codigo_sobre}`
+                : (metaMov.movimiento_bancario_id ? `Total Transf. [Mov: ${metaMov.movimiento_bancario_id}]` : 'Total Pago');
+            subLineaMov = `Canceló Capital ya facturado (${formatCurrency(mov.monto)}) · ${etiqOrigenCap}: ${formatCurrency(metaMov.monto_total_sobre || mov.monto)}`;
             subLineaColor = '#0f766e';
         } else if (!esDebito && metaMov.es_pago_financiacion) {
-            subLineaMov = `Canceló Interés Financiación (${formatCurrency(metaMov.financiacion_neta_sobre)} neto + ${formatCurrency(metaMov.financiacion_iva_sobre)} IVA 21%) · Total Sobre: ${formatCurrency(metaMov.monto_total_sobre || mov.monto)}`;
+            const etiqOrigenInt = metaMov.codigo_sobre ? 'Total Sobre' : 'Total Transf.';
+            subLineaMov = `Canceló Interés Financiación (${formatCurrency(metaMov.financiacion_neta_sobre)} neto + ${formatCurrency(metaMov.financiacion_iva_sobre)} IVA 21%) · ${etiqOrigenInt}: ${formatCurrency(metaMov.monto_total_sobre || mov.monto)}`;
             subLineaColor = '#b45309';
         } else if (impPagoMatch && impPagoMatch.tiene_financiacion_imputada) {
             const tagFac = impPagoMatch.financiacion_facturada
@@ -2873,7 +2879,9 @@ function dibujarReciboPDF(doc, mov) {
         const intNeto = impMovRecibo?.financiacion_neta_cancelada ?? metaRecibo.financiacion_neta_sobre ?? 0;
         const intIva = impMovRecibo?.financiacion_iva_cancelada ?? metaRecibo.financiacion_iva_sobre ?? 0;
         const totalSobreRecibo = impMovRecibo?.monto_pago_total ?? metaRecibo.monto_total_sobre ?? (parseFloat(capCanc) + parseFloat(intConIva));
-        const refSobreStr = metaRecibo.codigo_sobre ? `Sobre #${metaRecibo.codigo_sobre}` : `Recibo #${mov.id}`;
+        const refSobreStr = metaRecibo.codigo_sobre
+            ? `Sobre #${metaRecibo.codigo_sobre}`
+            : (metaRecibo.movimiento_bancario_id ? `Transferencia [Mov: ${metaRecibo.movimiento_bancario_id}]` : `Recibo #${mov.id}`);
         const refFacInt = (impMovRecibo?.financiacion_facturada && impMovRecibo?.factura_financiacion_descripcion)
             ? ` · ${impMovRecibo.factura_financiacion_descripcion.split('—')[0].trim()}`
             : (metaRecibo.financiacion_facturada_nro ? ` · ${metaRecibo.financiacion_facturada_nro}` : '');

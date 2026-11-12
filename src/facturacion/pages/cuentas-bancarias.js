@@ -1704,14 +1704,16 @@ async function ejecutarVinculacion(movimientoId, clienteId, opcionesAjuste = {})
             body: JSON.stringify({ 
                 clienteId,
                 aplicarAjuste: opcionesAjuste.aplicarAjuste || false,
-                montoAjuste: opcionesAjuste.montoAjuste || 0
+                montoAjuste: opcionesAjuste.montoAjuste || 0,
+                modoFinanciacion: opcionesAjuste.modoFinanciacion || 'BONIFICAR'
             })
         });
         
         const result = await response.json();
         if (result.success) {
-            // Si el usuario eligió cobrar y desglosar la financiación de este pago en Aprobación Interna o ARCA:
-            if (
+            if (result.data && result.data.desglose_financiacion) {
+                opcionesAjuste.desgloseFacturado = result.data.desglose_financiacion;
+            } else if (
                 clienteId &&
                 result.data &&
                 result.data.movimiento_cc &&
@@ -1720,7 +1722,7 @@ async function ejecutarVinculacion(movimientoId, clienteId, opcionesAjuste = {})
                 const ccIdTarget = opcionesAjuste.ccId || result.data.movimiento_cc.cuenta_corriente_id;
                 if (ccIdTarget) {
                     try {
-                        const modoFact = opcionesAjuste.modoFinanciacion === 'DESGLOSAR_ARCA' ? 'ARCA' : 'INTERNA';
+                        const modoFact = opcionesAjuste.modoFinanciacion === 'DESGLOSAR_ARCA' ? 'APROBACION_ARCA' : 'APROBACION_INTERNA';
                         const respFin = await fetch(`${LOGISTICA_API_BASE}/api/logistica/bunker/cuentas-corrientes/${ccIdTarget}/facturar-interes-pago`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1732,7 +1734,7 @@ async function ejecutarVinculacion(movimientoId, clienteId, opcionesAjuste = {})
                         const dataFin = await respFin.json();
                         if (dataFin && dataFin.success && dataFin.saldo_capital_actual !== undefined) {
                             result.data.saldo_cuenta_corriente = dataFin.saldo_capital_actual;
-                            opcionesAjuste.desgloseFacturado = dataFin;
+                            opcionesAjuste.desgloseFacturado = dataFin.data || dataFin;
                         }
                     } catch (errFin) {
                         console.warn('⚠️ [BANCARIO-FRONT] Error aplicando desglose de financiación:', errFin);
@@ -2007,6 +2009,19 @@ async function abrirModalEnvioComprobanteBancario({ movCC, cliente, saldoActual,
     };
 
     const defaultMessage = construirMensajeDinamico(autoCheckPoliticas);
+    const desgFin = opcionesFinanciacion?.desgloseFacturado || null;
+    const bloqueDesgloseAplicadoHtml = desgFin ? `
+            <div style="padding: 10px 12px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <div style="font-size: 11.5px; color: #78350f; line-height: 1.35;">
+                    <div style="font-weight: 800; color: #b45309; margin-bottom: 2px;">🏛️ Desglose Capital + Interés Aplicado y Enviado a Facturación</div>
+                    <div>Capital cancelado: <strong>${currencyFormatter.format(desgFin.capital_cancelado || 0)}</strong> · Interés Financiación c/IVA: <strong>${currencyFormatter.format(desgFin.financiacion_con_iva || 0)}</strong></div>
+                    <div style="font-size: 11px; color: #92400e; margin-top: 2px;">Comprobante en Facturación: <strong>${desgFin.etiqueta_comprobante || `Factura #${desgFin.factura_id}`}</strong></div>
+                </div>
+                <a href="index.html" target="_blank" style="font-size: 11px; background: #0284c7; color: #ffffff; padding: 6px 10px; border-radius: 6px; text-decoration: none; font-weight: 700; white-space: nowrap;">
+                    🧾 Ir a Facturación
+                </a>
+            </div>
+    ` : '';
 
     // Armar HTML del modal con estilos limpios
     let htmlContent = `
@@ -2020,6 +2035,7 @@ async function abrirModalEnvioComprobanteBancario({ movCC, cliente, saldoActual,
                     <i class="fa-solid fa-file-pdf"></i> Ver Recibo PDF
                 </a>
             </div>
+            ${bloqueDesgloseAplicadoHtml}
 
             ${!esDebito && ccId ? `
             <!-- Documentos PDF Adjuntos (Recibo + Políticas y Beneficio de Financiación LAMDA) -->
