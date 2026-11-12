@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { sincronizarManifestIngredientesB2B } = require('../services/desgloseIngredientesComercialService');
 
 /**
  * Busca un ingrediente por nombre y retorna su ID
@@ -250,6 +251,7 @@ async function crearReceta(req, res) {
 
         // Confirmar transacción
         await client.query('COMMIT');
+        sincronizarManifestIngredientesB2B().catch(() => {});
 
         res.status(fueActualizada ? 200 : 201).json({
             message: fueActualizada ? 'Receta actualizada exitosamente' : 'Receta creada exitosamente',
@@ -485,6 +487,7 @@ async function actualizarReceta(req, res) {
 
         // Confirmar transacción
         await client.query('COMMIT');
+        sincronizarManifestIngredientesB2B().catch(() => {});
 
         res.json({
             message: 'Receta actualizada exitosamente'
@@ -640,6 +643,7 @@ async function eliminarReceta(req, res) {
 
         // Confirmar transacción
         await client.query('COMMIT');
+        sincronizarManifestIngredientesB2B().catch(() => {});
 
         res.json({
             message: 'Receta eliminada exitosamente'

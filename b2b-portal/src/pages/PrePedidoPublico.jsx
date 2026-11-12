@@ -9,6 +9,12 @@ import {
 import Swal from 'sweetalert2';
 import { evaluarPoliticaB2B } from '../utils/politicasB2B';
 import { InspeccionPartidaModal, fetchMapaFotosLotesB2B } from '../components/InspeccionPartidaModal';
+import {
+  DesgloseIngredientesModal,
+  BotonVerIngredientesB2B,
+  fetchMapaIngredientesComercialesB2B,
+  resolverInfoIngredientesProductoB2B
+} from '../components/DesgloseIngredientesModal';
 
 const DEVICE_SECRET_STORAGE_KEY = 'b2b_colab_device_secret';
 
@@ -118,9 +124,12 @@ export default function PrePedidoPublico({ path }) {
   const [datosEnvioCompletado, setDatosEnvioCompletado] = useState(null);
   const [mapaFotosLotes, setMapaFotosLotes] = useState({});
   const [modalPartidaCtx, setModalPartidaCtx] = useState(null);
+  const [mapaIngredientesComerciales, setMapaIngredientesComerciales] = useState({});
+  const [modalIngredientesCtx, setModalIngredientesCtx] = useState(null);
 
   useEffect(() => {
     fetchMapaFotosLotesB2B().then(mapa => setMapaFotosLotes(mapa || {}));
+    fetchMapaIngredientesComercialesB2B().then(mapa => setMapaIngredientesComerciales(mapa || {}));
     if (modo === 'aprobacion') {
       if (!tokenRevisar) {
         setLoading(false);
@@ -526,6 +535,7 @@ export default function PrePedidoPublico({ path }) {
       }
 
       if (searchTerms.length > 0) {
+        const infoIng = resolverInfoIngredientesProductoB2B(product, mapaIngredientesComerciales);
         const textParts = [
           product.producto_descripcion || '',
           product.producto_codigo || '',
@@ -536,7 +546,8 @@ export default function PrePedidoPublico({ path }) {
           product.sub_sub_sub_categoria || '',
           product.rubro || '',
           product.sub_rubro || '',
-          product.busqueda_metadata || ''
+          product.busqueda_metadata || '',
+          infoIng ? infoIng.ingredientes.join(' ') : ''
         ];
 
         const fullSearchableText = textParts
@@ -550,7 +561,7 @@ export default function PrePedidoPublico({ path }) {
       }
       return true;
     });
-  }, [catalogo, searchTerms, filtroFavoritos, filtroOfertas, articulosHabituales, ofertasActivas]);
+  }, [catalogo, searchTerms, filtroFavoritos, filtroOfertas, articulosHabituales, ofertasActivas, mapaIngredientesComerciales]);
 
   const ofertasVisiblesEnSolapa = useMemo(() => {
     if (!ofertasActivas || Object.keys(ofertasActivas).length === 0) return [];
@@ -891,6 +902,7 @@ export default function PrePedidoPublico({ path }) {
 
     const infoPartida = mapaFotosLotes[cod] || null;
     const cantFotosPartida = Array.isArray(infoPartida?.imagenes) ? infoPartida.imagenes.length : 0;
+    const infoIngredientes = resolverInfoIngredientesProductoB2B(product, mapaIngredientesComerciales);
 
     return (
       <div key={product.id || product.producto_codigo} className={`product-card ${esFavorito ? 'es-favorito' : ''} ${ofertaActiva ? 'es-oferta' : ''}`}>
@@ -1059,6 +1071,18 @@ export default function PrePedidoPublico({ path }) {
                 <span>📷</span>
                 <span>Ver partida{cantFotosPartida > 1 ? ` (${cantFotosPartida})` : ''}</span>
               </button>
+            )}
+
+            {infoIngredientes && (
+              <BotonVerIngredientesB2B
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModalIngredientesCtx({
+                    product,
+                    infoIngredientes
+                  });
+                }}
+              />
             )}
           </div>
 
@@ -2873,6 +2897,26 @@ export default function PrePedidoPublico({ path }) {
         esModoNeto={modalPartidaCtx?.esModoNeto}
         mostrarPrecios={Boolean(delegacion?.mostrar_precios)}
         formatCurrency={formatCurrency}
+      />
+
+      {/* Visor de Ingredientes Comerciales (Línea 3 Mixes y Línea 6 Granolas) */}
+      <DesgloseIngredientesModal
+        isOpen={Boolean(modalIngredientesCtx)}
+        onClose={() => setModalIngredientesCtx(null)}
+        product={modalIngredientesCtx?.product}
+        infoIngredientes={modalIngredientesCtx?.infoIngredientes}
+        currentQty={
+          modalIngredientesCtx?.product
+            ? (selectedItems[(modalIngredientesCtx.product.producto_codigo || '').trim()]?.cantidad || 0)
+            : 0
+        }
+        onChangeQty={(newQty) => {
+          if (modalIngredientesCtx?.product) {
+            const cod = (modalIngredientesCtx.product.producto_codigo || '').trim();
+            const current = selectedItems[cod]?.cantidad || 0;
+            cambiarCantidad(modalIngredientesCtx.product, Math.max(0, newQty) - current);
+          }
+        }}
       />
     </div>
   );
