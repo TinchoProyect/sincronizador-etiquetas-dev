@@ -426,11 +426,68 @@ router.get('/tienda/:slug/seguimiento/:token', async (req, res) => {
     }
 });
 
+// Límite de tasa por IP para consultas públicas de seguimiento sin token (anti-enumeración en túnel móvil)
+const _rateLimitSeguimientoWaMap = new Map();
+const RATE_LIMIT_WA_VENTANA_MS = 60 * 1000;
+const RATE_LIMIT_WA_MAX_POR_MINUTO = 12;
+
+function limitarConsultasPublicasSeguimiento(req, res, next) {
+    const ahora = Date.now();
+    if (_rateLimitSeguimientoWaMap.size > 500) {
+        for (const [k, v] of _rateLimitSeguimientoWaMap.entries()) {
+            if (ahora - v.inicio > RATE_LIMIT_WA_VENTANA_MS) {
+                _rateLimitSeguimientoWaMap.delete(k);
+            }
+        }
+    }
+
+    const ipRaw = String(
+        req.headers['cf-connecting-ip'] ||
+        (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') ||
+        req.ip ||
+        req.socket?.remoteAddress ||
+        'anon'
+    ).trim();
+
+    let registro = _rateLimitSeguimientoWaMap.get(ipRaw);
+    if (!registro || (ahora - registro.inicio) >= RATE_LIMIT_WA_VENTANA_MS) {
+        registro = { inicio: ahora, conteo: 0 };
+        _rateLimitSeguimientoWaMap.set(ipRaw, registro);
+    }
+
+    registro.conteo += 1;
+    if (registro.conteo > RATE_LIMIT_WA_MAX_POR_MINUTO) {
+        const segRestantes = Math.max(1, Math.ceil((RATE_LIMIT_WA_VENTANA_MS - (ahora - registro.inicio)) / 1000));
+        res.set('Retry-After', String(segRestantes));
+        return res.status(429).json({
+            ok: false,
+            error: `Realizaste demasiadas consultas seguidas. Esperá ${segRestantes} segundos y volvé a intentar.`
+        });
+    }
+
+    next();
+}
+
+/**
+ * POST /api/produccion/nodos/tienda/:slug/seguimiento-whatsapp
+ * Consulta pública de cero fricción ingresando únicamente el número de WhatsApp:
+ * aplica límite de consultas por minuto y devuelve datos sensibles parcialmente enmascarados.
+ */
+router.post('/tienda/:slug/seguimiento-whatsapp', limitarConsultasPublicasSeguimiento, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosService.consultarSeguimientoPublicoPorWhatsapp(req.params.slug, req.body || {});
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
 /**
  * POST /api/produccion/nodos/tienda/:slug/buscar-seguimiento
  * Buscador público validando coincidencia simultánea de WhatsApp + código #NB-...
  */
-router.post('/tienda/:slug/buscar-seguimiento', async (req, res) => {
+router.post('/tienda/:slug/buscar-seguimiento', limitarConsultasPublicasSeguimiento, async (req, res) => {
     try {
         const data = await nodosService.buscarSeguimientoPublicoPorTelefonoYPedido(req.params.slug, req.body || {});
         res.json({ ok: true, ...data });

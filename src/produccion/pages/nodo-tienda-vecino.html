@@ -733,7 +733,7 @@
         <button type="button" id="btn-toggle-mi-cuenta" class="btn-header-primary" style="display:none;" onclick="alternarVistaMiCuenta()">
           👤 Mi Cuenta
         </button>
-        <button type="button" id="btn-seguir-pedido-header" class="btn-track-header" onclick="abrirModalBuscadorSeguimiento()">
+        <button type="button" id="btn-seguir-pedido-header" class="btn-track-header" onclick="accionBotonSeguirMiPedido()">
           📦 Seguir mi pedido
         </button>
       </div>
@@ -1245,14 +1245,24 @@
 
       const ped = data.pedido;
       const pagoInfo = data.nodo_pago_info;
-      if (ped && ped.tracking_token) {
-        guardarPedidoRecienteLocal({
-          codigo_pedido: ped.codigo_pedido,
-          tracking_token: ped.tracking_token,
-          vecino_nombre: ped.vecino_nombre,
-          created_at: ped.created_at || new Date().toISOString()
+      if (ped) {
+        guardarIdentidadVecinoLocal({
+          portal_token: ped.portal_token || STATE.portalToken || '',
+          telefono_normalizado: ped.telefono_normalizado || '',
+          telefono_display: telefono || ped.vecino_telefono || '',
+          nombre_completo: ped.vecino_nombre || nombre || '',
+          direccion_calle: direccion || '',
+          entrecalles_referencia: entrecalles || ''
         });
-        refrescarBannerPedidosRecientes();
+        if (ped.tracking_token) {
+          guardarPedidoRecienteLocal({
+            codigo_pedido: ped.codigo_pedido,
+            tracking_token: ped.tracking_token,
+            vecino_nombre: ped.vecino_nombre,
+            created_at: ped.created_at || new Date().toISOString()
+          });
+          refrescarBannerPedidosRecientes();
+        }
       }
       const box = document.getElementById('checkout-card-content');
 
@@ -1437,10 +1447,64 @@
     }
 
     // =========================================================================
-    // SEGUIMIENTO EN VIVO MARCA BLANCA (ESTILO MERCADO LIBRE — 0 RASTROS INTERNOS)
+    // SEGUIMIENTO EN VIVO MARCA BLANCA (CERO FRICCIÓN · SALTO EN 1 TOQUE)
     // =========================================================================
     let _trackingTimer = null;
     let _trackingTokenActivo = '';
+    let _trackingWhatsappActivo = null; // { telefono, codigo_pedido }
+    let _ultimoResultadoWhatsapp = null;
+
+    function _storageKeyIdentidadVecino(slug) {
+      return `nodo_identidad_vecino_${slug || STATE.slug || 'default'}`;
+    }
+
+    function obtenerIdentidadVecinoLocal(slug = STATE.slug) {
+      let base = {};
+      try {
+        const raw = localStorage.getItem(_storageKeyIdentidadVecino(slug));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') base = parsed;
+        }
+      } catch (_) {}
+      try {
+        const legacyPortal = (localStorage.getItem(_storageKeyMiCuentaToken(slug)) || '').trim();
+        if (legacyPortal.length >= 16 && !base.portal_token) {
+          base.portal_token = legacyPortal;
+        }
+      } catch (_) {}
+      return base;
+    }
+
+    function guardarIdentidadVecinoLocal(parcial = {}, slug = STATE.slug) {
+      try {
+        const actual = obtenerIdentidadVecinoLocal(slug);
+        const fusion = {
+          portal_token: (parcial.portal_token && String(parcial.portal_token).trim().length >= 16)
+            ? String(parcial.portal_token).trim()
+            : (actual.portal_token || ''),
+          telefono_normalizado: parcial.telefono_normalizado || actual.telefono_normalizado || '',
+          telefono_display: parcial.telefono_display || actual.telefono_display || '',
+          nombre_completo: parcial.nombre_completo || actual.nombre_completo || '',
+          direccion_calle: parcial.direccion_calle !== undefined ? (parcial.direccion_calle || actual.direccion_calle || '') : (actual.direccion_calle || ''),
+          entrecalles_referencia: parcial.entrecalles_referencia !== undefined ? (parcial.entrecalles_referencia || actual.entrecalles_referencia || '') : (actual.entrecalles_referencia || ''),
+          updated_at: new Date().toISOString()
+        };
+        localStorage.setItem(_storageKeyIdentidadVecino(slug), JSON.stringify(fusion));
+
+        if (fusion.portal_token) {
+          STATE.portalToken = fusion.portal_token;
+          localStorage.setItem(_storageKeyMiCuentaToken(slug), fusion.portal_token);
+        }
+        if (fusion.nombre_completo) window._savedVecinoNombre = fusion.nombre_completo;
+        if (fusion.telefono_display || fusion.telefono_normalizado) {
+          window._savedVecinoTel = fusion.telefono_display || fusion.telefono_normalizado;
+        }
+        if (fusion.direccion_calle) window._savedVecinoDir = fusion.direccion_calle;
+        if (fusion.entrecalles_referencia) window._savedVecinoRef = fusion.entrecalles_referencia;
+        actualizarBotonesCabeceraMiCuenta();
+      } catch (_) {}
+    }
 
     function _storageKeyPedidosVecino() {
       return `nodo_ultimos_pedidos_${STATE.slug || 'default'}`;
@@ -1467,7 +1531,7 @@
           vecino_nombre: info.vecino_nombre || '',
           created_at: info.created_at || new Date().toISOString()
         });
-        localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(lista.slice(0, 5)));
+        localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(lista.slice(0, 8)));
       } catch (_) {}
     }
 
@@ -1495,8 +1559,20 @@
           banner.style.display = 'none';
           return;
         }
+        if (data.identidad_vecino) {
+          guardarIdentidadVecinoLocal({
+            portal_token: data.identidad_vecino.portal_token || '',
+            telefono_normalizado: data.identidad_vecino.telefono_normalizado || '',
+            telefono_display: data.identidad_vecino.telefono_whatsapp || '',
+            nombre_completo: data.identidad_vecino.nombre_completo || ''
+          });
+        }
         const seg = data.seguimiento;
         const ped = data.pedido;
+        if (seg.anulado || Number(seg.hito_actual || 1) >= 6) {
+          banner.style.display = 'none';
+          return;
+        }
         const pasoActual = (seg.pasos || []).find(p => p.es_actual) || (seg.pasos || [])[0] || {};
         banner.style.display = 'flex';
         banner.innerHTML = `
@@ -1553,6 +1629,7 @@
     function cerrarModalSeguimiento() {
       detenerPollingSeguimiento();
       _trackingTokenActivo = '';
+      _trackingWhatsappActivo = null;
       const modal = document.getElementById('tracking-modal');
       if (modal) modal.style.display = 'none';
       try {
@@ -1565,121 +1642,485 @@
       refrescarBannerPedidosRecientes();
     }
 
-    function abrirModalBuscadorSeguimiento() {
+    function _convertirPedidoPortalATrackingPayload(pedHist, portalData) {
+      return {
+        modo_privacidad_enmascarada: false,
+        nodo: portalData.nodo,
+        pedido: {
+          ...pedHist,
+          vecino_nombre: portalData.vecino?.nombre_completo || 'Vecino/a'
+        },
+        items: pedHist.items || [],
+        seguimiento: pedHist.seguimiento,
+        total_pedidos_vecino: (portalData.historial_pedidos || []).filter(x => !x.anulado).length
+      };
+    }
+
+    /**
+     * Acción inteligente en 1 toque al tocar "📦 Seguir mi pedido" en el catálogo:
+     * 1) Si el celular ya conoce al vecino (`portal_token`, `tracking_token` o WhatsApp previo):
+     *    - 1 pedido en tránsito -> abre directo su seguimiento en vivo sin pasos intermedios.
+     *    - 2+ pedidos en tránsito -> muestra tarjetas directas listas para tocar.
+     *    - 0 en tránsito pero con historial -> salta directo a su resumen/último pedido en Mi Cuenta (o último pedido).
+     * 2) Si es un navegador limpio -> pide únicamente el número de WhatsApp (sin código #NB-...).
+     */
+    async function accionBotonSeguirMiPedido() {
       detenerPollingSeguimiento();
       _trackingTokenActivo = '';
+      _trackingWhatsappActivo = null;
+
+      const identidad = obtenerIdentidadVecinoLocal();
+      const portalTok = STATE.portalToken || identidad.portal_token || '';
+      const guardadosLocal = obtenerPedidosRecientesLocal();
+      const telGuardado = identidad.telefono_display || identidad.telefono_normalizado || '';
+
+      // Caso 1A: Vecino identificado con portal_token (vino de QR Mi Cuenta, link de comprobante o compra previa)
+      if (portalTok && portalTok.length >= 16) {
+        STATE.portalToken = portalTok;
+        const modal = document.getElementById('tracking-modal');
+        const box = document.getElementById('tracking-card-content');
+        if (modal && box) {
+          modal.style.display = 'flex';
+          box.innerHTML = `<div style="padding:32px; text-align:center; color:var(--muted); font-weight:800;">⏳ Abriendo el estado en vivo de tu pedido...</div>`;
+        }
+
+        try {
+          const resp = await fetch(
+            `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(portalTok)}`,
+            { cache: 'no-store' }
+          );
+          const data = await resp.json();
+          if (resp.ok && data.ok) {
+            STATE.miCuentaData = data;
+            if (data.vecino) {
+              guardarIdentidadVecinoLocal({
+                portal_token: portalTok,
+                telefono_normalizado: data.vecino.telefono_normalizado || '',
+                telefono_display: data.vecino.telefono_whatsapp || '',
+                nombre_completo: data.vecino.nombre_completo || '',
+                direccion_calle: data.vecino.direccion_calle || '',
+                entrecalles_referencia: data.vecino.entrecalles_referencia || ''
+              });
+            }
+            const activos = (data.historial_pedidos || []).filter(p => !p.anulado);
+            for (const p of activos.slice(0, 5).reverse()) {
+              if (p.tracking_token) {
+                guardarPedidoRecienteLocal({
+                  codigo_pedido: p.codigo_pedido,
+                  tracking_token: p.tracking_token,
+                  vecino_nombre: data.vecino?.nombre_completo || '',
+                  created_at: p.created_at
+                });
+              }
+            }
+
+            const enTransito = activos.filter(p => Number(p.seguimiento?.hito_actual || 1) < 6);
+            if (enTransito.length === 1) {
+              _activarVistaSeguimientoConDatos(_convertirPedidoPortalATrackingPayload(enTransito[0], data));
+              return;
+            }
+            if (enTransito.length >= 2) {
+              renderizarSelectorPedidosVecino(enTransito, activos, data.nodo, { modoTokenCompleto: true });
+              return;
+            }
+            if (activos.length > 0) {
+              // Sin pedidos en tránsito pero con historial -> salto directo a Mi Cuenta
+              if (modal) modal.style.display = 'none';
+              await activarVistaMiCuenta();
+              return;
+            }
+            // Vecino identificado sin pedidos aún -> llevar a su resumen en Mi Cuenta
+            if (modal) modal.style.display = 'none';
+            await activarVistaMiCuenta();
+            return;
+          }
+        } catch (_) {}
+      }
+
+      // Caso 1B: Sin portal_token previo pero con tracking_token guardado en este celular
+      if (guardadosLocal.length === 1) {
+        await abrirSeguimientoPorToken(guardadosLocal[0].tracking_token);
+        return;
+      }
+      if (guardadosLocal.length >= 2) {
+        // Consultar el primero para hidratar portal_token y mostrar selector completo si corresponde
+        await abrirSeguimientoPorToken(guardadosLocal[0].tracking_token);
+        return;
+      }
+
+      // Caso 1C: Celular donde ya consultó antes con su WhatsApp (sin token) -> salto directo sin volver a tipear
+      if (telGuardado && String(telGuardado).replace(/\D+/g, '').length >= 8) {
+        await ejecutarConsultaPorWhatsapp(telGuardado, { desdeMemoriaAutomatica: true });
+        return;
+      }
+
+      // Caso 2: Navegador limpio -> pedir únicamente el número de WhatsApp
+      abrirFormularioSoloWhatsapp(false);
+    }
+
+    // Alias de compatibilidad
+    function abrirModalBuscadorSeguimiento() {
+      accionBotonSeguirMiPedido();
+    }
+
+    function abrirFormularioSoloWhatsapp(forzarOtroNumero = false) {
+      detenerPollingSeguimiento();
+      _trackingTokenActivo = '';
+      _trackingWhatsappActivo = null;
+
       const modal = document.getElementById('tracking-modal');
       const box = document.getElementById('tracking-card-content');
       if (!modal || !box) return;
       modal.style.display = 'flex';
 
-      const guardados = obtenerPedidosRecientesLocal();
+      const identidad = obtenerIdentidadVecinoLocal();
+      const telPrefill = forzarOtroNumero
+        ? ''
+        : (identidad.telefono_display || window._savedVecinoTel || '');
       const nombreMarca = STATE.nodo?.nombre_marca || 'Tienda Barrial';
+      const tieneCuentaActiva = Boolean(STATE.portalToken);
 
       box.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
           <div>
             <h2 style="margin:0; font-size:1.18rem; font-weight:900;">📦 Seguir mi pedido</h2>
-            <div style="font-size:0.8rem; color:var(--muted); font-weight:700; margin-top:2px;">
-              Consultá en tiempo real el estado de tu compra en ${esc(nombreMarca)}
+            <div style="font-size:0.81rem; color:var(--muted); font-weight:700; margin-top:2px;">
+              Ingresá solo tu WhatsApp para ver el estado en vivo en ${esc(nombreMarca)}
             </div>
           </div>
           <button type="button" onclick="cerrarModalSeguimiento()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
         </div>
 
-        ${guardados.length > 0 ? `
-          <div style="margin-bottom:16px;">
-            <div style="font-size:0.76rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:6px;">Tus pedidos guardados en este celular</div>
-            <div style="display:flex; flex-direction:column; gap:7px;">
-              ${guardados.map(g => `
-                <button type="button" onclick="abrirSeguimientoPorToken('${esc(g.tracking_token)}')"
-                  style="display:flex; justify-content:space-between; align-items:center; padding:10px 13px; border-radius:11px; border:1.5px solid var(--brand-border); background:var(--surface-warm); color:var(--text); font-family:inherit; cursor:pointer; text-align:left;">
-                  <span><strong>#${esc(g.codigo_pedido)}</strong> ${g.vecino_nombre ? `· ${esc(g.vecino_nombre)}` : ''}</span>
-                  <span style="font-size:0.8rem; font-weight:900; color:var(--brand-dark);">Ver estado →</span>
-                </button>
-              `).join('')}
+        <div style="background:#fffdfb; border:1px solid var(--border); border-radius:14px; padding:16px;">
+          <div class="form-group" style="margin-bottom:12px;">
+            <label style="font-size:0.84rem; color:var(--text);">📱 Tu número de WhatsApp</label>
+            <input type="tel" id="trk-solo-whatsapp" placeholder="Ej: 221 501 1102"
+              value="${esc(telPrefill)}"
+              style="font-size:1.04rem; font-weight:800; padding:12px 14px;"
+              onkeydown="if(event.key==='Enter') consultarDesdeInputSoloWhatsapp()">
+            <div style="font-size:0.75rem; color:var(--muted); font-weight:700; margin-top:5px;">
+              Usá el mismo número con código de área que indicaste al hacer tu pedido.
             </div>
           </div>
-        ` : ''}
-
-        <div style="background:#fffdfb; border:1px solid var(--border); border-radius:14px; padding:14px;">
-          <div style="font-size:0.84rem; font-weight:900; color:var(--text); margin-bottom:10px;">
-            🔍 Buscar con tu WhatsApp y número de pedido
-          </div>
-          <div class="form-group">
-            <label>Tu número de WhatsApp *</label>
-            <input type="tel" id="trk-buscar-tel" placeholder="Ej: 221 501 1102" value="${esc(window._savedVecinoTel || '')}">
-          </div>
-          <div class="form-group">
-            <label>Código de pedido *</label>
-            <input type="text" id="trk-buscar-codigo" placeholder="Ej: NB-1002 o 1002" onkeydown="if(event.key==='Enter') buscarMiPedidoVecino()">
-          </div>
-          <div id="trk-buscar-error" style="display:none; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:8px 11px; border-radius:9px; font-size:0.8rem; font-weight:700; margin-bottom:10px;"></div>
-          <button type="button" id="btn-ejecutar-busqueda-trk" onclick="buscarMiPedidoVecino()"
-            style="width:100%; padding:12px; border-radius:11px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.94rem; cursor:pointer;">
-            Consultar estado en vivo
+          <div id="trk-buscar-error" style="display:none; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:9px 12px; border-radius:9px; font-size:0.81rem; font-weight:700; margin-bottom:11px;"></div>
+          <button type="button" id="btn-ejecutar-busqueda-trk" onclick="consultarDesdeInputSoloWhatsapp()"
+            style="width:100%; padding:13px; border-radius:11px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.96rem; cursor:pointer;">
+            Ver estado de mi pedido →
           </button>
         </div>
+
+        ${tieneCuentaActiva ? `
+          <div style="margin-top:12px; text-align:center;">
+            <button type="button" onclick="cerrarModalSeguimiento(); activarVistaMiCuenta();"
+              style="background:none; border:none; color:var(--brand-dark); font-family:inherit; font-size:0.82rem; font-weight:800; text-decoration:underline; cursor:pointer;">
+              👤 Volver a mi cuenta guardada en este celular
+            </button>
+          </div>
+        ` : ''}
       `;
+
+      setTimeout(() => {
+        const inp = document.getElementById('trk-solo-whatsapp');
+        if (inp) inp.focus();
+      }, 60);
     }
 
-    async function buscarMiPedidoVecino() {
-      const tel = (document.getElementById('trk-buscar-tel')?.value || '').trim();
-      const codigo = (document.getElementById('trk-buscar-codigo')?.value || '').trim();
+    async function consultarDesdeInputSoloWhatsapp() {
+      const tel = (document.getElementById('trk-solo-whatsapp')?.value || '').trim();
+      await ejecutarConsultaPorWhatsapp(tel, { desdeFormularioManual: true });
+    }
+
+    async function ejecutarConsultaPorWhatsapp(telefonoRaw, opciones = {}) {
+      const tel = String(telefonoRaw || '').trim();
+      const modal = document.getElementById('tracking-modal');
+      const box = document.getElementById('tracking-card-content');
       const errBox = document.getElementById('trk-buscar-error');
       const btn = document.getElementById('btn-ejecutar-busqueda-trk');
-      if (errBox) errBox.style.display = 'none';
 
-      if (!tel || !codigo) {
+      if (!tel || tel.replace(/\D+/g, '').length < 8) {
         if (errBox) {
-          errBox.textContent = 'Completá tu número de WhatsApp y el código del pedido (ej: NB-1002).';
+          errBox.textContent = 'Ingresá tu número de WhatsApp con código de área (ej: 221 501 1102).';
           errBox.style.display = 'block';
+        } else {
+          abrirFormularioSoloWhatsapp(false);
         }
         return;
       }
 
+      if (errBox) errBox.style.display = 'none';
       if (btn) {
         btn.disabled = true;
-        btn.textContent = '⏳ Buscando pedido...';
+        btn.textContent = '⏳ Buscando tu pedido...';
+      } else if (modal && box && !opciones.silenciosoPolling) {
+        modal.style.display = 'flex';
+        box.innerHTML = `<div style="padding:32px; text-align:center; color:var(--muted); font-weight:800;">⏳ Consultando el estado en vivo de tu pedido...</div>`;
       }
 
       try {
-        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/buscar-seguimiento`, {
+        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento-whatsapp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telefono: tel, codigo_pedido: codigo })
+          body: JSON.stringify({
+            telefono: tel,
+            codigo_pedido: opciones.codigoPedidoEspecifico || ''
+          })
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
+          if (opciones.desdeMemoriaAutomatica) {
+            abrirFormularioSoloWhatsapp(false);
+            return;
+          }
           if (errBox) {
-            errBox.textContent = data.error || 'No encontramos un pedido con esos datos.';
+            errBox.textContent = data.error || 'No encontramos pedidos asociados a ese WhatsApp.';
             errBox.style.display = 'block';
           }
           if (btn) {
             btn.disabled = false;
-            btn.textContent = 'Consultar estado en vivo';
+            btn.textContent = 'Ver estado de mi pedido →';
           }
           return;
         }
 
-        window._savedVecinoTel = tel;
-        guardarPedidoRecienteLocal({
-          codigo_pedido: data.pedido.codigo_pedido,
-          tracking_token: data.pedido.tracking_token,
-          vecino_nombre: data.pedido.vecino_nombre,
-          created_at: data.pedido.created_at
+        _ultimoResultadoWhatsapp = data;
+
+        // Si cambió de WhatsApp en un navegador que tenía otro vecino, actualizar solo el teléfono recordado
+        if (opciones.desdeFormularioManual) {
+          const idActual = obtenerIdentidadVecinoLocal();
+          const cambioTelefono = idActual.telefono_normalizado && idActual.telefono_normalizado !== data.telefono_normalizado;
+          if (cambioTelefono) {
+            try {
+              localStorage.removeItem(_storageKeyMiCuentaToken(STATE.slug));
+              localStorage.removeItem(_storageKeyPedidosVecino());
+              STATE.portalToken = '';
+              STATE.miCuentaData = null;
+            } catch (_) {}
+          }
+        }
+
+        guardarIdentidadVecinoLocal({
+          telefono_normalizado: data.telefono_normalizado,
+          telefono_display: tel
         });
-        _activarVistaSeguimientoConDatos(data);
-      } catch (e) {
+
+        const enTransito = Array.isArray(data.pedidos_en_transito) ? data.pedidos_en_transito : [];
+        const todos = Array.isArray(data.pedidos_todos) ? data.pedidos_todos : [];
+
+        if (opciones.codigoPedidoEspecifico && data.pedido_especifico) {
+          _activarVistaSeguimientoPorWhatsapp(data.pedido_especifico, tel, todos.length);
+          return;
+        }
+
+        // 1 único pedido en tránsito -> abrir directo en 1 paso
+        if (enTransito.length === 1) {
+          _activarVistaSeguimientoPorWhatsapp(enTransito[0], tel, todos.length);
+          return;
+        }
+
+        // 2 o más pedidos en tránsito -> mostrar selector directo para elegir con 1 toque
+        if (enTransito.length >= 2) {
+          renderizarSelectorPedidosVecino(
+            enTransito.map(x => ({ ...x.pedido, items: x.items, seguimiento: x.seguimiento })),
+            todos.map(x => ({ ...x.pedido, items: x.items, seguimiento: x.seguimiento })),
+            data.nodo,
+            { modoTokenCompleto: false, telefonoWhatsapp: tel }
+          );
+          return;
+        }
+
+        // Sin pedidos en tránsito pero con pedido reciente -> abrir directo el más reciente (o selector si > 1)
+        if (todos.length === 1) {
+          _activarVistaSeguimientoPorWhatsapp(todos[0], tel, 1);
+          return;
+        }
+        if (todos.length > 1) {
+          renderizarSelectorPedidosVecino(
+            [],
+            todos.map(x => ({ ...x.pedido, items: x.items, seguimiento: x.seguimiento })),
+            data.nodo,
+            { modoTokenCompleto: false, telefonoWhatsapp: tel }
+          );
+        }
+      } catch (_) {
         if (errBox) {
-          errBox.textContent = 'Error de conexión al consultar el pedido.';
+          errBox.textContent = 'Error de conexión al consultar tu pedido.';
           errBox.style.display = 'block';
         }
         if (btn) {
           btn.disabled = false;
-          btn.textContent = 'Consultar estado en vivo';
+          btn.textContent = 'Ver estado de mi pedido →';
         }
       }
+    }
+
+    function _activarVistaSeguimientoPorWhatsapp(itemWa, telefonoUsado, totalPedidos = 1) {
+      _trackingTokenActivo = '';
+      _trackingWhatsappActivo = {
+        telefono: telefonoUsado,
+        codigo_pedido: itemWa.pedido.codigo_pedido
+      };
+
+      if (itemWa.nodo?.color_primario) {
+        aplicarPaletaTienda(itemWa.nodo.color_primario);
+      }
+
+      renderizarVistaSeguimientoEnVivo({
+        ...itemWa,
+        modo_privacidad_enmascarada: true,
+        total_pedidos_vecino: totalPedidos
+      });
+
+      detenerPollingSeguimiento();
+      if (!itemWa.seguimiento?.anulado && Number(itemWa.seguimiento?.hito_actual || 1) < 6) {
+        _trackingTimer = setInterval(() => {
+          refrescarSeguimientoWhatsappActivo(true);
+        }, 15000);
+      }
+    }
+
+    async function refrescarSeguimientoWhatsappActivo(silencioso = true) {
+      if (!_trackingWhatsappActivo) return;
+      await ejecutarConsultaPorWhatsapp(_trackingWhatsappActivo.telefono, {
+        codigoPedidoEspecifico: _trackingWhatsappActivo.codigo_pedido,
+        silenciosoPolling: silencioso
+      });
+    }
+
+    function abrirPedidoDesdeSelectorWhatsapp(codigoPedido) {
+      if (!_ultimoResultadoWhatsapp) return;
+      const todos = _ultimoResultadoWhatsapp.pedidos_todos || [];
+      const elegido = todos.find(x => x.pedido.codigo_pedido === codigoPedido);
+      if (!elegido) return;
+      const idLocal = obtenerIdentidadVecinoLocal();
+      _activarVistaSeguimientoPorWhatsapp(
+        elegido,
+        idLocal.telefono_display || _ultimoResultadoWhatsapp.telefono_normalizado,
+        todos.length
+      );
+    }
+
+    async function verMisOtrosPedidosDesdeSeguimiento() {
+      detenerPollingSeguimiento();
+      if (STATE.portalToken) {
+        if (!STATE.miCuentaData) {
+          try {
+            const resp = await fetch(
+              `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(STATE.portalToken)}`,
+              { cache: 'no-store' }
+            );
+            const data = await resp.json();
+            if (resp.ok && data.ok) {
+              STATE.miCuentaData = data;
+            }
+          } catch (_) {}
+        }
+        if (STATE.miCuentaData) {
+          const activos = (STATE.miCuentaData.historial_pedidos || []).filter(p => !p.anulado);
+          const enTransito = activos.filter(p => Number(p.seguimiento?.hito_actual || 1) < 6);
+          if (activos.length > 1) {
+            renderizarSelectorPedidosVecino(enTransito, activos, STATE.miCuentaData.nodo, { modoTokenCompleto: true });
+            return;
+          }
+          cerrarModalSeguimiento();
+          await activarVistaMiCuenta();
+          return;
+        }
+      }
+      if (_ultimoResultadoWhatsapp && Array.isArray(_ultimoResultadoWhatsapp.pedidos_todos) && _ultimoResultadoWhatsapp.pedidos_todos.length > 0) {
+        const todos = _ultimoResultadoWhatsapp.pedidos_todos;
+        const enTransito = _ultimoResultadoWhatsapp.pedidos_en_transito || [];
+        renderizarSelectorPedidosVecino(
+          enTransito.map(x => ({ ...x.pedido, items: x.items, seguimiento: x.seguimiento })),
+          todos.map(x => ({ ...x.pedido, items: x.items, seguimiento: x.seguimiento })),
+          _ultimoResultadoWhatsapp.nodo,
+          { modoTokenCompleto: false }
+        );
+        return;
+      }
+      abrirFormularioSoloWhatsapp(true);
+    }
+
+    function renderizarSelectorPedidosVecino(enTransitoList, todosList, nodo, opciones = {}) {
+      const modal = document.getElementById('tracking-modal');
+      const box = document.getElementById('tracking-card-content');
+      if (!modal || !box) return;
+      modal.style.display = 'flex';
+
+      const modoToken = Boolean(opciones.modoTokenCompleto);
+      const listaPrincipal = enTransitoList.length > 0 ? enTransitoList : todosList;
+      const entregadosExtra = enTransitoList.length > 0
+        ? todosList.filter(p => Number(p.seguimiento?.hito_actual || 1) >= 6)
+        : [];
+
+      const renderTarjeta = (p) => {
+        const resumenItems = (p.items || []).map(i => `${Number(i.cantidad)}x ${esc(i.nombre_publico)}`).join(' · ');
+        const pasoAct = (p.seguimiento?.pasos || []).find(s => s.es_actual) || {};
+        const accionClick = (modoToken && p.tracking_token)
+          ? `abrirSeguimientoPorToken('${esc(p.tracking_token)}')`
+          : `abrirPedidoDesdeSelectorWhatsapp('${esc(p.codigo_pedido)}')`;
+        return `
+          <button type="button" onclick="${accionClick}"
+            style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px; padding:13px 14px; border-radius:13px; border:1.5px solid var(--brand-border); background:#fffdfb; color:var(--text); font-family:inherit; cursor:pointer; text-align:left; box-shadow:0 2px 8px rgba(62,37,25,0.04);">
+            <div style="min-width:0; flex:1;">
+              <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                <span style="font-size:0.96rem; font-weight:900; color:var(--text);">#${esc(p.codigo_pedido)}</span>
+                <span style="font-size:0.75rem; font-weight:900; padding:2px 9px; border-radius:999px; background:var(--brand-light); color:var(--brand-dark);">
+                  ${esc(pasoAct.icono || '📦')} ${esc(p.seguimiento?.titulo_estado_actual || 'En proceso')}
+                </span>
+              </div>
+              <div style="font-size:0.81rem; color:var(--text); font-weight:700; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                ${resumenItems || 'Compra vecinal'}
+              </div>
+              ${p.fecha_entrega_label ? `<div style="font-size:0.75rem; color:var(--muted); font-weight:700; margin-top:2px;">📅 ${esc(p.fecha_entrega_label)}</div>` : ''}
+            </div>
+            <div style="text-align:right; flex-shrink:0;">
+              <div style="font-size:1.02rem; font-weight:900; color:var(--text);">${fmt(p.total_vecino)}</div>
+              <div style="font-size:0.78rem; font-weight:900; color:var(--brand-dark); margin-top:3px;">Ver en vivo →</div>
+            </div>
+          </button>
+        `;
+      };
+
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0; font-size:1.16rem; font-weight:900;">📦 Tus pedidos en ${esc(nodo?.nombre_marca || 'el Nodo')}</h2>
+            <div style="font-size:0.8rem; color:var(--muted); font-weight:700; margin-top:2px;">
+              Tocá un pedido para ver su estado en tiempo real
+            </div>
+          </div>
+          <button type="button" onclick="cerrarModalSeguimiento()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
+        </div>
+
+        <div style="font-size:0.75rem; font-weight:900; color:var(--brand-dark); text-transform:uppercase; letter-spacing:0.03em; margin-bottom:8px;">
+          ${enTransitoList.length > 0 ? `Pedidos en tránsito (${enTransitoList.length})` : `Pedidos recientes (${todosList.length})`}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:9px; margin-bottom:12px;">
+          ${listaPrincipal.map(renderTarjeta).join('')}
+        </div>
+
+        ${entregadosExtra.length > 0 ? `
+          <div style="font-size:0.74rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:10px 0 7px 0;">
+            Compras anteriores entregadas (${entregadosExtra.length})
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+            ${entregadosExtra.slice(0, 3).map(renderTarjeta).join('')}
+          </div>
+        ` : ''}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--border);">
+          ${STATE.portalToken ? `
+            <button type="button" onclick="cerrarModalSeguimiento(); activarVistaMiCuenta();"
+              style="background:none; border:none; padding:4px 0; color:var(--brand-dark); font-family:inherit; font-size:0.82rem; font-weight:900; cursor:pointer; text-decoration:underline;">
+              👤 Ir al resumen completo de Mi Cuenta
+            </button>
+          ` : '<span></span>'}
+          <button type="button" onclick="abrirFormularioSoloWhatsapp(true)"
+            style="background:none; border:none; padding:4px 0; color:var(--muted); font-family:inherit; font-size:0.8rem; font-weight:800; cursor:pointer; text-decoration:underline;">
+            🔄 Consultar otro WhatsApp
+          </button>
+        </div>
+      `;
     }
 
     async function abrirSeguimientoPorToken(token, silencioso = false) {
@@ -1701,19 +2142,18 @@
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           if (!silencioso) {
-            box.innerHTML = `
-              <div style="text-align:center; padding:24px 12px;">
-                <div style="font-size:2rem; margin-bottom:6px;">🔎</div>
-                <h3 style="margin:0 0 6px 0;">Enlace no encontrado</h3>
-                <p style="font-size:0.86rem; color:var(--muted); margin:0 0 14px 0;">${esc(data.error || 'No pudimos localizar ese pedido.')}</p>
-                <div style="display:flex; gap:8px; justify-content:center;">
-                  <button type="button" onclick="abrirModalBuscadorSeguimiento()" style="padding:9px 14px; border-radius:9px; border:1px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-weight:800; cursor:pointer;">Buscar por número</button>
-                  <button type="button" onclick="cerrarModalSeguimiento()" style="padding:9px 14px; border-radius:9px; border:none; background:var(--brand); color:#fff; font-weight:800; cursor:pointer;">Volver a la tienda</button>
-                </div>
-              </div>
-            `;
+            abrirFormularioSoloWhatsapp(false);
           }
           return;
+        }
+
+        if (data.identidad_vecino) {
+          guardarIdentidadVecinoLocal({
+            portal_token: data.identidad_vecino.portal_token || '',
+            telefono_normalizado: data.identidad_vecino.telefono_normalizado || '',
+            telefono_display: data.identidad_vecino.telefono_whatsapp || '',
+            nombre_completo: data.identidad_vecino.nombre_completo || data.pedido?.vecino_nombre || ''
+          });
         }
 
         guardarPedidoRecienteLocal({
@@ -1731,23 +2171,29 @@
     }
 
     function _activarVistaSeguimientoConDatos(data) {
-      const tok = data.pedido.tracking_token;
+      const tok = data.pedido?.tracking_token || '';
       _trackingTokenActivo = tok;
+      _trackingWhatsappActivo = null;
+
+      const modal = document.getElementById('tracking-modal');
+      if (modal) modal.style.display = 'flex';
 
       if (data.nodo?.color_primario) {
         aplicarPaletaTienda(data.nodo.color_primario);
       }
 
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set('seguimiento', tok);
-        window.history.replaceState({}, '', url.pathname + url.search);
-      } catch (_) {}
+      if (tok) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('seguimiento', tok);
+          window.history.replaceState({}, '', url.pathname + url.search);
+        } catch (_) {}
+      }
 
       renderizarVistaSeguimientoEnVivo(data);
 
       detenerPollingSeguimiento();
-      if (!data.seguimiento.anulado && Number(data.seguimiento.hito_actual) < 6) {
+      if (!data.seguimiento.anulado && Number(data.seguimiento.hito_actual) < 6 && tok) {
         _trackingTimer = setInterval(() => {
           if (_trackingTokenActivo) {
             abrirSeguimientoPorToken(_trackingTokenActivo, true);
@@ -1765,17 +2211,31 @@
       const seg = data.seguimiento || {};
       const pasos = Array.isArray(seg.pasos) ? seg.pasos : [];
       const items = Array.isArray(data.items) ? data.items : [];
+      const esEnmascarado = Boolean(data.modo_privacidad_enmascarada);
       const esEntregado = !seg.anulado && Number(seg.hito_actual) >= 6;
       const pct = seg.anulado
         ? 0
         : Math.min(100, Math.max(12, Math.round((Number(seg.paso_actual_orden || 1) / Math.max(1, Number(seg.total_pasos || 5))) * 100)));
 
       const pasoActualObj = pasos.find(p => p.es_actual) || pasos[0] || {};
-      const linkCompartir = `${window.location.origin}/tienda/${encodeURIComponent(nodo.slug || STATE.slug)}?seguimiento=${encodeURIComponent(ped.tracking_token)}`;
+      const tieneTok = Boolean(ped.tracking_token);
+      const linkCompartir = tieneTok
+        ? `${window.location.origin}/tienda/${encodeURIComponent(nodo.slug || STATE.slug)}?seguimiento=${encodeURIComponent(ped.tracking_token)}`
+        : '';
       const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
       const waGestorHref = telGestorDigits
         ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`)}`
         : '';
+
+      const accionRefrescar = tieneTok
+        ? `abrirSeguimientoPorToken('${esc(ped.tracking_token)}', true)`
+        : `refrescarSeguimientoWhatsappActivo(false)`;
+
+      const mostrarVerOtrosPedidos = Boolean(
+        STATE.portalToken ||
+        Number(data.total_pedidos_vecino || 0) > 1 ||
+        (_ultimoResultadoWhatsapp && (_ultimoResultadoWhatsapp.pedidos_todos || []).length > 1)
+      );
 
       box.innerHTML = `
         <!-- Cabecera Marca Blanca del Seguimiento -->
@@ -1795,7 +2255,7 @@
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-            <button type="button" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}', true)" title="Actualizar estado"
+            <button type="button" onclick="${accionRefrescar}" title="Actualizar estado"
               style="padding:6px 10px; border-radius:8px; border:1px solid var(--border); background:#fffdfb; color:var(--text); font-family:inherit; font-size:0.76rem; font-weight:800; cursor:pointer;">
               🔄 Actualizar
             </button>
@@ -1876,6 +2336,11 @@
                   : esc(nodo.direccion_retiro || nodo.barrio_zona || '')
                 }
               </div>
+              ${esEnmascarado && ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `
+                <div style="font-size:0.72rem; color:#64748b; font-weight:700; margin-top:2px;">
+                  🔒 Numeración parcialmente oculta por privacidad
+                </div>
+              ` : ''}
               ${ped.fecha_entrega_label ? `<div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:2px;">📅 ${esc(ped.fecha_entrega_label)}</div>` : ''}
             </div>
             <div style="text-align:right;">
@@ -1922,10 +2387,12 @@
 
         <!-- Acciones inferiores del vecino -->
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between;">
-          <button type="button" onclick="navigator.clipboard.writeText('${esc(linkCompartir)}'); this.textContent='✅ ¡Enlace copiado!';"
-            style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
-            🔗 Copiar link de seguimiento
-          </button>
+          ${tieneTok ? `
+            <button type="button" onclick="navigator.clipboard.writeText('${esc(linkCompartir)}'); this.textContent='✅ ¡Enlace copiado!';"
+              style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
+              🔗 Copiar link de seguimiento
+            </button>
+          ` : ''}
           ${waGestorHref ? `
             <a href="${esc(waGestorHref)}" target="_blank" rel="noopener"
               style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.82rem; text-decoration:none; text-align:center;">
@@ -1935,6 +2402,20 @@
           <button type="button" onclick="cerrarModalSeguimiento()"
             style="width:100%; padding:11px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
             ← ${STATE.vistaMiCuentaActiva ? 'Volver a Mi Cuenta' : `Volver a la tienda de ${esc(nodo.nombre_marca)}`}
+          </button>
+        </div>
+
+        <!-- Enlace discreto para revisar otros pedidos o cambiar el WhatsApp consultado -->
+        <div style="display:flex; justify-content:center; align-items:center; gap:14px; flex-wrap:wrap; margin-top:11px; padding-top:9px; border-top:1px dashed var(--border); font-size:0.77rem;">
+          ${mostrarVerOtrosPedidos ? `
+            <button type="button" onclick="verMisOtrosPedidosDesdeSeguimiento()"
+              style="background:none; border:none; padding:0; color:var(--brand-dark); font-family:inherit; font-size:0.78rem; font-weight:800; text-decoration:underline; cursor:pointer;">
+              📋 Ver mis otros pedidos
+            </button>
+          ` : ''}
+          <button type="button" onclick="abrirFormularioSoloWhatsapp(true)"
+            style="background:none; border:none; padding:0; color:var(--muted); font-family:inherit; font-size:0.77rem; font-weight:700; text-decoration:underline; cursor:pointer;">
+            Consultar otro WhatsApp
           </button>
         </div>
       `;
@@ -2092,15 +2573,29 @@
           localStorage.setItem(_storageKeyMiCuentaToken(data.nodo?.slug || STATE.slug), STATE.portalToken);
         } catch (_) {}
 
-        // Pre-cargar datos del vecino para agilizar futuras compras en el catálogo
+        // Persistir identidad y pedidos activos del vecino en este celular (habilita salto en 1 toque en el catálogo)
         if (data.vecino) {
-          window._savedVecinoNombre = data.vecino.nombre_completo || window._savedVecinoNombre || '';
-          window._savedVecinoTel = data.vecino.telefono_whatsapp || window._savedVecinoTel || '';
-          if (data.vecino.direccion_calle) {
-            window._savedVecinoDir = data.vecino.direccion_calle;
+          guardarIdentidadVecinoLocal({
+            portal_token: STATE.portalToken,
+            telefono_normalizado: data.vecino.telefono_normalizado || '',
+            telefono_display: data.vecino.telefono_whatsapp || '',
+            nombre_completo: data.vecino.nombre_completo || '',
+            direccion_calle: data.vecino.direccion_calle || '',
+            entrecalles_referencia: data.vecino.entrecalles_referencia || ''
+          }, data.nodo?.slug || STATE.slug);
+        }
+        if (Array.isArray(data.historial_pedidos)) {
+          const activosSync = data.historial_pedidos.filter(p => !p.anulado && p.tracking_token);
+          for (const p of activosSync.slice(0, 5).reverse()) {
+            guardarPedidoRecienteLocal({
+              codigo_pedido: p.codigo_pedido,
+              tracking_token: p.tracking_token,
+              vecino_nombre: data.vecino?.nombre_completo || '',
+              created_at: p.created_at
+            });
           }
-          if (data.vecino.entrecalles_referencia) {
-            window._savedVecinoRef = data.vecino.entrecalles_referencia;
+          if (!STATE.vistaMiCuentaActiva) {
+            refrescarBannerPedidosRecientes();
           }
         }
 
@@ -2575,16 +3070,27 @@
       STATE.slug = detectarSlugInicial();
       const params = new URLSearchParams(window.location.search);
       const tokInicial = (params.get('seguimiento') || '').trim();
+      const idGuardada = obtenerIdentidadVecinoLocal(STATE.slug);
+      if (idGuardada.nombre_completo) window._savedVecinoNombre = idGuardada.nombre_completo;
+      if (idGuardada.telefono_display || idGuardada.telefono_normalizado) {
+        window._savedVecinoTel = idGuardada.telefono_display || idGuardada.telefono_normalizado;
+      }
+      if (idGuardada.direccion_calle) window._savedVecinoDir = idGuardada.direccion_calle;
+      if (idGuardada.entrecalles_referencia) window._savedVecinoRef = idGuardada.entrecalles_referencia;
+
       const detCuenta = detectarPortalTokenEnUrl();
       if (detCuenta.token) {
         STATE.portalToken = detCuenta.token;
+        guardarIdentidadVecinoLocal({ portal_token: detCuenta.token }, STATE.slug);
+      } else if (idGuardada.portal_token) {
+        STATE.portalToken = idGuardada.portal_token;
       }
 
       await cargarTienda('');
 
-      if (detCuenta.token && detCuenta.abrirDirecto) {
+      if (STATE.portalToken && detCuenta.abrirDirecto) {
         await activarVistaMiCuenta();
-      } else if (detCuenta.token) {
+      } else if (STATE.portalToken) {
         cargarPortalMiCuenta(true);
       }
 

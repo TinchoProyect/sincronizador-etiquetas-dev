@@ -57,7 +57,7 @@ app.use((req, res, next) => {
         /^\/favicon\.ico$/i.test(p);
 
     const esApiNodoPermitida =
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
