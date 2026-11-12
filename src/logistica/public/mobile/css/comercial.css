@@ -1412,6 +1412,8 @@
 
 .bunker-subcat-header.is-collapsible {
     cursor: pointer;
+    text-transform: none !important;
+    letter-spacing: 0.01em !important;
 }
 
 .bunker-subcat-header.is-collapsible:active {
