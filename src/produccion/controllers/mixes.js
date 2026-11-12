@@ -4,6 +4,7 @@
  */
 
 const pool = require('../config/database'); // Ajustar la ruta si corresponde
+const { sincronizarManifestIngredientesB2B } = require('../services/desgloseIngredientesComercialService');
 
 /**
  * Evita que se formen ciclos (un mix contenga a sí mismo en cualquier nivel).
@@ -152,6 +153,7 @@ async function agregarIngredienteAlMix(req, res) {
       RETURNING mix_id, ingrediente_id, cantidad;
     `;
     const result = await pool.query(queryInsert, [mixId, ingredienteId, cantidad]);
+    sincronizarManifestIngredientesB2B().catch(() => {});
     res.json({
       message: 'Ingrediente agregado al mix con éxito',
       composicion: result.rows[0],
@@ -188,6 +190,7 @@ async function editarIngredienteDelMix(req, res) {
       return res.status(404).json({ error: 'No se encontró este ingrediente en la composición del mix' });
     }
 
+    sincronizarManifestIngredientesB2B().catch(() => {});
     res.json({
       message: 'Ingrediente del mix actualizado con éxito',
       composicion: result.rows[0],
@@ -218,6 +221,7 @@ async function eliminarIngredienteDelMix(req, res) {
       return res.status(404).json({ error: 'No se encontró este ingrediente en la composición del mix' });
     }
 
+    sincronizarManifestIngredientesB2B().catch(() => {});
     res.json({
       message: 'Ingrediente eliminado del mix',
       data: result.rows[0],

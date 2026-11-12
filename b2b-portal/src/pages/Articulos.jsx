@@ -21,6 +21,12 @@ import { getCache, setCache } from '../utils/cacheStore';
 import { registrarAccesoTelemetria } from '../utils/telemetria';
 import { fetchPoliticaB2B, evaluarPoliticaB2B, fetchOfertasB2B } from '../utils/politicasB2B';
 import { InspeccionPartidaModal, fetchMapaFotosLotesB2B } from '../components/InspeccionPartidaModal';
+import {
+  DesgloseIngredientesModal,
+  BotonVerIngredientesB2B,
+  fetchMapaIngredientesComercialesB2B,
+  resolverInfoIngredientesProductoB2B
+} from '../components/DesgloseIngredientesModal';
 
 export default function Articulos({ 
   profile, 
@@ -78,9 +84,12 @@ export default function Articulos({
   const [ofertasActivas, setOfertasActivas] = useState({});
   const [mapaFotosLotes, setMapaFotosLotes] = useState({});
   const [modalPartidaCtx, setModalPartidaCtx] = useState(null);
+  const [mapaIngredientesComerciales, setMapaIngredientesComerciales] = useState({});
+  const [modalIngredientesCtx, setModalIngredientesCtx] = useState(null);
 
   useEffect(() => {
     fetchMapaFotosLotesB2B().then(mapa => setMapaFotosLotes(mapa || {}));
+    fetchMapaIngredientesComercialesB2B().then(mapa => setMapaIngredientesComerciales(mapa || {}));
     if (profile?.cliente_id) {
       fetchPoliticaB2B(profile).then(pol => setPoliticaComercial(pol));
       fetchOfertasB2B(profile).then(ofrs => setOfertasActivas(ofrs || {}));
@@ -404,6 +413,7 @@ export default function Articulos({
       }
 
       if (searchTerms.length > 0) {
+        const infoIng = resolverInfoIngredientesProductoB2B(product, mapaIngredientesComerciales);
         const textParts = [
           product.producto_descripcion || '',
           product.producto_codigo || '',
@@ -414,7 +424,8 @@ export default function Articulos({
           product.sub_sub_sub_categoria || '',
           product.rubro || '',
           product.sub_rubro || '',
-          product.busqueda_metadata || ''
+          product.busqueda_metadata || '',
+          infoIng ? infoIng.ingredientes.join(' ') : ''
         ];
 
         const fullSearchableText = textParts
@@ -428,7 +439,7 @@ export default function Articulos({
       }
       return true;
     });
-  }, [products, searchTerms, filtroFavoritos, filtroOfertas, articulosHabituales, ofertasActivas]);
+  }, [products, searchTerms, filtroFavoritos, filtroOfertas, articulosHabituales, ofertasActivas, mapaIngredientesComerciales]);
 
   // Ofertas dinámicas activas que coinciden con la búsqueda actual para la Solapa Especial
   const ofertasVisiblesEnSolapa = useMemo(() => {
@@ -771,6 +782,7 @@ export default function Articulos({
         : null
     );
     const cantFotosPartida = Array.isArray(infoPartida?.imagenes) ? infoPartida.imagenes.length : 0;
+    const infoIngredientes = resolverInfoIngredientesProductoB2B(product, mapaIngredientesComerciales);
 
     const productPayloadToAdd = ofertaActiva ? {
       ...product,
@@ -1037,6 +1049,20 @@ export default function Articulos({
                 <span>📷</span>
                 <span>Ver partida{cantFotosPartida > 1 ? ` (${cantFotosPartida})` : ''}</span>
               </button>
+            )}
+
+            {infoIngredientes && (
+              <BotonVerIngredientesB2B
+                onClick={(e) => {
+                  e.stopPropagation();
+                  registrarAccesoTelemetria(`🥣 Miró ingredientes: ${product.producto_descripcion} (${product.producto_codigo})`, profile);
+                  setModalIngredientesCtx({
+                    product,
+                    infoIngredientes,
+                    productPayloadToAdd
+                  });
+                }}
+              />
             )}
           </div>
 
@@ -2136,6 +2162,24 @@ export default function Articulos({
         ofertaActiva={modalPartidaCtx?.ofertaActiva}
         descOfertaPct={modalPartidaCtx?.descOfertaPct}
         formatCurrency={formatCurrency}
+      />
+
+      {/* Visor de Ingredientes Comerciales (Línea 3 Mixes y Línea 6 Granolas) */}
+      <DesgloseIngredientesModal
+        isOpen={Boolean(modalIngredientesCtx)}
+        onClose={() => setModalIngredientesCtx(null)}
+        product={modalIngredientesCtx?.product}
+        infoIngredientes={modalIngredientesCtx?.infoIngredientes}
+        currentQty={
+          modalIngredientesCtx?.product
+            ? (cart.find(item => (item.producto_codigo || '').trim() === (modalIngredientesCtx.product.producto_codigo || '').trim())?.cantidad || 0)
+            : 0
+        }
+        onChangeQty={(newQty) => {
+          if (modalIngredientesCtx?.productPayloadToAdd) {
+            addToCart(modalIngredientesCtx.productPayloadToAdd, Math.max(0, newQty));
+          }
+        }}
       />
     </div>
   );

@@ -17,6 +17,30 @@ const { dbMiddleware } = require('../middleware');
 // Aplicar middleware de base de datos a todas las rutas
 router.use(dbMiddleware);
 const {
+    construirCatalogoIngredientesComerciales,
+    sincronizarManifestIngredientesB2B
+} = require('../services/desgloseIngredientesComercialService');
+
+// 🥣 Catálogo comercial dinámico de ingredientes resueltos recursivamente (sin pesos, porcentajes ni costos)
+router.get('/catalogo/ingredientes-comerciales', async (req, res) => {
+    try {
+        const catalogo = await construirCatalogoIngredientesComerciales();
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.json({
+            ok: true,
+            updated_at: catalogo.updated_at,
+            total_articulos: catalogo.total_articulos,
+            items: catalogo.items
+        });
+    } catch (error) {
+        console.error('❌ [INGREDIENTES-COMERCIALES] Error al resolver desglose dinámico:', error);
+        res.status(500).json({
+            ok: false,
+            error: 'No se pudo resolver el desglose comercial de ingredientes.'
+        });
+    }
+});
+const {
     crearReceta,
     obtenerEstadoRecetas,
     validarIntegridadRecetas,

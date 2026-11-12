@@ -374,6 +374,20 @@ async function sincronizarB2BPrecios() {
       return;
     }
 
+    // Resolver dinámicamente los ingredientes comerciales limpios (Línea 3 Mixes y Línea 6 Granolas)
+    let mapaIngredientesUpper = new Map();
+    try {
+      const { construirCatalogoIngredientesComerciales } = require('../produccion/services/desgloseIngredientesComercialService');
+      const catIng = await construirCatalogoIngredientesComerciales(localClient, { forzarRecalculo: true });
+      if (catIng && catIng.items) {
+        for (const [skuKey, info] of Object.entries(catIng.items)) {
+          mapaIngredientesUpper.set(String(skuKey).trim().toUpperCase(), info);
+        }
+      }
+    } catch (ingErr) {
+      console.warn('⚠️ Advertencia al precalcular desglose comercial de ingredientes:', ingErr.message);
+    }
+
     // Preparar payloads con el timestamp único para identificar registros vigentes
     const payloads = resLocal.rows.map(row => {
       let props = row.propiedades_dinamicas;
@@ -537,6 +551,17 @@ async function sincronizarB2BPrecios() {
       if (row.sub_rubro && row.sub_rubro !== articuloPrincipal) parts.push(String(row.sub_rubro).trim());
       dynamicVals.forEach(val => parts.push(val));
 
+      // Inyectar ingredientes limpios para búsqueda + token de respaldo instantáneo (Línea 3 Mixes y Línea 6 Granolas)
+      const infoIngComercial = row.producto_codigo
+        ? mapaIngredientesUpper.get(String(row.producto_codigo).trim().toUpperCase())
+        : null;
+      if (infoIngComercial && Array.isArray(infoIngComercial.ingredientes) && infoIngComercial.ingredientes.length >= 2) {
+        parts.push(infoIngComercial.ingredientes.join(' '));
+        if (infoIngComercial.linea_negocio === 3 || infoIngComercial.linea_negocio === 6) {
+          parts.push(`__ING_L${infoIngComercial.linea_negocio}:${infoIngComercial.ingredientes.join('|')}__`);
+        }
+      }
+
       const busqueda_metadata = parts.join(' ').replace(/\s+/g, ' ').trim();
 
       const listaIva = parseFloat(row.lista_iva_porcentaje || 0);
@@ -676,6 +701,14 @@ async function sincronizarB2BPrecios() {
       await FotosLotesService.sincronizarManifestYCatalogoSupabase(localClient);
     } catch (fotosErr) {
       console.warn('⚠️ Advertencia al sincronizar fotos de partidas por lote:', fotosErr.message);
+    }
+
+    // 6. Sincronización en tiempo real del manifest de Ingredientes Comerciales (Mixes y Granolas) en Storage
+    try {
+      const { sincronizarManifestIngredientesB2B } = require('../produccion/services/desgloseIngredientesComercialService');
+      await sincronizarManifestIngredientesB2B(localClient);
+    } catch (ingSyncErr) {
+      console.warn('⚠️ Advertencia al sincronizar manifest de ingredientes comerciales B2B:', ingSyncErr.message);
     }
     
   } catch (error) {
