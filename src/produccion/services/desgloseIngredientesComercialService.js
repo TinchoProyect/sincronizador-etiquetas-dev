@@ -15,6 +15,7 @@
  */
 
 const dbDefault = require('../config/database');
+const { normalizarStockComercial, esSkuPremezclaInterna } = require('../../shared/stockComercialHelper');
 
 const BUCKET_B2B_PUBLIC = 'b2b_lotes_fotos';
 const MANIFEST_FILENAME = 'ingredientes_comerciales.json';
@@ -1023,6 +1024,7 @@ async function construirCatalogoPreviewB2BLaboratorio(runner = null) {
     for (const row of resLocal.rows) {
         const codigo = String(row.producto_codigo || '').trim();
         if (!codigo) continue;
+        if (esSkuPremezclaInterna(row)) continue;
         listasSet.add(Number(row.lista_id));
         if (mapUnicos.has(codigo)) continue;
 
@@ -1102,11 +1104,13 @@ async function construirCatalogoPreviewB2BLaboratorio(runner = null) {
         if (subCategoria) parts.push(subCategoria);
         if (subSubCategoria) parts.push(subSubCategoria);
         if (subSubSubCategoria) parts.push(subSubSubCategoria);
+        if (row.rubro) parts.push(String(row.rubro).trim());
+        if (row.sub_rubro) parts.push(String(row.sub_rubro).trim());
 
         const infoIng = mapaIngredientesUpper.get(codigo.toUpperCase()) || null;
         if (infoIng && Array.isArray(infoIng.ingredientes) && infoIng.ingredientes.length >= 2) {
             parts.push(infoIng.ingredientes.join(' '));
-            if (infoIng.linea_negocio === 3 || infoIng.linea_negocio === 6) {
+            if ([3, 5, 6].includes(Number(infoIng.linea_negocio))) {
                 parts.push(`__ING_L${infoIng.linea_negocio}:${infoIng.ingredientes.join('|')}__`);
             }
         }
@@ -1124,7 +1128,7 @@ async function construirCatalogoPreviewB2BLaboratorio(runner = null) {
         const ivaPorcentaje = realIva > 0 ? realIva : 21.0;
         const precioNeto = Math.round((precioFinal / (1 + ivaPorcentaje / 100)) * 100) / 100;
         const precioKiloNeto = Math.round((precioKilo / (1 + ivaPorcentaje / 100)) * 100) / 100;
-        const stockFisico = Number(row.stock_disponible || 0);
+        const stockFisico = normalizarStockComercial(row.stock_disponible || 0);
 
         mapUnicos.set(codigo, {
             lista_id: Number(row.lista_id),
