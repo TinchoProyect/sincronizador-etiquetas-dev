@@ -23,6 +23,9 @@ async function inicializarDashboard() {
     console.log('[DASHBOARD] Inicializando...');
 
     try {
+        // Inicializar reguladores verticales entre las 3 columnas de inmediato
+        inicializarReguladoresVerticalesLogistica();
+
         // Cargar configuración
         await cargarConfiguracion();
 
@@ -46,6 +49,180 @@ async function inicializarDashboard() {
         mostrarError('Error al inicializar el dashboard: ' + error.message);
     }
 }
+
+const LOGISTICA_PANEL_WIDTHS_KEY = 'lamda_logistica_panel_widths_v1';
+
+/**
+ * Inicializa los reguladores verticales (splitters) para ampliar/reducir las 3 columnas
+ */
+function inicializarReguladoresVerticalesLogistica() {
+    const grid = document.getElementById('logistica-main-grid') || document.querySelector('.main-content');
+    const resizerLeft = document.getElementById('resizer-left');
+    const resizerRight = document.getElementById('resizer-right');
+    if (!grid || !resizerLeft || !resizerRight) return;
+
+    const MIN_LEFT = 260;
+    const MIN_CENTER = 250;
+    const MIN_RIGHT = 250;
+    const RESIZER_TOTAL = 24;
+
+    const notificarResizeMapa = () => {
+        if (state.map && window.google && window.google.maps && window.google.maps.event) {
+            window.google.maps.event.trigger(state.map, 'resize');
+        }
+    };
+
+    const obtenerAnchosActuales = () => {
+        const leftPanel = document.getElementById('logistica-left-panel') || grid.querySelector('.left-panel');
+        const rightPanel = document.getElementById('logistica-right-panel') || grid.querySelector('.right-panel');
+        return {
+            left: leftPanel ? leftPanel.getBoundingClientRect().width : 390,
+            right: rightPanel ? rightPanel.getBoundingClientRect().width : 410
+        };
+    };
+
+    const aplicarAnchosSeguros = (leftPx, rightPx, guardar = false) => {
+        if (window.innerWidth <= 900) return;
+        const rect = grid.getBoundingClientRect();
+        const disponible = Math.max(800, rect.width - RESIZER_TOTAL);
+
+        let l = Math.max(MIN_LEFT, Math.round(leftPx));
+        let r = Math.max(MIN_RIGHT, Math.round(rightPx));
+
+        if (l + r + MIN_CENTER > disponible) {
+            const exceso = (l + r + MIN_CENTER) - disponible;
+            const reducirIzq = Math.min(l - MIN_LEFT, Math.ceil(exceso / 2));
+            l -= Math.max(0, reducirIzq);
+            const reducirDer = Math.min(r - MIN_RIGHT, exceso - Math.max(0, reducirIzq));
+            r -= Math.max(0, reducirDer);
+        }
+
+        grid.style.setProperty('--left-panel-width', `${l}px`);
+        grid.style.setProperty('--right-panel-width', `${r}px`);
+
+        if (guardar) {
+            try {
+                localStorage.setItem(LOGISTICA_PANEL_WIDTHS_KEY, JSON.stringify({ left: l, right: r }));
+            } catch (e) {
+                // Ignorar error de quota
+            }
+        }
+    };
+
+    // Restaurar anchos guardados si existen
+    try {
+        const raw = localStorage.getItem(LOGISTICA_PANEL_WIDTHS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Number.isFinite(parsed.left) && Number.isFinite(parsed.right)) {
+                aplicarAnchosSeguros(parsed.left, parsed.right, false);
+            }
+        }
+    } catch (e) {
+        // Ignorar
+    }
+
+    const configurarArrastre = (resizerEl, lado) => {
+        let arrastrando = false;
+        let rafId = null;
+
+        const iniciar = (clientX) => {
+            if (window.innerWidth <= 900) return;
+            arrastrando = true;
+            resizerEl.classList.add('is-dragging');
+            document.body.classList.add('resizing-panels');
+
+            const rectGrid = grid.getBoundingClientRect();
+            const iniciales = obtenerAnchosActuales();
+            const startX = clientX;
+
+            const mover = (moveX) => {
+                if (!arrastrando) return;
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(() => {
+                    const delta = moveX - startX;
+                    const maxTotal = rectGrid.width - RESIZER_TOTAL;
+                    if (lado === 'left') {
+                        const maxLeft = Math.max(MIN_LEFT, maxTotal - iniciales.right - MIN_CENTER);
+                        const nuevoLeft = Math.min(maxLeft, Math.max(MIN_LEFT, iniciales.left + delta));
+                        grid.style.setProperty('--left-panel-width', `${Math.round(nuevoLeft)}px`);
+                        grid.style.setProperty('--right-panel-width', `${Math.round(iniciales.right)}px`);
+                    } else {
+                        const maxRight = Math.max(MIN_RIGHT, maxTotal - iniciales.left - MIN_CENTER);
+                        const nuevoRight = Math.min(maxRight, Math.max(MIN_RIGHT, iniciales.right - delta));
+                        grid.style.setProperty('--left-panel-width', `${Math.round(iniciales.left)}px`);
+                        grid.style.setProperty('--right-panel-width', `${Math.round(nuevoRight)}px`);
+                    }
+                    notificarResizeMapa();
+                });
+            };
+
+            const finalizar = () => {
+                if (!arrastrando) return;
+                arrastrando = false;
+                resizerEl.classList.remove('is-dragging');
+                document.body.classList.remove('resizing-panels');
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', finalizar);
+                window.removeEventListener('touchmove', onTouchMove);
+                window.removeEventListener('touchend', finalizar);
+                const finales = obtenerAnchosActuales();
+                aplicarAnchosSeguros(finales.left, finales.right, true);
+                notificarResizeMapa();
+            };
+
+            const onMouseMove = (ev) => mover(ev.clientX);
+            const onTouchMove = (ev) => {
+                if (ev.touches && ev.touches[0]) mover(ev.touches[0].clientX);
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', finalizar);
+            window.addEventListener('touchmove', onTouchMove, { passive: true });
+            window.addEventListener('touchend', finalizar);
+        };
+
+        resizerEl.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            iniciar(e.clientX);
+        });
+
+        resizerEl.addEventListener('touchstart', (e) => {
+            if (e.touches && e.touches[0]) {
+                iniciar(e.touches[0].clientX);
+            }
+        }, { passive: true });
+
+        resizerEl.addEventListener('dblclick', () => {
+            window.restablecerAnchoColumnasLogistica();
+        });
+    };
+
+    configurarArrastre(resizerLeft, 'left');
+    configurarArrastre(resizerRight, 'right');
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth <= 900) return;
+        const actuales = obtenerAnchosActuales();
+        aplicarAnchosSeguros(actuales.left, actuales.right, false);
+        notificarResizeMapa();
+    });
+}
+
+window.restablecerAnchoColumnasLogistica = function() {
+    const grid = document.getElementById('logistica-main-grid') || document.querySelector('.main-content');
+    if (!grid) return;
+    try {
+        localStorage.removeItem(LOGISTICA_PANEL_WIDTHS_KEY);
+    } catch (e) {
+        // Ignorar
+    }
+    grid.style.removeProperty('--left-panel-width');
+    grid.style.removeProperty('--right-panel-width');
+    if (state.map && window.google && window.google.maps && window.google.maps.event) {
+        window.google.maps.event.trigger(state.map, 'resize');
+    }
+};
 
 /**
  * Cargar pedidos pendientes
@@ -401,15 +578,14 @@ function obtenerPedidoHtml(pedido) {
                  ondragend="handleDragEnd(event)"
                  style="border-left: 5px solid #0d9488; background-color: #f0fdfa;">
                 
-                <div class="pedido-domicilio-indicator" style="background-color: #0d9488;" title="Contacto Comercial / Visita de Presentación"></div>
-                
-                <div class="pedido-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-                    <div style="display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        <span class="pedido-cliente-id" style="font-size: 1.02rem; font-weight: 800; color: #0f766e;">
+                <div class="pedido-header">
+                    <div class="pedido-header-left">
+                        <span class="pedido-domicilio-indicator" style="background-color: #0d9488; box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);" title="Contacto Comercial / Visita de Presentación"></span>
+                        <span class="pedido-cliente-id" style="font-size: 0.92rem; font-weight: 800; color: #0f766e;">
                             ${pedido.origen_contacto === 'CLIENTE_ACTIVO' ? '⭐ VISITA CLIENTE' : '🎯 CONTACTO'} • ${codigoProsp}
                         </span>
                     </div>
-                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                    <div class="pedido-header-badges">
                         <span class="pedido-badge" style="background-color:#0d9488; color:white; font-weight:bold;">
                             ${pedido.origen_contacto === 'CLIENTE_ACTIVO' ? '⭐ VISITA SIN PEDIDO' : '🤝 VISITA COMERCIAL'}
                         </span>
@@ -417,26 +593,26 @@ function obtenerPedidoHtml(pedido) {
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
-                    <div style="background: #ccfbf1; color: #115e59; border: 1px solid #99f6e4; padding: 2px 8px; border-radius: 4px; font-size: 0.74rem; display: inline-block; font-weight: bold;">
+                    <div style="background: #ccfbf1; color: #115e59; border: 1px solid #99f6e4; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; font-weight: bold;">
                         🏷️ ${rubroProsp}
                     </div>
-                    ${encargadoTxt ? `<div style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 2px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">👤 ${encargadoTxt}</div>` : ''}
+                    ${encargadoTxt ? `<div style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; padding: 2px 7px; border-radius: 4px; font-size: 0.71rem; font-weight: 700;">👤 ${encargadoTxt}</div>` : ''}
                 </div>
 
-                <div class="pedido-cliente-nombre" style="font-weight: 800; margin-top: 0.25rem; color: #0f172a; font-size: 0.95rem;">
+                <div class="pedido-cliente-nombre" style="font-weight: 800; margin-top: 0.2rem; color: #0f172a; font-size: 0.92rem; line-height: 1.25;">
                     ${clienteNombre}
                 </div>
                 <div class="pedido-direccion" style="margin-top: 0.2rem; color: #334155;">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}${pedido.domicilio_localidad ? ` • <b>${pedido.domicilio_localidad}</b>` : ''}
                 </div>
-                ${pedido.nota ? `<div style="margin-top: 0.25rem; font-size: 0.74rem; color: #475569; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${(pedido.nota || '').replace(/"/g, '&quot;')}">💡 ${pedido.nota}</div>` : ''}
+                ${pedido.nota ? `<div style="margin-top: 0.25rem; font-size: 0.73rem; color: #475569; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${(pedido.nota || '').replace(/"/g, '&quot;')}">💡 ${pedido.nota}</div>` : ''}
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                    <div style="font-weight: 700; color: #0f766e; font-size: 0.78rem;">
+                <div class="pedido-footer">
+                    <div style="font-weight: 700; color: #0f766e; font-size: 0.76rem;">
                         ${pedido.cliente_telefono ? `📱 ${pedido.cliente_telefono}` : '🚶 Visita en local'}
                     </div>
-                    <div style="display:flex; gap:0.25rem;">
-                        <button type="button" onclick="event.stopPropagation(); window.quitarContactoDePoolLogistica('${idNumProsp}', '${(clienteNombre || '').replace(/'/g, "\\'")}')" class="btn-sm" style="padding: 2px 8px; font-size: 0.73rem; background-color: #ffffff; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer; font-weight: 700;" title="Retirar este contacto del Pool de Logística">
+                    <div class="pedido-footer-actions">
+                        <button type="button" onclick="event.stopPropagation(); window.quitarContactoDePoolLogistica('${idNumProsp}', '${(clienteNombre || '').replace(/'/g, "\\'")}')" class="btn-card-action" style="background-color: #ffffff; color: #dc2626; border: 1px solid #fca5a5;" title="Retirar este contacto del Pool de Logística">
                             ↩️ Quitar de Logística
                         </button>
                     </div>
@@ -467,15 +643,14 @@ function obtenerPedidoHtml(pedido) {
                  oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')"
                  style="border-left: 5px solid #7c3aed; background-color: #f5f3ff;">
                 
-                <div class="pedido-domicilio-indicator" style="background-color: #7c3aed;" title="Retiro de Sobre de Efectivo"></div>
-                
-                <div class="pedido-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-                    <div style="display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        <span class="pedido-cliente-id" style="font-size: 1.05rem; font-weight: 700; color: #6d28d9;">
+                <div class="pedido-header">
+                    <div class="pedido-header-left">
+                        <span class="pedido-domicilio-indicator" style="background-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);" title="Retiro de Sobre de Efectivo"></span>
+                        <span class="pedido-cliente-id" style="font-size: 0.95rem; font-weight: 700; color: #6d28d9;">
                             💵 SOBRE • Cli #${clienteId}
                         </span>
                     </div>
-                    <div style="display:flex; gap:0.25rem; align-items:center;">
+                    <div class="pedido-header-badges">
                         <span class="pedido-badge" style="background-color:#7c3aed; color:white; font-weight:bold;">
                             ✅ PREPARADO
                         </span>
@@ -483,24 +658,24 @@ function obtenerPedidoHtml(pedido) {
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
-                    <div class="badge-retiro-visual" style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; font-weight: bold;">
+                    <div class="badge-retiro-visual" style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; font-weight: bold;">
                         💵 Retiro Efectivo #${codigoSobre}
                     </div>
-                    ${clienteTienePedidoEnPool ? `<div style="background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">📦 Tiene pedido en pool</div>` : ''}
+                    ${clienteTienePedidoEnPool ? `<div style="background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.71rem; font-weight: 700;">📦 Tiene pedido en pool</div>` : ''}
                 </div>
 
-                <div class="pedido-cliente-nombre" style="font-weight: 700; margin-top: 0.25rem; color: #1e293b;">
+                <div class="pedido-cliente-nombre" style="font-weight: 700; margin-top: 0.2rem; color: #1e293b; font-size: 0.92rem; line-height: 1.25;">
                     ${clienteNombre}
                 </div>
                 <div class="pedido-direccion" style="margin-top: 0.2rem;">
                     📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                    <div class="pedido-monto" style="font-weight: 800; color: #059669; font-size: 0.92rem;">
+                <div class="pedido-footer">
+                    <div class="pedido-monto">
                         💵 $${montoSobre.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div style="display:flex; gap:0.25rem;">
-                        ${tieneFotos ? `<button onclick="event.stopPropagation(); window.verFotosSobreLogistica('${codigoSobre}', '${pedido.foto_frente_url || ''}', '${pedido.foto_dorso_url || ''}')" class="btn-sm" style="padding: 2px 8px; font-size: 0.74rem; background-color: #6d28d9; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;" title="Ver fotos del sobre cerrado">📷 Fotos</button>` : ''}
+                    <div class="pedido-footer-actions">
+                        ${tieneFotos ? `<button onclick="event.stopPropagation(); window.verFotosSobreLogistica('${codigoSobre}', '${pedido.foto_frente_url || ''}', '${pedido.foto_dorso_url || ''}')" class="btn-card-action" style="background-color: #6d28d9; color:white;" title="Ver fotos del sobre cerrado">📷 Fotos</button>` : ''}
                     </div>
                 </div>
             </div>
@@ -533,14 +708,23 @@ function obtenerPedidoHtml(pedido) {
             const badgeColor = esFacturado ? (isLocal ? '#d4edda' : '#d1ecf1') : '#f59e0b';
             const textColor = esFacturado ? (isLocal ? '#155724' : '#0c5460') : 'white';
             const borderColor = esFacturado ? (isLocal ? '#c3e6cb' : '#bee5eb') : 'transparent';
-            const badgeText = esFacturado ? (isLocal ? '✅ FACTURADO LOCAL' : '✅ FACTURADO ARCA') : '📄 ENVIADO A FACTURACIÓN';
+            const badgeText = esFacturado ? (isLocal ? '✅ FACTURADO LOCAL' : '✅ FACTURADO ARCA') : '📄 ENVIADO A FACT.';
             
-            checkboxHTML = `<input type="checkbox" disabled style="margin-right: 0.5rem; width: 16px; height: 16px; min-width: 16px; cursor: not-allowed;">`;
+            checkboxHTML = `<input type="checkbox" disabled style="margin: 0; width: 15px; height: 15px; min-width: 15px; cursor: not-allowed;">`;
             badgeFacturacionHTML = `<span onclick="event.stopPropagation(); window.verFacturaDetalle(${pedido.factura_id})" class="pedido-badge" style="background-color: ${badgeColor}; color: ${textColor}; border: 1px solid ${borderColor}; cursor: pointer; font-weight: bold; border-radius: 4px;" title="Haga clic para ver el detalle de la factura">${badgeText}</span>`;
         } else {
-            checkboxHTML = `<input type="checkbox" class="pedido-selector" data-id="${pedido.id}" onchange="actualizarSeleccionPedidos()" onclick="event.stopPropagation()" style="margin-right: 0.5rem; width: 16px; height: 16px; min-width: 16px; cursor: pointer;">`;
+            checkboxHTML = `<input type="checkbox" class="pedido-selector" data-id="${pedido.id}" onchange="actualizarSeleccionPedidos()" onclick="event.stopPropagation()" style="margin: 0; width: 15px; height: 15px; min-width: 15px; cursor: pointer;">`;
         }
     }
+
+    const rawEstadoLog = pedido.estado_logistico || 'PENDIENTE';
+    const labelEstadoLog = rawEstadoLog === 'PENDIENTE_ASIGNAR'
+        ? 'Pte. Asignar'
+        : (rawEstadoLog === 'BLOQUEADO_PAGO' ? 'Bloqueado Pago' : rawEstadoLog);
+
+    const indicatorHTML = !esRetiro
+        ? `<span class="pedido-domicilio-indicator ${tieneDomicilio ? 'tiene-domicilio' : ''}" title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}"></span>`
+        : `<span class="pedido-domicilio-indicator" style="background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);" title="Operación de Retiro"></span>`;
 
     return `
         <div class="pedido-card ${esRetiro ? 'tipo-retiro' : ''}" 
@@ -554,62 +738,51 @@ function obtenerPedidoHtml(pedido) {
              onclick="toggleSeleccionPedido(event, '${pedido.id}')"
              style="${estiloCard}">
             
-            <!-- Indicador visual de domicilio -->
-            ${!esRetiro ? `
-            <div class="pedido-domicilio-indicator ${tieneDomicilio ? 'tiene-domicilio' : ''}" 
-                 title="${tieneDomicilio ? 'Tiene domicilio asignado' : 'Sin domicilio asignado'}">
-            </div>
-            ` : `
-            <div class="pedido-domicilio-indicator" style="background-color: #f59e0b;" title="Operación de Retiro">
-            </div>
-            `}
-            
-            <!-- NUEVA JERARQUÍA: Cliente primero -->
-            <div class="pedido-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-                <div style="display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <!-- NUEVA JERARQUÍA: Cliente primero + Indicador inline + Badges con wrap -->
+            <div class="pedido-header">
+                <div class="pedido-header-left">
                     ${checkboxHTML}
-                    <span class="pedido-cliente-id" style="font-size: 1.1rem; font-weight: 600; color: ${esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')};">
+                    ${indicatorHTML}
+                    <span class="pedido-cliente-id" style="font-size: 0.96rem; font-weight: 700; color: ${esRetiro ? '#d35400' : (esDevolucion ? '#2563eb' : '#1e40af')}; white-space: nowrap;">
                         ${iconoCliente} ${esRetiro ? 'RETIRO' : (esDevolucion ? 'ENTREGA MANT.' : 'Cliente')} #${clienteId}
                     </span>
                 </div>
-                <div style="display:flex; flex-direction: column; gap:0.25rem; align-items:flex-end;">
+                <div class="pedido-header-badges">
                     ${badgeFacturacionHTML}
-                    <div style="display:flex; gap:0.25rem; align-items:center;">
-                        ${!esTratamiento && !esOrdenRetiro ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Facturación</span>`) : ''}
-                        ${esTratamiento ? (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`) : ''}
-                        <span class="pedido-badge badge-${pedido.estado_logistico?.toLowerCase() || 'pendiente'}">
-                            ${pedido.estado_logistico || 'PENDIENTE'}
-                        </span>
-                    </div>
+                    ${!esTratamiento && !esOrdenRetiro ? (pedido.comprobante_lomasoft ? `<span title="Lomasoft: ${pedido.comprobante_lomasoft}" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Lomasoft</span>` : `<span title="Pendiente de Facturación" class="pedido-badge" style="background-color:#475569; color:white;">⏳ Pte. Fact.</span>`) : ''}
+                    ${esTratamiento ? (pedido.tiene_checkin ? `<span title="Check-in Completado" class="pedido-badge" style="background-color:#10b981; color:white;">✅ Check-in Listo</span>` : `<span title="Check-in Pendiente" class="pedido-badge" style="background-color:#f59e0b; color:white;">⏳ Check-in Pte.</span>`) : ''}
+                    <span class="pedido-badge badge-${rawEstadoLog.toLowerCase()}" title="${rawEstadoLog}">
+                        ${labelEstadoLog}
+                    </span>
                 </div>
             </div>
 
-            ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ${esOrdenRetiro ? 'ORDEN DE RETIRO' : 'Orden de Tratamiento'}</div>` : ''}
-            ${esDevolucion ? `<div class="badge-retiro-visual" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🚚 Entrega Mantenimiento</div>` : ''}
-            ${clienteTieneSobreEnPool ? `<div style="background: #f5f3ff; color: #6d28d9; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.74rem; display: inline-block; margin-bottom: 4px; font-weight: 700;">💵 Tiene sobre listo para retirar</div>` : ''}
+            ${esRetiro ? `<div class="badge-retiro-visual" style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🔙 ${esOrdenRetiro ? 'ORDEN DE RETIRO' : 'Orden de Tratamiento'}</div>` : ''}
+            ${esDevolucion ? `<div class="badge-retiro-visual" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; margin-bottom: 4px; font-weight: bold;">🚚 Entrega Mantenimiento</div>` : ''}
+            ${clienteTieneSobreEnPool ? `<div style="background: #f5f3ff; color: #6d28d9; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; margin-bottom: 4px; font-weight: 700;">💵 Tiene sobre listo para retirar</div>` : ''}
 
-            <div class="pedido-cliente-nombre" style="font-weight: 600; margin-top: 0.25rem; color: #1e293b;">
+            <div class="pedido-cliente-nombre" style="font-weight: 700; margin-top: 0.15rem; color: #0f172a; font-size: 0.92rem; line-height: 1.25;">
                  ${clienteNombre}
             </div>
-            <div class="pedido-numero-secundario" style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">
+            <div class="pedido-numero-secundario" style="font-size: 0.8rem; color: #64748b; margin-top: 0.15rem; font-weight: 500;">
                 Pedido #${pedido.id} ${esRetiro ? '(Retiro)' : (esDevolucion ? '(Entrega Mant.)' : '')}
             </div>
-            <div class="pedido-direccion">
+            <div class="pedido-direccion" style="margin-top: 0.15rem;">
                 📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                ${pedido.total ? `<div class="pedido-monto" style="font-weight:bold; color:#059669;">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
-                <div style="display:flex; gap:0.25rem;">
-                    ${!pedido.comprobante_lomasoft && !esTratamiento && !esOrdenRetiro ? `<button onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #8b5cf6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
-                    ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-sm btn-primary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #f59e0b; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
-                    ${esTratamiento && pedido.tiene_checkin && !esDevolucion ? `<button onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background-color: #2563eb; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
-                    ${esTratamiento && !esDevolucion ? `<button onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-sm btn-danger" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ef4444; color:white; border:none; border-radius:3px; cursor:pointer;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
-                    ${esDevolucion ? `<button onclick="event.stopPropagation(); window.revertirEnvioTratamiento('${pedido.id}')" class="btn-sm btn-warning" style="padding: 2px 6px; font-size: 0.75rem; background-color: #ea580c; color:white; border:none; border-radius:3px; cursor:pointer; margin-right: 2px;" title="Retrotraer Envío al Almacén de Mantenimiento">↩️ Devolver a Mantenimiento</button>` : ''}
-                    <button onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-sm btn-secondary" style="padding: 2px 6px; font-size: 0.75rem; background-color: #3b82f6; color:white; border:none; border-radius:3px; cursor:pointer;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
+            <div class="pedido-footer">
+                ${pedido.total ? `<div class="pedido-monto">💰 $${parseFloat(pedido.total).toFixed(2)}</div>` : '<div></div>'}
+                <div class="pedido-footer-actions">
+                    ${!pedido.comprobante_lomasoft && !esTratamiento && !esOrdenRetiro ? `<button type="button" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${pedido.id}')" class="btn-card-action" style="background-color: #8b5cf6; color:white;" title="Vincular con sistema externo">Conciliar / Facturar</button>` : ''}
+                    ${esTratamiento && !esDevolucion ? `<button type="button" onclick="event.stopPropagation(); window.abrirModalContingencia('${pedido.hash}', ${pedido.tiene_checkin})" class="btn-card-action" style="background-color: #f59e0b; color:white;" title="Consultar o Completar Datos del Tratamiento">✏️ ${pedido.tiene_checkin ? 'Modificar' : 'Check-in'}</button>` : ''}
+                    ${esTratamiento && pedido.tiene_checkin && !esDevolucion ? `<button type="button" onclick="event.stopPropagation(); window.open(\`/api/logistica/tratamientos/print/${pedido.hash}\`, '_blank')" class="btn-card-action" style="background-color: #2563eb; color:white;" title="Ver Reporte PDF">🖨️ PDF</button>` : ''}
+                    ${esTratamiento && !esDevolucion ? `<button type="button" onclick="event.stopPropagation(); window.descartarRetiro('${pedido.id}')" class="btn-card-action" style="background-color: #ef4444; color:white;" title="Descartar Orden de Tratamiento Atómicamente">🗑️ Descartar</button>` : ''}
+                    ${esDevolucion ? `<button type="button" onclick="event.stopPropagation(); window.revertirEnvioTratamiento('${pedido.id}')" class="btn-card-action" style="background-color: #ea580c; color:white;" title="Retrotraer Envío al Almacén de Mantenimiento">↩️ Devolver a Mant.</button>` : ''}
+                    <button type="button" onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()" class="btn-card-action" style="background-color: #3b82f6; color:white;" title="Imprimir Etiqueta LAMDA">🖨️ LAMDA</button>
                 </div>
             </div>
-            ${pedido.bloqueo_entrega ? '<div class="pedido-badge badge-bloqueado" style="margin-top:0.25rem;">🔒 Bloqueado</div>' : ''}
-            ${pedido.motivo_no_entrega ? `<div class="pedido-badge badge-incidencia" style="margin-top:0.25rem; background-color:#ffedd5; color:#ea580c; border: 1px solid #fed7aa; font-weight:bold; border-radius:4px; padding:2px 6px; font-size:0.75rem; display:inline-block;">⚠️ Regreso: ${pedido.motivo_no_entrega}</div>` : ''}
+            ${pedido.bloqueo_entrega ? '<div class="pedido-badge badge-bloqueado" style="margin-top:0.25rem; display:inline-block;">🔒 Bloqueado</div>' : ''}
+            ${pedido.motivo_no_entrega ? `<div class="pedido-badge badge-incidencia" style="margin-top:0.25rem; background-color:#ffedd5; color:#ea580c; border: 1px solid #fed7aa; font-weight:bold; border-radius:4px; padding:2px 6px; font-size:0.73rem; display:inline-block;">⚠️ Regreso: ${pedido.motivo_no_entrega}</div>` : ''}
         </div>
     `;
 }
@@ -1752,12 +1925,12 @@ function renderizarTarjetaRuta(ruta) {
                                 }
 
                                 return `
-                                <div style="display:flex; gap:2px; align-items:center;">
+                                <div style="display:flex; flex-wrap:wrap; gap:3px; align-items:center; justify-content:flex-end;">
                                     ${(esArmando && !yaCompletado) ? `
                                         <button class="btn-icon-danger" 
                                                 onclick="event.stopPropagation(); quitarPedidoDeRuta(${rutaId}, '${p.id}')"
                                                 title="Quitar pedido #${p.id}"
-                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.8;">
+                                                style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; opacity: 0.85; white-space: nowrap;">
                                             🗑️ #${p.id}
                                         </button>
                                     ` : ''}
@@ -1768,19 +1941,19 @@ function renderizarTarjetaRuta(ruta) {
                                         const color = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '#155724' : '#0c5460') : 'white';
                                         const border = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '1px solid #c3e6cb' : '1px solid #bee5eb') : 'none';
                                         const text = esFacturado ? (p.factura_estado === 'APROBADA_LOCAL' ? '🧾 Facturado Local' : '🧾 Facturado ARCA') : (esEnviado ? '📄 Enviado' : '⏳ Pendiente');
-                                        return `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; border-radius: 0.25rem; font-weight: bold; color: ${color}; background: ${bg}; border: ${border};">${text}</span>`;
+                                        return `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; border-radius: 0.25rem; font-weight: bold; color: ${color}; background: ${bg}; border: ${border}; white-space: nowrap;">${text}</span>`;
                                     })() : ''}
                                     ${(p.comprobante_lomasoft || p.id_factura_lomasoft)
-                                        ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
+                                        ? `<span style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #10b981; color: white; border-radius: 0.25rem; font-weight: bold; cursor: help; white-space: nowrap;" title="${p.comprobante_lomasoft || p.id_factura_lomasoft}">✅ L.S</span>`
                                         : (!p.esta_facturado && p.factura_estado !== 'APROBADA' && p.factura_estado !== 'APROBADA_LOCAL' && !esTratP && !esRetP
-                                            ? `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">C/F</button>`
+                                            ? `<button class="btn-icon-lomasoft" onclick="event.stopPropagation(); window.buscarCandidatasLomasoft('${p.id}')" title="Conciliar / Facturar #${p.id}" style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #8b5cf6; color: white; border: none; border-radius: 0.25rem; cursor: pointer; white-space: nowrap;">C/F</button>`
                                             : ''
                                           )
                                     }
                                     <button class="btn-icon-lamda" 
                                             onclick="event.stopPropagation(); window.imprimirEtiquetaLamda()"
                                             title="Imprimir LAMDA #${p.id}"
-                                            style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                            style="padding: 0.1rem 0.3rem; font-size: 0.7rem; background: #3b82f6; color: white; border: none; border-radius: 0.25rem; cursor: pointer; white-space: nowrap;">
                                         🖨️
                                     </button>
                                 </div>
