@@ -66,7 +66,7 @@ const WizardController = {
         fetch('/api/produccion/catalogo/ingredientes-comerciales')
             .then(r => r.json())
             .then(json => {
-                const rawMap = (json && json.data) ? json.data : {};
+                const rawMap = (json && (json.items || json.data)) ? (json.items || json.data) : {};
                 const upper = {};
                 Object.keys(rawMap).forEach(k => {
                     upper[String(k).trim().toUpperCase()] = rawMap[k];

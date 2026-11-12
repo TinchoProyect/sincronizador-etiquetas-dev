@@ -68,7 +68,7 @@ window.CotizadorPreciosMovil = {
         fetch('/api/produccion/catalogo/ingredientes-comerciales')
             .then(r => r.json())
             .then(json => {
-                const rawMap = (json && json.data) ? json.data : {};
+                const rawMap = (json && (json.items || json.data)) ? (json.items || json.data) : {};
                 const upper = {};
                 Object.keys(rawMap).forEach(k => {
                     upper[String(k).trim().toUpperCase()] = rawMap[k];
@@ -704,6 +704,14 @@ window.CotizadorPreciosMovil = {
             input.focus();
         }
         this.filtrarArticulos('');
+    },
+
+    renderHtmlBotonIngredientesMovil(titulo, info) {
+        if (!info || !Array.isArray(info.ingredientes) || info.ingredientes.length < 2) return '';
+        const ingIdx = this.registrarIngGrupo(titulo, info);
+        const linea = Number(info.linea_negocio);
+        const variantCls = linea === 6 ? 'granola' : (linea === 5 ? 'barrita' : '');
+        return `<button type="button" class="btn-ing-movil ${variantCls}" onclick="event.stopPropagation(); CotizadorPreciosMovil.abrirIngByIdx(${ingIdx})">🥣 ¿Qué contiene?</button>`;
     },
 
     renderCatalogo() {
