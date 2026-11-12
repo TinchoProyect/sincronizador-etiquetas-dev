@@ -632,7 +632,12 @@
 
             const tarjetasPedidos = (canasto.pedidos_vecinos || []).map(p => {
                 const esEfectivo = p.medio_pago === 'EFECTIVO' || String(p.estado_pago).includes('COBRAR');
-                const itemsResumen = (p.items || []).map(i => `<strong>${i.cantidad}x</strong> ${esc(i.nombre_publico)}`).join(' · ');
+                const itemsResumen = (p.items || []).map(i => {
+                    const pres = String(i.presentacion_etiqueta || '').trim();
+                    const nom = String(i.nombre_publico || '').trim() || 'Producto';
+                    const txt = pres && !nom.toLowerCase().includes(pres.toLowerCase()) ? `${nom} (${pres})` : nom;
+                    return `<strong>${i.cantidad}x</strong> ${esc(txt)}`;
+                }).join(' · ');
 
                 let badgeUbicacion = `<span class="badge" style="background:rgba(245,158,11,0.16); color:#fcd34d; border:1px solid rgba(245,158,11,0.4);">⏳ Pendiente en Mesa de Armado</span>`;
                 if (p.despachado_gestor) {

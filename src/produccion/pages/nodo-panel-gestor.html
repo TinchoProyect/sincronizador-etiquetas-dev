@@ -866,6 +866,13 @@
       });
     }
 
+    function formatearItemGestor(it) {
+      const nom = String(it?.nombre_publico || '').trim() || 'Producto';
+      const pres = String(it?.presentacion_etiqueta || '').trim();
+      if (!pres) return nom;
+      return nom.toLowerCase().includes(pres.toLowerCase()) ? nom : `${nom} (${pres})`;
+    }
+
     function obtenerUrlSeguimientoPedidoGestor(p) {
       if (!p || !p.tracking_token || !GSTATE.slug) return '';
       return `${window.location.origin}/tienda/${encodeURIComponent(GSTATE.slug)}?seguimiento=${encodeURIComponent(p.tracking_token)}`;
@@ -874,7 +881,7 @@
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
-      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico} (${fmt(it.subtotal_vecino)})`).join('\n');
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemGestor(it)} (${fmt(it.subtotal_vecino)})`).join('\n');
       const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
       const mensaje = [
         `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
@@ -2296,7 +2303,7 @@
                   </div>
 
                   <div style="font-size:0.82rem; color:var(--text); margin-bottom:10px;">
-                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 9px; border-radius:8px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>`).join('')}
+                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 9px; border-radius:8px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
                   </div>
 
                   <!-- Botonera contextual de 1 toque (Reparto / Entrega / Cobro / Seguimiento) -->
@@ -2518,7 +2525,7 @@
           <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fffdfb; font-size:0.84rem;">
             ${(p.items || []).map(it => `
               <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
+                <span><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>
                 <strong>${fmt(it.subtotal_vecino)}</strong>
               </div>
             `).join('')}
@@ -2549,7 +2556,7 @@
       if (!p || !GSTATE.nodo) return;
       const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
       const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
-      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${it.nombre_publico}: ${fmt(it.subtotal_vecino)}`).join('\n');
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemGestor(it)}: ${fmt(it.subtotal_vecino)}`).join('\n');
       const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
 
       const mensaje = [

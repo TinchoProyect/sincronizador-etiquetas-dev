@@ -284,8 +284,19 @@
       font-size: 1.02rem;
       font-weight: 900;
       color: var(--text);
-      margin: 4px 0 6px 0;
-      line-height: 1.3;
+      margin: 4px 0 2px 0;
+      line-height: 1.28;
+      overflow-wrap: anywhere;
+    }
+    .prod-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .prod-head-info {
+      min-width: 0;
+      flex: 1;
     }
     .prod-pres {
       display: inline-block;
@@ -303,6 +314,44 @@
       flex-wrap: wrap;
       margin-top: 2px;
     }
+    .prod-pres-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .prod-pres-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 9px;
+      border-radius: 10px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+    }
+    .prod-pres-label {
+      min-width: 0;
+      flex: 1;
+      font-size: 0.81rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+    .prod-pres-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .prod-pres-price {
+      font-size: 1rem;
+      font-weight: 900;
+      color: var(--text);
+      white-space: nowrap;
+    }
     .btn-ver-ing {
       display: inline-flex;
       align-items: center;
@@ -313,10 +362,25 @@
       font-family: inherit;
       font-size: 0.76rem;
       font-weight: 800;
-      padding: 3px 10px;
+      padding: 4px 10px;
       border-radius: 999px;
       cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
       transition: background 0.15s, transform 0.12s;
+    }
+    @media (max-width: 420px) {
+      .btn-ver-ing {
+        font-size: 0.72rem;
+        padding: 3px 8px;
+      }
+      .prod-pres-row {
+        padding: 6px 7px;
+        gap: 6px;
+      }
+      .prod-pres-price {
+        font-size: 0.94rem;
+      }
     }
     .btn-ver-ing:hover {
       background: var(--surface-warm);
@@ -370,6 +434,12 @@
       font-size: 0.86rem;
       cursor: pointer;
     }
+    .btn-add-compact {
+      padding: 6px 11px;
+      border-radius: 8px;
+      font-size: 0.79rem;
+      white-space: nowrap;
+    }
     .btn-add:hover {
       background: var(--brand-dark);
     }
@@ -381,6 +451,17 @@
       padding: 4px 8px;
       border-radius: 10px;
       border: 1px solid var(--brand-border);
+    }
+    .stepper-compact {
+      gap: 7px;
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+    .stepper-compact button {
+      width: 24px !important;
+      height: 24px !important;
+      border-radius: 6px !important;
+      font-size: 0.92rem !important;
     }
     .stepper button {
       width: 28px;
@@ -865,7 +946,8 @@
       portalToken: '',
       vistaMiCuentaActiva: false,
       miCuentaData: null,
-      ofertaIngredientesModalId: null
+      ofertaIngredientesModalId: null,
+      ultimoPedidoConfirmado: null
     };
 
     function fmt(n) {
@@ -874,6 +956,40 @@
 
     function esc(s) {
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function normalizarTextoBusqueda(txt) {
+      return String(txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function obtenerPresentacionItem(it) {
+      const etq = String(it?.presentacion_etiqueta || '').trim();
+      if (etq) return etq;
+      const kg = Number(it?.kilos_unidad || 0);
+      if (kg > 0) {
+        return kg < 1 ? `${Math.round(kg * 1000)}g` : `${Number(kg.toFixed(3))}kg`;
+      }
+      return '';
+    }
+
+    function formatearNombreItemConPresentacion(it) {
+      const nombre = String(it?.nombre_publico || '').trim() || 'Producto';
+      const pres = obtenerPresentacionItem(it);
+      if (!pres) return nombre;
+      if (normalizarTextoBusqueda(nombre).includes(normalizarTextoBusqueda(pres))) return nombre;
+      return `${nombre} (${pres})`;
+    }
+
+    function claveGrupoProductoTienda(p) {
+      const nom = normalizarTextoBusqueda(p?.nombre_publico || '');
+      if (!nom) return `oferta_${Number(p?.oferta_id || 0)}`;
+      const cat = normalizarTextoBusqueda(p?.categoria_familiar || 'almacen natural');
+      return `${cat}||${nom}`;
     }
 
     function aplicarPaletaTienda(hex) {
@@ -1052,14 +1168,17 @@
         return;
       }
 
-      const q = (document.getElementById('search-box')?.value || '').trim().toLowerCase();
-      const terms = q.split(/\s+/).filter(Boolean);
+      const qNorm = normalizarTextoBusqueda(document.getElementById('search-box')?.value || '');
+      const terms = qNorm.split(/\s+/).filter(Boolean);
 
       const filtrados = STATE.productos.filter(p => {
         if (STATE.categoriaActiva !== 'TODAS' && p.categoria_familiar !== STATE.categoriaActiva) return false;
         if (terms.length === 0) return true;
         const ingTxt = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales.join(' ') : '';
-        const bolsa = `${p.nombre_publico} ${p.categoria_familiar} ${p.presentacion_etiqueta || ''} ${ingTxt}`.toLowerCase();
+        const presTxt = obtenerPresentacionItem(p);
+        const bolsa = normalizarTextoBusqueda(
+          `${p.nombre_publico || ''} ${p.categoria_familiar || ''} ${presTxt} ${p.sku_nodo || ''} ${ingTxt}`
+        );
         return terms.every(t => bolsa.includes(t));
       });
 
@@ -1069,36 +1188,76 @@
       }
 
       const permitirBotonNodo = STATE.nodo?.mostrar_ingredientes_tienda !== false;
+      const mapaGrupos = new Map();
+      for (const p of filtrados) {
+        const clave = claveGrupoProductoTienda(p);
+        if (!mapaGrupos.has(clave)) {
+          mapaGrupos.set(clave, {
+            clave,
+            categoria_familiar: p.categoria_familiar || 'Almacén Natural',
+            nombre_publico: p.nombre_publico,
+            destacado_tienda: Boolean(p.destacado_tienda),
+            presentaciones: []
+          });
+        }
+        const g = mapaGrupos.get(clave);
+        g.destacado_tienda = g.destacado_tienda || Boolean(p.destacado_tienda);
+        g.presentaciones.push(p);
+      }
 
-      grid.innerHTML = filtrados.map(p => {
+      const grupos = Array.from(mapaGrupos.values());
+      const renderFilaPresentacion = (p) => {
         const cant = Number(STATE.carrito[p.oferta_id] || 0);
-        const mostrarBotonIng = permitirBotonNodo &&
-          p.mostrar_ingredientes !== false &&
-          Array.isArray(p.ingredientes_comerciales) &&
-          p.ingredientes_comerciales.length >= 2;
+        const pres = obtenerPresentacionItem(p) || 'Unidad';
         return `
-          <div class="prod-card">
-            <div>
-              <div class="prod-cat">${esc(p.categoria_familiar || 'Almacén Natural')}</div>
-              <div class="prod-title">${esc(p.nombre_publico)}</div>
-              <div class="prod-meta-row">
-                <span class="prod-pres">${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
-                ${mostrarBotonIng
-                  ? `<button type="button" class="btn-ver-ing" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(p.oferta_id)})">🥣 ¿Qué contiene?</button>`
-                  : ''
-                }
-              </div>
-            </div>
-            <div class="prod-footer">
-              <div class="prod-price">${fmt(p.precio_venta_vecino)}</div>
+          <div class="prod-pres-row">
+            <div class="prod-pres-label">${esc(pres)}</div>
+            <div class="prod-pres-actions">
+              <span class="prod-pres-price">${fmt(p.precio_venta_vecino)}</span>
               ${cant === 0
-                ? `<button type="button" class="btn-add" onclick="modificarCarrito(${p.oferta_id}, 1)">+ Agregar</button>`
-                : `<div class="stepper">
-                     <button type="button" onclick="modificarCarrito(${p.oferta_id}, -1)">−</button>
+                ? `<button type="button" class="btn-add btn-add-compact" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+ Agregar</button>`
+                : `<div class="stepper stepper-compact">
+                     <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, -1)">−</button>
                      <span>${cant}</span>
-                     <button type="button" onclick="modificarCarrito(${p.oferta_id}, 1)">+</button>
+                     <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+</button>
                    </div>`
               }
+            </div>
+          </div>
+        `;
+      };
+
+      grid.innerHTML = grupos.map(g => {
+        g.presentaciones.sort((a, b) => {
+          const ka = Number(a.kilos_unidad || 0);
+          const kb = Number(b.kilos_unidad || 0);
+          if (ka !== kb) return ka - kb;
+          const pa = Number(a.precio_venta_vecino || 0);
+          const pb = Number(b.precio_venta_vecino || 0);
+          if (pa !== pb) return pa - pb;
+          return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
+        });
+        const ofertaIng = permitirBotonNodo
+          ? g.presentaciones.find(x =>
+              x.mostrar_ingredientes !== false &&
+              Array.isArray(x.ingredientes_comerciales) &&
+              x.ingredientes_comerciales.length >= 2
+            ) || null
+          : null;
+        return `
+          <div class="prod-card">
+            <div class="prod-card-head">
+              <div class="prod-head-info">
+                <div class="prod-cat">${esc(g.categoria_familiar)}</div>
+                <div class="prod-title">${esc(g.nombre_publico)}</div>
+              </div>
+              ${ofertaIng
+                ? `<button type="button" class="btn-ver-ing" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 ¿Qué contiene?</button>`
+                : ''
+              }
+            </div>
+            <div class="prod-pres-list">
+              ${g.presentaciones.map(renderFilaPresentacion).join('')}
             </div>
           </div>
         `;
@@ -1144,8 +1303,22 @@
         return;
       }
       const lista = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales : [];
-      const cant = Number(STATE.carrito[p.oferta_id] || 0);
-      const presentacion = p.presentacion_etiqueta || `${Math.round(Number(p.kilos_unidad || 0) * 1000)}g`;
+      const claveGrupo = claveGrupoProductoTienda(p);
+      const hermanos = STATE.productos
+        .filter(x => claveGrupoProductoTienda(x) === claveGrupo)
+        .sort((a, b) => {
+          const ka = Number(a.kilos_unidad || 0);
+          const kb = Number(b.kilos_unidad || 0);
+          if (ka !== kb) return ka - kb;
+          const pa = Number(a.precio_venta_vecino || 0);
+          const pb = Number(b.precio_venta_vecino || 0);
+          if (pa !== pb) return pa - pb;
+          return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
+        });
+      const presentaciones = hermanos.length > 0 ? hermanos : [p];
+      const unica = presentaciones.length === 1;
+      const cantUnica = Number(STATE.carrito[p.oferta_id] || 0);
+      const presentacionUnica = obtenerPresentacionItem(p);
 
       card.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
@@ -1156,7 +1329,7 @@
             <h3 style="margin:4px 0 6px 0; font-size:1.12rem; font-weight:900; color:var(--text); line-height:1.25;">
               ${esc(p.nombre_publico)}
             </h3>
-            <span class="prod-pres">${esc(presentacion)}</span>
+            ${unica && presentacionUnica ? `<span class="prod-pres">${esc(presentacionUnica)}</span>` : ''}
           </div>
           <button type="button" onclick="cerrarModalIngredientesProducto()" aria-label="Cerrar"
             style="width:32px; height:32px; border-radius:999px; border:1px solid var(--border); background:var(--surface-warm); color:var(--muted); font-weight:900; font-size:1rem; cursor:pointer; flex-shrink:0;">
@@ -1178,26 +1351,62 @@
           </div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
-          <div>
-            <div style="font-size:0.72rem; font-weight:700; color:var(--muted);">Precio vecinal</div>
-            <div style="font-size:1.18rem; font-weight:900; color:var(--text);">${fmt(p.precio_venta_vecino)}</div>
+        ${unica ? `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
+            <div>
+              <div style="font-size:0.72rem; font-weight:700; color:var(--muted);">Precio vecinal</div>
+              <div style="font-size:1.18rem; font-weight:900; color:var(--text);">${fmt(p.precio_venta_vecino)}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              ${cantUnica === 0
+                ? `<button type="button" class="btn-add" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+ Agregar</button>`
+                : `<div class="stepper">
+                     <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, -1)">−</button>
+                     <span>${cantUnica}</span>
+                     <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+</button>
+                   </div>`
+              }
+              <button type="button" onclick="cerrarModalIngredientesProducto()"
+                style="padding:9px 14px; border-radius:10px; border:1px solid var(--border); background:var(--surface-warm); color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
+                Cerrar
+              </button>
+            </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            ${cant === 0
-              ? `<button type="button" class="btn-add" onclick="modificarCarrito(${p.oferta_id}, 1)">+ Agregar</button>`
-              : `<div class="stepper">
-                   <button type="button" onclick="modificarCarrito(${p.oferta_id}, -1)">−</button>
-                   <span>${cant}</span>
-                   <button type="button" onclick="modificarCarrito(${p.oferta_id}, 1)">+</button>
-                 </div>`
-            }
-            <button type="button" onclick="cerrarModalIngredientesProducto()"
-              style="padding:9px 14px; border-radius:10px; border:1px solid var(--border); background:var(--surface-warm); color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
-              Cerrar
-            </button>
+        ` : `
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+            <div style="font-size:0.76rem; font-weight:800; color:var(--muted); margin-bottom:8px;">
+              Presentaciones disponibles (${presentaciones.length}):
+            </div>
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              ${presentaciones.map(h => {
+                const ch = Number(STATE.carrito[h.oferta_id] || 0);
+                const presH = obtenerPresentacionItem(h) || 'Unidad';
+                return `
+                  <div class="prod-pres-row">
+                    <div class="prod-pres-label">${esc(presH)}</div>
+                    <div class="prod-pres-actions">
+                      <span class="prod-pres-price">${fmt(h.precio_venta_vecino)}</span>
+                      ${ch === 0
+                        ? `<button type="button" class="btn-add btn-add-compact" onclick="modificarCarrito(${Number(h.oferta_id)}, 1)">+ Agregar</button>`
+                        : `<div class="stepper stepper-compact">
+                             <button type="button" onclick="modificarCarrito(${Number(h.oferta_id)}, -1)">−</button>
+                             <span>${ch}</span>
+                             <button type="button" onclick="modificarCarrito(${Number(h.oferta_id)}, 1)">+</button>
+                           </div>`
+                      }
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+              <button type="button" onclick="cerrarModalIngredientesProducto()"
+                style="padding:9px 14px; border-radius:10px; border:1px solid var(--border); background:var(--surface-warm); color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
+                Cerrar
+              </button>
+            </div>
           </div>
-        </div>
+        `}
       `;
     }
 
@@ -1208,8 +1417,13 @@
       else STATE.carrito[ofertaId] = nuevo;
       renderCatalogo();
       actualizarBarraCarrito();
-      if (STATE.ofertaIngredientesModalId === Number(ofertaId)) {
-        renderContenidoModalIngredientes();
+      if (STATE.ofertaIngredientesModalId) {
+        const modalProd = STATE.productos.find(x => Number(x.oferta_id) === Number(STATE.ofertaIngredientesModalId));
+        const editedProd = STATE.productos.find(x => Number(x.oferta_id) === Number(ofertaId));
+        if (STATE.ofertaIngredientesModalId === Number(ofertaId) ||
+          (modalProd && editedProd && claveGrupoProductoTienda(modalProd) === claveGrupoProductoTienda(editedProd))) {
+          renderContenidoModalIngredientes();
+        }
       }
     }
 
@@ -1281,9 +1495,9 @@
         <!-- Resumen de ítems -->
         <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
           ${res.detalle.map(it => `
-            <div style="display:flex; justify-content:space-between; font-size:0.86rem; padding:4px 0; border-bottom:1px dashed var(--border);">
-              <span><strong>${it.cantidad}x</strong> ${esc(it.nombre_publico)}</span>
-              <strong>${fmt(it.subtotal)}</strong>
+            <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.86rem; padding:4px 0; border-bottom:1px dashed var(--border);">
+              <span><strong>${it.cantidad}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+              <strong style="white-space:nowrap;">${fmt(it.subtotal)}</strong>
             </div>
           `).join('')}
         </div>
@@ -1411,13 +1625,21 @@
         return;
       }
 
+      const ped = data.pedido;
+      const pagoInfo = data.nodo_pago_info;
+      const itemsConfirmados = (Array.isArray(ped?.items) && ped.items.length > 0)
+        ? ped.items
+        : calcularResumenCarrito().detalle;
+
       STATE.carrito = {};
       renderCatalogo();
       actualizarBarraCarrito();
 
-      const ped = data.pedido;
-      const pagoInfo = data.nodo_pago_info;
       if (ped) {
+        STATE.ultimoPedidoConfirmado = {
+          codigo_pedido: ped.codigo_pedido,
+          items: itemsConfirmados
+        };
         guardarIdentidadVecinoLocal({
           portal_token: ped.portal_token || STATE.portalToken || '',
           telefono_normalizado: ped.telefono_normalizado || '',
@@ -1449,7 +1671,18 @@
           <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:12px; padding:12px; text-align:left; font-size:0.86rem; margin-bottom:14px;">
             <div>📅 <strong>Fecha y ventana de entrega:</strong> ${esc(ped.fecha_entrega_label)}</div>
             <div style="margin-top:4px;">📍 <strong>Modalidad:</strong> ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a domicilio (${esc(ped.direccion_entrega)})` : `Retiro en Nodo (${esc(pagoInfo.direccion_retiro)})`}</div>
-            <div style="margin-top:4px;">💰 <strong>Total del pedido:</strong> ${fmt(ped.total_vecino)}</div>
+            ${itemsConfirmados.length > 0 ? `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #86efac;">
+                <div style="font-size:0.75rem; font-weight:800; color:#166534; text-transform:uppercase; margin-bottom:4px;">🛒 Detalle del pedido</div>
+                ${itemsConfirmados.map(it => `
+                  <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.82rem; padding:2px 0;">
+                    <span><strong>${Number(it.cantidad || 1)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+                    <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino ?? it.subtotal ?? 0)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+            <div style="margin-top:6px; padding-top:6px; border-top:1px solid #86efac;">💰 <strong>Total del pedido:</strong> ${fmt(ped.total_vecino)}</div>
           </div>
 
           ${ped.medio_pago === 'TRANSFERENCIA' ? `
@@ -1513,12 +1746,24 @@
       const linkSeguimiento = trackingToken
         ? `${window.location.origin}/tienda/${encodeURIComponent(STATE.slug)}?seguimiento=${encodeURIComponent(trackingToken)}`
         : '';
+      const itemsPedido = (STATE.ultimoPedidoConfirmado && STATE.ultimoPedidoConfirmado.codigo_pedido === codigoPedido)
+        ? (STATE.ultimoPedidoConfirmado.items || [])
+        : [];
+      const lineasItems = itemsPedido.map(it =>
+        `  • ${Number(it.cantidad || 1)}x ${formatearNombreItemConPresentacion(it)} (${fmt(it.subtotal_vecino ?? it.subtotal ?? 0)})`
+      );
       const lineasMsg = [
         `🌿 *${nombreMarca}* — Nuevo Pedido #${codigoPedido}`,
         `👤 Vecino/a: *${vecinoNombre}*`,
-        `📅 Entrega: ${fechaEntrega}`,
-        `💰 Total: *${fmt(totalVecino)}* (${medioPago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia al alias ${aliasBancario}`})`
+        `📅 Entrega: ${fechaEntrega}`
       ];
+      if (lineasItems.length > 0) {
+        lineasMsg.push('🛒 *Detalle:*');
+        lineasMsg.push(...lineasItems);
+      }
+      lineasMsg.push(
+        `💰 Total: *${fmt(totalVecino)}* (${medioPago === 'EFECTIVO' ? 'Efectivo al recibir' : `Transferencia al alias ${aliasBancario}`})`
+      );
       if (linkSeguimiento) {
         lineasMsg.push(`📍 Seguí tu pedido en vivo acá: ${linkSeguimiento}`);
       }
@@ -2225,7 +2470,7 @@
         : [];
 
       const renderTarjeta = (p) => {
-        const resumenItems = (p.items || []).map(i => `${Number(i.cantidad)}x ${esc(i.nombre_publico)}`).join(' · ');
+        const resumenItems = (p.items || []).map(i => `${Number(i.cantidad)}x ${esc(formatearNombreItemConPresentacion(i))}`).join(' · ');
         const pasoAct = (p.seguimiento?.pasos || []).find(s => s.es_actual) || {};
         const accionClick = (modoToken && p.tracking_token)
           ? `abrirSeguimientoPorToken('${esc(p.tracking_token)}')`
@@ -2534,9 +2779,9 @@
             Productos en tu bolsa (${items.reduce((a, b) => a + Number(b.cantidad || 0), 0)} u.)
           </div>
           ${items.map(it => `
-            <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.83rem;">
-              <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} <span style="color:var(--muted); font-size:0.76rem;">(${esc(it.presentacion_etiqueta || '')})</span></span>
-              <strong>${fmt(it.subtotal_vecino)}</strong>
+            <div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-size:0.83rem;">
+              <span><strong>${Number(it.cantidad)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+              <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino)}</strong>
             </div>
           `).join('')}
           ${Number(ped.cargo_envio_barrial) > 0 ? `
@@ -2977,9 +3222,9 @@
                 Bolsas y productos pedidos (${Number(pedDest.total_unidades || 0)} u.)
               </div>
               ${(pedDest.items || []).map(it => `
-                <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.84rem;">
-                  <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} <span style="color:var(--muted); font-size:0.76rem;">(${esc(it.presentacion_etiqueta)})</span></span>
-                  <strong>${fmt(it.subtotal_vecino)}</strong>
+                <div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-size:0.84rem;">
+                  <span><strong>${Number(it.cantidad)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+                  <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino)}</strong>
                 </div>
               `).join('')}
               ${Number(pedDest.cargo_envio_barrial) > 0 ? `
@@ -3086,7 +3331,7 @@
           ` : `
             <div style="display:flex; flex-direction:column; gap:10px;">
               ${historial.map(h => {
-                const resumenItems = (h.items || []).map(i => `${Number(i.cantidad)}x ${esc(i.nombre_publico)}`).join(' · ');
+                const resumenItems = (h.items || []).map(i => `${Number(i.cantidad)}x ${esc(formatearNombreItemConPresentacion(i))}`).join(' · ');
                 const fechaCreacionTxt = h.created_at
                   ? new Date(h.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                   : '';
@@ -3207,9 +3452,9 @@
           <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; margin-bottom:12px;">
             <div style="font-size:0.73rem; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:6px;">Detalle de compra</div>
             ${(ped.items || []).map(it => `
-              <div style="display:flex; justify-content:space-between; font-size:0.83rem; padding:3px 0;">
-                <span><strong>${Number(it.cantidad)}x</strong> ${esc(it.nombre_publico)} (${esc(it.presentacion_etiqueta)})</span>
-                <strong>${fmt(it.subtotal_vecino)}</strong>
+              <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.83rem; padding:3px 0;">
+                <span><strong>${Number(it.cantidad)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+                <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino)}</strong>
               </div>
             `).join('')}
             ${Number(ped.cargo_envio_barrial) > 0 ? `

@@ -360,6 +360,85 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
 }
 
 /**
+ * Resuelve el desglose comercial de ingredientes para una oferta de Nodo Barrial,
+ * contemplando Líneas 3, 4, 5 (Barritas con pre-mezcla + miel/aceite en UP) y 6,
+ * incluso cuando el artículo de catálogo apunte a una pre-mezcla (#109 -> #141)
+ * o a un pack derivado (p. ej. BF6X50 / NB-BARRITA*) cuya receta comercial está en su artículo padre.
+ */
+async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIngredientes) {
+    if (!catalogoIngredientes || !oferta) return null;
+
+    const flujoNum = Number(oferta.flujo_lamda || 0);
+    const skuRaw = String(oferta.sku_nodo || '').trim();
+    const skuSinPrefijo = skuRaw.replace(/^NB-/i, '').trim();
+    const codigoOrigen = String(oferta.articulo_bunker_origen_codigo || '').trim();
+    const nombrePublico = String(oferta.nombre_publico || '').trim();
+    const pareceBarrita = flujoNum === 5
+        || /^(?:NB-)?BF(?:\d*X\d+|X\d*)/i.test(skuRaw)
+        || /^BF(?:\d*X\d+|X\d*)/i.test(codigoOrigen)
+        || /\bbarritas?\b/i.test(nombrePublico);
+
+    if (flujoNum > 0 && flujoNum < 3 && !pareceBarrita) {
+        return null;
+    }
+
+    const seleccionarMejor = (a, b) => {
+        if (!a) return b || null;
+        if (!b) return a;
+        const lnA = Number(a.linea_negocio || 0);
+        const lnB = Number(b.linea_negocio || 0);
+        if (pareceBarrita && lnB === 5 && lnA !== 5) return b;
+        if (lnB > lnA && Array.isArray(b.ingredientes) && b.ingredientes.length >= (a.ingredientes || []).length) {
+            return b;
+        }
+        return a;
+    };
+
+    let mejor = await obtenerDesgloseIngredientesParaItem(
+        {
+            sku_nodo: skuRaw,
+            articulo_codigo: skuSinPrefijo !== skuRaw ? skuSinPrefijo : undefined,
+            articulo_bunker_origen_codigo: codigoOrigen || undefined,
+            ingrediente_origen_id: oferta.ingrediente_origen_id
+        },
+        catalogoIngredientes,
+        runner
+    );
+
+    const ingOrigenId = Number(oferta.ingrediente_origen_id || 0);
+    if (ingOrigenId > 0 && (!mejor || (pareceBarrita && Number(mejor.linea_negocio || 0) !== 5))) {
+        const ingComercial = await resolverIngredienteComercialDeterminista(runner, ingOrigenId).catch(() => null);
+        if (ingComercial && ingComercial.id) {
+            const desdePuente = await obtenerDesgloseIngredientesParaItem(
+                {
+                    articulo_codigo: ingComercial.articulo_vinculado_numero || undefined,
+                    ingrediente_origen_id: ingComercial.id
+                },
+                catalogoIngredientes,
+                runner
+            );
+            mejor = seleccionarMejor(mejor, desdePuente);
+        }
+    }
+
+    if (pareceBarrita && (!mejor || Number(mejor.linea_negocio || 0) !== 5)) {
+        const itemsL5 = Object.values(catalogoIngredientes.items || {}).filter(
+            (it) => Number(it && it.linea_negocio) === 5 && Array.isArray(it.ingredientes) && it.ingredientes.length >= 2
+        );
+        const codigoBase = (codigoOrigen || skuSinPrefijo || skuRaw).toUpperCase();
+        const raizFamiliaMatch = codigoBase.match(/^([A-Z]{2,4}?)(?:\d+X\d+|X\d+)/);
+        const raizFamilia = raizFamiliaMatch ? raizFamiliaMatch[1] : '';
+        const matchFamilia = raizFamilia
+            ? itemsL5.find((it) => String(it.codigo || '').toUpperCase().startsWith(raizFamilia))
+            : null;
+        const fallbackL5 = matchFamilia || (itemsL5.length === 1 ? itemsL5[0] : null);
+        mejor = seleccionarMejor(mejor, fallbackL5);
+    }
+
+    return mejor;
+}
+
+/**
  * Deriva determinísticamente el SKU nativo LAMDA (sin prefijos de canal NB-) y la nomenclatura
  * posicional exacta a partir de un artículo hermano nativo de public.bunker_articulos.
  */
@@ -5742,17 +5821,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const ofertasConDesglose = await Promise.all(
         ofertasRes.rows.map(async (o) => {
-            const flujoNum = Number(o.flujo_lamda || 0);
-            const esLineaElaborada = flujoNum >= 3;
-            const desglose = (esLineaElaborada && catalogoIngredientes)
-                ? await obtenerDesgloseIngredientesParaItem(
-                    {
-                        sku_nodo: o.sku_nodo,
-                        articulo_bunker_origen_codigo: o.articulo_bunker_origen_codigo,
-                        ingrediente_origen_id: o.ingrediente_origen_id
-                    },
-                    catalogoIngredientes
-                )
+            const desglose = catalogoIngredientes
+                ? await resolverDesgloseIngredientesOfertaNodo(db, o, catalogoIngredientes)
                 : null;
             const listaIngredientes = (desglose && Array.isArray(desglose.ingredientes) && desglose.ingredientes.length >= 2)
                 ? desglose.ingredientes
@@ -5761,6 +5831,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const mostrarEnOferta = o.mostrar_ingredientes !== false;
             return {
                 ...o,
+                linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
                 mostrar_ingredientes: mostrarEnOferta,
                 tiene_desglose_ingredientes: tieneDesgloseIngredientes,
                 ingredientes_comerciales: listaIngredientes
@@ -5784,6 +5855,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 categoria_familiar: o.categoria_familiar,
                 presentacion_etiqueta: o.presentacion_etiqueta,
                 kilos_unidad: Number(o.kilos_unidad),
+                flujo_lamda: Number(o.flujo_lamda || 0) || null,
+                linea_negocio: o.linea_negocio || null,
                 precio_venta_vecino: Number(o.precio_venta_vecino),
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
@@ -11329,6 +11402,7 @@ module.exports = {
     obtenerDatosQrAccesoNodo,
     obtenerDatosQrAccesoVecino,
     obtenerPortalCuentaVecinoMarcaBlanca,
+    resolverDesgloseIngredientesOfertaNodo,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,

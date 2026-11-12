@@ -283,6 +283,13 @@
                 .replace(/"/g, '&quot;');
         }
 
+        function formatearItemLiq(it) {
+            const nom = String(it?.nombre_publico || '').trim() || 'Producto';
+            const pres = String(it?.presentacion_etiqueta || '').trim();
+            if (!pres) return nom;
+            return nom.toLowerCase().includes(pres.toLowerCase()) ? nom : `${nom} (${pres})`;
+        }
+
         async function cargarTableroLiquidacion(preservar = true) {
             try {
                 const res = await fetch(`/api/produccion/nodos/liquidacion/tablero?nodo_id=${ESTADO.nodoFiltroId}`);
@@ -494,7 +501,7 @@
                     !['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estOp);
                 const puedeNotaCredito = !esAnulado && !cerrado && Number(p.total_vecino || 0) > 0;
                 const montoAjuste = Number(p.monto_ajuste_credito || 0);
-                const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(i.nombre_publico)}`).join(' · ');
+                const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(formatearItemLiq(i))}`).join(' · ');
 
                 return `
                     <div class="cobro-card ${confirmado ? 'confirmado' : ''}" style="${esAnulado ? 'opacity:0.62; border-color:#475569; background:#0b1120;' : ''}">
@@ -1072,7 +1079,7 @@
 
             const itemsHtml = (p.items || []).map(i => `
                 <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #e2e8f0;">
-                    <span>${i.cantidad}x ${esc(i.nombre_publico)}</span>
+                    <span>${i.cantidad}x ${esc(formatearItemLiq(i))}</span>
                     <strong>${fmtMoneda(i.subtotal_vecino)}</strong>
                 </div>
             `).join('');
@@ -1139,7 +1146,7 @@
             }
             if (!p) return;
 
-            const itemsTxt = (p.items || []).map(i => `• ${i.cantidad}x ${i.nombre_publico}: ${fmtMoneda(i.subtotal_vecino)}`).join('\n');
+            const itemsTxt = (p.items || []).map(i => `• ${i.cantidad}x ${formatearItemLiq(i)}: ${fmtMoneda(i.subtotal_vecino)}`).join('\n');
             const mensaje = [
                 `🧾 *RECIBO DE PAGO — ${nombreMarca}*`,
                 `Pedido: *#${p.codigo_pedido}*`,

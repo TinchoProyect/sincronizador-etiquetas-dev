@@ -5479,7 +5479,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 : pedidos.map(p => {
                     const esAnulado = Boolean(p.anulado);
                     const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO';
-                    const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${escHtmlNodo(i.nombre_publico)}`).join(' · ');
+                    const itemsTxt = (p.items || []).map(i => {
+                        const nom = String(i.nombre_publico || '').trim() || 'Producto';
+                        const pres = String(i.presentacion_etiqueta || '').trim();
+                        const full = pres && !nom.toLowerCase().includes(pres.toLowerCase()) ? `${nom} (${pres})` : nom;
+                        return `${i.cantidad}x ${escHtmlNodo(full)}`;
+                    }).join(' · ');
                     const ajusteCred = Number(p.monto_ajuste_credito || 0);
 
                     return `
