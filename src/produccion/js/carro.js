@@ -2026,9 +2026,18 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
         if (carroFinalizado) {
             const stockDisponibleSnapshot = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
             const ingresoManual = manualesPorIngrediente[ing.id] || 0;
-            const stockAnterior = stockDisponibleSnapshot - ingresoManual;
-            const stockNuevo = stockDisponibleSnapshot - cantidadNecesaria;
+            const ingresosPrePreparado = ing.ingresos_pre_preparado !== undefined
+                ? parseFloat(ing.ingresos_pre_preparado || 0)
+                : ingresoManual;
+            const ingresosPostPreparado = ing.ingresos_post_preparado !== undefined
+                ? parseFloat(ing.ingresos_post_preparado || 0)
+                : 0;
+            const stockAnterior = stockDisponibleSnapshot - ingresosPrePreparado;
+            const stockNuevo = (ing.stock_live !== undefined && ing.stock_live !== null)
+                ? parseFloat(ing.stock_live)
+                : (stockDisponibleSnapshot + ingresosPostPreparado - cantidadNecesaria);
             const colorStockAnterior = stockAnterior < 0 ? '#dc3545' : '#28a745';
+            const colorStockNuevo = stockNuevo < 0 ? '#dc3545' : '#1e293b';
 
             let btnSalvavidas = '';
             if (estadoCarro === 'preparado') {

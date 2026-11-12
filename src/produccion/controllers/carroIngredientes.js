@@ -66,7 +66,7 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
 
     let query;
     if (tipoCarro === 'interna') {
-        // Para interna, mirar ingredientes_movimientos
+        // Para interna, mirar ingredientes_movimientos separando el consumo real de receta de los ajustes de Salvavidas
         query = `
             SELECT 
                 im.ingrediente_id as id, 
@@ -76,8 +76,38 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
                 (SELECT descripcion FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_descripcion,
                 (SELECT nombre FROM sectores_ingredientes WHERE id = i.sector_id LIMIT 1) as sector_nombre,
                 i.sector_id,
-                SUM(ABS(im.kilos)) as cantidad,
-                MAX(im.stock_anterior) as stock_snapshot,
+                COALESCE(
+                    NULLIF(SUM(CASE 
+                        WHEN COALESCE(im.observaciones, '') NOT ILIKE 'Salvavidas%' 
+                         AND COALESCE(im.observaciones, '') NOT ILIKE 'Ajuste%' 
+                         AND COALESCE(im.observaciones, '') NOT ILIKE 'SUSTITUCIÓN:%' 
+                        THEN ABS(im.kilos) ELSE 0 END), 0),
+                    SUM(ABS(im.kilos))
+                ) as cantidad,
+                SUM(CASE WHEN COALESCE(im.observaciones, '') ILIKE 'Salvavidas%' THEN ABS(im.kilos) ELSE 0 END) as kilos_salvavidas,
+                COALESCE(
+                    MAX(CASE WHEN COALESCE(im.observaciones, '') ILIKE 'Preparación de carro%' THEN im.stock_anterior ELSE NULL END),
+                    MAX(im.stock_anterior)
+                ) as stock_snapshot,
+                COALESCE((
+                    SELECT SUM(im_in.kilos)
+                    FROM ingredientes_movimientos im_in
+                    JOIN carros_produccion cp ON cp.id = $1
+                    WHERE im_in.carro_id = $1
+                      AND im_in.ingrediente_id = im.ingrediente_id
+                      AND im_in.tipo = 'ingreso'
+                      AND (cp.fecha_preparado IS NULL OR im_in.fecha <= cp.fecha_preparado)
+                ), 0) as ingresos_pre_preparado,
+                COALESCE((
+                    SELECT SUM(im_in.kilos)
+                    FROM ingredientes_movimientos im_in
+                    JOIN carros_produccion cp ON cp.id = $1
+                    WHERE im_in.carro_id = $1
+                      AND im_in.ingrediente_id = im.ingrediente_id
+                      AND im_in.tipo = 'ingreso'
+                      AND cp.fecha_preparado IS NOT NULL
+                      AND im_in.fecha > cp.fecha_preparado
+                ), 0) as ingresos_post_preparado,
                 COALESCE(i.es_insumo, false) as es_insumo
             FROM ingredientes_movimientos im
             JOIN ingredientes i ON im.ingrediente_id = i.id
@@ -137,6 +167,9 @@ async function obtenerIngredientesHistoricos(carroId, tipoCarro) {
         return {
             ...row,
             cantidad: cantidad,
+            kilos_salvavidas: Number(parseFloat(row.kilos_salvavidas || 0).toPrecision(10)),
+            ingresos_pre_preparado: Number(parseFloat(row.ingresos_pre_preparado || 0).toPrecision(10)),
+            ingresos_post_preparado: Number(parseFloat(row.ingresos_post_preparado || 0).toPrecision(10)),
             stock_actual: stockAnterior, // Mantener compatibilidad (Snapshot)
             stock_snapshot: stockAnterior, // Explicito para evitar dudas
             stock_live: Number(row.current_system_stock || 0), // Stock real actual del sistema

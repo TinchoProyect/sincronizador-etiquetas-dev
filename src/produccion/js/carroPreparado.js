@@ -1470,7 +1470,7 @@ export async function marcarCarroPreparado(carroIdParam) {
             throw new Error('No se encontró información del colaborador activo');
         }
 
-        // Consultar el estado y línea de negocio del carro para verificar si es Producción de Tostadero (Línea 4)
+        // Consultar el estado y línea de negocio del carro para verificar si es Producción de Tostadero (Línea 4) o si faltan cajas por Ingreso Manual
         let articuloLlevadoPayload = null;
         try {
             const estadoRes = await fetch(`/api/produccion/carro/${carroId}/estado`);
@@ -1488,6 +1488,45 @@ export async function marcarCarroPreparado(carroIdParam) {
                         return;
                     }
                     articuloLlevadoPayload = seleccion;
+                } else if (!esExterno) {
+                    // Verificar si hay ingredientes con stock faltante en la tabla (ej. trajeron las cajas físicamente pero no tocaron "Ingreso manual")
+                    const filasFaltantes = Array.from(document.querySelectorAll('#resumen-ingredientes tr.stock-faltante'));
+                    if (filasFaltantes.length > 0 && typeof Swal !== 'undefined') {
+                        const listaFaltantesHtml = filasFaltantes.map(tr => {
+                            const celdas = tr.querySelectorAll('td');
+                            const nombre = celdas[0]?.textContent?.trim() || 'Ingrediente';
+                            const faltante = celdas[3]?.textContent?.trim() || '';
+                            const unidad = celdas[4]?.textContent?.trim() || '';
+                            return `<li style="margin-bottom:4px;"><strong>${nombre}</strong>: faltan <span style="color:#dc2626;font-weight:bold;">${faltante} ${unidad}</span></li>`;
+                        }).join('');
+
+                        const warnRes = await Swal.fire({
+                            title: '⚠️ Hay ingredientes sin stock cargado',
+                            html: `
+                                <div style="text-align:left;font-size:0.95em;line-height:1.45;">
+                                    <p style="margin-bottom:8px;">Los siguientes ingredientes figuran con faltante porque aún no se registraron sus cajas/bultos con el botón <strong>"Ingreso manual"</strong>:</p>
+                                    <ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px 10px 28px;margin-bottom:10px;">
+                                        ${listaFaltantesHtml}
+                                    </ul>
+                                    <p style="margin:0;color:#475569;font-size:0.9em;">Si trajiste cajas nuevas a la mesa, te recomendamos volver y cargarlas con <strong>Ingreso manual</strong> antes de empezar para que el stock no quede en negativo.</p>
+                                </div>
+                            `,
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonText: 'Continuar igual sin ingresar',
+                            cancelButtonText: '⬅️ Volver para ingresar cajas',
+                            confirmButtonColor: '#f59e0b',
+                            cancelButtonColor: '#2563eb',
+                            reverseButtons: true
+                        });
+
+                        if (!warnRes.isConfirmed) {
+                            btnCarroPreparado.disabled = false;
+                            btnCarroPreparado.classList.remove('procesando');
+                            btnCarroPreparado.textContent = 'Carro listo para producir';
+                            return;
+                        }
+                    }
                 }
             }
         } catch (errCheck) {
