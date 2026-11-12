@@ -12237,7 +12237,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'RENDICION_DIRECTA_NODO'::character varying"
       }
     },
@@ -13691,7 +13691,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "motivo_anulacion_ajuste": {
@@ -14075,7 +14075,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "activo": {
@@ -14085,7 +14085,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "portal_token": {
