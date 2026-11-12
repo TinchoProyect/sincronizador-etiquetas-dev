@@ -205,3 +205,21 @@
     background-color: #ccc;
     color: black;
 }
+
+/* Jerarquía de apilamiento y scroll seguro para edición de recetas */
+#modal-receta {
+    z-index: 10050;
+}
+
+#modal-receta .modal-content {
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#modal-ingrediente {
+    z-index: 10060;
+}
+
+.swal2-container {
+    z-index: 100000 !important;
+}

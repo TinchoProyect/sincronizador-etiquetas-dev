@@ -173,7 +173,7 @@ function cerrarModal() {
 async function cargarIngredientes() {
   try {
     console.log('📡 [GUARDADO] Cargando ingredientes consolidados...');
-    const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroIdGlobal}/ingredientes-consolidados?usuarioId=${usuarioIdGlobal}`);
+    const response = await fetch(`/api/produccion/carro/${carroIdGlobal}/ingredientes-consolidados?usuarioId=${usuarioIdGlobal}`);
 
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -493,7 +493,7 @@ async function guardarAjustes() {
   try {
     console.log(`💾 [GUARDADO] Guardando ${ajustes.length} ajustes selectivos...`);
 
-    const response = await fetch('http://localhost:3002/api/produccion/ingredientes-ajustes/batch', {
+    const response = await fetch('/api/produccion/ingredientes-ajustes/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ajustes })
@@ -506,6 +506,16 @@ async function guardarAjustes() {
 
     const result = await response.json();
     console.log('✅ [GUARDADO] Ajustes selectivos guardados:', result);
+
+    // Refrescar el resumen de ingredientes de la pantalla principal para que muestre el nuevo stock en vivo al instante
+    try {
+      if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+        const nuevosIngs = await window.obtenerResumenIngredientesCarro(carroIdGlobal, usuarioIdGlobal);
+        await window.mostrarResumenIngredientes(nuevosIngs);
+      }
+    } catch (refreshErr) {
+      console.warn('⚠️ [GUARDADO] No se pudo refrescar la tabla principal tras guardar ajustes:', refreshErr);
+    }
 
     alert(`✅ Ajustes selectivos guardados correctamente!\n\n📊 ${result.ajustes_aplicados} ingredientes actualizados\n🎯 Solo se modificaron los ingredientes seleccionados`);
     cerrarModal();

@@ -13,6 +13,9 @@ async function registrarAjusteFantasma(req, res) {
     try {
         await client.query('BEGIN');
 
+        const stockRes = await client.query('SELECT stock_actual FROM public.ingredientes WHERE id = $1', [ingredienteId]);
+        const stockAnteriorActual = stockRes.rows.length > 0 ? parseFloat(stockRes.rows[0].stock_actual || 0) : 0;
+
         // Insertar un movimiento de "egreso" (negativo) para sincerar el stock fantasma
         // El trigger "actualizar_stock_ingrediente" se encargará de achicar la variable global stock_actual en base de datos.
         const movimientoData = {
@@ -20,8 +23,8 @@ async function registrarAjusteFantasma(req, res) {
             kilos: -Math.abs(parseFloat(kilosFaltantes)), // Asegurarnos de que sea negativo
             tipo: 'egreso',
             carro_id: carroId,
+            stock_anterior: stockAnteriorActual,
             observaciones: observaciones || `Salvavidas - Ajuste de faltante fantasma en estantería para carro #${carroId}`
-            // stock_anterior es manejado internamente o el trigger de base de datos actualiza el stock independientemente
         };
 
         // Reutilizar la función robusta existente
