@@ -1445,6 +1445,202 @@ async function solicitarArticuloLlevadoTostadero(carroId, usuarioId) {
     });
 }
 
+/**
+ * Escapa texto plano para insertarlo de forma segura dentro de HTML.
+ */
+function escaparHtmlPreparado(valor) {
+    return String(valor ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Restaura el estado visual habilitado del botón "Carro listo para producir".
+ */
+function restaurarBotonPreparado(btnCarroPreparado) {
+    if (!btnCarroPreparado) return;
+    btnCarroPreparado.disabled = false;
+    btnCarroPreparado.classList.remove('procesando');
+    btnCarroPreparado.textContent = 'Carro listo para producir';
+}
+
+/**
+ * Extrae el texto numérico directo de una celda sin arrastrar badges/botones hijos.
+ */
+function extraerValorDirectoCelda(celda) {
+    if (!celda) return '';
+    return Array.from(celda.childNodes)
+        .filter(n => n.nodeType === 3)
+        .map(n => n.textContent.trim())
+        .filter(Boolean)
+        .join(' ');
+}
+
+/**
+ * Inspecciona el DOM del carro y recolecta ingredientes/insumos/mixes en rojo
+ * y cualquier condición que indique que el carro aún no está listo para producir.
+ */
+function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio) {
+    const pendientes = [];
+    let primerElementoFaltante = null;
+    const registrarPrimerElemento = (el) => {
+        if (!primerElementoFaltante && el) primerElementoFaltante = el;
+    };
+
+    const listaArticulos = document.getElementById('lista-articulos');
+    const articulosDOM = listaArticulos ? listaArticulos.querySelectorAll('.articulo-container') : [];
+    if (listaArticulos && articulosDOM.length === 0) {
+        registrarPrimerElemento(listaArticulos);
+        pendientes.push({
+            categoria: 'Carro sin artículos',
+            nombre: 'No hay artículos cargados en el carro',
+            detalle: 'Agregá al menos un artículo antes de iniciar la producción'
+        });
+    }
+
+    document.querySelectorAll('#lista-articulos .toggle-ingredientes.sin-receta').forEach(btn => {
+        const cont = btn.closest('.articulo-container');
+        registrarPrimerElemento(cont || btn);
+        const codigo = cont?.querySelector('.articulo-codigo')?.textContent?.trim() || '';
+        const desc = cont?.querySelector('.articulo-descripcion')?.textContent?.trim() || 'Artículo';
+        pendientes.push({
+            categoria: 'Sin receta configurada',
+            nombre: codigo ? `${codigo} — ${desc}` : desc,
+            detalle: 'Falta crear/vincular su receta (botón "Ver" en rojo)'
+        });
+    });
+
+    document.querySelectorAll('#resumen-ingredientes tr.stock-faltante').forEach(tr => {
+        registrarPrimerElemento(tr);
+        const celdas = tr.querySelectorAll('td');
+        const nombre = celdas[0]?.textContent?.trim() || 'Ingrediente';
+        const requerido = celdas[1]?.textContent?.trim() || '';
+        const stockActual = extraerValorDirectoCelda(celdas[2]) || '0.00';
+        const cajasTexto = celdas[2]?.querySelector('.cajas-cerradas-badge span')?.textContent?.trim() || '';
+        const estadoLimpio = (celdas[3]?.textContent || '').replace(/[❌⚠️]/g, '').trim();
+        const unidad = celdas[4]?.textContent?.trim() || '';
+        const detalleStock = requerido
+            ? `${estadoLimpio || 'Stock insuficiente'} (Requerido: ${requerido} ${unidad} · En stock: ${stockActual} ${unidad})`
+            : (estadoLimpio || 'Stock insuficiente');
+        pendientes.push({
+            categoria: 'Ingrediente / Insumo en rojo',
+            nombre,
+            detalle: cajasTexto ? `${detalleStock} — tenés ${cajasTexto} disponibles para ingresar` : detalleStock
+        });
+    });
+
+    const seccionMixes = document.getElementById('resumen-mixes');
+    if (seccionMixes && getComputedStyle(seccionMixes).display !== 'none') {
+        seccionMixes.querySelectorAll('tr.stock-faltante').forEach(tr => {
+            registrarPrimerElemento(tr);
+            const celdas = tr.querySelectorAll('td');
+            const nombre = celdas[0]?.textContent?.trim() || 'Mix compuesto';
+            const reqTxt = celdas[1]?.textContent?.trim() || '0';
+            const unidad = celdas[2]?.textContent?.trim() || '';
+            const stockTxt = celdas[3]?.textContent?.trim() || '0';
+            const diff = Math.max(0, (parseFloat(reqTxt) || 0) - (parseFloat(stockTxt) || 0));
+            pendientes.push({
+                categoria: 'Mix en rojo',
+                nombre,
+                detalle: `Faltan ${diff.toFixed(2)} ${unidad} (Requerido: ${reqTxt} ${unidad} · En stock: ${stockTxt} ${unidad})`
+            });
+        });
+    }
+
+    const seccionArticulosUp = document.getElementById('resumen-articulos');
+    if (seccionArticulosUp && getComputedStyle(seccionArticulosUp).display !== 'none') {
+        seccionArticulosUp.querySelectorAll('tr.stock-faltante').forEach(tr => {
+            registrarPrimerElemento(tr);
+            const celdas = tr.querySelectorAll('td');
+            const codigo = celdas[0]?.textContent?.trim() || '';
+            const desc = celdas[1]?.textContent?.trim() || 'Insumo UP';
+            const estadoLimpio = (celdas[5]?.textContent || '').replace(/[❌⚠️]/g, '').trim() || 'Stock insuficiente';
+            pendientes.push({
+                categoria: 'Insumo Receta UP en rojo',
+                nombre: codigo ? `${codigo} — ${desc}` : desc,
+                detalle: estadoLimpio
+            });
+        });
+    }
+
+    if (esExterno && Number(lineaNegocio) !== 4) {
+        document.querySelectorAll('#lista-articulos .articulo-vinculado-banner .btn-vincular-articulo').forEach(btn => {
+            registrarPrimerElemento(btn.closest('.articulo-vinculado-banner') || btn);
+            const codigo = btn.dataset?.articulo || 'Artículo';
+            pendientes.push({
+                categoria: 'Artículo Puente pendiente',
+                nombre: codigo,
+                detalle: 'Falta vincular su Artículo Puente (AP)'
+            });
+        });
+    }
+
+    return { pendientes, primerElementoFaltante };
+}
+
+/**
+ * Muestra un modal de confirmación "¿Estás seguro?" detallando lo que falta cuando
+ * el carro tiene ingredientes en rojo o configuraciones pendientes.
+ * Devuelve true solo si el operario decide continuar igual.
+ */
+async function confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante) {
+    if (!pendientes || pendientes.length === 0) return true;
+
+    let seguirAdelante = false;
+    if (typeof Swal !== 'undefined') {
+        const itemsHtml = pendientes.map(p => `
+            <li style="margin-bottom:6px;">
+                <span style="display:inline-block;font-size:0.78em;font-weight:700;color:#991b1b;background:#fee2e2;padding:1px 6px;border-radius:4px;margin-right:4px;">${escaparHtmlPreparado(p.categoria)}</span>
+                <strong>${escaparHtmlPreparado(p.nombre)}</strong>:
+                <span style="color:#b91c1c;font-weight:600;">${escaparHtmlPreparado(p.detalle)}</span>
+            </li>
+        `).join('');
+
+        const warnRes = await Swal.fire({
+            title: '⚠️ ¿Estás seguro?',
+            html: `
+                <div style="text-align:left;font-size:0.94em;line-height:1.45;">
+                    <p style="margin-bottom:8px;">El carro <strong>todavía no está listo para producir</strong> porque figuran pendientes los siguientes puntos:</p>
+                    <ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;max-height:240px;overflow-y:auto;">
+                        ${itemsHtml}
+                    </ul>
+                    <p style="margin:0;color:#475569;font-size:0.9em;">Podés volver para revisar y cargar lo que falta (por ejemplo con <strong>Ingreso manual</strong>), o elegir <strong>Seguir adelante igual</strong> si querés iniciar la producción con este desajuste.</p>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '✅ Seguir adelante igual',
+            cancelButtonText: '🔍 Revisar qué falta',
+            confirmButtonColor: '#d97706',
+            cancelButtonColor: '#2563eb',
+            reverseButtons: true,
+            focusCancel: true
+        });
+        seguirAdelante = !!warnRes.isConfirmed;
+    } else {
+        const resumenTexto = pendientes.map(p => `• [${p.categoria}] ${p.nombre}: ${p.detalle}`).join('\n');
+        seguirAdelante = window.confirm(
+            `⚠️ ¿Estás seguro? El carro aún no está listo para producir:\n\n${resumenTexto}\n\nAceptar = Seguir adelante igual\nCancelar = Revisar qué falta`
+        );
+    }
+
+    if (!seguirAdelante && primerElementoFaltante) {
+        try {
+            // Si la tabla faltante está colapsada en el panel, expandirla antes de scrollear
+            const seccionColapsada = primerElementoFaltante.closest('.seccion-resumen.collapsed');
+            if (seccionColapsada) {
+                seccionColapsada.classList.remove('collapsed');
+            }
+            primerElementoFaltante.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {}
+    }
+
+    return seguirAdelante;
+}
+
 // Función para marcar un carro como preparado
 export async function marcarCarroPreparado(carroIdParam) {
     const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
@@ -1470,67 +1666,40 @@ export async function marcarCarroPreparado(carroIdParam) {
             throw new Error('No se encontró información del colaborador activo');
         }
 
-        // Consultar el estado y línea de negocio del carro para verificar si es Producción de Tostadero (Línea 4) o si faltan cajas por Ingreso Manual
+        // Consultar estado y línea de negocio sin dejar que un error de red saltee la validación local de faltantes
+        let esExterno = false;
+        let lineaNegocio = 4;
         let articuloLlevadoPayload = null;
         try {
             const estadoRes = await fetch(`/api/produccion/carro/${carroId}/estado`);
             if (estadoRes.ok) {
                 const estadoCarro = await estadoRes.json();
-                const esExterno = estadoCarro.tipo_carro === 'externa';
-                const lineaNegocio = Number(estadoCarro.linea_negocio || 4);
-                if (esExterno && lineaNegocio === 4) {
-                    const seleccion = await solicitarArticuloLlevadoTostadero(carroId, colaborador.id);
-                    if (!seleccion) {
-                        // Usuario canceló el modal: restaurar botón y abortar sin error
-                        btnCarroPreparado.disabled = false;
-                        btnCarroPreparado.classList.remove('procesando');
-                        btnCarroPreparado.textContent = 'Carro listo para producir';
-                        return false;
-                    }
-                    articuloLlevadoPayload = seleccion;
-                } else if (!esExterno) {
-                    // Verificar si hay ingredientes con stock faltante en la tabla (ej. trajeron las cajas físicamente pero no tocaron "Ingreso manual")
-                    const filasFaltantes = Array.from(document.querySelectorAll('#resumen-ingredientes tr.stock-faltante'));
-                    if (filasFaltantes.length > 0 && typeof Swal !== 'undefined') {
-                        const listaFaltantesHtml = filasFaltantes.map(tr => {
-                            const celdas = tr.querySelectorAll('td');
-                            const nombre = celdas[0]?.textContent?.trim() || 'Ingrediente';
-                            const faltante = celdas[3]?.textContent?.trim() || '';
-                            const unidad = celdas[4]?.textContent?.trim() || '';
-                            return `<li style="margin-bottom:4px;"><strong>${nombre}</strong>: faltan <span style="color:#dc2626;font-weight:bold;">${faltante} ${unidad}</span></li>`;
-                        }).join('');
-
-                        const warnRes = await Swal.fire({
-                            title: '⚠️ Hay ingredientes sin stock cargado',
-                            html: `
-                                <div style="text-align:left;font-size:0.95em;line-height:1.45;">
-                                    <p style="margin-bottom:8px;">Los siguientes ingredientes figuran con faltante porque aún no se registraron sus cajas/bultos con el botón <strong>"Ingreso manual"</strong>:</p>
-                                    <ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px 10px 28px;margin-bottom:10px;">
-                                        ${listaFaltantesHtml}
-                                    </ul>
-                                    <p style="margin:0;color:#475569;font-size:0.9em;">Si trajiste cajas nuevas a la mesa, te recomendamos volver y cargarlas con <strong>Ingreso manual</strong> antes de empezar para que el stock no quede en negativo.</p>
-                                </div>
-                            `,
-                            icon: 'warning',
-                            showCancelButton: true,
-                            confirmButtonText: 'Continuar igual sin ingresar',
-                            cancelButtonText: '⬅️ Volver para ingresar cajas',
-                            confirmButtonColor: '#f59e0b',
-                            cancelButtonColor: '#2563eb',
-                            reverseButtons: true
-                        });
-
-                        if (!warnRes.isConfirmed) {
-                            btnCarroPreparado.disabled = false;
-                            btnCarroPreparado.classList.remove('procesando');
-                            btnCarroPreparado.textContent = 'Carro listo para producir';
-                            return false;
-                        }
-                    }
-                }
+                esExterno = estadoCarro.tipo_carro === 'externa';
+                lineaNegocio = Number(estadoCarro.linea_negocio || 4);
             }
         } catch (errCheck) {
             console.warn('Aviso al verificar línea de negocio del carro:', errCheck);
+        }
+
+        const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio);
+        const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante);
+        if (!confirmarPendientes) {
+            restaurarBotonPreparado(btnCarroPreparado);
+            return false;
+        }
+
+        if (esExterno && lineaNegocio === 4) {
+            try {
+                const seleccion = await solicitarArticuloLlevadoTostadero(carroId, colaborador.id);
+                if (!seleccion) {
+                    // Usuario canceló el modal: restaurar botón y abortar sin error
+                    restaurarBotonPreparado(btnCarroPreparado);
+                    return false;
+                }
+                articuloLlevadoPayload = seleccion;
+            } catch (errTostadero) {
+                console.warn('Aviso al solicitar artículo llevado a tostadero:', errTostadero);
+            }
         }
 
         const bodyPayload = {
