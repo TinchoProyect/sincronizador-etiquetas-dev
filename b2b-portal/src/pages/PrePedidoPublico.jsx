@@ -15,6 +15,10 @@ import {
   fetchMapaIngredientesComercialesB2B,
   resolverInfoIngredientesProductoB2B
 } from '../components/DesgloseIngredientesModal';
+import {
+  normalizarStockComercial,
+  construirArbolCatalogoB2B
+} from '../utils/catalogoPresentation';
 
 const DEVICE_SECRET_STORAGE_KEY = 'b2b_colab_device_secret';
 
@@ -570,152 +574,17 @@ export default function PrePedidoPublico({ path }) {
     );
   }, [filteredProducts, ofertasActivas]);
 
-  // Agrupamiento Jerárquico en 5 Niveles (Idéntico a Articulos.jsx)
+  // Agrupamiento Jerárquico en 5 Niveles con claves NFD deterministas, encabezados limpios e ingredientes por grupo
   const hierarchicalData = useMemo(() => {
-    const famMap = new Map();
-
-    for (const product of filteredProducts) {
-      const famName = getNormalizedFamilia(product);
-      const famKey = famName.toLowerCase().trim();
-      const atName = getNormalizedAtributoPrincipal(product);
-      const atKey = atName.toLowerCase().trim();
-
-      if (!famMap.has(famKey)) {
-        famMap.set(famKey, { nombre: famName, atMap: new Map() });
-      }
-      const famObj = famMap.get(famKey);
-      if (!famObj.atMap.has(atKey)) {
-        famObj.atMap.set(atKey, { nombre: atName, prods: [] });
-      }
-      famObj.atMap.get(atKey).prods.push(product);
-    }
-
-    return Array.from(famMap.values())
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-      .map(({ nombre: famName, atMap }) => {
-        const atributosList = Array.from(atMap.values())
-          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-          .map(({ nombre: atName, prods }) => {
-            const subMap = new Map();
-            let hasSubcategorias = false;
-
-            for (const p of prods) {
-              const subCat = p.sub_categoria?.trim();
-              if (subCat && subCat !== '') {
-                hasSubcategorias = true;
-                const subKey = subCat.toLowerCase();
-                if (!subMap.has(subKey)) {
-                  subMap.set(subKey, { nombre: subCat, subProds: [] });
-                }
-                subMap.get(subKey).subProds.push(p);
-              }
-            }
-
-            let subcategoriasList = [];
-            if (hasSubcategorias) {
-              const sinSub = prods.filter(p => !p.sub_categoria || p.sub_categoria.trim() === '');
-              if (sinSub.length > 0) {
-                subMap.set('general', { nombre: 'General', subProds: sinSub });
-              }
-
-              subcategoriasList = Array.from(subMap.values())
-                .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                .map(({ nombre: subName, subProds }) => {
-                  const subSubMap = new Map();
-                  let hasSubSubcategorias = false;
-
-                  for (const sp of subProds) {
-                    const subSubCat = sp.sub_sub_categoria?.trim();
-                    if (subSubCat && subSubCat !== '') {
-                      hasSubSubcategorias = true;
-                      const subSubKey = subSubCat.toLowerCase();
-                      if (!subSubMap.has(subSubKey)) {
-                        subSubMap.set(subSubKey, { nombre: subSubCat, subSubProds: [] });
-                      }
-                      subSubMap.get(subSubKey).subSubProds.push(sp);
-                    }
-                  }
-
-                  let subSubcategoriasList = [];
-                  if (hasSubSubcategorias) {
-                    const sinSubSub = subProds.filter(p => !p.sub_sub_categoria || p.sub_sub_categoria.trim() === '');
-                    if (sinSubSub.length > 0) {
-                      subSubMap.set('general', { nombre: 'General', subSubProds: sinSubSub });
-                    }
-
-                    subSubcategoriasList = Array.from(subSubMap.values())
-                      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                      .map(({ nombre: subSubName, subSubProds }) => {
-                        const subSubSubMap = new Map();
-                        let hasSubSubSubcategorias = false;
-
-                        for (const ssp of subSubProds) {
-                          const subSubSubCat = ssp.sub_sub_sub_categoria?.trim();
-                          if (subSubSubCat && subSubSubCat !== '') {
-                            hasSubSubSubcategorias = true;
-                            const subSubSubKey = subSubSubCat.toLowerCase();
-                            if (!subSubSubMap.has(subSubSubKey)) {
-                              subSubSubMap.set(subSubSubKey, { nombre: subSubSubCat, subSubSubProds: [] });
-                            }
-                            subSubSubMap.get(subSubSubKey).subSubSubProds.push(ssp);
-                          }
-                        }
-
-                        let subSubSubcategoriasList = [];
-                        if (hasSubSubSubcategorias) {
-                          const sinSubSubSub = subSubProds.filter(p => !p.sub_sub_sub_categoria || p.sub_sub_sub_categoria.trim() === '');
-                          if (sinSubSubSub.length > 0) {
-                            subSubSubMap.set('general', { nombre: 'General', subSubSubProds: sinSubSubSub });
-                          }
-
-                          subSubSubcategoriasList = Array.from(subSubSubMap.values())
-                            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                            .map(({ nombre: subSubSubName, subSubSubProds }) => ({
-                              nombre: subSubSubName,
-                              key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}___${subSubName.toLowerCase()}___${subSubSubName.toLowerCase()}`,
-                              productos: sortProductsByKilos(subSubSubProds)
-                            }));
-                        }
-
-                        return {
-                          nombre: subSubName,
-                          key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}___${subSubName.toLowerCase()}`,
-                          hasSubSubSubcategorias: hasSubSubSubcategorias,
-                          subSubSubcategorias: subSubSubcategoriasList,
-                          productos: sortProductsByKilos(subSubProds)
-                        };
-                      });
-                  }
-
-                  return {
-                    nombre: subName,
-                    key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}`,
-                    hasSubSubcategorias: hasSubSubcategorias,
-                    subSubcategorias: subSubcategoriasList,
-                    productos: sortProductsByKilos(subProds)
-                  };
-                });
-            }
-
-            return {
-              nombre: atName,
-              key: `${famName.toLowerCase()}___${atName.toLowerCase()}`,
-              hasSubcategorias: hasSubcategorias,
-              subcategorias: subcategoriasList,
-              productos: sortProductsByKilos(prods)
-            };
-          });
-
-        const totalProds = atributosList.reduce((acc, at) => acc + at.productos.length, 0);
-
-        return {
-          nombre: famName,
-          key: famName.toLowerCase(),
-          totalProductos: totalProds,
-          atributos: atributosList
-        };
-      });
-  }, [filteredProducts]);
+    return construirArbolCatalogoB2B({
+      products: filteredProducts,
+      getNormalizedFamilia,
+      getNormalizedAtributoPrincipal,
+      sortProductsByKilos,
+      mapaIngredientesComerciales,
+      resolverInfoIngredientes: resolverInfoIngredientesProductoB2B
+    });
+  }, [filteredProducts, mapaIngredientesComerciales]);
 
   // Manejo de acordeones
   const toggleFamilia = (famKey) => {
@@ -862,7 +731,8 @@ export default function PrePedidoPublico({ path }) {
   const canToggleIva = Boolean(delegacion?.mostrar_precios && delegacion?.permitir_toggle_iva !== false);
 
   // Renderizador de Ficha de Producto (idéntico a Articulos.jsx)
-  const renderProductCard = (product) => {
+  const renderProductCard = (product, options = {}) => {
+    const { displayLabel = null, ocultarBotonIngredientes = false } = options;
     const cod = (product.producto_codigo || '').trim();
     const sel = selectedItems[cod];
     const currentQty = sel ? sel.cantidad : 0;
@@ -909,7 +779,7 @@ export default function PrePedidoPublico({ path }) {
         {/* Primera línea: Stock + ⭐ Habitual + Descripción + IVA + Oferta */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           {canViewStock ? (() => {
-            const rawStock = parseFloat(product.stock_disponible || 0);
+            const rawStock = normalizarStockComercial(parseFloat(product.stock_disponible || 0));
             let esDisponible = false;
             let esRequiereProd = false;
             let cantStock = 0;
@@ -980,7 +850,7 @@ export default function PrePedidoPublico({ path }) {
               </span>
             );
           })() : (
-            (parseFloat(product.stock_disponible) > 0) && (
+            (normalizarStockComercial(parseFloat(product.stock_disponible || 0)) > 0) && (
               <span className="stock-dot" title="Disponible" />
             )
           )}
@@ -994,7 +864,7 @@ export default function PrePedidoPublico({ path }) {
             </span>
           )}
           <h4 className={`product-name ${ofertaActiva ? 'product-name-oferta' : ''}`} style={{ fontSize: '0.92rem', fontWeight: '600', margin: 0, flex: 1, lineHeight: '1.25' }}>
-            {product.producto_descripcion}
+            {displayLabel || product.producto_descripcion}
           </h4>
           {delegacion?.mostrar_precios && esModoNeto && (
             <span className={`b2b-iva-pill ${ivaPorcentaje < 20 ? 'iva-105' : ''}`} title={`Alícuota de IVA: ${ivaPorcentaje}%`}>
@@ -1073,7 +943,7 @@ export default function PrePedidoPublico({ path }) {
               </button>
             )}
 
-            {infoIngredientes && (
+            {!ocultarBotonIngredientes && infoIngredientes && (
               <BotonVerIngredientesB2B
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2427,7 +2297,7 @@ export default function PrePedidoPublico({ path }) {
                       ))}
 
                       <div className="b2b-articulos-subgrid">
-                        {ofertasVisiblesEnSolapa.map(renderProductCard)}
+                        {ofertasVisiblesEnSolapa.map(p => renderProductCard(p))}
                       </div>
                     </div>
                   )}
@@ -2458,6 +2328,23 @@ export default function PrePedidoPublico({ path }) {
                       <div className="b2b-familia-body">
                         {familia.atributos.map(atributo => {
                           const isAtOpen = expandedAtributos.has(atributo.key);
+                          const atTitulo = !atributo.hasSubcategorias ? (atributo.presentacion?.titulo || atributo.nombre) : atributo.nombre;
+                          const atIngShared = !atributo.hasSubcategorias && atributo.ingGrupo?.shared ? atributo.ingGrupo : null;
+                          const abrirIngGrupo = (tituloGrupo, ingGrupo) => {
+                            if (!ingGrupo?.representative || !ingGrupo?.info) return;
+                            setModalIngredientesCtx({
+                              product: { ...ingGrupo.representative, producto_descripcion: tituloGrupo },
+                              infoIngredientes: ingGrupo.info,
+                              desdeGrupo: true
+                            });
+                          };
+                          const renderLeafCard = (presentacion, ingGrupo) => (p) => {
+                            const codKey = (p.producto_codigo || p.producto_descripcion || '').trim();
+                            return renderProductCard(p, {
+                              displayLabel: presentacion?.etiquetasPorCodigo?.get(codKey) || null,
+                              ocultarBotonIngredientes: Boolean(ingGrupo?.shared)
+                            });
+                          };
 
                           return (
                             <div key={atributo.key} className={`b2b-atributo-group ${isAtOpen ? 'open' : ''}`}>
@@ -2469,10 +2356,16 @@ export default function PrePedidoPublico({ path }) {
                                   <div className="b2b-accordion-chevron sub">
                                     {isAtOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                   </div>
-                                  <h3 className="b2b-atributo-name">{atributo.nombre}</h3>
+                                  <h3 className="b2b-atributo-name">{atTitulo}</h3>
                                   <span className="b2b-count-badge sub">
                                     {atributo.productos.length}
                                   </span>
+                                  {atIngShared && (
+                                    <BotonVerIngredientesB2B
+                                      compact
+                                      onClick={() => abrirIngGrupo(atTitulo, atIngShared)}
+                                    />
+                                  )}
                                 </div>
                               </div>
 
@@ -2481,6 +2374,8 @@ export default function PrePedidoPublico({ path }) {
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.35rem', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid var(--border-glass)' }}>
                                     {atributo.subcategorias.map(subcat => {
                                       const isSubOpen = expandedSubcategorias.has(subcat.key);
+                                      const subTitulo = !subcat.hasSubSubcategorias ? (subcat.presentacion?.titulo || subcat.nombre) : subcat.nombre;
+                                      const subIngShared = !subcat.hasSubSubcategorias && subcat.ingGrupo?.shared ? subcat.ingGrupo : null;
 
                                       return (
                                         <div key={subcat.key} className={`b2b-subcategoria-card ${isSubOpen ? 'open' : ''}`}>
@@ -2492,10 +2387,16 @@ export default function PrePedidoPublico({ path }) {
                                               <div className="b2b-accordion-chevron sub3">
                                                 {isSubOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                               </div>
-                                              <h4 className="b2b-subcategoria-name">{subcat.nombre}</h4>
+                                              <h4 className="b2b-subcategoria-name">{subTitulo}</h4>
                                               <span className="b2b-count-badge sub3">
                                                 {subcat.productos.length}
                                               </span>
+                                              {subIngShared && (
+                                                <BotonVerIngredientesB2B
+                                                  compact
+                                                  onClick={() => abrirIngGrupo(subTitulo, subIngShared)}
+                                                />
+                                              )}
                                             </div>
                                           </div>
 
@@ -2504,6 +2405,8 @@ export default function PrePedidoPublico({ path }) {
                                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', padding: '0.3rem', background: 'rgba(0,0,0,0.2)' }}>
                                                 {subcat.subSubcategorias.map(subsub => {
                                                   const isSubSubOpen = expandedSubSubcategorias.has(subsub.key);
+                                                  const subSubTitulo = !subsub.hasSubSubSubcategorias ? (subsub.presentacion?.titulo || subsub.nombre) : subsub.nombre;
+                                                  const subSubIngShared = !subsub.hasSubSubSubcategorias && subsub.ingGrupo?.shared ? subsub.ingGrupo : null;
 
                                                   return (
                                                     <div key={subsub.key} className={`b2b-subsubcategoria-card ${isSubSubOpen ? 'open' : ''}`}>
@@ -2515,10 +2418,16 @@ export default function PrePedidoPublico({ path }) {
                                                           <div className="b2b-accordion-chevron sub4">
                                                             {isSubSubOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                                                           </div>
-                                                          <h5 className="b2b-subsubcategoria-name">{subsub.nombre}</h5>
+                                                          <h5 className="b2b-subsubcategoria-name">{subSubTitulo}</h5>
                                                           <span className="b2b-count-badge sub4">
                                                             {subsub.productos.length}
                                                           </span>
+                                                          {subSubIngShared && (
+                                                            <BotonVerIngredientesB2B
+                                                              compact
+                                                              onClick={() => abrirIngGrupo(subSubTitulo, subSubIngShared)}
+                                                            />
+                                                          )}
                                                         </div>
                                                       </div>
 
@@ -2527,6 +2436,8 @@ export default function PrePedidoPublico({ path }) {
                                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', padding: '0.25rem', background: 'rgba(0,0,0,0.25)' }}>
                                                             {subsub.subSubSubcategorias.map(subsubsub => {
                                                               const isSubSubSubOpen = expandedSubSubSubcategorias.has(subsubsub.key);
+                                                              const subSubSubTitulo = subsubsub.presentacion?.titulo || subsubsub.nombre;
+                                                              const subSubSubIngShared = subsubsub.ingGrupo?.shared ? subsubsub.ingGrupo : null;
 
                                                               return (
                                                                 <div key={subsubsub.key} className={`b2b-subsubsubcategoria-card ${isSubSubSubOpen ? 'open' : ''}`}>
@@ -2538,16 +2449,22 @@ export default function PrePedidoPublico({ path }) {
                                                                       <div className="b2b-accordion-chevron sub5">
                                                                         {isSubSubSubOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                                                                       </div>
-                                                                      <h6 className="b2b-subsubsubcategoria-name">{subsubsub.nombre}</h6>
+                                                                      <h6 className="b2b-subsubsubcategoria-name">{subSubSubTitulo}</h6>
                                                                       <span className="b2b-count-badge sub5">
                                                                         {subsubsub.productos.length}
                                                                       </span>
+                                                                      {subSubSubIngShared && (
+                                                                        <BotonVerIngredientesB2B
+                                                                          compact
+                                                                          onClick={() => abrirIngGrupo(subSubSubTitulo, subSubSubIngShared)}
+                                                                        />
+                                                                      )}
                                                                     </div>
                                                                   </div>
 
                                                                   {isSubSubSubOpen && (
                                                                     <div className="b2b-articulos-subgrid">
-                                                                      {subsubsub.productos.map(renderProductCard)}
+                                                                      {subsubsub.productos.map(renderLeafCard(subsubsub.presentacion, subsubsub.ingGrupo))}
                                                                     </div>
                                                                   )}
                                                                 </div>
@@ -2556,7 +2473,7 @@ export default function PrePedidoPublico({ path }) {
                                                           </div>
                                                         ) : (
                                                           <div className="b2b-articulos-subgrid">
-                                                            {subsub.productos.map(renderProductCard)}
+                                                            {subsub.productos.map(renderLeafCard(subsub.presentacion, subsub.ingGrupo))}
                                                           </div>
                                                         )
                                                       )}
@@ -2566,7 +2483,7 @@ export default function PrePedidoPublico({ path }) {
                                               </div>
                                             ) : (
                                               <div className="b2b-articulos-subgrid">
-                                                {subcat.productos.map(renderProductCard)}
+                                                {subcat.productos.map(renderLeafCard(subcat.presentacion, subcat.ingGrupo))}
                                               </div>
                                             )
                                           )}
@@ -2576,7 +2493,7 @@ export default function PrePedidoPublico({ path }) {
                                   </div>
                                 ) : (
                                   <div className="b2b-articulos-subgrid">
-                                    {atributo.productos.map(renderProductCard)}
+                                    {atributo.productos.map(renderLeafCard(atributo.presentacion, atributo.ingGrupo))}
                                   </div>
                                 )
                               )}
@@ -2910,7 +2827,7 @@ export default function PrePedidoPublico({ path }) {
             ? (selectedItems[(modalIngredientesCtx.product.producto_codigo || '').trim()]?.cantidad || 0)
             : 0
         }
-        onChangeQty={(newQty) => {
+        onChangeQty={modalIngredientesCtx?.desdeGrupo ? null : (newQty) => {
           if (modalIngredientesCtx?.product) {
             const cod = (modalIngredientesCtx.product.producto_codigo || '').trim();
             const current = selectedItems[cod]?.cantidad || 0;

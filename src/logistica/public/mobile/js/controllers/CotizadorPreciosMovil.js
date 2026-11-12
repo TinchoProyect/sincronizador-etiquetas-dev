@@ -17,6 +17,10 @@ window.CotizadorPreciosMovil = {
     filtroSoloHabituales: false,
     familiasAbiertas: new Set(),
     atributosAbiertos: new Set(),
+    nodosAbiertos: new Set(),
+    mapaIngredientesUpper: {},
+    _nodoKeys: [],
+    _ingGrupos: [],
     todosLosArticulos: [],
     articulosFiltrados: [],
     articulosSeleccionados: new Set(),
@@ -56,6 +60,26 @@ window.CotizadorPreciosMovil = {
                 if (json && json.success && json.data) {
                     this.mapaFotosLotes = json.data;
                     if (this.todosLosArticulos.length > 0) this.renderCatalogo();
+                }
+            })
+            .catch(() => {});
+
+        // 0b. Cargar mapa de ingredientes comerciales (L3 Mixes, L5 Barritas, L6 Granolas)
+        fetch('/api/produccion/catalogo/ingredientes-comerciales')
+            .then(r => r.json())
+            .then(json => {
+                const rawMap = (json && json.data) ? json.data : {};
+                const upper = {};
+                Object.keys(rawMap).forEach(k => {
+                    upper[String(k).trim().toUpperCase()] = rawMap[k];
+                });
+                this.mapaIngredientesUpper = upper;
+                if (this.todosLosArticulos.length > 0) {
+                    if (this.terminoBusqueda) {
+                        this.filtrarArticulos(this.terminoBusqueda, { mantenerAcordeones: true });
+                    } else {
+                        this.renderCatalogo();
+                    }
                 }
             })
             .catch(() => {});
@@ -344,11 +368,48 @@ window.CotizadorPreciosMovil = {
         return null;
     },
 
+    normalizarClave(valor) {
+        if (window.LamdaCatalogoHelpers && window.LamdaCatalogoHelpers.normalizarTextoBusqueda) {
+            return window.LamdaCatalogoHelpers.normalizarTextoBusqueda(valor);
+        }
+        return String(valor || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    },
+
+    registrarNodoKey(key) {
+        const idx = this._nodoKeys.length;
+        this._nodoKeys.push(key);
+        return idx;
+    },
+
+    registrarIngGrupo(titulo, info) {
+        const idx = this._ingGrupos.length;
+        this._ingGrupos.push({ titulo, info });
+        return idx;
+    },
+
+    abrirIngByIdx(idx) {
+        const entry = this._ingGrupos[idx];
+        if (!entry || !entry.info || !window.LamdaCatalogoHelpers) return;
+        window.LamdaCatalogoHelpers.mostrarModalIngredientesMovil(entry.titulo, entry.info);
+    },
+
     toggleFamilia(famNombre) {
-        if (this.familiasAbiertas.has(famNombre)) {
-            this.familiasAbiertas.delete(famNombre);
+        const key = this.normalizarClave(famNombre) || famNombre;
+        if (this.familiasAbiertas.has(key)) {
+            this.familiasAbiertas.delete(key);
         } else {
-            this.familiasAbiertas.add(famNombre);
+            this.familiasAbiertas.add(key);
+        }
+        this.renderCatalogo();
+    },
+
+    toggleFamiliaByIdx(idx) {
+        const key = this._nodoKeys[idx];
+        if (!key) return;
+        if (this.familiasAbiertas.has(key)) {
+            this.familiasAbiertas.delete(key);
+        } else {
+            this.familiasAbiertas.add(key);
         }
         this.renderCatalogo();
     },
@@ -358,6 +419,28 @@ window.CotizadorPreciosMovil = {
             this.atributosAbiertos.delete(attrKey);
         } else {
             this.atributosAbiertos.add(attrKey);
+        }
+        this.renderCatalogo();
+    },
+
+    toggleAtributoByIdx(idx) {
+        const key = this._nodoKeys[idx];
+        if (!key) return;
+        if (this.atributosAbiertos.has(key)) {
+            this.atributosAbiertos.delete(key);
+        } else {
+            this.atributosAbiertos.add(key);
+        }
+        this.renderCatalogo();
+    },
+
+    toggleNodoByIdx(idx) {
+        const key = this._nodoKeys[idx];
+        if (!key) return;
+        if (this.nodosAbiertos.has(key)) {
+            this.nodosAbiertos.delete(key);
+        } else {
+            this.nodosAbiertos.add(key);
         }
         this.renderCatalogo();
     },
@@ -382,17 +465,6 @@ window.CotizadorPreciosMovil = {
             btn.classList.toggle('active', this.filtroSoloHabituales);
         }
 
-        if (this.filtroSoloHabituales) {
-            this.todosLosArticulos.forEach(art => {
-                if (this.obtenerInfoHabitual(art)) {
-                    const fam = art.familia || art.familia_nombre || 'General';
-                    const artP = art.articulo_principal || 'General';
-                    this.familiasAbiertas.add(fam);
-                    this.atributosAbiertos.add(`${fam}___${artP}`);
-                }
-            });
-        }
-
         this.filtrarArticulos(this.terminoBusqueda);
     },
 
@@ -415,10 +487,10 @@ window.CotizadorPreciosMovil = {
             if (this.obtenerInfoHabitual(art)) {
                 this.articulosSeleccionados.add(art.id);
                 countAdded++;
-                const fam = art.familia || art.familia_nombre || 'General';
-                const artP = art.articulo_principal || 'General';
-                this.familiasAbiertas.add(fam);
-                this.atributosAbiertos.add(`${fam}___${artP}`);
+                const famNorm = this.normalizarClave(art.familia || art.familia_nombre || 'General') || 'general';
+                const artPNorm = this.normalizarClave(art.articulo_principal || 'General') || 'general';
+                this.familiasAbiertas.add(famNorm);
+                this.atributosAbiertos.add(`${famNorm}___${artPNorm}`);
             }
         });
 
@@ -505,13 +577,15 @@ window.CotizadorPreciosMovil = {
                 precio_kilo_final: precioKiloFinal,
                 precio_kilo_neto: precioKiloNeto,
                 propiedades_dinamicas: a.propiedades_dinamicas || {},
+                rubro: a.rubro || '',
+                sub_rubro: a.sub_rubro || '',
                 es_pack: esPack,
                 pack_unidades: packUnits,
-                stock_fisico: parseFloat(a.stock_fisico !== undefined ? a.stock_fisico : (a.stock_consolidado || 0)) || 0,
-                stock_reservado: parseFloat(a.stock_reservado || 0) || 0,
-                stock_disponible: parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0,
-                stock: parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0,
-                stock_consolidado: parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0,
+                stock_fisico: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_fisico !== undefined ? a.stock_fisico : (a.stock_consolidado || 0)) : (parseFloat(a.stock_fisico !== undefined ? a.stock_fisico : (a.stock_consolidado || 0)) || 0),
+                stock_reservado: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_reservado || 0) : (parseFloat(a.stock_reservado || 0) || 0),
+                stock_disponible: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) : (parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0),
+                stock: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) : (parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0),
+                stock_consolidado: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) : (parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0),
                 oferta_activa: a.oferta_activa || null
             };
         });
@@ -567,14 +641,15 @@ window.CotizadorPreciosMovil = {
         this.filtrarArticulos(this.terminoBusqueda);
     },
 
-    filtrarArticulos(query) {
+    filtrarArticulos(query, opts = {}) {
         this.terminoBusqueda = (query || '').trim();
         const btnClear = document.getElementById('btn-clear-search-cotiz');
         if (btnClear) {
             btnClear.style.display = this.terminoBusqueda.length > 0 ? 'block' : 'none';
         }
 
-        const terms = this.terminoBusqueda.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(t => t.length > 0);
+        const Helpers = window.LamdaCatalogoHelpers;
+        const familiaActivaNorm = this.normalizarClave(this.familiaActiva);
 
         this.articulosFiltrados = this.todosLosArticulos.filter(art => {
             // Filtro por artículos habituales
@@ -582,28 +657,42 @@ window.CotizadorPreciosMovil = {
                 return false;
             }
 
-            // Filtro por familia
-            if (this.familiaActiva && art.familia_nombre !== this.familiaActiva) {
+            // Filtro por familia (insensible a tildes y mayúsculas)
+            if (familiaActivaNorm && this.normalizarClave(art.familia_nombre || art.familia) !== familiaActivaNorm) {
                 return false;
             }
 
-            // Filtro por términos (Regla #3 Universal LAMDA: acumulativo AND)
-            if (terms.length > 0) {
-                const corpus = [
+            // Filtro por términos (Regla #3 Universal LAMDA: acumulativo AND sin claves JSON)
+            if (this.terminoBusqueda.length > 0) {
+                if (Helpers) {
+                    const infoIng = Helpers.resolverIngredientesItem(art, this.mapaIngredientesUpper);
+                    const corpus = Helpers.construirCorpusBusquedaArticulo(art, infoIng);
+                    return Helpers.coincideBusquedaAcumulativa(corpus, this.terminoBusqueda);
+                }
+                const terms = this.normalizarClave(this.terminoBusqueda).split(/\s+/).filter(Boolean);
+                const corpus = this.normalizarClave([
                     art.codigo,
                     art.nomenclatura,
                     art.descripcion,
                     art.familia_nombre,
                     art.articulo_principal,
-                    art.presentacion_str,
-                    JSON.stringify(art.propiedades_dinamicas || {})
-                ].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
+                    art.sub_categoria,
+                    art.sub_sub_categoria,
+                    art.sub_sub_sub_categoria,
+                    art.presentacion_str
+                ].join(' '));
                 return terms.every(t => corpus.includes(t));
             }
 
             return true;
         });
+
+        // En App Móvil, la búsqueda o cambio de filtro NO auto-expande acordeones
+        if (!opts.mantenerAcordeones) {
+            this.familiasAbiertas.clear();
+            this.atributosAbiertos.clear();
+            this.nodosAbiertos.clear();
+        }
 
         this.renderCatalogo();
     },
@@ -634,63 +723,61 @@ window.CotizadorPreciosMovil = {
             return;
         }
 
-        // Si hay una búsqueda activa o filtro de habituales, auto-abrir ramas
-        const isSearchOrFilterActive = (this.terminoBusqueda.length > 0) || this.filtroSoloHabituales;
-        if (isSearchOrFilterActive) {
-            this.articulosFiltrados.forEach(art => {
-                const fam = art.familia || art.familia_nombre || 'General';
-                const artP = art.articulo_principal || 'General';
-                this.familiasAbiertas.add(fam);
-                this.atributosAbiertos.add(`${fam}___${artP}`);
-            });
-        }
+        const Helpers = window.LamdaCatalogoHelpers;
+        this._nodoKeys = [];
+        this._ingGrupos = [];
 
-        // 1. Agrupar por Familia -> Artículo Principal
+        // 1. Agrupar determinísticamente por clave normalizada (NFD): Familia -> Artículo Principal
         const familiasMap = new Map();
 
         this.articulosFiltrados.forEach(art => {
-            const fam = art.familia || art.familia_nombre || 'General';
-            const artP = art.articulo_principal || 'General';
+            const fam = (art.familia || art.familia_nombre || 'General').trim() || 'General';
+            const artP = (art.articulo_principal || 'General').trim() || 'General';
+            const famKey = this.normalizarClave(fam) || 'general';
+            const artPKey = this.normalizarClave(artP) || 'general';
 
-            if (!familiasMap.has(fam)) {
-                familiasMap.set(fam, new Map());
+            if (!familiasMap.has(famKey)) {
+                familiasMap.set(famKey, { nombre: fam, artPMap: new Map() });
             }
-            const artPMap = familiasMap.get(fam);
-            if (!artPMap.has(artP)) {
-                artPMap.set(artP, []);
+            const artPMap = familiasMap.get(famKey).artPMap;
+            if (!artPMap.has(artPKey)) {
+                artPMap.set(artPKey, { nombre: artP, prods: [] });
             }
-            artPMap.get(artP).push(art);
+            artPMap.get(artPKey).prods.push(art);
         });
 
         let html = '';
 
-        const familiasOrdenadas = Array.from(familiasMap.entries()).sort((a, b) => 
-            a[0].localeCompare(b[0], 'es', { sensitivity: 'base' })
+        const familiasOrdenadas = Array.from(familiasMap.entries()).sort((a, b) =>
+            a[1].nombre.localeCompare(b[1].nombre, 'es', { sensitivity: 'base' })
         );
 
-        familiasOrdenadas.forEach(([familiaNombre, articulosPrincipalMap]) => {
-            const isFamOpen = this.familiasAbiertas.has(familiaNombre);
+        familiasOrdenadas.forEach(([familiaKey, famNode]) => {
+            const familiaNombre = famNode.nombre;
+            const articulosPrincipalMap = famNode.artPMap;
+            const isFamOpen = this.familiasAbiertas.has(familiaKey);
+            const famIdx = this.registrarNodoKey(familiaKey);
             let totalArticulosEnFamilia = 0;
             let totalSeleccionadosFamilia = 0;
 
-            articulosPrincipalMap.forEach(prods => {
+            articulosPrincipalMap.forEach(({ prods }) => {
                 totalArticulosEnFamilia += prods.length;
                 prods.forEach(a => {
                     if (this.articulosSeleccionados.has(a.id)) totalSeleccionadosFamilia++;
                 });
             });
 
-            const articulosOrdenados = Array.from(articulosPrincipalMap.entries()).sort((a, b) => 
-                a[0].localeCompare(b[0], 'es', { sensitivity: 'base' })
+            const articulosOrdenados = Array.from(articulosPrincipalMap.entries()).sort((a, b) =>
+                a[1].nombre.localeCompare(b[1].nombre, 'es', { sensitivity: 'base' })
             );
 
             html += `
                 <div class="bunker-familia-card ${isFamOpen ? 'open' : ''}" style="margin-bottom:0.75rem;">
                     <!-- Header Familia (Nivel 1) -->
-                    <div class="bunker-familia-header" onclick="CotizadorPreciosMovil.toggleFamilia('${familiaNombre.replace(/'/g, "\\'")}')">
+                    <div class="bunker-familia-header" onclick="CotizadorPreciosMovil.toggleFamiliaByIdx(${famIdx})">
                         <div class="bunker-familia-title-group">
                             <span class="bunker-chevron" style="transform: ${isFamOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
-                            <h3 class="bunker-familia-name">${this.formatearNombreFamilia(familiaNombre)}</h3>
+                            <h3 class="bunker-familia-name">${Helpers ? Helpers.escapeHtml(this.formatearNombreFamilia(familiaNombre)) : this.formatearNombreFamilia(familiaNombre)}</h3>
                         </div>
                         <div style="display:flex; align-items:center; gap:0.4rem;">
                             ${totalSeleccionadosFamilia > 0 ? `
@@ -705,9 +792,30 @@ window.CotizadorPreciosMovil = {
                     <!-- Body Familia -->
                     ${isFamOpen ? `
                         <div class="bunker-familia-body">
-                            ${articulosOrdenados.map(([artPrincipalNombre, productos]) => {
-                                const attrKey = `${familiaNombre}___${artPrincipalNombre}`;
+                            ${articulosOrdenados.map(([artPKey, artNode]) => {
+                                const artPrincipalNombre = artNode.nombre;
+                                const productos = artNode.prods;
+                                const attrKey = `${familiaKey}___${artPKey}`;
+                                const attrIdx = this.registrarNodoKey(attrKey);
                                 const isAttrOpen = this.atributosAbiertos.has(attrKey);
+
+                                const tieneSubcategorias = productos.some(p => (p.sub_categoria || '').trim() !== '');
+                                let tituloN2 = Helpers ? (Helpers.embellecerTituloComercial(artPrincipalNombre) || artPrincipalNombre) : artPrincipalNombre;
+                                let btnIngN2 = '';
+                                let optsHojaN2 = null;
+
+                                if (!tieneSubcategorias && Helpers) {
+                                    const presN2 = Helpers.calcularPresentacionGrupo(productos, artPrincipalNombre);
+                                    tituloN2 = presN2.tieneTituloComun ? presN2.titulo : tituloN2;
+                                    const evalIngN2 = Helpers.evaluarIngredientesGrupo(productos, this.mapaIngredientesUpper);
+                                    if (evalIngN2.shared) {
+                                        btnIngN2 = this.renderHtmlBotonIngredientesMovil(tituloN2, evalIngN2.info);
+                                    }
+                                    optsHojaN2 = {
+                                        etiquetasPorCodigo: presN2.etiquetasPorCodigo,
+                                        ocultarBotonIng: evalIngN2.shared
+                                    };
+                                }
 
                                 let totalSeleccionadosAttr = 0;
                                 productos.forEach(a => {
@@ -717,12 +825,13 @@ window.CotizadorPreciosMovil = {
                                 return `
                                     <div class="bunker-atributo-group ${isAttrOpen ? 'open' : ''}">
                                         <!-- Header Artículo Principal (Nivel 2) -->
-                                        <div class="bunker-atributo-header" onclick="CotizadorPreciosMovil.toggleAtributo('${attrKey.replace(/'/g, "\\'")}')">
-                                            <div style="display:flex; align-items:center; gap:0.5rem;">
-                                                <span style="font-size:0.75rem; color:#60a5fa; transform:${isAttrOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
-                                                <span class="bunker-atributo-name">${artPrincipalNombre}</span>
+                                        <div class="bunker-atributo-header" onclick="CotizadorPreciosMovil.toggleAtributoByIdx(${attrIdx})">
+                                            <div style="display:flex; align-items:center; gap:0.5rem; min-width:0; flex:1;">
+                                                <span style="font-size:0.75rem; color:#60a5fa; flex-shrink:0; transform:${isAttrOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                                                <span class="bunker-atributo-name">${Helpers ? Helpers.escapeHtml(tituloN2) : tituloN2}</span>
                                             </div>
-                                            <div style="display:flex; align-items:center; gap:0.4rem;">
+                                            <div class="bunker-subcat-actions">
+                                                ${btnIngN2}
                                                 ${totalSeleccionadosAttr > 0 ? `
                                                     <span style="font-size:0.68rem; font-weight:800; background:#10b981; color:white; padding:0.1rem 0.4rem; border-radius:999px;">
                                                         ✓ ${totalSeleccionadosAttr}
@@ -736,7 +845,9 @@ window.CotizadorPreciosMovil = {
                                         ${isAttrOpen ? `
                                             <div class="bunker-atributo-body">
                                                 <div class="bunker-articulos-subgrid">
-                                                    ${this.renderHtmlNodosJerarquia(productos)}
+                                                    ${tieneSubcategorias
+                                                        ? this.renderHtmlNodosJerarquia(productos, attrKey)
+                                                        : this.renderHtmlGrupoProductos(productos, optsHojaN2 || {})}
                                                 </div>
                                             </div>
                                         ` : ''}
@@ -754,10 +865,10 @@ window.CotizadorPreciosMovil = {
     },
 
     /**
-     * Construye el HTML de la jerarquía multinivel (N3, N4, N5) en el cotizador móvil.
+     * Construye el HTML de la jerarquía multinivel colapsable (N3, N4, N5) en el cotizador móvil.
      */
-    renderHtmlNodosJerarquia(productos) {
-        // Analizar si hay Nivel 3 (subcategorías)
+    renderHtmlNodosJerarquia(productos, parentKey = 'root') {
+        const Helpers = window.LamdaCatalogoHelpers;
         const subMap = new Map();
         let hasN3 = false;
 
@@ -765,29 +876,26 @@ window.CotizadorPreciosMovil = {
             const sub = (p.sub_categoria || '').trim();
             if (sub && sub !== '') {
                 hasN3 = true;
-                const subKey = sub.toLowerCase();
+                const subKey = this.normalizarClave(sub);
                 if (!subMap.has(subKey)) {
-                    subMap.set(subKey, { nombre: sub, prods: [] });
+                    subMap.set(subKey, { key: subKey, nombre: sub, prods: [] });
                 }
                 subMap.get(subKey).prods.push(p);
             }
         });
 
-        // Si no hay Nivel 3 (Directo)
         if (!hasN3) {
-            return this.renderHtmlGrupoProductos(productos);
+            return this.renderHtmlGrupoProductos(productos, {});
         }
 
-        // Productos huérfanos a 'General'
         const sinSub = productos.filter(p => !p.sub_categoria || p.sub_categoria.trim() === '');
         if (sinSub.length > 0) {
             if (!subMap.has('general')) {
-                subMap.set('general', { nombre: 'General', prods: [] });
+                subMap.set('general', { key: 'general', nombre: 'General', prods: [] });
             }
             subMap.get('general').prods.push(...sinSub);
         }
 
-        // Ordenar Nivel 3 alfabéticamente con 'General' al final
         const subList = Array.from(subMap.values()).sort((a, b) => {
             if (a.nombre.toLowerCase() === 'general') return 1;
             if (b.nombre.toLowerCase() === 'general') return -1;
@@ -795,12 +903,9 @@ window.CotizadorPreciosMovil = {
         });
 
         return subList.map(subItem => {
-            const h3Html = `
-                <div class="bunker-subcat-header n3">
-                    <span>🏷️ ${subItem.nombre}</span>
-                    <span class="bunker-count-badge mini">${subItem.prods.length}</span>
-                </div>
-            `;
+            const n3PathKey = `${parentKey}::n3::${subItem.key}`;
+            const n3Idx = this.registrarNodoKey(n3PathKey);
+            const isN3Open = this.nodosAbiertos.has(n3PathKey);
 
             // Analizar Nivel 4 dentro de esta subcategoría
             const subSubMap = new Map();
@@ -810,22 +915,53 @@ window.CotizadorPreciosMovil = {
                 const subSub = (sp.sub_sub_categoria || '').trim();
                 if (subSub && subSub !== '') {
                     hasN4 = true;
-                    const subSubKey = subSub.toLowerCase();
+                    const subSubKey = this.normalizarClave(subSub);
                     if (!subSubMap.has(subSubKey)) {
-                        subSubMap.set(subSubKey, { nombre: subSub, prods: [] });
+                        subSubMap.set(subSubKey, { key: subSubKey, nombre: subSub, prods: [] });
                     }
                     subSubMap.get(subSubKey).prods.push(sp);
                 }
             });
 
             if (!hasN4) {
-                return h3Html + this.renderHtmlGrupoProductos(subItem.prods);
+                const pres3 = Helpers ? Helpers.calcularPresentacionGrupo(subItem.prods, subItem.nombre) : { titulo: subItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                const titulo3 = pres3.tieneTituloComun ? pres3.titulo : ((Helpers && Helpers.embellecerTituloComercial(subItem.nombre)) || subItem.nombre);
+                const evalIng3 = Helpers ? Helpers.evaluarIngredientesGrupo(subItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+                const btnIng3 = evalIng3.shared ? this.renderHtmlBotonIngredientesMovil(titulo3, evalIng3.info) : '';
+
+                const h3Html = `
+                    <div class="bunker-subcat-header n3 is-collapsible" onclick="CotizadorPreciosMovil.toggleNodoByIdx(${n3Idx})">
+                        <div class="bunker-subcat-left">
+                            <span class="bunker-subcat-chevron" style="transform:${isN3Open ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                            <span class="bunker-subcat-title">🏷️ ${Helpers ? Helpers.escapeHtml(titulo3) : titulo3}</span>
+                        </div>
+                        <div class="bunker-subcat-actions">
+                            ${btnIng3}
+                            <span class="bunker-count-badge mini">${subItem.prods.length}</span>
+                        </div>
+                    </div>
+                `;
+                return h3Html + (isN3Open ? `<div class="bunker-subcat-body">${this.renderHtmlGrupoProductos(subItem.prods, { etiquetasPorCodigo: pres3.etiquetasPorCodigo, ocultarBotonIng: evalIng3.shared })}</div>` : '');
             }
+
+            const n3Title = (Helpers && Helpers.embellecerTituloComercial(subItem.nombre)) || subItem.nombre;
+            const h3Html = `
+                <div class="bunker-subcat-header n3 is-collapsible" onclick="CotizadorPreciosMovil.toggleNodoByIdx(${n3Idx})">
+                    <div class="bunker-subcat-left">
+                        <span class="bunker-subcat-chevron" style="transform:${isN3Open ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                        <span class="bunker-subcat-title">🏷️ ${Helpers ? Helpers.escapeHtml(n3Title) : n3Title}</span>
+                    </div>
+                    <div class="bunker-subcat-actions">
+                        <span class="bunker-count-badge mini">${subItem.prods.length}</span>
+                    </div>
+                </div>
+            `;
+            if (!isN3Open) return h3Html;
 
             const sinSubSub = subItem.prods.filter(sp => !sp.sub_sub_categoria || sp.sub_sub_categoria.trim() === '');
             if (sinSubSub.length > 0) {
                 if (!subSubMap.has('general')) {
-                    subSubMap.set('general', { nombre: 'General', prods: [] });
+                    subSubMap.set('general', { key: 'general', nombre: 'General', prods: [] });
                 }
                 subSubMap.get('general').prods.push(...sinSubSub);
             }
@@ -837,14 +973,10 @@ window.CotizadorPreciosMovil = {
             });
 
             const n4Html = subSubList.map(subSubItem => {
-                const h4Html = `
-                    <div class="bunker-subcat-header n4">
-                        <span>↳ 🌿 ${subSubItem.nombre}</span>
-                        <span class="bunker-count-badge mini">${subSubItem.prods.length}</span>
-                    </div>
-                `;
+                const n4PathKey = `${n3PathKey}::n4::${subSubItem.key}`;
+                const n4Idx = this.registrarNodoKey(n4PathKey);
+                const isN4Open = this.nodosAbiertos.has(n4PathKey);
 
-                // Analizar Nivel 5 dentro de esta sub-subcategoría
                 const subSubSubMap = new Map();
                 let hasN5 = false;
 
@@ -852,22 +984,53 @@ window.CotizadorPreciosMovil = {
                     const subSubSub = (ssp.sub_sub_sub_categoria || '').trim();
                     if (subSubSub && subSubSub !== '') {
                         hasN5 = true;
-                        const subSubSubKey = subSubSub.toLowerCase();
+                        const subSubSubKey = this.normalizarClave(subSubSub);
                         if (!subSubSubMap.has(subSubSubKey)) {
-                            subSubSubMap.set(subSubSubKey, { nombre: subSubSub, prods: [] });
+                            subSubSubMap.set(subSubSubKey, { key: subSubSubKey, nombre: subSubSub, prods: [] });
                         }
                         subSubSubMap.get(subSubSubKey).prods.push(ssp);
                     }
                 });
 
                 if (!hasN5) {
-                    return h4Html + this.renderHtmlGrupoProductos(subSubItem.prods);
+                    const pres4 = Helpers ? Helpers.calcularPresentacionGrupo(subSubItem.prods, subSubItem.nombre) : { titulo: subSubItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                    const titulo4 = pres4.tieneTituloComun ? pres4.titulo : ((Helpers && Helpers.embellecerTituloComercial(subSubItem.nombre)) || subSubItem.nombre);
+                    const evalIng4 = Helpers ? Helpers.evaluarIngredientesGrupo(subSubItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+                    const btnIng4 = evalIng4.shared ? this.renderHtmlBotonIngredientesMovil(titulo4, evalIng4.info) : '';
+
+                    const h4Html = `
+                        <div class="bunker-subcat-header n4 is-collapsible" onclick="CotizadorPreciosMovil.toggleNodoByIdx(${n4Idx})">
+                            <div class="bunker-subcat-left">
+                                <span class="bunker-subcat-chevron" style="transform:${isN4Open ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                                <span class="bunker-subcat-title">↳ 🌿 ${Helpers ? Helpers.escapeHtml(titulo4) : titulo4}</span>
+                            </div>
+                            <div class="bunker-subcat-actions">
+                                ${btnIng4}
+                                <span class="bunker-count-badge mini">${subSubItem.prods.length}</span>
+                            </div>
+                        </div>
+                    `;
+                    return h4Html + (isN4Open ? `<div class="bunker-subcat-body">${this.renderHtmlGrupoProductos(subSubItem.prods, { etiquetasPorCodigo: pres4.etiquetasPorCodigo, ocultarBotonIng: evalIng4.shared })}</div>` : '');
                 }
+
+                const n4Title = (Helpers && Helpers.embellecerTituloComercial(subSubItem.nombre)) || subSubItem.nombre;
+                const h4Html = `
+                    <div class="bunker-subcat-header n4 is-collapsible" onclick="CotizadorPreciosMovil.toggleNodoByIdx(${n4Idx})">
+                        <div class="bunker-subcat-left">
+                            <span class="bunker-subcat-chevron" style="transform:${isN4Open ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                            <span class="bunker-subcat-title">↳ 🌿 ${Helpers ? Helpers.escapeHtml(n4Title) : n4Title}</span>
+                        </div>
+                        <div class="bunker-subcat-actions">
+                            <span class="bunker-count-badge mini">${subSubItem.prods.length}</span>
+                        </div>
+                    </div>
+                `;
+                if (!isN4Open) return h4Html;
 
                 const sinSubSubSub = subSubItem.prods.filter(ssp => !ssp.sub_sub_sub_categoria || ssp.sub_sub_sub_categoria.trim() === '');
                 if (sinSubSubSub.length > 0) {
                     if (!subSubSubMap.has('general')) {
-                        subSubSubMap.set('general', { nombre: 'General', prods: [] });
+                        subSubSubMap.set('general', { key: 'general', nombre: 'General', prods: [] });
                     }
                     subSubSubMap.get('general').prods.push(...sinSubSubSub);
                 }
@@ -879,19 +1042,33 @@ window.CotizadorPreciosMovil = {
                 });
 
                 const n5Html = subSubSubList.map(subSubSubItem => {
+                    const n5PathKey = `${n4PathKey}::n5::${subSubSubItem.key}`;
+                    const n5Idx = this.registrarNodoKey(n5PathKey);
+                    const isN5Open = this.nodosAbiertos.has(n5PathKey);
+                    const pres5 = Helpers ? Helpers.calcularPresentacionGrupo(subSubSubItem.prods, subSubSubItem.nombre) : { titulo: subSubSubItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                    const titulo5 = pres5.tieneTituloComun ? pres5.titulo : ((Helpers && Helpers.embellecerTituloComercial(subSubSubItem.nombre)) || subSubSubItem.nombre);
+                    const evalIng5 = Helpers ? Helpers.evaluarIngredientesGrupo(subSubSubItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+                    const btnIng5 = evalIng5.shared ? this.renderHtmlBotonIngredientesMovil(titulo5, evalIng5.info) : '';
+
                     const h5Html = `
-                        <div class="bunker-subcat-header n5">
-                            <span>↳ 🔹 ${subSubSubItem.nombre}</span>
-                            <span class="bunker-count-badge mini">${subSubSubItem.prods.length}</span>
+                        <div class="bunker-subcat-header n5 is-collapsible" onclick="CotizadorPreciosMovil.toggleNodoByIdx(${n5Idx})">
+                            <div class="bunker-subcat-left">
+                                <span class="bunker-subcat-chevron" style="transform:${isN5Open ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                                <span class="bunker-subcat-title">↳ 🔹 ${Helpers ? Helpers.escapeHtml(titulo5) : titulo5}</span>
+                            </div>
+                            <div class="bunker-subcat-actions">
+                                ${btnIng5}
+                                <span class="bunker-count-badge mini">${subSubSubItem.prods.length}</span>
+                            </div>
                         </div>
                     `;
-                    return h5Html + this.renderHtmlGrupoProductos(subSubSubItem.prods);
+                    return h5Html + (isN5Open ? `<div class="bunker-subcat-body">${this.renderHtmlGrupoProductos(subSubSubItem.prods, { etiquetasPorCodigo: pres5.etiquetasPorCodigo, ocultarBotonIng: evalIng5.shared })}</div>` : '');
                 }).join('');
 
-                return h4Html + n5Html;
+                return h4Html + `<div class="bunker-subcat-body">${n5Html}</div>`;
             }).join('');
 
-            return h3Html + n4Html;
+            return h3Html + `<div class="bunker-subcat-body">${n4Html}</div>`;
         }).join('');
     },
 
@@ -899,7 +1076,7 @@ window.CotizadorPreciosMovil = {
      * Ordena productos separando fracciones directas (arriba, kilos DESC)
      * de artículos padre / packs (abajo, con divisor sutil).
      */
-    renderHtmlGrupoProductos(productos) {
+    renderHtmlGrupoProductos(productos, opts = {}) {
         const fracciones = [];
         const packs = [];
 
@@ -915,7 +1092,7 @@ window.CotizadorPreciosMovil = {
         const sortFn = (a, b) => {
             const kA = parseFloat(a.kilos_unidad || 0);
             const kB = parseFloat(b.kilos_unidad || 0);
-            if (kB !== kA) return kB - kA; // Mayor presentación primero (25kg, 10kg, 5kg, 1kg...)
+            if (kB !== kA) return kB - kA;
             return (a.descripcion || a.nomenclatura || '').localeCompare(b.descripcion || b.nomenclatura || '', 'es', { sensitivity: 'base' });
         };
 
@@ -925,7 +1102,7 @@ window.CotizadorPreciosMovil = {
         let outHtml = '';
 
         // 1. Fracciones directas arriba
-        outHtml += fracciones.map(art => this.renderCardArticulo(art)).join('');
+        outHtml += fracciones.map(art => this.renderCardArticulo(art, opts)).join('');
 
         // 2. Artículos padre / packs abajo con separador sutil
         if (packs.length > 0) {
@@ -937,13 +1114,14 @@ window.CotizadorPreciosMovil = {
                     </div>
                 `;
             }
-            outHtml += packs.map(art => this.renderCardArticulo(art)).join('');
+            outHtml += packs.map(art => this.renderCardArticulo(art, opts)).join('');
         }
 
         return outHtml;
     },
 
-    renderCardArticulo(art) {
+    renderCardArticulo(art, opts = {}) {
+        const Helpers = window.LamdaCatalogoHelpers;
         const isSel = this.articulosSeleccionados.has(art.id);
         const habData = this.obtenerInfoHabitual(art);
         const oferta = art.oferta_activa;
@@ -962,16 +1140,31 @@ window.CotizadorPreciosMovil = {
             : '';
         const titleStyle = oferta ? 'style="margin: 0; font-size: 0.88rem; font-weight: 800; color: #f87171; line-height: 1.25;"' : 'style="margin: 0; font-size: 0.88rem; font-weight: 800; color: #f8fafc; line-height: 1.25;"';
 
-        const stockFis = parseFloat(art.stock_fisico !== undefined ? art.stock_fisico : (art.stock_consolidado || 0)) || 0;
-        const stockRes = parseFloat(art.stock_reservado || 0) || 0;
-        const stockDisp = parseFloat(art.stock_disponible !== undefined ? art.stock_disponible : (art.stock !== undefined ? art.stock : (art.stock_consolidado || 0))) || 0;
+        const stockFisRaw = art.stock_fisico !== undefined ? art.stock_fisico : (art.stock_consolidado || 0);
+        const stockResRaw = art.stock_reservado || 0;
+        const stockDispRaw = art.stock_disponible !== undefined ? art.stock_disponible : (art.stock !== undefined ? art.stock : (art.stock_consolidado || 0));
 
-        const formattedDisp = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(1);
-        const formattedFis = Number.isInteger(stockFis) ? stockFis : stockFis.toFixed(1);
-        const formattedRes = Number.isInteger(stockRes) ? stockRes : stockRes.toFixed(1);
+        const stockFis = Helpers ? Helpers.normalizarStockComercial(stockFisRaw) : (parseFloat(stockFisRaw) || 0);
+        const stockRes = Helpers ? Helpers.normalizarStockComercial(stockResRaw) : (parseFloat(stockResRaw) || 0);
+        const stockDisp = Helpers ? Helpers.normalizarStockComercial(stockDispRaw) : (parseFloat(stockDispRaw) || 0);
+
+        const formattedDisp = Helpers ? Helpers.formatearStockComercial(stockDisp) : String(stockDisp);
+        const formattedFis = Helpers ? Helpers.formatearStockComercial(stockFis) : String(stockFis);
+        const formattedRes = Helpers ? Helpers.formatearStockComercial(stockRes) : String(stockRes);
         const hasStock = stockDisp > 0;
 
-        const codLookup = String(art.codigo || art.id || '').trim();
+        const codLookup = String(art.codigo || art.articulo_numero || art.codigo_barras || art.id || '').trim();
+        const etiquetaCompacta = opts.etiquetasPorCodigo && opts.etiquetasPorCodigo.get(codLookup);
+        const tituloTarjeta = etiquetaCompacta || (Helpers ? (Helpers.embellecerTituloComercial(art.nomenclatura) || art.nomenclatura) : art.nomenclatura);
+
+        let btnIngFallback = '';
+        if (!opts.ocultarBotonIng && Helpers) {
+            const infoIngItem = Helpers.resolverIngredientesItem(art, this.mapaIngredientesUpper);
+            if (infoIngItem) {
+                btnIngFallback = this.renderHtmlBotonIngredientesMovil(art.nomenclatura || tituloTarjeta, infoIngItem);
+            }
+        }
+
         const infoPartida = (this.mapaFotosLotes && this.mapaFotosLotes[codLookup]) ? this.mapaFotosLotes[codLookup] : null;
         const cantFotosPartida = Array.isArray(infoPartida?.imagenes) ? infoPartida.imagenes.length : 0;
         const safeCod = codLookup.replace(/'/g, "\\'");
@@ -985,9 +1178,10 @@ window.CotizadorPreciosMovil = {
                         ${art.es_pack ? '<span style="font-size:0.65rem; font-weight:800; color:#38bdf8; background:rgba(56,189,248,0.15); padding:0.1rem 0.35rem; border-radius:4px;">📦 PACK ' + art.pack_unidades + 'U</span>' : ''}
                         ${habData ? `<span style="font-size:0.65rem; font-weight:800; color:#facc15; background:rgba(234,179,8,0.18); border:1px solid rgba(234,179,8,0.3); padding:0.1rem 0.4rem; border-radius:4px;">⭐ Habitual ${habData.frecuencia_compra ? '(' + habData.frecuencia_compra + ')' : ''}</span>` : ''}
                         ${oferta ? `<span style="font-size:0.65rem; font-weight:800; color:#fca5a5; background:rgba(239,68,68,0.22); border:1px solid rgba(239,68,68,0.45); padding:0.1rem 0.4rem; border-radius:4px;">🔥 OFERTA ${oferta.descuento_porcentaje}% OFF</span>` : ''}
+                        ${btnIngFallback}
                         ${cantFotosPartida > 0 ? `<button type="button" onclick="event.stopPropagation(); CotizadorPreciosMovil.verFotosPartidaArticulo('${safeCod}')" style="font-size:0.66rem; font-weight:800; color:#5eead4; background:rgba(13,148,136,0.22); border:1px solid rgba(20,184,166,0.5); padding:0.1rem 0.45rem; border-radius:5px; cursor:pointer;">📷 Ver partida (${cantFotosPartida})</button>` : ''}
                     </div>
-                    <h4 ${titleStyle} class="text-truncate">${art.nomenclatura}</h4>
+                    <h4 ${titleStyle} class="text-truncate" title="${Helpers ? Helpers.escapeHtml(art.nomenclatura) : art.nomenclatura}">${Helpers ? Helpers.escapeHtml(tituloTarjeta) : tituloTarjeta}</h4>
                     <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                         <span>Pres: <strong>${art.presentacion_str}</strong> ${art.kilos_unidad > 1 ? `(${art.kilos_unidad} kg)` : ''}</span>
                         ${stockRes > 0 ? `

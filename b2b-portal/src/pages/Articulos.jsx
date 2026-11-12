@@ -27,6 +27,10 @@ import {
   fetchMapaIngredientesComercialesB2B,
   resolverInfoIngredientesProductoB2B
 } from '../components/DesgloseIngredientesModal';
+import {
+  normalizarStockComercial,
+  construirArbolCatalogoB2B
+} from '../utils/catalogoPresentation';
 
 export default function Articulos({ 
   profile, 
@@ -482,155 +486,17 @@ export default function Articulos({
     return Array.from(mapOfr.values());
   }, [ofertasVisiblesEnSolapa, ofertasActivas]);
 
-  // Agrupamiento Jerárquico en 5 Niveles con resiliencia Case-Insensitive y ordenamiento por Kilos
+  // Agrupamiento Jerárquico en 5 Niveles con claves NFD deterministas, encabezados limpios e ingredientes por grupo
   const hierarchicalData = useMemo(() => {
-    const famMap = new Map(); // famKey -> { nombre, atMap }
-
-    for (const product of filteredProducts) {
-      const famName = getNormalizedFamilia(product);
-      const famKey = famName.toLowerCase().trim();
-      const atName = getNormalizedAtributoPrincipal(product);
-      const atKey = atName.toLowerCase().trim();
-
-      if (!famMap.has(famKey)) {
-        famMap.set(famKey, { nombre: famName, atMap: new Map() });
-      }
-      const famObj = famMap.get(famKey);
-      if (!famObj.atMap.has(atKey)) {
-        famObj.atMap.set(atKey, { nombre: atName, prods: [] });
-      }
-      famObj.atMap.get(atKey).prods.push(product);
-    }
-
-    return Array.from(famMap.values())
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-      .map(({ nombre: famName, atMap }) => {
-        const atributosList = Array.from(atMap.values())
-          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-          .map(({ nombre: atName, prods }) => {
-            // Nivel 3: Subcategorías
-            const subMap = new Map(); // subKey -> { nombre, subProds }
-            let hasSubcategorias = false;
-
-            for (const p of prods) {
-              const subCat = p.sub_categoria?.trim();
-              if (subCat && subCat !== '') {
-                hasSubcategorias = true;
-                const subKey = subCat.toLowerCase();
-                if (!subMap.has(subKey)) {
-                  subMap.set(subKey, { nombre: subCat, subProds: [] });
-                }
-                subMap.get(subKey).subProds.push(p);
-              }
-            }
-
-            let subcategoriasList = [];
-            if (hasSubcategorias) {
-              const sinSub = prods.filter(p => !p.sub_categoria || p.sub_categoria.trim() === '');
-              if (sinSub.length > 0) {
-                subMap.set('general', { nombre: 'General', subProds: sinSub });
-              }
-
-              subcategoriasList = Array.from(subMap.values())
-                .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                .map(({ nombre: subName, subProds }) => {
-                  // Nivel 4: Sub-subcategorías
-                  const subSubMap = new Map(); // subSubKey -> { nombre, subSubProds }
-                  let hasSubSubcategorias = false;
-
-                  for (const sp of subProds) {
-                    const subSubCat = sp.sub_sub_categoria?.trim();
-                    if (subSubCat && subSubCat !== '') {
-                      hasSubSubcategorias = true;
-                      const subSubKey = subSubCat.toLowerCase();
-                      if (!subSubMap.has(subSubKey)) {
-                        subSubMap.set(subSubKey, { nombre: subSubCat, subSubProds: [] });
-                      }
-                      subSubMap.get(subSubKey).subSubProds.push(sp);
-                    }
-                  }
-
-                  let subSubcategoriasList = [];
-                  if (hasSubSubcategorias) {
-                    const sinSubSub = subProds.filter(p => !p.sub_sub_categoria || p.sub_sub_categoria.trim() === '');
-                    if (sinSubSub.length > 0) {
-                      subSubMap.set('general', { nombre: 'General', subSubProds: sinSubSub });
-                    }
-
-                    subSubcategoriasList = Array.from(subSubMap.values())
-                      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                      .map(({ nombre: subSubName, subSubProds }) => {
-                        // Nivel 5: Sub-sub-subcategorías
-                        const subSubSubMap = new Map(); // subSubSubKey -> { nombre, subSubSubProds }
-                        let hasSubSubSubcategorias = false;
-
-                        for (const ssp of subSubProds) {
-                          const subSubSubCat = ssp.sub_sub_sub_categoria?.trim();
-                          if (subSubSubCat && subSubSubCat !== '') {
-                            hasSubSubSubcategorias = true;
-                            const subSubSubKey = subSubSubCat.toLowerCase();
-                            if (!subSubSubMap.has(subSubSubKey)) {
-                              subSubSubMap.set(subSubSubKey, { nombre: subSubSubCat, subSubSubProds: [] });
-                            }
-                            subSubSubMap.get(subSubSubKey).subSubSubProds.push(ssp);
-                          }
-                        }
-
-                        let subSubSubcategoriasList = [];
-                        if (hasSubSubSubcategorias) {
-                          const sinSubSubSub = subSubProds.filter(p => !p.sub_sub_sub_categoria || p.sub_sub_sub_categoria.trim() === '');
-                          if (sinSubSubSub.length > 0) {
-                            subSubSubMap.set('general', { nombre: 'General', subSubSubProds: sinSubSubSub });
-                          }
-
-                          subSubSubcategoriasList = Array.from(subSubSubMap.values())
-                            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
-                            .map(({ nombre: subSubSubName, subSubSubProds }) => ({
-                              nombre: subSubSubName,
-                              key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}___${subSubName.toLowerCase()}___${subSubSubName.toLowerCase()}`,
-                              productos: sortProductsByKilos(subSubSubProds)
-                            }));
-                        }
-
-                        return {
-                          nombre: subSubName,
-                          key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}___${subSubName.toLowerCase()}`,
-                          hasSubSubSubcategorias: hasSubSubSubcategorias,
-                          subSubSubcategorias: subSubSubcategoriasList,
-                          productos: sortProductsByKilos(subSubProds)
-                        };
-                      });
-                  }
-
-                  return {
-                    nombre: subName,
-                    key: `${famName.toLowerCase()}___${atName.toLowerCase()}___${subName.toLowerCase()}`,
-                    hasSubSubcategorias: hasSubSubcategorias,
-                    subSubcategorias: subSubcategoriasList,
-                    productos: sortProductsByKilos(subProds)
-                  };
-                });
-            }
-
-            return {
-              nombre: atName,
-              key: `${famName.toLowerCase()}___${atName.toLowerCase()}`,
-              hasSubcategorias: hasSubcategorias,
-              subcategorias: subcategoriasList,
-              productos: sortProductsByKilos(prods)
-            };
-          });
-
-        const totalProds = atributosList.reduce((acc, at) => acc + at.productos.length, 0);
-
-        return {
-          nombre: famName,
-          key: famName.toLowerCase(),
-          totalProductos: totalProds,
-          atributos: atributosList
-        };
-      });
-  }, [filteredProducts]);
+    return construirArbolCatalogoB2B({
+      products: filteredProducts,
+      getNormalizedFamilia,
+      getNormalizedAtributoPrincipal,
+      sortProductsByKilos,
+      mapaIngredientesComerciales,
+      resolverInfoIngredientes: resolverInfoIngredientesProductoB2B
+    });
+  }, [filteredProducts, mapaIngredientesComerciales]);
 
   // Mantener las acordeones plegadas al utilizar el buscador superior para facilitar la navegación en móvil y escritorio
   useEffect(() => {
@@ -730,10 +596,11 @@ export default function Articulos({
   const cartTotal = cart.reduce((acc, item) => acc + item.subtotal, 0);
 
   // Renderizador de Ficha de Producto con Modalidad de IVA y Alícuotas Dinámicas
-  const renderProductCard = (product) => {
+  const renderProductCard = (product, options = {}) => {
+    const { displayLabel = null, ocultarBotonIngredientes = false } = options;
     const cartItem = cart.find(item => (item.producto_codigo || '').trim() === (product.producto_codigo || '').trim());
     const currentQty = cartItem ? cartItem.cantidad : 0;
-    const hasStock = parseFloat(product.stock_disponible) > 0;
+    const hasStock = normalizarStockComercial(parseFloat(product.stock_disponible || 0)) > 0;
     const kilosUnidad = parseFloat(product.kilos_unidad) || 1.0;
     const ivaPorcentaje = parseFloat(product.iva_porcentaje) || 21.0;
 
@@ -804,7 +671,7 @@ export default function Articulos({
         {/* Primera línea: Indicador de Stock + ⭐ Habitual + Descripción + Pill de Alícuota de IVA si está habilitado */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           {canViewStock ? (() => {
-            const rawStock = parseFloat(product.stock_disponible || 0);
+            const rawStock = normalizarStockComercial(parseFloat(product.stock_disponible || 0));
             let esDisponible = false;
             let esRequiereProd = false;
             let cantStock = 0;
@@ -901,7 +768,7 @@ export default function Articulos({
               </span>
             );
           })() : (
-            (parseFloat(product.stock_disponible) > 0) && (
+            (normalizarStockComercial(parseFloat(product.stock_disponible || 0)) > 0) && (
               <span className="stock-dot" title="Disponible" />
             )
           )}
@@ -924,7 +791,7 @@ export default function Articulos({
               lineHeight: '1.25' 
             }}
           >
-            {product.producto_descripcion}
+            {displayLabel || product.producto_descripcion}
           </h4>
           {canToggleIva && (
             <span className={`b2b-iva-pill ${ivaPorcentaje < 20 ? 'iva-105' : ''}`} title={`Alícuota de IVA: ${ivaPorcentaje}%`}>
@@ -1051,7 +918,7 @@ export default function Articulos({
               </button>
             )}
 
-            {infoIngredientes && (
+            {!ocultarBotonIngredientes && infoIngredientes && (
               <BotonVerIngredientesB2B
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1509,7 +1376,7 @@ export default function Articulos({
                       })}
 
                       <div className="b2b-articulos-subgrid">
-                        {ofertasVisiblesEnSolapa.map(renderProductCard)}
+                        {ofertasVisiblesEnSolapa.map(p => renderProductCard(p))}
                       </div>
                     </div>
                   )}
@@ -1542,6 +1409,24 @@ export default function Articulos({
                       <div className="b2b-familia-body">
                         {familia.atributos.map(atributo => {
                           const isAtOpen = expandedAtributos.has(atributo.key);
+                          const atTitulo = !atributo.hasSubcategorias ? (atributo.presentacion?.titulo || atributo.nombre) : atributo.nombre;
+                          const atIngShared = !atributo.hasSubcategorias && atributo.ingGrupo?.shared ? atributo.ingGrupo : null;
+                          const abrirIngGrupo = (tituloGrupo, ingGrupo) => {
+                            if (!ingGrupo?.representative || !ingGrupo?.info) return;
+                            registrarAccesoTelemetria(`🥣 Miró ingredientes grupo: ${tituloGrupo} (${ingGrupo.representative.producto_codigo})`, profile);
+                            setModalIngredientesCtx({
+                              product: { ...ingGrupo.representative, producto_descripcion: tituloGrupo },
+                              infoIngredientes: ingGrupo.info,
+                              productPayloadToAdd: null
+                            });
+                          };
+                          const renderLeafCard = (presentacion, ingGrupo) => (p) => {
+                            const codKey = (p.producto_codigo || p.producto_descripcion || '').trim();
+                            return renderProductCard(p, {
+                              displayLabel: presentacion?.etiquetasPorCodigo?.get(codKey) || null,
+                              ocultarBotonIngredientes: Boolean(ingGrupo?.shared)
+                            });
+                          };
 
                           return (
                             <div key={atributo.key} className={`b2b-atributo-group ${isAtOpen ? 'open' : ''}`}>
@@ -1554,10 +1439,16 @@ export default function Articulos({
                                   <div className="b2b-accordion-chevron sub">
                                     {isAtOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                   </div>
-                                  <h3 className="b2b-atributo-name">{atributo.nombre}</h3>
+                                  <h3 className="b2b-atributo-name">{atTitulo}</h3>
                                   <span className="b2b-count-badge sub">
                                     {atributo.productos.length}
                                   </span>
+                                  {atIngShared && (
+                                    <BotonVerIngredientesB2B
+                                      compact
+                                      onClick={() => abrirIngGrupo(atTitulo, atIngShared)}
+                                    />
+                                  )}
                                 </div>
                               </div>
 
@@ -1568,6 +1459,8 @@ export default function Articulos({
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.35rem', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid var(--border-glass)' }}>
                                     {atributo.subcategorias.map(subcat => {
                                       const isSubOpen = expandedSubcategorias.has(subcat.key);
+                                      const subTitulo = !subcat.hasSubSubcategorias ? (subcat.presentacion?.titulo || subcat.nombre) : subcat.nombre;
+                                      const subIngShared = !subcat.hasSubSubcategorias && subcat.ingGrupo?.shared ? subcat.ingGrupo : null;
 
                                       return (
                                         <div key={subcat.key} className={`b2b-subcategoria-card ${isSubOpen ? 'open' : ''}`}>
@@ -1580,10 +1473,16 @@ export default function Articulos({
                                               <div className="b2b-accordion-chevron sub3">
                                                 {isSubOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                               </div>
-                                              <h4 className="b2b-subcategoria-name">{subcat.nombre}</h4>
+                                              <h4 className="b2b-subcategoria-name">{subTitulo}</h4>
                                               <span className="b2b-count-badge sub3">
                                                 {subcat.productos.length}
                                               </span>
+                                              {subIngShared && (
+                                                <BotonVerIngredientesB2B
+                                                  compact
+                                                  onClick={() => abrirIngGrupo(subTitulo, subIngShared)}
+                                                />
+                                              )}
                                             </div>
                                           </div>
 
@@ -1594,6 +1493,8 @@ export default function Articulos({
                                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', padding: '0.3rem', background: 'rgba(0,0,0,0.2)' }}>
                                                 {subcat.subSubcategorias.map(subsub => {
                                                   const isSubSubOpen = expandedSubSubcategorias.has(subsub.key);
+                                                  const subSubTitulo = !subsub.hasSubSubSubcategorias ? (subsub.presentacion?.titulo || subsub.nombre) : subsub.nombre;
+                                                  const subSubIngShared = !subsub.hasSubSubSubcategorias && subsub.ingGrupo?.shared ? subsub.ingGrupo : null;
 
                                                   return (
                                                     <div key={subsub.key} className={`b2b-subsubcategoria-card ${isSubSubOpen ? 'open' : ''}`}>
@@ -1606,10 +1507,16 @@ export default function Articulos({
                                                           <div className="b2b-accordion-chevron sub4">
                                                             {isSubSubOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                                                           </div>
-                                                          <h5 className="b2b-subsubcategoria-name">{subsub.nombre}</h5>
+                                                          <h5 className="b2b-subsubcategoria-name">{subSubTitulo}</h5>
                                                           <span className="b2b-count-badge sub4">
                                                             {subsub.productos.length}
                                                           </span>
+                                                          {subSubIngShared && (
+                                                            <BotonVerIngredientesB2B
+                                                              compact
+                                                              onClick={() => abrirIngGrupo(subSubTitulo, subSubIngShared)}
+                                                            />
+                                                          )}
                                                         </div>
                                                       </div>
 
@@ -1620,6 +1527,8 @@ export default function Articulos({
                                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.18rem', padding: '0.25rem', background: 'rgba(0,0,0,0.25)' }}>
                                                             {subsub.subSubSubcategorias.map(subsubsub => {
                                                               const isSubSubSubOpen = expandedSubSubSubcategorias.has(subsubsub.key);
+                                                              const subSubSubTitulo = subsubsub.presentacion?.titulo || subsubsub.nombre;
+                                                              const subSubSubIngShared = subsubsub.ingGrupo?.shared ? subsubsub.ingGrupo : null;
 
                                                               return (
                                                                 <div key={subsubsub.key} className={`b2b-subsubsubcategoria-card ${isSubSubSubOpen ? 'open' : ''}`}>
@@ -1632,17 +1541,23 @@ export default function Articulos({
                                                                       <div className="b2b-accordion-chevron sub5">
                                                                         {isSubSubSubOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                                                                       </div>
-                                                                      <h6 className="b2b-subsubsubcategoria-name">{subsubsub.nombre}</h6>
+                                                                      <h6 className="b2b-subsubsubcategoria-name">{subSubSubTitulo}</h6>
                                                                       <span className="b2b-count-badge sub5">
                                                                         {subsubsub.productos.length}
                                                                       </span>
+                                                                      {subSubSubIngShared && (
+                                                                        <BotonVerIngredientesB2B
+                                                                          compact
+                                                                          onClick={() => abrirIngGrupo(subSubSubTitulo, subSubSubIngShared)}
+                                                                        />
+                                                                      )}
                                                                     </div>
                                                                   </div>
 
                                                                   {/* Grilla de Artículos dentro de Nivel 5 */}
                                                                   {isSubSubSubOpen && (
                                                                     <div className="b2b-articulos-subgrid">
-                                                                      {subsubsub.productos.map(renderProductCard)}
+                                                                      {subsubsub.productos.map(renderLeafCard(subsubsub.presentacion, subsubsub.ingGrupo))}
                                                                     </div>
                                                                   )}
                                                                 </div>
@@ -1652,7 +1567,7 @@ export default function Articulos({
                                                         ) : (
                                                           /* Grilla Directa de Artículos dentro de Nivel 4 (sin Nivel 5) */
                                                           <div className="b2b-articulos-subgrid">
-                                                            {subsub.productos.map(renderProductCard)}
+                                                            {subsub.productos.map(renderLeafCard(subsub.presentacion, subsub.ingGrupo))}
                                                           </div>
                                                         )
                                                       )}
@@ -1663,7 +1578,7 @@ export default function Articulos({
                                             ) : (
                                               /* Grilla Directa de Artículos dentro de Nivel 3 (como Avena o Nuez con cáscara) */
                                               <div className="b2b-articulos-subgrid">
-                                                {subcat.productos.map(renderProductCard)}
+                                                {subcat.productos.map(renderLeafCard(subcat.presentacion, subcat.ingGrupo))}
                                               </div>
                                             )
                                           )}
@@ -1674,7 +1589,7 @@ export default function Articulos({
                                 ) : (
                                   /* Grilla Directa de Artículos sin Nivel 3 (como Garbanzo o Granolas) */
                                   <div className="b2b-articulos-subgrid">
-                                    {atributo.productos.map(renderProductCard)}
+                                    {atributo.productos.map(renderLeafCard(atributo.presentacion, atributo.ingGrupo))}
                                   </div>
                                 )
                               )}
@@ -2175,11 +2090,11 @@ export default function Articulos({
             ? (cart.find(item => (item.producto_codigo || '').trim() === (modalIngredientesCtx.product.producto_codigo || '').trim())?.cantidad || 0)
             : 0
         }
-        onChangeQty={(newQty) => {
+        onChangeQty={modalIngredientesCtx?.productPayloadToAdd ? (newQty) => {
           if (modalIngredientesCtx?.productPayloadToAdd) {
             addToCart(modalIngredientesCtx.productPayloadToAdd, Math.max(0, newQty));
           }
-        }}
+        } : null}
       />
     </div>
   );
