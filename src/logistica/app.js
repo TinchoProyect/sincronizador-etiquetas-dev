@@ -383,7 +383,7 @@ app.use('/api/produccion', createProxyMiddleware({
 }));
 
 // Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002)
-['/tienda', '/gestor', '/deposito-nodos', '/liquidacion-nodos'].forEach((nodoPrefix) => {
+['/tienda', '/gestor', '/gestor-nodo', '/deposito-nodos', '/liquidacion-nodos'].forEach((nodoPrefix) => {
     app.use(nodoPrefix, createProxyMiddleware({
         target: 'http://127.0.0.1:3002',
         changeOrigin: true,

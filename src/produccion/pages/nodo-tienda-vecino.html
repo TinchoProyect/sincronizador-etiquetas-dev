@@ -443,6 +443,9 @@
       z-index: 200;
       overflow-y: auto;
     }
+    .modal-backdrop.open {
+      display: flex;
+    }
     .modal-card {
       background: var(--card);
       width: 100%;
@@ -843,7 +846,7 @@
   </div>
 
   <!-- Modal Marca Blanca de Contenido / Ingredientes -->
-  <div class="modal-backdrop" id="ingredientes-modal" onclick="if(event.target===this) cerrarModalIngredientesProducto()">
+  <div class="modal-backdrop" id="ingredientes-modal" style="z-index:260;" onclick="if(event.target===this) cerrarModalIngredientesProducto()">
     <div class="modal-card" id="ingredientes-card-content" style="max-width:480px;"></div>
   </div>
 
@@ -1081,7 +1084,7 @@
               <div class="prod-meta-row">
                 <span class="prod-pres">${esc(p.presentacion_etiqueta || `${Math.round(p.kilos_unidad * 1000)}g`)}</span>
                 ${mostrarBotonIng
-                  ? `<button type="button" class="btn-ver-ing" onclick="abrirModalIngredientesProducto(${p.oferta_id})">🥣 ¿Qué contiene?</button>`
+                  ? `<button type="button" class="btn-ver-ing" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(p.oferta_id)})">🥣 ¿Qué contiene?</button>`
                   : ''
                 }
               </div>
@@ -1103,19 +1106,34 @@
     }
 
     function abrirModalIngredientesProducto(ofertaId) {
-      const prod = STATE.productos.find(x => Number(x.oferta_id) === Number(ofertaId));
+      const prod = STATE.productos.find(x =>
+        Number(x.oferta_id) === Number(ofertaId) ||
+        String(x.sku_nodo || '') === String(ofertaId || '')
+      );
       if (!prod || !Array.isArray(prod.ingredientes_comerciales) || prod.ingredientes_comerciales.length < 2) return;
-      STATE.ofertaIngredientesModalId = Number(ofertaId);
+      STATE.ofertaIngredientesModalId = Number(prod.oferta_id);
       renderContenidoModalIngredientes();
       const modal = document.getElementById('ingredientes-modal');
-      if (modal) modal.classList.add('open');
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('open');
+      }
     }
 
     function cerrarModalIngredientesProducto() {
       STATE.ofertaIngredientesModalId = null;
       const modal = document.getElementById('ingredientes-modal');
-      if (modal) modal.classList.remove('open');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
     }
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && STATE.ofertaIngredientesModalId) {
+        cerrarModalIngredientesProducto();
+      }
+    });
 
     function renderContenidoModalIngredientes() {
       const card = document.getElementById('ingredientes-card-content');

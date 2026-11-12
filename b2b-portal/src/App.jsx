@@ -22,6 +22,33 @@ const EnsobradoPublico = lazy(() => import('./pages/EnsobradoPublico'));
 const PrePedidoPublico = lazy(() => import('./pages/PrePedidoPublico'));
 const ServiciosColaborador = lazy(() => import('./pages/ServiciosColaborador'));
 
+function esEntornoLocalLaboratorio() {
+  if (typeof window === 'undefined') return false;
+  const h = String(window.location.hostname || '').toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('100.');
+}
+
+function solicitaLoginExplicitoEnUrl() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const sp = new URLSearchParams(window.location.search || '');
+    return sp.get('login') === '1';
+  } catch {
+    return false;
+  }
+}
+
+const PERFIL_VISTA_LAB_LOCAL = {
+  id: 'lab-preview',
+  cliente_id: 'LAB-DEMO',
+  email: 'laboratorio@lamda.local',
+  nombre_completo: 'Vista Directa Laboratorio',
+  nombre_empresa: 'Catálogo Mayorista B2B (Laboratorio)',
+  rol: 'Dueno',
+  permisos: ['ver_stock'],
+  ver_stock: true
+};
+
 export default function App() {
   const mountPerfRef = useRef(performance.now());
   const authPerfRef = useRef(0);
@@ -79,7 +106,16 @@ export default function App() {
     }
   });
 
-  const [currentTab, setCurrentTab] = useState('home');
+  const [currentTab, setCurrentTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = String(window.location.pathname || '').toLowerCase();
+      const h = String(window.location.hash || '').toLowerCase();
+      if (p.includes('/catalogo') || h.includes('catalogo') || esEntornoLocalLaboratorio()) {
+        return 'articulos';
+      }
+    }
+    return 'home';
+  });
   const [cart, setCart] = useState([]);
   const [pendingAction, setPendingAction] = useState(null);
   const [canToggleIva, setCanToggleIva] = useState(false);
@@ -95,7 +131,7 @@ export default function App() {
   });
 
   const fetchTramitesAlerts = async () => {
-    if (!profile?.cliente_id) return;
+    if (!profile?.cliente_id || profile.cliente_id === 'LAB-DEMO') return;
     try {
       // 1. Pedidos activos (no entregados ni cancelados)
       const { data: pData } = await supabase
@@ -651,7 +687,11 @@ export default function App() {
     return <RecepcionPedido path={path} onNavigate={navigateTo} />;
   }
 
-  if (!session) {
+  const modoVistaLocalSinLogin = !session && esEntornoLocalLaboratorio() && !solicitaLoginExplicitoEnUrl();
+  const effectiveSession = session || (modoVistaLocalSinLogin ? { user: { id: 'lab-preview', email: 'laboratorio@lamda.local' }, isLabPreview: true } : null);
+  const effectiveProfile = session ? profile : (modoVistaLocalSinLogin ? PERFIL_VISTA_LAB_LOCAL : profile);
+
+  if (!effectiveSession) {
     return <Login onNavigate={navigateTo} />;
   }
 
@@ -811,7 +851,7 @@ export default function App() {
       )}
 
       <Sidebar 
-        profile={profile} 
+        profile={effectiveProfile} 
         currentTab={currentTab} 
         setCurrentTab={setCurrentTab} 
         totalAlerts={totalAlerts}
@@ -828,7 +868,7 @@ export default function App() {
           {currentTab === 'home' && (
             <Home 
               setCurrentTab={setCurrentTab} 
-              profile={profile} 
+              profile={effectiveProfile} 
               tramitesAlerts={tramitesAlerts}
               cart={cart}
               totalAlerts={totalAlerts}
@@ -837,7 +877,7 @@ export default function App() {
           )}
           {currentTab === 'articulos' && (
             <Articulos 
-              profile={profile} 
+              profile={effectiveProfile} 
               cart={cart}
               addToCart={addToCart}
               removeFromCart={removeFromCart}
@@ -850,7 +890,7 @@ export default function App() {
           )}
           {currentTab === 'pedidos' && (
             <Pedidos 
-              profile={profile}
+              profile={effectiveProfile}
               cart={cart}
               addToCart={addToCart}
               removeFromCart={removeFromCart}
@@ -860,26 +900,26 @@ export default function App() {
           )}
           {currentTab === 'cc' && (
             <CuentaCorriente 
-              profile={profile} 
+              profile={effectiveProfile} 
               highlightDocId={pendingAction?.doc_id} 
               onClearHighlight={() => setPendingAction(null)} 
             />
           )}
           {currentTab === 'pagos_efectivo' && (
             <PagosEfectivo 
-              profile={profile}
+              profile={effectiveProfile}
               onNavigateToCC={() => setCurrentTab('cc')}
               onNavigateToHome={() => setCurrentTab('home')}
             />
           )}
           {currentTab === 'retiros' && (
             <Retiros 
-              profile={profile} 
+              profile={effectiveProfile} 
             />
           )}
           {currentTab === 'servicios_colaborador' && (
             <ServiciosColaborador 
-              profile={profile} 
+              profile={effectiveProfile} 
               setCurrentTab={setCurrentTab}
             />
           )}

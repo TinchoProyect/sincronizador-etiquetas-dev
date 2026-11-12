@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 
     const p = String(req.path || '');
     const esVistaPermitida =
-        /^\/(gestor|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
+        /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
         /^\/favicon\.ico$/i.test(p);
 
     const esApiNodoPermitida =
@@ -100,7 +100,7 @@ app.use('/api/produccion', produccionRoutes);
 app.get(['/tienda', '/tienda/:nodoSlug', '/tienda/:nodoSlug/mi-cuenta/:portalToken'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-tienda-vecino.html'));
 });
-app.get(['/gestor', '/gestor/:nodoSlug'], (req, res) => {
+app.get(['/gestor', '/gestor/:nodoSlug', '/gestor-nodo', '/gestor-nodo/:nodoSlug'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-panel-gestor.html'));
 });
 app.get(['/deposito-nodos', '/deposito-nodos/:nodoSlug'], (req, res) => {

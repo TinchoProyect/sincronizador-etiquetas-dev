@@ -58,6 +58,21 @@ app.use('/api/produccion', createProxyMiddleware({
   }
 }));
 
+// 🏘️ Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002) desde :3000
+['/tienda', '/gestor', '/gestor-nodo', '/deposito-nodos', '/liquidacion-nodos'].forEach((nodoPrefix) => {
+  app.use(nodoPrefix, createProxyMiddleware({
+    target: 'http://127.0.0.1:3002',
+    changeOrigin: true,
+    pathRewrite: (pathUrl, req) => {
+      return nodoPrefix + (req.url === '/' ? '' : req.url);
+    },
+    onError: (err, req, res) => {
+      console.error(`❌ [NODOS-PROXY :3000] Error en ${nodoPrefix}:`, err.message);
+      res.status(503).send('Módulo de Nodos Barriales (3002) fuera de línea.');
+    }
+  }));
+});
+
 // 🧾 [PRESUPUESTOS] Configurar proxy para el módulo de presupuestos
 console.log('🔍 [PRESUPUESTOS] Configurando proxy para módulo de presupuestos...');
 app.use('/api/presupuestos', createProxyMiddleware({
@@ -1684,6 +1699,17 @@ app.use('/api', rutasCrmSeguimientos); // 📱 NUEVAS rutas de seguimientos CRM 
 app.use('/api', rutasCrmWhatsappHub); // 💬 NUEVAS rutas horizontales WhatsApp CRM Bidireccional & Consola 3 Columnas
 app.use('/api', rutasOfertasDinamicas); // 🏷️ NUEVAS rutas de ofertas dinámicas y cuotas de stock
 
+// Atajos directos al Portal B2B local en Modo Laboratorio
+let puertoB2BLabActivo = parseInt(process.env.B2B_LAB_PORT || '3006', 10);
+app.get(['/portal-b2b', '/portal-b2b/catalogo'], (req, res) => {
+  const host = req.hostname || 'localhost';
+  res.redirect(302, `http://${host}:${puertoB2BLabActivo}/catalogo`);
+});
+app.get('/portal-b2b/pre-pedido', (req, res) => {
+  const host = req.hostname || 'localhost';
+  res.redirect(302, `http://${host}:${puertoB2BLabActivo}/pre-pedido`);
+});
+
 // Middleware para manejar errores 404
 app.use((req, res, next) => {
   console.error(`404: ${req.method} ${req.url} not found`);
@@ -1693,3 +1719,109 @@ app.use((req, res, next) => {
 app.listen(port, '0.0.0.0', () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
 });
+
+// 🌐 [PORTAL B2B LABORATORIO AUTO-ENCENDIDO EN :3006 (espejo opcional :5173)]
+// En Modo Laboratorio levanta automáticamente el Portal B2B junto con los servicios del Centro de Control,
+// evitando rangos de puertos reservados por Windows Hyper-V/WinNAT (5173 EACCES) y sin abrir PowerShell manual.
+const esModoLaboratorioB2B =
+  process.env.LAMDA_MODO_LABORATORIO === 'true' ||
+  process.env.MODO_LABORATORIO === 'true' ||
+  String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas';
+
+if (esModoLaboratorioB2B) {
+  const b2bRootDir = path.resolve(__dirname, '../../b2b-portal');
+  const b2bDistDir = path.join(b2bRootDir, 'dist');
+  let compilandoDistB2B = false;
+
+  const obtenerMaxMtimeDir = (dirPath) => {
+    let maxMs = 0;
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const ent of entries) {
+        const full = path.join(dirPath, ent.name);
+        if (ent.isDirectory()) {
+          maxMs = Math.max(maxMs, obtenerMaxMtimeDir(full));
+        } else {
+          maxMs = Math.max(maxMs, fs.statSync(full).mtimeMs || 0);
+        }
+      }
+    } catch (_) {}
+    return maxMs;
+  };
+
+  const dispararBuildInicialSiFalta = () => {
+    if (compilandoDistB2B) return;
+    const indexHtml = path.join(b2bDistDir, 'index.html');
+    const srcDir = path.join(b2bRootDir, 'src');
+    const existeDist = fs.existsSync(indexHtml);
+    const distMtime = existeDist ? (fs.statSync(indexHtml).mtimeMs || 0) : 0;
+    const srcMtime = obtenerMaxMtimeDir(srcDir);
+    if (existeDist && distMtime >= srcMtime) return;
+
+    compilandoDistB2B = true;
+    console.log('⚙️ [B2B-LAB] Actualizando b2b-portal/dist automáticamente...');
+    exec('npm run build', { cwd: b2bRootDir }, (err) => {
+      compilandoDistB2B = false;
+      if (err) {
+        console.warn('⚠️ [B2B-LAB] Error al compilar b2b-portal/dist:', err.message);
+      } else {
+        console.log('✅ [B2B-LAB] b2b-portal/dist compilado y actualizado.');
+      }
+    });
+  };
+
+  dispararBuildInicialSiFalta();
+
+  const b2bApp = express();
+  b2bApp.use(cors());
+
+  b2bApp.use('/api/produccion', createProxyMiddleware({
+    target: 'http://127.0.0.1:3002',
+    changeOrigin: true,
+    pathRewrite: (p, req) => '/api/produccion' + req.url
+  }));
+
+  b2bApp.use('/api', createProxyMiddleware({
+    target: `http://127.0.0.1:${port}`,
+    changeOrigin: true,
+    pathRewrite: (p, req) => '/api' + req.url
+  }));
+
+  b2bApp.use(express.static(b2bDistDir, { index: false }));
+
+  b2bApp.use((req, res) => {
+    const indexHtml = path.join(b2bDistDir, 'index.html');
+    if (fs.existsSync(indexHtml)) {
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.sendFile(indexHtml);
+    }
+    dispararBuildInicialSiFalta();
+    res.status(200).send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="3"><title>Preparando Portal B2B...</title></head><body style="font-family:sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;"><div>⏳ Preparando vista local del Portal B2B (reintentando automáticamente en 3 segundos)...</div></body></html>`);
+  });
+
+  const puertosCandidatosB2B = [puertoB2BLabActivo, 3007, 3080];
+  const intentarEscucharB2B = (idx) => {
+    if (idx >= puertosCandidatosB2B.length) return;
+    const pCandidato = puertosCandidatosB2B[idx];
+    const srv = b2bApp.listen(pCandidato, '0.0.0.0', () => {
+      puertoB2BLabActivo = pCandidato;
+      console.log(`🛍️ [B2B-LAB] Portal B2B activo automáticamente en http://localhost:${pCandidato}/catalogo`);
+    });
+    srv.on('error', (err) => {
+      if (err && (err.code === 'EACCES' || err.code === 'EADDRINUSE')) {
+        intentarEscucharB2B(idx + 1);
+      } else {
+        console.warn(`⚠️ [B2B-LAB] Advertencia en puerto ${pCandidato}:`, err.message);
+      }
+    });
+  };
+  intentarEscucharB2B(0);
+
+  // Espejo opcional en 5173 para equipos donde Windows WinNAT no haya reservado ese rango
+  if (puertoB2BLabActivo !== 5173) {
+    const srvMirror5173 = b2bApp.listen(5173, '127.0.0.1', () => {
+      console.log('🛍️ [B2B-LAB] Espejo adicional habilitado en http://localhost:5173/catalogo');
+    });
+    srvMirror5173.on('error', () => {});
+  }
+}

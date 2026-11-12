@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Plus, Minus, ZoomIn, ZoomOut, Camera, Info, PackageCheck } from 'lucide-react';
-import { supabaseAnonimaPublica } from '../supabaseClient';
+import { supabaseAnonimaPublica, isSupabaseOfflineLab } from '../supabaseClient';
 
 /**
  * Obtiene en vivo el manifiesto de fotografías de partidas activas desde Supabase Storage.
@@ -8,6 +8,7 @@ import { supabaseAnonimaPublica } from '../supabaseClient';
  */
 export async function fetchMapaFotosLotesB2B() {
   try {
+    if (isSupabaseOfflineLab) return {};
     const { data } = supabaseAnonimaPublica
       .storage
       .from('b2b_lotes_fotos')

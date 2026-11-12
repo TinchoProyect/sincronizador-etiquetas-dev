@@ -138,6 +138,41 @@ export default function PrePedidoPublico({ path }) {
       }
       cargarPrepedidoParaAprobacion(tokenRevisar);
     } else {
+      const hostActual = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
+      const esLocalHost = hostActual === 'localhost' || hostActual === '127.0.0.1' || hostActual.startsWith('192.168.') || hostActual.startsWith('10.') || hostActual.startsWith('100.');
+      if (esLocalHost && (!token || token === 'lab' || token === 'lab-demo')) {
+        (async () => {
+          try {
+            setLoading(true);
+            setErrorMsg('');
+            const respLab = await fetch('/api/produccion/catalogo/b2b-preview-lab', { cache: 'no-store' });
+            const jsonLab = await respLab.json();
+            if (!respLab.ok || !jsonLab?.ok || !Array.isArray(jsonLab.catalogo)) {
+              throw new Error(jsonLab?.error || 'No se pudo cargar la vista local de Pre-Pedido.');
+            }
+            setRequiereValidacionTelefono(false);
+            setBloqueadoOtroDispositivo(false);
+            setDelegacion({
+              id: 'lab-demo',
+              cliente_id: 'LAB-DEMO',
+              nombre_empresa: 'Comercio Mayorista (Vista Laboratorio)',
+              nombre_colaborador: 'Operador Pre-Pedido (Laboratorio)',
+              aprobador_nombre: 'Administración',
+              mostrar_precios: true,
+              mostrar_sin_iva: false,
+              permitir_toggle_iva: true,
+              ver_stock: true,
+              listas_ids: jsonLab.listas_ids || [1]
+            });
+            setCatalogo(jsonLab.catalogo);
+          } catch (errLab) {
+            setErrorMsg(errLab.message || 'No se pudo inicializar la vista de Pre-Pedido en Laboratorio.');
+          } finally {
+            setLoading(false);
+          }
+        })();
+        return;
+      }
       if (!token) {
         setLoading(false);
         setErrorMsg('No se proporcionó un código o enlace de acceso válido.');

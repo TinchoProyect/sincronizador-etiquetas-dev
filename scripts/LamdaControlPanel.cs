@@ -903,7 +903,7 @@ namespace LamdaControlCenter
                 {
                     if (!string.IsNullOrWhiteSpace(e.Data))
                     {
-                        if (e.Data.Contains("corriendo") || e.Data.Contains("Iniciado") || e.Data.Contains("Escuchando") || e.Data.Contains("puerto") || e.Data.Contains("MODO LABORATORIO"))
+                        if (e.Data.Contains("corriendo") || e.Data.Contains("Iniciado") || e.Data.Contains("Escuchando") || e.Data.Contains("puerto") || e.Data.Contains("MODO LABORATORIO") || e.Data.Contains("B2B-LAB"))
                         {
                             AppendLog(string.Format("[{0}] {1}", keyCopy, e.Data.Trim()));
                         }
@@ -988,7 +988,7 @@ namespace LamdaControlCenter
             // 2. Barrido de seguridad por puertos 3000, 3002, 3003, 3004, 3005 mediante netstat -ano
             try
             {
-                HashSet<int> targetPorts = new HashSet<int> { 3000, 3002, 3003, 3004, 3005 };
+                HashSet<int> targetPorts = new HashSet<int> { 3000, 3002, 3003, 3004, 3005, 3006, 5173 };
                 HashSet<int> pidsToKill = new HashSet<int>();
 
                 ProcessStartInfo psi = new ProcessStartInfo("netstat.exe", "-ano -p tcp");

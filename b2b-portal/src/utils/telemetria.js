@@ -1,4 +1,4 @@
-import { supabaseAnonimaPublica } from '../supabaseClient';
+import { supabaseAnonimaPublica, isSupabaseOfflineLab } from '../supabaseClient';
 
 const ultimosEventosMap = new Map();
 
@@ -38,6 +38,7 @@ export function resolverNombreClienteTelemetria(profile = null) {
  */
 export async function registrarAccesoTelemetria(tipoAcceso, clienteNombreOverride = null, options = {}) {
   try {
+    if (isSupabaseOfflineLab) return;
     if (!tipoAcceso || typeof tipoAcceso !== 'string') return;
     const cleanTipo = tipoAcceso.trim().slice(0, 280);
     const dedupeMs = typeof options.dedupeMs === 'number' ? options.dedupeMs : 3500;

@@ -18,6 +18,7 @@ const { dbMiddleware } = require('../middleware');
 router.use(dbMiddleware);
 const {
     construirCatalogoIngredientesComerciales,
+    construirCatalogoPreviewB2BLaboratorio,
     sincronizarManifestIngredientesB2B
 } = require('../services/desgloseIngredientesComercialService');
 
@@ -38,6 +39,25 @@ router.get('/catalogo/ingredientes-comerciales', async (req, res) => {
             ok: false,
             error: 'No se pudo resolver el desglose comercial de ingredientes.'
         });
+    }
+});
+
+// 🧪 Vista Espejo Local del Catálogo B2B Mayorista en Modo Laboratorio (100% sobre etiquetas_pruebas, sin tocar Supabase)
+router.get('/catalogo/b2b-preview-lab', async (req, res) => {
+    try {
+        const esLab =
+            process.env.LAMDA_MODO_LABORATORIO === 'true' ||
+            process.env.MODO_LABORATORIO === 'true' ||
+            String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas';
+        if (!esLab) {
+            return res.status(403).json({ ok: false, error: 'Disponible únicamente en Modo Laboratorio.' });
+        }
+        const data = await construirCatalogoPreviewB2BLaboratorio();
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [B2B-PREVIEW-LAB] Error construyendo catálogo B2B local:', error);
+        res.status(500).json({ ok: false, error: 'No se pudo cargar el catálogo B2B de Laboratorio.' });
     }
 });
 const {

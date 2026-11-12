@@ -932,9 +932,237 @@ async function sincronizarManifestIngredientesB2B(runner = null) {
     }
 }
 
+/**
+ * Construye en tiempo real desde la base local `etiquetas_pruebas` el catálogo de precios
+ * y jerarquía de 5 niveles del Portal B2B exclusivamente para vista directa en Modo Laboratorio (localhost),
+ * sin requerir login externo ni tocar sesiones/dispositivos de clientes en Supabase productivo.
+ */
+async function construirCatalogoPreviewB2BLaboratorio(runner = null) {
+    const queryRunner = runner || dbDefault;
+    const catIng = await construirCatalogoIngredientesComerciales(queryRunner);
+    const mapaIngredientesUpper = new Map();
+    for (const [skuKey, info] of Object.entries(catIng.items || {})) {
+        mapaIngredientesUpper.set(String(skuKey).trim().toUpperCase(), info);
+    }
+
+    let jerarquiaMap = new Map();
+    try {
+        const jerRes = await queryRunner.query(`
+            SELECT familia_id, articulo_principal, eje_nivel_3, reglas_nivel_4, reglas_nivel_5
+            FROM public.bunker_portal_b2b_jerarquia
+            WHERE eje_nivel_3 IS NOT NULL AND TRIM(eje_nivel_3) <> ''
+        `);
+        for (const jRow of jerRes.rows) {
+            const famId = jRow.familia_id !== null && jRow.familia_id !== undefined ? jRow.familia_id : 0;
+            const artP = String(jRow.articulo_principal || '').trim().toLowerCase();
+            const rawEjeN3 = jRow.eje_nivel_3 ? String(jRow.eje_nivel_3).trim().toLowerCase() : '';
+            const ejesN3 = rawEjeN3 ? rawEjeN3.split(',').map(s => s.trim()).filter(Boolean) : [];
+            jerarquiaMap.set(`${famId}___${artP}`, {
+                eje_nivel_3: rawEjeN3,
+                ejes_nivel_3: ejesN3,
+                reglas_nivel_4: jRow.reglas_nivel_4 && typeof jRow.reglas_nivel_4 === 'object' ? jRow.reglas_nivel_4 : {},
+                reglas_nivel_5: jRow.reglas_nivel_5 && typeof jRow.reglas_nivel_5 === 'object' ? jRow.reglas_nivel_5 : {}
+            });
+        }
+    } catch (_) {
+        jerarquiaMap = new Map();
+    }
+
+    const resLocal = await queryRunner.query(`
+        SELECT
+            la.lista_id,
+            COALESCE(bl.es_patron, false) AS es_lista_patron,
+            la.articulo_numero AS producto_codigo,
+            COALESCE(ba.descripcion_generada, ba.descripcion, sc.descripcion, la.articulo_numero) AS producto_descripcion,
+            la.precio_final,
+            la.iva AS lista_iva_porcentaje,
+            ba.porcentaje_iva AS real_iva_porcentaje,
+            COALESCE(sc.stock_consolidado, 0) AS stock_disponible,
+            COALESCE(ba.kilos_unidad, sc.kilos_unidad, 1.0) AS kilos_unidad,
+            ba.familia_id,
+            ba.rubro,
+            ba.sub_rubro,
+            bf.nombre AS familia_nombre,
+            ba.propiedades_dinamicas
+        FROM public.bunker_lista_articulos la
+        LEFT JOIN public.bunker_listas_precios bl ON bl.id = la.lista_id
+        LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = la.articulo_numero
+        LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+        LEFT JOIN public.stock_real_consolidado sc ON sc.articulo_numero = la.articulo_numero
+        WHERE la.disponible = true AND la.precio_final > 0
+        ORDER BY COALESCE(bl.es_patron, false) DESC, la.lista_id ASC, producto_descripcion ASC
+    `).catch(async () => {
+        return queryRunner.query(`
+            SELECT
+                la.lista_id,
+                false AS es_lista_patron,
+                la.articulo_numero AS producto_codigo,
+                COALESCE(ba.descripcion_generada, ba.descripcion, sc.descripcion, la.articulo_numero) AS producto_descripcion,
+                la.precio_final,
+                la.iva AS lista_iva_porcentaje,
+                ba.porcentaje_iva AS real_iva_porcentaje,
+                COALESCE(sc.stock_consolidado, 0) AS stock_disponible,
+                COALESCE(ba.kilos_unidad, sc.kilos_unidad, 1.0) AS kilos_unidad,
+                ba.familia_id,
+                ba.rubro,
+                ba.sub_rubro,
+                bf.nombre AS familia_nombre,
+                ba.propiedades_dinamicas
+            FROM public.bunker_lista_articulos la
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = la.articulo_numero
+            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+            LEFT JOIN public.stock_real_consolidado sc ON sc.articulo_numero = la.articulo_numero
+            WHERE la.disponible = true AND la.precio_final > 0
+            ORDER BY la.lista_id ASC, producto_descripcion ASC
+        `);
+    });
+
+    const mapUnicos = new Map();
+    const listasSet = new Set();
+
+    for (const row of resLocal.rows) {
+        const codigo = String(row.producto_codigo || '').trim();
+        if (!codigo) continue;
+        listasSet.add(Number(row.lista_id));
+        if (mapUnicos.has(codigo)) continue;
+
+        let props = row.propiedades_dinamicas;
+        if (props && typeof props === 'string') {
+            try { props = JSON.parse(props); } catch (_) { props = null; }
+        }
+
+        let familia = row.familia_nombre ? String(row.familia_nombre).trim() : (row.rubro ? String(row.rubro).trim() : 'General');
+        if (!familia) familia = 'General';
+
+        let articuloPrincipal = null;
+        if (props && props.articulo_principal) {
+            const rawArtPrinc = props.articulo_principal;
+            articuloPrincipal = (typeof rawArtPrinc === 'object' && rawArtPrinc.valor)
+                ? String(rawArtPrinc.valor).trim()
+                : String(rawArtPrinc).trim();
+        }
+        if (!articuloPrincipal && row.sub_rubro) articuloPrincipal = String(row.sub_rubro).trim();
+        if (!articuloPrincipal && row.producto_descripcion) articuloPrincipal = String(row.producto_descripcion).trim();
+        if (!articuloPrincipal) articuloPrincipal = 'General';
+
+        let subCategoria = null;
+        let subSubCategoria = null;
+        let subSubSubCategoria = null;
+        const famId = row.familia_id || 0;
+        const confRule = jerarquiaMap.get(`${famId}___${articuloPrincipal.toLowerCase()}`) || null;
+
+        if (confRule && props && typeof props === 'object') {
+            const posObj = props.posiciones || props;
+            const targetEjesN3 = Array.isArray(confRule.ejes_nivel_3) && confRule.ejes_nivel_3.length > 0
+                ? confRule.ejes_nivel_3
+                : (confRule.eje_nivel_3 ? [confRule.eje_nivel_3] : []);
+            for (const targetEjeN3 of targetEjesN3) {
+                for (const k of Object.keys(posObj)) {
+                    const p = posObj[k];
+                    if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === targetEjeN3 && p.valor) {
+                        subCategoria = String(p.valor).trim();
+                        break;
+                    }
+                }
+                if (subCategoria) break;
+            }
+            if (subCategoria && confRule.reglas_nivel_4 && confRule.reglas_nivel_4[subCategoria]) {
+                const rawE4 = confRule.reglas_nivel_4[subCategoria];
+                const ejes4 = Array.isArray(rawE4) ? rawE4 : String(rawE4).split(',');
+                for (const ej of ejes4.map(s => String(s).trim().toLowerCase()).filter(Boolean)) {
+                    for (const k of Object.keys(posObj)) {
+                        const p = posObj[k];
+                        if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === ej && p.valor) {
+                            subSubCategoria = String(p.valor).trim();
+                            break;
+                        }
+                    }
+                    if (subSubCategoria) break;
+                }
+            }
+            if (subCategoria && subSubCategoria && confRule.reglas_nivel_5) {
+                const rawE5 = confRule.reglas_nivel_5[`${subCategoria}___${subSubCategoria}`];
+                if (rawE5) {
+                    const ejes5 = Array.isArray(rawE5) ? rawE5 : String(rawE5).split(',');
+                    for (const ej of ejes5.map(s => String(s).trim().toLowerCase()).filter(Boolean)) {
+                        for (const k of Object.keys(posObj)) {
+                            const p = posObj[k];
+                            if (p && typeof p === 'object' && p.eje && String(p.eje).trim().toLowerCase() === ej && p.valor) {
+                                subSubSubCategoria = String(p.valor).trim();
+                                break;
+                            }
+                        }
+                        if (subSubSubCategoria) break;
+                    }
+                }
+            }
+        }
+
+        const parts = [codigo, String(row.producto_descripcion || '').trim(), familia, articuloPrincipal];
+        if (subCategoria) parts.push(subCategoria);
+        if (subSubCategoria) parts.push(subSubCategoria);
+        if (subSubSubCategoria) parts.push(subSubSubCategoria);
+
+        const infoIng = mapaIngredientesUpper.get(codigo.toUpperCase()) || null;
+        if (infoIng && Array.isArray(infoIng.ingredientes) && infoIng.ingredientes.length >= 2) {
+            parts.push(infoIng.ingredientes.join(' '));
+            if (infoIng.linea_negocio === 3 || infoIng.linea_negocio === 6) {
+                parts.push(`__ING_L${infoIng.linea_negocio}:${infoIng.ingredientes.join('|')}__`);
+            }
+        }
+
+        const listaIva = parseFloat(row.lista_iva_porcentaje || 0);
+        const realIva = row.real_iva_porcentaje !== null && row.real_iva_porcentaje !== undefined
+            ? parseFloat(row.real_iva_porcentaje)
+            : 21.0;
+        let precioFinal = parseFloat(row.precio_final || 0);
+        if (listaIva > 0 && Math.abs(listaIva - realIva) > 0.01) {
+            precioFinal = Math.round(((precioFinal / (1 + listaIva / 100)) * (1 + realIva / 100)) * 100) / 100;
+        }
+        const kilosUnidad = parseFloat(row.kilos_unidad) > 0 ? parseFloat(row.kilos_unidad) : 1.0;
+        const precioKilo = Math.round((precioFinal / kilosUnidad) * 100) / 100;
+        const ivaPorcentaje = realIva > 0 ? realIva : 21.0;
+        const precioNeto = Math.round((precioFinal / (1 + ivaPorcentaje / 100)) * 100) / 100;
+        const precioKiloNeto = Math.round((precioKilo / (1 + ivaPorcentaje / 100)) * 100) / 100;
+        const stockFisico = Number(row.stock_disponible || 0);
+
+        mapUnicos.set(codigo, {
+            lista_id: Number(row.lista_id),
+            producto_codigo: codigo,
+            producto_descripcion: String(row.producto_descripcion || codigo).trim(),
+            precio_final: precioFinal,
+            kilos_unidad: kilosUnidad,
+            precio_kilo: precioKilo,
+            iva_porcentaje: ivaPorcentaje,
+            precio_neto: precioNeto,
+            precio_kilo_neto: precioKiloNeto,
+            stock_disponible: stockFisico > 0 ? stockFisico : 12,
+            stock_estado: 'disponible',
+            familia,
+            articulo_principal: articuloPrincipal,
+            sub_categoria: subCategoria,
+            sub_sub_categoria: subSubCategoria,
+            sub_sub_sub_categoria: subSubSubCategoria,
+            rubro: row.rubro ? String(row.rubro).trim() : null,
+            sub_rubro: row.sub_rubro ? String(row.sub_rubro).trim() : null,
+            busqueda_metadata: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+        });
+    }
+
+    return {
+        ok: true,
+        updated_at: catIng.updated_at,
+        listas_ids: Array.from(listasSet),
+        total_catalogo: mapUnicos.size,
+        catalogo: Array.from(mapUnicos.values()),
+        ingredientes_items: catIng.items
+    };
+}
+
 module.exports = {
     simplificarNombreComercialIngrediente,
     construirCatalogoIngredientesComerciales,
+    construirCatalogoPreviewB2BLaboratorio,
     obtenerDesgloseIngredientesParaItem,
     sincronizarManifestIngredientesB2B,
     invalidarCacheIngredientesComerciales

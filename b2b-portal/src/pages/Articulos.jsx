@@ -90,7 +90,7 @@ export default function Articulos({
   useEffect(() => {
     fetchMapaFotosLotesB2B().then(mapa => setMapaFotosLotes(mapa || {}));
     fetchMapaIngredientesComercialesB2B().then(mapa => setMapaIngredientesComerciales(mapa || {}));
-    if (profile?.cliente_id) {
+    if (profile?.cliente_id && profile.cliente_id !== 'LAB-DEMO') {
       fetchPoliticaB2B(profile).then(pol => setPoliticaComercial(pol));
       fetchOfertasB2B(profile).then(ofrs => setOfertasActivas(ofrs || {}));
     }
@@ -118,8 +118,10 @@ export default function Articulos({
 
   useEffect(() => {
     fetchCatalogo();
-    const clientIdent = profile?.nombre_empresa || profile?.nombre_completo || profile?.email || (profile?.cliente_id ? `Cliente ${profile.cliente_id}` : null);
-    registrarAccesoTelemetria('Navegación de Catálogo y Precios', clientIdent, { dedupeMs: 15000 });
+    if (profile?.cliente_id !== 'LAB-DEMO') {
+      const clientIdent = profile?.nombre_empresa || profile?.nombre_completo || profile?.email || (profile?.cliente_id ? `Cliente ${profile.cliente_id}` : null);
+      registrarAccesoTelemetria('Navegación de Catálogo y Precios', clientIdent, { dedupeMs: 15000 });
+    }
   }, [profile?.cliente_id]);
 
   // Abrir modal de IVA cuando se toca la tuerquita del encabezado móvil
@@ -147,6 +149,21 @@ export default function Articulos({
     }
     setError(null);
     try {
+      const hostActual = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
+      const esLocalHost = hostActual === 'localhost' || hostActual === '127.0.0.1' || hostActual.startsWith('192.168.') || hostActual.startsWith('10.') || hostActual.startsWith('100.');
+      if (esLocalHost && (profile?.cliente_id === 'LAB-DEMO' || String(window.location.pathname || '').toLowerCase().includes('/catalogo') || String(window.location.search || '').includes('lab=1'))) {
+        const respLab = await fetch('/api/produccion/catalogo/b2b-preview-lab', { cache: 'no-store' });
+        const jsonLab = await respLab.json();
+        if (respLab.ok && jsonLab?.ok && Array.isArray(jsonLab.catalogo)) {
+          setHasNoLists(false);
+          setCanToggleIva(true);
+          if (onCanToggleIvaChanged) onCanToggleIvaChanged(true);
+          setProducts(jsonLab.catalogo);
+          setLoading(false);
+          return;
+        }
+      }
+
       // 1. Obtener la asignación de listas, prioridad y permiso de toggle de IVA del cliente
       const { data: rawUserLists, error: listsError } = await supabase
         .from('clientes_b2b_perfiles_listas')

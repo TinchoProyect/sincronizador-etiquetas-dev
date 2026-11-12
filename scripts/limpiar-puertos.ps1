@@ -1,7 +1,7 @@
 # Script de limpieza de puertos para Windows
 # Sistema LAMDA - Sincronizador de Etiquetas
 
-$puertos = @(3000, 3002, 3003, 3004, 3005)
+$puertos = @(3000, 3002, 3003, 3004, 3005, 3006, 5173)
 
 foreach ($puerto in $puertos) {
     try {
