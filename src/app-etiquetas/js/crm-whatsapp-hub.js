@@ -6452,7 +6452,17 @@
                             })),
                             estadoCuentaDeterminista: {
                                 saldo_total: rayosX?.cuenta_corriente?.saldo_actual || 0,
+                                tiene_saldo_a_favor: Number(rayosX?.cuenta_corriente?.saldo_actual || 0) < -10,
                                 facturas_pendientes: (rayosX?.ultimas_facturas || []).filter(f => Number(f.saldo_pendiente || 0) > 10).length,
+                                pedidos_activos_en_curso: (rayosX?.pedidos_recientes || [])
+                                    .filter(p => !/entregad|anulad|cancelad|baja/i.test(`${p.estado || ''} ${p.secuencia || ''} ${p.estado_logistico || ''}`))
+                                    .slice(0, 3)
+                                    .map(p => ({
+                                        id: p.id,
+                                        estado: p.estado || 'En preparación',
+                                        secuencia: p.secuencia || '',
+                                        total: p.total || 0
+                                    })),
                                 comportamiento_pago: sintesisMemoria?.comportamiento_pago || {}
                             },
                             linkPortalCliente: linkActivacionCorto || URL_PORTAL_B2B_OFICIAL,

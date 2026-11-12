@@ -370,7 +370,7 @@
         };
 
         // ----------------------------------------------------------------------------------
-        // A. RASTREO DE RESÚMENES DE CUENTA CORRIENTE, FACTURAS Y PRESUPUESTOS ENVIADOS
+        // A. RASTREO DE RESÚMENES DE CUENTA CORRIENTE, FACTURAS, PRESUPUESTOS Y RECIBOS DE PAGO
         // ----------------------------------------------------------------------------------
         // Detectar si enviamos recientemente (últimas 48h) un Resumen / Extracto de Cuenta Corriente o una Factura/Presupuesto
         const enviosResumenCC = lista.filter(m =>
@@ -383,20 +383,62 @@
             /su factura .* ha sido emitida|presupuesto aprobado #/i.test(String(m.cuerpo || '')) &&
             ((ahoraMs - obtenerMsMensaje(m)) <= 5 * 24 * 3600 * 1000)
         );
+        const enviosPresupuestosOrden = lista.filter(m =>
+            Boolean(m.from_me) &&
+            /te enviamos el presupuesto\s*n[°º]?\s*\d+|presupuesto aprobado\s*#\s*\d+/i.test(String(m.cuerpo || '')) &&
+            ((ahoraMs - obtenerMsMensaje(m)) <= 7 * 24 * 3600 * 1000)
+        );
+        const enviosComprobantePago = lista.filter(m =>
+            Boolean(m.from_me) &&
+            /comprobante de pago recibido|rec-pago-|ha quedado un saldo a favor/i.test(String(m.cuerpo || '')) &&
+            ((ahoraMs - obtenerMsMensaje(m)) <= 3.5 * 24 * 3600 * 1000)
+        );
 
         const ultimoResumenCCObj = enviosResumenCC.length > 0 ? enviosResumenCC[enviosResumenCC.length - 1] : null;
         const ultimaFacturaEnvObj = enviosFacturasOPresupuestos.length > 0 ? enviosFacturasOPresupuestos[enviosFacturasOPresupuestos.length - 1] : null;
+        const ultimoPresupuestoOrdenObj = enviosPresupuestosOrden.length > 0 ? enviosPresupuestosOrden[enviosPresupuestosOrden.length - 1] : null;
+        const ultimoComprobantePagoObj = enviosComprobantePago.length > 0 ? enviosComprobantePago[enviosComprobantePago.length - 1] : null;
+
         const docCuentaRecienteObj = ultimoResumenCCObj || ultimaFacturaEnvObj || null;
         const msUltimoResumenEnviado = obtenerMsMensaje(docCuentaRecienteObj);
+        const msUltimoComprobantePago = obtenerMsMensaje(ultimoComprobantePagoObj);
         const enviamosResumenCuentaReciente = Boolean(ultimoResumenCCObj && msUltimoResumenEnviado > 0);
         const enviamosFacturaOPresupuestoReciente = Boolean(ultimaFacturaEnvObj && obtenerMsMensaje(ultimaFacturaEnvObj) > 0);
+        const enviamosPresupuestoOrdenReciente = Boolean(ultimoPresupuestoOrdenObj && obtenerMsMensaje(ultimoPresupuestoOrdenObj) > 0);
+        const enviamosComprobantePagoReciente = Boolean(ultimoComprobantePagoObj && msUltimoComprobantePago > 0);
+        const reciboTieneSaldoAFavor = Boolean(
+            ultimoComprobantePagoObj &&
+            /ha quedado un saldo a favor/i.test(String(ultimoComprobantePagoObj.cuerpo || ''))
+        );
         const cuandoEnviamosResumenTxt = msUltimoResumenEnviado > 0 ? formatearCuandoOcurrioMs(msUltimoResumenEnviado) : 'ayer';
+        const cuandoEnviamosComprobantePagoTxt = msUltimoComprobantePago > 0 ? formatearCuandoOcurrioMs(msUltimoComprobantePago) : 'recién';
 
         let montoResumenEnviadoTxt = '';
         if (ultimoResumenCCObj && ultimoResumenCCObj.cuerpo) {
             const mMonto = String(ultimoResumenCCObj.cuerpo).match(/Saldo Total Consolidado Actualizado:\s*(\$\s*[\d.,]+)/i);
             if (mMonto && mMonto[1]) {
                 montoResumenEnviadoTxt = mMonto[1].replace(/\s+/g, '');
+            }
+        }
+
+        let montoSaldoAFavorReciboTxt = '';
+        let nroReciboPagoTxt = '';
+        if (ultimoComprobantePagoObj && ultimoComprobantePagoObj.cuerpo) {
+            const mSf = String(ultimoComprobantePagoObj.cuerpo).match(/saldo a favor de\s*(\$\s*[\d.,]+)/i);
+            if (mSf && mSf[1]) {
+                montoSaldoAFavorReciboTxt = mSf[1].replace(/\s+/g, '');
+            }
+            const mRec = String(ultimoComprobantePagoObj.cuerpo).match(/\((REC-PAGO-[\d-]+)\)/i);
+            if (mRec && mRec[1]) {
+                nroReciboPagoTxt = mRec[1];
+            }
+        }
+
+        let nroPresupuestoEnviadoTxt = '';
+        if (ultimoPresupuestoOrdenObj && ultimoPresupuestoOrdenObj.cuerpo) {
+            const mPr = String(ultimoPresupuestoOrdenObj.cuerpo).match(/presupuesto\s*(?:n[°º]|aprobado\s*#)\s*(\d+)/i);
+            if (mPr && mPr[1]) {
+                nroPresupuestoEnviadoTxt = mPr[1];
             }
         }
 
@@ -596,6 +638,28 @@
             /workers\.dev|lamdaser\.com/i.test(salientes.slice(-3).map(m => String(m.cuerpo || '')).join(' '))
         );
 
+        const yaEnviamosLinkPostComprobante = Boolean(
+            msUltimoComprobantePago > 0 &&
+            lista.some(m =>
+                Boolean(m.from_me) &&
+                obtenerMsMensaje(m) > msUltimoComprobantePago &&
+                /workers\.dev|lamdaser\.com|seguimiento.*orden|seguir.*estado.*orden/i.test(String(m.cuerpo || ''))
+            )
+        );
+        const clienteConsultoProductoPostComprobante = Boolean(
+            msUltimoComprobantePago > 0 &&
+            entrantes.some(m =>
+                obtenerMsMensaje(m) > msUltimoComprobantePago &&
+                /(cuanto|precio|valor|agregame|sumame|tenes\s+stock|hay\s+stock)/i.test(normalizar(m.cuerpo || ''))
+            )
+        );
+        const correspondeSeguimientoOrdenPorPagoAdelantado = Boolean(
+            enviamosComprobantePagoReciente &&
+            (reciboTieneSaldoAFavor || enviamosPresupuestoOrdenReciente) &&
+            !yaEnviamosLinkPostComprobante &&
+            !clienteConsultoProductoPostComprobante
+        );
+
         // Detectar temas sensibles o comerciales abiertos en la charla reciente (<= 7 días)
         const charlaReciente7d = msUltimoGeneral > 0 && (diasDesdeUltimoMsg !== null && diasDesdeUltimoMsg <= 7);
         const habloDePagosParcialesOCuenta = Boolean(
@@ -646,7 +710,12 @@
         let tituloIntencion = '👋 Tantear corto / Iniciar charla';
         let explicacionSituacion = '';
 
-        if (charlaEnCursoHoy && clienteEsperandoRespuesta) {
+        if (correspondeSeguimientoOrdenPorPagoAdelantado) {
+            // Caso real Luis: pasó pedido -> le enviamos presupuesto (#8234892) -> transfirió por adelantado -> le enviamos el recibo (REC-PAGO-00000807) con saldo a favor porque la orden aún no se entregó
+            situacionDialogo = 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN';
+            tituloIntencion = `💸 Pago adelantado acreditado (${cuandoEnviamosComprobantePagoTxt}) · Ofrecer seguimiento de orden`;
+            explicacionSituacion = `${apodo} ya realizó la transferencia por adelantado${nroPresupuestoEnviadoTxt ? ` por su orden #${nroPresupuestoEnviadoTxt}` : ''} y le enviaste el comprobante de pago${nroReciboPagoTxt ? ` (${nroReciboPagoTxt})` : ''}${montoSaldoAFavorReciboTxt ? ` quedando un saldo a favor de ${montoSaldoAFavorReciboTxt} porque el pedido aún no se entregó` : ''}. Corresponde agradecerle la transferencia y ofrecerle seguir en tiempo real el estado de su orden desde la app, facilitándole el link directo en la 2da burbuja.`;
+        } else if (charlaEnCursoHoy && clienteEsperandoRespuesta) {
             const citaLimpia = textoEntranteActivo.replace(/^🎤\s*Audio:\s*/i, '').replace(/^["'«»]+|["'«»]+$/g, '').trim();
 
             if (coordinaRetiroOEnsobrado) {
@@ -779,7 +848,9 @@
         }
 
         let temaUltimoHilo = 'Sin charla previa registrada';
-        if (clienteEnSilencioTrasResumen) {
+        if (correspondeSeguimientoOrdenPorPagoAdelantado) {
+            temaUltimoHilo = `Recibo de pago adelantado enviado ${cuandoEnviamosComprobantePagoTxt}${montoSaldoAFavorReciboTxt ? ` (Saldo a favor: ${montoSaldoAFavorReciboTxt})` : ''} — Ofrecer seguimiento de orden en App`;
+        } else if (clienteEnSilencioTrasResumen) {
             temaUltimoHilo = `Resumen de cuenta enviado ${cuandoEnviamosResumenTxt}${montoResumenEnviadoTxt ? ` (${montoResumenEnviadoTxt})` : ''} — Cliente en silencio`;
         } else if (fraseSustanciosaCliente) {
             temaUltimoHilo = `"${fraseSustanciosaCliente.replace(/\s+/g, ' ').slice(0, 72)}${fraseSustanciosaCliente.length > 72 ? '…' : ''}"`;
@@ -799,8 +870,17 @@
             cuandoCharlamosTxt,
             enviamosResumenCuentaReciente,
             enviamosFacturaOPresupuestoReciente,
+            enviamosPresupuestoOrdenReciente,
+            enviamosComprobantePagoReciente,
+            reciboTieneSaldoAFavor,
             cuandoEnviamosResumenTxt,
+            cuandoEnviamosComprobantePagoTxt,
             montoResumenEnviadoTxt,
+            montoSaldoAFavorReciboTxt,
+            nroReciboPagoTxt,
+            nroPresupuestoEnviadoTxt,
+            yaEnviamosLinkPostComprobante,
+            correspondeSeguimientoOrdenPorPagoAdelantado,
             clienteEnSilencioTrasResumen,
             esTanteoCortoNuestro,
             esPromesaPuenteNuestra,
@@ -1073,6 +1153,16 @@
             badgeCiclo = `${articulosHabituales.length} artículos habituales`;
         }
 
+        const pedidosActivosEnCurso = (Array.isArray(pedidosRecientes) ? pedidosRecientes : []).filter(p => {
+            const est = String(p.estado || '').toLowerCase();
+            const sec = String(p.secuencia || '').toLowerCase();
+            const log = String(p.estado_logistico || '').toLowerCase();
+            if (/entregad|anulad|cancelad|finalizad|baja|eliminad/i.test(`${est} ${sec} ${log}`)) return false;
+            const msPed = p.fecha ? new Date(p.fecha).getTime() : 0;
+            return !msPed || ((Date.now() - msPed) <= 15 * 24 * 3600 * 1000);
+        });
+        const pedidoActivoEnCurso = pedidosActivosEnCurso.length > 0 ? pedidosActivosEnCurso[0] : null;
+
         let resumenCambioPrecios = '';
         if (cantPendientesNotificar > 0) {
             resumenCambioPrecios = `🔔 ${cantPendientesNotificar} actualización(es) pendiente(s) de enviar en Gestión de Precios${cantConSubaOBajaPendiente > 0 ? ` (${cantConSubaOBajaPendiente} con nuevo valor)` : ''}`;
@@ -1092,6 +1182,8 @@
             resumenCambioPrecios,
             mencionados,
             similares,
+            pedidosActivosEnCurso,
+            pedidoActivoEnCurso,
             diasDesdeUltimaCompra,
             fechaUltimaCompraTxt,
             frecuenciaMediaDias,
@@ -1121,6 +1213,9 @@
         const cuentaId = cc?.cuenta_id || null;
         const saldoCapital = Number(cc?.saldo_actual ?? sintesisMemoria?.comportamiento_pago?.saldo_actual ?? 0);
         const tieneSaldo = saldoCapital > 100;
+        const tieneSaldoAFavor = saldoCapital < -10;
+        const montoSaldoAFavor = tieneSaldoAFavor ? Math.abs(saldoCapital) : 0;
+        const saldoAFavorFmt = tieneSaldoAFavor ? `$${Math.round(montoSaldoAFavor).toLocaleString('es-AR')}` : '$0';
         const capas = Array.isArray(compObj?.capas) ? compObj.capas : [];
         const cancelados = Array.isArray(compObj?.comprobantes_cancelados) ? compObj.comprobantes_cancelados : [];
         let antiguedadMax = Number(compObj?.antiguedad_maxima_dias || 0);
@@ -1375,13 +1470,20 @@
                     ? `Total c/financiación: ${saldoFmt} (Capital ${saldoCapitalFmt} + Financiación ${financiacionFmt}, de hace ${antiguedadMax} días). Puede hacer pagos parciales para achicar capital y, al dejar saldo en $0, reactiva el 5% (> $300k) y ofertas de Lista #${listaId}.`
                     : `Lleva ${antiguedadMax} días corridos (> 14d): corre servicio de financiación (0,1% diario sobre saldo). Puede hacer pagos parciales para achicar capital y, al dejar saldo en $0, reactiva el 5% (> $300k) y ofertas de Lista #${listaId}.`;
             }
+        } else if (tieneSaldoAFavor) {
+            condicionSaldoCodigo = 'SALDO_A_FAVOR_PAGO_ADELANTADO';
+            etiquetaCondicionSaldo = `🟢 Saldo a favor: ${saldoAFavorFmt} (Pago adelantado acreditado)`;
+            colorCondicionBg = '#dcfce7';
+            colorCondicionText = '#065f46';
+            colorCondicionBorder = '#6ee7b7';
+            explicacionCondicionSaldo = `Registró transferencia / pago por adelantado quedando un saldo a favor de ${saldoAFavorFmt} en cuenta corriente (porque el pedido aún no fue entregado). Tiene activos todos los beneficios de su Lista #${listaId}.`;
         }
 
         const badgeCuenta = tieneSaldo
             ? (tieneFinanciacionActiva
                 ? `Total CC: ${saldoFmt} (C: ${saldoCapitalFmt} + F: ${financiacionFmt} · ${antiguedadMax}d)`
                 : `Saldo CC: ${saldoFmt}${antiguedadMax > 0 ? ` (${antiguedadMax}d)` : ''}`)
-            : 'Cuenta al día ($0)';
+            : (tieneSaldoAFavor ? `Saldo a favor: ${saldoAFavorFmt}` : 'Cuenta al día ($0)');
 
         const badgePortal = yaIngresoPortal
             ? `🟢 Ya usa el Portal${fechaUltimoIngresoTxt ? ` (últ. vez: ${fechaUltimoIngresoTxt})` : ''}`
@@ -1389,6 +1491,9 @@
 
         return {
             tieneSaldo,
+            tieneSaldoAFavor,
+            montoSaldoAFavor,
+            saldoAFavorFmt,
             cuentaId,
             saldoActual,
             saldoCapital,
@@ -1554,6 +1659,19 @@
         const infoDuraLinkPortal = (!st.yaIngresoPortal && st.codigoActivacion && !usaLinkActivacion && !usaMagicLink)
             ? `${linkElegido}\nCódigo de acceso: *${st.codigoActivacion}*`
             : `${linkElegido}`;
+
+        const baseLinkSeguimiento = String(linkElegido || '').trim();
+        const linkSeguimientoOrden = baseLinkSeguimiento
+            ? (/[?&]tab=pedidos\b/i.test(baseLinkSeguimiento)
+                ? baseLinkSeguimiento
+                : (baseLinkSeguimiento.includes('?')
+                    ? `${baseLinkSeguimiento}&tab=pedidos`
+                    : `${baseLinkSeguimiento.replace(/\/+$/, '')}/?tab=pedidos`))
+            : `${URL_PORTAL_OFICIAL}/?tab=pedidos`;
+
+        const infoDuraLinkSeguimientoOrden = (!st.yaIngresoPortal && st.codigoActivacion && !usaLinkActivacion && !usaMagicLink)
+            ? `${linkSeguimientoOrden}\nCódigo de acceso: *${st.codigoActivacion}*`
+            : `${linkSeguimientoOrden}`;
 
         const seleccionados = (st.catalogoArticulos || []).filter(a => st.idsSeleccionados.has(String(a.id)));
         const lid = Number(st.listaId) || 1;
@@ -2317,6 +2435,34 @@
         };
 
         // ----------------------------------------------------------------------------------
+        // I. PAGO ADELANTADO / TRANSFERENCIA RECIBIDA CON SALDO A FAVOR -> SEGUIMIENTO DE ORDEN EN LA APP
+        // ----------------------------------------------------------------------------------
+        const nroOrdenActiva = ag1.nroPresupuestoEnviadoTxt || (ag2.pedidoActivoEnCurso && ag2.pedidoActivoEnCurso.id ? String(ag2.pedidoActivoEnCurso.id) : '');
+        const txtNroOrden = nroOrdenActiva ? ` (#${nroOrdenActiva})` : '';
+        const nomOrden = apodo || nombrePila || '';
+        const variantesSeguimientoOrdenB1 = [
+            `Hola${nomOrden ? ' ' + nomOrden : ''}, muchas gracias por la transferencia! Ya quedó acreditado el pago y tu orden${txtNroOrden} está en preparación. Te dejo acá abajo el link directo a nuestra app por si querés ingresar y seguir desde ahí el estado de la orden en tiempo real:`,
+            `${nomOrden ? nomOrden + ', m' : 'M'}uchas gracias por la transferencia! Ya quedó registrado el pago a favor en tu cuenta y estamos preparando tu pedido${txtNroOrden}. Acá abajo te paso el link directo al portal para que puedas hacer el seguimiento del estado de la orden desde la app:`,
+            `Hola${nomOrden ? ' ' + nomOrden : ''}, gracias por la transferencia! Como el pedido${txtNroOrden} está en preparación, el pago ya quedó acreditado a tu favor. Te comparto acá abajo el link directo a la plataforma para que puedas seguir el estado de tu orden desde la app:`
+        ];
+        const b1SegOrden = limpiarCierreAlFinalDeBurbuja(variantesSeguimientoOrdenB1[varIdx % variantesSeguimientoOrdenB1.length]);
+        const cierresSeguimientoOrden = [
+            'Apenas esté listo para salir te avisamos también por acá. Cualquier cosa estamos atentos.',
+            'En cuanto salga a reparto te avisamos también por acá. Quedamos atentos por cualquier cosa.',
+            'Apenas salga el pedido te escribimos por acá. Cualquier consulta estamos atentos.'
+        ];
+        const paqueteSeguimientoOrdenPagoAdelantado = {
+            burbuja1: b1SegOrden,
+            burbuja2: infoDuraLinkSeguimientoOrden,
+            burbuja3: cierresSeguimientoOrden[varIdx % cierresSeguimientoOrden.length],
+            pasoEnEspera: `Agradecer la transferencia por adelantado + Link directo al seguimiento de la orden en el Portal B2B + Cierre atento.`
+        };
+
+        if (ag1.situacionDialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN') {
+            paqueteResponderContexto = paqueteSeguimientoOrdenPagoAdelantado;
+        }
+
+        // ----------------------------------------------------------------------------------
         // SELECCIÓN INTELIGENTE DEL PAQUETE ACTIVO (CON CINTURA TÁCTICA DE WHATSAPP)
         // ----------------------------------------------------------------------------------
         let modoResuelto = modoAccion;
@@ -2325,10 +2471,17 @@
             ag3.patronCuentaAbierta === 'DOS_PENDIENTES_ULTIMA_Y_ANTERIOR_ATRAS' ||
             ag3.patronCuentaAbierta === 'UNA_FACTURA_ATRASADA_PAGADOR_CUMPLIDOR'
         ) && !ag1.enviamosResumenCuentaReciente;
+        const tienePagoAdelantadoConOrdenActiva = Boolean(
+            ag1.situacionDialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN' ||
+            (ag3.tieneSaldoAFavor && ag2.pedidoActivoEnCurso && !ag1.yaEnviamosLinkPostComprobante && !ag1.yaEnviamosLinkRecien)
+        );
 
         if (seleccionados.length > 0 && (modoAccion === 'AUTO' || modoAccion === 'COTIZAR')) {
             modoResuelto = 'COTIZAR';
             paqueteElegido = paqueteCotizarSeparado;
+        } else if (modoAccion === 'SEGUIMIENTO_ORDEN') {
+            modoResuelto = 'SEGUIMIENTO_ORDEN';
+            paqueteElegido = paqueteSeguimientoOrdenPagoAdelantado;
         } else if (modoAccion === 'AVISO_CORTO_CUENTA') {
             modoResuelto = 'AVISO_CORTO_CUENTA';
             paqueteElegido = paqueteAvisoCortoCuenta;
@@ -2370,7 +2523,10 @@
             paqueteElegido = paquetePdf;
         } else {
             // MODO AUTO: El Agente interpreta el historial de pagos, las facturas abiertas y el hilo de WhatsApp
-            if (
+            if (tienePagoAdelantadoConOrdenActiva) {
+                modoResuelto = 'SEGUIMIENTO_ORDEN';
+                paqueteElegido = paqueteSeguimientoOrdenPagoAdelantado;
+            } else if (
                 ag1.situacionDialogo === 'CLIENTE_COORDINO_RETIRO_O_ENSOBRADO' ||
                 ag1.situacionDialogo === 'CLIENTE_CONSULTA_LINK_EFECTIVO_APP' ||
                 ag1.situacionDialogo === 'CLIENTE_OFRECE_EFECTIVO_BARRIO'
@@ -2437,7 +2593,10 @@
 
         // Construir explicación ejecutiva del Agente para que el operador vea por qué sugiere este mensaje sin llenar la pantalla de botones
         let diagnosticoEjecutivoAgente = '';
-        if (ag3.patronCuentaAbierta === 'DOS_PENDIENTES_ULTIMA_Y_ANTERIOR_ATRAS') {
+        if (tienePagoAdelantadoConOrdenActiva || modoResuelto === 'SEGUIMIENTO_ORDEN') {
+            const montoFavTxt = ag1.montoSaldoAFavorReciboTxt || (ag3.tieneSaldoAFavor ? ag3.saldoAFavorFmt : '');
+            diagnosticoEjecutivoAgente = `${apodo || 'El cliente'} ya realizó la transferencia por adelantado${txtNroOrden ? ` por su orden ${txtNroOrden}` : ''} y le enviaste el comprobante de pago${ag1.nroReciboPagoTxt ? ` (${ag1.nroReciboPagoTxt})` : ''}${montoFavTxt ? ` quedando un saldo a favor de ${montoFavTxt} hasta que se entregue el pedido` : ''}. Te propongo agradecerle la transferencia y pasarle el link directo a la sección Mis Pedidos del Portal B2B para que pueda hacer el seguimiento del estado de su orden en tiempo real.`;
+        } else if (ag3.patronCuentaAbierta === 'DOS_PENDIENTES_ULTIMA_Y_ANTERIOR_ATRAS') {
             const detalleHist = ag3.cantFacturasHistoricasPagadas > 0
                 ? `${ag3.cantFacturasHistoricasPagadas} facturas históricas pagadas en ~${Math.max(1, Math.round(ag3.promedioDiasCancelacion || 2))} días, nunca deja una atrás`
                 : `cancela siempre factura por factura dejando saldo $0, nunca deja una atrás`;
@@ -2489,10 +2648,13 @@
             paqueteTanteoCorto,
             paquetePingPongTema,
             paqueteAvisoCortoCuenta,
+            paqueteSeguimientoOrdenPagoAdelantado,
             diagnosticoEjecutivoAgente,
             cuerpoSaludoSinCierre: limpiarCierreAlFinalDeBurbuja(cuerpoSaludoElegido),
             cierreSugerido3raBurbuja: elegirCierreCoherente(b1Final, 1),
             infoDuraLinkPortal,
+            infoDuraLinkSeguimientoOrden,
+            linkSeguimientoOrden,
             linkElegido,
             textosSaldo,
             pasoEnEspera: paqueteElegido.pasoEnEspera
@@ -2525,9 +2687,13 @@
         const ag1 = ejecutarAgente1Dialogo(st.mensajesCompleta || st.mensajesRecientes || [], infoContacto);
         const razIa = (st.razonamientoIa && st.razonamientoIa.usando_ia_real) ? st.razonamientoIa : null;
         if (razIa) {
-            if (razIa.situacion_dialogo) ag1.situacionDialogo = razIa.situacion_dialogo;
-            if (razIa.titulo_intencion) ag1.tituloIntencion = `🧠 ${razIa.titulo_intencion}`;
-            if (razIa.explicacion_razonamiento) ag1.explicacionSituacion = razIa.explicacion_razonamiento;
+            // Si el Agente 1 detectó fehacientemente un comprobante de pago adelantado con saldo a favor pendiente de enviar link de seguimiento,
+            // prevalece la situación PAGO_ADELANTADO_SEGUIMIENTO_ORDEN aunque exista una caché previa de IA
+            if (!ag1.correspondeSeguimientoOrdenPorPagoAdelantado || razIa.situacion_dialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN') {
+                if (razIa.situacion_dialogo) ag1.situacionDialogo = razIa.situacion_dialogo;
+                if (razIa.titulo_intencion) ag1.tituloIntencion = `🧠 ${razIa.titulo_intencion}`;
+                if (razIa.explicacion_razonamiento) ag1.explicacionSituacion = razIa.explicacion_razonamiento;
+            }
         }
 
         if (st._charlaEnCursoForzadaUsuario === undefined) {
@@ -2588,35 +2754,54 @@
         // Si el Comité Cognitivo IA (Gemini) está activo y el operador está en modo AUTO,
         // combinamos el diálogo razonado (B1 y B3) con la Burbuja 2 100% determinista (Precios de BD o Link oficial)
         if (razIa && (!st.modoAccionProactiva || st.modoAccionProactiva === 'AUTO')) {
-            if (razIa.burbuja1_dialogo) {
-                proactivo.burbuja1 = limpiarSignosAperturaWa(razIa.burbuja1_dialogo);
+            const iaReconocioSeguimientoOrden = (
+                razIa.situacion_dialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN' ||
+                razIa.modo_accion_sugerido === 'SEGUIMIENTO_ORDEN' ||
+                razIa.tipo_burbuja2_determinista === 'LINK_SEGUIMIENTO_ORDEN'
+            );
+
+            // Si determinísticamente hay un comprobante de pago adelantado con saldo a favor pendiente de enviar link
+            // y la respuesta de IA en caché era anterior a esta regla, usar el paquete de seguimiento de orden determinista
+            if (ag1.correspondeSeguimientoOrdenPorPagoAdelantado && !iaReconocioSeguimientoOrden) {
+                proactivo.burbuja1 = proactivo.paqueteSeguimientoOrdenPagoAdelantado.burbuja1;
                 proactivo.mensajePrincipal = proactivo.burbuja1;
-            }
-            if (razIa.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
-                const selActual = (st.catalogoArticulos || []).filter(a => st.idsSeleccionados && st.idsSeleccionados.has(String(a.id)));
-                const listaParaB2 = selActual.length > 0 ? selActual : (ag2.mencionados || []);
-                proactivo.burbuja2 = formatearResumenWhatsAppJerarquiaB2B(listaParaB2.slice(0, 8), st.listaId || 1);
-                proactivo.modoResuelto = 'COTIZAR';
-            } else if (razIa.tipo_burbuja2_determinista === 'LINK_PORTAL') {
-                proactivo.burbuja2 = proactivo.infoDuraLinkPortal || '';
-                proactivo.modoResuelto = 'PASAR_PORTAL';
-            } else if (razIa.tipo_burbuja2_determinista === 'VACIA') {
-                // Si es apertura de semana (!charlaEnCurso) y el cliente aún no ingresó al Portal B2B, dejar listo el Link del Portal en Burbuja 2
-                if (!ag1.charlaEnCurso && !st.yaIngresoPortal && !ag1.yaEnviamosLinkHoy && proactivo.infoDuraLinkPortal) {
-                    proactivo.burbuja2 = proactivo.infoDuraLinkPortal;
-                } else {
-                    proactivo.burbuja2 = '';
+                proactivo.burbuja2 = proactivo.infoDuraLinkSeguimientoOrden || proactivo.infoDuraLinkPortal || '';
+                proactivo.burbuja3 = proactivo.paqueteSeguimientoOrdenPagoAdelantado.burbuja3;
+                proactivo.modoResuelto = 'SEGUIMIENTO_ORDEN';
+            } else {
+                if (razIa.burbuja1_dialogo) {
+                    proactivo.burbuja1 = limpiarSignosAperturaWa(razIa.burbuja1_dialogo);
+                    proactivo.mensajePrincipal = proactivo.burbuja1;
                 }
-            }
-            if (razIa.burbuja3_cierre !== undefined) {
-                const cierreIaLimpio = limpiarSignosAperturaWa(razIa.burbuja3_cierre || '');
-                if (cierreIaLimpio) {
-                    proactivo.cierreSugerido3raBurbuja = cierreIaLimpio;
+                if (razIa.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
+                    const selActual = (st.catalogoArticulos || []).filter(a => st.idsSeleccionados && st.idsSeleccionados.has(String(a.id)));
+                    const listaParaB2 = selActual.length > 0 ? selActual : (ag2.mencionados || []);
+                    proactivo.burbuja2 = formatearResumenWhatsAppJerarquiaB2B(listaParaB2.slice(0, 8), st.listaId || 1);
+                    proactivo.modoResuelto = 'COTIZAR';
+                } else if (razIa.tipo_burbuja2_determinista === 'LINK_SEGUIMIENTO_ORDEN' || iaReconocioSeguimientoOrden) {
+                    proactivo.burbuja2 = proactivo.infoDuraLinkSeguimientoOrden || proactivo.infoDuraLinkPortal || '';
+                    proactivo.modoResuelto = 'SEGUIMIENTO_ORDEN';
+                } else if (razIa.tipo_burbuja2_determinista === 'LINK_PORTAL') {
+                    proactivo.burbuja2 = proactivo.infoDuraLinkPortal || '';
+                    proactivo.modoResuelto = 'PASAR_PORTAL';
+                } else if (razIa.tipo_burbuja2_determinista === 'VACIA') {
+                    // Si es apertura de semana (!charlaEnCurso) y el cliente aún no ingresó al Portal B2B, dejar listo el Link del Portal en Burbuja 2
+                    if (!ag1.charlaEnCurso && !st.yaIngresoPortal && !ag1.yaEnviamosLinkHoy && proactivo.infoDuraLinkPortal) {
+                        proactivo.burbuja2 = proactivo.infoDuraLinkPortal;
+                    } else {
+                        proactivo.burbuja2 = '';
+                    }
                 }
-                proactivo.burbuja3 = proactivo.burbuja2 ? (cierreIaLimpio || proactivo.cierreSugerido3raBurbuja || 'Cualquier cosa estamos atentos.') : '';
-            }
-            if (razIa.explicacion_razonamiento) {
-                proactivo.diagnosticoEjecutivoAgente = razIa.explicacion_razonamiento;
+                if (razIa.burbuja3_cierre !== undefined) {
+                    const cierreIaLimpio = limpiarSignosAperturaWa(razIa.burbuja3_cierre || '');
+                    if (cierreIaLimpio) {
+                        proactivo.cierreSugerido3raBurbuja = cierreIaLimpio;
+                    }
+                    proactivo.burbuja3 = proactivo.burbuja2 ? (cierreIaLimpio || proactivo.cierreSugerido3raBurbuja || 'Cualquier cosa estamos atentos.') : '';
+                }
+                if (razIa.explicacion_razonamiento) {
+                    proactivo.diagnosticoEjecutivoAgente = razIa.explicacion_razonamiento;
+                }
             }
         }
 
@@ -2743,11 +2928,17 @@
                     </div>
                 </div>
             `
-            : `
-                <div style="margin-top: 5px; padding: 5px 8px; background: #ecfdf5; border: 1px solid #86efac; border-radius: 7px; font-size: 0.68rem; color: #065f46; font-weight: 700;">
-                    🟢 <strong>Cuenta en $0:</strong> Tiene activo el 5% (> $300.000) y ofertas en su Lista #${escapar(st.listaId)}.
-                </div>
-            `;
+            : (ag3.tieneSaldoAFavor
+                ? `
+                    <div style="margin-top: 5px; padding: 5px 8px; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 7px; font-size: 0.68rem; color: #065f46; font-weight: 700;">
+                        💸 <strong>Saldo a favor (${escapar(ag3.saldoAFavorFmt)}):</strong> Pago adelantado acreditado (pendiente de entrega del pedido).
+                    </div>
+                `
+                : `
+                    <div style="margin-top: 5px; padding: 5px 8px; background: #ecfdf5; border: 1px solid #86efac; border-radius: 7px; font-size: 0.68rem; color: #065f46; font-weight: 700;">
+                        🟢 <strong>Cuenta en $0:</strong> Tiene activo el 5% (> $300.000) y ofertas en su Lista #${escapar(st.listaId)}.
+                    </div>
+                `);
 
         const textoApodoBadge = infoContacto.esPersonaIdentificada
             ? (infoContacto.apodoCorto && infoContacto.apodoCorto !== infoContacto.nombrePila
@@ -2772,6 +2963,16 @@
                 onclick: `window.elegirAccionProactivaAsistenteWa('TANTEO_CORTO')`
             }
         ];
+
+        if (ag1.situacionDialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN' || ag3.tieneSaldoAFavor || ag2.pedidoActivoEnCurso) {
+            pildorasRapidas.push({
+                id: 'SEGUIMIENTO_ORDEN',
+                activo: !esModoAuto && modoActivo === 'SEGUIMIENTO_ORDEN',
+                label: '📦 Seguimiento Orden + Link',
+                title: 'Agradece la transferencia por adelantado y facilita el link directo a Mis Pedidos para seguir el estado de la orden en la app',
+                onclick: `window.elegirAccionProactivaAsistenteWa('SEGUIMIENTO_ORDEN')`
+            });
+        }
 
         if (ag3.tieneSaldo) {
             pildorasRapidas.push({
@@ -2834,6 +3035,7 @@
                     </div>
                     <div style="font-size: 0.72rem; color: #334155; line-height: 1.35;">
                         <div><strong>Contacto:</strong> ${escapar(infoContacto.etiquetaContacto)} ${textoApodoBadge ? `<span style="color:#059669; font-weight:700;">${textoApodoBadge}</span>` : ''} · <span style="color:#b45309; font-weight:800;">⏱️ Últ. msg: ${escapar(ag1.etiquetaHaceCuanto || 'sin registro')}</span></div>
+                        ${ag1.enviamosComprobantePagoReciente ? `<div style="margin-top: 2px; color: #047857; font-weight: 800;">💸 <strong>Recibo de pago en chat:</strong> ${escapar(ag1.cuandoEnviamosComprobantePagoTxt || 'recién')}${ag1.nroReciboPagoTxt ? ` (${escapar(ag1.nroReciboPagoTxt)})` : ''}${ag1.montoSaldoAFavorReciboTxt ? ` · Saldo a favor: ${escapar(ag1.montoSaldoAFavorReciboTxt)}` : ''}</div>` : ''}
                         ${(ag1.enviamosResumenCuentaReciente || ag1.enviamosFacturaOPresupuestoReciente) ? `<div style="margin-top: 2px; color: #6d28d9; font-weight: 800;">📄 <strong>Últ. comprobante/resumen en chat:</strong> ${escapar(cuandoResumenLabel)}${ag1.montoResumenEnviadoTxt ? ` (${escapar(ag1.montoResumenEnviadoTxt)})` : ''}</div>` : ''}
                         ${ag1.fraseSustanciosaCliente ? `<div style="margin-top: 2px; color: #7c2d12; font-weight: 700;"><strong>Planteo del cliente (${escapar(cuandoHablamosLabel)}):</strong> <em>"${escapar(ag1.fraseSustanciosaCliente.slice(0, 95))}"</em>${ag1.huboAudioNuestroEnEpisodio ? ' · 🎤 (con audio nuestro)' : (ag1.huboAudioClienteEnEpisodio ? ' · 🎤 (con audio del cliente)' : '')}</div>` : ''}
                         ${infoContacto.ultimoSaludoNuestro ? `<div style="margin-top: 2px; color: #0369a1;"><strong>Último saludo enviado:</strong> <em>"${escapar(infoContacto.ultimoSaludoNuestro)}"</em></div>` : ''}
@@ -2849,6 +3051,7 @@
                         </span>
                     </div>
                     <div style="font-size: 0.71rem; color: #14532d; margin-bottom: 4px;">
+                        ${ag2.pedidoActivoEnCurso ? `<div style="font-weight: 800; color: #0369a1; margin-bottom: 2px;">📦 Orden activa en preparación: <strong>#${escapar(String(ag2.pedidoActivoEnCurso.id))}</strong> (${escapar(ag2.pedidoActivoEnCurso.secuencia || ag2.pedidoActivoEnCurso.estado || 'En curso')})</div>` : ''}
                         ${ag2.diasDesdeUltimaCompra !== null
                             ? `Última compra hace <strong>${ag2.diasDesdeUltimaCompra}d</strong> (${escapar(ag2.fechaUltimaCompraTxt)})${ag2.frecuenciaMediaDias ? ` · Ciclo: <strong>cada ~${ag2.frecuenciaMediaDias}d</strong>` : ''}`
                             : `Artículos habituales del cliente (tocá uno para cotizar):`}
@@ -3044,7 +3247,9 @@
         if (articulosParaCotizar.length > 0) {
             bloquesInfoDura.push(articulosParaCotizar.slice(0, 4).map(formatearLineaArticulo).join('\n'));
         }
-        if (/\b(link|portal|pagina|web)\b/.test(instNorm)) {
+        if (/\b(seguimiento|seguir|orden|pedido)\b/.test(instNorm) && /\b(link|portal|app|pagina|web|estado|seguimiento|seguir)\b/.test(instNorm)) {
+            bloquesInfoDura.push(proactivo.infoDuraLinkSeguimientoOrden || proactivo.infoDuraLinkPortal);
+        } else if (/\b(link|portal|app|pagina|web)\b/.test(instNorm)) {
             bloquesInfoDura.push(proactivo.infoDuraLinkPortal);
         }
         if (/\b(saldo|cuenta|deuda)\b/.test(instNorm) && ag3.saldoActual > 0) {
@@ -3094,7 +3299,9 @@
                         kg: Number(h.kilos_unidad || 1)
                     })),
                     estadoCuentaDeterminista: {
-                        saldo_total: st.rayosX?.cuenta_corriente?.saldo_actual || 0
+                        saldo_total: st.rayosX?.cuenta_corriente?.saldo_actual || 0,
+                        tiene_saldo_a_favor: Number(st.rayosX?.cuenta_corriente?.saldo_actual || 0) < -10,
+                        pedidos_activos_en_curso: (st.rayosX?.pedidos_recientes || []).filter(p => !/entregad|anulad|cancelad|baja/i.test(`${p.estado || ''} ${p.secuencia || ''} ${p.estado_logistico || ''}`)).map(p => ({ id: p.id, estado: p.estado, secuencia: p.secuencia, total: p.total }))
                     },
                     linkPortalCliente: st.linkActivacionCorto || st.urlPortalBase || '',
                     instruccionOperador: instClean,
@@ -3132,6 +3339,8 @@
                     st.idsSeleccionados = new Set(artsSel.map(a => String(a.id)));
                 }
                 b2 = formatearResumenWhatsAppJerarquiaB2B(artsSel.slice(0, 8), st.listaId || 1);
+            } else if (raz.tipo_burbuja2_determinista === 'LINK_SEGUIMIENTO_ORDEN') {
+                b2 = resultadoMesa?.proactivo?.infoDuraLinkSeguimientoOrden || resultadoMesa?.proactivo?.infoDuraLinkPortal || st.linkActivacionCorto || st.urlPortalBase || '';
             } else if (raz.tipo_burbuja2_determinista === 'LINK_PORTAL') {
                 b2 = resultadoMesa?.proactivo?.infoDuraLinkPortal || st.linkActivacionCorto || st.urlPortalBase || '';
             }

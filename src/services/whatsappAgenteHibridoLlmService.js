@@ -359,6 +359,20 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
    - PROHIBIDO SALUDAR A TODOS LOS CLIENTES IGUAL CON FRASES DE MOLDE: Cuando abras semana o retomes contacto (ej. última charla hace varios días), mirá de qué hablaron realmente en la última interacción del historial (si pidió algo puntual, si coordinaron entrega, si quedó en revisar stock, o cuáles son sus "articulos_habituales_cliente") y redactá "burbuja1_dialogo" conectado con esa conversación real, no como un robot que les dice lo mismo a todos.
    - AUDIOS VIEJOS SIN TRANSCRIBIR: Si un mensaje del historial dice literalmente "🎤 Mensaje de audio" (sin texto transcrito al lado) y es de días anteriores (ej. de la semana pasada), NO digas "ahí escuché tu audio" como si fuera de recién; abrí la semana con naturalidad consultando cómo vienen de stock/reposición para esta semana (mencionando si querés alguno de sus artículos habituales).
    - CIERRE CONTEXTUAL EN BURBUJA 3 Y MULETILLA DE MARTÍN: No uses de forma repetitiva "Cualquier cosa escribime por acá". Redactá siempre en "burbuja3_cierre" un cierre natural adaptado a cómo viene la charla con ese cliente; y cuando corresponda un cierre corto de cortesía, usá el estilo real de Martín ("Cualquier cosa estamos atentos.", "Quedamos atentos por cualquier cosa.", "Estoy atento por cualquier cosa."). Siempre completá "burbuja3_cierre" con una frase contextual lista por si Martín decide desplegar el 3er mensaje.
+6. PAGO ADELANTADO / TRANSFERENCIA RECIBIDA CON SALDO A FAVOR Y SEGUIMIENTO DE ORDEN ("PAGO_ADELANTADO_SEGUIMIENTO_ORDEN"):
+   - Si en el historial reciente de hoy/ayer se ve la secuencia donde:
+     (a) Nosotros le enviamos un presupuesto/orden ("Hola, te enviamos el presupuesto N° ... de LAMDA") o existe un pedido activo en curso ("pedidos_activos_en_curso" en "cuenta_corriente_determinista"),
+     (b) El cliente transfirió o pagó por adelantado (ej. mandó foto/imagen de transferencia o aviso de pago), y
+     (c) Nosotros ya le enviamos el comprobante/recibo ("Comprobante de pago recibido (REC-PAGO-...)" y/o el texto automático "Ha quedado un saldo a favor de $..." porque la mercadería todavía no se entregó y el recibo deja saldo a favor en cuenta corriente), o bien "cuenta_corriente_determinista.tiene_saldo_a_favor" es true con pedido activo en preparación,
+     y todavía NO le enviamos el link de seguimiento después de ese recibo:
+   - Entonces OBLIGATORIAMENTE clasificá:
+     - "situacion_dialogo": "PAGO_ADELANTADO_SEGUIMIENTO_ORDEN"
+     - "modo_accion_sugerido": "SEGUIMIENTO_ORDEN"
+     - "tipo_burbuja2_determinista": "LINK_SEGUIMIENTO_ORDEN"
+     - "codigos_articulos_seleccionados": []
+     - "sugerir_adjuntar_pdf": false
+     - En "burbuja1_dialogo": Agradecele por la transferencia ("muchas gracias por la transferencia"), confirmale que el pago ya quedó acreditado y su pedido/orden (mencionando el N° de orden si figura) ya está en curso de preparación, y ofrecele seguir en tiempo real el estado de la orden ingresando desde el link de la plataforma/app de abajo. (NO saludes de nuevo con "Hola" si ya veníamos hablando hoy; continuá natural, ej: "${apodoSugerido ? `${apodoSugerido}, muchas` : 'Muchas'} gracias por la transferencia! Ya quedó acreditada y tu orden está en preparación. Desde el link de abajo podés ingresar a la app para hacer el seguimiento en tiempo real del estado de tu pedido:").
+     - En "burbuja3_cierre": "Apenas esté listo para salir te avisamos también por acá. Cualquier cosa estamos atentos."
 `.trim();
 
     const historialFormateado = mensajesRecientes.slice(-14).map(m => {
@@ -432,7 +446,7 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
         properties: {
             situacion_dialogo: {
                 type: 'STRING',
-                description: 'Código táctico: CLIENTE_CONSULTA_PUNTUAL, CLIENTE_PIDE_LISTA, CLIENTE_ENVIA_PEDIDO, CLIENTE_RESPONDE_TANTEO_O_SALUDO, SILENCIO_TRAS_RESUMEN_CUENTA, NOSOTROS_YA_TANTEAMOS_HOY, CLIENTE_POSTERGA_O_ESTA_BIEN, CLIENTE_AGRADECE_O_CONFIRMA, INICIAR_SALUDO_SEMANAL'
+                description: 'Código táctico: PAGO_ADELANTADO_SEGUIMIENTO_ORDEN, CLIENTE_CONSULTA_PUNTUAL, CLIENTE_PIDE_LISTA, CLIENTE_ENVIA_PEDIDO, CLIENTE_RESPONDE_TANTEO_O_SALUDO, SILENCIO_TRAS_RESUMEN_CUENTA, NOSOTROS_YA_TANTEAMOS_HOY, CLIENTE_POSTERGA_O_ESTA_BIEN, CLIENTE_AGRADECE_O_CONFIRMA, INICIAR_SALUDO_SEMANAL'
             },
             titulo_intencion: {
                 type: 'STRING',
@@ -444,7 +458,7 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
             },
             modo_accion_sugerido: {
                 type: 'STRING',
-                description: 'Uno de: COTIZAR, RESPONDER_CONTEXTO, TANTEO_CORTO, PING_PONG_TEMA, PASAR_PORTAL, AVISO_CORTO_CUENTA, SALUDAR_SEMANA'
+                description: 'Uno de: SEGUIMIENTO_ORDEN, COTIZAR, RESPONDER_CONTEXTO, TANTEO_CORTO, PING_PONG_TEMA, PASAR_PORTAL, AVISO_CORTO_CUENTA, SALUDAR_SEMANA'
             },
             codigos_articulos_seleccionados: {
                 type: 'ARRAY',
@@ -471,7 +485,7 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
             },
             tipo_burbuja2_determinista: {
                 type: 'STRING',
-                description: 'PRECIOS_SELECCIONADOS (si corresponde estampar los precios deterministas de codigos_articulos_seleccionados), LINK_PORTAL (si corresponde estampar el link del portal), o VACIA (si es mensaje de 1 sola burbuja)'
+                description: 'LINK_SEGUIMIENTO_ORDEN (si ya pagó/transfirió por adelantado y corresponde pasarle el link directo al seguimiento del estado de su orden), PRECIOS_SELECCIONADOS (si corresponde estampar los precios deterministas de codigos_articulos_seleccionados), LINK_PORTAL (si corresponde estampar el link general del portal), o VACIA (si es mensaje de 1 sola burbuja)'
             },
             burbuja3_cierre: {
                 type: 'STRING',
