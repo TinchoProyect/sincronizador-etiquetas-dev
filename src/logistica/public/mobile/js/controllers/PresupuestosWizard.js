@@ -24,6 +24,8 @@ const WizardController = {
     catalogoFiltrado: [],
     familiasAbiertas: new Set(),
     atributosAbiertos: new Set(),
+    nodosAbiertos: new Set(),
+    mapaIngredientesUpper: {},
     modalQtyArticulo: null,
     ultimoPresupuestoGuardado: null,
 
@@ -59,6 +61,28 @@ const WizardController = {
         }
 
         this.bindEvents();
+
+        // Carga en paralelo (no bloqueante) del mapa de ingredientes comerciales (L3 Mixes, L5 Barritas, L6 Granolas)
+        fetch('/api/produccion/catalogo/ingredientes-comerciales')
+            .then(r => r.json())
+            .then(json => {
+                const rawMap = (json && (json.items || json.data)) ? (json.items || json.data) : {};
+                const upper = {};
+                Object.keys(rawMap).forEach(k => {
+                    upper[String(k).trim().toUpperCase()] = rawMap[k];
+                });
+                this.mapaIngredientesUpper = upper;
+                if (this.catalogoCompleto.length > 0 && this.step === 2) {
+                    const inputSearch = document.getElementById('buscar-articulo-input');
+                    const q = inputSearch ? inputSearch.value : '';
+                    if (q.trim().length > 0) {
+                        this.filtrarCatalogoBunker(q, { mantenerAcordeones: true });
+                    } else {
+                        this.renderArbolBunker();
+                    }
+                }
+            })
+            .catch(() => {});
 
         if (editId) {
             await this.cargarPresupuestoParaEdicion(editId);
@@ -360,6 +384,7 @@ const WizardController = {
         this.catalogoFiltrado = [];
         this.familiasAbiertas.clear();
         this.atributosAbiertos.clear();
+        this.nodosAbiertos.clear();
 
         // Resetear controles visuales del paso 2
         const inputSearch = document.getElementById('buscar-articulo-input');
@@ -564,12 +589,17 @@ const WizardController = {
     },
 
     normalizarTexto(txt) {
+        if (window.LamdaCatalogoHelpers && window.LamdaCatalogoHelpers.normalizarTextoBusqueda) {
+            return window.LamdaCatalogoHelpers.normalizarTextoBusqueda(txt);
+        }
         return (txt || '').toString().toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
             .trim();
     },
 
-    filtrarCatalogoBunker(query) {
+    filtrarCatalogoBunker(query, opts = {}) {
+        const Helpers = window.LamdaCatalogoHelpers;
         const qClean = this.normalizarTexto(query);
         const terms = qClean.split(/\s+/).filter(Boolean);
 
@@ -583,11 +613,16 @@ const WizardController = {
             });
         }
 
-        // 2. Filtro Universal multi-término (Fase 49)
+        // 2. Filtro Universal multi-término LAMDA (Regla #3 acumulativo AND sobre corpus limpio + ingredientes)
         if (terms.length === 0) {
             this.catalogoFiltrado = dataset;
         } else {
             this.catalogoFiltrado = dataset.filter(art => {
+                if (Helpers) {
+                    const infoIng = Helpers.resolverIngredientesItem(art, this.mapaIngredientesUpper);
+                    const corpus = Helpers.construirCorpusBusquedaArticulo(art, infoIng);
+                    return Helpers.coincideBusquedaAcumulativa(corpus, query);
+                }
                 const searchCorpus = this.normalizarTexto([
                     art.descripcion || '',
                     art.articulo_numero || '',
@@ -604,21 +639,69 @@ const WizardController = {
             });
         }
 
-        // Si hay búsqueda activa por texto, expandir ramas que coinciden
-        if (terms.length > 0) {
+        // En App Móvil, la búsqueda por texto y el cambio de filtro NO auto-expanden acordeones
+        if (!opts.mantenerAcordeones) {
             this.familiasAbiertas.clear();
             this.atributosAbiertos.clear();
-            this.catalogoFiltrado.forEach(a => {
-                if (a.familia) this.familiasAbiertas.add(a.familia);
-                if (a.articulo_principal) this.atributosAbiertos.add(`${a.familia || 'General'}___${a.articulo_principal}`);
-            });
-        } else {
-            // Sin texto de búsqueda (incluso con filtro Habituales), mantener plegadas
-            this.familiasAbiertas.clear();
-            this.atributosAbiertos.clear();
+            this.nodosAbiertos.clear();
         }
 
         this.renderArbolBunker();
+    },
+
+    crearBotonIngredientesMovil(titulo, info) {
+        if (!info || !Array.isArray(info.ingredientes) || info.ingredientes.length < 2) return null;
+        const linea = Number(info.linea_negocio);
+        const variantCls = linea === 6 ? 'granola' : (linea === 5 ? 'barrita' : '');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `btn-ing-movil ${variantCls}`.trim();
+        btn.innerText = '🥣 ¿Qué contiene?';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (window.LamdaCatalogoHelpers) {
+                window.LamdaCatalogoHelpers.mostrarModalIngredientesMovil(titulo, info);
+            }
+        });
+        return btn;
+    },
+
+    crearHeaderSubcatCollapsible({ levelClass, icono, titulo, count, isOpen, onToggle, evalIng }) {
+        const Helpers = window.LamdaCatalogoHelpers;
+        const header = document.createElement('div');
+        header.className = `bunker-subcat-header ${levelClass} is-collapsible ${isOpen ? 'open' : ''}`.trim();
+        header.onclick = onToggle;
+
+        const left = document.createElement('div');
+        left.className = 'bunker-subcat-left';
+
+        const chevron = document.createElement('span');
+        chevron.className = 'bunker-subcat-chevron';
+        chevron.style.transform = isOpen ? 'rotate(90deg)' : 'rotate(0deg)';
+        chevron.innerText = '▶';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'bunker-subcat-title';
+        titleSpan.innerHTML = `${icono} ${Helpers ? Helpers.escapeHtml(titulo) : titulo}`;
+
+        left.appendChild(chevron);
+        left.appendChild(titleSpan);
+
+        const actions = document.createElement('div');
+        actions.className = 'bunker-subcat-actions';
+        if (evalIng && evalIng.shared) {
+            const btnIng = this.crearBotonIngredientesMovil(titulo, evalIng.info);
+            if (btnIng) actions.appendChild(btnIng);
+        }
+
+        const badge = document.createElement('span');
+        badge.className = 'bunker-count-badge mini';
+        badge.innerText = count;
+        actions.appendChild(badge);
+
+        header.appendChild(left);
+        header.appendChild(actions);
+        return header;
     },
 
     renderArbolBunker() {
@@ -635,34 +718,40 @@ const WizardController = {
             return;
         }
 
-        // 1. Agrupar por Familia -> Artículo Principal
+        const Helpers = window.LamdaCatalogoHelpers;
+
+        // 1. Agrupar determinísticamente por clave normalizada (NFD): Familia -> Artículo Principal
         const familiasMap = new Map();
 
         this.catalogoFiltrado.forEach(art => {
-            const fam = art.familia || 'General';
-            const artP = art.articulo_principal || 'General';
+            const fam = (art.familia || 'General').trim() || 'General';
+            const artP = (art.articulo_principal || 'General').trim() || 'General';
+            const famKey = this.normalizarTexto(fam) || 'general';
+            const artPKey = this.normalizarTexto(artP) || 'general';
 
-            if (!familiasMap.has(fam)) {
-                familiasMap.set(fam, new Map());
+            if (!familiasMap.has(famKey)) {
+                familiasMap.set(famKey, { nombre: fam, artPMap: new Map() });
             }
-            const artPMap = familiasMap.get(fam);
-            if (!artPMap.has(artP)) {
-                artPMap.set(artP, []);
+            const artPMap = familiasMap.get(famKey).artPMap;
+            if (!artPMap.has(artPKey)) {
+                artPMap.set(artPKey, { nombre: artP, prods: [] });
             }
-            artPMap.get(artP).push(art);
+            artPMap.get(artPKey).prods.push(art);
         });
 
         treeContainer.innerHTML = '';
 
         // 2. Renderizar Árbol ordenado alfabéticamente por Familia y Artículo Principal
-        const familiasOrdenadas = Array.from(familiasMap.entries()).sort((a, b) => 
-            a[0].localeCompare(b[0], 'es', { sensitivity: 'base' })
+        const familiasOrdenadas = Array.from(familiasMap.entries()).sort((a, b) =>
+            a[1].nombre.localeCompare(b[1].nombre, 'es', { sensitivity: 'base' })
         );
 
-        familiasOrdenadas.forEach(([familiaNombre, articulosMap]) => {
-            const isFamOpen = this.familiasAbiertas.has(familiaNombre);
+        familiasOrdenadas.forEach(([familiaKey, famNode]) => {
+            const familiaNombre = famNode.nombre;
+            const articulosMap = famNode.artPMap;
+            const isFamOpen = this.familiasAbiertas.has(familiaKey);
             let totalArticulosEnFamilia = 0;
-            articulosMap.forEach(items => totalArticulosEnFamilia += items.length);
+            articulosMap.forEach(({ prods }) => totalArticulosEnFamilia += prods.length);
 
             const famCard = document.createElement('div');
             famCard.className = `bunker-familia-card ${isFamOpen ? 'open' : ''}`;
@@ -670,11 +759,11 @@ const WizardController = {
             // Header Familia (Nivel 1)
             const famHeader = document.createElement('div');
             famHeader.className = 'bunker-familia-header';
-            famHeader.onclick = () => this.toggleFamilia(familiaNombre);
+            famHeader.onclick = () => this.toggleFamilia(familiaKey);
             famHeader.innerHTML = `
                 <div class="bunker-familia-title-group">
                     <span class="bunker-chevron" style="transform: ${isFamOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
-                    <h3 class="bunker-familia-name">${familiaNombre}</h3>
+                    <h3 class="bunker-familia-name">${Helpers ? Helpers.escapeHtml(familiaNombre) : familiaNombre}</h3>
                 </div>
                 <span class="bunker-count-badge">${totalArticulosEnFamilia}</span>
             `;
@@ -685,13 +774,30 @@ const WizardController = {
                 const famBody = document.createElement('div');
                 famBody.className = 'bunker-familia-body';
 
-                const articulosOrdenados = Array.from(articulosMap.entries()).sort((a, b) => 
-                    a[0].localeCompare(b[0], 'es', { sensitivity: 'base' })
+                const articulosOrdenados = Array.from(articulosMap.entries()).sort((a, b) =>
+                    a[1].nombre.localeCompare(b[1].nombre, 'es', { sensitivity: 'base' })
                 );
 
-                articulosOrdenados.forEach(([artPrincipalNombre, productos]) => {
-                    const attrKey = `${familiaNombre}___${artPrincipalNombre}`;
+                articulosOrdenados.forEach(([artPKey, artNode]) => {
+                    const artPrincipalNombre = artNode.nombre;
+                    const productos = artNode.prods;
+                    const attrKey = `${familiaKey}___${artPKey}`;
                     const isAttrOpen = this.atributosAbiertos.has(attrKey);
+
+                    const tieneSubcategorias = productos.some(p => (p.sub_categoria || '').trim() !== '');
+                    let tituloN2 = (Helpers && Helpers.embellecerTituloComercial(artPrincipalNombre)) || artPrincipalNombre;
+                    let evalIngN2 = { shared: false, info: null };
+                    let optsHojaN2 = {};
+
+                    if (!tieneSubcategorias && Helpers) {
+                        const presN2 = Helpers.calcularPresentacionGrupo(productos, artPrincipalNombre);
+                        tituloN2 = presN2.tieneTituloComun ? presN2.titulo : tituloN2;
+                        evalIngN2 = Helpers.evaluarIngredientesGrupo(productos, this.mapaIngredientesUpper);
+                        optsHojaN2 = {
+                            etiquetasPorCodigo: presN2.etiquetasPorCodigo,
+                            ocultarBotonIng: evalIngN2.shared
+                        };
+                    }
 
                     const attrGroup = document.createElement('div');
                     attrGroup.className = `bunker-atributo-group ${isAttrOpen ? 'open' : ''}`;
@@ -700,13 +806,28 @@ const WizardController = {
                     const attrHeader = document.createElement('div');
                     attrHeader.className = 'bunker-atributo-header';
                     attrHeader.onclick = () => this.toggleAtributo(attrKey);
-                    attrHeader.innerHTML = `
-                        <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <span style="font-size:0.75rem; color:#60a5fa; transform:${isAttrOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
-                            <span class="bunker-atributo-name">${artPrincipalNombre}</span>
-                        </div>
-                        <span class="bunker-count-badge" style="font-size:0.68rem;">${productos.length}</span>
+
+                    const leftDiv = document.createElement('div');
+                    leftDiv.style.cssText = 'display:flex; align-items:center; gap:0.5rem; min-width:0; flex:1;';
+                    leftDiv.innerHTML = `
+                        <span style="font-size:0.75rem; color:#60a5fa; flex-shrink:0; transform:${isAttrOpen ? 'rotate(90deg)' : 'rotate(0deg)'}">▶</span>
+                        <span class="bunker-atributo-name">${Helpers ? Helpers.escapeHtml(tituloN2) : tituloN2}</span>
                     `;
+
+                    const rightDiv = document.createElement('div');
+                    rightDiv.className = 'bunker-subcat-actions';
+                    if (evalIngN2.shared) {
+                        const btnIng2 = this.crearBotonIngredientesMovil(tituloN2, evalIngN2.info);
+                        if (btnIng2) rightDiv.appendChild(btnIng2);
+                    }
+                    const badge2 = document.createElement('span');
+                    badge2.className = 'bunker-count-badge';
+                    badge2.style.fontSize = '0.68rem';
+                    badge2.innerText = productos.length;
+                    rightDiv.appendChild(badge2);
+
+                    attrHeader.appendChild(leftDiv);
+                    attrHeader.appendChild(rightDiv);
                     attrGroup.appendChild(attrHeader);
 
                     // Body Artículo Principal: Jerarquía multinivel (N3, N4, N5) y ordenamiento por Kilos
@@ -717,7 +838,11 @@ const WizardController = {
                         const subgrid = document.createElement('div');
                         subgrid.className = 'bunker-articulos-subgrid';
 
-                        this.renderNodosJerarquia(subgrid, productos);
+                        if (tieneSubcategorias) {
+                            this.renderNodosJerarquia(subgrid, productos, attrKey);
+                        } else {
+                            this.renderGrupoProductos(subgrid, productos, optsHojaN2);
+                        }
 
                         attrBody.appendChild(subgrid);
                         attrGroup.appendChild(attrBody);
@@ -736,11 +861,11 @@ const WizardController = {
     },
 
     /**
-     * Renderiza la estructura jerárquica multinivel (Nivel 3, Nivel 4, Nivel 5)
+     * Renderiza la estructura jerárquica multinivel colapsable (Nivel 3, Nivel 4, Nivel 5)
      * dentro de un Artículo Principal en el catálogo móvil.
      */
-    renderNodosJerarquia(container, productos) {
-        // Analizar si hay Nivel 3 (subcategorías)
+    renderNodosJerarquia(container, productos, parentKey = 'root') {
+        const Helpers = window.LamdaCatalogoHelpers;
         const subMap = new Map();
         let hasN3 = false;
 
@@ -748,30 +873,27 @@ const WizardController = {
             const sub = (p.sub_categoria || '').trim();
             if (sub && sub !== '') {
                 hasN3 = true;
-                const subKey = sub.toLowerCase();
+                const subKey = this.normalizarTexto(sub);
                 if (!subMap.has(subKey)) {
-                    subMap.set(subKey, { nombre: sub, prods: [] });
+                    subMap.set(subKey, { key: subKey, nombre: sub, prods: [] });
                 }
                 subMap.get(subKey).prods.push(p);
             }
         });
 
-        // Caso 1: Sin Nivel 3 configurado (Directo)
         if (!hasN3) {
-            this.renderGrupoProductos(container, productos);
+            this.renderGrupoProductos(container, productos, {});
             return;
         }
 
-        // Agregar productos huérfanos a 'General'
         const sinSub = productos.filter(p => !p.sub_categoria || p.sub_categoria.trim() === '');
         if (sinSub.length > 0) {
             if (!subMap.has('general')) {
-                subMap.set('general', { nombre: 'General', prods: [] });
+                subMap.set('general', { key: 'general', nombre: 'General', prods: [] });
             }
             subMap.get('general').prods.push(...sinSub);
         }
 
-        // Ordenar Nivel 3 alfabéticamente, con 'General' al final
         const subList = Array.from(subMap.values()).sort((a, b) => {
             if (a.nombre.toLowerCase() === 'general') return 1;
             if (b.nombre.toLowerCase() === 'general') return -1;
@@ -779,14 +901,8 @@ const WizardController = {
         });
 
         subList.forEach(subItem => {
-            // Divisor Nivel 3
-            const h3 = document.createElement('div');
-            h3.className = 'bunker-subcat-header n3';
-            h3.innerHTML = `
-                <span>🏷️ ${subItem.nombre}</span>
-                <span class="bunker-count-badge mini">${subItem.prods.length}</span>
-            `;
-            container.appendChild(h3);
+            const n3PathKey = `${parentKey}::n3::${subItem.key}`;
+            const isN3Open = this.nodosAbiertos.has(n3PathKey);
 
             // Analizar Nivel 4 dentro de esta subcategoría
             const subSubMap = new Map();
@@ -796,23 +912,62 @@ const WizardController = {
                 const subSub = (sp.sub_sub_categoria || '').trim();
                 if (subSub && subSub !== '') {
                     hasN4 = true;
-                    const subSubKey = subSub.toLowerCase();
+                    const subSubKey = this.normalizarTexto(subSub);
                     if (!subSubMap.has(subSubKey)) {
-                        subSubMap.set(subSubKey, { nombre: subSub, prods: [] });
+                        subSubMap.set(subSubKey, { key: subSubKey, nombre: subSub, prods: [] });
                     }
                     subSubMap.get(subSubKey).prods.push(sp);
                 }
             });
 
             if (!hasN4) {
-                this.renderGrupoProductos(container, subItem.prods);
+                const pres3 = Helpers ? Helpers.calcularPresentacionGrupo(subItem.prods, subItem.nombre) : { titulo: subItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                const titulo3 = pres3.tieneTituloComun ? pres3.titulo : ((Helpers && Helpers.embellecerTituloComercial(subItem.nombre)) || subItem.nombre);
+                const evalIng3 = Helpers ? Helpers.evaluarIngredientesGrupo(subItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+
+                container.appendChild(this.crearHeaderSubcatCollapsible({
+                    levelClass: 'n3',
+                    icono: '🏷️',
+                    titulo: titulo3,
+                    count: subItem.prods.length,
+                    isOpen: isN3Open,
+                    onToggle: () => this.toggleNodo(n3PathKey),
+                    evalIng: evalIng3
+                }));
+
+                if (isN3Open) {
+                    const body3 = document.createElement('div');
+                    body3.className = 'bunker-subcat-body';
+                    this.renderGrupoProductos(body3, subItem.prods, {
+                        etiquetasPorCodigo: pres3.etiquetasPorCodigo,
+                        ocultarBotonIng: evalIng3.shared
+                    });
+                    container.appendChild(body3);
+                }
                 return;
             }
+
+            const n3Title = (Helpers && Helpers.embellecerTituloComercial(subItem.nombre)) || subItem.nombre;
+            container.appendChild(this.crearHeaderSubcatCollapsible({
+                levelClass: 'n3',
+                icono: '🏷️',
+                titulo: n3Title,
+                count: subItem.prods.length,
+                isOpen: isN3Open,
+                onToggle: () => this.toggleNodo(n3PathKey),
+                evalIng: null
+            }));
+
+            if (!isN3Open) return;
+
+            const body3 = document.createElement('div');
+            body3.className = 'bunker-subcat-body';
+            container.appendChild(body3);
 
             const sinSubSub = subItem.prods.filter(sp => !sp.sub_sub_categoria || sp.sub_sub_categoria.trim() === '');
             if (sinSubSub.length > 0) {
                 if (!subSubMap.has('general')) {
-                    subSubMap.set('general', { nombre: 'General', prods: [] });
+                    subSubMap.set('general', { key: 'general', nombre: 'General', prods: [] });
                 }
                 subSubMap.get('general').prods.push(...sinSubSub);
             }
@@ -824,14 +979,8 @@ const WizardController = {
             });
 
             subSubList.forEach(subSubItem => {
-                // Divisor Nivel 4
-                const h4 = document.createElement('div');
-                h4.className = 'bunker-subcat-header n4';
-                h4.innerHTML = `
-                    <span>↳ 🌿 ${subSubItem.nombre}</span>
-                    <span class="bunker-count-badge mini">${subSubItem.prods.length}</span>
-                `;
-                container.appendChild(h4);
+                const n4PathKey = `${n3PathKey}::n4::${subSubItem.key}`;
+                const isN4Open = this.nodosAbiertos.has(n4PathKey);
 
                 // Analizar Nivel 5 dentro de esta sub-subcategoría
                 const subSubSubMap = new Map();
@@ -841,23 +990,62 @@ const WizardController = {
                     const subSubSub = (ssp.sub_sub_sub_categoria || '').trim();
                     if (subSubSub && subSubSub !== '') {
                         hasN5 = true;
-                        const subSubSubKey = subSubSub.toLowerCase();
+                        const subSubSubKey = this.normalizarTexto(subSubSub);
                         if (!subSubSubMap.has(subSubSubKey)) {
-                            subSubSubMap.set(subSubSubKey, { nombre: subSubSub, prods: [] });
+                            subSubSubMap.set(subSubSubKey, { key: subSubSubKey, nombre: subSubSub, prods: [] });
                         }
                         subSubSubMap.get(subSubSubKey).prods.push(ssp);
                     }
                 });
 
                 if (!hasN5) {
-                    this.renderGrupoProductos(container, subSubItem.prods);
+                    const pres4 = Helpers ? Helpers.calcularPresentacionGrupo(subSubItem.prods, subSubItem.nombre) : { titulo: subSubItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                    const titulo4 = pres4.tieneTituloComun ? pres4.titulo : ((Helpers && Helpers.embellecerTituloComercial(subSubItem.nombre)) || subSubItem.nombre);
+                    const evalIng4 = Helpers ? Helpers.evaluarIngredientesGrupo(subSubItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+
+                    body3.appendChild(this.crearHeaderSubcatCollapsible({
+                        levelClass: 'n4',
+                        icono: '↳ 🌿',
+                        titulo: titulo4,
+                        count: subSubItem.prods.length,
+                        isOpen: isN4Open,
+                        onToggle: () => this.toggleNodo(n4PathKey),
+                        evalIng: evalIng4
+                    }));
+
+                    if (isN4Open) {
+                        const body4 = document.createElement('div');
+                        body4.className = 'bunker-subcat-body';
+                        this.renderGrupoProductos(body4, subSubItem.prods, {
+                            etiquetasPorCodigo: pres4.etiquetasPorCodigo,
+                            ocultarBotonIng: evalIng4.shared
+                        });
+                        body3.appendChild(body4);
+                    }
                     return;
                 }
+
+                const n4Title = (Helpers && Helpers.embellecerTituloComercial(subSubItem.nombre)) || subSubItem.nombre;
+                body3.appendChild(this.crearHeaderSubcatCollapsible({
+                    levelClass: 'n4',
+                    icono: '↳ 🌿',
+                    titulo: n4Title,
+                    count: subSubItem.prods.length,
+                    isOpen: isN4Open,
+                    onToggle: () => this.toggleNodo(n4PathKey),
+                    evalIng: null
+                }));
+
+                if (!isN4Open) return;
+
+                const body4 = document.createElement('div');
+                body4.className = 'bunker-subcat-body';
+                body3.appendChild(body4);
 
                 const sinSubSubSub = subSubItem.prods.filter(ssp => !ssp.sub_sub_sub_categoria || ssp.sub_sub_sub_categoria.trim() === '');
                 if (sinSubSubSub.length > 0) {
                     if (!subSubSubMap.has('general')) {
-                        subSubSubMap.set('general', { nombre: 'General', prods: [] });
+                        subSubSubMap.set('general', { key: 'general', nombre: 'General', prods: [] });
                     }
                     subSubSubMap.get('general').prods.push(...sinSubSubSub);
                 }
@@ -869,14 +1057,31 @@ const WizardController = {
                 });
 
                 subSubSubList.forEach(subSubSubItem => {
-                    const h5 = document.createElement('div');
-                    h5.className = 'bunker-subcat-header n5';
-                    h5.innerHTML = `
-                        <span>↳ 🔹 ${subSubSubItem.nombre}</span>
-                        <span class="bunker-count-badge mini">${subSubSubItem.prods.length}</span>
-                    `;
-                    container.appendChild(h5);
-                    this.renderGrupoProductos(container, subSubSubItem.prods);
+                    const n5PathKey = `${n4PathKey}::n5::${subSubSubItem.key}`;
+                    const isN5Open = this.nodosAbiertos.has(n5PathKey);
+                    const pres5 = Helpers ? Helpers.calcularPresentacionGrupo(subSubSubItem.prods, subSubSubItem.nombre) : { titulo: subSubSubItem.nombre, tieneTituloComun: false, etiquetasPorCodigo: new Map() };
+                    const titulo5 = pres5.tieneTituloComun ? pres5.titulo : ((Helpers && Helpers.embellecerTituloComercial(subSubSubItem.nombre)) || subSubSubItem.nombre);
+                    const evalIng5 = Helpers ? Helpers.evaluarIngredientesGrupo(subSubSubItem.prods, this.mapaIngredientesUpper) : { shared: false, info: null };
+
+                    body4.appendChild(this.crearHeaderSubcatCollapsible({
+                        levelClass: 'n5',
+                        icono: '↳ 🔹',
+                        titulo: titulo5,
+                        count: subSubSubItem.prods.length,
+                        isOpen: isN5Open,
+                        onToggle: () => this.toggleNodo(n5PathKey),
+                        evalIng: evalIng5
+                    }));
+
+                    if (isN5Open) {
+                        const body5 = document.createElement('div');
+                        body5.className = 'bunker-subcat-body';
+                        this.renderGrupoProductos(body5, subSubSubItem.prods, {
+                            etiquetasPorCodigo: pres5.etiquetasPorCodigo,
+                            ocultarBotonIng: evalIng5.shared
+                        });
+                        body4.appendChild(body5);
+                    }
                 });
             });
         });
@@ -886,7 +1091,7 @@ const WizardController = {
      * Ordena productos separando fracciones directas (arriba, kilos DESC)
      * de artículos padre / packs (abajo, con divisor sutil).
      */
-    renderGrupoProductos(container, productos) {
+    renderGrupoProductos(container, productos, opts = {}) {
         const fracciones = [];
         const packs = [];
 
@@ -902,7 +1107,7 @@ const WizardController = {
         const sortFn = (a, b) => {
             const kA = parseFloat(a.kilos_unidad || 0);
             const kB = parseFloat(b.kilos_unidad || 0);
-            if (kB !== kA) return kB - kA; // Mayor presentación primero (25kg, 10kg, 5kg, 1kg...)
+            if (kB !== kA) return kB - kA;
             return (a.descripcion || '').localeCompare(b.descripcion || '', 'es', { sensitivity: 'base' });
         };
 
@@ -911,7 +1116,7 @@ const WizardController = {
 
         // 1. Fracciones directas arriba
         fracciones.forEach(prod => {
-            const card = this.renderProductCard(prod);
+            const card = this.renderProductCard(prod, opts);
             container.appendChild(card);
         });
 
@@ -927,13 +1132,14 @@ const WizardController = {
                 container.appendChild(sep);
             }
             packs.forEach(prod => {
-                const card = this.renderProductCard(prod);
+                const card = this.renderProductCard(prod, opts);
                 container.appendChild(card);
             });
         }
     },
 
-    renderProductCard(prod) {
+    renderProductCard(prod, opts = {}) {
+        const Helpers = window.LamdaCatalogoHelpers;
         const id = prod.articulo_numero || prod.codigo_barras;
         const currentQty = this.cart.items[id] ? this.cart.items[id].cantidad : 0;
         const hasItems = currentQty > 0;
@@ -943,17 +1149,29 @@ const WizardController = {
         const habitualInfo = this.articulosHabituales.get(key1) || this.articulosHabituales.get(key2);
         const esHabitual = !!habitualInfo;
 
+        const codLookup = String(prod.articulo_numero || prod.codigo_barras || prod.producto_codigo || prod.codigo || prod.descripcion || '').trim();
+        const etiquetaCompacta = opts.displayLabel
+            || (opts.etiquetasPorCodigo && opts.etiquetasPorCodigo.get(codLookup))
+            || ((Helpers && Helpers.embellecerTituloComercial(prod.descripcion)) || prod.descripcion);
+        const ocultarBotonIng = Boolean(opts.ocultarBotonIng);
+
         const card = document.createElement('div');
         card.className = `bunker-product-card ${hasItems ? 'has-items' : ''}`;
         card.id = `prod-card-${id}`;
+        card.dataset.displayLabel = etiquetaCompacta;
+        card.dataset.ocultarBotonIng = ocultarBotonIng ? '1' : '0';
 
-        const stockFis = parseFloat(prod.stock_fisico !== undefined ? prod.stock_fisico : (prod.stock_consolidado || 0)) || 0;
-        const stockRes = parseFloat(prod.stock_reservado || 0) || 0;
-        const stockDisp = parseFloat(prod.stock_disponible !== undefined ? prod.stock_disponible : (prod.stock_consolidado !== undefined ? prod.stock_consolidado : (prod.stock_actual !== undefined ? prod.stock_actual : 0))) || 0;
+        const stockFisRaw = prod.stock_fisico !== undefined ? prod.stock_fisico : (prod.stock_consolidado || 0);
+        const stockResRaw = prod.stock_reservado || 0;
+        const stockDispRaw = prod.stock_disponible !== undefined ? prod.stock_disponible : (prod.stock_consolidado !== undefined ? prod.stock_consolidado : (prod.stock_actual !== undefined ? prod.stock_actual : 0));
 
-        const formattedDisp = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(1);
-        const formattedFis = Number.isInteger(stockFis) ? stockFis : stockFis.toFixed(1);
-        const formattedRes = Number.isInteger(stockRes) ? stockRes : stockRes.toFixed(1);
+        const stockFis = Helpers ? Helpers.normalizarStockComercial(stockFisRaw) : (parseFloat(stockFisRaw) || 0);
+        const stockRes = Helpers ? Helpers.normalizarStockComercial(stockResRaw) : (parseFloat(stockResRaw) || 0);
+        const stockDisp = Helpers ? Helpers.normalizarStockComercial(stockDispRaw) : (parseFloat(stockDispRaw) || 0);
+
+        const formattedDisp = Helpers ? Helpers.formatearStockComercial(stockDisp) : String(stockDisp);
+        const formattedFis = Helpers ? Helpers.formatearStockComercial(stockFis) : String(stockFis);
+        const formattedRes = Helpers ? Helpers.formatearStockComercial(stockRes) : String(stockRes);
         const hasStock = stockDisp > 0;
         const kilos = parseFloat(prod.kilos_unidad || 1.0) || 1.0;
         const ivaPct = parseFloat(prod.iva || 21);
@@ -983,7 +1201,7 @@ const WizardController = {
                     <span class="stock-dot ${hasStock ? '' : 'no-stock'}" title="${hasStock ? `Disponible: ${formattedDisp} u (Físico: ${formattedFis} u, Reservado: ${formattedRes} u)` : 'Sin Stock Disponible'}"></span>
                     <div style="flex:1; min-width:0;">
                         <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.25rem;">
-                            <h4 class="bunker-product-name" style="${oferta ? 'color: #f87171 !important; font-weight:800;' : ''}">${prod.descripcion}</h4>
+                            <h4 class="bunker-product-name" title="${Helpers ? Helpers.escapeHtml(prod.descripcion) : prod.descripcion}" style="${oferta ? 'color: #f87171 !important; font-weight:800;' : ''}">${Helpers ? Helpers.escapeHtml(etiquetaCompacta) : etiquetaCompacta}</h4>
                             ${esHabitual ? `<span class="badge-frecuente" title="Comprado habitualmente (${habitualInfo.frecuencia_compra} veces)">⭐ x${habitualInfo.frecuencia_compra}</span>` : ''}
                             ${oferta ? `<span style="font-size:0.65rem; font-weight:800; color:#fca5a5; background:rgba(239,68,68,0.22); border:1px solid rgba(239,68,68,0.45); padding:0.1rem 0.4rem; border-radius:4px;">🔥 OFERTA ${oferta.descuento_porcentaje}% OFF</span>` : ''}
                         </div>
@@ -1040,14 +1258,27 @@ const WizardController = {
             </div>
         `;
 
+        // Agregar botón discreto ¿Qué contiene? a nivel tarjeta solo cuando no esté ya en el encabezado del grupo
+        if (!ocultarBotonIng && Helpers) {
+            const infoIngProd = Helpers.resolverIngredientesItem(prod, this.mapaIngredientesUpper);
+            if (infoIngProd) {
+                const topGroup = card.querySelector('.bunker-product-title-group > div');
+                const badgesRow = topGroup ? topGroup.children[1] : null;
+                const btnFallback = this.crearBotonIngredientesMovil(prod.descripcion || etiquetaCompacta, infoIngProd);
+                if (badgesRow && btnFallback) {
+                    badgesRow.appendChild(btnFallback);
+                }
+            }
+        }
+
         return card;
     },
 
-    toggleFamilia(familiaNombre) {
-        if (this.familiasAbiertas.has(familiaNombre)) {
-            this.familiasAbiertas.delete(familiaNombre);
+    toggleFamilia(familiaKey) {
+        if (this.familiasAbiertas.has(familiaKey)) {
+            this.familiasAbiertas.delete(familiaKey);
         } else {
-            this.familiasAbiertas.add(familiaNombre);
+            this.familiasAbiertas.add(familiaKey);
         }
         this.renderArbolBunker();
     },
@@ -1057,6 +1288,15 @@ const WizardController = {
             this.atributosAbiertos.delete(attrKey);
         } else {
             this.atributosAbiertos.add(attrKey);
+        }
+        this.renderArbolBunker();
+    },
+
+    toggleNodo(nodeKey) {
+        if (this.nodosAbiertos.has(nodeKey)) {
+            this.nodosAbiertos.delete(nodeKey);
+        } else {
+            this.nodosAbiertos.add(nodeKey);
         }
         this.renderArbolBunker();
     },
@@ -1108,7 +1348,10 @@ const WizardController = {
         const prod = this.catalogoCompleto.find(a => (a.articulo_numero || a.codigo_barras) == idArticulo);
         const cardDOM = document.getElementById(`prod-card-${idArticulo}`);
         if (cardDOM && prod) {
-            const newCard = this.renderProductCard(prod);
+            const newCard = this.renderProductCard(prod, {
+                displayLabel: cardDOM.dataset.displayLabel || '',
+                ocultarBotonIng: cardDOM.dataset.ocultarBotonIng === '1'
+            });
             cardDOM.replaceWith(newCard);
         }
     },
@@ -1118,14 +1361,19 @@ const WizardController = {
         const item = this.cart.items[idArticulo];
         if (!item) return;
 
+        const Helpers = window.LamdaCatalogoHelpers;
         const prod = this.catalogoCompleto.find(a => (a.articulo_numero || a.codigo_barras) == idArticulo);
-        const stockFis = prod ? parseFloat(prod.stock_fisico !== undefined ? prod.stock_fisico : (prod.stock_consolidado || 0)) || 0 : 0;
-        const stockRes = prod ? parseFloat(prod.stock_reservado || 0) || 0 : 0;
-        const stockDisp = prod ? parseFloat(prod.stock_disponible !== undefined ? prod.stock_disponible : (prod.stock_consolidado !== undefined ? prod.stock_consolidado : (prod.stock_actual !== undefined ? prod.stock_actual : 0))) || 0 : 0;
+        const stockFisRaw = prod ? (prod.stock_fisico !== undefined ? prod.stock_fisico : (prod.stock_consolidado || 0)) : 0;
+        const stockResRaw = prod ? (prod.stock_reservado || 0) : 0;
+        const stockDispRaw = prod ? (prod.stock_disponible !== undefined ? prod.stock_disponible : (prod.stock_consolidado !== undefined ? prod.stock_consolidado : (prod.stock_actual !== undefined ? prod.stock_actual : 0))) : 0;
 
-        const formattedDisp = Number.isInteger(stockDisp) ? stockDisp : stockDisp.toFixed(1);
-        const formattedFis = Number.isInteger(stockFis) ? stockFis : stockFis.toFixed(1);
-        const formattedRes = Number.isInteger(stockRes) ? stockRes : stockRes.toFixed(1);
+        const stockFis = Helpers ? Helpers.normalizarStockComercial(stockFisRaw) : (parseFloat(stockFisRaw) || 0);
+        const stockRes = Helpers ? Helpers.normalizarStockComercial(stockResRaw) : (parseFloat(stockResRaw) || 0);
+        const stockDisp = Helpers ? Helpers.normalizarStockComercial(stockDispRaw) : (parseFloat(stockDispRaw) || 0);
+
+        const formattedDisp = Helpers ? Helpers.formatearStockComercial(stockDisp) : String(stockDisp);
+        const formattedFis = Helpers ? Helpers.formatearStockComercial(stockFis) : String(stockFis);
+        const formattedRes = Helpers ? Helpers.formatearStockComercial(stockRes) : String(stockRes);
 
         const modal = document.getElementById('modal-cantidad-directa');
         const input = document.getElementById('modal-qty-input');

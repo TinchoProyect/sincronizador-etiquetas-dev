@@ -1,4 +1,5 @@
 console.log('🔍 [PRESUPUESTOS] Cargando controlador de presupuestos...');
+const { normalizarStockComercial, esSkuPremezclaInterna } = require('../../shared/stockComercialHelper');
 
 /**
  * Resuelve un presupuesto por ID o id_presupuesto_ext
@@ -1521,7 +1522,9 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             console.warn('[PRESUPUESTOS] Advertencia al obtener ofertas dinámicas para sugerencias:', eOfertas.message);
         }
 
-        const sugerencias = result.rows.map(a => {
+        const sugerencias = result.rows
+            .filter(a => !esSkuPremezclaInterna(a))
+            .map(a => {
             let props = a.propiedades_dinamicas;
             if (props && typeof props === 'string') {
                 try { props = JSON.parse(props); } catch (e) { props = null; }
@@ -1665,9 +1668,9 @@ const obtenerSugerenciasArticulos = async (req, res) => {
                 precioKiloOfertaNeto = kilos > 0 ? (precioOfertaNeto / kilos) : precioOfertaNeto;
             }
 
-            const sf = Math.floor(parseFloat(a.stock_fisico || 0));
-            const sr = Math.floor(parseFloat(a.stock_reservado || 0));
-            const sd = Math.floor(parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)));
+            const sf = normalizarStockComercial(a.stock_fisico || 0);
+            const sr = normalizarStockComercial(a.stock_reservado || 0);
+            const sd = normalizarStockComercial(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0));
             const stockStr = sr > 0 ? `disp: ${sd} | fís: ${sf}, res: ${sr}` : `stock: ${sd}`;
 
             return {
@@ -1708,6 +1711,8 @@ const obtenerSugerenciasArticulos = async (req, res) => {
                 pack_unidades: parseInt(a.pack_unidades || 1, 10),
                 pack_hijo_codigo: a.pack_hijo_codigo || null,
                 propiedades_dinamicas: a.propiedades_dinamicas || null,
+                rubro: a.rubro || '',
+                sub_rubro: a.sub_rubro || '',
                 descripcion_legacy: a.descripcion_legacy || '',
                 text: `${a.descripcion} — [${a.articulo_numero}] (${stockStr})`
             };
